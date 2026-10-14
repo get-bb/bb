@@ -10,10 +10,7 @@ import {
   type TimelineWindowHint,
   type StoredEventRow,
 } from "@bb/db";
-import type {
-  ThreadTimelinePageKind,
-  ThreadTimelinePageRequest,
-} from "./timeline-pagination.js";
+import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -22,9 +19,8 @@ export interface TimelineEventRowSelection {
   orderingBoundarySequence: number | null;
   ownedSequenceStart: number;
   ownedSequenceEnd: number;
-  knownHasOlderSegments: boolean | null;
+  hasOlderSegments: boolean;
   paginationPage: ThreadTimelinePageRequest;
-  responsePageKind: ThreadTimelinePageKind;
   rows: StoredEventRow[];
   headStateRows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;

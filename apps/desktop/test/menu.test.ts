@@ -10,7 +10,6 @@ import { Menu } from "electron";
 
 import {
   buildApplicationMenuTemplate,
-  CONNECT_SERVERS_SKIPPED_MENU_LABELS,
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
@@ -45,6 +44,7 @@ function menuArgs(
     serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: BUILTIN_SERVER_NAME }],
     setServerUrl: () => {},
+    signInToConnect: () => {},
     addServer: () => {},
     ...overrides,
   };
@@ -172,6 +172,46 @@ describe("application menu", () => {
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
   });
 
+  it.each([
+    { selectedId: "builtin", enabled: false },
+    { selectedId: "connect:office", enabled: true },
+    { selectedId: "custom:office", enabled: true },
+  ])(
+    "enables editing only a selected saved or Connect server ($selectedId)",
+    ({ selectedId, enabled }) => {
+      const template = buildApplicationMenuTemplate(
+        menuArgs(() => {}, {
+          servers: [
+            {
+              checked: selectedId === "builtin",
+              id: "builtin",
+              name: BUILTIN_SERVER_NAME,
+            },
+            {
+              checked: selectedId === "connect:office",
+              id: "connect:office",
+              name: "Connect Office",
+            },
+            {
+              checked: selectedId === "custom:office",
+              id: "custom:office",
+              name: "Office",
+            },
+          ],
+        }),
+      );
+      for (const submenu of [
+        findServerSubmenu(template),
+        findDesktopSettingsServerSubmenu(template),
+      ]) {
+        expect(
+          submenu.find((item) => item.label === SET_SERVER_URL_MENU_LABEL)
+            ?.enabled,
+        ).toBe(enabled);
+      }
+    },
+  );
+
   it("builds a Server menu with multiple custom targets and separate add/edit actions", () => {
     const selectServer = vi.fn();
     const setServerUrl = vi.fn();
@@ -271,38 +311,69 @@ describe("application menu", () => {
     expect(addServer).toHaveBeenCalledTimes(1);
   });
 
-  it("explains an empty Connect list with a disabled row when the sync was skipped", () => {
-    const template = buildApplicationMenuTemplate(
-      menuArgs(() => {}, {
-        connectServersSkipReason: "no-credential",
-        servers: [
-          { checked: false, id: "builtin", name: BUILTIN_SERVER_NAME },
-          {
-            checked: true,
-            id: "custom",
-            name: "old-host.tailnet.ts.net:38886",
-          },
-        ],
-      }),
-    );
-    const serverSubmenu = findServerSubmenu(template);
+  it.each([
+    { reason: "no-credential", label: "Sign in to bb Connect…" },
+    { reason: "unauthorized", label: "Sign in to bb Connect again…" },
+  ] as const)(
+    "offers sign-in with the server actions when the sync needs it ($reason)",
+    ({ reason, label }) => {
+      const signInToConnect = vi.fn();
+      const template = buildApplicationMenuTemplate(
+        menuArgs(() => {}, {
+          connectServersSkipReason: reason,
+          servers: [
+            { checked: false, id: "builtin", name: BUILTIN_SERVER_NAME },
+            { checked: true, id: "connect:brsbl", name: "brsbl" },
+          ],
+          signInToConnect,
+        }),
+      );
+      const serverSubmenu = findServerSubmenu(template);
 
-    expect(serverSubmenu.map((item) => item.label ?? `<${item.type}>`)).toEqual(
-      [
+      expect(
+        serverSubmenu.map((item) => item.label ?? `<${item.type}>`),
+      ).toEqual([
         BUILTIN_SERVER_NAME,
-        "old-host.tailnet.ts.net:38886",
-        CONNECT_SERVERS_SKIPPED_MENU_LABELS["no-credential"],
+        "brsbl",
+        "<separator>",
+        label,
+        "Add Server…",
+        SET_SERVER_URL_MENU_LABEL,
+      ]);
+      const signIn = serverSubmenu[3];
+      expect(signIn?.enabled).toBeUndefined();
+      expect(signIn?.type).toBeUndefined();
+      signIn?.click?.({} as never, undefined, {} as never);
+      expect(signInToConnect).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["unavailable", "not-paired", "plugin-disabled"] as const)(
+    "adds no Connect row when sign-in cannot fix the sync ($0)",
+    (reason) => {
+      const template = buildApplicationMenuTemplate(
+        menuArgs(() => {}, {
+          connectServersSkipReason: reason,
+          servers: [
+            { checked: false, id: "builtin", name: BUILTIN_SERVER_NAME },
+            { checked: true, id: "connect:brsbl", name: "brsbl" },
+          ],
+        }),
+      );
+
+      expect(
+        findServerSubmenu(template).map(
+          (item) => item.label ?? `<${item.type}>`,
+        ),
+      ).toEqual([
+        BUILTIN_SERVER_NAME,
+        "brsbl",
         "<separator>",
         "Add Server…",
         SET_SERVER_URL_MENU_LABEL,
-      ],
-    );
-    const note = serverSubmenu[2];
-    expect(note?.enabled).toBe(false);
-    expect(note?.type).toBeUndefined();
-    expect(note?.click).toBeUndefined();
-    expect(note?.label).toMatch(/sign in to bb Connect/u);
-  });
+      ]);
+    },
+  );
 
   it("builds a native Linux menu with the Linux DevTools accelerator", () => {
     vi.mocked(Menu.sendActionToFirstResponder).mockClear();

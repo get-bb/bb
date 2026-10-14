@@ -10,7 +10,9 @@ export {
 export { ConnectListError } from "./errors.js";
 export {
   listAccountServers,
+  listAccountServersWithSession,
   type AccountServerWithUrl,
+  type ConnectAccountSession,
   type ListAccountServersResult,
 } from "./list-servers.js";
 export { fetchDesktopSession, type DesktopSession } from "./desktop-session.js";
@@ -24,3 +26,7 @@ export {
   parseMobilePairingPayload,
   type MobilePairingPayload,
 } from "./mobile-pairing.js";
+export {
+  DEFAULT_CONNECT_BASE_URL,
+  resolveDefaultConnectBaseUrl,
+} from "./base-url.js";

@@ -1999,6 +1999,7 @@ export function NewThreadComposer({
               triggers: promptMentions.triggers,
               results: promptMentions.results,
               isLoading: promptMentions.isLoading,
+              isRefreshing: promptMentions.isRefreshing,
               isError: promptMentions.isError,
               onQueryChange: promptMentions.setQuery,
               resolveLink:

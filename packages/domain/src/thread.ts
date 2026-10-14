@@ -103,6 +103,7 @@ const workspaceChangeStatsSchema = z.object({
   insertions: z.number(),
   deletions: z.number(),
   lineStatsComplete: z.boolean(),
+  fileCount: z.number().int().nonnegative(),
   files: z.array(workspaceFileStatusSchema),
 });
 export type WorkspaceChangeStats = z.infer<typeof workspaceChangeStatsSchema>;

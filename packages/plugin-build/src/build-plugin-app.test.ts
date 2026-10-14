@@ -286,7 +286,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.ts"),
       'import "./app.css";\n' +
-        'export const utilityClass = "flex-col";\n' +
+        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50 group-has-[input:checked]/host:opacity-50 hover:group-has-[input:checked]/host:opacity-50 group-has-[input:checked]/host:[&>svg]:hidden space-y-3 [[data-scope-host]_&]:opacity-50 [[data-scope-host]~&]:opacity-50";\n' +
         'export const siblingClass = "[&~*]:hidden";\n',
     );
     await writeFile(
@@ -310,6 +310,24 @@ describe("plugin app runtime shim", () => {
     expect(css).toContain(`${scope} ${sibling}`);
     expect(css).not.toContain(`${scope}${sibling}`);
     expect(css).not.toContain("@scope");
+    expect(css).not.toContain(String.raw`:is(${scope} .hover\:underline`);
+    expect(css).toContain(`${scope}.space-y-3`);
+    expect(css).not.toContain(String.raw`:is(${scope} .group-has`);
+    expect(css).toContain(
+      String.raw`${scope}.group-has-\[input\:checked\]\/host\:opacity-50:is(:where(.group\/host):has(:is(input:checked)) *)`,
+    );
+    expect(css).toContain(
+      String.raw`.hover\:group-has-\[input\:checked\]\/host\:opacity-50:hover`,
+    );
+    expect(css).toContain(
+      String.raw`${scope}.group-has-\[input\:checked\]\/host\:\[\&\>svg\]\:hidden:is(:where(.group\/host):has(:is(input:checked)) *)>svg`,
+    );
+    expect(css).toContain(`[data-scope-host] ${scope}`);
+    expect(css).toContain(`[data-scope-host]~${scope}`);
+    expect(css).toContain(String.raw`${scope} .hover\:underline:hover`);
+    expect(css).toContain(
+      String.raw`${scope}.has-\[\:focus\]\:opacity-50:has(:focus)`,
+    );
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
     expect(css).not.toContain(`${scope}.bb71-authored-decoration`);
     expect(css.indexOf(".bb71-authored-decoration{")).toBeGreaterThan(

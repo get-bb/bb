@@ -148,6 +148,7 @@ describe("createConnectServerSync", () => {
     }));
 
     const sync = createConnectServerSync({
+      getAccountSession: async () => null,
       getCredential: () => null,
       getLocalServerUrl: () => "http://127.0.0.1:38886",
       onServers(servers) {
@@ -216,8 +217,16 @@ describe("createConnectServerSync", () => {
     );
 
     const sync = createConnectServerSync({
-      getCredential: () => null,
+      getAccountSession: async () => null,
+      getCredential: () => ({
+        credential: "bbcm_desktop",
+        handle: "me",
+        serverUrl: "https://me.getbb.app",
+      }),
       getLocalServerUrl: () => "http://127.0.0.1:38886",
+      gateFetchImpl: async () => {
+        throw new Error("gate down");
+      },
       onServers() {
         onServersCalls += 1;
       },
@@ -253,6 +262,27 @@ describe("createConnectServerSync", () => {
     await sync.syncNow();
     expect(logs).toHaveLength(3);
   });
+
+  it("asks for sign-in when the local server fails and the app has no credential or account sign-in", async () => {
+    const skipped: string[] = [];
+    const sync = createConnectServerSync({
+      getAccountSession: async () => null,
+      getCredential: () => null,
+      getLocalServerUrl: () => "http://127.0.0.1:38886",
+      fetchImpl: async () => {
+        throw new Error("down");
+      },
+      onServers: () => undefined,
+      onSkipped(reason) {
+        skipped.push(reason);
+      },
+      onUnauthorized: () => undefined,
+      setIntervalFn: () => 0,
+    });
+
+    await sync.syncNow();
+    expect(skipped).toEqual(["no-credential"]);
+  });
 });
 
 describe("createConnectServerSync without a local server", () => {
@@ -278,6 +308,7 @@ describe("createConnectServerSync without a local server", () => {
     );
 
     const sync = createConnectServerSync({
+      getAccountSession: async () => null,
       getCredential: () => credential,
       getLocalServerUrl: () => null,
       gateFetchImpl,
@@ -316,6 +347,7 @@ describe("createConnectServerSync without a local server", () => {
     let unauthorized = 0;
     const skipped: string[] = [];
     const sync = createConnectServerSync({
+      getAccountSession: async () => null,
       getCredential: () => credential,
       getLocalServerUrl: () => null,
       gateFetchImpl: async () => new Response("no", { status: 403 }),
@@ -337,6 +369,7 @@ describe("createConnectServerSync without a local server", () => {
   it("reports a gate outage as unavailable", async () => {
     const skipped: string[] = [];
     const sync = createConnectServerSync({
+      getAccountSession: async () => null,
       getCredential: () => credential,
       getLocalServerUrl: () => null,
       gateFetchImpl: async () => new Response("oops", { status: 502 }),
@@ -357,6 +390,7 @@ describe("createConnectServerSync without a local server", () => {
     const skipped: string[] = [];
     const logs: string[] = [];
     const sync = createConnectServerSync({
+      getAccountSession: async () => null,
       getCredential: () => null,
       getLocalServerUrl: () => null,
       gateFetchImpl,
@@ -375,5 +409,154 @@ describe("createConnectServerSync without a local server", () => {
     expect(gateFetchImpl).not.toHaveBeenCalled();
     expect(skipped).toEqual(["no-credential"]);
     expect(logs).toEqual(["connect server sync skipped (no-credential)"]);
+  });
+
+  it("lists servers with the account sign-in when the app has no credential", async () => {
+    let received: ConnectAccountServer[] | null = null;
+    const gateFetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            servers: [
+              { handle: "brsbl", name: "default", live: true },
+              { handle: "brsbl-bbox", name: "brsbl-bbox", live: true },
+            ],
+          }),
+        ),
+    );
+    const sync = createConnectServerSync({
+      getAccountSession: async () => ({
+        serverUrl: "https://brsbl.getbb.app",
+        cookie: { name: "__Secure-better-auth.session_token", value: "tok" },
+      }),
+      getCredential: () => null,
+      getLocalServerUrl: () => null,
+      gateFetchImpl,
+      onServers(servers) {
+        received = servers;
+      },
+      onSkipped: () => undefined,
+      onUnauthorized: () => undefined,
+      setIntervalFn: () => 0,
+    });
+
+    await sync.syncNow();
+    expect(gateFetchImpl).toHaveBeenCalledWith(
+      "https://brsbl.getbb.app/api/connect/servers",
+      expect.objectContaining({
+        headers: { cookie: "__Secure-better-auth.session_token=tok" },
+      }),
+    );
+    expect(received).toEqual([
+      {
+        handle: "brsbl",
+        name: "default",
+        live: true,
+        url: "https://brsbl.getbb.app",
+      },
+      {
+        handle: "brsbl-bbox",
+        name: "brsbl-bbox",
+        live: true,
+        url: "https://brsbl-bbox.getbb.app",
+      },
+    ]);
+  });
+
+  it("falls back to the account sign-in after the gate refuses the credential", async () => {
+    let unauthorized = 0;
+    let received: ConnectAccountServer[] | null = null;
+    const sync = createConnectServerSync({
+      getAccountSession: async () => ({
+        serverUrl: "https://other.getbb.app",
+        cookie: { name: "__Secure-better-auth.session_token", value: "tok" },
+      }),
+      getCredential: () => credential,
+      getLocalServerUrl: () => null,
+      gateFetchImpl: async (_input, init) =>
+        new Headers(init?.headers).has("x-bb-connect-machine")
+          ? new Response("no", { status: 401 })
+          : Response.json({
+              servers: [{ handle: "other", name: "Other", live: true }],
+            }),
+      onServers(servers) {
+        received = servers;
+      },
+      onSkipped: () => undefined,
+      onUnauthorized() {
+        unauthorized += 1;
+      },
+      setIntervalFn: () => 0,
+    });
+
+    await sync.syncNow();
+    expect(unauthorized).toBe(1);
+    expect(received).toEqual([
+      expect.objectContaining({
+        handle: "other",
+        url: "https://other.getbb.app",
+      }),
+    ]);
+  });
+
+  it("uses the credential when the local server is not paired", async () => {
+    let received: ConnectAccountServer[] | null = null;
+    const sync = createConnectServerSync({
+      getAccountSession: async () => null,
+      getCredential: () => credential,
+      getLocalServerUrl: () => "http://127.0.0.1:38886",
+      fetchImpl: async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({
+          ok: false,
+          error: { code: "handler_error", message: "not_paired" },
+        }),
+        text: async () => "",
+      }),
+      gateFetchImpl: async () =>
+        Response.json({
+          servers: [{ handle: "other", name: "Other", live: true }],
+        }),
+      onServers(servers) {
+        received = servers;
+      },
+      onSkipped: () => undefined,
+      onUnauthorized: () => undefined,
+      setIntervalFn: () => 0,
+    });
+
+    await sync.syncNow();
+    expect(received).toEqual([
+      expect.objectContaining({
+        handle: "other",
+        url: "https://other.getbb.app",
+      }),
+    ]);
+  });
+
+  it("reports the first failure when every route fails", async () => {
+    const skipped: string[] = [];
+    const sync = createConnectServerSync({
+      getAccountSession: async () => ({
+        serverUrl: "https://other.getbb.app",
+        cookie: { name: "__Secure-better-auth.session_token", value: "old" },
+      }),
+      getCredential: () => credential,
+      getLocalServerUrl: () => null,
+      gateFetchImpl: async (_input, init) =>
+        new Headers(init?.headers).has("x-bb-connect-machine")
+          ? new Response("oops", { status: 502 })
+          : new Response("no", { status: 401 }),
+      onServers: () => undefined,
+      onSkipped(reason) {
+        skipped.push(reason);
+      },
+      onUnauthorized: () => undefined,
+      setIntervalFn: () => 0,
+    });
+
+    await sync.syncNow();
+    expect(skipped).toEqual(["unavailable"]);
   });
 });

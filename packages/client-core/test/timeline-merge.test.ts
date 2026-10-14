@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyTimelineDelta } from "@bb/server-contract";
+import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "../src/timeline/optimistic-timeline-row.js";
 import type {
   ThreadTimelineResponse,
   TimelineCommandWorkRow,
@@ -10,7 +11,6 @@ import type {
 } from "@bb/server-contract";
 import {
   mergeLoadedTimelineWithLatest,
-  mergeLatestTimelineRows,
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
   type LoadedTimelineState,
@@ -126,11 +126,10 @@ function makeTimelineResponse(
     modelFallback: null,
     maxSeq,
     timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: rows.length > 0 ? 1 : 0,
-      hasOlderRows: olderCursor !== null,
       olderCursor,
+      historySnapshot: "snapshot-1",
+      olderRowsSourceSeqEnd: null,
     },
   };
 }
@@ -144,11 +143,51 @@ function makeLoadedTimelineState(
   ),
 ): LoadedTimelineState {
   return {
+    historySnapshot: "snapshot-1",
     latestWindowEndSequence,
     rows,
     olderCursor,
     surfaceKey: "thread-1:default",
   };
+}
+
+interface MergeIntoScrolledBackViewArgs {
+  latestRows: TimelineRow[];
+  loadedEndSequence?: number;
+  loadedRows: TimelineRow[];
+  windowStart: number;
+}
+
+function mergeIntoScrolledBackView({
+  latestRows,
+  loadedEndSequence,
+  loadedRows,
+  windowStart,
+}: MergeIntoScrolledBackViewArgs): LoadedTimelineState {
+  const loadedEnd =
+    loadedEndSequence ??
+    Math.max(0, ...loadedRows.map((row) => row.sourceSeqEnd));
+  const current = {
+    ...makeLoadedTimelineState(
+      loadedRows,
+      timelineCursor({ id: "loaded-cursor", sequence: 0 }),
+      loadedEnd,
+    ),
+    historySnapshot: `snapshot-${loadedEnd}`,
+  };
+  const latestTimeline = makeTimelineResponse(
+    latestRows,
+    windowStart === 0
+      ? null
+      : timelineCursor({ id: "latest-cursor", sequence: windowStart }),
+    Math.max(loadedEnd, ...latestRows.map((row) => row.sourceSeqEnd)),
+  );
+  latestTimeline.timelinePage.historySnapshot = `snapshot-${latestTimeline.maxSeq}`;
+  return mergeLoadedTimelineWithLatest({
+    current,
+    latestTimeline,
+    surfaceKey: current.surfaceKey,
+  });
 }
 
 describe("timeline page row merging", () => {
@@ -241,20 +280,18 @@ describe("timeline page row merging", () => {
       }),
     );
 
-    const merge = mergeLatestTimelineRows({
-      latestWindowStartSequence: 15,
-      loadedRows,
+    const next = mergeIntoScrolledBackView({
       latestRows,
+      loadedRows,
+      windowStart: 15,
     });
-    const callIds = merge.rows.flatMap((row) =>
+    const callIds = next.rows.flatMap((row) =>
       row.kind === "work" && row.workKind === "command" ? [row.callId] : [],
     );
 
-    expect(merge.canMerge).toBe(true);
-    expect(merge.rows).toHaveLength(6);
+    expect(next.rows).toHaveLength(6);
     expect(new Set(callIds).size).toBe(6);
   });
-
   it("replaces the overlapping latest tail while preserving loaded history", () => {
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
@@ -268,21 +305,20 @@ describe("timeline page row merging", () => {
       sequence: 21,
     });
 
-    const merge = mergeLatestTimelineRows({
-      latestWindowStartSequence: 20,
-      loadedRows: [olderUser, oldTail],
+    const next = mergeIntoScrolledBackView({
       latestRows: [updatedTail, newStreamingRow],
+      loadedRows: [olderUser, oldTail],
+      windowStart: 20,
     });
 
-    expect(merge.rows.map((row) => row.id)).toEqual([
+    expect(next.rows.map((row) => row.id)).toEqual([
       "older-user",
       "live-tail",
       "new-streaming-row",
     ]);
-    expect(merge.rows[1]).toMatchObject({ text: "updated tail" });
+    expect(next.rows[1]).toMatchObject({ text: "updated tail" });
   });
-
-  it("retains every loaded row before the latest raw window boundary", () => {
+  it("retains every loaded row that ends before the latest window", () => {
     const prompt = userRow({ id: "prompt", sequence: 1 });
     const straddlingWork = commandRow({
       endSequence: 210,
@@ -308,9 +344,8 @@ describe("timeline page row merging", () => {
     };
     const newTail = commandRow({ id: "new-tail", sequence: 250 });
 
-    const merge = mergeLatestTimelineRows({
+    const next = mergeIntoScrolledBackView({
       latestRows: [updatedStraddlingWork, updatedTail, newTail],
-      latestWindowStartSequence: 150,
       loadedRows: [
         prompt,
         straddlingWork,
@@ -319,9 +354,10 @@ describe("timeline page row merging", () => {
         coveredStaleRow,
         tail,
       ],
+      windowStart: 150,
     });
 
-    expect(merge.rows.map((row) => row.id)).toEqual([
+    expect(next.rows.map((row) => row.id)).toEqual([
       "prompt",
       "straddling-work",
       "accepted-steer",
@@ -329,31 +365,32 @@ describe("timeline page row merging", () => {
       "tail",
       "new-tail",
     ]);
-    expect(merge.canMerge).toBe(true);
-    expect(merge.rows[1]).toBe(updatedStraddlingWork);
-    expect(merge.rows[2]).toBe(steer);
-    expect(merge.rows[3]).toBe(olderWork);
-    expect(merge.rows[4]).toBe(updatedTail);
+    expect(next.rows[1]).toBe(updatedStraddlingWork);
+    expect(next.rows[2]).toBe(steer);
+    expect(next.rows[3]).toBe(olderWork);
+    expect(next.rows[4]).toBe(updatedTail);
   });
-
   it("preserves unchanged overlapping row references after a latest refetch", () => {
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const loadedRows = [olderUser, oldTail];
-    const refetchedTail = { ...oldTail };
+    const current = makeLoadedTimelineState(
+      [olderUser, oldTail],
+      timelineCursor({ id: "loaded-cursor", sequence: 0 }),
+    );
+    const latestTimeline = makeTimelineResponse(
+      [{ ...oldTail }],
+      timelineCursor({ id: "latest-cursor", sequence: 20 }),
+    );
 
-    const merge = mergeLatestTimelineRows({
-      latestWindowStartSequence: 20,
-      loadedRows,
-      latestRows: [refetchedTail],
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
     });
 
-    expect(merge.rows).toHaveLength(2);
-    expect(merge.rows).toBe(loadedRows);
-    expect(merge.rows[0]).toBe(olderUser);
-    expect(merge.rows[1]).toBe(oldTail);
+    expect(next.rows).toBe(current.rows);
+    expect(next.olderCursor).toBe(current.olderCursor);
   });
-
   it("replaces a pending message row when the server accepts it", () => {
     const pendingMessage = userRow({
       id: "submitted-message",
@@ -366,16 +403,60 @@ describe("timeline page row merging", () => {
       turnRequestStatus: "accepted",
     });
 
-    const merge = mergeLatestTimelineRows({
-      latestWindowStartSequence: 0,
-      loadedRows: [pendingMessage],
+    const next = mergeIntoScrolledBackView({
       latestRows: [acceptedMessage],
+      loadedRows: [pendingMessage],
+      windowStart: 0,
     });
 
-    expect(merge.rows).toEqual([acceptedMessage]);
-    expect(merge.rows[0]).toBe(acceptedMessage);
+    expect(next.rows).toEqual([acceptedMessage]);
+    expect(next.rows[0]).toBe(acceptedMessage);
   });
 
+  it("replaces a retained optimistic row with the server row it stands in for", () => {
+    const optimistic = userRow({
+      id: `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`,
+      sequence: 0,
+    });
+    const serverRow = userRow({ id: "thread-1:user-seed:5", sequence: 5 });
+
+    const next = mergeIntoScrolledBackView({
+      latestRows: [serverRow],
+      loadedRows: [optimistic],
+      windowStart: 0,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([serverRow.id]);
+  });
+
+  it("keeps a pending optimistic row that the latest snapshot still carries", () => {
+    const optimistic = userRow({
+      id: `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`,
+      sequence: 0,
+    });
+
+    const next = mergeIntoScrolledBackView({
+      latestRows: [optimistic],
+      loadedRows: [optimistic],
+      windowStart: 0,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([optimistic.id]);
+  });
+
+  it("appends a latest window that starts after the loaded tip", () => {
+    const older = userRow({ id: "thread-1:user-seed:1", sequence: 1 });
+    const newer = userRow({ id: "thread-1:user-seed:5", sequence: 5 });
+
+    const next = mergeIntoScrolledBackView({
+      latestRows: [newer],
+      loadedEndSequence: 4,
+      loadedRows: [older],
+      windowStart: 5,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([older.id, newer.id]);
+  });
   it("rebuilds when latest advances past the loaded rows with a gap between", () => {
     const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
     const latestCursor = timelineCursor({ id: "latest-page", sequence: 40 });
@@ -549,25 +630,39 @@ describe("timeline page row merging", () => {
 
   it("recovers from a stale cursor with a fresh latest cursor without dropping loaded rows", () => {
     const staleCursor = timelineCursor({ id: "stale-cursor", sequence: 1 });
-    const freshCursor = timelineCursor({ id: "fresh-cursor", sequence: 40 });
+    const freshCursor = timelineCursor({ id: "fresh-cursor", sequence: 20 });
     const olderUser = userRow({ id: "older-user", sequence: 1 });
-    const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const updatedTail = {
-      ...oldTail,
-      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
-      text: "updated tail",
-    };
-    const latestTimeline = makeTimelineResponse([updatedTail], freshCursor);
+    const tail = userRow({ id: "live-tail", sequence: 20 });
+    const latestTimeline = makeTimelineResponse([tail], freshCursor);
 
     const next = recoverLoadedTimelineAfterStaleCursor({
-      current: makeLoadedTimelineState([olderUser, oldTail], staleCursor),
+      current: makeLoadedTimelineState([olderUser, tail], staleCursor),
       latestTimeline,
       surfaceKey: "thread-1:default",
     });
 
     expect(next.rows.map((row) => row.id)).toEqual(["older-user", "live-tail"]);
-    expect(next.rows[1]).toMatchObject({ text: "updated tail" });
     expect(next.olderCursor).toEqual(freshCursor);
+  });
+
+  it("recovers from a stale cursor under a new snapshot with the latest window alone", () => {
+    const freshCursor = timelineCursor({ id: "fresh-cursor", sequence: 20 });
+    const tail = userRow({ id: "live-tail", sequence: 20 });
+    const latestTimeline = makeTimelineResponse([tail], freshCursor, 21);
+    latestTimeline.timelinePage.historySnapshot = "snapshot-renamed";
+
+    const next = recoverLoadedTimelineAfterStaleCursor({
+      current: makeLoadedTimelineState(
+        [userRow({ id: "older-user", sequence: 1 }), tail],
+        timelineCursor({ id: "stale-cursor", sequence: 1 }),
+      ),
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows).toEqual([tail]);
+    expect(next.olderCursor).toEqual(freshCursor);
+    expect(next.historySnapshot).toBe("snapshot-renamed");
   });
 });
 
@@ -730,13 +825,7 @@ describe("snapshot content pagination", () => {
       14,
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
-    latestTimeline.timelinePage.contentPage = {
-      anchorSeq: 10,
-      start: 2,
-      end: 5,
-      total: 5,
-    };
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = 11;
 
     const next = mergeLoadedTimelineWithLatest({
       current,
@@ -929,14 +1018,77 @@ describe("snapshot content pagination", () => {
     const old = commandRow({ id: "command", sequence: 2 });
     const updated = { ...old, output: "updated output" };
     expect(
-      mergeLatestTimelineRows({
-        loadedRows: [old],
+      mergeIntoScrolledBackView({
         latestRows: [updated],
-        latestWindowStartSequence: 1,
+        loadedRows: [old],
+        windowStart: 1,
       }).rows,
     ).toEqual([updated]);
   });
 
+  it("drops in-window rows that a completed turn absorbed and restarts the walk at the window", () => {
+    const loadedCursor = timelineCursor({ id: "in-turn-cursor", sequence: 8 });
+    const commands = [9, 10, 11].map((sequence) =>
+      commandRow({ id: `command-${sequence}`, sequence }),
+    );
+    const answer = userRow({ id: "answer", sequence: 12 });
+    const current = {
+      ...makeLoadedTimelineState([...commands, answer], loadedCursor, 12),
+      historySnapshot: "snapshot-12",
+    };
+    const latestCursor = timelineCursor({ id: "turn-cursor", sequence: 8 });
+    const latestTimeline = makeTimelineResponse(
+      [
+        userRow({ id: "prompt", sequence: 8 }),
+        turnSummaryRow({ id: "summary", sequence: 8, endSequence: 13 }),
+        answer,
+      ],
+      latestCursor,
+      13,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-13";
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "prompt",
+      "summary",
+      "answer",
+    ]);
+    expect(next.olderCursor).toBe(latestCursor);
+  });
+
+  it("keeps rows a content cut omitted when a refresh reports no updates for them", () => {
+    const prompt = userRow({ id: "prompt", sequence: 10 });
+    const commands = [11, 12, 13].map((sequence) =>
+      commandRow({ id: `command-${sequence}`, sequence }),
+    );
+    const walkCursor = timelineCursor({ id: "walk-cursor", sequence: 1 });
+    const current = {
+      ...makeLoadedTimelineState([prompt, ...commands], walkCursor, 13),
+      historySnapshot: "snapshot-13",
+    };
+    const latestTimeline = makeTimelineResponse(
+      [commands[2]!],
+      timelineCursor({ id: "content-cursor", sequence: 10 }),
+      13,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-13";
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = 12;
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows).toBe(current.rows);
+    expect(next.olderCursor).toBe(walkCursor);
+  });
   it.each(["snapshot-1", "snapshot-2"])(
     "reuses delta row references without reading nested payloads under %s",
     (historySnapshot) => {

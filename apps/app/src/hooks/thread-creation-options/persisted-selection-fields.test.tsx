@@ -67,7 +67,7 @@ function renderSelections(projectId = "project-a") {
         provider,
         model: usePromptBoxModelPreference(provider.value),
         reasoning: usePromptBoxReasoningLevelPreference(provider.value),
-        serviceTier: usePromptBoxServiceTierPreference(),
+        serviceTier: usePromptBoxServiceTierPreference(provider.value),
         permission: usePromptBoxPermissionModePreference(),
         environment: usePromptBoxEnvironmentPreference(projectId),
         machine: usePromptBoxMachinePreference(projectId),
@@ -104,7 +104,7 @@ const selections = [
   },
   {
     field: "serviceTier",
-    key: "bb.promptbox.service-tier",
+    key: "bb.promptbox.service-tier-codex-1",
     initial: "fast",
     remote: "default",
   },
@@ -168,6 +168,7 @@ describe("tab-local composer selections", () => {
     act(() => {
       result.current.model.setValue("claude-model");
       result.current.reasoning.setValue("medium");
+      result.current.serviceTier.setValue("default");
     });
     rerender({ projectId: "project-b" });
     act(() => {
@@ -184,12 +185,14 @@ describe("tab-local composer selections", () => {
     rerender({ projectId: "project-a" });
     expect(result.current.model.value).toBe("model-a");
     expect(result.current.reasoning.value).toBe("high");
+    expect(result.current.serviceTier.value).toBe("fast");
     expect(result.current.environment.value).toBe("provider:project-checkout");
     expect(result.current.machine.value).toBe("host-a");
     act(() => result.current.provider.setValue("claude-code"));
     rerender({ projectId: "project-b" });
     expect(result.current.model.value).toBe("claude-model");
     expect(result.current.reasoning.value).toBe("medium");
+    expect(result.current.serviceTier.value).toBe("default");
     expect(result.current.environment.value).toBe("provider:git-worktree");
     expect(result.current.machine.value).toBe("host-b");
   });

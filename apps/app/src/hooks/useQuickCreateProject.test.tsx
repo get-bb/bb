@@ -94,6 +94,7 @@ describe("useQuickCreateProject", () => {
       makeHost({
         id: "host_sandbox",
         name: "Sandbox",
+        type: "ephemeral",
         machineProviderId: "modal-sandbox",
       }),
     ];

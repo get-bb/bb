@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { readMessageClipboardHtml } from "./message-clipboard";
+import {
+  buildMessageClipboardHtml,
+  readMessageClipboardHtml,
+} from "./message-clipboard";
 
 describe("message clipboard boundary", () => {
+  it("reads same-origin metadata written by buildMessageClipboardHtml", () => {
+    const imageUrl = new URL("/photo.png", window.location.href).href;
+    expect(
+      readMessageClipboardHtml(buildMessageClipboardHtml("A photo", imageUrl)),
+    ).toEqual({ version: 1, text: "A photo", imageUrl });
+  });
+
   it.each([
     '{"version":2,"text":"A photo","imageUrl":"http://localhost/photo.png"}',
     '{"version":1,"text":"A photo","imageUrl":"https://other.example/photo.png"}',

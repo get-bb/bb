@@ -63,6 +63,17 @@ keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the
 page omitted, and loaded rows are replaced.
 
+The merge applies one rule whether or not the snapshot changed. A loaded row
+the latest page returns is replaced by it. A loaded row it does not return is
+kept only when it is older than the page: it ends before the window start, ends
+at or before `olderRowsSourceSeqEnd`, or arrives in `olderRowUpdates`. Any other
+loaded row is gone from the window, for example a running turn's rows that the
+completed turn folded into its summary; the merge drops it and the walk
+restarts from the latest page's cursor. When nothing is dropped the deeper of
+the loaded and latest cursors is kept. After a stale-cursor 400,
+`recoverLoadedTimelineAfterStaleCursor` reloads from the latest page when the
+snapshot changed, and otherwise merges and takes the latest cursor.
+
 A latest page sends omitted rows whose `sourceSeqEnd` reaches its window start
 in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
 a running background delegation that started on an older page. Each update
@@ -86,9 +97,6 @@ Discard older responses whose request cursor is no longer the loaded
 cursor or incompatible
 grouping version returns HTTP 400 `invalid_request` with a
 message that the cursor is no longer available. Reload latest to restart.
-The new response fields are optional in the wire schemas so updated clients
-can still read an older server; absence identifies that legacy contract.
-Current servers always return the snapshot and detail continuation fields.
 The snapshot is a read boundary, not a retained copy of the history. Pagination
 continues on a best-effort basis when existing events are updated, deleted or
 replaced. Previously loaded pages can then disagree with later pages, leaving
@@ -97,14 +105,20 @@ If the event at the cursor anchor sequence was deleted, the server returns
 HTTP 400 `invalid_request`; reload latest to restart, as on main. No history-edit
 revision is stored or checked. Other edits do not automatically reject a cursor.
 
-`timelinePage.contentPage`, when present, gives the group anchor and the
-half-open leaf interval `[start, end)` within `total` leaves. Ancestor summaries
-retain their full IDs, source bounds, counts, and status. Their child arrays
-can contain only part of the group. Prepend older pages with
+A content cut can return only part of a group. Ancestor summaries retain their
+full IDs, source bounds, counts, and status; their child arrays can contain only
+part of the group. Prepend older pages with
 `prependOlderTimelineRows` from `@bb/client-core`: it joins turn children and
 delegation children recursively by ID while preserving order. Do not flatten
 responses by concatenation or replace an entire summary solely because its ID
 was already seen. `bb thread log --all --format verbose` uses this merge.
+
+Scrollback behaviour is pinned by
+`apps/server/test/public/public-thread-timeline-scrollback.test.ts`, which runs the client
+merges over real pages and compares the result with a fresh walk, and by the Ladle story
+`thread/timeline/Scrollback` with `apps/app/.ladle/tests/timeline-scrollback.mjs` (run it
+with dev-browser against the open story), which checks that the scrolled-back row stays put
+while the latest window changes and that a full walk shows every row once, in order.
 
 Client merges retain summary objects when merging children leaves their row
 references unchanged. Rows already shared with the loaded state, including
@@ -190,6 +204,14 @@ content so the live frontier can stream and auto-expand; settled rows nested
 in them are still deferred. Rows without a turn are never deferred. The app
 sends `deferContent=true` on every timeline and detail request; cursors are
 bound to the setting, so keep it unchanged throughout a walk.
+
+The server shapes projected rows in two walks of the row tree. Before
+pagination, one walk attaches retained-output availability and, with
+`deferContent=true`, defers settled content, so page byte budgets count the
+deferred rows. After pagination, one walk caps inline output at 32,000
+characters and, for responses without nested rows, replaces outputs over 4,000
+characters with a head-and-tail preview. Turn summary details apply all three
+in one walk before their content pagination.
 
 Content pagination does not freeze completed turns, persist projections,
 perform a backfill, add database tables or triggers, or run work on event

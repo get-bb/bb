@@ -1,4 +1,10 @@
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -56,10 +62,7 @@ import {
   USER_MESSAGE_CHAR_CAP,
 } from "@bb/client-core";
 import { turnRequestLabel } from "@bb/client-core";
-import {
-  repairStreamingMarkdownTail,
-  splitStreamingMarkdown,
-} from "./streaming-markdown-split.js";
+import { resolveStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import {
   MessageActionBar,
@@ -76,6 +79,7 @@ import {
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
+import { markStreamTrace } from "@/lib/stream-trace";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -516,14 +520,19 @@ function AssistantConversationMessage({
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
-  const streamingSplit = useMemo(
-    () => (streaming ? splitStreamingMarkdown(text) : null),
+  useLayoutEffect(() => {
+    if (streaming) {
+      markStreamTrace("bb:stream-row-commit", {
+        rowId: id,
+        threadId: threadId ?? null,
+        textLength: text.length,
+      });
+    }
+  }, [id, streaming, text, threadId]);
+  const { split: streamingSplit, liveMarkdown } = useMemo(
+    () => resolveStreamingMarkdown(text, streaming),
     [streaming, text],
   );
-  const liveMarkdown = useMemo(() => {
-    const tail = streamingSplit?.tail ?? text;
-    return streaming ? repairStreamingMarkdownTail(tail) : tail;
-  }, [streaming, streamingSplit, text]);
   const linkRouting = useMemo(
     () =>
       buildMarkdownMessageLinkRouting({

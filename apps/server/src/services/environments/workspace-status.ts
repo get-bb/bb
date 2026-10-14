@@ -3,6 +3,7 @@ import type { Environment } from "@bb/domain";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   COMMAND_TIMEOUT_MS,
+  WORKSPACE_STATUS_MAX_FILES,
   WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
   WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
 } from "../../constants.js";
@@ -59,6 +60,7 @@ async function callEnvironmentWorkspaceStatusWith(
       type: "workspace.status",
       environmentId: args.target.environmentId,
       workspaceContext: args.target.workspaceContext,
+      maxFiles: WORKSPACE_STATUS_MAX_FILES,
       maxUntrackedLineStatFiles: WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
       maxUntrackedLineStatBytes: WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
       ...(args.mergeBaseBranch

@@ -39,6 +39,7 @@ interface UsePathSuggestionsArgs {
 interface UsePathSuggestionsResult {
   suggestions: PathSuggestion[];
   isLoading: boolean;
+  isRefreshing: boolean;
   isError: boolean;
   isDebouncing: boolean;
 }
@@ -234,10 +235,9 @@ export function usePathSuggestions(
   const isPending =
     (isWorkspaceQueryEnabled && workspaceQuery.isPending) ||
     (isThreadStorageQueryEnabled && threadStorageQuery.isPending);
-  const isLoading =
-    hasQuery &&
-    suggestions.length === 0 &&
-    (isDebouncing || isPending || isFetching);
+  const isSearching = isDebouncing || isPending || isFetching;
+  const isLoading = hasQuery && suggestions.length === 0 && isSearching;
+  const isRefreshing = hasQuery && suggestions.length > 0 && isSearching;
   const isError =
     hasQuery &&
     ((isWorkspaceQueryEnabled && workspaceQuery.isError) ||
@@ -246,6 +246,7 @@ export function usePathSuggestions(
   return {
     suggestions,
     isLoading,
+    isRefreshing,
     isError,
     isDebouncing,
   };

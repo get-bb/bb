@@ -1,5 +1,5 @@
 import type { ThreadEvent } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
 
@@ -675,5 +675,45 @@ describe("provider-native id translation", () => {
       },
     });
     expect(decoded).toMatchObject({ turnId: bbTurnId, callId: bbItemId });
+  });
+});
+
+describe("deferred text flush", () => {
+  it("hands a quiet stream's buffered text to the deferred listener", () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = makeAdapter();
+      const deferred: Array<[string, ThreadEvent[]]> = [];
+      adapter.onDeferredEvents((threadId, events) => {
+        deferred.push([threadId, events]);
+      });
+      const opened = feedDeltas(adapter, "t_1", [
+        { kind: "turn.open" },
+        {
+          kind: "item.textDelta",
+          key: { channel: "assistant" },
+          channel: "agentMessage",
+          text: "Hi",
+        },
+      ]);
+      expect(opened.map((event) => event.type)).toEqual([
+        "turn/started",
+        "item/started",
+      ]);
+      vi.advanceTimersByTime(60);
+      expect(deferred).toEqual([
+        [
+          "t_1",
+          [
+            expect.objectContaining({
+              type: "item/agentMessage/delta",
+              delta: "Hi",
+            }),
+          ],
+        ],
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

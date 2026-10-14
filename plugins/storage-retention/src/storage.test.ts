@@ -1770,6 +1770,9 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
     );
   } finally {
     await host.harness.lifecycle.dispose();
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
     await worker.experimental_dispose();
   }
 });

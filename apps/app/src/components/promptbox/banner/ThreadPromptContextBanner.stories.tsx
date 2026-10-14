@@ -86,6 +86,7 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     insertions: 312,
     deletions: 47,
     lineStatsComplete: true,
+    fileCount: promptboxBannerFiles.length,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -224,6 +225,7 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     insertions: 1284,
     deletions: 312,
     lineStatsComplete: true,
+    fileCount: dirtyUncommittedManyFiles.length,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -258,6 +260,7 @@ const untrackedOnlyStatus: WorkspaceStatus = {
     insertions: 0,
     deletions: 0,
     lineStatsComplete: false,
+    fileCount: 2,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -279,6 +282,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     insertions: 0,
     deletions: 0,
     lineStatsComplete: true,
+    fileCount: 0,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -300,6 +304,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     insertions: 128,
     deletions: 24,
     lineStatsComplete: true,
+    fileCount: 3,
   },
 };
 
@@ -378,6 +383,7 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: false,
     },
   ],
+  pendingInteractions: [],
 };
 
 const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
@@ -389,12 +395,118 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: true,
     },
   ],
+  pendingInteractions: [
+    childQuestionFixture(
+      "thr_blocked",
+      "Install workspace tools",
+      "Which color should the QA badge use?",
+      [],
+      1,
+    ),
+  ],
 };
 
-const childThreadsMixedFixture: ThreadPromptChildThreadsSection = {
-  items: childThreadsFixture.items.map((item, index) =>
-    index === 1 ? { ...item, hasPendingInteraction: true } : item,
-  ),
+function childQuestionFixture(
+  childThreadId: string,
+  childTitle: string,
+  prompt: string,
+  options: readonly { label: string; description: string }[],
+  createdAt: number,
+) {
+  return {
+    childThreadId,
+    childTitle,
+    href: `/projects/proj-1/threads/${childThreadId}`,
+    interaction: {
+      id: `pint_${childThreadId}`,
+      threadId: childThreadId,
+      turnId: "turn_story",
+      providerId: "claude-code",
+      providerThreadId: "provider-thread-story",
+      providerRequestId: `request-${childThreadId}`,
+      status: "pending" as const,
+      statusReason: null,
+      createdAt,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "user_question" as const,
+        questions: [
+          {
+            id: "choice",
+            prompt,
+            multiSelect: false,
+            allowFreeText: true,
+            options: options.map((option) => ({
+              value: option.label.toLowerCase(),
+              ...option,
+            })),
+          },
+        ],
+      },
+    },
+  };
+}
+
+const childThreadsQuestionsFixture: ThreadPromptChildThreadsSection = {
+  items: [
+    {
+      id: "thr_size",
+      title: "Pick a size",
+      href: "/projects/proj-1/threads/thr_size",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_shape",
+      title: "Pick a shape",
+      href: "/projects/proj-1/threads/thr_shape",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_color",
+      title: "Pick a color",
+      href: "/projects/proj-1/threads/thr_color",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_working",
+      title: "Investigate failing checks",
+      href: "/projects/proj-1/threads/thr_working",
+      hasPendingInteraction: false,
+    },
+  ],
+  pendingInteractions: [
+    childQuestionFixture(
+      "thr_size",
+      "Pick a size",
+      "Which size?",
+      [
+        { label: "Small", description: "Proceed with a small-scale change." },
+        { label: "Large", description: "Proceed with a large-scale change." },
+      ],
+      3,
+    ),
+    childQuestionFixture(
+      "thr_shape",
+      "Pick a shape",
+      "Which shape?",
+      [
+        { label: "Circle", description: "Select the circle shape." },
+        { label: "Square", description: "Select the square shape." },
+      ],
+      2,
+    ),
+    childQuestionFixture(
+      "thr_color",
+      "Pick a color",
+      "Which color?",
+      [
+        { label: "Red", description: "Choose red." },
+        { label: "Blue", description: "Choose blue." },
+      ],
+      1,
+    ),
+  ],
 };
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
@@ -404,6 +516,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     href: `/projects/proj-1/threads/thr_large_${i}`,
     hasPendingInteraction: i === 1,
   })),
+  pendingInteractions: [],
 };
 
 function buildPullRequestFixture(
@@ -784,14 +897,20 @@ export function Overview() {
         <Row parentThread={forkedFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="parent thread with a child waiting for approval"
-        hint="the parent banner names the blocked child and drops the active shimmer"
+        label="thread with a child thread waiting for approval"
+        hint="the banner expands on its own to show it"
       >
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="parent thread with active children (collapsed)"
-        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
+        label="answer child questions in the banner"
+        hint="rows read child: question; open one from a row, ‹ Active child threads or Esc returns, ‹ › steps through waiting questions"
+      >
+        <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="thread with active child threads (collapsed)"
+        hint="icon, label, and total count; click to list every child thread"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
@@ -804,16 +923,6 @@ export function Overview() {
           pullRequest={pullRequestFixture}
           pullRequestActions
           section={uncommittedSection}
-        />
-      </StoryRow>
-      <StoryRow
-        label="parent thread with active children (expanded)"
-        hint="list of children with status + pending-approval marker on item 2"
-      >
-        <Row
-          childThreads={childThreadsMixedFixture}
-          mergeBase={null}
-          initiallyExpandedSection="childThreads"
         />
       </StoryRow>
       <StoryRow

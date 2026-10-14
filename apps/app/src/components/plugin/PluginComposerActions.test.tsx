@@ -157,7 +157,7 @@ describe("ComposerActionsSlot overflow", () => {
   it("ignores malformed persisted usage without changing registration order", () => {
     window.localStorage.setItem(
       PLUGIN_COMPOSER_ACTION_USAGE_STORAGE_KEY,
-      '{"alpha":"often"}',
+      '{"gamma":3,"alpha":"often"}',
     );
     resetPluginComposerActionUsageForTest();
     for (const pluginId of ["alpha", "beta", "gamma", "delta"]) {

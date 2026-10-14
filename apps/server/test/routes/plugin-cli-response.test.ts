@@ -1,22 +1,13 @@
 import type { PluginCliExecutionResult } from "@get-bb/plugin-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pluginCliResponse } from "../../src/routes/plugins.js";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 const RESULT: PluginCliExecutionResult = {
   exitCode: 0,
   stdout: '{"ok":true}\n',
   stderr: "",
 };
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 describe("pluginCliResponse", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -30,7 +21,7 @@ describe("pluginCliResponse", () => {
   });
 
   it("sends headers and keepalive bytes before a slow command settles", async () => {
-    const pending = deferred<PluginCliExecutionResult>();
+    const pending = createDeferredPromise<PluginCliExecutionResult>();
     const responsePromise = pluginCliResponse(pending.promise, 5);
     await vi.advanceTimersByTimeAsync(5);
     const response = await responsePromise;
@@ -59,7 +50,7 @@ describe("pluginCliResponse", () => {
   });
 
   it("reports a command that rejects after streaming began as a failed exit", async () => {
-    const pending = deferred<PluginCliExecutionResult>();
+    const pending = createDeferredPromise<PluginCliExecutionResult>();
     const responsePromise = pluginCliResponse(pending.promise, 5);
     await vi.advanceTimersByTimeAsync(5);
     const response = await responsePromise;
@@ -73,7 +64,7 @@ describe("pluginCliResponse", () => {
   });
 
   it("stops writing once the client goes away", async () => {
-    const pending = deferred<PluginCliExecutionResult>();
+    const pending = createDeferredPromise<PluginCliExecutionResult>();
     const responsePromise = pluginCliResponse(pending.promise, 5);
     await vi.advanceTimersByTimeAsync(5);
     const response = await responsePromise;

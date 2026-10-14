@@ -36,11 +36,10 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     modelFallback: null,
     maxSeq: 0,
     timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: 0,
-      hasOlderRows: false,
       olderCursor: null,
+      historySnapshot: "",
+      olderRowsSourceSeqEnd: null,
     },
   };
 }
@@ -54,14 +53,9 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   threadId: "thr_x",
   maxSeq: 10,
   status: "idle",
-  environmentId: null,
+  surface: "surface-a",
   page: latestPage,
-  includeNestedRows: false,
-  deferContent: false,
   summaryOnly: false,
-  includeClearedContextHistory: false,
-  includeDiagnosticOperations: false,
-  completedTurnDisplay: "collapse",
 };
 
 describe("createThreadTimelineCache", () => {
@@ -125,11 +119,8 @@ describe("buildThreadTimelineCacheKey", () => {
     const variants: ThreadTimelineCacheKeyArgs[] = [
       { ...baseKeyArgs, maxSeq: 11 },
       { ...baseKeyArgs, status: "active" },
-      { ...baseKeyArgs, environmentId: "env_1" },
-      { ...baseKeyArgs, includeNestedRows: true },
+      { ...baseKeyArgs, surface: "surface-b" },
       { ...baseKeyArgs, summaryOnly: true },
-      { ...baseKeyArgs, includeDiagnosticOperations: true },
-      { ...baseKeyArgs, completedTurnDisplay: "flat" },
       {
         ...baseKeyArgs,
         page: {

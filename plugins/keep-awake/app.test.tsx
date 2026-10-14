@@ -161,6 +161,12 @@ describe("Keep Awake settings", () => {
       await first.promise;
     });
     await waitFor(() => expect(saveCount).toBe(2));
+    expect(slot.getByRole("status").textContent).toBe("Saving…");
+    expect(
+      slot
+        .getByRole("radio", { name: "Specific hosts" })
+        .getAttribute("data-state"),
+    ).toBe("checked");
     await act(async () => {
       second.resolve(
         response({

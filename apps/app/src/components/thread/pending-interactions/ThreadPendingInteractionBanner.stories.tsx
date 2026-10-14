@@ -3,7 +3,6 @@ import type {
   ProviderPendingInteraction,
 } from "@bb/domain";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -176,58 +175,6 @@ export function Overview() {
     <StoryCard className="m-0 p-4">
       <StoryRow
         className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
-        label="parent thread when a child needs approval"
-        hint="the parent composer shows the child's prompt plus the needs-approval banner"
-      >
-        <PromptStage>
-          <ThreadPendingInteractionBanners
-            interactions={[commandApproval]}
-            sourceThread={{
-              href: "/projects/proj-1/threads/thr_blocked",
-              title: "Install workspace tools",
-            }}
-            threadId={commandApproval.threadId}
-          />
-          <ThreadPromptContextBanner
-            gitSection={null}
-            gitSectionPending={false}
-            archivedSection={null}
-            environmentGoneSection={null}
-            parentThreadSection={null}
-            childThreadsSection={{
-              items: [
-                {
-                  id: "thr_blocked",
-                  title: "Install workspace tools",
-                  href: "/projects/proj-1/threads/thr_blocked",
-                  hasPendingInteraction: true,
-                },
-              ],
-            }}
-            pullRequestSection={null}
-            expandedSection={null}
-            onToggleSection={() => {}}
-          />
-        </PromptStage>
-      </StoryRow>
-      <StoryRow
-        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
-        label="command approval from a child thread"
-        hint="parent composer surfaces the child's permission prompt with a link back to that child"
-      >
-        <PromptStage>
-          <ThreadPendingInteractionBanners
-            interactions={[commandApproval]}
-            sourceThread={{
-              href: "/projects/proj-1/threads/thr_blocked",
-              title: "Install workspace tools",
-            }}
-            threadId={commandApproval.threadId}
-          />
-        </PromptStage>
-      </StoryRow>
-      <StoryRow
-        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
         label="command approval"
         hint="arrives as a one-line label; expand to see the reason, command, and decisions"
       >
@@ -252,16 +199,12 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
-        label="command approval (multi-line script from a child)"
+        label="command approval (multi-line script)"
         hint="open the card: the preview caps at four lines with a Show more control, and the script is not repeated as an action line"
       >
         <PromptStage>
           <ThreadPendingInteractionBanners
             interactions={[multiLineCommandApproval]}
-            sourceThread={{
-              href: "/projects/proj-1/threads/thr_blocked",
-              title: "Telemetry option in installer",
-            }}
             threadId={multiLineCommandApproval.threadId}
           />
         </PromptStage>

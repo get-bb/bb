@@ -629,6 +629,7 @@ export function GitStatus() {
                 insertions: 0,
                 deletions: 0,
                 lineStatsComplete: true,
+                fileCount: 0,
                 files: [],
               },
             })}
@@ -652,6 +653,7 @@ export function GitStatus() {
                 insertions: 0,
                 deletions: 0,
                 lineStatsComplete: true,
+                fileCount: 0,
                 files: [],
               },
             })}
@@ -675,6 +677,7 @@ export function GitStatus() {
                 insertions: 0,
                 deletions: 0,
                 lineStatsComplete: true,
+                fileCount: 0,
                 files: [],
               },
             })}
@@ -694,6 +697,7 @@ export function GitStatus() {
                 insertions: 0,
                 deletions: 0,
                 lineStatsComplete: false,
+                fileCount: 3,
                 files: [
                   {
                     path: "scratch.md",
@@ -773,6 +777,7 @@ export function Commits() {
                 insertions: 0,
                 deletions: 0,
                 lineStatsComplete: true,
+                fileCount: 0,
                 files: [],
               },
             })}

@@ -1,5 +1,5 @@
 import type { ThreadTimelineResponse } from "@bb/server-contract";
-import type { CompletedTurnDisplay, ThreadStatus } from "@bb/domain";
+import type { ThreadStatus } from "@bb/domain";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 const DEFAULT_MAX_ENTRIES = 128;
@@ -72,15 +72,9 @@ export interface ThreadTimelineCacheKeyArgs {
   threadId: string;
   maxSeq: number;
   status: ThreadStatus;
-  environmentId: string | null;
-  providerDisplayName?: string;
+  surface: string;
   page: ThreadTimelinePageRequest;
-  includeNestedRows: boolean;
-  deferContent: boolean;
   summaryOnly: boolean;
-  includeClearedContextHistory: boolean;
-  includeDiagnosticOperations: boolean;
-  completedTurnDisplay: CompletedTurnDisplay;
 }
 
 function pageKeyPart(page: ThreadTimelinePageRequest): string {
@@ -95,15 +89,9 @@ export function buildThreadTimelineParamsKey(
   return [
     args.threadId,
     args.status,
-    args.environmentId ?? "-",
-    args.providerDisplayName ?? "-",
+    args.surface,
     pageKeyPart(args.page),
-    args.includeNestedRows ? "1" : "0",
-    args.deferContent ? "1" : "0",
     args.summaryOnly ? "1" : "0",
-    args.includeClearedContextHistory ? "1" : "0",
-    args.includeDiagnosticOperations ? "1" : "0",
-    args.completedTurnDisplay,
   ].join("|");
 }
 

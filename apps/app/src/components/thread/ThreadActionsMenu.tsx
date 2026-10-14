@@ -133,7 +133,7 @@ export function ThreadActionsMenu({
   const { drawerStep, setDrawerStep, handleOpenChange } =
     useDrawerStep(onOpenChange);
   return (
-    <DropdownMenu onOpenChange={handleOpenChange}>
+    <DropdownMenu modal={false} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <ThreadActionsTriggerSlot render={trigger} />
       </DropdownMenuTrigger>
@@ -226,7 +226,7 @@ function ThreadActionsDesktopContextMenu({
     if (dragging && open) handleOpenChange(false);
   }, [dragging, handleOpenChange, open]);
   return (
-    <ContextMenu open={open} onOpenChange={handleOpenChange}>
+    <ContextMenu modal={false} open={open} onOpenChange={handleOpenChange}>
       <ContextMenuTrigger asChild disabled={disabled || dragging}>
         {children}
       </ContextMenuTrigger>

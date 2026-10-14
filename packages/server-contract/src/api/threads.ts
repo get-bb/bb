@@ -10,6 +10,7 @@ import {
   pluginMetadataSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
+  threadTimelineSubscriptionTargetSchema,
   permissionModeInputSchema,
   promptInputSchema,
   clientTurnRequestIdSchema,
@@ -978,22 +979,11 @@ export type TimelinePaginationCursor = z.infer<
 
 export const timelinePageMetadataSchema = z
   .object({
-    kind: z.enum(["latest", "older"]),
-    segmentLimit: z.number().int().positive(),
     returnedSegmentCount: z.number().int().nonnegative(),
-    hasOlderRows: z.boolean(),
     olderCursor: timelinePaginationCursorSchema.nullable(),
-    historySnapshot: z.string().optional(),
-    olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
+    historySnapshot: z.string(),
+    olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable(),
     olderRowUpdates: z.array(timelineRowSchema).optional(),
-    contentPage: z
-      .object({
-        anchorSeq: z.number().int().nonnegative(),
-        start: z.number().int().nonnegative(),
-        end: z.number().int().nonnegative(),
-        total: z.number().int().nonnegative(),
-      })
-      .optional(),
   })
   .strict();
 
@@ -1186,6 +1176,25 @@ export const threadTimelineResponseSchema = z.object({
 export type ThreadTimelineResponse = z.infer<
   typeof threadTimelineResponseSchema
 >;
+
+export const threadTimelineSignalSchema = z
+  .object({
+    type: z.literal("thread-timeline"),
+    target: threadTimelineSubscriptionTargetSchema,
+    afterSequence: z.number().int().nonnegative().nullable(),
+    timeline: threadTimelineResponseSchema,
+  })
+  .strict();
+export type ThreadTimelineSignal = z.infer<typeof threadTimelineSignalSchema>;
+
+export const threadTimelineSignalLenientSchema = z.object({
+  type: z.literal("thread-timeline"),
+  target: threadTimelineSubscriptionTargetSchema,
+  afterSequence: z.number().int().nonnegative().nullable(),
+  timeline: z.custom<ThreadTimelineResponse>(
+    (value) => typeof value === "object" && value !== null,
+  ),
+});
 
 export const threadConversationOutlineAttachmentSummarySchema = z
   .object({

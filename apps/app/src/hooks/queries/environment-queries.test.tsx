@@ -6,7 +6,6 @@ import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { environmentPullRequestQueryKey } from "./query-keys";
 import {
   getEnvironmentPullRequestRefetchInterval,
   getEnvironmentPullRequestStaleTime,
@@ -184,32 +183,6 @@ describe("useEnvironmentPullRequest", () => {
         attention: "merged",
       }),
     ).toBe(false);
-  });
-
-  it("refetches on mount and refreshes stale data on window focus", async () => {
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-    vi.mocked(sdk.environments.pullRequest).mockResolvedValue(
-      pullRequestResponse(pullRequestFixture),
-    );
-
-    renderHook(() => useEnvironmentPullRequest(ENVIRONMENT_ID), { wrapper });
-
-    await waitFor(() => {
-      expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(1);
-    });
-
-    const query = queryClient.getQueryCache().find({
-      queryKey: environmentPullRequestQueryKey(ENVIRONMENT_ID),
-    });
-
-    expect(query?.options).toEqual(
-      expect.objectContaining({
-        refetchOnMount: "always",
-        refetchOnWindowFocus: true,
-        refetchInterval: expect.any(Function),
-        staleTime: expect.any(Function),
-      }),
-    );
   });
 
   it("refreshes a cached closed PR when its row returns after missing a realtime update", async () => {

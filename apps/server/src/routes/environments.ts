@@ -656,6 +656,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     try {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: environment.hostId,
+        signal: context.req.raw.signal,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",

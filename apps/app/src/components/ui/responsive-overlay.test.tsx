@@ -532,10 +532,12 @@ describe("PersistentResponsiveDrawerShell", () => {
   it("lets a nested portaled surface handle Escape first", () => {
     mockPointerCoarse(true);
     const onOpenChange = vi.fn();
+    const onEscapeKeyDown = vi.fn();
     render(
       <PersistentResponsiveDrawerShell
         open={true}
         onOpenChange={onOpenChange}
+        onEscapeKeyDown={onEscapeKeyDown}
         srLabel="Details"
       >
         <button type="button">Panel action</button>
@@ -551,6 +553,7 @@ describe("PersistentResponsiveDrawerShell", () => {
 
     try {
       fireEvent.keyDown(nestedAction, { key: "Escape" });
+      expect(onEscapeKeyDown).not.toHaveBeenCalled();
       expect(onOpenChange).not.toHaveBeenCalled();
     } finally {
       nestedAction.remove();

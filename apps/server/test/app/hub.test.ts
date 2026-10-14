@@ -305,6 +305,108 @@ describe("NotificationHub", () => {
     });
   });
 
+  it("cancels the daemon request when the caller aborts", async () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerDaemon("session-1", "host-1", socket);
+    const abortController = new AbortController();
+
+    const wait = hub.requestHostOnlineRpc({
+      hostId: "host-1",
+      signal: abortController.signal,
+      timeoutMs: 1_000,
+      message: {
+        type: "host-rpc.request",
+        requestId: "rpc-1",
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
+      },
+    });
+    abortController.abort();
+
+    await expect(wait).rejects.toThrow("Host RPC request was cancelled");
+    expect(socket.messages.map((message) => JSON.parse(message).type)).toEqual([
+      "host-rpc.request",
+      "host-rpc.cancel",
+    ]);
+    expect(JSON.parse(socket.messages[1])).toEqual({
+      type: "host-rpc.cancel",
+      requestId: "rpc-1",
+    });
+    expect(
+      hub.recordHostOnlineRpcResponse({
+        message: {
+          type: "host-rpc.response",
+          requestId: "rpc-1",
+          commandType: "provider.list_models",
+          ok: true,
+          result: { models: [], selectedOnlyModels: [] },
+        },
+        sessionId: "session-1",
+      }),
+    ).toEqual({ handled: false, reason: "stale" });
+  });
+
+  it("cancels the daemon request when the wait times out", async () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerDaemon("session-1", "host-1", socket);
+
+    const wait = hub.requestHostOnlineRpc({
+      hostId: "host-1",
+      timeoutMs: 1_000,
+      message: {
+        type: "host-rpc.request",
+        requestId: "rpc-1",
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
+      },
+    });
+    const rejection = expect(wait).rejects.toThrow(
+      "Timed out waiting for host RPC response",
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await rejection;
+    expect(JSON.parse(socket.messages[1])).toEqual({
+      type: "host-rpc.cancel",
+      requestId: "rpc-1",
+    });
+  });
+
+  it("does not send a request whose signal is already aborted", async () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerDaemon("session-1", "host-1", socket);
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(
+      hub.requestHostOnlineRpc({
+        hostId: "host-1",
+        signal: abortController.signal,
+        timeoutMs: 1_000,
+        message: {
+          type: "host-rpc.request",
+          requestId: "rpc-1",
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        },
+      }),
+    ).rejects.toThrow("Host RPC request was cancelled");
+    expect(socket.messages).toEqual([]);
+  });
+
   it("rejects in-flight host RPC requests when the daemon unregisters", async () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

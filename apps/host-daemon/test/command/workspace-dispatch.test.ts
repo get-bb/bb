@@ -1,20 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { GitHostPullRequest } from "@bb/domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "../../src/command-dispatch.js";
 import {
-  cleanupTempDirs,
   createFakeWorkspace,
   createHarness,
-  makeTempDir,
   runGitCommand,
 } from "./dispatch-helpers.js";
-
-afterEach(cleanupTempDirs);
 
 describe("workspace command dispatch", () => {
   it("covers workspace git commands", async () => {
@@ -27,6 +24,7 @@ describe("workspace command dispatch", () => {
     const statusResult = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-1",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -36,6 +34,7 @@ describe("workspace command dispatch", () => {
         mergeBaseBranch: "main",
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
     const diffResult = await dispatchOnlineRpcCommand(
       {
@@ -50,6 +49,7 @@ describe("workspace command dispatch", () => {
         maxUntrackedFiles: 5000,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
     const commitResult = await dispatchCommand(
       {
@@ -95,6 +95,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-late-git",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -103,6 +104,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.outcome).toBe("available");
@@ -148,6 +150,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
     expect(presentResult).toEqual({ outcome: "available", pullRequest });
     expect(harness.workspaceState.pullRequestLookupShellPath).toBe(
@@ -164,6 +167,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
     expect(absentResult).toEqual({ outcome: "absent" });
 
@@ -178,6 +182,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
     expect(unavailableResult).toEqual({
       outcome: "unavailable",
@@ -219,6 +224,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result).toEqual({ outcome: "absent" });
@@ -297,6 +303,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-rehydrate",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -305,6 +312,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.outcome).toBe("available");
@@ -331,6 +339,7 @@ describe("workspace command dispatch", () => {
     const statusResult = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-non-git",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -339,6 +348,7 @@ describe("workspace command dispatch", () => {
         },
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
     const diffResult = await dispatchOnlineRpcCommand(
       {
@@ -353,6 +363,7 @@ describe("workspace command dispatch", () => {
         maxUntrackedFiles: 5000,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(statusResult).toEqual({
@@ -385,6 +396,7 @@ describe("workspace command dispatch", () => {
         excludeNames: [],
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     const paths = result.files.map((file) => file.path).sort();
@@ -413,6 +425,7 @@ describe("workspace command dispatch", () => {
         includeDirectories: true,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(
@@ -446,6 +459,7 @@ describe("workspace command dispatch", () => {
         excludeNames: [],
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.files).toEqual([]);
@@ -469,6 +483,7 @@ describe("workspace command dispatch", () => {
         includeDirectories: true,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.paths).toEqual([]);
@@ -496,6 +511,7 @@ describe("workspace command dispatch", () => {
           excludeNames: [],
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "invalid_path",
@@ -517,6 +533,7 @@ describe("workspace command dispatch", () => {
         rootPath: tempDir,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.path).toBe(imagePath);
@@ -545,6 +562,7 @@ describe("workspace command dispatch", () => {
         dotfiles: "deny",
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.path).toBe("assets/logo.png");
@@ -569,6 +587,7 @@ describe("workspace command dispatch", () => {
         dotfiles: "deny",
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.path).toBe("large.png");
@@ -589,6 +608,7 @@ describe("workspace command dispatch", () => {
           dotfiles: "deny",
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "invalid_path",
@@ -612,6 +632,7 @@ describe("workspace command dispatch", () => {
           dotfiles: "deny",
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "ENOENT",
@@ -637,6 +658,7 @@ describe("workspace command dispatch", () => {
           dotfiles: "deny",
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "invalid_path",
@@ -665,6 +687,7 @@ describe("workspace command dispatch", () => {
           dotfiles: "deny",
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "invalid_path",
@@ -691,6 +714,7 @@ describe("workspace command dispatch", () => {
           rootPath: tempDir,
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "invalid_path",
@@ -717,6 +741,7 @@ describe("workspace command dispatch", () => {
           rootPath: symlinkRoot,
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "invalid_path",
@@ -739,6 +764,7 @@ describe("workspace command dispatch", () => {
           rootPath: tempDir,
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "file_too_large",
@@ -761,6 +787,7 @@ describe("workspace command dispatch", () => {
           rootPath: tempDir,
         },
         harness.dispatchOptions(),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: "file_too_large",
@@ -782,6 +809,7 @@ describe("workspace command dispatch", () => {
         rootPath: tempDir,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.mimeType).toBe("image/svg+xml");
@@ -803,6 +831,7 @@ describe("workspace command dispatch", () => {
         rootPath: tempDir,
       },
       harness.dispatchOptions(),
+      new AbortController().signal,
     );
 
     expect(result.mimeType).toBe("text/plain");

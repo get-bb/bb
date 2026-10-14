@@ -285,6 +285,7 @@ const typeaheadBase: TypeaheadConfig = {
   mention: {
     results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
     isLoading: false,
+    isRefreshing: false,
     isError: false,
     onQueryChange: noop,
   },
@@ -407,6 +408,7 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     insertions: 128,
     deletions: 24,
     lineStatsComplete: true,
+    fileCount: 3,
   },
   branch: {
     currentBranch: STORY_BRANCH_NAME,

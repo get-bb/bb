@@ -13,7 +13,7 @@ export interface ChildThreadPendingAttentionSource {
   title: string;
 }
 
-export interface ChildThreadPendingAttention {
+interface ChildThreadPendingAttention {
   childThreadId: string;
   childTitle: string;
   href: string;

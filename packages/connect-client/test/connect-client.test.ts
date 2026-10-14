@@ -6,6 +6,7 @@ import {
   encodeMobilePairingPayload,
   deriveConnectBaseUrl,
   listAccountServers,
+  listAccountServersWithSession,
   mobilePairingPayload,
   parseMobilePairingPayload,
   redeemMachineCredential,
@@ -82,6 +83,43 @@ describe("listAccountServers", () => {
         throw new Error("offline");
       }),
     ).rejects.toBeInstanceOf(ConnectListError);
+  });
+});
+
+describe("listAccountServersWithSession", () => {
+  it("lists servers with the account sign-in cookie", async () => {
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            servers: [{ handle: "phone", name: "Phone", live: true }],
+          }),
+        ),
+    );
+
+    await expect(
+      listAccountServersWithSession(
+        {
+          serverUrl: "https://laptop.getbb.app/",
+          cookie: { name: "__Secure-better-auth.session_token", value: "tok" },
+        },
+        fetchImpl,
+      ),
+    ).resolves.toEqual([
+      {
+        handle: "phone",
+        name: "Phone",
+        live: true,
+        url: "https://phone.getbb.app",
+      },
+    ]);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://laptop.getbb.app/api/connect/servers",
+      {
+        method: "GET",
+        headers: { cookie: "__Secure-better-auth.session_token=tok" },
+      },
+    );
   });
 });
 

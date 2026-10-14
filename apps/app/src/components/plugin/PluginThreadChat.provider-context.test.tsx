@@ -53,6 +53,7 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
 });
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
+  useThreadTimelineRealtimeSubscription: vi.fn(),
   useThreadListRealtimeSubscription: vi.fn(),
   useEnvironmentDetailRealtimeSubscription: vi.fn(),
   useProjectDetailRealtimeSubscription: vi.fn(),

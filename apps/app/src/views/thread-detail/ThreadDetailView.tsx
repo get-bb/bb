@@ -1785,42 +1785,59 @@ function ThreadDetailViewInternal(
       threadOriginKind,
       threadSourceThreadId,
     ]);
-  const childThreadsSection: ThreadPromptChildThreadsSection | null =
-    useMemo(() => {
-      const list = childThreadSubsetQuery.data ?? [];
-      const activeItems = list
-        .filter(
-          (entry) =>
-            entry.originKind === null &&
-            (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
-              entry.hasPendingInteraction),
-        )
-        .map((entry) => ({
-          id: entry.id,
-          title: getThreadDisplayTitle(entry),
-          href: getThreadRoutePath({
-            projectId: entry.projectId,
-            threadId: entry.id,
-          }),
-          hasPendingInteraction: entry.hasPendingInteraction,
-        }))
-        .sort((left, right) =>
-          left.hasPendingInteraction === right.hasPendingInteraction
-            ? 0
-            : left.hasPendingInteraction
-              ? -1
-              : 1,
-        );
-      if (activeItems.length === 0) return null;
-      return { items: activeItems };
-    }, [childThreadSubsetQuery.data]);
+  const childThreadsSection = useMemo(() => {
+    const list = childThreadSubsetQuery.data ?? [];
+    const activeItems = list
+      .filter(
+        (entry) =>
+          entry.originKind === null &&
+          (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
+            entry.hasPendingInteraction),
+      )
+      .sort((left, right) =>
+        left.hasPendingInteraction === right.hasPendingInteraction
+          ? right.latestAttentionAt - left.latestAttentionAt
+          : left.hasPendingInteraction
+            ? -1
+            : 1,
+      )
+      .map((entry) => ({
+        id: entry.id,
+        title: getThreadDisplayTitle(entry),
+        href: getThreadRoutePath({
+          projectId: entry.projectId,
+          threadId: entry.id,
+        }),
+        hasPendingInteraction: entry.hasPendingInteraction,
+      }));
+    if (activeItems.length === 0) return null;
+    return { items: activeItems };
+  }, [childThreadSubsetQuery.data]);
   const childPendingInteractions = useChildThreadPendingAttention(
     childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
   );
+  const childThreadsBannerSection =
+    useMemo((): ThreadPromptChildThreadsSection | null => {
+      if (!childThreadsSection) return null;
+      const pendingInteractions = childPendingInteractions
+        .flatMap((child) =>
+          child.interactions.map((interaction) => ({
+            childThreadId: child.childThreadId,
+            childTitle: child.childTitle,
+            href: child.href,
+            interaction,
+          })),
+        )
+        .sort(
+          (left, right) =>
+            right.interaction.createdAt - left.interaction.createdAt,
+        );
+      return { ...childThreadsSection, pendingInteractions };
+    }, [childThreadsSection, childPendingInteractions]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
-    thread,
+    thread: timelineEnabled ? thread : undefined,
   });
   const {
     effectiveMergeBaseBranch,
@@ -2443,8 +2460,7 @@ function ThreadDetailViewInternal(
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
-      childPendingInteractions={childPendingInteractions}
-      childThreadsSection={childThreadsSection}
+      childThreadsSection={childThreadsBannerSection}
       pullRequest={pullRequest}
       thread={thread}
     />

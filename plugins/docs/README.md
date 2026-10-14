@@ -40,6 +40,10 @@ provider, and directive are all Docs.
 - **Images:** paste or drop PNG, JPEG, GIF, WebP, or SVG files into a document.
   Attachments are stored beside it under `_attachments/` and serialized as
   portable relative Markdown image links.
+- **Raw HTML:** Docs never strips HTML. Blocks you do not edit are saved
+  byte for byte. Inline tags Docs renders, such as `<strong>` and `<a>`, show
+  as formatting; other HTML shows as editable text and is saved as typed,
+  including tags you type. HTML is not executed in the editor.
 - **Embedded HTML:** a Markdown block directive renders a sibling HTML file in
   an opaque-origin iframe:
 

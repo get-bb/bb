@@ -709,7 +709,7 @@ describe("public thread data routes", () => {
       const timeline = threadTimelineResponseSchema.parse(
         await readJson(timelineResponse),
       );
-      expect(timeline.timelinePage.hasOlderRows).toBe(true);
+      expect(timeline.timelinePage.olderCursor).not.toBeNull();
       const windowedConversationIds = timeline.rows
         .filter((row) => row.kind === "conversation")
         .map((row) => row.id);

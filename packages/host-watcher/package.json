@@ -13,7 +13,8 @@
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "bench": "cross-env BB_WATCHER_ROOT_RECOVERY_BENCHMARK=1 vitest run --config vitest.config.ts test/root-recovery-benchmark.test.ts"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",

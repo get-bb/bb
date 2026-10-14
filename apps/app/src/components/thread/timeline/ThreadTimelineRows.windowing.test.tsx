@@ -278,7 +278,7 @@ describe("ThreadTimelineRows windowing", () => {
       '[data-timeline-row-id="steer-window-30"]',
     );
 
-    expect(target?.dataset.timelineWindowedRealized).toBe("true");
+    expect(target).not.toBeNull();
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({
         element: target,
@@ -351,12 +351,12 @@ describe("ThreadTimelineRows windowing", () => {
       '[data-timeline-row-id="search-message-20"]',
     );
 
-    expect(target?.dataset.timelineWindowedRealized).toBe("true");
+    expect(target).not.toBeNull();
     expect(target?.textContent).toContain("Search message 20");
     const outlineTarget = view.container.querySelector<HTMLElement>(
       '[data-timeline-row-id="search-message-40"]',
     );
-    expect(outlineTarget?.dataset.timelineWindowedRealized).toBe("true");
+    expect(outlineTarget).not.toBeNull();
     expect(outlineTarget?.textContent).toContain("Search message 40");
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({

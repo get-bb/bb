@@ -12,6 +12,11 @@
       "source": "./src/internal-environment-lifecycle.ts",
       "types": "./src/internal-environment-lifecycle.ts",
       "default": "./src/internal-environment-lifecycle.ts"
+    },
+    "./testing": {
+      "source": "./src/testing.ts",
+      "types": "./src/testing.ts",
+      "default": "./src/testing.ts"
     }
   },
   "types": "./src/index.ts",

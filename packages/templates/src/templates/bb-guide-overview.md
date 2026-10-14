@@ -38,6 +38,10 @@ Pass long or multi-line text from a file, not inline: `bb thread tell <id>
 stdin). Inside double quotes the shell runs `backticks` and `$(...)` before bb
 sees the message.
 
+Transcribe audio files, such as attached voice memos, with `bb voice transcribe
+<path>`. It uses the voice service chosen with `bb settings ai-services`;
+`bb guide customization` lists its size limits.
+
 When a command fails, read the whole error: bb prints the nearest command or
 option, the flag to add with the current project, thread, or machine ID filled
 in, and the usage line. `bb guide commands <group>` lists every command in a

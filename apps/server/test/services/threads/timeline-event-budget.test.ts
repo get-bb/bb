@@ -23,10 +23,10 @@ import {
   createProject,
   createThread,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import type {
   ThreadTimelineResponse,
@@ -117,8 +117,7 @@ function setup(connection?: DbConnection): {
   db: DbConnection;
   thread: Thread;
 } {
-  const db = connection ?? createConnection(":memory:");
-  if (connection === undefined) migrate(db);
+  const db = connection ?? createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
@@ -357,7 +356,7 @@ function walkAllFileChangeDiffs(
             : "",
         ),
     );
-    if (!response.timelinePage.hasOlderRows) {
+    if (response.timelinePage.olderCursor === null) {
       break;
     }
     cursor = response.timelinePage.olderCursor;
@@ -404,7 +403,7 @@ function walkAllPages(
         .filter((row) => row.kind === "conversation" && row.role === "user")
         .map((row) => row.id),
     );
-    if (!response.timelinePage.hasOlderRows) {
+    if (response.timelinePage.olderCursor === null) {
       break;
     }
     const next = response.timelinePage.olderCursor;
@@ -479,7 +478,6 @@ describe("timeline event budget", () => {
           olderRows: page.rows,
         });
         cursor = page.timelinePage.olderCursor;
-        expect(page.timelinePage.hasOlderRows).toBe(cursor !== null);
         if (cursor !== null) {
           expect(seen.has(cursor.anchorId)).toBe(false);
           seen.add(cursor.anchorId);
@@ -541,8 +539,7 @@ describe("timeline event budget", () => {
       }).response;
       expect(latest.rows).toEqual(full.rows);
       expect(latest.rows.length).toBeGreaterThan(0);
-      expect(latest.timelinePage.kind).toBe("latest");
-      expect(latest.timelinePage.hasOlderRows).toBe(false);
+      expect(latest.timelinePage.olderCursor).toBeNull();
       expect(latest.timelinePage.olderCursor).toBeNull();
     } finally {
       db.$client.close();
@@ -1343,7 +1340,7 @@ describe("timeline event budget", () => {
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
     }).response;
-    expect(unbudgeted.timelinePage.hasOlderRows).toBe(false);
+    expect(unbudgeted.timelinePage.olderCursor).toBeNull();
 
     const budgeted = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
@@ -1358,7 +1355,7 @@ describe("timeline event budget", () => {
     expect(budgeted.timelinePage.returnedSegmentCount).toBeLessThan(
       unbudgeted.timelinePage.returnedSegmentCount,
     );
-    expect(budgeted.timelinePage.hasOlderRows).toBe(true);
+    expect(budgeted.timelinePage.olderCursor).not.toBeNull();
     expect(budgeted.timelinePage.olderCursor).not.toBeNull();
   });
 
@@ -1451,7 +1448,7 @@ describe("timeline event budget", () => {
             row.text === "Visible response",
         ),
       ).toBe(true);
-      expect(response.timelinePage.hasOlderRows).toBe(true);
+      expect(response.timelinePage.olderCursor).not.toBeNull();
       const options = {
         completedTurnDisplay: "collapse",
         includeClearedContextHistory: false,

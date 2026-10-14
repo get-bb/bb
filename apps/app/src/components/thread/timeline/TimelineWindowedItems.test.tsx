@@ -10,11 +10,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AutoHeightSnapContext } from "@/components/ui/height-transition";
-import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 import {
-  TimelineWindowedItemsLoader,
+  TimelineWindowedItems,
   type TimelineWindowedItemRenderState,
-} from "./TimelineWindowedItemsLoader.js";
+} from "./TimelineWindowedItems.js";
 
 const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
 
@@ -121,14 +120,11 @@ function renderWindowedItems(options?: {
               data-index={state.itemIndex}
               data-testid={`wrapper-${index}`}
               data-timeline-window-key={ITEM_KEYS[index]}
-              data-timeline-windowed-realized={String(state.isRealized)}
               style={state.itemStyle}
             >
-              {state.isRealized ? (
-                <button type="button" data-testid={`content-${index}`}>
-                  row {index}
-                </button>
-              ) : null}
+              <button type="button" data-testid={`content-${index}`}>
+                row {index}
+              </button>
             </div>
           )}
         />
@@ -214,7 +210,6 @@ describe("TimelineWindowedItems", () => {
                 data-index={state.itemIndex}
                 style={state.itemStyle}
                 data-testid={`pending-${index}`}
-                data-timeline-windowed-realized="true"
               />
             );
           }}
@@ -237,7 +232,7 @@ describe("TimelineWindowedItems", () => {
     const measurements = new Map<string, number>();
 
     render(
-      <TimelineWindowedItemsLoader
+      <TimelineWindowedItems
         estimateItemHeight={() => 100}
         gap={0}
         getScrollElement={() => scrollElement}
@@ -271,7 +266,7 @@ describe("TimelineWindowedItems", () => {
     const measurements = new Map<string, number>();
     const getScrollElement = () => scrollElement;
     const list = (count: number) => (
-      <TimelineWindowedItemsLoader
+      <TimelineWindowedItems
         estimateItemHeight={() => 100}
         gap={0}
         getScrollElement={getScrollElement}
@@ -283,7 +278,6 @@ describe("TimelineWindowedItems", () => {
             key={ITEM_KEYS[index]}
             ref={state.itemRef}
             data-index={state.itemIndex}
-            data-timeline-windowed-realized={String(state.isRealized)}
             style={state.itemStyle}
           >
             <input data-testid={`input-${index}`} defaultValue="draft" />
@@ -372,11 +366,6 @@ describe("TimelineWindowedItems", () => {
     fireEvent.scroll(scrollElement);
     await act(async () => {});
 
-    expect(
-      scrollElement.querySelectorAll(
-        '[data-timeline-windowed-realized="false"]',
-      ).length,
-    ).toBe(0);
     const content = screen.getByTestId("content-50");
     expect(content).toBeTruthy();
 

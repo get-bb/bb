@@ -8,6 +8,7 @@ import { ServerConnection } from "./server-connection.js";
 import type {
   CreateReconnectingWebSocket,
   ReconnectingWebSocketLike,
+  ServerConnectionOptions,
   ServerMovedNotice,
 } from "./server-connection-support.js";
 
@@ -32,6 +33,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;
+  onHostRpcCancel?: ServerConnectionOptions["onHostRpcCancel"];
   startupTimeoutMs?: number;
 }
 
@@ -189,6 +191,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     onMachineShutdown: args.onMachineShutdown,
     onServerMoved: args.onServerMoved,
     onMachineEnvironment: args.onMachineEnvironment,
+    onHostRpcCancel: args.onHostRpcCancel,
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
     createWebSocket: webSocket.createWebSocket,
@@ -689,6 +692,34 @@ describe("ServerConnection", () => {
         }),
       ).toBe(false);
       expect(socket.close).toHaveBeenCalledWith(1013, "send-failed");
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("forwards host RPC cancellations to the cancel handler", async () => {
+    const onHostRpcCancel = vi.fn();
+    const { connection, webSocket } = createConnectionFixture({
+      onHostRpcCancel,
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "host-rpc.cancel",
+          requestId: "rpc-cancelled",
+        }),
+      });
+
+      expect(onHostRpcCancel).toHaveBeenCalledWith({
+        type: "host-rpc.cancel",
+        requestId: "rpc-cancelled",
+      });
     } finally {
       await connection.shutdown();
     }

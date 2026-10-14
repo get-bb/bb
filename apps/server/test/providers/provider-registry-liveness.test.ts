@@ -22,15 +22,18 @@ it("finishes pending provider boot waits before an otherwise idle process exits"
             "--eval",
             `
               import { createProviderRegistryService } from ${JSON.stringify(registryUrl)};
+              const realSetTimeout = globalThis.setTimeout;
+              globalThis.setTimeout = (callback, delay, ...args) =>
+                realSetTimeout(callback, Math.min(delay, 250), ...args);
               const registry = createProviderRegistryService({ deferRegistrationsSettled: true });
               registry.${wait}.then(() => console.log("wait completed"));
             `,
           ],
-          { timeout: 40_000 },
+          { timeout: 10_000 },
         );
         expect(stderr).toBe("");
         expect(stdout.trim()).toBe("wait completed");
       },
     ),
   );
-}, 45_000);
+}, 15_000);

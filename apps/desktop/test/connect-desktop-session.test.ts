@@ -44,7 +44,11 @@ describe("createAccountCookieSource", () => {
   it("mints a desktop session from the signed-in account", async () => {
     const fetchImpl = vi.fn(async (url: string) =>
       url.endsWith("/api/connect/servers")
-        ? new Response(JSON.stringify({ servers: [{ handle: "laptop" }] }))
+        ? new Response(
+            JSON.stringify({
+              servers: [{ handle: "laptop", name: "Laptop", live: true }],
+            }),
+          )
         : gateResponse(),
     );
     const result = await installConnectDesktopSession({
@@ -65,6 +69,7 @@ describe("createAccountCookieSource", () => {
       1,
       "https://laptop.getbb.app/api/connect/servers",
       {
+        method: "GET",
         headers: { cookie: "__Secure-better-auth.session_token=account-token" },
       },
     );
@@ -81,7 +86,11 @@ describe("createAccountCookieSource", () => {
   it("uses the server origin including its protocol and port for local Connect", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(
+        Response.json({
+          servers: [{ handle: "laptop", name: "Laptop", live: true }],
+        }),
+      )
       .mockResolvedValueOnce(gateResponse());
     const source = createAccountCookieSource({
       accountCookie: {
@@ -97,7 +106,10 @@ describe("createAccountCookieSource", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "http://laptop.bb.localhost:8787/api/connect/servers",
-      { headers: { cookie: "better-auth.session_token=account-token" } },
+      {
+        method: "GET",
+        headers: { cookie: "better-auth.session_token=account-token" },
+      },
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
@@ -112,7 +124,11 @@ describe("createAccountCookieSource", () => {
   it("checks the selected handle when the server uses a custom hostname", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(
+        Response.json({
+          servers: [{ handle: "laptop", name: "Laptop", live: true }],
+        }),
+      )
       .mockResolvedValueOnce(gateResponse());
     const source = createAccountCookieSource({
       accountCookie: {
@@ -145,7 +161,11 @@ describe("createAccountCookieSource", () => {
   it("rejects a sign-in from an account that does not own the server", async () => {
     const fetchImpl = vi.fn(
       async () =>
-        new Response(JSON.stringify({ servers: [{ handle: "other" }] })),
+        new Response(
+          JSON.stringify({
+            servers: [{ handle: "other", name: "Other", live: true }],
+          }),
+        ),
     );
     const source = createAccountCookieSource({
       accountCookie: {

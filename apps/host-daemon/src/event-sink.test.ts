@@ -489,22 +489,109 @@ describe("event sink automatic retries", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("keeps retries serialized when more events and flushes arrive during an upload", async () => {
+  it("posts another thread beside an in-flight retry without reposting it", async () => {
     const request = createDeferredPromise<EventPostResult>();
     postEvents
       .mockRejectedValueOnce(new Error("offline"))
       .mockImplementationOnce(() => request.promise);
     await sink.flush();
     await vi.advanceTimersByTimeAsync(750);
+    expect(postEvents).toHaveBeenCalledTimes(2);
     sink.emit({ threadId: "thr_2", event: systemErrorEvent("thr_2") });
     const flush = sink.flush();
     await vi.advanceTimersByTimeAsync(60000);
-    expect(postEvents).toHaveBeenCalledTimes(2);
-    request.resolve({ acceptedEvents: [], rejectedEvents: [] });
-    await flush;
     expect(postEvents).toHaveBeenCalledTimes(3);
     expect(postEvents).toHaveBeenLastCalledWith([
       { threadId: "thr_2", event: systemErrorEvent("thr_2") },
     ]);
+    request.resolve({ acceptedEvents: [], rejectedEvents: [] });
+    await flush;
+    expect(postEvents).toHaveBeenCalledTimes(3);
+    expect(sink.listUndeliveredThreadIds()).toEqual([]);
+  });
+});
+
+describe("event sink stream tick", () => {
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  function textDelta(threadId: string, delta: string) {
+    return {
+      type: "item/agentMessage/delta",
+      threadId,
+      providerThreadId: "provider-1",
+      scope: turnScope("turn-1"),
+      itemId: "item-1",
+      delta,
+    } as const;
+  }
+
+  function postedDeltas(
+    postEvents: ReturnType<typeof acceptingPostEvents>,
+  ): string[][] {
+    return postEvents.mock.calls.map(([events]) =>
+      events.map((envelope) =>
+        envelope.event.type === "item/agentMessage/delta"
+          ? `${envelope.threadId}:${envelope.event.delta}`
+          : envelope.event.type,
+      ),
+    );
+  }
+
+  it("posts the first stream event after a quiet tick at once and coalesces the rest per tick", async () => {
+    vi.useFakeTimers();
+    const postEvents = acceptingPostEvents();
+    const sink = createEventSink({
+      isSessionOpen: () => true,
+      logger: createLogger(),
+      postEvents,
+    });
+    sink.emit({ threadId: "thr_1", event: textDelta("thr_1", "a") });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(postedDeltas(postEvents)).toEqual([["thr_1:a"]]);
+
+    await vi.advanceTimersByTimeAsync(10);
+    sink.emit({ threadId: "thr_1", event: textDelta("thr_1", "b") });
+    await vi.advanceTimersByTimeAsync(20);
+    sink.emit({ threadId: "thr_1", event: textDelta("thr_1", "c") });
+    await vi.advanceTimersByTimeAsync(19);
+    expect(postEvents).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(postedDeltas(postEvents)).toEqual([
+      ["thr_1:a"],
+      ["thr_1:b", "thr_1:c"],
+    ]);
+    await sink.dispose();
+  });
+
+  it("keeps a slow thread's POST from holding back another thread", async () => {
+    vi.useFakeTimers();
+    const slow = createDeferredPromise<EventPostResult>();
+    const postEvents = acceptingPostEvents();
+    postEvents.mockImplementationOnce(() => slow.promise);
+    const sink = createEventSink({
+      isSessionOpen: () => true,
+      logger: createLogger(),
+      postEvents,
+    });
+    sink.emit({ threadId: "thr_1", event: textDelta("thr_1", "a") });
+    await vi.advanceTimersByTimeAsync(0);
+    sink.emit({ threadId: "thr_1", event: textDelta("thr_1", "b") });
+    sink.emit({ threadId: "thr_2", event: textDelta("thr_2", "x") });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(postedDeltas(postEvents)).toEqual([["thr_1:a"], ["thr_2:x"]]);
+    expect(sink.listUndeliveredThreadIds()).toEqual(["thr_1"]);
+
+    slow.resolve({ acceptedEvents: [], rejectedEvents: [] });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(postedDeltas(postEvents)).toEqual([
+      ["thr_1:a"],
+      ["thr_2:x"],
+      ["thr_1:b"],
+    ]);
+    expect(sink.listUndeliveredThreadIds()).toEqual([]);
+    await sink.dispose();
   });
 });

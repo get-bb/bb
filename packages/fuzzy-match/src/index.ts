@@ -766,6 +766,49 @@ function mergeRankedTextMatches<T>(
   return [...matchesByItemIndex.values()].sort(compareRankedTextMatches);
 }
 
+const MAX_ASCII_CODE = 0x7f;
+const UPPERCASE_A_CODE = 0x41;
+const UPPERCASE_Z_CODE = 0x5a;
+const ASCII_CASE_OFFSET = 0x20;
+
+function getPathCandidateNeedle(query: string): string | null {
+  const needle = query.replaceAll("/", "").toLowerCase();
+  if (needle.length === 0 || !isAscii(needle)) {
+    return null;
+  }
+  return needle;
+}
+
+function isAscii(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > MAX_ASCII_CODE) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function mayContainPathCandidateNeedle(needle: string, path: string): boolean {
+  let needleIndex = 0;
+  for (
+    let pathIndex = 0;
+    pathIndex < path.length && needleIndex < needle.length;
+    pathIndex += 1
+  ) {
+    let code = path.charCodeAt(pathIndex);
+    if (code > MAX_ASCII_CODE) {
+      return true;
+    }
+    if (code >= UPPERCASE_A_CODE && code <= UPPERCASE_Z_CODE) {
+      code += ASCII_CASE_OFFSET;
+    }
+    if (code === needle.charCodeAt(needleIndex)) {
+      needleIndex += 1;
+    }
+  }
+  return needleIndex === needle.length;
+}
+
 export function fuzzyMatchPaths<T>(
   args: FuzzyMatchPathsArgs<T>,
 ): FuzzyMatch<T>[] {
@@ -786,12 +829,17 @@ export function fuzzyMatchPaths<T>(
     return [];
   }
 
-  const getNormalizedPath = (item: T) =>
-    args.getPath(item).replaceAll("\\", "/");
-  const normalizedItems = args.items.map((item) => ({
-    item,
-    path: getNormalizedPath(item),
-  }));
+  const candidateNeedle = getPathCandidateNeedle(normalizedQuery);
+  const normalizedItems: NormalizedPathItem<T>[] = [];
+  for (const item of args.items) {
+    const path = args.getPath(item).replaceAll("\\", "/");
+    if (
+      candidateNeedle === null ||
+      mayContainPathCandidateNeedle(candidateNeedle, path)
+    ) {
+      normalizedItems.push({ item, path });
+    }
+  }
 
   return rankedMatchesToFuzzyMatches(
     rankPathQueryMatches(normalizedItems, normalizedQuery),

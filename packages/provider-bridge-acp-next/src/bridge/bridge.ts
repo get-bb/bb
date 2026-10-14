@@ -3501,15 +3501,19 @@ async function handleModelList(
     );
     return;
   }
-  const sessionDiscoveredModels =
-    params.listCommand === undefined && params.agent
-      ? await loadSessionDiscoveredModels(
-          params.agent,
-          params.reasoningProbePriorityModelIds,
-          params.parameterizedModelPicker,
-          resolvedDialectId,
-        )
-      : null;
+  if (params.listCommand) {
+    throw new Error(
+      "ACP model list command failed to provide a model catalog.",
+    );
+  }
+  const sessionDiscoveredModels = params.agent
+    ? await loadSessionDiscoveredModels(
+        params.agent,
+        params.reasoningProbePriorityModelIds,
+        params.parameterizedModelPicker,
+        resolvedDialectId,
+      )
+    : null;
   if (sessionDiscoveredModels) {
     await sendModels(sessionDiscoveredModels);
     return;

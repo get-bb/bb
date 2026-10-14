@@ -10,7 +10,7 @@ import { useScrollOverflowState } from "./useScrollOverflowState.js";
 import {
   TimelineWindowingScrollRootContext,
   type TimelineWindowingScrollRoot,
-} from "./TimelineWindowedItemsLoader.js";
+} from "./TimelineWindowedItems.js";
 
 interface TimelineDetailScrollProps {
   size: DetailScrollSize;

@@ -116,6 +116,7 @@ function asTextDeltaEvent(
 
 interface PendingTextState {
   event: TextDeltaThreadEvent;
+  openedAt: number;
   text: string;
 }
 
@@ -136,15 +137,18 @@ interface ThreadAssemblyState {
   settledItemKeys: Set<string>;
   progressLastEmitByKey: Map<string, number>;
   pendingProgressByKey: Map<string, PendingProgressState>;
-  textLastEmitByStream: Map<string, number>;
   pendingTextByStream: Map<string, PendingTextState>;
+  pendingTextTimer: ReturnType<typeof setTimeout> | undefined;
 }
+
+export const TEXT_DELTA_FLUSH_MS = 50;
 
 export interface CreateDeltaAssemblerOptions {
   providerId: string;
   entropyPrefix?: string;
   progressThrottleMs?: number;
   textDeltaFlushMs?: number;
+  onDeferredEvents?: (threadId: string, events: ThreadEvent[]) => void;
   now?: () => number;
 }
 
@@ -206,7 +210,7 @@ export function createDeltaAssembler(
   const entropyPrefix =
     options.entropyPrefix ?? `da${randomUUID().slice(0, 8)}`;
   const progressThrottleMs = options.progressThrottleMs ?? 500;
-  const textDeltaFlushMs = options.textDeltaFlushMs ?? 100;
+  const textDeltaFlushMs = options.textDeltaFlushMs ?? TEXT_DELTA_FLUSH_MS;
   const now = options.now ?? Date.now;
   let turnCounter = 0;
   let itemCounter = 0;
@@ -242,8 +246,8 @@ export function createDeltaAssembler(
       settledItemKeys: new Set(),
       progressLastEmitByKey: new Map(),
       pendingProgressByKey: new Map(),
-      textLastEmitByStream: new Map(),
       pendingTextByStream: new Map(),
+      pendingTextTimer: undefined,
     };
     states.set(threadId, created);
     pruneIdleStates();
@@ -331,16 +335,14 @@ export function createDeltaAssembler(
     state: ThreadAssemblyState,
     out: ThreadEvent[],
   ): void {
-    if (state.pendingTextByStream.size === 0) {
-      return;
+    if (state.pendingTextTimer !== undefined) {
+      clearTimeout(state.pendingTextTimer);
+      state.pendingTextTimer = undefined;
     }
-    const nowMs = now();
-    for (const [streamKey, pending] of state.pendingTextByStream) {
+    for (const pending of state.pendingTextByStream.values()) {
       out.push({ ...pending.event, delta: pending.text });
-      state.textLastEmitByStream.set(streamKey, nowMs);
     }
     state.pendingTextByStream.clear();
-    trimOldestEntries(state.textLastEmitByStream, MAX_ID_MAP_ENTRIES);
   }
 
   function flushElapsedPendingText(
@@ -348,13 +350,44 @@ export function createDeltaAssembler(
     out: ThreadEvent[],
   ): void {
     const nowMs = now();
-    for (const streamKey of state.pendingTextByStream.keys()) {
-      const last = state.textLastEmitByStream.get(streamKey);
-      if (last === undefined || nowMs - last >= textDeltaFlushMs) {
+    for (const pending of state.pendingTextByStream.values()) {
+      if (nowMs - pending.openedAt >= textDeltaFlushMs) {
         flushPendingText(state, out);
         return;
       }
     }
+  }
+
+  function schedulePendingTextFlush(
+    threadId: string,
+    state: ThreadAssemblyState,
+  ): void {
+    const onDeferredEvents = options.onDeferredEvents;
+    if (
+      onDeferredEvents === undefined ||
+      state.pendingTextTimer !== undefined
+    ) {
+      return;
+    }
+    let openedAt = Number.POSITIVE_INFINITY;
+    for (const pending of state.pendingTextByStream.values()) {
+      openedAt = Math.min(openedAt, pending.openedAt);
+    }
+    if (openedAt === Number.POSITIVE_INFINITY) {
+      return;
+    }
+    state.pendingTextTimer = setTimeout(
+      () => {
+        state.pendingTextTimer = undefined;
+        const events: ThreadEvent[] = [];
+        flushPendingText(state, events);
+        if (events.length > 0) {
+          onDeferredEvents(threadId, events);
+        }
+      },
+      Math.max(0, openedAt + textDeltaFlushMs - now()),
+    );
+    state.pendingTextTimer.unref?.();
   }
 
   function bufferTextDelta(
@@ -362,40 +395,26 @@ export function createDeltaAssembler(
     event: TextDeltaThreadEvent,
     out: ThreadEvent[],
   ): void {
-    const streamKey = `${event.type}${SEP}${event.itemId}`;
     if (
       event.type === "item/commandExecution/outputDelta" &&
       event.reset === true
     ) {
       flushPendingText(state, out);
       out.push(event);
-      state.textLastEmitByStream.set(streamKey, now());
-      trimOldestEntries(state.textLastEmitByStream, MAX_ID_MAP_ENTRIES);
       return;
     }
-    const last = state.textLastEmitByStream.get(streamKey);
-    if (last === undefined) {
-      flushPendingText(state, out);
-      out.push(event);
-      state.textLastEmitByStream.set(streamKey, now());
-      trimOldestEntries(state.textLastEmitByStream, MAX_ID_MAP_ENTRIES);
-      return;
-    }
+    const streamKey = `${event.type}${SEP}${event.itemId}`;
     const pending = state.pendingTextByStream.get(streamKey);
-    if (now() - last >= textDeltaFlushMs) {
-      if (pending === undefined) {
-        state.pendingTextByStream.set(streamKey, { event, text: event.delta });
-      } else {
-        pending.text += event.delta;
-      }
-      flushPendingText(state, out);
-      return;
-    }
     if (pending === undefined) {
-      state.pendingTextByStream.set(streamKey, { event, text: event.delta });
-      return;
+      state.pendingTextByStream.set(streamKey, {
+        event,
+        openedAt: now(),
+        text: event.delta,
+      });
+    } else {
+      pending.text += event.delta;
     }
-    pending.text += event.delta;
+    flushElapsedPendingText(state, out);
   }
 
   function rememberSettledKey(state: ThreadAssemblyState, key: string): void {
@@ -2145,17 +2164,11 @@ export function createDeltaAssembler(
           states.delete(args.threadId);
           continue;
         }
-        if (
-          delta.kind === "item.textClose" ||
-          delta.kind === "item.close" ||
-          delta.kind === "session.ended"
-        ) {
-          const state = states.get(args.threadId);
-          if (state !== undefined) {
-            flushPendingText(state, events);
-          }
-        }
         handleDelta(stateFor(args.threadId), delta, sink);
+      }
+      const state = states.get(args.threadId);
+      if (state !== undefined) {
+        schedulePendingTextFlush(args.threadId, state);
       }
       return events;
     },

@@ -360,7 +360,7 @@ export function registerShowCommand(
             if (ws.branch.currentBranch) {
               console.log(`  Branch:   ${ws.branch.currentBranch}`);
             }
-            console.log(`  Changed files: ${ws.workingTree.files.length}`);
+            console.log(`  Changed files: ${ws.workingTree.fileCount}`);
             if (ws.workingTree.lineStatsComplete) {
               console.log(`  Insertions:    +${ws.workingTree.insertions}`);
               console.log(`  Deletions:     -${ws.workingTree.deletions}`);
@@ -506,7 +506,7 @@ export function registerShowCommand(
           await sdk.threads.timeline(timelineQuery);
         let rows = timeline.rows;
         let page = timeline.timelinePage;
-        while (opts.all && page.hasOlderRows && page.olderCursor !== null) {
+        while (opts.all && page.olderCursor !== null) {
           const older: ThreadTimelineResponse = await sdk.threads.timeline({
             ...timelineQuery,
             beforeAnchorSeq: String(page.olderCursor.anchorSeq),
@@ -523,9 +523,10 @@ export function registerShowCommand(
           verbose: format === "verbose",
           color,
         });
-        const notice = page.hasOlderRows
-          ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`
-          : null;
+        const notice =
+          page.olderCursor !== null
+            ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`
+            : null;
         console.log(notice === null ? text : `${text}\n\n${notice}`);
       }),
     );

@@ -49,6 +49,27 @@ export function useThreadDetailRealtimeSubscription(
   useRealtimeSubscription(target, options);
 }
 
+interface ThreadTimelineRealtimeSubscriptionOptions {
+  deferContent: boolean;
+  enabled: boolean;
+  segmentLimit: number | null;
+}
+
+export function useThreadTimelineRealtimeSubscription(
+  threadId: string,
+  options: ThreadTimelineRealtimeSubscriptionOptions,
+): void {
+  const { deferContent, enabled, segmentLimit } = options;
+  const target = useMemo<RealtimeSubscriptionTarget | null>(
+    () =>
+      threadId
+        ? { kind: "thread-timeline", threadId, segmentLimit, deferContent }
+        : null,
+    [deferContent, segmentLimit, threadId],
+  );
+  useRealtimeSubscription(target, { enabled });
+}
+
 export function useEnvironmentDetailRealtimeSubscription(
   environmentId: string | null | undefined,
   options?: RealtimeSubscriptionOptions,

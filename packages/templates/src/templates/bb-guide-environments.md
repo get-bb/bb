@@ -114,7 +114,9 @@ Making your repo work with bb:
                                           provider removal completes
   bb environment show <id>                Show environment details (path, branch, status, lifecycle, retirement deadline and teardown attempts)
 
-  bb environment status <id>              Show workspace status
+  bb environment status <id>              Show workspace status. Each file list holds at most
+                                          200 entries (tracked changes first); fileCount is
+                                          the total number of changed files
     --merge-base-branch <branch>          Include merge-base status
 
   bb environment branches <id>            List local and remote branches

@@ -6,14 +6,13 @@ import {
 } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import type { TimelineRow } from "@bb/server-contract";
 import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
@@ -24,8 +23,7 @@ const PROCESS_EVENT =
   '<process_event kind="success" process_id="proc_551c">Process completed successfully</process_event>';
 
 function setup(): { db: DbConnection; thread: Thread } {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
@@ -171,10 +169,7 @@ describe("timeline pages with provider-recorded input", () => {
     });
 
     expect(response.timelinePage).toMatchObject({
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: 1,
-      hasOlderRows: false,
       olderCursor: null,
     });
     expect(conversationTexts(response.rows)).toEqual([

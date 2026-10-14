@@ -279,6 +279,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     withHostFileRoute(payload.hostId, async (hostId) => {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
+        signal: context.req.raw.signal,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_files",
@@ -301,6 +302,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     withHostFileRoute(payload.hostId, async (hostId) => {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
+        signal: context.req.raw.signal,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",

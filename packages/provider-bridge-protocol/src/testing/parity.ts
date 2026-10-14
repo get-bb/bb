@@ -474,6 +474,7 @@ async function replayRecordingAttempt(
       : null;
 
     const answeredIds = new Set<string>();
+    const sentRequestIds: string[] = [];
     const pendingBridgeRequests: { id: string | number; method: string }[] = [];
     const recordedAnswers = new Map<string, ParsedWireMessage[]>();
     for (const step of steps) {
@@ -591,6 +592,20 @@ async function replayRecordingAttempt(
       limitMs: number = timeoutMs,
       reportStall = true,
     ): Promise<void> {
+      const diagnostic = () =>
+        JSON.stringify({
+          events: events.length,
+          plannedEvents: plannedEventCount,
+          grammarViolationCount: grammarViolations.length,
+          grammarViolations: grammarViolations.slice(-5),
+          unansweredRequests: sentRequestIds.filter(
+            (id) => !answeredIds.has(id),
+          ),
+          exitCode: child.exitCode,
+          signal: child.signalCode,
+          millisecondsSinceOutput: Date.now() - lastOutputAt,
+          stderrTail: stderr.slice(-2_000),
+        });
       const deadline = Date.now() + limitMs;
       while (!predicate()) {
         if (
@@ -599,13 +614,14 @@ async function replayRecordingAttempt(
           child.pid === undefined
         ) {
           stalls.push(
-            `bridge exited (${describeBridgeExit(child)}) while waiting for ${label}${reportedBridgeExit ? "" : stderrTail(stderr)}`,
+            `bridge exited (${describeBridgeExit(child)}) while waiting for ${label}${reportedBridgeExit ? "" : stderrTail(stderr)}: ${diagnostic()}`,
           );
           reportedBridgeExit = true;
           return;
         }
         if (Date.now() > deadline) {
-          if (reportStall) stalls.push(`timed out waiting for ${label}`);
+          if (reportStall)
+            stalls.push(`timed out waiting for ${label}: ${diagnostic()}`);
           return;
         }
         await sleep(10);
@@ -666,7 +682,6 @@ async function replayRecordingAttempt(
       };
     }
 
-    const sentRequestIds: string[] = [];
     for (const step of initialized ? steps : []) {
       if (step.message === null || !isRequest(step.message)) {
         if (step.message !== null && !isResponse(step.message)) {

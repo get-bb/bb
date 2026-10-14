@@ -88,6 +88,7 @@ const providerIdAtom = atomWithStorage<string>(
   { getOnInit: true },
 );
 const emptyModelAtom = atom("");
+const emptyServiceTierAtom = atom<StoredServiceTier>("");
 const emptyReasoningLevelAtom = atom<StoredReasoningLevel>("");
 
 function getProviderSelectionStorageKey(
@@ -114,17 +115,20 @@ const modelAtomFamily = atomFamily((providerId: string) =>
     { getOnInit: true },
   ),
 );
-const serviceTierAtom = atomWithStorage<StoredServiceTier>(
-  SERVICE_TIER_STORAGE_KEY,
-  "",
-  createTabScopedStorage<StoredServiceTier>(
-    {
-      parse: (value, initialValue) => value ?? initialValue,
-      serialize: (value) => value,
-    },
-    { persistInitialValue: true },
+const providerServiceTierStorage = createTabScopedStorage<StoredServiceTier>(
+  {
+    parse: (value, initialValue) => value ?? initialValue,
+    serialize: (value) => value,
+  },
+  { persistInitialValue: true },
+);
+const serviceTierAtomFamily = atomFamily((providerId: string) =>
+  atomWithStorage<StoredServiceTier>(
+    getProviderSelectionStorageKey(SERVICE_TIER_STORAGE_KEY, providerId),
+    "",
+    providerServiceTierStorage,
+    { getOnInit: true },
   ),
-  { getOnInit: true },
 );
 const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
   atomWithStorage<StoredReasoningLevel>(
@@ -264,8 +268,13 @@ export function usePromptBoxModelPreference(
   return { setValue, value };
 }
 
-export function usePromptBoxServiceTierPreference(): PersistedServiceTierSelectionField {
-  const [value, setAtomValue] = useAtom(serviceTierAtom);
+export function usePromptBoxServiceTierPreference(
+  providerId: string,
+): PersistedServiceTierSelectionField {
+  const selectionAtom = providerId
+    ? serviceTierAtomFamily(providerId)
+    : emptyServiceTierAtom;
+  const [value, setAtomValue] = useAtom(selectionAtom);
   const setValue = useCallback(
     (nextValue: StoredServiceTier) => {
       setAtomValue(nextValue);

@@ -136,10 +136,16 @@ export function PromptStackChevron({ isExpanded }: { isExpanded: boolean }) {
   );
 }
 
-export function PromptStackCountSlot({ count }: { count: number }) {
+export function PromptStackCountSlot({
+  count,
+  prefix = "+",
+}: {
+  count: number;
+  prefix?: "+" | "";
+}) {
   return (
     <span className={TRAILING_SLOT_CLASS}>
-      <span className={COUNT_PILL_CLASS}>{`+${count}`}</span>
+      <span className={COUNT_PILL_CLASS}>{`${prefix}${count}`}</span>
     </span>
   );
 }

@@ -437,6 +437,24 @@ payloads. Use it to reproduce performance problems that only appear at scale.
   deletes the database file first. Without `--reset` the fixture appends.
 - Example: `pnpm seed:perf -- --reset --events 400000`.
 
+## Opt-in Benchmarks
+
+`pnpm exec turbo run bench` runs the benchmarks that `turbo run test` skips. The
+task is uncached, and each package's `bench` script turns its benchmark on:
+
+- `@bb/app`: the sidebar thread list mount and update benchmark
+  (`sidebar.bench.test.tsx`) and the composer large-paste benchmark
+  (`prompt-paste-performance.test.ts`). `BB_SIDEBAR_BENCH_THREADS` sets the
+  thread count (default 3000), `BB_SIDEBAR_BENCH_OUT` writes the results as
+  JSON, and `PROMPTBOX_PERF_FIXTURE_OUT` saves the paste fixture.
+- `@bb/host-watcher`: the root watcher recovery benchmark
+  (`root-recovery-benchmark.test.ts`). `BB_WATCHER_BENCHMARK_OUTPUT` writes its
+  report.
+
+Filter to one package, e.g.
+`BB_SIDEBAR_BENCH_OUT=/tmp/sidebar.json pnpm exec turbo run bench --filter=@bb/app`.
+Compare runs on an idle machine; the numbers are wall-clock timings.
+
 ## Provider Corpus
 
 The provider corpus is a private set of real production threads (307 threads,
@@ -824,6 +842,31 @@ spent on the network. `outcome` is `output`, `not-sent` (queued or refused),
 `command-failed`, `completed-without-output`, `superseded` by a newer traced
 send on the thread, or `no-output` after two minutes. Queue drains, retries,
 and other server-initiated dispatches are not traced.
+
+### Stream traces
+
+While both gates are on, every ingested daemon event batch that carries agent
+message, reasoning, or plan text writes one `Stream trace` info line per thread.
+`streamTrace.receivedAt`, `committedAt`, and `notifiedAt` are epoch
+milliseconds; `events`, `textEvents`, and `textChars` size the batch;
+`served` is `push` when a thread view is subscribed to timeline pushes (the
+`timelinePush` experiment) and `refetch` otherwise, so comparing lines of the
+two kinds gives the A/B between delivery paths. The
+intervals between consecutive lines for a thread are the chunk cadence the
+server sees. The host daemon logs `Posted daemon event batch` at debug level
+(`BB_LOG_LEVEL=debug`) for every POST: `eventBatch.events`, `textChars`,
+`oldestQueuedMs` (how long the oldest event waited), `sincePreviousPostMs`,
+`postMs`, and `postedAt`. Each timeline push to a subscribed thread view writes
+a `Timeline push trace` line: `timelinePushTrace.maxSeq`, `withDelta` (false
+when the subscriber had no base and received the full window), `bytes`,
+`buildMs`, and `sentAt`. In the browser, the same gates add
+`performance.mark` entries: `bb:timeline-applied` (`threadId`, `maxSeq`,
+`source`: `fetch`, `fetch-delta`, `push`, or `push-delta`) when timeline data
+is applied, and `bb:stream-row-commit` (`rowId`,
+`threadId`, `textLength`) when a streaming assistant row commits. Read them with
+`performance.getEntriesByType("mark")`. Streaming assistant text is revealed a
+complete line at a time, so row commits follow line completion, not every
+applied chunk.
 
 ### Diagnose a captured stall
 

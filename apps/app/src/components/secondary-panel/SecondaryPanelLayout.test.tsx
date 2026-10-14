@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -15,13 +16,11 @@ import {
   SecondaryPanelLayout,
   type SecondaryPanelRenderArgs,
 } from "./SecondaryPanelLayout";
+import { panelGroupState } from "@/test/react-resizable-panels-stub";
+import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 type DrawerShellCallback = (open: boolean) => void;
 
-const panelGroupState = vi.hoisted(() => ({
-  getLayout: vi.fn(() => [60, 40]),
-  setLayout: vi.fn(),
-}));
 const drawerShellState = vi.hoisted(() => ({
   onContentAnimationEnd: undefined as DrawerShellCallback | undefined,
 }));
@@ -30,42 +29,10 @@ vi.mock("@/lib/browser-view-bounds-sync", () => ({
   dispatchBrowserViewBoundsSync: vi.fn(),
 }));
 
-vi.mock("jotai", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => 40,
-}));
-
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<
-    {
-      getLayout: () => number[];
-      setLayout: (layout: number[]) => void;
-    },
-    { children?: ReactNode }
-  >(({ children, ...props }, ref) => {
-    React.useImperativeHandle(
-      ref,
-      () => ({
-        getLayout: panelGroupState.getLayout,
-        setLayout: panelGroupState.setLayout,
-      }),
-      [],
-    );
-    return React.createElement(
-      "div",
-      { ...props, "data-testid": "panel-group" },
-      children,
-    );
-  });
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: { children?: ReactNode }) =>
-    React.createElement("div", { "data-testid": "main-panel" }, children);
-
-  return { Panel, PanelGroup };
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-stub"),
+);
 
 vi.mock("./CompactSecondaryPanelShelf", async () => {
   const React = await import("react");
@@ -148,31 +115,35 @@ function withHostedPane(
 
 function renderLayout(args: RenderLayoutArgs) {
   let renderArgs = args;
+  const store = createStore();
+  store.set(secondaryPanelWidthPercentAtom, 40);
   const renderContent = () =>
     withHostedPane(
-      <CompactViewportOverrideProvider
-        isCompactViewport={renderArgs.isCompactViewport}
-      >
-        <SecondaryPanelLayout
-          open={renderArgs.open}
-          onToggle={noop}
-          onClose={renderArgs.onClose ?? noop}
-          panelGroupKey={renderArgs.panelGroupKey}
-          resetKey={renderArgs.resetKey}
-          contentKey={renderArgs.resetKey}
-          drawerLabel="Details"
-          drawerFallback={<div data-testid="drawer-fallback" />}
-          mainPanelId="test-main-panel"
-          main={<main data-testid="main-content" />}
-          collapse={
-            renderArgs.collapseActive === undefined
-              ? undefined
-              : { active: renderArgs.collapseActive, onToggle: noop }
-          }
-          renderPanel={renderArgs.renderPanel}
-          composerHost={null}
-        />
-      </CompactViewportOverrideProvider>,
+      <Provider store={store}>
+        <CompactViewportOverrideProvider
+          isCompactViewport={renderArgs.isCompactViewport}
+        >
+          <SecondaryPanelLayout
+            open={renderArgs.open}
+            onToggle={noop}
+            onClose={renderArgs.onClose ?? noop}
+            panelGroupKey={renderArgs.panelGroupKey}
+            resetKey={renderArgs.resetKey}
+            contentKey={renderArgs.resetKey}
+            drawerLabel="Details"
+            drawerFallback={<div data-testid="drawer-fallback" />}
+            mainPanelId="test-main-panel"
+            main={<main data-testid="main-content" />}
+            collapse={
+              renderArgs.collapseActive === undefined
+                ? undefined
+                : { active: renderArgs.collapseActive, onToggle: noop }
+            }
+            renderPanel={renderArgs.renderPanel}
+            composerHost={null}
+          />
+        </CompactViewportOverrideProvider>
+      </Provider>,
       renderArgs.isFocusedHosted,
     );
   const view = render(renderContent());

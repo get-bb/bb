@@ -1,3 +1,4 @@
+import type { ThreadEvent } from "@bb/domain";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -42,6 +43,12 @@ interface RuntimeProviderProcessLineArgs {
   providerProcess: RuntimeProviderProcess;
 }
 
+interface RuntimeProviderDeferredEventsArgs {
+  events: ThreadEvent[];
+  providerProcess: RuntimeProviderProcess;
+  sourceThreadId: string;
+}
+
 interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   createAdapter?: (
@@ -59,6 +66,7 @@ interface RuntimeProviderProcessManagerArgs {
   ) => RuntimeProviderIdentityState;
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
+  handleDeferredEvents: (args: RuntimeProviderDeferredEventsArgs) => void;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderThreadDetached: (threadId: string) => void;
@@ -398,6 +406,20 @@ export class RuntimeProviderProcessManager {
       stderrLineTail: Buffer.alloc(0),
       stderrTail: Buffer.alloc(0),
     };
+
+    args.adapter.onDeferredEvents((sourceThreadId, events) => {
+      if (
+        this.shuttingDown ||
+        !this.isCurrentProviderProcess({ providerProcess })
+      ) {
+        return;
+      }
+      this.args.handleDeferredEvents({
+        events,
+        providerProcess,
+        sourceThreadId,
+      });
+    });
 
     readBoundedLines({
       input: child.stdout,
