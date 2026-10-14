@@ -264,7 +264,7 @@ describe("Workspace", () => {
   });
 
   it("caps listed working-tree files, keeping tracked changes ahead of untracked files", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(path.join(repoPath, "a.txt"), "a\n", "utf8");
     await fs.writeFile(path.join(repoPath, "z.txt"), "z\n", "utf8");
     await runGit(["add", "a.txt", "z.txt"], { cwd: repoPath });
@@ -306,7 +306,7 @@ describe("Workspace", () => {
   });
 
   it("caps listed merge-base files while reporting the total", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     for (const name of ["one.txt", "two.txt", "three.txt"]) {
       await fs.writeFile(path.join(repoPath, name), `${name}\n`, "utf8");
@@ -325,7 +325,7 @@ describe("Workspace", () => {
   });
 
   it("rejects a non-positive status file cap", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await expect(
       new Workspace(repoPath).getStatus({ maxFiles: 0 }),
     ).rejects.toBeInstanceOf(WorkspaceError);
