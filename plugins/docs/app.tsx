@@ -20,10 +20,7 @@ import {
   type PluginThreadPanelProps,
   type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
-import {
-  DOMParser as ProseMirrorDOMParser,
-  type Node as ProseMirrorNode,
-} from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { createProposalDiff, proposalDiffKey } from "./proposal-diff.js";
 import {
   useDocumentSession,
@@ -57,6 +54,12 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
+import {
+  loadMarkdownBlocks,
+  parseMarkdownBlocks,
+  saveMarkdownBlocks,
+  type MarkdownBlocks,
+} from "./markdown-blocks.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { toast } from "sonner";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
@@ -441,22 +444,22 @@ function TiptapEditor(props: {
   const editorRef = useRef<Editor | null>(null);
   const baselineRef = useRef<ProseMirrorNode | null>(null);
   const sourceRef = useRef(initialValue);
+  const blocksRef = useRef<MarkdownBlocks | null>(null);
   const latest = useRef(props);
   latest.current = props;
   const serializeRef = useRef<() => string>(() => "");
   const setBase = (editor: Editor) => {
     if (latest.current.baseMarkdown == null) baselineRef.current = null;
     else {
-      const body = parseMarkdownDocument(latest.current.baseMarkdown).body;
-      const root = new window.DOMParser().parseFromString(
-        editor.storage.markdown.parser.parse(
-          displayMarkdown(body, previewBaseUrl, notePath),
-        ),
-        "text/html",
-      ).body;
-      baselineRef.current = ProseMirrorDOMParser.fromSchema(
-        editor.schema,
-      ).parse(root);
+      const { blocks } = parseMarkdownBlocks(
+        editor,
+        parseMarkdownDocument(latest.current.baseMarkdown).body,
+        (source) => displayMarkdown(source, previewBaseUrl, notePath),
+      );
+      baselineRef.current = editor.schema.topNodeType.createAndFill(
+        null,
+        blocks.flatMap((block) => block.nodes),
+      );
     }
     editor.view.dispatch(
       editor.state.tr.setMeta(proposalDiffKey, { refresh: true }),
@@ -505,7 +508,7 @@ function TiptapEditor(props: {
           linkify: true,
         }),
       ],
-      content: displayMarkdown(markdownDocument.body, previewBaseUrl, notePath),
+      content: "",
       autofocus: inline ? false : "end",
       editable: !disabled,
       onFocus: () => latest.current.onFocusChange?.(true),
@@ -541,22 +544,24 @@ function TiptapEditor(props: {
       },
     });
     editorRef.current = editor;
+    blocksRef.current = loadMarkdownBlocks(
+      editor,
+      markdownDocument.body,
+      (source) => displayMarkdown(source, previewBaseUrl, notePath),
+      false,
+    );
     setBase(editor);
-    const getMarkdown = () => {
-      const current = parseMarkdownDocument(sourceRef.current);
-      const leadingBreaks = current.frontmatter
-        ? (/^(?:\r?\n)*/.exec(current.body)?.[0] ?? "")
-        : "";
-      return (
-        current.frontmatter +
-        leadingBreaks +
+    const getMarkdown = () =>
+      parseMarkdownDocument(sourceRef.current).frontmatter +
+      saveMarkdownBlocks(editor, blocksRef.current!, (nodes) =>
         storedMarkdown(
-          editor.storage.markdown.getMarkdown(),
+          editor.storage.markdown.serializer.serialize(
+            editor.schema.topNodeType.create(null, nodes),
+          ),
           previewBaseUrl,
           notePath,
-        )
+        ),
       );
-    };
     serializeRef.current = getMarkdown;
     latest.current.onFirstRender(getMarkdown());
     editor.on("update", () => latest.current.onMarkdownChange(getMarkdown()));
@@ -573,13 +578,11 @@ function TiptapEditor(props: {
     if (value !== sourceRef.current && value !== serializeRef.current()) {
       const { from, to } = editor.state.selection;
       const focused = editor.isFocused;
-      editor.commands.setContent(
-        displayMarkdown(
-          parseMarkdownDocument(value).body,
-          previewBaseUrl,
-          notePath,
-        ),
-        false,
+      blocksRef.current = loadMarkdownBlocks(
+        editor,
+        parseMarkdownDocument(value).body,
+        (source) => displayMarkdown(source, previewBaseUrl, notePath),
+        true,
       );
       if (focused)
         editor.commands.setTextSelection({
