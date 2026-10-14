@@ -232,6 +232,8 @@ interface FakeBrowserWindowOptions {
 }
 
 interface FakePopupWebContents {
+  audioMuted: boolean;
+  getBackgroundThrottling(): boolean;
   emitWindowOpen(
     url: string,
     details?: Partial<Omit<FakeWindowOpenDetails, "url">>,
@@ -697,6 +699,9 @@ const electronMock = vi.hoisted(() => {
       },
     ) {
       this.webContents = new FakeWebContents(nextWebContentsId);
+      this.webContents.setBackgroundThrottling(
+        options.webPreferences.backgroundThrottling ?? true,
+      );
       nextWebContentsId += 1;
     }
 
