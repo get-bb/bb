@@ -33,12 +33,16 @@ function run(script: string, env: Record<string, string>) {
   });
 }
 
+function gateScript(): string {
+  return `gh() { printf '%s\\n' "$*"; }\n${stepScript("pr-gate.yml", "Check approval and maintainer edits, and close failing PRs")}`;
+}
+
 it("keeps trusted automation pull requests open", ({ skip }) => {
   skip(
     process.platform === "win32",
     "this workflow step runs in bash on Linux runners",
   );
-  const script = `gh() { printf '%s\\n' "$*"; }\n${stepScript("pr-gate.yml", "Check approval and close unapproved PRs")}`;
+  const script = gateScript();
   const gate = (author: string) =>
     run(script, {
       PR_AUTHOR: author,
@@ -53,6 +57,53 @@ it("keeps trusted automation pull requests open", ({ skip }) => {
     expect(result.stdout).not.toContain("pr close");
   }
   expect(gate("untrusted-automation[bot]").stdout).toContain("pr close");
+});
+
+it("closes personal fork pull requests that block maintainer edits", ({
+  skip,
+}) => {
+  skip(
+    process.platform === "win32",
+    "this workflow step runs in bash on Linux runners",
+  );
+  const script = gateScript();
+  const gate = (
+    association: string,
+    headRepo: string,
+    ownerType: string,
+    canModify: string,
+  ) =>
+    run(script, {
+      PR_AUTHOR: "fork-author",
+      PR_ASSOCIATION: association,
+      PR_NUMBER: "123",
+      GITHUB_REPOSITORY: "get-bb/bb",
+      HEAD_REPO: headRepo,
+      HEAD_OWNER_TYPE: ownerType,
+      MAINTAINER_CAN_MODIFY: canModify,
+    });
+  for (const [headRepo, ownerType, canModify] of [
+    ["fork-author/bb", "User", "true"],
+    ["acme/bb", "Organization", "false"],
+    ["get-bb/bb", "Organization", "false"],
+    ["", "", "false"],
+  ]) {
+    const result = gate("MEMBER", headRepo, ownerType, canModify);
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("pr close");
+  }
+  const blocked = gate("MEMBER", "fork-author/bb", "User", "false");
+  expect(blocked.stdout).toContain('"Allow edits by maintainers" turned off');
+  expect(blocked.stdout).toContain("pr close");
+  expect(blocked.stdout).not.toContain("--add-label needs-approval");
+  const unapproved = gate("NONE", "fork-author/bb", "User", "true");
+  expect(unapproved.stdout).toContain("post a link to this PR");
+  expect(unapproved.stdout).toContain("pr close");
+  const unapprovedBlocked = gate("NONE", "fork-author/bb", "User", "false");
+  expect(unapprovedBlocked.stdout).toContain(
+    '"Allow edits by maintainers" turned off',
+  );
+  expect(unapprovedBlocked.stdout).toContain("post a link to the new PR");
 });
 
 it("parses only complete GitHub user and bot approval commands", ({ skip }) => {
