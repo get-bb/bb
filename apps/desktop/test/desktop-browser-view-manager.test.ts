@@ -2066,7 +2066,8 @@ describe("DesktopBrowserViewManager", () => {
           expiresAt: Date.now() + 60_000,
         });
         client.suspend();
-        expect(broker.getControl(91, "browser:a")).toBeNull();
+        expect(broker.getControl(91, "browser:a")).toMatchObject({ control: null });
+        expect(broker.getTarget(91)).toBeNull();
         expect(view.webContents.isDestroyed()).toBe(false);
         await applyServerMove({
           move: {
