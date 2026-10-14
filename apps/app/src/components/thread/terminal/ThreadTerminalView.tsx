@@ -21,7 +21,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
-import { isMacKeyboardPlatform, TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { appToast } from "@/components/ui/app-toast";
 import type {
@@ -35,7 +35,6 @@ import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { browserPlatform } from "@/lib/app-keybindings";
 import {
   anchorPointFromMouseEvent,
   selectionAnchorFromPointerRelease,
@@ -48,7 +47,7 @@ import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
 import { TerminalMobileControls } from "./TerminalMobileControls";
-import { attachTerminalClipboardShortcuts } from "./terminal-clipboard-shortcuts";
+import { attachTerminalCopyShortcut } from "./terminal-copy-shortcut";
 import {
   applyTerminalControl,
   encodeTerminalArrow,
@@ -954,11 +953,10 @@ export function ThreadTerminalView({
         theme: buildTerminalTheme(),
       });
       terminalRef.current = terminal;
-      attachTerminalClipboardShortcuts({
+      attachTerminalCopyShortcut({
         copy: (text) => {
           void copyToClipboardWithToast(text, { successMessage: null });
         },
-        isMac: isMacKeyboardPlatform(browserPlatform()),
         terminal,
       });
       fitAddon = new LoadedFitAddon();

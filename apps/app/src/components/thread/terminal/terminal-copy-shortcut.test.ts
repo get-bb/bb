@@ -2,7 +2,7 @@
 
 import { Terminal } from "@xterm/xterm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attachTerminalClipboardShortcuts } from "./terminal-clipboard-shortcuts";
+import { attachTerminalCopyShortcut } from "./terminal-copy-shortcut";
 
 const disposers: Array<() => void> = [];
 
@@ -13,7 +13,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function openTerminal(isMac: boolean) {
+async function openTerminal() {
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
     measureText: (text: string) => ({ width: text.length * 9 }),
   } as unknown as CanvasRenderingContext2D);
@@ -22,7 +22,7 @@ async function openTerminal(isMac: boolean) {
   const terminal = new Terminal({ cols: 20, rows: 5 });
   const copy = vi.fn<(text: string) => void>();
   const sent: string[] = [];
-  attachTerminalClipboardShortcuts({ copy, isMac, terminal });
+  attachTerminalCopyShortcut({ copy, terminal });
   terminal.onData((data) => sent.push(data));
   terminal.open(host);
   disposers.push(() => {
@@ -50,8 +50,7 @@ async function openTerminal(isMac: boolean) {
 
 const COPY_CHORDS = [
   {
-    name: "Ctrl+Shift+C on Linux and Windows",
-    isMac: false,
+    name: "a Latin layout",
     init: {
       code: "KeyC",
       ctrlKey: true,
@@ -61,13 +60,7 @@ const COPY_CHORDS = [
     },
   },
   {
-    name: "Cmd+C on macOS",
-    isMac: true,
-    init: { code: "KeyC", key: "c", keyCode: 67, metaKey: true },
-  },
-  {
-    name: "Ctrl+Shift+C on a non-Latin layout",
-    isMac: false,
+    name: "a non-Latin layout",
     init: {
       code: "KeyC",
       ctrlKey: true,
@@ -78,30 +71,11 @@ const COPY_CHORDS = [
   },
 ] as const;
 
-const PASTE_CHORDS = [
-  {
-    name: "Ctrl+Shift+V on Linux and Windows",
-    isMac: false,
-    init: {
-      code: "KeyV",
-      ctrlKey: true,
-      key: "V",
-      keyCode: 86,
-      shiftKey: true,
-    },
-  },
-  {
-    name: "Cmd+V on macOS",
-    isMac: true,
-    init: { code: "KeyV", key: "v", keyCode: 86, metaKey: true },
-  },
-] as const;
-
-describe("terminal clipboard shortcuts", () => {
+describe("terminal copy shortcut", () => {
   it.each(COPY_CHORDS)(
-    "copies the selection with $name without sending input",
-    async ({ init, isMac }) => {
-      const { copy, press, sent, terminal } = await openTerminal(isMac);
+    "copies the selection with Ctrl+Shift+C on $name without sending input",
+    async ({ init }) => {
+      const { copy, press, sent, terminal } = await openTerminal();
       terminal.select(0, 0, 5);
 
       const event = press(init);
@@ -112,8 +86,8 @@ describe("terminal clipboard shortcuts", () => {
     },
   );
 
-  it("claims the copy shortcut without writing an empty selection", async () => {
-    const { copy, press, sent } = await openTerminal(false);
+  it("claims Ctrl+Shift+C without writing an empty selection", async () => {
+    const { copy, press, sent } = await openTerminal();
 
     const event = press(COPY_CHORDS[0].init);
 
@@ -122,28 +96,13 @@ describe("terminal clipboard shortcuts", () => {
     expect(sent).toEqual([]);
   });
 
-  it.each([false, true])(
-    "keeps Ctrl+C as an interrupt while text is selected (isMac: %s)",
-    async (isMac) => {
-      const { copy, press, sent, terminal } = await openTerminal(isMac);
-      terminal.select(0, 0, 5);
+  it("keeps Ctrl+C as an interrupt while text is selected", async () => {
+    const { copy, press, sent, terminal } = await openTerminal();
+    terminal.select(0, 0, 5);
 
-      press({ code: "KeyC", ctrlKey: true, key: "c", keyCode: 67 });
+    press({ code: "KeyC", ctrlKey: true, key: "c", keyCode: 67 });
 
-      expect(sent).toEqual(["\x03"]);
-      expect(copy).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(PASTE_CHORDS)(
-    "leaves $name to the browser paste action",
-    async ({ init, isMac }) => {
-      const { press, sent } = await openTerminal(isMac);
-
-      const event = press(init);
-
-      expect(event.defaultPrevented).toBe(false);
-      expect(sent).toEqual([]);
-    },
-  );
+    expect(sent).toEqual(["\x03"]);
+    expect(copy).not.toHaveBeenCalled();
+  });
 });
