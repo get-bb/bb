@@ -29,7 +29,7 @@ caught, logged, and counted in the plugin's handler stats (`bb plugin list`;
 stats survive reloads and reset on remove). The surface that asks is
 `bb.experimental_hooks`, below, where core acts on your answer.
 
-Fifteen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
+Seventeen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
 fires after core commits a pending interaction row. The three `message.*`
 ones fire when a dispatch is queued behind a wait (again when a row's wait is
 rewritten), when a queued row's waits all clear and it dispatches, or when the
@@ -118,6 +118,13 @@ keepalives and opening a terminal do not count.
 removed it or its machine provider finished tearing it down. `host` is the public
 host DTO as it was at removal; `bb.sdk.hosts.get` answers 404 for it afterwards, so
 drop any per-host state here.
+
+`experimental_environment.removed` fires after an environment provider's
+removal succeeds and is committed. `removal` holds `environmentId`,
+`removedAt`, and the pre-removal `hostId`, `path`, and `providerOwnedPath`.
+Provider success does not guarantee the path was deleted. Delivery is
+ephemeral, so reconcile external state on startup, reconnect, and
+periodically.
 
 ### bb.experimental_hooks — the dispatch checkpoint
 

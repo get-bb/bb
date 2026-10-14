@@ -144,16 +144,10 @@ target? })`. Inside the fixed-tab component,
   refresh. Invalid, unavailable, untargeted, or other-plugin references return
   false without changing valid panel state.
 
-  `experimental_sidebarAccessory` is a no-props, presentational component at
-  the trailing edge of the sidebar row. It can own SDK hooks for a live count
-  or short status without lifting state into the host sidebar. The host does
-  not mount it on compact viewports or in the icon-only rail of the
-  `navigationRail` experiment; on wider viewports it clips the component
-  to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
-  It shares the trailing action column and fades out for the host options
-  button on row hover or keyboard focus without unmounting. Do not render
-  controls or portalled content there. A throw hides only the accessory.
-  Experimental: see `docs/api_to_audit.md`.
+  `experimental_sidebarAccessory` is a no-props, presentational component for
+  a live count or short status beside the panel's navigation entry. The SDK
+  accepts it, but no host surface mounts it, because the navigation rail is
+  icon-only. Experimental: see `docs/api_to_audit.md`.
 
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
@@ -245,9 +239,9 @@ onChange }` — the control the New Thread environment picker renders beside
   `{ openSettings }`. New plugins should use
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.
-- `experimental_sidebarNavigation`, `experimental_sidebarHeader`,
-  `experimental_threadList`, `experimental_threadHeaderAction`, and
-  `experimental_browserToolbarAction` are covered in frontend-registration.md.
+- `experimental_threadList`, `experimental_threadHeaderAction`,
+  `experimental_threadAction`, and `experimental_browserToolbarAction` are
+  covered in frontend-registration.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order

@@ -72,7 +72,8 @@ extending the context model or default binding policy.
 `experimental_description` options, and method definitions accept
 `experimental_description`. A discoverable method publishes its wire schemas
 (Standard JSON Schema) and description. Discovery does not change RPC
-authorization or dispatch. `bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method? })`
+authorization or dispatch.
+`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method?, signal? })`
 lists the published methods of loaded plugins. Methods disappear on unload, so
 callers handle the race between discovery and invocation. The fake host
 exposes `experimental_publishedRpcMethods`.
@@ -104,15 +105,48 @@ before the toggle is reachable.
 
 ## Queued message edit holds
 
-`bb.sdk.threads.queuedMessages.experimental_holdForEdit({ threadId, queuedMessageId })` (`POST /threads/:id/queued-messages/:queuedMessageId/edit-hold`) holds a queued message while someone edits it and returns `{ leaseMs }`. While the hold is live, no automatic dispatch (idle drain, schedule, plugin recheck, host reconnect, failed-retry) claims the row, and the idle drain also leaves the drainable rows behind it queued, so the edited message still goes first. Rows behind a held row that wait on something else (a schedule, a plugin) are not held back. Explicit send-now still claims a held row. Calling it again renews the lease; a hold that is not renewed within `leaseMs` lapses and the periodic sweep dispatches the row. It responds 409 once a dispatch has claimed the row and 404 for a missing row. Holding never changes `updatedAt`, so `expectedUpdatedAt` from before the hold stays valid for the save. A successful `queuedMessages.update` clears the hold in the same write. `experimental_releaseEditHold` (`DELETE` on the same path) cancels without saving and is a no-op for an unheld row; releasing or saving a held row immediately re-attempts its dispatch. The app's inline queued-message editor takes the hold when it opens, renews it every quarter lease, and releases it on close. Holds are not owned: any client may renew or release one.
+`bb.sdk.threads.queuedMessages.experimental_holdForEdit({ threadId, queuedMessageId })`
+(`POST /threads/:id/queued-messages/:queuedMessageId/edit-hold`) holds a
+queued row while someone edits it and returns `{ leaseMs }`. While the hold
+is live, no automatic dispatch (idle drain, schedule, plugin recheck, host
+reconnect, failed-retry) claims the row, and the idle drain also keeps the
+drainable rows behind it queued; rows waiting on a schedule or plugin are not
+held back, and explicit send-now still claims it. Calling again renews the
+lease; an unrenewed hold lapses after `leaseMs` and the periodic sweep
+dispatches the row. It answers 409 once a dispatch claimed the row and 404
+for a missing row. Holding never changes `updatedAt`, so a pre-hold
+`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` clears
+the hold. `experimental_releaseEditHold` (`DELETE`, same path) cancels
+without saving and is a no-op for an unheld row; releasing or saving
+re-attempts dispatch immediately. The app's inline editor holds on open,
+renews every quarter lease, and releases on close. Any client may renew or
+release a hold.
 
-Before stabilization, audit whether holds need an owner token so two clients editing the same row cannot release each other's hold, whether queue DTOs and `bb thread queue list` should show that a row is being edited, and whether the lease length suits throttled background tabs.
+Before stabilization, audit whether holds need an owner token so two clients
+editing the same row cannot release each other's hold, whether queue DTOs and
+`bb thread queue list` should show that a row is being edited, and whether
+the lease length suits throttled background tabs.
 
 ## Plugin cache pruning
 
-`bb.sdk.plugins.experimental_pruneCache({ dryRun? })` (`POST /plugins/cache/prune`) deletes cached git and npm plugin versions under `<data>/plugins/cache` that no installed plugin uses, and returns `{ dryRun, removed, bytes }`. Each `removed` entry has `pluginId` (`null` for a cache directory with no artifact record), `version` (git commit or npm version), `path`, and the `bytes` it freed; a shared monorepo checkout is counted once. It removes every non-active version regardless of age (for example versions left by earlier bb releases, the candidate of a rolled-back update, or an interrupted operation) and unrecorded commit or version directories. It keeps every installed plugin's active version, versions a pending or restoring rollback still needs, any directory containing or inside an installed plugin's root (legacy and path installs), and in-flight staging directories. It runs under the plugin registration lock, so it never overlaps an install, update, or removal. `dryRun: true` reports the same entries without deleting. Removing a plugin deletes its cached versions immediately, and a successful update deletes the plugin's replaced versions once activation has stabilized; only the update's state snapshot stays for the 7-day retention window. The same operation backs `bb plugin prune [--dry-run]` and the command palette's Clean up plugin cache.
+`bb.sdk.plugins.experimental_pruneCache({ dryRun? })`
+(`POST /plugins/cache/prune`) deletes cached git and npm plugin versions
+under `<data>/plugins/cache` that no installed plugin uses and returns
+`{ dryRun, removed, bytes }`; each removed entry has `pluginId` (null for an
+unrecorded directory), `version`, `path`, and `bytes`, counting a shared
+monorepo checkout once. It removes every non-active version regardless of
+age and keeps active versions, versions a pending or restoring rollback
+needs, directories containing or inside an installed plugin's root, and
+in-flight staging directories. It runs under the plugin registration lock.
+Removing a plugin deletes its cached versions at once, and a successful update
+deletes replaced versions once activation stabilizes (its state snapshot
+stays for the 7-day retention window). It backs `bb plugin prune [--dry-run]`
+and the palette's Clean up plugin cache.
 
-Before stabilization, audit whether the response should report retained-but-unused sizes so a UI can show reclaimable space without a dry run, and whether stale `.staging`, `.promoting`, and `.corrupt` directories left by crashes should be collected too.
+Before stabilization, audit whether the response should report
+retained-but-unused sizes so a UI can show reclaimable space without a dry
+run, and whether stale `.staging`, `.promoting`, and `.corrupt` directories
+left by crashes should be collected too.
 
 ## RPC caller identity (`ExperimentalPluginRpcHandlerContext.experimental_caller`)
 
@@ -257,19 +291,14 @@ Also kept only until the next major:
   populates it.
 
 `experimental_useSidebarThreadActions` and `PluginSidebarThreadActions`
-(`@get-bb/plugin-sdk/app`) are superseded by the thread action registry
-(`app.slots.experimental_threadAction`, `experimental_useThreadActions`, the
-thread action components), `useSdk().threads`, and
-`useBbNavigate().toThread` / `toCompose`. Like `useComposerView`, they and the
-testing harness's `SidebarActionCall` / `inspection.sidebarActionCalls` are
-tagged `@internal`: `stripInternal` removes them from the published
-declarations, so a plugin that upgrades its SDK gets type errors, while the
-runtime keeps exporting and implementing the hook, so installed plugins and
-host builds of plugins that still import it keep working. The frontend export
-parity test lists it as a runtime-only export; nothing in this repository
-calls it (the runtime test in `PluginAppOverlays.test.tsx` only checks it
-still resolves). Its `experimental_archiveEnvironmentThreads` moved to
-`experimental_useArchiveEnvironmentThreads`. Remove at the next major version.
+(`@get-bb/plugin-sdk/app`), with the testing harness's `SidebarActionCall` /
+`inspection.sidebarActionCalls`, are superseded by the thread action
+registry, `useSdk().threads`, and `useBbNavigate().toThread` / `toCompose`;
+`experimental_archiveEnvironmentThreads` moved to
+`experimental_useArchiveEnvironmentThreads`. Like `useComposerView` they are
+`@internal`: published declarations drop them, while the runtime keeps
+implementing them for installed plugins. Nothing in this repository calls
+them.
 
 ## Settings schemas and server writes
 
@@ -624,43 +653,29 @@ spec grows a field.
 
 ## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
 
-**Experimental preview (2026-10-09).** The rebuilt ACP bridge, published
-beside the original kit so the two can be compared before one replaces the
-other. The built-in "ACP providers (new adapter)" plugin
-(`plugins/provider-acp-next`, off by default) is its consumer: its `bb.host`
-artifact re-exports `experimental_acpProviderBridge` from this subpath the way
-the original plugin re-exports it from `provider-bridge/acp`. Turning that
-plugin on turns the original ACP plugin off, and the reverse.
+**Experimental preview (2026-10-09).** Published beside the original kit so
+the two can be compared. The built-in "ACP providers (new adapter)" plugin
+(`plugins/provider-acp-next`, off by default and mutually exclusive with the
+original ACP plugin) re-exports its `experimental_acpProviderBridge`.
 
-**What it does.** The same members as the original kit
-(`experimental_acpProviderBridge`, `experimental_probeAcpAgent`,
-`experimental_acpAgentProbeSchema`, `experimental_acpLaunchSpecSchema` and
-their types), backed by `packages/provider-bridge-acp-next`: transport on the
-official `@agentclientprotocol/sdk`, a session model that opens turns for
-agent-started work, live slash commands and session options published as bb
-thread state, elicitation forms as question cards, and sign-in guidance from
-the agent's advertised auth methods.
+The same members as the original kit, backed by
+`packages/provider-bridge-acp-next` (the official `@agentclientprotocol/sdk`
+transport, turns for agent-started work, slash commands and session options
+as bb thread state, elicitation forms as question cards, sign-in guidance
+from advertised auth methods), plus `experimental_registerAcpDialect`. A
+plugin calls it at module load in its `bb.host` artifact with an `AcpDialect`
+and names the id as `acpDialect` in its registration. Empty and built-in ids
+(`acp`, `cursor`, `grok`, `omp`, `opencode`) throw, re-registering an id
+replaces it, and an unregistered id resolves to the generic dialect. bb's own
+dialects resolve through the same registry (`resolveAcpDialect`).
 
-**`experimental_registerAcpDialect`.** New in this kit by owner decision, so a
-third-party plugin can describe an agent bb does not ship. A plugin calls it
-at module load in its `bb.host` artifact with an `AcpDialect` (`id` plus the
-optional hooks `toolIdentity`, `classifyToolCall`, `commandResult`,
-`normalizeCommandEvent`, `clientRequestMethods` with `handleClientRequest`,
-and `maintenance`) and names the id as `acpDialect` in its registration. It
-throws for an empty id and for a built-in id (`acp`, `cursor`, `grok`, `omp`,
-`opencode`); a second registration of the same id replaces the first; an id
-nothing registered resolves to the generic dialect. Core uses the same path:
-the bridge resolves every dialect, shipped or registered, through the one
-registry (`packages/provider-bridge-acp-next/src/dialect.ts`,
-`resolveAcpDialect`), and the built-in plugin names its dialects by id the way
-a third-party plugin does.
+Docs: `providers.md`, `provider-bridge-api-index.md`.
 
-**Audit before stabilizing.** Decide when this kit replaces the original: the
-subpath should then be removed and its members move to `provider-bridge/acp`,
-so no plugin is left importing a name that says "next". The open questions
-on the original kit apply here unchanged (what `probeAcpAgent` owes a caller,
-hook versioning for `AcpDialect`, naming a dialect by value, a bridge factory
-instead of a module-level registry).
+**Audit before stabilizing.** Decide when this kit replaces the original;
+the subpath is then removed and its members move to `provider-bridge/acp`.
+The original kit's open questions apply unchanged (what `probeAcpAgent` owes
+a caller, hook versioning for `AcpDialect`, naming a dialect by value, a
+bridge factory instead of a module-level registry).
 
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
@@ -789,20 +804,14 @@ Docs: `backend-foundation.md`.
 
 ## `bb.sdk.threads.experimental_listPluginMetadata`
 
-**What it does.** `POST /threads/plugin-metadata` with
-`{ pluginId, threadIds }` (1–200 ids) returns `{ threads: { threadId,
-metadata }[] }` for each requested thread that holds that plugin's metadata
-namespace, archived and deleted threads included, in one
-`WHERE plugin_id = ? AND thread_id IN (…)` query on the
-`thread_plugin_metadata` primary key. Threads without a namespace are omitted;
-corrupt namespaces are omitted and logged without their content, like the
-single-thread read. The core SDK takes `{ pluginId, threadIds, signal? }`; the
-plugin-bound SDKs (backend `bb.sdk`, app `useSdk()`, and the fake host) default
-`pluginId` to the calling plugin, like `getPluginMetadata` and
-`updatePluginMetadata`. The route trusts its `pluginId` like the single-thread
-routes, because app requests carry no plugin identity. First caller: push-notifications'
-`threadNotifications.list`, which the Notifications thread action calls with
-the ids it has not cached yet.
+`POST /threads/plugin-metadata` with `{ pluginId, threadIds }` (1–200 ids)
+returns `{ threads: { threadId, metadata }[] }` for each thread holding that
+plugin's namespace, archived and deleted threads included, in one indexed
+query; threads without a namespace and corrupt namespaces are omitted. The
+plugin-bound SDKs default `pluginId` to the caller. First caller:
+push-notifications' Notifications thread action.
+
+Docs: `backend-sdk.md`.
 
 **Audit before stabilizing.**
 
@@ -814,17 +823,13 @@ the ids it has not cached yet.
 
 ## `bb.sdk.threads.experimental_listAncestors`
 
-**What it does.** `POST /threads/ancestors` with `{ threadIds }` (1–200 ids)
-returns `{ threads: { threadId, ancestorIds }[] }`: each requested thread that
-exists, once, with its ancestors' ids from the parent up to the root (empty
-for a root thread). Archived and deleted threads are included; unknown ids
-are omitted. One recursive query follows `parent_thread_id` by primary key,
-so the cost is one indexed lookup per level, and core's depth limit keeps
-that to a few. Available unchanged on the core SDK and the plugin-bound SDKs.
-First caller: push-notifications, which reads each thread's ancestors and
-then their levels with `threads.experimental_listPluginMetadata`, so a
-parent's limit always follows the current tree, including a thread nested
-under a new parent or released when its parent is archived.
+`POST /threads/ancestors` with `{ threadIds }` (1–200 ids) returns
+`{ threads: { threadId, ancestorIds }[] }`, parent first up to the root,
+for every existing thread including archived and deleted ones, in one
+recursive primary-key query. First caller: push-notifications, so a parent's
+level follows the current tree.
+
+Docs: `backend-sdk.md`.
 
 **Audit before stabilizing.**
 
@@ -836,21 +841,17 @@ under a new parent or released when its parent is archived.
 
 ## `bb.sdk.threads.experimental_listDescendants`
 
-**What it does.** `POST /threads/descendants` with `{ threadIds,
-includeArchived?, includeHidden? }` (1–200 ids) returns `{ threads: {
-threadId, descendantIds }[] }`: each requested thread that exists and is not
-deleted, once, with the ids of every thread below it in breadth-first order,
-children first (empty for a leaf). Archived and hidden descendants are
-omitted unless their flag is true, matching `threads.count`; the walk still
-passes through them, so a visible thread under an archived one is returned.
-Deleted threads, anything only reachable through one, and unknown ids are
-always omitted. One recursive query follows `parent_thread_id` through
-`threads_parent_idx`, so the cost is one indexed lookup per thread in the
-subtree, archived ones included. Available unchanged on the core SDK and the
-plugin-bound SDKs. First caller: push-notifications, which publishes the
-levels of a thread and its unarchived, visible descendants when the thread's
-level or parent changes, because a parent's level limits its whole subtree,
-and republishes a thread's subtree on `thread.unarchived`.
+`POST /threads/descendants` with `{ threadIds, includeArchived?,
+includeHidden? }` (1–200 ids) returns `{ threads: { threadId, descendantIds
+}[] }` in breadth-first order for every existing, non-deleted thread.
+Archived and hidden descendants are omitted unless flagged, matching
+`threads.count`, but the walk passes through them; anything reachable only
+through a deleted thread is omitted. One recursive query over
+`threads_parent_idx`. First caller: push-notifications, which republishes a
+subtree's levels when a thread's level or parent changes and on
+`thread.unarchived`.
+
+Docs: `backend-sdk.md`.
 
 **Audit before stabilizing.**
 
@@ -867,16 +868,13 @@ and republishes a thread's subtree on `thread.unarchived`.
 
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
-**What it does.** A `type: "select"` setting descriptor field
-(`bb.settings.define`): a record from option value to display label. The
-settings form shows the label in the picker and as the current value; an
-option without a label shows its value, as before. Stored values, defaults,
-`settings.get()` and `bb plugin config <id> set <key> <value>` keep using the
-option values, so a plugin can rename a label without migrating stored data.
-A label keyed by something that is not one of `options` is refused at define
-time. The field travels in the settings view (`GET /plugins/:id/settings`)
-like `experimental_multiline`. First consumer: push-notifications'
-`defaultLevel` and `childLevel` (`all` shows as "All activity").
+A `type: "select"` descriptor record from option value to display label,
+shown in the settings form. Stored values, defaults, `settings.get()` and
+`bb plugin config` keep the option values, and labels for values outside
+`options` are refused at define time. First consumer: push-notifications'
+level settings.
+
+Docs: `backend-foundation.md`.
 
 **Audit before stabilizing.**
 
@@ -1082,25 +1080,15 @@ Docs: `frontend-components.md`, `frontend-hooks-and-ui.md`.
 
 ## Terminal navigation (`BbNavigate.experimental_openTerminal`)
 
-**What it does.** Shows an existing terminal session in the current surface's
-BB terminal panel: the host fetches the session, selects its tab (adding one
-when needed), and reveals the panel. Plugins create the session with
-`useSdk().terminals.create`, so the create scope (thread, environment, or host
-path) decides the directory. A thread surface accepts only that thread's
-terminals, the New thread screen only terminals in its current terminal scope,
-and a plugin page any terminal, tagging the tab with the session's own scope.
-It resolves false for unknown (404) or exited terminals and surfaces without a
-terminal panel; other fetch failures reject. Closing the tab force-closes the
-terminal, as for user-started terminals. Requested in #1132 and by a plugin
-author whose code review page could not show a terminal in the reviewed
-worktree.
+Shows a terminal the plugin created with `useSdk().terminals.create` in the
+current surface's terminal panel. A thread surface accepts only that thread's
+terminals, the New thread screen only its current terminal scope, and a
+plugin page any terminal. It resolves false for unknown or exited terminals
+and surfaces without a terminal panel, and closing the tab closes the
+terminal. Core's terminal tabs open through the same `usePanelTerminals`
+path. Requested in #1132.
 
-**Core callers.** Every surface's terminal tabs go through
-`usePanelTerminals`: its `open` is the navigation handler this API calls, and
-core's Start terminal row, the `terminal.open` shortcut, and terminal tab
-selection use the same `select` path after creating or choosing a terminal.
-`usePanelTerminals.test.tsx` runs one contract table against the thread view,
-New thread screen, and plugin page rules.
+Docs: `frontend-hooks-and-ui.md`.
 
 **Audit before stabilizing.**
 
@@ -1132,15 +1120,21 @@ server, and calls methods on an explicit enrolled host through
 `bb.hosts.experimental_client`. The client can observe unexpected worker exits
 and ephemeral host signals. Handlers can hold retention leases, and idle
 workers are evicted after five minutes. `experimental_killProcessesWithCwdUnder`
-reaps processes working under a directory before it is deleted.
+reaps processes working under any of the given directories before they are
+deleted (the SDK still accepts the pre-0.6.27 `{ directory }` shape at
+runtime), and `experimental_readProcessIdentity(pid)` returns
+`{ command, startedAt }` so a caller can confirm a recorded PID before
+signalling it.
 
 Docs: `backend-foundation.md`, `testing.md`.
 
 **Audit before stabilizing.**
 
-1. **Process reap.** Confirm `experimental_killProcessesWithCwdUnder`'s
-   platform coverage (Linux `/proc`, macOS `lsof`) and whether the grace
-   should be per call.
+1. **Process reap and identity.** Confirm
+   `experimental_killProcessesWithCwdUnder`'s platform coverage (Linux
+   `/proc`, macOS `lsof`) and whether the grace should be per call. Confirm
+   `experimental_readProcessIdentity`'s start-time precision per platform and
+   whether a combined verified-stop helper should replace it.
 2. **Call timeout.** `ExperimentalHostCallOptions.timeoutMs` defaults to 30 s
    and is capped at 30 minutes. Confirm the cap, and whether the default should
    be declared per method on the contract instead.
@@ -1227,9 +1221,9 @@ Docs: `frontend-core-slots.md`, `frontend-components.md`.
 **Kept experimental (2026-08-22).** It has one consumer (the tasks plugin), and
 item 1 below would change the API shape.
 
-A no-props, presentational component at the trailing edge of a nav panel's
-sidebar row. It is limited to one 4rem × 1.25rem line, is not mounted on
-compact viewports or the `navigationRail` icon-only rail, and fades out for the options button.
+A no-props, presentational component for a live value beside a nav panel's
+navigation entry. The SDK accepts it, but no host surface mounts it, because
+the navigation rail is icon-only.
 
 Docs: `frontend-core-slots.md`.
 
@@ -1489,25 +1483,15 @@ Docs: `frontend-hooks-and-ui.md`.
 
 ## `app.experimental_copyToClipboard` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** `experimental_copyToClipboard({ text, html? })` writes the
-system clipboard through `copyToClipboard`, the function bb's own copy
-actions call. It is a plain function, not a hook, so components, content
-scripts, setup code, and command callbacks all call it the same way. bb
-Desktop writes through Electron's main-process clipboard, so a copy works
-without document focus, transient activation, or a secure origin; a Desktop
-build without the bridge, or a rejected bridge write, falls through to the
-browser path: the Clipboard API (`write` with a plain and HTML item when
-`html` is set, otherwise `writeText`), then `execCommand("copy")` with the
-content set on the copy event. The promise resolves true only once some path
-wrote the content, so a copy command that reports success without writing is
-a failure. It never rejects. Callers own their toasts and fallback UI. Thread
-list, Plugin Guide, GitHub, Docs, File Editor, bb connect, Account Pooler, and
-Storage retention copy through it.
+A plain function, `({ text, html? }) => Promise<boolean>`, over the writer
+bb's own copy actions use: bb Desktop's native clipboard, then the Clipboard
+API, then `execCommand("copy")`. It resolves true only once a path wrote the
+content and never rejects. The test harness records writes in the most
+recently rendered slot's `inspection.experimental_clipboardWrites` and
+resolves with that slot's `experimental_copyToClipboard` render option
+(default true).
 
-The test harness replaces it with a fake clipboard. Writes are recorded in
-the most recently rendered slot's `inspection.experimental_clipboardWrites`,
-and resolve with that slot's `experimental_copyToClipboard` render option, or
-true when it is omitted or no slot has rendered.
+Docs: `frontend-hooks-and-ui.md`.
 
 **Audit before stabilizing.**
 
@@ -1730,7 +1714,8 @@ newly required create-thread field going missing silently) and 6
 (projectless switching) need a consumer to validate.
 
 The host-owned new-thread compose surface. It calls `onSubmit` with a
-`NewThreadRequest` carrying every resolved selection, and the plugin then
+`NewThreadRequest` carrying every resolved selection (including
+`sessionOptions` when the user changed a provider's agent option), and the plugin then
 creates the thread with `bb.sdk.threads.spawn`, which owns filing and
 attribution.
 
@@ -1746,8 +1731,8 @@ Docs: `frontend-components.md`.
    an explicit `providerId`; decide whether that is correct before freezing
    the shape.
 2. **Page-level behavior the adapter skips.** Fork seeds,
-   quick-create-project, the guided machine-setup dialog, welcome/empty
-   states, and codex-version submit blocking are deliberately absent. Confirm
+   quick-create-project, the guided machine-setup dialog, and codex-version
+   submit blocking are deliberately absent. Confirm
    none of them has become load-bearing for correctness on a plugin surface.
    Without codex-version blocking, a plugin can submit to a machine whose CLI
    the primary surface would have refused.
@@ -1869,91 +1854,6 @@ Docs: `frontend-core-slots.md`.
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
 
-## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
-
-Replaces the bounded sidebar navigation controls. bb keeps the drawer, thread
-list, footer, resize handle and shortcuts. bb's own rows ship as the bundled
-Navigation plugin, and `sidebar.navigationProvider` picks the provider
-(default `__automatic__`). The component receives `isCompactViewport` and
-`experimental_Original`.
-
-Docs: `frontend-registration.md`,
-`frontend-core-slots.md`.
-
-**Audit before stabilizing.**
-
-1. **Boundary.** Verify plugins can express useful navigation without control
-   of the drawer, thread list, footer, resize handle, or shortcuts.
-2. **Crash and delegation.** Verify the crash placeholder and
-   `experimental_Original` never recurse or remount the thread list and
-   footer. Remove `experimental_Original` once released plugins (Compact Nav
-   0.1.x) no longer render it.
-3. **Arbitration.** Confirm Automatic preferring installed navigation over
-   the bundled plugin, in plugin-id order, is right when several navigation
-   replacements exist.
-4. **Customize handoff.** Confirm providers accept the host editor replacing
-   their region, and that focus returns to the control that opened it from a
-   button, a dropdown item, and a context-menu item.
-
-## `experimental_useSidebarNavigation`, `experimental_useSidebarNavigationSplit`, `experimental_SidebarNavigationIcon` (`@get-bb/plugin-sdk/app`)
-
-`experimental_useSidebarNavigation()` returns
-`{ items, activeItemId, isShortcutModifierHeld, actions }` from one shared
-host model. Its actions are `activate`, `setVisible`, `setOrder`,
-`openCustomize`, `openDetails` and `disablePlugin`, and they are inert after
-unmount or outside the sidebar. The split hook mirrors
-`experimental_useSidebarThreadSplit`, and the icon component renders bb's
-navigation glyphs.
-
-Docs: `frontend-registration.md`.
-
-**Audit before stabilizing.**
-
-1. **Semantic items.** Confirm the action and icon variants cover current
-   navigation without exposing routes or host React elements, including the
-   Skills and Automations destinations.
-2. **Accessory as a component.** Confirm handing providers a host-wrapped
-   component is preferable to a value contract, given the same questions as
-   `PluginNavPanelRegistration.experimental_sidebarAccessory`.
-3. **Order semantics.** Confirm `setOrder`'s partial-order rule (unknown ids
-   dropped, omitted ids keep relative order at the end) works for
-   drag-and-drop in real providers, and that entries for disabled plugins
-   keep their stored position.
-4. **Split contract.** Audit split props and `activate(..., { openInSplit })`
-   for pointer, keyboard, modifier-click, pane-cap, and compact behavior.
-5. **Scope.** Decide whether the hook should work outside the sidebar (for
-   example in a command palette plugin) or stay sidebar-only.
-6. **Accessibility.** Validate labels, `aria-current`, shortcut metadata,
-   disabled and loading state, and focus order in third-party markup.
-
-## `app.slots.experimental_sidebarHeader` (`@get-bb/plugin-sdk/app`)
-
-An exclusive, opt-in slot. The user picks a provider through
-`sidebar.headerProvider`, and it renders one component in the sidebar header
-row between the toggle and the history buttons. The component receives
-`width`, `controlSize` and `isCompactViewport`.
-
-Docs: `frontend-registration.md`.
-
-**Audit before stabilizing.**
-
-1. **Exclusive versus shared.** Confirm one provider is right for the header
-   row, or whether several small controls should share it the way the sidebar
-   footer does.
-2. **Two pickers.** A plugin that wants its navigation in the header needs
-   both its header and its navigation picked, which plugins do for the user
-   from `bb.onInstall`. Decide whether that write should become a declared,
-   host-applied default, or whether a navigation registration should declare
-   a paired header instead.
-3. **Geometry.** Validate `width` and the start inset across macOS with and
-   without traffic lights, browsers, compact drawers, landscape safe areas,
-   and a sidebar narrower than one control.
-4. **Focus order.** Confirm header controls before the history buttons is
-   acceptable when a plugin splits one list of items across the header and
-   the navigation region.
-5. **Drag regions.** Confirm the interactive-descendant no-drag rule covers
-   real plugin markup, including custom elements and menus.
-
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** Only examples use it. No shipped consumer
@@ -1974,7 +1874,7 @@ Docs: `frontend-registration.md`.
 2. **Fallback discoverability.** Confirm one toast plus the placeholder's
    Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
-   the New-thread button, search action, plugin nav rows, and footer stay
+   the New-thread button, the navigation rail, and the footer stay
    host-rendered. Confirm no real sidebar needs to claim more, and that
    passing those regions down as props (letting a plugin place them, at the
    risk of dropping them) stays the wrong trade.
@@ -2146,50 +2046,18 @@ global, other plugins' surfaces included; replacements receive
 
 ## `app.slots.experimental_codeFenceRenderer` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** `app.slots.experimental_codeFenceRenderer({ id, languages,
-component })` renders fenced code blocks of the claimed languages in assistant
-and nested-agent message Markdown with a plugin component — the same places
-`messageDirective` activates. User messages, file previews, and plugin
-Markdown keep BB's code block. `id` is unique within the plugin (letters,
-digits, `-`, `_`); `languages` is non-empty, each lowercase
-`/^[a-z0-9][a-z0-9+#._-]*$/`, and a language may be claimed once per plugin
-(duplicates across that plugin's registrations are rejected at load).
+Renders fenced code blocks of the claimed `languages` in assistant and
+nested-agent message Markdown, where `messageDirective` activates. The
+component receives `{ code, language, status, index, message, Original }`,
+mounts once per fence, and survives streaming: the host owns the instance and
+portals it to a placeholder keyed by the fence's source offset, keeping
+iframes alive where `Element.moveBefore` exists. Contested languages, a
+missing plugin, and a throwing fence fall back to `Original`. The built-in
+`inline-vis` plugin renders through it; BB's `mermaid` diagram stays a core
+special case inside `Original`. The harness exposes
+`loadPluginApp(...).codeFenceRenderers`.
 
-The component receives `{ code, language, status, index, message, Original }`.
-`code` is the fence body so far and grows while the reply streams. `status` is
-`"streaming"` (no closing delimiter yet, reply still being written),
-`"closed"` (closing delimiter present, `code` final), or `"unclosed"` (the
-reply ended without one). `index` is the zero-based ordinal among fences of
-the same language in the message. `Original` renders BB's code block (syntax
-highlighting, copy button, mermaid diagram for `mermaid`). Inside the
-component `useBbNavigate().openThreadPanel` works as it does for
-`messageDirective`.
-
-BB mounts the component once per fence and keeps that instance for as long as
-the message stays on screen. The Markdown tree renders an empty placeholder
-where the fence sits; a host around the message's Markdown owns the component
-and portals it into a container that follows the placeholder, so the instance
-survives the placeholder moving from the streaming tail to the settled region
-and the reply finishing. A fence is identified by the source offset of its
-opening delimiter, which does not move while a reply is appended to. Where
-the browser supports `Element.moveBefore`, an iframe inside the component
-also survives those moves without reloading; elsewhere component state
-survives and the iframe reloads. State that must outlive the mounted
-component belongs under `${message.id}#${language}#${index}`.
-
-Fallbacks: BB's code block renders when two plugins claim one language (BB
-logs a console warning naming them), when the plugin is missing or disabled,
-and for a fence whose component throws. A throw affects that fence only, and
-BB tries the component again when that fence's `code` or `status` changes.
-
-**Core callers on the same path.** Assistant and nested-agent message Markdown
-rendering — `MarkdownPreview`'s code renderer, the pipeline that also resolves
-`messageDirective`. The built-in `inline-vis` plugin renders its
-` ```inline-vis ` pages through this slot. BB's `mermaid` diagram stays
-a core special case inside `Original`, because it renders on every Markdown
-surface and this slot is scoped to messages. The SDK testing harness exposes
-registrations as `loadPluginApp(...).codeFenceRenderers`, renderable with
-`renderSlot`.
+Docs: `frontend-renderer-slots.md`, `testing.md`.
 
 **Audit before stabilizing.**
 
@@ -2216,7 +2084,8 @@ resolved without one, and both change the contract.
 
 The read hook returns the sidebar's live thread view (`PluginSidebarThread`
 DTOs with a host-resolved `indicator`, plus `sections`) from the host's own
-query and cache. The action hook routes to the host's own mutations. Neither
+query and cache. The action hook is `@internal` and scheduled for removal
+(see Scheduled removals). Neither
 doc covers three September 2026 additions:
 
 - `experimental_lifecycles` (active, archived, or both; active by default).
@@ -2261,13 +2130,7 @@ Docs: `frontend-registration.md`.
    no plugin equivalent. `openNewThread`'s `sectionId`, `environmentId` and
    `hostId` ride on router state; confirm that stays the right transport, and
    audit the `hostId` selection semantics.
-7. **Action surface.** `archive` closes panes and repairs the route, and
-   `requestDelete` opens bb's confirmation. Confirm that split (silent
-   `rename`, host-confirmed delete) is the right line, and decide whether bulk
-   actions and undo belong here.
-8. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
-   permission gate beyond installation trust.
-9. **`experimental_useSidebarThreadPullRequest`.** A per-row, opt-in PR lookup
+7. **`experimental_useSidebarThreadPullRequest`.** A per-row, opt-in PR lookup
    sharing the host's environment-keyed query. It exposes normalized
    `experimental_autoMerge`, `experimental_inMergeQueue` (null means the queue
    lookup failed), `experimental_checks`, `experimental_review` and
@@ -2275,17 +2138,17 @@ Docs: `frontend-registration.md`.
    semantics meet sidebar needs, that a sidebar of many distinct worktrees
    does not stampede the git host, and that returning `null` for "lookup
    failed" is the right failure for a row that should simply show nothing.
-10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
-    drag-to-split gesture, with every layout rule owned by the host. Confirm a
-    list with its own pointer-drag (reorder, swipe) still composes with the
-    host's engage threshold; that `splitProps` staying an open object is the
-    right forward-compatible shape, or whether it should narrow to a named
-    handler; and that exposing the full `panes` array does not leak more
-    layout state than a row needs.
-11. **Archive selection and machine list.** Audit archive-only
-    loading/errors, combined views, pagination retries, and archived row
-    actions. Audit empty machine sections, machine removal, rename updates, and
-    loading behavior for `experimental_hosts`.
+8. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
+   drag-to-split gesture, with every layout rule owned by the host. Confirm a
+   list with its own pointer-drag (reorder, swipe) still composes with the
+   host's engage threshold; that `splitProps` staying an open object is the
+   right forward-compatible shape, or whether it should narrow to a named
+   handler; and that exposing the full `panes` array does not leak more
+   layout state than a row needs.
+9. **Archive selection and machine list.** Audit archive-only
+   loading/errors, combined views, pagination retries, and archived row
+   actions. Audit empty machine sections, machine removal, rename updates, and
+   loading behavior for `experimental_hosts`.
 
 ## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 
@@ -2324,97 +2187,22 @@ Docs: `frontend-registration.md`.
 
 ## `app.slots.experimental_threadAction` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** A registration is `{ id, title, icon, useData?, item }`.
-`useData` is a React hook the host calls once for the whole app, in one
-collector per registration mounted under `ThreadActionsProvider` inside the
-registering plugin's context, never per row or per open menu. `item` is a pure
-function of `{ thread, data, sdk, navigate }` (the registering plugin's bound
-SDK and navigation) that returns a `PluginThreadAction` or null to hide it.
-Collected data lives in a module store read with `useSyncExternalStore`, so a
-surface pays one subscription and one pure `item` call per registration; a
-throw from `useData` drops that registration, a throw from `item` drops it for
-that thread, and `run` errors are logged and contained.
+A registration is `{ id, title, icon, group, order?, useData?, item }`.
+`useData` runs once per registration for the whole app and receives
+`{ threadIds }`, every thread a visible surface evaluates actions for,
+debounced (32 ms quiet, 100 ms max). `item` is a pure function of
+`{ thread, data, sdk, navigate }` returning a `PluginThreadAction` or null;
+throws drop the registration or that thread's item, and `run` errors are
+contained. Registrations sort by `group`, `order`, then registration order
+for every menu and the quick-action picker. bb's own actions are
+registrations under the reserved `bb--core` owner, thread-list registers Move
+to section, and push-notifications registers Notifications. Core's header
+menu, mobile recents, sidebar row menus, quick actions, and archive command
+all read the same registry (`CORE_THREAD_ACTIONS`;
+`ThreadActionsMenu.test.tsx` runs every menu surface against it). The SDK
+test fake throws when a menu `trigger` drops its props and ref.
 
-`useData` receives `{ threadIds }`: every thread some surface currently
-evaluates actions for (`experimental_useThreadActions` callers, so sidebar
-rows on screen, the open thread's header, and open menus), reference-counted
-in the registry, sorted and deduplicated. A change is published once the set
-has been quiet for 32 ms, at most 100 ms after the first change, so rows that
-mount a frame apart during a scroll step arrive in one change. A surface
-counts only while it is visible: the app sidebar wraps the thread list in
-`ThreadActionSurfaceVisibility`, visible when its body is shown and the
-sidebar (or the compact drawer) is open, so a hidden sidebar on a settings
-route contributes no ids even if a plugin list mounts rows. It lives in
-its own store read only by the collectors, so a change re-renders one
-collector per registration, never the rows. Registrations without per-thread
-state ignore it. This is the recommended pattern for per-thread data until an
-attributes layer lands: keep an id-keyed cache, fetch only the ids not in it
-in one batch, apply realtime updates per id, and fetch nothing for an empty
-list.
-
-Placement is static: a registration carries `group` and `order?`, and the
-host keeps registrations sorted by `group` (string compare), then `order`
-(unset sorts last), then registration order, so menus (with a separator
-between groups) and the quick-action picker share one order. An evaluated
-action is `{ label, detail?, icon, variant?, disabled?, choices?, run }`;
-`detail` is a muted second line under the label (and follows the label in a
-quick-action tooltip), such as a choice list's current value. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
-`2_organize`, `3_settings`, `4_lifecycle`); any other string forms its own
-group. `choices` is data (heading, hint, items): a submenu on desktop, a drawer
-step with Back at compact width, a popover from a row quick-action button; the
-picked id reaches `run` as `value`. `heading` (default: the label) titles the
-drawer step and the popover; desktop submenus show none because their trigger
-names them. `hint` is a footnote below the choices. `run` also receives `requestRename`, the
-surface's own rename editor or bb's dialog.
-
-bb's own actions are registrations of the same shape under the reserved
-`bb--core` owner (keys `bb--core/<id>`): Open in split, New thread in
-environment, Copy thread link, Mark read/unread, Pin/Unpin, Rename,
-Archive/Unarchive, and Delete. The
-thread-list plugin registers Move to section (`thread-list/move`) because the
-destinations depend on its organization and section-order preferences. The
-push-notifications plugin registers Notifications
-(`push-notifications/notifications`) in `3_settings`: its `useData` keeps an
-id-keyed cache of levels, fetches the `threadIds` it has not loaded in
-`threadNotifications.list` batches of up to 200 (built on
-`threads.experimental_listAncestors` and
-`threads.experimental_listPluginMetadata`, so a parent's limit is read from
-the current tree), and refetches the ones on screen after a reconnect. When a
-thread's level or parent changes (its `threadNotifications.set` RPC, or
-`experimental_thread.parentChanged`), the plugin server resolves that thread
-and its unarchived, visible descendants
-(`threads.experimental_listDescendants`) and publishes their levels on the
-`threadNotifications` realtime channel, and does the same for a thread on
-`thread.unarchived`; clients apply the rows they hold without a request. `item` resolves the level
-with the plugin's shared resolver, shows it as `detail` with a per-level icon
-(declared `push-notifications/ringing` and `push-notifications/off`, built-in
-`BellDot`), and `choices` sets it. The
-header menu, mobile recents, and both sidebar row menus render the host
-components; the row's hover quick actions read `experimental_useThreadActions`
-with `keys`; the thread archive keyboard command runs `bb--core/archive`.
-
-`experimental_useThreadActions(thread, { keys?, requestRename? })` returns
-`{ key, pluginId, action }` with `run(value?)` bound to the caller's
-`requestRename`, contained, and resolving when the action settles.
-`experimental_useThreadActionRegistrations()` lists registrations with their
-static title and icon, independent of any thread (the row-actions picker).
-`experimental_ThreadActionsMenu` (a drawer at compact width) takes `trigger`
-as a render function: it receives the Radix trigger's props and ref
-(`PluginThreadActionsTriggerProps`) and must spread them onto its button. The
-host logs an error when the ref is never attached, and the SDK test fake
-throws, because a trigger that drops them leaves a button that never opens.
-It and
-`experimental_ThreadActionsContextMenu` (right-click; touch long-press at
-compact width) take `inline` items (`{ key, group, action }`) appended to their group (the thread
-list's Customize row actions, the header's overflowed workspace and git
-actions) and `requestRename`.
-
-**Core callers on the same path.** `CORE_THREAD_ACTIONS`
-(`apps/app/src/lib/thread-actions/core-thread-actions.ts`), the header menu
-(`ThreadDetailView` → `ThreadDetailHeader`), `RootComposeMobileRecents`, and
-`ThreadArchiveCommandHandler`. The contract table in
-`apps/app/src/components/thread/ThreadActionsMenu.test.tsx` runs every host
-menu surface against the same registrations.
+Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
@@ -2433,15 +2221,16 @@ menu surface against the same registrations.
 
 ## `experimental_useArchiveEnvironmentThreads` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** Returns `(environmentId) => Promise<void>`, the same
-function core's environment-group archive uses (`ThreadActionsProvider`'s
-`archiveEnvironmentThreads`): the bound SDK's optimistic
-`environments.archiveThreads`, closing the archived threads' split panes,
-moving off a route that shows one, and one Undo toast that unarchives them and
-returns to that route. It rejects after bb has shown an error toast. It is the
-one host UI flow of the deprecated `experimental_useSidebarThreadActions` that
-plain SDK calls cannot reproduce; the thread list's environment group menu is
-the caller.
+Returns `(environmentId) => Promise<void>`, core's environment-group archive:
+the optimistic `environments.archiveThreads`, split-pane cleanup, route
+repair, and one ten-second Undo toast that unarchives the returned ids
+(lifecycle owners first) and returns to the route. Failures show a host error
+toast, and archive failures reject. It replaces
+`PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`; the
+thread list's environment group menu is the caller. The test harness records
+calls in `inspection.experimental_environmentArchiveCalls`.
+
+Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
@@ -2451,6 +2240,9 @@ the caller.
    flows area instead of one hook each.
 2. **Undo route repair.** The toast's route restore assumes the user has not
    navigated since; confirm that matches plugin-hosted surfaces.
+3. **Coverage.** Verify group archive and Undo with descendants, already
+   archived threads, split panes, navigation during the Undo window, and
+   failure rollback across sidebar organization modes.
 
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 
@@ -2829,21 +2621,16 @@ verification, current-status behavior, and review of event delivery overhead.
 
 ## Thread parent-change notifications
 
-`PluginEvents.on("experimental_thread.parentChanged", handler)` delivers
-`{thread, previousParentThreadId}` after a thread's `parentThreadId` changes:
-a `threads.update` that moves or releases it (from the shared ownership seam,
-which also writes the ownership timeline entry and parent system messages), or
-core releasing an archived thread's unarchived children (one event per
-released child, after the archive transaction commits). An update that keeps
-the same parent delivers nothing. `thread` is the public DTO with the new
-parent. Threads below the moved one move with it and get no event; callers
-read them with `bb.sdk.threads.experimental_listDescendants`. Delivery is
-fire-and-forget like every other event, so a plugin that was not loaded never
-sees the move. Push-notifications uses it to publish the moved subtree's
-levels to open menus; before it, the only signal was the ownership timeline
-entry behind `experimental_thread.events`, which forced the plugin to remember
-each thread's last parent. Stabilization requires deciding whether a general
-`thread.updated` event should replace it, and a second consumer.
+`experimental_thread.parentChanged` delivers `{ thread,
+previousParentThreadId }` after a `threads.update` moves or releases a
+thread, or after core releases an archived thread's unarchived children (one
+event each, after the archive commits). Threads below the moved one get no
+event. Push-notifications uses it to republish the moved subtree's levels.
+
+Docs: `backend-sdk.md`.
+
+Stabilization requires deciding whether a general `thread.updated` event
+should replace it, and a second consumer.
 
 ## Host deletion notifications
 
@@ -2856,6 +2643,18 @@ Docs: `backend-events.md`.
 Stabilization requires deciding whether hosts deserve their own event map
 instead of `PluginThreadEventPayloads`, covering removal paths added later, and
 a second consumer.
+
+## Environment removal notification
+
+`experimental_environment.removed` delivers `{ removal }` (environment id,
+pre-removal host and path, provider ownership, removal time) after a
+provider's removal is committed. Delivery is ephemeral, and provider success
+does not guarantee the path was deleted.
+
+Docs: `backend-events.md`.
+
+Stabilization requires review of the payload fields, repeat-removal
+semantics, notification timing, and recovery without guaranteed delivery.
 
 ## `bb.experimental_machines.getResource`
 
@@ -2882,12 +2681,15 @@ later project-checkout/worktree reuse.
 ## Experimental host SDK machine operations
 
 `bb.sdk.hosts.experimental_create`, `experimental_getEnrollmentCommand`,
-`experimental_listProviders`, `experimental_suspend`, `experimental_resume` and
-`experimental_retryCleanup` have no unprefixed aliases.
+`experimental_listProviders`, `experimental_reconnect`, `experimental_suspend`,
+`experimental_resume` and `experimental_retryCleanup` have no unprefixed
+aliases.
 `experimental_getEnrollmentCommand` serves the in-memory manual setup command
 and expiry only while that host is creating. Completion, removal, expiry and
 server restart drop the command, which never enters persisted progress or
-transcripts.
+transcripts. `experimental_reconnect({ hostId })` returns
+`{ command, windowsCommand, expiresAt, hostId }`, expiring commands that
+re-enroll an existing machine.
 
 Docs: `backend-machines.md`, `backend-sdk.md`.
 
@@ -2957,23 +2759,14 @@ branding separate from provider artwork resolution.
 
 ## `experimental_ThreadStatusGlyph` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** Renders bb's thread status glyph, the one bb's own thread
-lists draw, from `PluginThreadStatusGlyphProps`: `indicator` (a
-`PluginSidebarThreadIndicator` the caller resolved), optional `archived`,
-`rowStatus` (another plugin's row status, which replaces every indicator
-except `runtime`, `unread-error`, and `waiting-for-input`),
-`hideIdleDraftLabel`, and `size` (`default` or `compact`). The host owns the
-icons, colors, shimmer, and accessible labels; the caller owns the indicator,
-so a row can fold in collapsed children or a client-local draft first. The
-SDK test fake renders nothing for `none` without a row status and otherwise
-exposes the props as `data-thread-status-glyph`, `data-row-status`,
-`data-row-status-tone`, `data-hide-idle-draft-label`, and `data-size`.
+Renders bb's thread status glyph from `PluginThreadStatusGlyphProps`
+(`indicator`, `archived?`, `rowStatus`, `hideIdleDraftLabel`, `size`); the
+host owns icons, colors, and labels, and the caller resolves the indicator.
+Core's search palette, related threads, and mobile recents draw the same
+component, and the thread-list plugin draws its rows with it. The SDK test
+fake exposes the props as `data-*` attributes.
 
-**Core callers on the same path.** `ThreadStatusGlyph`
-(`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK
-implementation and the glyph in the thread search palette, the related threads
-info section, and mobile recents. The thread-list plugin draws its rows and
-collapsed-group rollups with it.
+Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
@@ -3063,7 +2856,8 @@ with third-party providers.
 
 `list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`, every
 accepted user prompt newest first, each with `id`, `createdAt`, `input`,
-`projectId` and `threadId`. `limit` is a digit string (default 100, max 1000).
+`projectId`, `threadId`, and `scope` (`"project"` for a prompt that started
+a top-level thread, `"thread"` for a follow-up). `limit` is a digit string (default 100, max 1000).
 A page can be short while `nextCursor` is set, because unparseable rows are
 skipped. The same route backs `bb prompt-history list`.
 
@@ -3081,30 +2875,57 @@ Stabilize once message links have shipped and the seq has stayed stable across
 edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
 should remain alongside it.
 
-## `PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`
-
-Archives an environment's active thread trees through the host flow, including optimistic cache updates, pane cleanup, shared toast styling, and one ten-second Undo action. Undo restores only returned archived IDs, sequentially with lifecycle owners first. Archive failures show a host error toast and reject; Undo failures show a host error toast.
-
-Stabilize after verifying group archive and Undo with descendants, already archived threads, split panes, navigation during the Undo window, and failure rollback across sidebar organization modes.
-
 ## `PluginBbSdk.plugins.experimental_startUpdate` and `experimental_updateJobs`
 
-Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
+Starts a server-owned plugin update and returns its job at once;
+`experimental_updateJobs.list/get` report queued/running phases and the
+terminal update, rollback, or failure. Jobs survive client disconnects, stay
+ten minutes after finishing, and live in memory only. `applyUpdate` keeps its
+result contract by polling the job; raw callers without
+`Prefer: respond-async` keep the synchronous response. Running updates cannot
+be cancelled during activation or rollback.
 
-Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.
+Stabilization requires exercising reconnect/reload, concurrent deduplication,
+rollback delivery, missing jobs after restart, and CLI/SDK parity.
 
 ## `PluginBbSdk.system.experimental_recordTelemetryEvent`
 
-`system.experimental_recordTelemetryEvent(event)` posts one anonymous product event to `POST /api/v1/system/telemetry/events`, which forwards it to the server's usage telemetry under the install's anonymous id and drops it when usage data sharing is off. The request schema is a strict allow-list of setup-guide events with fixed enum or boolean properties; anything else is rejected with 400. Core callers, all through `recordTelemetryEvent` in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide (`OnboardingFlow`). Stabilize after deciding whether third-party plugins may emit product events at all (and, if so, how events are namespaced per plugin and rate limited), then rename project-wide and remove this entry.
+Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
+which forwards it to usage telemetry under the install's anonymous id and
+drops it when usage data sharing is off. The schema is a strict allow-list of
+setup-guide events; anything else is a 400. The only caller is the setup
+guide.
+
+Stabilize after deciding whether third-party plugins may emit product events
+at all and, if so, how they are namespaced and rate limited.
 
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 
-`system.experimental_cliCommand()` reads `GET /api/v1/system/cli-command`: whether the `bb` command is on PATH on the computer that runs the bb server. It returns `supported` (false when the server was not started by an installed bb-app launcher, such as a source checkout), `installedPath` (the link bb created, or the launcher on Windows), `onPath` (a new terminal finds it first), and `shadowedBy` (another `bb` that runs first, with `source` `npm`, `machine`, or `other`). `system.experimental_installCliCommand()` and `system.experimental_removeCliCommand()` post to `/install` and `/remove` and return the new status. Install links `<dataDir>/bin/bb` into a PATH folder, or appends `<dataDir>\bin` to the Windows user PATH; it fails with `409 cli_command_blocked` instead of replacing another `bb`, and both changes fail with `409 cli_command_unsupported` when `supported` is false and with 403 for machine credentials. Core callers: Settings → General → Command line (`CliCommandSettingsSection`) and `bb settings cli-command`. No host-daemon wire change: the server process changes its own computer's PATH.
+`experimental_cliCommand()` reports whether `bb` is on PATH on the server's
+computer: `supported` (false without an installed bb-app launcher),
+`installedPath`, `onPath`, and `shadowedBy` (`source` `npm`, `machine`, or
+`other`). Install links `<dataDir>/bin/bb` into a PATH folder (on Windows,
+adds `<dataDir>\bin` to the user PATH) and refuses to replace another `bb`
+(`409 cli_command_blocked`); install and remove return the new status, fail
+with `409 cli_command_unsupported` when unsupported, and 403 for machine
+credentials. Callers: Settings → General → Command line and
+`bb settings cli-command`.
 
-Stabilize after deciding whether the command should be installable per machine through the host daemon (enrolled machines get `~/.local/bin/bb` from `install-machine.sh` today), and after exercising real Windows and macOS installs, then rename project-wide and remove this entry.
+Stabilize after deciding whether the command should be installable per
+machine through the host daemon (enrolled machines get `~/.local/bin/bb` from
+`install-machine.sh` today), and after exercising real Windows and macOS
+installs.
 
 ## `PluginBbSdk.hosts.experimental_discoverRepos`
 
-`hosts.experimental_discoverRepos({ hostId })` asks the machine for git repositories under the user's home directory with local activity in the last 30 days, newest first, capped at 10. Each entry has `path`, `name`, `lastActivityAt`, `originUrl`, and `projectId` (the bb project already bound to that path on that machine, or null). `truncated` is true when the three-second walk budget ran out. The walk stops at each repository root, skips dot-directories, common build directories, scratch directories (`tmp`, `temp`, `tmp-*`, `Downloads`), linked worktrees, and submodules. The first-run setup guide and `bb project discover` use it. Host-daemon wire change: the `host.discover_repos` command (protocol 230).
+`hosts.experimental_discoverRepos({ hostId })` lists up to 10 git
+repositories under the machine's home directory with local activity in the
+last 30 days, newest first, each with `path`, `name`, `lastActivityAt`,
+`originUrl`, and the bound `projectId` or null; `truncated` reports an
+exhausted three-second walk budget. The walk skips dot, build, and scratch
+directories, linked worktrees, and submodules. Callers: the setup guide and
+`bb project discover`; it rides the `host.discover_repos` daemon command.
 
-Stabilize after deciding whether depth, recency window, and limit should be caller options, and after exercising slow or network-mounted home directories and Windows hosts.
+Stabilize after deciding whether depth, recency window, and limit should be
+caller options, and after exercising slow or network-mounted home directories
+and Windows hosts.

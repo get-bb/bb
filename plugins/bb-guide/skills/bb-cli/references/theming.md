@@ -171,12 +171,12 @@ Four font tokens, overridden the same way as colors. Fonts are mode-independent,
 so set them in the `:root, .light` block only. Always end the stack with a
 generic family (`sans-serif` / `monospace` / `serif`) as a fallback.
 
-| token                    | drives                                                           |
-| ------------------------ | ---------------------------------------------------------------- |
-| `--font-sans`            | the entire app UI / body text (`body` uses it)                   |
-| `--font-mono`            | code blocks, diffs, file paths and previews, terminal-style text |
-| `--font-serif`           | serif prose (rarely used in the UI)                              |
-| `--font-terminal`        | the integrated terminal's renderer font family                  |
+| token             | drives                                                           |
+| ----------------- | ---------------------------------------------------------------- |
+| `--font-sans`     | the entire app UI / body text (`body` uses it)                   |
+| `--font-mono`     | code blocks, diffs, file paths and previews, terminal-style text |
+| `--font-serif`    | serif prose (rarely used in the UI)                              |
+| `--font-terminal` | the integrated terminal's renderer font family                   |
 
 The browser must be able to load the family. Three ways:
 

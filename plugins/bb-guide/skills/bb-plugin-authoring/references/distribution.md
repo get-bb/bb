@@ -184,7 +184,9 @@ plugins continue as direct installs.
 
 An https marketplace is re-read with a conditional request; a git one is
 read from a fresh checkout on each refresh, with `marketplace.json` and any
-relative icons read from the repository root. Prefer git tag ranges over
+relative icons read from the repository root, or from the directory named by
+`--subdirectory <relative-path>`. An entry's `source.git.subdir` stays
+relative to the repository root. Prefer git tag ranges over
 pinned refs so a release reaches users without a catalog change. Before
 installing from a marketplace that does not ship with bb, bb resolves and
 shows the true source — including the exact release tag and commit a range

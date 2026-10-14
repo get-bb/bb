@@ -15,8 +15,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_FileLink`
 - `UrlLink`
 - `experimental_NewThreadComposer`
-- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
-  input
+- `experimental_VoiceInputTextarea`
 - `experimental_ProviderModelPicker`
 - `experimental_PermissionModePicker`
 - `experimental_BranchPicker`
@@ -38,24 +37,15 @@ Read the installed SDK declarations for the exact current signatures.
 - `useComposers`
 - `useComposerView`
 - `experimental_useSidebarThreads`
-- `experimental_useSidebarThreadActions` — deprecated, runtime-only for older
-  plugins; use the thread action registry, `useSdk().threads`, and
-  `useBbNavigate()`
-- `experimental_useArchiveEnvironmentThreads` — archive an environment's
-  threads with bb's pane cleanup, route repair, and Undo toast
-- `experimental_useThreadActions` — every thread action for one thread, in
-  menu order, or only `keys` for a row's quick actions
-- `experimental_useThreadActionRegistrations` — every registered thread
-  action's static title and icon, for a quick-action picker
-- `experimental_ThreadActionsMenu` — bb's thread menu behind your trigger
-- `experimental_ThreadActionsContextMenu` — bb's thread menu on right-click
-  or long-press
-- `experimental_THREAD_ACTION_GROUPS` — bb's thread menu group names
+- `experimental_useSidebarThreadActions`
+- `experimental_useArchiveEnvironmentThreads`
+- `experimental_useThreadActions`
+- `experimental_useThreadActionRegistrations`
+- `experimental_ThreadActionsMenu`
+- `experimental_ThreadActionsContextMenu`
+- `experimental_THREAD_ACTION_GROUPS`
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
-- `experimental_useSidebarNavigation`
-- `experimental_useSidebarNavigationSplit`
-- `experimental_SidebarNavigationIcon`
 - `useSidebarThreadDraft`
 - `useSidebarThreadDraftIds`
 - `useSidebarThreadRowStatus`
@@ -63,6 +53,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `useSidebarSplitLayout`
 - `useSidebarThreadShortcut`
 - `ThreadTitle`
+- `experimental_ThreadStatusGlyph`
 - `useEnvironmentProviders`
 - `useSdk`
 - `experimental_useProviders`
@@ -174,17 +165,15 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadActionChoices`
 - `PluginThreadActionRunInput`
 - `PluginThreadAction`
-- `PluginThreadActionDataInput` — what a registration's `useData` receives (`threadIds`)
-- `PluginThreadActionItemInput` — what a registration's `item` receives
-- `PluginThreadActionRegistration` — the registration accepted by
-  `app.slots.experimental_threadAction`
+- `PluginThreadActionDataInput`
+- `PluginThreadActionItemInput`
+- `PluginThreadActionRegistration`
 - `PluginBoundThreadAction`
-- `PluginThreadActionEntry` — one row of `experimental_useThreadActions`
+- `PluginThreadActionEntry`
 - `PluginThreadActionRegistrationInfo`
 - `PluginThreadActionsOptions`
 - `PluginThreadActionsInlineItem`
-- `PluginThreadActionsTriggerProps` — what a thread menu's `trigger` must
-  spread onto its button
+- `PluginThreadActionsTriggerProps`
 - `PluginThreadActionsMenuProps`
 - `PluginThreadActionsContextMenuProps`
 - `ExperimentalPluginBrowserToolbarActionRegistration`

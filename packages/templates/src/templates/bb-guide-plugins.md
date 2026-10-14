@@ -86,10 +86,22 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  secrets, and schedules (local path sources
                                  stay on disk; builtin removals are
                                  remembered)
+  bb plugin prune [--dry-run]    Delete cached git:/npm: plugin versions no
+                                 installed plugin uses (left by earlier bb
+                                 releases, rolled-back updates, or
+                                 interrupted operations) and leftover cache
+                                 directories, and print what was freed.
+                                 Updates and removals already delete what
+                                 they replace. Never touches a running
+                                 version or a local path source. Also in the
+                                 command palette
 
   bb marketplace add <source>    Add a marketplace from an https manifest URL,
                                  git:<url>[@<ref>], or path:<directory>.
-                                 Adding a marketplace installs nothing
+                                 Adding a marketplace installs nothing. For a
+                                 git: source, --subdirectory <path> reads
+                                 marketplace.json from that directory of the
+                                 repository instead of its root
   bb marketplace list            Name, source, entry count, and last refresh
                                  (--json for raw rows)
   bb marketplace refresh [name]  Re-read one catalog or all of them. Never
@@ -138,19 +150,28 @@ Each bundled plugin documents its commands and behavior in its own skill.
   skill.
 - Provider retry (builtin): queues an automatic retry after provider
   overloads and subscription-window limits.
-  `bb provider-retry status|retry|cancel`; see the `provider-retry` skill.
+  `bb provider-retry status|explain|retry|cancel`; see the `provider-retry`
+  skill.
 - Thread list (builtin): owns the sidebar's layout preferences, synced to
   every window. `bb thread-list prefs list|get|set|reset`; see the
   `thread-list` skill.
 - Push notifications (builtin): notifies mobile, web, and desktop clients
   when a thread needs attention.
-  `bb push-notifications status|list|add|remove|test`; see the
+  `bb push-notifications status|list|add|remove|test|thread`; see the
   `push-notifications` skill.
 - Secrets (builtin): `bb secret request <NAME...> --write-env <path>` collects
   credentials through a secure form into a dotenv file without exposing them
   to the agent; see the `secrets` skill.
-- Inline previews (builtin): `::inline-vis{file="demo.html"}` renders a
-  workspace HTML or Markdown file inline in chat; see the `inline-vis` skill.
+- Inline previews (builtin): shows an HTML page inline in a reply, from a
+  fenced `inline-vis` code block or a `::inline-vis{file="demo.html"}`
+  workspace or thread-storage file; see the `inline-vis` skill.
+- MCP server (builtin, disabled by default): `bb plugin enable bb--mcp` lets
+  ChatGPT, Claude, or another MCP client control this bb; an approved app can
+  run any `bb` command. `bb mcp status|clients|revoke`; see the `mcp` skill.
+- Storage & retention (builtin, disabled by default): enable with
+  `bb plugin enable bb--storage-retention`. Owns thread retention policies
+  and machine storage cleanup through its sidebar panel and `bb storage`
+  commands; see the `storage-retention` skill.
 - Automations (builtin): recurring or one-shot agent prompts and stored
   server scripts. `bb automation create|list|show|update|pause|resume|run|runs|delete`;
   see the `automations` skill.
@@ -226,6 +247,11 @@ Anyone can host a third-party marketplace:
   bb marketplace add git:github.com/acme/bb-marketplace@main
   bb marketplace add git:github.com/acme/agent-plugins@main --subdirectory bb
   bb marketplace add path:/work/acme-marketplace
+
+--subdirectory follows the same path rules as `bb plugin install
+--subdirectory`; bb reads marketplace.json and relative icons from that
+directory on every refresh. `source.git.subdir` in a catalog entry stays
+relative to the repository root.
 
 The manifest `name` is the marketplace identity; duplicates and the reserved
 `bb-official` and `bb-community` names are refused. Install an entry of a

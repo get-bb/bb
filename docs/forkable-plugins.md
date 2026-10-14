@@ -32,8 +32,9 @@ built-ins held to this rule. Two checks read it:
   change how many run at once. Use `--shard=<index>/<count>` (one-based) to
   partition the selected plugins across runners; `--list` prints that shard.
 
-On pull requests, `--changed-from=<base sha>` compares the merge commit with
-the base. When every changed path (renames count both paths) belongs to a
+On pull requests, `--changed-from=<sha>` compares the merge commit with the
+comparison base the CI planning job resolves (see
+[ci-performance.md](ci-performance.md#pr-selection)). When every changed path (renames count both paths) belongs to a
 listed plugin, only those plugins run; any shared, unknown, or unlisted-plugin
 change, or missing history, runs the full list. Main and manual runs always
 check the full list with fresh resolution of published dependencies. Add

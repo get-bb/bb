@@ -55,8 +55,47 @@ native snapshot and browser APIs; no daemon wire fields change.
 - Connect's `tunnel closed` warnings include the last transport error's message
   and code, `connectedDurationMs`, and `lastHeartbeatAckAgeMs`. A null duration
   means the opening handshake never completed; a null acknowledgement age means
-  no heartbeat acknowledgement arrived on that connection. They appear in the
+  no heartbeat acknowledgement arrived on that connection. They also carry the
+  Cloudflare `colo` and `ray`, and `traffic`: open HTTP and WebSocket streams,
+  bytes each way, how long each direction had been quiet, and bytes still
+  buffered. `tunnel connected` and `handshake timed out` lines carry dial
+  timings in milliseconds since dialing: `lookupMs`, `connectMs`, `tlsMs`, and
+  `upgradeMs` (the gate's 101). A timed-out dial with `tlsMs` but no
+  `upgradeMs` reached Cloudflare and was waiting on the gate. They appear in the
   server logs and `<dataDir>/plugins/connect/logs/plugin.log`.
+
+## bb Connect Gate Events
+
+The gate answers every proxied request within the response-head timeout (30 s,
+90 s for voice transcription) from when the Worker receives it; a miss gets a
+504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`,
+`response-head`, or `finishing`. Workers Logs keeps only about 1% of gate
+requests, so the gate also writes these to the Analytics Engine dataset
+`bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging):
+
+- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s);
+  `blob2` stage, `blob3` method, `blob4` host, `blob5` path; `double1` elapsed
+  ms; `double2` tunnel-object attempts (above 1 means the object restarted and
+  the dial was replayed).
+- For a stall that reached the tunnel object, `blob6` is the tunnel state
+  (`connected`, `disconnected`, or `unknown` when the object did not answer
+  within 2 s) and `double3` the age in ms of the last answered heartbeat, or
+  -1. A bb heartbeats every 20 s, so an age of minutes means a dead tunnel the
+  object still holds; a recent age means the bb's server did not answer.
+  Routing stalls and `slow` events leave `blob6` empty and `double3` at -1.
+- `blob1` `tunnel-gap` is written when a server's tunnel opens after a period
+  with none: `blob2` is how the previous tunnel ended (`closed`, `lost`, or
+  `unreported`), `blob3` is `replaced-live` when that tunnel had replaced a
+  working one, `blob4` host, `double1` ms without a tunnel, and `double2` the
+  previous tunnel's lifetime (-1 when unreported). `replaced-live` with a short
+  or unreported previous tunnel is a bb whose abandoned dial replaced its
+  working tunnel; `double1 + double2` near 300,000 means it then waited out the
+  five-minute takeover backoff.
+
+Query with the Analytics Engine SQL API and an Account Analytics Read token,
+for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM
+bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp
+DESC`.
 
 ## Reproducing Test Order Failures
 
@@ -757,6 +796,12 @@ applied chunk.
    `Thread timeline build blocked the event loop` and its stage timings.
    `inFlightWorkAtObservation` can name an unrelated long poll; compare
    `longestSynchronousWork` and its wall/CPU times with the profile instead.
+   `stallAttribution` is `candidate`, with the operation in
+   `stallCauseCandidate`, when a measured synchronous operation is long enough
+   (within one 20 ms sample) to explain the maximum delay, and `unattributed`
+   otherwise. A candidate is not a confirmed cause: both fall somewhere in the
+   five-second window. Profiler work is measured as `cpu-profile:start`,
+   `cpu-profile:finish`, and `cpu-profile:serialize`.
 2. Load the `.cpuprofile` covering that time and PID in Chrome DevTools'
    JavaScript profiler, select the window, and read the bottom-up view.
    Match function names against the exact source revision of the build.
@@ -766,3 +811,17 @@ applied chunk.
 4. Repeat with a small control workload. Expected long polls log slow requests
    without blocking the loop; require corroborating loop delay, stage timings,
    or sampled execution before calling them stalls.
+
+## Workspace Context Read Limits
+
+The server passes `host.read_workspace_agent_context` its project skill read
+policy: at most 1,000 non-hidden, non-excluded directories, 10 MiB per
+`SKILL.md`, and 32 MiB of JSON-encoded content in total (directory metadata,
+shared skill discovery, and workspace instructions do not count). These are a
+starting policy, not a measured requirement or transport ceiling. Files over a
+limit are skipped with server warnings; smaller later files can still fit, and
+count truncation is reported separately. Only exact-case `SKILL.md` files are
+read; symlinked skill directories or files and roots escaping the workspace are
+skipped before reading. Command lookup sets `includeAgentInstructions: false`,
+so an invalid `.bb/AGENTS.md` cannot break the command catalog; turn
+preparation sets it to `true` and reports instruction-read errors.

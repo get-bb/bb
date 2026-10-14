@@ -224,7 +224,13 @@ Inspecting:
   `thread context` reads the latest stored context measurement without starting
   a provider request; `--json` prints `{ usage: ... }` (`null` when unavailable).
   Claude Code includes an estimated breakdown when available; other providers
-  report totals.
+  report totals. When the provider reports the session's cumulative cost,
+  `usage.cost` is `{ amount, currency }`.
+
+  `thread commands` lists the slash commands advertised for the current
+  session; ACP agents report these live, so the list is empty until the agent
+  sends one. `thread options --set` takes `true` or `false` for an on/off
+  option; `bb provider models <provider>` lists the options a model declares.
 
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
@@ -333,7 +339,9 @@ Messaging:
   `thread clear` keeps the BB thread, workspace, durable event history, and
   sticky execution settings. Its active timeline starts at one visible
   `Context cleared` boundary, and its next prompt starts a fresh provider
-  conversation in the same thread. It is also the recovery for a send refused
+  conversation in the same thread. With
+  `bb settings general keepHistoryAfterContextClear true`, earlier messages
+  stay visible above that boundary. It is also the recovery for a send refused
   with `provider_session_unavailable` (`details.reason` foreign, ambiguous, or
   invalid: the recorded provider session belongs to another thread or has no
   usable identity).

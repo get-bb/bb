@@ -61,6 +61,8 @@ Android APK; see [configuration.md](configuration.md)).
 - Phones have no host daemon, so local editor integration, "Open in …", and
   the native folder picker are unavailable; the remote path browser works.
   Provider sign-in still needs a terminal on the host.
+- Web CSS and plugin themes apply to the loaded web app; native screens use
+  the built-in palettes. Desktop browser automation needs a desktop host.
 
 ## Support Boundaries
 

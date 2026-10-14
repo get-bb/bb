@@ -7,7 +7,9 @@ row IDs or sequence cuts. Keep display options unchanged throughout the walk.
 
 Conversation segments are a page-sizing preference, not a requirement on the
 window edges: a page can start at an ordinary event sequence. The latest
-completed context clear is the history floor.
+completed context clear is the history floor unless the
+`keepHistoryAfterContextClear` general setting is on; then pages continue
+across it to the start of the thread.
 
 A page owns an event window `[start, end)`. It returns projected rows whose
 `sourceSeqStart` falls inside that window, in display order. Context loaded
@@ -67,6 +69,13 @@ restarts from the latest page's cursor. When nothing is dropped the deeper of
 the loaded and latest cursors is kept. After a stale-cursor 400,
 `recoverLoadedTimelineAfterStaleCursor` reloads from the latest page when the
 snapshot changed, and otherwise merges and takes the latest cursor.
+
+`apps/server/test/public/public-thread-timeline-scrollback.test.ts` pins this
+by running the client merges over real pages and comparing them with a fresh
+walk. The Ladle story `thread/timeline/Scrollback` with
+`apps/app/.ladle/tests/timeline-scrollback.mjs` (run with dev-browser against
+the open story) checks that the scrolled-back row stays put while the latest
+window changes and that a full walk shows every row once, in order.
 
 A latest page sends omitted rows whose `sourceSeqEnd` reaches its window start
 in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
@@ -173,7 +182,10 @@ in one walk before their content pagination.
 
 ## Conversation outline caching
 
-The conversation outline returns the full list of message previews. Active
+The conversation outline returns the full list of message previews;
+`role=user` or `role=assistant` returns only that role's items, sharing one
+cache. The app requests user items while the table of contents is visible and
+assistant items only while its Agent messages tab is open. Active
 threads reuse completed outline items from a bounded in-memory cache (16 threads,
 8 million characters) and reproject only the tail; history rewrites, context
 clears, metadata or display changes, and writes from another database connection
@@ -187,5 +199,5 @@ highest. The client shows catch-up feedback only when that sequence is newer
 than the cached response's `maxSeq`, so cache-age refreshes and notifications
 the cache already covers do not show it. A response clears only sequences
 through its own `maxSeq`. The indicator appears after the timeline has stayed
-behind for one second, disappears as soon as the cache catches up, and floats
-over the timeline without changing scroll height.
+behind for one second, disappears as soon as the cache catches up, and renders
+as a row at the end of the timeline.

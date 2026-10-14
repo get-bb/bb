@@ -87,6 +87,7 @@ const settings = bb.settings.define({
     type: "select",
     label: "Mode",
     options: ["fast", "slow"],
+    experimental_optionLabels: { fast: "Fast (default)" }, // display only
     default: "fast",
   },
   verbose: { type: "boolean", label: "Verbose", default: false },
@@ -104,6 +105,9 @@ from `get()`; without one the value is `string | number | boolean | undefined`
 — so give non-secrets defaults and handle missing secrets explicitly. Number
 descriptors accept finite numbers and render a numeric input; use
 `experimental_schema` for integer and range constraints.
+`experimental_optionLabels` maps select option values to display labels;
+stored values, defaults, `get()`, and `bb plugin config` keep using the option
+values, and a label keyed by anything outside `options` is refused.
 
 `experimental_schema` accepts a synchronous, non-transforming Standard Schema
 validator; Zod schemas qualify. It runs on the server for settings-page

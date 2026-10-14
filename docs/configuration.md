@@ -215,6 +215,21 @@ providers `collapse`. It applies to existing threads, the outline, and
 `bb thread log`. Set it in Settings → Providers or with
 `bb settings completed-turns <provider-id> <collapse|flat|default>`.
 
+**Anonymous usage telemetry.** PostHog events carry a random install id, app
+version, install kind, platform, OS release, architecture, and Node version.
+The server sends `app_started`, `telemetry_disabled`, `thread_created`,
+`user_message_sent`, and `plugin_installed`. The app reports setup-guide and
+first-send events through `POST /api/v1/system/telemetry/events`
+(`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
+`onboarding_step_reached`, `onboarding_step_completed`,
+`onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
+`onboarding_sign_in`, and `new_thread_submit` (started, accepted, or failed).
+The route accepts only these events with fixed enums and booleans: no provider
+ids, account details, prompts, project or file names, terminal output, error
+messages, or session ids. Sign-in `exited` means the command exited before
+readiness was observed, not that authentication succeeded; `new_thread_submit`
+`accepted` means the thread was created, not that the provider answered.
+
 ## AI services
 
 Thread titles (and the branch names built from them), commit messages, and
@@ -710,6 +725,14 @@ code execution and only works with a co-located daemon. The `customAcpAgents`
 key in `config.json` is no longer read. Known agents, OpenCode launch settings,
 and OpenCode Go usage are covered by the `acp-provider` skill.
 
+The rebuilt adapter ships as the builtin plugin "ACP providers (new adapter)"
+(`bb--provider-acp-next`), off by default. It registers the same provider ids,
+and only one ACP plugin runs at a time: enabling it disables "ACP providers",
+disabling it re-enables that plugin, and `customAgents` follows the switch. It
+adds the official ACP registry (`bb acp registry`, `bb acp add <agent-id>`,
+`bb acp remove <agent-id>`); an added agent is a `customAgents` entry running
+the registry's `npx` or `uvx` package on the thread's host.
+
 ## Custom Models
 
 Register extra picker models with top-level `customModels` in
@@ -875,9 +898,10 @@ matching `sdk.projects` methods. See `bb guide machines`.
 forwards the server's `gh` login to non-primary hosts as `GH_TOKEN`, a Git
 credential helper and SSH URL rewrites for github.com, and author/committer
 identity, without installing helper files or global Git config. The primary
-host keeps its local Git authentication. An explicit global or project
-`GH_TOKEN` overrides the built-in token. Changes apply to new turns, setup
-commands, and terminals.
+host keeps its local Git authentication; a server without a local host daemon
+has no primary host, so every machine receives the token. An explicit global or
+project `GH_TOKEN` overrides the built-in token. Changes apply to new turns,
+setup commands, and terminals.
 
 ## Sidebar preferences
 
@@ -891,24 +915,31 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | Key                           | Value                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one |
-| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): an installed navigation plugin wins over the bundled `navigation/navigation`                                  |
-| `sidebar.headerProvider`      | Plugin key, or `__builtin__` (default) for bb's header controls only                                                                                   |
-| `sidebar.pluginPanelOrder`    | Navigation entry order                                                                                                                                 |
-| `sidebar.visiblePluginPanels` | Navigation entries shown, or `null` for every entry                                                                                                    |
+| `sidebar.pluginPanelOrder`    | Rail destination order                                                                                                                                 |
+| `sidebar.visiblePluginPanels` | Rail destinations shown, or `null` for every destination                                                                                               |
 | `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
 | `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
-| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                                                       |
+| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`)                                       |
 
-Legacy `__builtin__` thread list and navigation selections resolve to the
-bundled plugin. Footer IDs are `builtin:settings`, `builtin:report-bug`, and
+A legacy `__builtin__` thread list selection resolves to the bundled plugin.
+Footer IDs are `builtin:mobile`, `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and
 disabled-plugin IDs are retained, and new actions default to visible. The
 footer can also be edited from its More menu or Settings → Appearance → Sidebar
 footer.
 
+A vertical rail on the left edge of the sidebar holds Home (the last thread),
+the visible destinations (Plugins, Skills, plugin panels), More (hidden
+destinations and Customize rail), and Settings at the bottom. New thread sits
+in the sidebar header and cannot be hidden. The list beside the rail swaps
+between the thread list, Plugins, Skills, and Settings; collapsing the sidebar
+leaves only the rail. On narrow windows and phones the rail sits inside the
+drawer. In the macOS desktop app, wide windows add a title bar with the window
+controls, Back and Forward, and the sidebar toggle.
+
 The layout keys `sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
 `sidebar.chronologicalSort`, `sidebar.sortDirection`, the three section-order
-keys, `sidebar.hiddenGroups`, and the `sidebar.collapsed*` keys are legacy: the
+keys, and `sidebar.hiddenGroups` are legacy: the
 bundled Thread list plugin copies non-default values once and then keeps its
 own preferences ([Thread list plugin](#thread-list-plugin)).
 
@@ -921,8 +952,6 @@ palette's Active/Archived filter is browser-local and has no CLI/SDK setting.
 Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 bb stores only the experiments you set; the others follow the shipped default.
-The default-off `changelogPreview` experiment shows the latest release notes
-as a compact, dismissible card on Settings → Updates.
 
 - `changelogPreview` shows the latest release notes as a dismissible card on
   Settings → Updates.
@@ -941,17 +970,12 @@ as a compact, dismissible card on Settings → Updates.
   collection. The experiment itself applies live; turning it off restores
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
-
-The `timelinePush` experiment is off by default. When enabled, an open thread
-view subscribes to its latest timeline window over the WebSocket
-(`thread-timeline` subscription target), and the server pushes the full window
-once and then row deltas after new events, so the client stops reloading the
-latest window after every update. A missed push falls back to the same delta
-request the view uses with the experiment off. While it is off the client
-neither subscribes nor applies pushes and refetches the latest window after
-events as before; the server sends nothing because no view subscribes. Toggle
-it with `bb settings experiment timelinePush <true|false>`; open views follow
-the change live.
+- `timelinePush` makes an open thread view subscribe to its latest timeline
+  window over the WebSocket (`thread-timeline` subscription target); the server
+  pushes the full window once, then row deltas after new events, instead of the
+  client refetching the latest window after every update. A missed push falls
+  back to the delta request used when it is off. Open views follow a toggle
+  live.
 
 ## Thread Timeline Window
 
@@ -990,7 +1014,9 @@ Plugin state lives under the data dir:
 ```
 
 Marketplace catalogs live in the bb database. The reserved `bb-community`
-marketplace comes from `BB_MARKETPLACE_URL`. The server checks installed
+marketplace comes from `BB_MARKETPLACE_URL`. A `git:` marketplace reads
+`marketplace.json` from the repository root, or from the directory saved with
+`bb marketplace add --subdirectory <relative-path>`. The server checks installed
 plugins for updates every 6 hours but never applies them.
 
 Plugin settings are changed on the plugin's page under Settings → Installed
@@ -1158,9 +1184,15 @@ row's Customize row actions, or `bb thread-list prefs get|set|reset <key>`
 | `sectionOrder`        | `["pinned","projects","threads"]` | Top-level order by project; `manualSectionOrder` and `machineSectionOrder` cover the other modes                                            |
 | `hiddenGroups`        | `[]`                              | Groups moved into More: `threads`, `project:<id>`, `section:<id>`, `machine:<hostId>` (`machine:no-machine`); `set` replaces the whole list |
 | `threadLifecycles`    | `["active"]`                      | `["active"]`, `["archived"]`, or both; empty and duplicate values are rejected                                                              |
-| `rowActions`          | `["archive"]`                     | Up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, `archive`, in display order                                            |
+| `rowActions`          | `["bb--core/archive"]`            | Up to three thread action keys in display order; see below                                                                                  |
 | `showProviderIcons`   | `false`                           | Shows the provider icon before each thread title                                                                                            |
 | `collapsed*`          | `[]`                              | Collapsed sections, projects, threads, environments, custom sections, and machines                                                          |
+
+`rowActions` keys are `bb--core/<id>` (`split`, `newThreadInEnvironment`,
+`copyLink`, `read`, `pin`, `rename`, `archive`, `delete`), `thread-list/move`,
+or a plugin's `<pluginId>/<actionId>`. Bare legacy ids and `core/<id>` keys
+migrate to current keys. A key whose action is hidden for a row, or whose
+plugin is not installed, is skipped on that row.
 
 ### Connect and bb account
 
@@ -1204,6 +1236,16 @@ never modifies the user's global npm installation. See the
 `browser-automation` skill and `plugins/browser-automation/README.md`. For
 isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` and
 `DEV_BROWSER_SMOKE_CHROME` select absolute binary and Chrome paths.
+
+### MCP server
+
+The bundled MCP server plugin is disabled by default; enable it with
+`bb plugin enable bb--mcp`. It serves a Model Context Protocol endpoint at
+`/mcp` on the bb connect address and at `/api/v1/plugins/bb--mcp/http/mcp` on
+loopback (`bb mcp status` prints both). Remote apps sign in through the bb
+account, and an approved app can run any `bb` command; `bb mcp clients` lists
+them and `bb mcp revoke <grant-id>` disconnects one. The loopback address needs
+no sign-in and has the same trust as the local `bb` CLI. See the `mcp` skill.
 
 ## Desktop browser cookie discovery
 

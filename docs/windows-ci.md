@@ -93,15 +93,20 @@ The test step differs from the Linux one in three ways:
   that runs at the same time. Provider parity passed all 35 such runs and now
   runs in `packages-other`.
 
-Run one shard locally from `cmd` or PowerShell after a full install:
+App and server shards, on Linux and Windows, select their Vitest shard with
+the internal `BB_CI_TEST_SHARD` variable (for example `1/3`). Vitest validates
+and applies it, and Turbo hashes it only for those test tasks. Do not pass
+shard selection after Turbo's `--`: those arguments also reach prerequisite
+builds and give identical SDK type builds different cache keys. Linux caps
+workers at two with `VITEST_MAX_WORKERS`, also hashed only for test tasks;
+Windows keeps Vitest's defaults. Run one shard locally from PowerShell after a
+full install:
 
 ```powershell
 pnpm install --frozen-lockfile --ignore-scripts
-pnpm.cmd exec turbo run test --filter=@bb/server --continue --output-logs=new-only -- --shard=1/3
+$env:BB_CI_TEST_SHARD = "1/3"
+pnpm exec turbo run test --filter=@bb/server --continue --output-logs=new-only
 ```
-
-Use `pnpm.cmd`: PowerShell's `pnpm.ps1` shim drops the `--` separator, and
-Turbo then rejects `--shard`.
 
 Each shard uploads `.turbo/runs/*.json` as a
 `test-timings-windows-<shard>-<attempt>` artifact. With nothing restored from
@@ -144,7 +149,9 @@ pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
 ```
 
 The `Windows desktop smoke (Node 22.x)` job packages the desktop app from the
-same checkout and runs the packaged-app smoke against the result:
+same checkout and runs the packaged-app smoke against the result. Both
+packaging smoke jobs install the workspace without `@bb/mobile`, which is not
+in the desktop or launcher dependency chain:
 
 ```powershell
 pnpm exec turbo run package:win --filter=@bb/desktop --output-logs=new-only

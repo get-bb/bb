@@ -3,11 +3,11 @@
 Use `apps/app/src/lib/define-split.tsx` for every app UI boundary. This is an
 app-local contract, not a Plugin SDK API. App code sorts into three tiers:
 
-| Tier      | What belongs here                                                        | Mechanism                                       |
-| --------- | ------------------------------------------------------------------------ | ----------------------------------------------- |
-| Core      | What the first paint of the boot shell or a page needs                   | Static imports                                  |
-| `preload` | Common UI that is not visible at first paint, such as the right panel    | `defineSplit({ tier: "preload" })`              |
-| `intent`  | Rare UI, such as customization, setup dialogs and context-menu contents | `defineSplit({ tier: "intent" })`               |
+| Tier      | What belongs here                                                       | Mechanism                          |
+| --------- | ----------------------------------------------------------------------- | ---------------------------------- |
+| Core      | What the first paint of the boot shell or a page needs                  | Static imports                     |
+| `preload` | Common UI that is not visible at first paint, such as the right panel   | `defineSplit({ tier: "preload" })` |
+| `intent`  | Rare UI, such as customization, setup dialogs and context-menu contents | `defineSplit({ tier: "intent" })`  |
 
 The router's page components in `App.tsx` stay plain `React.lazy`: they suspend
 into the shared route boundary that marks route content painted, and a
@@ -59,9 +59,9 @@ the implementation through a barrel imported by the shell.
 
 ## Tiers and mounting
 
-| Tier      | Behavior                                                                                                                   |
-| --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `intent`  | Load when rendered, or earlier on a trigger's pointer-enter, focus, or pointer-down.                                      |
+| Tier      | Behavior                                                                                                                                                                                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `intent`  | Load when rendered, or earlier on a trigger's pointer-enter, focus, or pointer-down.                                                                                                                                                                     |
 | `preload` | Queued when the split is defined. The queue drains at browser idle (one-second timeout/fallback) once no critical load is pending: the route import, the current page's split, and any split being rendered. Intent and rendering still load it earlier. |
 
 Wire intent on the actual trigger:

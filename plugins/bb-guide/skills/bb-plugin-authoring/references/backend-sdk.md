@@ -24,10 +24,13 @@ signatures (see "Looking up the exact API" in distribution.md).
   `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary`
   `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storageLocation`
   `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
-  `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`; sub-areas
-  `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve`
-  `respond`), `queue` (`list`), `queuedMessages` (`create` `list` `update`
-  `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`)
+  `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
+  `experimental_listPluginMetadata` `experimental_listAncestors`
+  `experimental_listDescendants`; sub-areas `events` (`list` `wait`),
+  `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
+  (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
+  `reorder` `setGroupBoundary` `experimental_holdForEdit`
+  `experimental_releaseEditHold`), `tabs` (`get` `update`)
 - `threadSections`: `list` `create` `update` `delete`
 - `projects`: `list` `get` `create` `update` `delete` `reorder` `paths`
   `files` `fileContent` `branches` `commands` `defaultExecutionOptions`
@@ -45,7 +48,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `retryUpdate` `experimental_listProviders` `experimental_create`
   `experimental_getEnrollmentCommand` `experimental_reconnect`
   `experimental_suspend` `experimental_resume` `experimental_retryCleanup`
-  `experimental_reconcile` `experimental_deleteOldServerCopy`, and the
+  `experimental_reconcile` `experimental_deleteOldServerCopy`
+  `experimental_discoverRepos`, and the
   deprecated `createJoinCode` (machine creation and suspension are in
   backend-machines.md)
 - `files`: `read` `write` `list` `listPaths` `mkdir` `move` `remove`
@@ -57,10 +61,11 @@ signatures (see "Looking up the exact API" in distribution.md).
   `registry` (`search` `entries` `get` `detail` `install` `repositoryStars`)
 - `plugins`: `list` `install` `remove` `enable` `disable` `reload` `token`
   `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates`
-  `listUpdateResults` `applyUpdate` `experimental_discoverRpc`
-  `experimental_getSafeMode` `experimental_setSafeMode`; sub-areas `catalog`
+  `listUpdateResults` `applyUpdate` `experimental_startUpdate`
+  `experimental_discoverRpc` `experimental_getSafeMode`
+  `experimental_setSafeMode` `experimental_pruneCache`; sub-areas `catalog`
   (`search` `status` `installPlan` `install`), `marketplaces` (`add` `list`
-  `refresh` `remove`)
+  `refresh` `remove`), `experimental_updateJobs` (`list` `get`)
 - `theme`: `get` `catalog` `resolve` `set`
 - `status`: `get`
 - `system`: `version` `config` `reloadConfig` `attention` `usageLimits`
@@ -70,7 +75,9 @@ signatures (see "Looking up the exact API" in distribution.md).
   `installCliSkills` `machineEnvironment` `replaceMachineEnvironment`
   `setMachineEnvironmentVariable` `deleteMachineEnvironmentVariable`
   `mobileAppDownloads` `mobileAppReleases` `appUpdate` `applyAppUpdate`
-  `acknowledgeAppUpdate`; sub-area `uiPreferences` (`list` `set` `reset`)
+  `acknowledgeAppUpdate` `experimental_cliCommand`
+  `experimental_installCliCommand` `experimental_removeCliCommand`
+  `experimental_recordTelemetryEvent`; sub-area `uiPreferences` (`list` `set` `reset`)
 - `experimental_desktopBrowsers`: `listInstances` `listTabs` `createTab`
   `acquireControl` `openConnection` `releaseControl` `revealTab` `closeTab`
   `captureTab` `listImportSources` `importCookies` `subscribe`
@@ -134,8 +141,9 @@ const child = await bb.sdk.threads.fork({
 });
 ```
 
-`PluginBbSdk` is the plugin-bound SDK type. Its `getPluginMetadata` and
-`updatePluginMetadata` calls default to the current plugin's ID. Pass `pluginId`
+`PluginBbSdk` is the plugin-bound SDK type. Its `getPluginMetadata`,
+`updatePluginMetadata`, and `experimental_listPluginMetadata` calls default to
+the current plugin's ID. Pass `pluginId`
 explicitly to read or update another namespace. It must be a plugin ID:
 lowercase letters, digits, and dashes. Namespace IDs are not ownership or
 authorization boundaries.
@@ -146,6 +154,9 @@ values must be plain JSON objects. The SDK rejects invalid input before sending
 any request, including a seed or `set` that is over 256 KiB on its own; raw
 HTTP clients get HTTP 400 for it. A patch whose merged namespace would exceed
 the limit fails with HTTP 413 and leaves the namespace unchanged.
+`threads.experimental_listPluginMetadata({ threadIds })` reads one namespace
+for 1–200 threads in one request, archived and deleted threads included, and
+omits threads without it.
 
 ### Thread trees
 

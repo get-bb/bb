@@ -22,21 +22,21 @@ bb status --json
 
 ## Find the chapter
 
-| Task | Read |
-| --- | --- |
-| Spawn, fork, message, queue, wait, inspect, retry, stop, or archive threads | `bb guide threads` |
-| Worktree setup hooks, environment inspection, commits, pull requests | `bb guide environments` |
-| Enroll, create, update, suspend, or remove machines; move the server | `bb guide machines` |
-| Projects, sources, attachments, project files | `bb guide projects` |
-| Providers, models, service tiers, custom models | `bb guide providers` |
-| Dev servers and other long-running commands | `bb guide terminals` |
-| Settings, keyboard shortcuts, sidebar preferences, themes, files, voice | `bb guide customization` |
-| `AGENTS.md` and skills | `bb guide agent-configuration` |
-| Plugins and marketplaces | `bb guide plugins` |
-| Scheduled work | the `automations` skill |
-| Built-in browser tabs | `bb guide browser` |
-| `--json` output shapes and the error envelope | `bb guide json` |
-| Writing theme CSS | references/theming.md |
+| Task                                                                        | Read                           |
+| --------------------------------------------------------------------------- | ------------------------------ |
+| Spawn, fork, message, queue, wait, inspect, retry, stop, or archive threads | `bb guide threads`             |
+| Worktree setup hooks, environment inspection, commits, pull requests        | `bb guide environments`        |
+| Enroll, create, update, suspend, or remove machines; move the server        | `bb guide machines`            |
+| Projects, sources, attachments, project files                               | `bb guide projects`            |
+| Providers, models, service tiers, custom models                             | `bb guide providers`           |
+| Dev servers and other long-running commands                                 | `bb guide terminals`           |
+| Settings, keyboard shortcuts, sidebar preferences, themes, files, voice     | `bb guide customization`       |
+| `AGENTS.md` and skills                                                      | `bb guide agent-configuration` |
+| Plugins and marketplaces                                                    | `bb guide plugins`             |
+| Scheduled work                                                              | the `automations` skill        |
+| Built-in browser tabs                                                       | `bb guide browser`             |
+| `--json` output shapes and the error envelope                               | `bb guide json`                |
+| Writing theme CSS                                                           | references/theming.md          |
 
 A plugin's commands and settings are documented in that plugin's own skill.
 `bb plugin list` shows which commands each plugin contributes.

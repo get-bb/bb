@@ -29,8 +29,32 @@ bb thread spawn --provider acp-opencode --model <provider/model>
 ```
 
 OpenCode agents are session modes, not models selectable through BB's model
-field. Grok Build advertises models and `thought_level` options over ACP, so
-the picker follows the connected agent (including `xhigh` on grok-4.6).
+field. OpenCode reports its primary agents as the `mode` session option,
+including custom agents from the OpenCode config directory and from the
+project's `.opencode/` directory, so project agents appear when the list is
+read for that project or environment:
+
+```sh
+bb provider models acp-opencode --project "$BB_PROJECT_ID"
+bb thread spawn --provider acp-opencode --option mode=<agent>
+```
+
+bb lists only the agents OpenCode itself loads, and OpenCode does not read
+agent files from other folders such as `.agents/agents/`. To use such a folder,
+set `OPENCODE_CONFIG_DIR` as a machine variable or in a custom agent's `env`; a
+relative value is resolved in each workspace, so `.agents` lists every
+project's own `.agents/agents/*.md`:
+
+```sh
+printf '.agents' | bb machine env set OPENCODE_CONFIG_DIR
+```
+
+Every file in that folder must be a valid OpenCode agent file; OpenCode refuses
+to start on one it cannot parse, such as `tools` written as a comma-separated
+list.
+
+Grok Build advertises models and `thought_level` options over ACP, so the
+picker follows the connected agent (including `xhigh` on grok-4.6).
 
 BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
 `OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch

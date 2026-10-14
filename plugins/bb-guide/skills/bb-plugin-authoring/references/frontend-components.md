@@ -264,7 +264,9 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   submit it calls `onSubmit(request)` with a JSON-serializable
   `NewThreadRequest`
   `{ projectId, providerId, model, reasoningLevel, permissionMode,
-serviceTier?, executionInputSources, environment, input }`. Hand it to
+serviceTier?, sessionOptions?, executionInputSources, environment, input }`
+  (`sessionOptions` only when the user changed an agent option the provider
+  declares). Hand it to
   `useSdk().threads.spawn` from the frontend (or forward it verbatim to your
   backend rpc and `bb.sdk.threads.spawn` when the create needs server-side
   work), adding `sectionId` / `parentThreadId` / `title` / `visibility`
@@ -298,6 +300,7 @@ serviceTier?, executionInputSources, environment, input }`. Hand it to
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+
 - `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
   input (the prompt box's microphone preference, transcription service, and
   errors). Props: `value`, `onValueChange(value)`, optional
@@ -309,7 +312,6 @@ serviceTier?, executionInputSources, environment, input }`. Hand it to
   submission while `onVoiceInputActiveChange` reports `true`. The registry's
   `voice-input-textarea` item re-exports it, and `question-form` uses it for
   free-text answers. Alias it on import like `experimental_NewThreadComposer`.
-
 
 ## Shared app and provider icons
 

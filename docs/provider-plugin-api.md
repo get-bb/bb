@@ -102,6 +102,23 @@ without the field accepts every declared tier. The server rejects an explicit
 tier the declaration does not list and passes the chosen id to the bridge as
 `serviceTier`.
 
+`supportedReasoningEfforts[].reasoningEffort` is an open, non-empty id: the
+standard ladder (`none`, `low`, `medium`, `high`, `xhigh`, `ultracode`,
+`max`, `ultra`) keeps its order and labels, and any other id is the
+provider's own, shown under the entry's optional `label` and sent back as
+`reasoningLevel` unchanged. A bridge that receives an id it does not know
+omits it rather than failing the turn.
+
+A `model/list` entry may also carry `sessionOptions`, the
+`bb/session-options` option shape with `value` as the provider's default. A
+`select` lists only the values that model supports; a `boolean` with
+`fixed: true` says the model runs only with that value. The new-thread model
+picker shows the union, disables models the current choices rule out, and
+sends the choices as `sessionOptions` on the thread's first commands. The
+server applies the same rule on every create: a caller that leaves the model
+to bb starts on a model that fits (the default when it does), and a named
+model the choices rule out is refused with a model that fits.
+
 `models.fallback` is shown only until the first `model/list` probe completes,
 or when a probe fails transiently; a non-empty list has exactly one
 `isDefault`. bb keeps each machine's last successful `model/list` answer per
@@ -240,6 +257,10 @@ Execution options ride every command and carry no provider-named field:
 { model, serviceTier?, reasoningLevel, promptMode?, sessionOptions?,
   instructions, providerOptions: JsonValue } & PermissionPolicy
 ```
+
+`sessionOptions` carries the user's pending choices among the options the
+bridge published as `bb/session-options`
+([provider-bridge-protocol.md](provider-bridge-protocol.md), Grammar v3).
 
 **Bridge → runtime**: notifications `thread/delta` (one streaming dialect, one
 usage dialect), `thread/identity`, `session/replaced`, `provider/recovery`,

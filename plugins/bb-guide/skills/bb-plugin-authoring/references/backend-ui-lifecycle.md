@@ -53,16 +53,11 @@ would expect from installing, such as picking the plugin's thread list:
 ```ts
 bb.onInstall(async () => {
   const { preferences } = await bb.sdk.system.uiPreferences.list();
-  for (const key of [
-    "sidebar.navigationProvider",
-    "sidebar.headerProvider",
-  ] as const) {
-    await bb.sdk.system.uiPreferences.set({
-      key,
-      value: "my-plugin/icons",
-      expectedRevision: preferences[key].revision,
-    });
-  }
+  await bb.sdk.system.uiPreferences.set({
+    key: "sidebar.threadListProvider",
+    value: "my-plugin/inbox",
+    expectedRevision: preferences["sidebar.threadListProvider"].revision,
+  });
 });
 ```
 

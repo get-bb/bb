@@ -184,7 +184,10 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   change neither the context meter nor provider-reported usage windows.
 - **Context meter.** The context meter is always the separate `contextWindow`
   delta, which may name a vouched `providerTurnId` (codex sends one beside
-  each `usage`). It may carry an optional `snapshot` (`ContextSnapshot`,
+  each `usage`). It may carry the session's cumulative `cost`
+  (`{ amount, currency }`); only the latest is kept, so a bridge that reports
+  cost repeats the current total on every `contextWindow` delta (the ACP
+  bridge does, from `usage_update.cost`). It may carry an optional `snapshot` (`ContextSnapshot`,
   validated by `contextSnapshotSchema`): capture time, provider session/turn
   identity, model, token totals, compaction threshold, estimate status, and
   categories. Each `ContextCategory` has a provider-defined id and label,
@@ -193,11 +196,16 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   already included in its parent category, and entries may describe only
   part of the category total.
 - **Streamed-text batching.** Coalescing is assembler policy, not bridge
-  policy: within a per-stream flush window consecutive streamed-text events
-  concatenate into one event, the first delta of a fresh stream emits
-  immediately, and every non-batchable event is an ordering barrier, so
-  coalescing never reorders text relative to item opens/closes, turn events,
-  errors, or other streams. Bridges forward text as it arrives.
+  policy: within a per-stream flush window (`textDeltaFlushMs`, 50 ms
+  default, 0 disables) consecutive streamed-text events concatenate into one
+  event. The window opens at a stream's first buffered delta, so the first
+  delta never ships alone, and flushes once elapsed on the thread's next
+  traffic, on stream close or a session boundary, or on a trailing timer that
+  hands the events to `onDeferredEvents` (no callback, no timer). Every
+  non-batchable event is an ordering barrier, so coalescing never reorders
+  text relative to item opens/closes, turn events, errors, or other streams.
+  The host daemon posts events on a tick of the same length. Bridges forward
+  text as it arrives.
 - **Settlement.** `session.ended` and settling errors close open turns and
   items with the right statuses.
 
@@ -237,6 +245,25 @@ The current grammar (`grammarVersions: [3, 3]`) includes:
   plugin owns, an undeclared kind, or a schema miss is persisted as a
   `provider/unhandled` in the same batch slot, never dropped and never
   stored unvalidated.
+- **bb thread state kinds** `"bb/<name>"`: `extension.state` kinds owned by
+  bb, which any bridge may emit and the server validates against
+  `packages/domain/src/thread-provider-state.ts`. `bb/provider-commands`
+  carries `{ commands: [{ name, description, inputHint? }] }`, the slash
+  commands the provider offers in the thread now (the composer's `/` menu,
+  `bb thread commands`). `bb/session-options` carries `{ options }`, the
+  per-session settings other than model and reasoning level, each a `select`
+  (`value`, `values`) or a `boolean`, with an optional `category` such as
+  `mode` (the model picker, `bb thread options`; `mode` shows in the composer
+  footer). Latest snapshot wins: re-emit the whole list when it changes. The
+  server alone writes `bb/session-option-selections` (choices the provider
+  has not applied yet) and refuses it from a bridge.
+- **`sessionOptions`** (`{ [optionId]: string | boolean }`) on `thread/start`
+  and `turn/start`. Before the bridge publishes `bb/session-options` for the
+  thread it carries every choice made at creation; afterwards only choices
+  that differ from the last published value. The bridge applies each entry
+  before the prompt, skips options or values it does not offer, and
+  publishes the new snapshot, which clears the choice on the server, so an
+  option the provider later changes itself is not forced back.
 - **`provider/recovery`** is a bridge → runtime _notification_ beside
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,

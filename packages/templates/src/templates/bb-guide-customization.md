@@ -98,9 +98,15 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   running thread and Command+Enter queues a follow-up; when off, those are
   reversed. Shift+Enter inserts a newline.
 - `showGitChanges` (default true; Settings → General → Show Git changes and
-  Commit button): false hides the git summary, expanded file list, and Commit
-  action in the thread header and overflow menu for every thread and connected
-  client. PR status and workspace warnings remain visible.
+  Commit button): false hides the git summary, expanded file list,
+  pull-request status and actions above the composer, and Commit action in the
+  thread header and overflow menu for every thread and connected client. Thread
+  relationships and workspace warnings remain visible.
+- `keepHistoryAfterContextClear` (default false; Settings → General → Show
+  messages from before a context clear): true keeps a cleared thread's earlier
+  messages above the `Context cleared` boundary in the timeline, outline, and
+  message lookups. The next prompt still starts a fresh provider conversation,
+  and the context meter still resets.
 - `confirmThreadArchive` (default true): set false to archive parent and child
   threads in the app without the confirmation popup; the toast still offers
   Undo. CLI and SDK archive calls are always non-interactive.
@@ -125,6 +131,25 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   clears it.
 - `telemetryEnabled`: see Telemetry below.
 
+`bb settings replay-onboarding` clears `onboardingCompletedAt`, so the
+first-run setup guide (connect an agent, add projects, pick plugins, set up
+devices) shows again in every open client. Settings → General → Setup guide has
+the same button.
+
+`bb settings usage --refresh` fetches fresh provider usage; ordinary reads may
+reuse results for 10 seconds. The SDK equivalent is
+`bb.sdk.system.usageLimits({ refresh: true })`.
+
+Command line: Settings → General → Command line puts the `bb` command on PATH
+on the computer that runs the bb server, so the user, a script, or an agent
+running outside bb (such as Claude Code or Codex) can control bb; threads in bb
+already have `bb`. `bb settings cli-command` shows the state, and `install` or
+`remove` changes it. Install links the launcher at `~/.bb/bin/bb` into a PATH
+folder such as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user
+PATH). bb never replaces another `bb`: install is refused while one runs first
+in a new terminal. Only an installed bb (`npx bb-app` or the desktop app)
+offers this; a source checkout does not.
+
 Completed turns: `bb settings completed-turns` lists how each provider shows a
 finished turn: `collapse` folds the turn's work into one "Worked for" row and
 keeps the final answer visible, and `flat` keeps every step visible. Each
@@ -140,12 +165,9 @@ experiment (Settings → Experiments). `changelogPreview` shows the latest
 release notes as a dismissible card on Settings → Updates. Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
-
-`navigationRail` keeps a vertical rail of destinations beside the sidebar.
-Home returns to the last thread, Settings sits at the bottom, and New thread
-moves into the sidebar header. While enabled, the Navigation and Header
-choices under Settings → Appearance are not used. Narrow windows and phones
-keep the regular drawer.
+`timelinePush` sends an open thread's timeline updates over the live
+connection as row deltas instead of reloading the latest window after each
+update.
 
 Launcher settings
 
@@ -232,16 +254,22 @@ layout (organization mode, sort, grouping, hidden and collapsed groups) and
 copies the legacy `sidebar.*` layout keys from here only once; change its
 layout with `bb thread-list prefs` (see `bb guide plugins`).
 
-The sidebar navigation rows (New thread, Search, Plugins, Skills, plugin
-panels) come from `sidebar.navigationProvider`, which defaults to
-`__automatic__`: an installed navigation plugin wins over the bundled
-`navigation/navigation`. Their order and visibility are
-`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`.
-`sidebar.headerProvider` picks a plugin that draws controls beside the sidebar
-toggle; it defaults to `__builtin__`.
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header and cannot be hidden. The list beside the rail swaps between
+the thread list, Plugins, Skills, and Settings, and collapsing the sidebar
+hides that list and leaves the rail. Rail order and visibility are
+`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`. In the macOS
+desktop app, wide windows add a title bar holding the window controls, Back
+and Forward, and the sidebar toggle; the sidebar and page sit in a card below
+it. On narrow windows and phones the rail sits inside the drawer: Home,
+Plugins, Skills, and Settings swap the list beside it and leave the drawer
+open, and a plugin page closes it.
 
 Footer actions: `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are
-string lists of `builtin:settings`, `builtin:report-bug`, or
+string lists of `builtin:mobile`, `builtin:report-bug`, or
 `plugin:<encoded pluginId>/<encoded registrationId>`. They survive plugin
 reloads and temporarily unavailable plugins; new items are visible by default.
 
@@ -286,10 +314,10 @@ Voice transcription uses the Voice input service chosen with
 recordings up to 25 MB, and each service may set a lower limit; Codex takes up
 to 20 MB. These limits apply to the app, SDK, and CLI. The app's microphone
 choice is per browser and has no `bb` command. Right-click the composer
-microphone or press Shift+F10 to open preferences in a desktop popover or
-mobile drawer. Opening starts a local waveform preview; closing releases it.
-Recording controls contain cancel, stop, and send; preferences are available
-while idle.
+microphone, press Shift+F10, or click the Microphone control in Settings →
+Voice Input to open preferences in a desktop popover or mobile drawer.
+Opening starts a local waveform preview; closing releases it. Recording
+controls contain cancel, stop, and send; preferences are available while idle.
 
 Missing or unreadable inputs fall back to the system default, then other
 available inputs. Permission denials do not trigger fallback. A disconnect
