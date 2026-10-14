@@ -65,7 +65,17 @@ interface ListWorkspacePathsArgs extends PathListInclusion {
   respectGitIgnore: boolean;
 }
 
+interface CachedListing {
+  completedAt: number;
+  paths: ListedPath[];
+}
+
 const pendingListings = new Map<string, Promise<ListedPath[]>>();
+const cachedListings = new Map<string, CachedListing>();
+
+const SLOW_LISTING_MS = 500;
+const CACHED_LISTING_REFRESH_AFTER_MS = 2_000;
+const CACHED_LISTING_MAX_AGE_MS = 30_000;
 
 const RANKING_CHUNK_SIZE = 10_000;
 const CHUNKED_RANKING_LANE = "chunked-ranking";
@@ -82,13 +92,58 @@ export function listWorkspacePaths(
     args.includeFiles,
     args.includeDirectories,
   ]);
+  const cached = cachedListings.get(key);
+  const cachedAgeMs = cached ? Date.now() - cached.completedAt : null;
+  if (
+    cached === undefined ||
+    cachedAgeMs === null ||
+    cachedAgeMs >= CACHED_LISTING_MAX_AGE_MS
+  ) {
+    return refreshWorkspacePaths(key, args);
+  }
+  if (cachedAgeMs >= CACHED_LISTING_REFRESH_AFTER_MS) {
+    void refreshWorkspacePaths(key, args).catch(() => undefined);
+  }
+  return Promise.resolve(cached.paths);
+}
+
+function refreshWorkspacePaths(
+  key: string,
+  args: ListWorkspacePathsArgs,
+): Promise<ListedPath[]> {
   const existing = pendingListings.get(key);
   if (existing) return existing;
-  const listing = discoverWorkspacePaths(args).finally(() => {
-    pendingListings.delete(key);
-  });
+  const startedAt = Date.now();
+  const listing = discoverWorkspacePaths(args)
+    .then(
+      (paths) => {
+        const completedAt = Date.now();
+        if (completedAt - startedAt >= SLOW_LISTING_MS) {
+          cacheListing(key, { completedAt, paths });
+        } else {
+          cachedListings.delete(key);
+        }
+        return paths;
+      },
+      (error: unknown) => {
+        cachedListings.delete(key);
+        throw error;
+      },
+    )
+    .finally(() => {
+      pendingListings.delete(key);
+    });
   pendingListings.set(key, listing);
   return listing;
+}
+
+function cacheListing(key: string, listing: CachedListing): void {
+  cachedListings.set(key, listing);
+  setTimeout(() => {
+    if (cachedListings.get(key) === listing) {
+      cachedListings.delete(key);
+    }
+  }, CACHED_LISTING_MAX_AGE_MS).unref();
 }
 
 async function discoverWorkspacePaths(

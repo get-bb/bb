@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGit } from "@bb/host-workspace";
 import { initRepo } from "@bb/test-helpers";
 import { listWorkspacePaths } from "./file-list.js";
@@ -174,6 +174,45 @@ describe("workspace path discovery", () => {
     expect((await visible).map((entry) => entry.path)).not.toContain(
       ".gitignore",
     );
+  });
+
+  it("reuses a slow listing and refreshes it in the background", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const root = await createRoot();
+      await write(root, "first.txt");
+      const slowListing = paths(root);
+      vi.setSystemTime(Date.now() + 1_000);
+      expect(await slowListing).toEqual(["first.txt"]);
+
+      await write(root, "second.txt");
+      expect(await paths(root)).toEqual(["first.txt"]);
+
+      vi.setSystemTime(Date.now() + 2_000);
+      expect(await paths(root)).toEqual(["first.txt"]);
+      await vi.waitFor(async () => {
+        expect(await paths(root)).toEqual(["first.txt", "second.txt"]);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("walks again once a cached slow listing expires", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const root = await createRoot();
+      await write(root, "first.txt");
+      const slowListing = paths(root);
+      vi.setSystemTime(Date.now() + 1_000);
+      expect(await slowListing).toEqual(["first.txt"]);
+
+      await write(root, "second.txt");
+      vi.setSystemTime(Date.now() + 30_000);
+      expect(await paths(root)).toEqual(["first.txt", "second.txt"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not retain failed discovery", async () => {
