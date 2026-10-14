@@ -123,7 +123,7 @@ export function PendingInteractionShell({
             {inlineTitle ? (
               <h3
                 title={inlineTitle}
-                className="min-w-0 truncate text-sm font-medium text-foreground"
+                className="min-w-0 truncate text-xs font-medium text-foreground"
               >
                 {inlineTitle}
               </h3>
@@ -170,16 +170,14 @@ export function PendingInteractionShell({
           className="flex min-h-7 min-w-0 flex-1 items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <span className="flex min-w-0 flex-1 items-start gap-2">
-            <span className="flex h-[1lh] shrink-0 items-center text-sm">
+            <span className="flex h-[1lh] shrink-0 items-center text-xs">
               <AttentionDot hasError={Boolean(errorMessage)} />
             </span>
             <span
               title={label}
               className={cn(
-                "min-w-0 text-sm text-foreground",
-                isExpanded
-                  ? "whitespace-normal font-semibold"
-                  : "truncate font-medium",
+                "min-w-0 text-xs font-medium text-foreground",
+                isExpanded ? "whitespace-normal" : "truncate",
               )}
             >
               <BreakableLabel label={label} />
@@ -200,7 +198,7 @@ export function PendingInteractionShell({
             className="min-h-0 max-h-[min(32rem,50dvh)] touch-pan-y overflow-y-auto overscroll-contain px-3 pb-3 pt-2.5"
           >
             {title ? (
-              <h3 className="min-w-0 text-sm font-medium text-foreground">
+              <h3 className="min-w-0 text-xs font-medium text-foreground">
                 <ExpandableLine
                   fullText={title}
                   collapsedClassName="line-clamp-2"

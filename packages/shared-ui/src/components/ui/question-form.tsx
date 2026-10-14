@@ -82,15 +82,13 @@ function QuestionOptionRow({
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onSelect}
       className={cn(
-        "flex w-full gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
-        density === "compact" ? "items-center" : "items-start",
+        "flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
         checked ? "bg-surface-selected" : "hover:bg-state-hover",
       )}
     >
       <span
         className={cn(
           "flex size-4 shrink-0 items-center justify-center border",
-          density === "compact" ? undefined : "mt-0.5",
           multiSelect ? "rounded" : "rounded-full",
           checked
             ? "border-primary bg-primary text-primary-foreground"
@@ -101,7 +99,7 @@ function QuestionOptionRow({
       </span>
       {density === "compact" ? (
         <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
-          <span className="min-w-0 break-words text-sm text-foreground">
+          <span className="min-w-0 break-words text-xs text-foreground">
             {label}
           </span>
           {description ? (
@@ -115,9 +113,7 @@ function QuestionOptionRow({
         </span>
       ) : (
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-foreground">
-            {label}
-          </span>
+          <span className="block text-xs text-foreground">{label}</span>
           {description ? (
             <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
               {description}
@@ -128,10 +124,7 @@ function QuestionOptionRow({
       {shortcut ? (
         <kbd
           aria-hidden="true"
-          className={cn(
-            "shrink-0 text-xs font-normal text-subtle-foreground",
-            density === "compact" ? undefined : "mt-0.5",
-          )}
+          className="shrink-0 text-xs font-normal text-subtle-foreground"
         >
           {shortcut.label}
         </kbd>
@@ -272,19 +265,12 @@ function QuestionInputBlock({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
-      {!showPrompt ? null : density === "compact" ? (
-        <div className="text-sm text-foreground">{question.prompt}</div>
-      ) : question.prompt ? (
-        <div className="text-sm font-semibold text-foreground">
+      {showPrompt && (density === "compact" || question.prompt) ? (
+        <div className="text-xs font-medium text-foreground">
           {question.prompt}
         </div>
       ) : null}
-      <div
-        className={cn(
-          "space-y-0.5",
-          !showPrompt ? undefined : density === "compact" ? "mt-1" : "mt-2",
-        )}
-      >
+      <div className={cn("space-y-0.5", showPrompt ? "mt-1" : undefined)}>
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
           return (
@@ -327,7 +313,7 @@ function QuestionInputBlock({
           onVoiceInputActiveChange={onVoiceInputActiveChange}
           onKeyDown={handleFreeTextKeyDown}
           placeholder="Type your own answer…"
-          className="mt-2 block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
+          className="mt-2 block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
           style={{
             minHeight: `${FREE_TEXT_MIN_HEIGHT}px`,
             maxHeight: `${FREE_TEXT_MAX_HEIGHT}px`,
