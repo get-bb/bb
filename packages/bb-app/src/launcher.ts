@@ -699,6 +699,7 @@ interface ApplyManagedConfigEnvArgs {
   config: ManagedConfig;
   env: NodeJS.ProcessEnv;
   envFile: ManagedEnvFile;
+  includeServerHeaders: boolean;
 }
 
 interface ResolveBbAppRuntimeStateArgs {
@@ -706,7 +707,7 @@ interface ResolveBbAppRuntimeStateArgs {
   env: NodeJS.ProcessEnv;
   homeDir: string;
   options: LauncherCliOptions;
-  serverUrlMode: "local" | "managed";
+  serverUrlMode: "cli" | "local" | "managed";
   worktreePolicy?: WorktreeRuntimePolicy;
 }
 
@@ -1037,6 +1038,20 @@ function resolveServerUrl(args: ResolveServerUrlArgs): string {
   );
 }
 
+function isSameServerUrl(
+  serverUrl: string,
+  configServerUrl: string | undefined,
+): boolean {
+  if (configServerUrl === undefined) {
+    return false;
+  }
+  try {
+    return new URL(serverUrl).href === new URL(configServerUrl).href;
+  } catch {
+    return false;
+  }
+}
+
 export function resolveServerListenerUrl(
   args: ResolveServerListenerUrlArgs,
 ): string {
@@ -1049,8 +1064,9 @@ function applyManagedConfigEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...args.env,
-    ...(args.config.serverHeaders !== undefined ||
-    args.config.machineCredential !== undefined
+    ...(args.includeServerHeaders &&
+    (args.config.serverHeaders !== undefined ||
+      args.config.machineCredential !== undefined)
       ? {
           BB_SERVER_HEADERS: JSON.stringify(
             args.config.serverHeaders ?? {
@@ -1393,11 +1409,22 @@ export async function resolveBbAppRuntimeState(
   });
   const config = await readManagedConfig({ dataDir: initialContext.dataDir });
   const envFile = await readManagedEnvFile({ dataDir: initialContext.dataDir });
+  const callerServerUrl =
+    args.serverUrlMode === "cli"
+      ? toOptionalString(initialEnv.BB_SERVER_URL)
+      : undefined;
+  const includeServerHeaders =
+    callerServerUrl === undefined ||
+    isSameServerUrl(callerServerUrl, config.serverUrl);
   const persistedEnv = applyManagedConfigEnv({
     config,
     envFile,
     env: initialEnv,
+    includeServerHeaders,
   });
+  if (!includeServerHeaders) {
+    delete persistedEnv.BB_SERVER_HEADERS;
+  }
   const applyRuntimePolicy = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
     args.worktreePolicy === undefined
       ? env
@@ -1433,12 +1460,14 @@ export async function resolveBbAppRuntimeState(
 
   const finalEnv = {
     ...managedEnv,
-    BB_SERVER_URL: resolveServerUrl({
-      config,
-      defaultServerUrl: initialContext.serverUrl,
-      env: managedEnv,
-      optionServerUrl: args.options.serverUrl,
-    }),
+    BB_SERVER_URL:
+      callerServerUrl ??
+      resolveServerUrl({
+        config,
+        defaultServerUrl: initialContext.serverUrl,
+        env: managedEnv,
+        optionServerUrl: args.options.serverUrl,
+      }),
   };
   return {
     config,
@@ -2760,7 +2789,7 @@ export async function runBbCli(
     env: process.env,
     homeDir: homedir(),
     options: createDefaultLauncherOptions(),
-    serverUrlMode: "managed",
+    serverUrlMode: "cli",
   });
   assertBbHostArtifacts(runtime.context);
   process.exitCode = await runBundledCliCommand({

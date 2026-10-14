@@ -172,9 +172,14 @@ The package also exposes the `bb` CLI for an already-running bb server:
 npx --package bb-app bb --help
 ```
 
-The CLI uses the same `BB_SERVER_URL` and bb config resolution as the SDK. When
-unset, it targets the default local packaged server at
-`http://127.0.0.1:38886`.
+The CLI uses `BB_SERVER_URL` when it is set, including the address bb gives
+agent threads. Otherwise it uses the `serverUrl` saved in `config.json` by
+`bb-app config` or machine enrollment, and sends that machine's private
+`serverHeaders` only to that address. Without either, it targets the default
+local packaged server at `http://127.0.0.1:38886`.
+The desktop bundled CLI follows the same resolution without going through the
+launcher. `BB_DATA_DIR` selects the saved configuration; its default is `~/.bb`.
+Requests carrying private machine headers reject redirects.
 
 ## Scripting with the SDK
 
@@ -194,10 +199,13 @@ await bb.threads.wait({ threadId: String(thread.id), status: "idle" });
 console.log(await bb.threads.output({ threadId: String(thread.id) }));
 ```
 
-`new BBSdk()` uses the same `BB_SERVER_URL` and bb config resolution as the
-CLI. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
-targets (see the remote-access note below). Scripts launched by bb already receive `BB_SERVER_URL` and
-`BB_THREAD_ID` in their environment.
+`new BBSdk()` resolves the same server URL as the CLI: a non-blank
+`BB_SERVER_URL`, then the saved `serverUrl` in the selected data directory, then
+the default local packaged server. Its default fetch does not attach saved
+machine headers. Scripts launched by bb receive the authenticated loopback proxy
+in `BB_SERVER_URL` and their `BB_THREAD_ID`. For other remote or test targets,
+pass `new BBSdk({ baseUrl: "http://host:38886" })`; authenticated direct endpoints
+also require a suitable `fetch` option (see the remote-access note below).
 
 ## Provider Credentials
 
