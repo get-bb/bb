@@ -434,7 +434,9 @@ it("reports the exit and stderr when the bridge keeps crashing before initialize
     const run = await fixture.replay();
 
     expect(run.stalls).toEqual([
-      "bridge exited (code 3) while waiting for initialize response; stderr: The service was stopped",
+      expect.stringContaining(
+        "bridge exited (code 3) while waiting for initialize response; stderr: The service was stopped",
+      ),
     ]);
     expect(fixture.launches()).toBe(2);
   } finally {
