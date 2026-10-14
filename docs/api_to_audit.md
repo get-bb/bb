@@ -1510,22 +1510,17 @@ Docs: `frontend-hooks-and-ui.md`.
 
 ## `app.experimental_saveFile` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** `experimental_saveFile({ fileName, url } | { fileName, blob })`
-starts a download through `saveFile`, the function bb's file preview, chat
-attachment fallback, and voice-input downloads call. Tasks attachment cards
-use the same function. It clicks a temporary download anchor, using an object
-URL for a blob. Browsers and bb Desktop handle their normal downloads. The
-bb iOS shell uses `WKDownload` to write the resource directly from WebKit to
-cache, preserving the WebView's request context, then presents the system
-share sheet. File bytes and cookies do not cross bb's JavaScript bridge.
+`experimental_saveFile({ fileName, url } | { fileName, blob })` starts a
+download through the same function bb's own downloads use. It clicks a
+temporary download anchor, using an object URL for a blob. The bb iOS shell
+downloads through `WKDownload`, keeping the WebView's request context, then
+presents the share sheet; file bytes and cookies do not cross the JavaScript
+bridge. The promise resolves `started` once the link is clicked or `failed`,
+with an error toast, if it could not start. Completion and share-sheet
+cancellation are not reported. The test harness resolves `started` and records
+nothing.
 
-The promise resolves `started` once the link is clicked or `failed` if it
-could not start, with an error toast. Completion and share-sheet cancellation
-are not reported to the page. Native download and share failures show a
-native toast. Older shells retain their anchor behavior. Callers keep a real
-`href` on their link for accessibility and copy-link.
-
-The test harness resolves `started` and records nothing.
+Docs: `frontend-hooks-and-ui.md`.
 
 **Audit before stabilizing.**
 
