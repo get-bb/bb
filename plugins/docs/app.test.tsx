@@ -1791,11 +1791,7 @@ describe("Docs nav panel", () => {
         );
         expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
         expect(iframe?.title).toBe(surface === "panel" ? "Metrics" : path);
-        expect(
-          iframe?.classList.contains(
-            surface === "panel" ? "min-h-[32rem]" : "min-h-0",
-          ),
-        ).toBe(true);
+        expect(iframe?.classList.contains("min-h-0")).toBe(true);
       });
       expect(slot.queryByRole("button", { name: "View source" })).toBeNull();
     },
