@@ -656,6 +656,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Declare text, number, toggle, choice, or project fields as data",
           "Get validation and autosave without extra code",
+          "Have each field found by Settings search through its label, key, or description",
           "Keep secret values on the server, never sent to the browser",
         ],
         apiSymbols: [

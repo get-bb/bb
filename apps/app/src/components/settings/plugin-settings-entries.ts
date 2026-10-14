@@ -1,9 +1,13 @@
+import type { InstalledPlugin } from "@bb/server-contract";
+import { arePluginSettingsAvailable } from "@/lib/plugin-settings-availability";
+
 export interface PluginSettingsCandidate {
   enabled: boolean;
   hasSettings: boolean;
   icon: string | null;
   id: string;
   name: string | null;
+  status: InstalledPlugin["status"];
 }
 
 interface PluginSettingsSectionOwner {
@@ -11,6 +15,7 @@ interface PluginSettingsSectionOwner {
 }
 
 export interface PluginSettingsEntry {
+  hasSettingsForm: boolean;
   icon: string | null;
   id: string;
   label: string;
@@ -34,6 +39,7 @@ export function buildPluginSettingsEntries(
         (plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id)),
     )
     .map((plugin) => ({
+      hasSettingsForm: plugin.hasSettings && arePluginSettingsAvailable(plugin),
       id: plugin.id,
       label: plugin.name ?? plugin.id,
       icon: plugin.icon,

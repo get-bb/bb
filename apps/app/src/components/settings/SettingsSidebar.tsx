@@ -44,10 +44,12 @@ import {
   buildSettingsSearchItems,
   searchSettings,
   SETTINGS_SEARCH_ANCHOR_STATE_KEY,
+  type PluginSettingSearchEntry,
   type SettingsSearchCondition,
   type SettingsSearchItem,
 } from "./settings-search";
 import { getSettingsSectionRoutePath } from "./settings-sections";
+import { usePluginSettingSearch } from "./usePluginSettingSearch";
 import { useSettingsSearchConditions } from "./useSettingsSearchConditions";
 
 interface SettingsSidebarProps {
@@ -60,8 +62,15 @@ type SettingsSidebarNavigation = Pick<
   "activePluginId" | "activeSection" | "pluginEntries" | "sections"
 >;
 
+export interface SettingsSidebarPluginSettingSearch {
+  entries: readonly PluginSettingSearchEntry[];
+  isLoading: boolean;
+  onActivate: () => void;
+}
+
 interface SettingsSidebarContentProps extends SettingsSidebarProps {
   navigation: SettingsSidebarNavigation;
+  pluginSettingSearch: SettingsSidebarPluginSettingSearch;
   searchConditions: ReadonlySet<SettingsSearchCondition>;
   testIdPrefix?: string;
 }
@@ -110,6 +119,7 @@ interface SettingsSearchFieldProps {
   inputRef: RefObject<HTMLInputElement | null>;
   listboxId: string | undefined;
   onClear: () => void;
+  onFocus: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
   onQueryChange: (query: string) => void;
   query: string;
@@ -120,6 +130,7 @@ function SettingsSearchField({
   inputRef,
   listboxId,
   onClear,
+  onFocus,
   onKeyDown,
   onQueryChange,
   query,
@@ -149,6 +160,7 @@ function SettingsSearchField({
         spellCheck={false}
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
+        onFocus={onFocus}
         onKeyDown={onKeyDown}
         placeholder="Search"
         aria-label="Search settings"
@@ -200,6 +212,7 @@ function SettingsSearchResultIcon({ item }: { item: SettingsSearchItem }) {
 
 interface SettingsSearchResultsProps {
   activeIndex: number;
+  isLoading: boolean;
   listboxId: string;
   onActiveIndexChange: (index: number) => void;
   onOpen: (item: SettingsSearchItem) => void;
@@ -212,12 +225,14 @@ function settingsSearchOptionId(listboxId: string, index: number): string {
 
 function SettingsSearchResults({
   activeIndex,
+  isLoading,
   listboxId,
   onActiveIndexChange,
   onOpen,
   results,
 }: SettingsSearchResultsProps) {
   if (results.length === 0) {
+    if (isLoading) return null;
     return (
       <p
         role="status"
@@ -277,6 +292,7 @@ export function SettingsSidebarContent({
   onResizeMouseDown,
   isResizing,
   navigation,
+  pluginSettingSearch,
   searchConditions,
   testIdPrefix = "settings",
 }: SettingsSidebarContentProps) {
@@ -294,9 +310,10 @@ export function SettingsSidebarContent({
       buildSettingsSearchItems({
         conditions: searchConditions,
         pluginEntries,
+        pluginSettings: pluginSettingSearch.entries,
         sections,
       }),
-    [pluginEntries, searchConditions, sections],
+    [pluginEntries, pluginSettingSearch.entries, searchConditions, sections],
   );
   const results = useMemo(
     () => searchSettings(query, searchItems),
@@ -364,6 +381,7 @@ export function SettingsSidebarContent({
           inputRef={searchInputRef}
           query={query}
           onQueryChange={changeQuery}
+          onFocus={pluginSettingSearch.onActivate}
           onKeyDown={handleSearchKeyDown}
           onClear={() => {
             changeQuery("");
@@ -383,6 +401,7 @@ export function SettingsSidebarContent({
       {isSearching ? (
         <SettingsSearchResults
           activeIndex={activeIndex}
+          isLoading={pluginSettingSearch.isLoading}
           listboxId={searchListboxId}
           onActiveIndexChange={setActiveResultIndex}
           onOpen={openResult}
@@ -476,12 +495,22 @@ export function SettingsSidebar({
 }: SettingsSidebarProps) {
   const navigation = useSettingsNavState();
   const searchConditions = useSettingsSearchConditions();
+  const [searchActivated, setSearchActivated] = useState(false);
+  const pluginSettings = usePluginSettingSearch({
+    enabled: searchActivated,
+    pluginEntries: navigation.pluginEntries,
+  });
 
   return (
     <SettingsSidebarContent
       isResizing={isResizing}
       navigation={navigation}
       onResizeMouseDown={onResizeMouseDown}
+      pluginSettingSearch={{
+        entries: pluginSettings.entries,
+        isLoading: pluginSettings.isLoading,
+        onActivate: () => setSearchActivated(true),
+      }}
       searchConditions={searchConditions}
     />
   );

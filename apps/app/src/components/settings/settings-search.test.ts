@@ -7,11 +7,27 @@ import {
 } from "./settings-search";
 import { SETTINGS_NAV_SECTIONS } from "./settings-sections";
 
-const linearPlugin = { icon: null, id: "linear", label: "Linear" };
+const linearPlugin = {
+  hasSettingsForm: true,
+  icon: null,
+  id: "linear",
+  label: "Linear",
+};
+
+const linearSettings = [
+  {
+    description: "Used to read and update issues.",
+    key: "apiKey",
+    label: "API key",
+    pluginId: "linear",
+  },
+  { description: null, key: "team", label: "Default team", pluginId: "linear" },
+];
 
 const allItems = buildSettingsSearchItems({
   conditions: new Set(["fileOpeners"]),
   pluginEntries: [linearPlugin],
+  pluginSettings: linearSettings,
   sections: SETTINGS_NAV_SECTIONS,
 });
 
@@ -80,17 +96,44 @@ describe("searchSettings", () => {
         "acme",
         buildSettingsSearchItems({
           conditions: new Set(),
-          pluginEntries: [{ icon: null, id: "acme-tracker", label: "Tracker" }],
+          pluginEntries: [
+            {
+              hasSettingsForm: false,
+              icon: null,
+              id: "acme-tracker",
+              label: "Tracker",
+            },
+          ],
+          pluginSettings: [],
           sections: [],
         }),
       ),
     ).toEqual(["Plugin settings › Tracker"]);
   });
 
+  it("finds a setting inside a plugin's page by its label, key or description", () => {
+    expect(searchTitles("default team")).toEqual(["Linear › Default team"]);
+    expect(searchTitles("apikey")).toEqual(["Linear › API key"]);
+    expect(searchTitles("update issues")).toEqual(["Linear › API key"]);
+    expect(searchSettings("api key", allItems)[0]).toMatchObject({
+      anchor: "API key",
+      to: "/settings/plugins/linear",
+    });
+  });
+
+  it("lists a plugin's page before the settings inside it", () => {
+    expect(searchTitles("linear")).toEqual([
+      "Plugin settings › Linear",
+      "Linear › API key",
+      "Linear › Default team",
+    ]);
+  });
+
   it("leaves out settings whose section is hidden", () => {
     const withoutFiles = buildSettingsSearchItems({
       conditions: new Set(["fileOpeners"]),
       pluginEntries: [],
+      pluginSettings: [],
       sections: SETTINGS_NAV_SECTIONS.filter(
         (section) => section.id !== "files",
       ),
@@ -108,6 +151,7 @@ describe("buildSettingsSearchItems", () => {
         buildSettingsSearchItems({
           conditions: new Set(conditions),
           pluginEntries: [],
+          pluginSettings: [],
           sections: SETTINGS_NAV_SECTIONS,
         }),
       );

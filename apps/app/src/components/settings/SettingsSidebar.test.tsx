@@ -8,17 +8,33 @@ import {
   screen,
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { readSettingsSearchAnchor } from "./settings-search";
 import { SETTINGS_NAV_SECTIONS } from "./settings-sections";
-import { SettingsSidebarContent } from "./SettingsSidebar";
+import {
+  SettingsSidebarContent,
+  type SettingsSidebarPluginSettingSearch,
+} from "./SettingsSidebar";
 
 const configurablePlugin = {
+  hasSettingsForm: true,
   icon: null,
   id: "linear",
   label: "Linear",
 };
+
+const linearApiKeySetting = {
+  description: "Used to read and update issues.",
+  key: "apiKey",
+  label: "API key",
+  pluginId: "linear",
+};
+
+interface RenderSidebarOptions {
+  activePluginId?: string | null;
+  pluginSettingSearch?: Partial<SettingsSidebarPluginSettingSearch>;
+}
 
 function LocationProbe() {
   const location = useLocation();
@@ -32,7 +48,10 @@ function LocationProbe() {
   );
 }
 
-function renderSidebar(activePluginId: string | null = null) {
+function renderSidebar({
+  activePluginId = null,
+  pluginSettingSearch,
+}: RenderSidebarOptions = {}) {
   return render(
     <MemoryRouter initialEntries={["/settings"]}>
       <LocationProbe />
@@ -46,6 +65,12 @@ function renderSidebar(activePluginId: string | null = null) {
             sections: SETTINGS_NAV_SECTIONS,
           }}
           onResizeMouseDown={() => {}}
+          pluginSettingSearch={{
+            entries: [linearApiKeySetting],
+            isLoading: false,
+            onActivate: () => {},
+            ...pluginSettingSearch,
+          }}
           searchConditions={new Set()}
         />
       </SidebarProvider>
@@ -72,7 +97,7 @@ describe("SettingsSidebarContent plugin navigation", () => {
   });
 
   it("marks the active plugin settings page", () => {
-    renderSidebar("linear");
+    renderSidebar({ activePluginId: "linear" });
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("aria-current"),
     ).toBe("page");
@@ -145,11 +170,65 @@ describe("SettingsSidebarContent search", () => {
   it("opens a clicked result, including a plugin settings page", () => {
     renderSidebar();
     search("linear");
-    fireEvent.click(screen.getByRole("option", { name: /Linear/ }));
+    fireEvent.click(screen.getByRole("option", { name: /^Linear/ }));
 
     const location = screen.getByTestId("location");
     expect(location.textContent).toBe("/settings/plugins/linear");
     expect(location.dataset.anchor).toBe("");
+  });
+
+  it("opens a setting inside a plugin's page and carries its anchor", () => {
+    renderSidebar();
+    search("api key");
+    expect(resultNames()).toEqual(["API keyLinear"]);
+    fireEvent.click(screen.getByRole("option", { name: /API key/ }));
+
+    const location = screen.getByTestId("location");
+    expect(location.textContent).toBe("/settings/plugins/linear");
+    expect(location.dataset.anchor).toBe("API key");
+  });
+
+  it("asks for plugin settings when the field is first focused", () => {
+    const onActivate = vi.fn();
+    renderSidebar({ pluginSettingSearch: { onActivate } });
+    expect(onActivate).not.toHaveBeenCalled();
+
+    fireEvent.focus(searchInput());
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds back the empty message while plugin settings are still loading", () => {
+    const { rerender } = renderSidebar({
+      pluginSettingSearch: { entries: [], isLoading: true },
+    });
+    search("api key");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("option")).toBeNull();
+
+    rerender(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <LocationProbe />
+        <SidebarProvider>
+          <SettingsSidebarContent
+            isResizing={false}
+            navigation={{
+              activePluginId: null,
+              activeSection: "general",
+              pluginEntries: [configurablePlugin],
+              sections: SETTINGS_NAV_SECTIONS,
+            }}
+            onResizeMouseDown={() => {}}
+            pluginSettingSearch={{
+              entries: [],
+              isLoading: false,
+              onActivate: () => {},
+            }}
+            searchConditions={new Set()}
+          />
+        </SidebarProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("status").textContent).toBe("No settings found");
   });
 
   it("says when nothing matches", () => {

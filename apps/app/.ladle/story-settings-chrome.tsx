@@ -84,6 +84,11 @@ export function SettingsStoryChrome({
             sections: SETTINGS_NAV_SECTIONS,
           }}
           onResizeMouseDown={() => {}}
+          pluginSettingSearch={{
+            entries: [],
+            isLoading: false,
+            onActivate: () => {},
+          }}
           searchConditions={STORY_SEARCH_CONDITIONS}
           testIdPrefix="settings-story"
         />

@@ -262,9 +262,17 @@ export interface SettingsSearchItem {
   to: string;
 }
 
+export interface PluginSettingSearchEntry {
+  description: string | null;
+  key: string;
+  label: string;
+  pluginId: string;
+}
+
 interface BuildSettingsSearchItemsArgs {
   conditions: ReadonlySet<SettingsSearchCondition>;
   pluginEntries: readonly PluginSettingsEntry[];
+  pluginSettings: readonly PluginSettingSearchEntry[];
   sections: readonly SettingsNavSection[];
 }
 
@@ -302,15 +310,39 @@ export function buildSettingsSearchItems(
           })),
       ];
     }),
-    ...args.pluginEntries.map((plugin) => ({
-      anchor: null,
-      context: "Plugin settings",
-      icon: { kind: "plugin" as const, icon: plugin.icon, pluginId: plugin.id },
-      id: `plugin:${plugin.id}`,
-      keywords: [plugin.id],
-      title: plugin.label,
-      to: getPluginConfigurationRoutePath({ pluginId: plugin.id }),
-    })),
+    ...args.pluginEntries.flatMap((plugin) => {
+      const icon = {
+        kind: "plugin" as const,
+        icon: plugin.icon,
+        pluginId: plugin.id,
+      };
+      const to = getPluginConfigurationRoutePath({ pluginId: plugin.id });
+      return [
+        {
+          anchor: null,
+          context: "Plugin settings",
+          icon,
+          id: `plugin:${plugin.id}`,
+          keywords: [plugin.id],
+          title: plugin.label,
+          to,
+        },
+        ...args.pluginSettings
+          .filter((setting) => setting.pluginId === plugin.id)
+          .map((setting) => ({
+            anchor: setting.label,
+            context: plugin.label,
+            icon,
+            id: `plugin-setting:${plugin.id}:${setting.key}`,
+            keywords:
+              setting.description === null
+                ? [setting.key]
+                : [setting.key, setting.description],
+            title: setting.label,
+            to,
+          })),
+      ];
+    }),
   ];
 }
 
