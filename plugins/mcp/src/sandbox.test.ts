@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   runSandboxedScript,
   sandboxDisposeFailureCount,
+  type JsonValue,
   type SandboxRunArgs,
+  type SandboxRunResult,
 } from "./sandbox.js";
+
+const MIB = 1024 * 1024;
 
 const PRELUDE = `
 globalThis.host = async (name, ...args) =>
@@ -18,6 +22,13 @@ function run(code: string, overrides: Partial<SandboxRunArgs> = {}) {
     hostFunctions: {},
     ...overrides,
   });
+}
+
+function failure(result: SandboxRunResult): string {
+  if (result.ok) {
+    throw new Error(`Expected a failure, got ${JSON.stringify(result.value)}`);
+  }
+  return result.error;
 }
 
 describe("runSandboxedScript", () => {
@@ -87,14 +98,14 @@ describe("runSandboxedScript", () => {
 
   it("reports a syntax error instead of throwing", async () => {
     const result = await run(`return (;`);
-    expect(result.ok).toBe(false);
+    expect(failure(result)).toContain("SyntaxError");
   });
 
   it("interrupts a synchronous infinite loop", async () => {
     const result = await run(`while (true) {}`, {
       limits: { synchronousDeadlineMs: 50 },
     });
-    expect(result.ok).toBe(false);
+    expect(failure(result)).toContain("computed for too long");
   });
 
   it("stops a script that swallows the interrupt and keeps spinning", async () => {
@@ -117,7 +128,7 @@ describe("runSandboxedScript", () => {
       { limits: { synchronousDeadlineMs: 100, cpuBudgetMs: 400 } },
     );
     expect(Date.now() - startedAt).toBeLessThan(3_000);
-    expect(result.ok).toBe(false);
+    expect(failure(result)).toContain("computed for too long");
   });
 
   it("stops an endless chain of cheap microtasks", async () => {
@@ -126,7 +137,7 @@ describe("runSandboxedScript", () => {
       limits: { synchronousDeadlineMs: 100, cpuBudgetMs: 400 },
     });
     expect(Date.now() - startedAt).toBeLessThan(3_000);
-    expect(result.ok).toBe(false);
+    expect(failure(result)).toContain("computed for too long");
   });
 
   it("charges computation across bb calls to one total budget", async () => {
@@ -189,8 +200,7 @@ describe("runSandboxedScript", () => {
     const result = await run(`await new Promise(() => {});`, {
       limits: { totalDeadlineMs: 80 },
     });
-    expect(result).toMatchObject({ ok: false });
-    expect(result.ok === false && result.error).toContain("was stopped");
+    expect(failure(result)).toContain("ran longer than");
   });
 
   it("stops a script whose host call never settles and aborts that call", async () => {
@@ -207,7 +217,7 @@ describe("runSandboxedScript", () => {
           }),
       },
     });
-    expect(result.ok).toBe(false);
+    expect(failure(result)).toContain("ran longer than");
     expect(aborted).toBe(true);
   });
 
@@ -278,9 +288,60 @@ describe("runSandboxedScript", () => {
   it("fails cleanly when the script exhausts its memory limit", async () => {
     const result = await run(
       `const chunks = []; while (true) chunks.push(new Array(100000).fill("x"));`,
-      { limits: { memoryLimitBytes: 4 * 1024 * 1024 } },
+      { limits: { memoryLimitBytes: 16 * MIB } },
     );
-    expect(result.ok).toBe(false);
+    expect(failure(result)).toContain("ran out of memory");
+  });
+
+  it("holds a script to the memory limit it was given", async () => {
+    const allocatedMegabytes = async (limitMegabytes: number) => {
+      const result = await run(
+        `const keep = []; for (;;) { keep.push(new Uint8Array(1024 * 1024)); print(keep.length); }`,
+        { limits: { memoryLimitBytes: limitMegabytes * MIB } },
+      );
+      expect(failure(result)).toContain("ran out of memory");
+      return result.logs.trim().split("\n").length;
+    };
+    const within16 = await allocatedMegabytes(16);
+    expect(within16).toBeGreaterThan(4);
+    expect(within16).toBeLessThan(16);
+    const within32 = await allocatedMegabytes(32);
+    expect(within32).toBeGreaterThan(16);
+    expect(within32).toBeLessThan(32);
+  });
+
+  it("stops a script that swallows the out-of-memory error", async () => {
+    const result = await run(
+      `const keep = []; for (;;) { try { keep.push(new Uint8Array(1024 * 1024)); } catch {} }`,
+      { limits: { memoryLimitBytes: 16 * MIB } },
+    );
+    expect(failure(result)).toContain("ran out of memory");
+  });
+
+  it("stops a script when a host result does not fit in its memory", async () => {
+    const result = await run(
+      `const keep = []; for (let i = 0; i < 8; i += 1) keep.push(new Uint8Array(1024 * 1024)); await host("big"); return keep.length;`,
+      {
+        limits: { memoryLimitBytes: 16 * MIB },
+        hostFunctions: { big: async () => "b".repeat(4 * MIB) },
+      },
+    );
+    expect(failure(result)).toContain("ran out of memory");
+  });
+
+  it("refuses a memory limit below what the engine can enforce", async () => {
+    await expect(
+      run(`return 1;`, { limits: { memoryLimitBytes: 4 * MIB } }),
+    ).rejects.toThrow(RangeError);
+  });
+
+  it("stops a script when a host result cannot be serialised", async () => {
+    const cyclic: { [key: string]: JsonValue } = {};
+    cyclic.self = cyclic;
+    const result = await run(`await host("cyclic"); return "done";`, {
+      hostFunctions: { cyclic: async () => cyclic },
+    });
+    expect(failure(result)).toContain("internal error");
   });
 
   it("caps log output", async () => {

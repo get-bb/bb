@@ -31,7 +31,7 @@ The bb account dashboard lists the same apps under Connected apps.
 - `read` runs a JavaScript snippet that can call only commands that inspect bb. It is marked read-only so the app can run it without asking you each time; it is not a separate permission.
 - `run` runs a JavaScript snippet that can call any `bb` command.
 
-Snippets call `bb.cli([...argv])` or `bb.json([...argv])` and run in a sandbox on the bb server with no network or file access. A snippet is stopped after 25 seconds or 3 seconds of computation, and runs at most 4 `bb` commands at a time.
+Snippets call `bb.cli([...argv])` or `bb.json([...argv])` and run in a sandbox on the bb server with no network or file access. A snippet is stopped after 25 seconds, after 3 seconds of computation, or when it runs out of its 64 MB of memory, and runs at most 4 `bb` commands at a time.
 
 Three commands cannot run over MCP because they need an interactive terminal or never exit: `bb terminal attach`, `bb plugin dev`, and `bb browser watch`.
 

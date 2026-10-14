@@ -27,7 +27,7 @@ const SCRIPT_API = [
   "- `bb.sleep(ms)` waits, up to 20 seconds.",
   "- `console.log(...)` output is returned after the result.",
   "- At most 4 bb calls run at a time; `Promise.all` over more is fine, the rest wait.",
-  "No network, filesystem, timers, or modules. At most 25 seconds, 3 seconds of computation, and 200 bb calls per snippet; output over 60,000 characters is cut, so filter and slice inside the snippet.",
+  "No network, filesystem, timers, or modules. At most 25 seconds, 3 seconds of computation, 64 MB of memory, and 200 bb calls per snippet; output over 60,000 characters is cut, so filter and slice inside the snippet.",
 ].join("\n");
 
 const codeSchema = z.object({
