@@ -249,7 +249,7 @@ function SettingsSearchResults({
             SIDEBAR_ROW_BASE_CLASS,
             SIDEBAR_STANDARD_ROW_PADDING_CLASS,
             SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-            "h-auto min-w-0 items-start justify-start overflow-hidden py-1.5 font-normal",
+            "h-auto min-w-0 items-start justify-start overflow-hidden py-1.5 font-normal max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
             index === activeIndex &&
               "bg-sidebar-accent text-sidebar-foreground",
           )}
