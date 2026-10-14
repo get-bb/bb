@@ -94,6 +94,8 @@ export function createDesktopBrowserBrokerClient(args: {
   let serverUrl: string | null = args.getServerUrl();
 
   function disconnect(): void {
+    if (retry !== null) clearTimeout(retry);
+    retry = null;
     generation += 1;
     const previous = socket;
     socket = null;
@@ -222,21 +224,15 @@ export function createDesktopBrowserBrokerClient(args: {
   return {
     suspend() {
       serverUrl = null;
-      if (retry !== null) clearTimeout(retry);
-      retry = null;
       disconnect();
     },
     reconnect() {
       serverUrl = args.getServerUrl();
-      if (retry !== null) clearTimeout(retry);
-      retry = null;
       disconnect();
       void connect();
     },
     stop() {
       stopped = true;
-      if (retry !== null) clearTimeout(retry);
-      retry = null;
       disconnect();
     },
   };
