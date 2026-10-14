@@ -1000,7 +1000,7 @@ table lists what the shipped plugins declare and resolve.
 | ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Codex        | `~/.agents/skills`, `$CODEX_HOME/skills`                                                                 | `.agents/skills` from the repository root to the current directory, plus `.codex/skills`                     |
 | Claude Code  | `$CLAUDE_CONFIG_DIR/skills` or `~/.claude/skills`, plus enabled plugin skills                            | `.claude/skills` from the repository root to the current directory, plus enabled plugin skills               |
-| Pi           | `~/.pi/agent/skills`, `~/.agents/skills`                                                                 | `.pi/skills` and `.agents/skills` from the repository root to the current directory                          |
+| Pi           | `~/.pi/agent/skills`, `~/.agents/skills`                                                                 | `.pi/skills` and `.agents/skills` in the workspace                                                           |
 | Cursor       | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`                            | The same four roots in the workspace                                                                         |
 | OpenCode     | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills`                                      | `.opencode/skills`, `.claude/skills`, and `.agents/skills` from the repository root to the current directory |
 | omp          | The active `~/.omp/.../agent` roots and supported Pi, Agents, Claude, Codex, and OpenCode roots          | `.omp/skills` and the supported compatibility roots from the repository root to the current directory        |
@@ -1010,10 +1010,10 @@ table lists what the shipped plugins declare and resolve.
 OpenCode also uses `$OPENCODE_CONFIG_DIR/skills` when that variable exists.
 Pi and omp use `$PI_CODING_AGENT_DIR` when that variable exists. omp also uses
 `$OMP_PROFILE` or `$PI_PROFILE` to select its active profile root. Cursor and
-Hermes can organize skills in category directories. bb scans those roots
-recursively. Pi settings and packages can add skill paths. omp reads
-`skills.customDirectories` from its YAML configuration. Hermes reads
-`skills.external_dirs` from `config.yaml`.
+Hermes can organize skills in category directories, and Pi finds skills at any
+depth under its roots. bb scans those roots recursively. Pi settings and
+packages can add skill paths. omp reads `skills.customDirectories` from its YAML
+configuration. Hermes reads `skills.external_dirs` from `config.yaml`.
 
 Grok reads recursive paths from `[skills].paths` in `config.toml`. It also reads
 enabled Grok and Claude-compatible plugin skills. Its Cursor and Claude
