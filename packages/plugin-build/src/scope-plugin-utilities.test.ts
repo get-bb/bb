@@ -92,29 +92,6 @@ describe("scopePluginUtilities", () => {
     );
   });
 
-  it("qualifies group-has ancestors without putting the wildcard in :is", () => {
-    const ancestor = String.raw`:where(.group\/row):has(:is(input:checked, [data-state="open"]))`;
-    const scoped = scopeUtilities(
-      `.x{@media (hover:hover){&:is(${ancestor} *):hover{opacity:.5}}}`,
-    );
-    expect(scoped).toBe(
-      `@layer utilities{${SCOPE} .x{@media (hover:hover){${ancestor} &:hover{opacity:.5}}}${SCOPE}.x{@media (hover:hover){${ancestor} &:hover{opacity:.5}}}}`,
-    );
-  });
-
-  it("preserves other group and compound nested selectors", () => {
-    for (const selector of [
-      "&:is(:where(.group):hover *)",
-      "&:is(:where(.group):has(input) > *)",
-      "&:not(:where(.group):has(input) *)",
-      "&:is(:where(.group):has(input) *,.other)",
-    ]) {
-      expect(scopeUtilities(`.x{${selector}{opacity:.5}}`)).toContain(
-        `${selector}{opacity:.5}`,
-      );
-    }
-  });
-
   it("scopes rules nested in conditional at-rules", () => {
     const scoped = scopeUtilities(
       "@media (min-width:40rem){.md-flex{display:flex}}",

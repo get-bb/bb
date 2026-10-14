@@ -312,15 +312,15 @@ describe("plugin app runtime shim", () => {
     expect(css).not.toContain("@scope");
     expect(css).not.toContain(String.raw`:is(${scope} .hover\:underline`);
     expect(css).toContain(`${scope}.space-y-3`);
-    expect(css).not.toContain(String.raw`:is(:where(.group\/host):has(`);
+    expect(css).not.toContain(String.raw`:is(${scope} .group-has`);
     expect(css).toContain(
-      String.raw`:where(.group\/host):has(:is(input:checked)) ${scope}.group-has`,
+      String.raw`${scope}.group-has-\[input\:checked\]\/host\:opacity-50:is(:where(.group\/host):has(:is(input:checked)) *)`,
     );
     expect(css).toContain(
       String.raw`.hover\:group-has-\[input\:checked\]\/host\:opacity-50:hover`,
     );
     expect(css).toContain(
-      String.raw`.group-has-\[input\:checked\]\/host\:\[\&\>svg\]\:hidden>svg`,
+      String.raw`${scope}.group-has-\[input\:checked\]\/host\:\[\&\>svg\]\:hidden:is(:where(.group\/host):has(:is(input:checked)) *)>svg`,
     );
     expect(css).toContain(`[data-scope-host] ${scope}`);
     expect(css).toContain(`[data-scope-host]~${scope}`);

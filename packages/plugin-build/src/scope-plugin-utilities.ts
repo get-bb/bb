@@ -69,8 +69,7 @@ function scopeStatements(css: string, scope: string): string {
         return `${statement.prelude}{${body}}`;
       }
 
-      const body = normalizeNestedGroupHas(statement.body);
-      const nestedSibling = hasNestedSiblingRule(body);
+      const nestedSibling = hasNestedSiblingRule(statement.body);
       const originalSelectors = splitSelectorList(prelude);
       const selectors = originalSelectors.flatMap((selector) =>
         nestedSibling || hasSiblingCombinator(selector)
@@ -80,46 +79,8 @@ function scopeStatements(css: string, scope: string): string {
       return (
         originalSelectors.length === 1 ? selectors : [selectors.join(",")]
       )
-        .map((selector) => `${selector}{${body}}`)
+        .map((selector) => `${selector}{${statement.body}}`)
         .join("");
-    })
-    .join("");
-}
-
-function normalizeNestedGroupHas(css: string): string {
-  return splitStatements(css)
-    .map((statement) => {
-      if (statement.body === null) return statement.prelude;
-      const prelude = statement.prelude.trim();
-      if (prelude.startsWith("@")) {
-        const name = /^@([\w-]+)/.exec(prelude)?.[1]?.toLowerCase() ?? "";
-        const body = NESTED_STYLE_RULE_AT_RULES.has(name)
-          ? normalizeNestedGroupHas(statement.body)
-          : statement.body;
-        return `${statement.prelude}{${body}}`;
-      }
-      const selectors = splitSelectorList(prelude).map((selector) => {
-        if (!selector.startsWith("&:is(:where(.group")) return selector;
-        let depth = 1;
-        let end = 5;
-        for (; end < selector.length; end += 1) {
-          const char = selector[end];
-          if (char === "\\") end += 1;
-          else if (char === '"' || char === "'")
-            end = findStringEnd(selector, end);
-          else if (char === "(") depth += 1;
-          else if (char === ")" && --depth === 0) break;
-        }
-        const ancestor = selector.slice(5, end);
-        if (
-          !ancestor.endsWith(") *") ||
-          !ancestor.includes(":has(") ||
-          splitSelectorList(ancestor).length !== 1
-        )
-          return selector;
-        return `${ancestor.slice(0, -2)} &${selector.slice(end + 1)}`;
-      });
-      return `${selectors.join(",")}{${normalizeNestedGroupHas(statement.body)}}`;
     })
     .join("");
 }
