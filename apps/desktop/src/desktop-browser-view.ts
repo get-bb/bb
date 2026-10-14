@@ -168,6 +168,7 @@ interface NativeTabRef extends NativeTabScope {
 }
 
 interface BrowserViewEntry {
+  registry: Map<string, BrowserViewEntry>;
   webContents: WebContents;
   view: WebContentsView;
   hostWindow: DesktopBrowserHostWindow;
@@ -266,6 +267,7 @@ interface SetEntryDesiredBoundsArgs {
 }
 
 export interface DesktopBrowserViewManager {
+  setServerOrigin(serverOrigin: string): void;
   createTab(args: {
     hostWindow: DesktopBrowserHostWindow;
     tabId: string;
@@ -426,7 +428,9 @@ export function createDesktopBrowserViewManager(
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const pagePreloadPath = args.pagePreloadPath;
-  const entries = new Map<string, BrowserViewEntry>();
+  let entries = new Map<string, BrowserViewEntry>();
+  const serverEntries = new Map<string, Map<string, BrowserViewEntry>>();
+  let serverOrigin: string | null = null;
   const automationTabListeners = new Set<() => void>();
   const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
@@ -514,7 +518,7 @@ export function createDesktopBrowserViewManager(
     if (entry.rendererRecoveryAttempts >= RENDERER_RECOVERY_MAX_ATTEMPTS) {
       entry.rendererRecoveryState = "blocked";
       entry.lastErrorText = "The page renderer stopped repeatedly";
-      pushState(hostWindow, tabId);
+      pushState(hostWindow, tabId, entry);
       return;
     }
     entry.rendererRecoveryTimer = setTimeout(() => {
@@ -546,7 +550,11 @@ export function createDesktopBrowserViewManager(
     entry.webContents
       .capturePage()
       .then((image) => {
-        if (!isHostResizing(hostWindow) || image.isEmpty()) {
+        if (
+          entry.registry !== entries ||
+          !isHostResizing(hostWindow) ||
+          image.isEmpty()
+        ) {
           return;
         }
         const dataUrl = `data:image/jpeg;base64,${image
@@ -582,9 +590,9 @@ export function createDesktopBrowserViewManager(
   function pushState(
     hostWindow: DesktopBrowserHostWindow,
     tabId: string,
+    entry: BrowserViewEntry,
   ): void {
-    const entry = entries.get(browserViewKey(hostWindow, tabId));
-    if (!entry || entry.webContents.isDestroyed()) {
+    if (entry.registry !== entries || entry.webContents.isDestroyed()) {
       return;
     }
     send(
@@ -668,18 +676,22 @@ export function createDesktopBrowserViewManager(
     const key = browserViewKey(hostWindow, tabId);
 
     webContents.on("destroyed", () => {
-      if (entries.get(key) === entry) {
-        destroyEntry(hostWindow, key);
+      if (entry.registry.get(key) === entry) {
+        destroyEntry(hostWindow, key, entry);
       }
     });
-    webContents.on("did-navigate", notifyAutomationTabs);
-    webContents.on("did-navigate-in-page", notifyAutomationTabs);
-    webContents.on("page-title-updated", notifyAutomationTabs);
+    const notify = () => {
+      if (entry.registry === entries) notifyAutomationTabs();
+    };
+    webContents.on("did-navigate", notify);
+    webContents.on("did-navigate-in-page", notify);
+    webContents.on("page-title-updated", notify);
 
     if (pagePreloadPath !== null) {
       webContents.ipc.on(
         BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL,
         (_event, payload: unknown) => {
+          if (entry.registry !== entries) return;
           const parsed = guestPageMessageSchema.safeParse(payload);
           if (
             !parsed.success ||
@@ -710,6 +722,10 @@ export function createDesktopBrowserViewManager(
     });
 
     webContents.on("before-input-event", (event, input) => {
+      if (entry.registry !== entries) {
+        event.preventDefault();
+        return;
+      }
       if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) {
         return;
       }
@@ -746,6 +762,7 @@ export function createDesktopBrowserViewManager(
     guardMainFrameNavigation(webContents, isAllowedBrowserUrl);
 
     webContents.setWindowOpenHandler((details) => {
+      if (entry.registry !== entries) return { action: "deny" };
       const opensPopup = details.disposition === "new-window";
       const allowedUrl = opensPopup
         ? isAllowedPopupNavigationUrl(details.url)
@@ -785,7 +802,7 @@ export function createDesktopBrowserViewManager(
     });
 
     webContents.on("context-menu", (_event, params) => {
-      if (webContents.isDestroyed()) {
+      if (entry.registry !== entries || webContents.isDestroyed()) {
         return;
       }
       const { editFlags } = params;
@@ -812,7 +829,10 @@ export function createDesktopBrowserViewManager(
     });
 
     webContents.on("found-in-page", (_event, result) => {
-      if (result.requestId !== entry.activeFindRequestId) {
+      if (
+        entry.registry !== entries ||
+        result.requestId !== entry.activeFindRequestId
+      ) {
         return;
       }
       send(hostWindow, BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL, {
@@ -836,7 +856,7 @@ export function createDesktopBrowserViewManager(
       ) {
         entry.lastErrorText = "The page renderer could not start";
         applyEntryVisibility(entry, hostWindow);
-        pushState(hostWindow, tabId);
+        pushState(hostWindow, tabId, entry);
         return;
       }
       entry.rendererRecoveryState = "pending";
@@ -847,7 +867,7 @@ export function createDesktopBrowserViewManager(
 
     webContents.on("media-started-playing", () => pauseHiddenMedia(entry));
 
-    const refresh = () => pushState(hostWindow, tabId);
+    const refresh = () => pushState(hostWindow, tabId, entry);
     webContents.on("did-finish-load", () => {
       resetEntryRendererRecovery(entry);
       applyEntryVisibility(entry, hostWindow);
@@ -892,6 +912,7 @@ export function createDesktopBrowserViewManager(
       },
     });
     const entry: BrowserViewEntry = {
+      registry: entries,
       view,
       webContents: view.webContents,
       hostWindow: args.hostWindow,
@@ -929,7 +950,7 @@ export function createDesktopBrowserViewManager(
   }
 
   function disposeEntry(key: string, entry: BrowserViewEntry): void {
-    entries.delete(key);
+    entry.registry.delete(key);
     clearEntryRendererRecoveryTimer(entry);
     for (const popupWindow of [...entry.popupWindows]) {
       if (!popupWindow.isDestroyed()) popupWindow.destroy();
@@ -938,14 +959,14 @@ export function createDesktopBrowserViewManager(
     if (!entry.webContents.isDestroyed()) {
       entry.webContents.close();
     }
-    notifyAutomationTabs();
+    if (entry.registry === entries) notifyAutomationTabs();
   }
 
   function destroyEntry(
     hostWindow: DesktopBrowserHostWindow,
     key: string,
+    entry = entries.get(key),
   ): void {
-    const entry = entries.get(key);
     if (!entry) {
       return;
     }
@@ -1073,6 +1094,31 @@ export function createDesktopBrowserViewManager(
   }
 
   return {
+    setServerOrigin(value) {
+      if (serverOrigin === value) return;
+      if (serverOrigin === null) {
+        serverOrigin = value;
+        serverEntries.set(value, entries);
+        return;
+      }
+      resizingHostIds.clear();
+      for (const entry of entries.values()) {
+        entry.visible = false;
+        applyEntryVisibility(entry, entry.hostWindow);
+        for (const popup of entry.popupWindows) {
+          if (!popup.isDestroyed()) popup.hide();
+        }
+      }
+      serverOrigin = value;
+      entries = serverEntries.get(value) ?? new Map();
+      serverEntries.set(value, entries);
+      for (const entry of entries.values()) {
+        for (const popup of entry.popupWindows) {
+          if (!popup.isDestroyed()) popup.showInactive();
+        }
+      }
+      notifyAutomationTabs();
+    },
     createTab(request) {
       if (!isAllowedBrowserUrl(request.url))
         throw new Error("Unsupported browser URL");
@@ -1094,7 +1140,7 @@ export function createDesktopBrowserViewManager(
       applyEntryVisibility(entry, request.hostWindow);
       loadIfNeeded(entry, request.url);
       notifyAutomationTabs();
-      pushState(request.hostWindow, request.tabId);
+      pushState(request.hostWindow, request.tabId, entry);
       return nativeTab(request.tabId, entry);
     },
     listTabs({ hostWebContentsId, threadId }) {
@@ -1213,7 +1259,7 @@ export function createDesktopBrowserViewManager(
         loadIfNeeded(entry, request.url);
         notifyAutomationTabs();
       }
-      pushState(hostWindow, request.tabId);
+      pushState(hostWindow, request.tabId, entry);
     },
     detach({ hostWindow, tabId }) {
       destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
@@ -1360,11 +1406,11 @@ export function createDesktopBrowserViewManager(
     releaseWindow(hostWebContentsId) {
       resizingHostIds.delete(hostWebContentsId);
       const prefix = `${hostWebContentsId}:`;
-      for (const [key, entry] of [...entries.entries()]) {
-        if (!key.startsWith(prefix)) {
-          continue;
+      for (const registry of new Set([entries, ...serverEntries.values()])) {
+        for (const [key, entry] of [...registry]) {
+          if (!key.startsWith(prefix)) continue;
+          disposeEntry(key, entry);
         }
-        disposeEntry(key, entry);
       }
     },
     destroyAll() {
@@ -1375,9 +1421,10 @@ export function createDesktopBrowserViewManager(
         }
       }
       popupWindows.clear();
-      for (const [key, entry] of [...entries.entries()]) {
-        disposeEntry(key, entry);
+      for (const registry of new Set([entries, ...serverEntries.values()])) {
+        for (const [key, entry] of [...registry]) disposeEntry(key, entry);
       }
+      serverEntries.clear();
     },
   };
 }
