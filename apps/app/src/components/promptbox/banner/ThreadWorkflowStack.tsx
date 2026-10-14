@@ -61,7 +61,7 @@ export function ThreadWorkflowStack({
             )}
           >
             <ThreadWorkflowSummary workflow={front} />
-            <PromptStackCountSlot count={running.length - 1} />
+            <PromptStackCountSlot count={running.length} />
           </button>
         </PromptStackCard>
       </PromptStackPeekLayers>

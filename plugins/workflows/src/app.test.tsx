@@ -149,7 +149,7 @@ describe("workflow composer banner", () => {
       name: "4 workflows running. Show all",
     });
     expect(stack.getAttribute("aria-expanded")).toBe("false");
-    expect(slot.getByText("+3")).toBeTruthy();
+    expect(slot.getByText("4")).toBeTruthy();
     expect(
       slot.container.querySelectorAll("[data-prompt-stack-peek]"),
     ).toHaveLength(2);

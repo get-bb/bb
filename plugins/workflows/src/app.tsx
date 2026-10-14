@@ -767,7 +767,7 @@ function WorkflowStackFront({
           )}
         >
           <WorkflowComposerSummary run={front} />
-          <PromptStackCountSlot count={runs.length - 1} />
+          <PromptStackCountSlot count={runs.length} />
         </button>
       </section>
     </PromptStackPeekLayers>

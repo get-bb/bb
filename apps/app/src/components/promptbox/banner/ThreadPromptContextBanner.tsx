@@ -1138,7 +1138,7 @@ function ActiveChildThreadsCard({
               Active child threads
             </span>
           )}
-          <PromptStackCountSlot count={items.length} prefix="" />
+          <PromptStackCountSlot count={items.length} />
         </button>
       )}
       <AnimatedBody
