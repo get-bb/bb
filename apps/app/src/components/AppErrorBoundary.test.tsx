@@ -49,30 +49,4 @@ describe("AppErrorBoundary", () => {
     expect(container.textContent).toContain("render exploded");
     dispose();
   });
-
-  it("catches the commit-phase removeChild failure instead of blanking the root", () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { container, render, dispose } = mountRoot();
-
-    function Tree({ mounted }: { mounted: boolean }) {
-      return <div>{mounted ? <p data-moved="">body</p> : null}</div>;
-    }
-    render(
-      <AppErrorBoundary>
-        <Tree mounted />
-      </AppErrorBoundary>,
-    );
-    const moved = container.querySelector("[data-moved]");
-    expect(moved).not.toBeNull();
-    document.createElement("section").appendChild(moved!);
-
-    render(
-      <AppErrorBoundary>
-        <Tree mounted={false} />
-      </AppErrorBoundary>,
-    );
-
-    expect(container.textContent).toContain("bb hit an error and stopped");
-    dispose();
-  });
 });

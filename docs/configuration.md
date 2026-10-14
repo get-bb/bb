@@ -156,6 +156,42 @@ Two things read that file:
 Both confirm that the recorded process really is a bb launcher before they
 signal it, so a stale file left by a crash cannot stop an unrelated process.
 
+## The bb Command On PATH
+
+Settings → General → Command line has an **Install** button that installs the
+bb CLI for use outside bb: it puts the `bb` command on your PATH, so you, a
+script, or an agent running outside bb (such as Claude Code or Codex) can
+control bb with `bb thread list` and every other CLI command. Threads in bb
+already have `bb` on their PATH and need nothing. **Remove** takes it off again. Nothing changes your PATH until
+you choose Install. The CLI equivalent is `bb settings cli-command` (show),
+`bb settings cli-command install`, and `bb settings cli-command remove`; the
+SDK methods are `system.experimental_cliCommand()`,
+`system.experimental_installCliCommand()`, and
+`system.experimental_removeCliCommand()`, over
+`GET /api/v1/system/cli-command` and `POST .../install` and `.../remove`.
+
+- Every start of an installed bb (`npx bb-app` or the desktop app) writes a
+  small launcher to `<dataDir>/bin/bb` (`bb.cmd` on Windows). It runs the bb
+  CLI of the install that started last, with that install's own Node runtime,
+  so the desktop app needs no separate Node. After bb moves or updates, start
+  it once to refresh the launcher. Source checkouts (`pnpm start`, `pnpm dev`)
+  write no launcher and do not show the setting.
+- Install acts on the computer that runs the bb server. On macOS and Linux it
+  links the launcher into the first usable folder of `/opt/homebrew/bin` and
+  `/usr/local/bin` (macOS only), `~/.local/bin`, and `~/bin`, preferring one
+  already on your PATH. If the folder is not on your PATH, the setting says so.
+  On Windows it appends `<dataDir>\bin` to your user PATH.
+- bb never replaces another `bb`. If one already comes first on your PATH
+  (for example a global `npm install -g bb-app`, the `~/.local/bin/bb` a bb
+  machine install added, or Babashka), the setting names it and Install is
+  refused with `409 cli_command_blocked`.
+- Remove deletes only links that point at a bb launcher, or the
+  `<dataDir>\bin` PATH entry on Windows.
+- Machine credentials cannot install or remove the command.
+
+`BB_CLI_LAUNCHER` is an internal path the launcher passes to its server child;
+do not set it yourself.
+
 ## In-App Updates
 
 In-app updates are on when you start bb with `npx bb-app start` (or a global
@@ -2079,6 +2115,35 @@ modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
 
+Anonymous usage telemetry sends these PostHog events with a random install id,
+the app version, install kind, platform, OS release, architecture, and Node
+version: `app_started`, `telemetry_disabled`, `thread_created`,
+`user_message_sent`, and `plugin_installed`, plus setup events the app reports
+through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordTelemetryEvent`):
+`onboarding_started` (whether an agent was installed or ready at first launch),
+`onboarding_step_reached`, `onboarding_step_completed`, and
+`onboarding_step_skipped` (per setup-guide step, marked first run or replay),
+`onboarding_finished` (completed or skipped), `onboarding_agent_state`
+(aggregate installed/ready booleans when the guide's health snapshot changes;
+null means unknown or a failed health query), and `onboarding_sign_in`
+(started, ready, exited, failed, or cancelled, marked first run or replay).
+Sign-in `ready` means the selected provider's health became ready during the
+attempt. `exited` means its command exited successfully before readiness was
+observed; it does not establish successful authentication. Cancellation
+includes leaving the Agent step or switching sign-in methods.
+
+`new_thread_submit` records started, accepted, or failed composer submissions.
+It covers all new-thread submissions, so analytics must restrict first-send
+analysis to the installation's earliest attempt and check prior thread history.
+Accepted means the creation callback succeeded, not that the provider produced
+an answer. Disabled send controls and later turn failures are not measured.
+Attempts without a delivered outcome remain unknown, not inferred failures.
+
+The route accepts only these events and their fixed enums, booleans, and unknown
+markers. These additions include no provider IDs, account details, prompts,
+project or file names, terminal output, error messages, or session identifiers.
+They do not measure foreground time, app exit, or install/update error reasons.
+
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use
@@ -2165,3 +2230,16 @@ Settings. Search scope is remembered in browser local storage separately for
 new-thread and follow-up composers. Starred text and mentions persist in the
 plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
 for CLI and SDK commands.
+
+## MCP server
+
+The bundled MCP server plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--mcp`. While it is enabled, bb
+serves a Model Context Protocol endpoint at `/mcp` on its bb connect address
+and at `/api/v1/plugins/bb--mcp/http/mcp` on the loopback address.
+`bb mcp status` prints both. Remote apps sign in through the bb account, and
+an approved app can run any `bb` command; `bb mcp clients` lists them and
+`bb mcp revoke <grant-id>` disconnects one. The local address needs no
+sign-in and has the same trust as the `bb` CLI on that machine. See the
+[MCP skill](../plugins/mcp/skills/mcp/SKILL.md) for the tools and the few
+commands that cannot run over MCP.

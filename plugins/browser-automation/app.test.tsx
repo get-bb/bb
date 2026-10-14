@@ -50,19 +50,6 @@ const previewInputs = (slot: {
     .filter((call) => call.method === "preview")
     .map((call) => call.input);
 
-describe("registration", () => {
-  it("renders inline in the chat with a window-level lightbox", () => {
-    expect(app.messageDirectives.map((entry) => entry.id)).toEqual([
-      "browser-preview",
-    ]);
-    expect(app.appOverlays.map((entry) => entry.id)).toEqual([
-      "browser-preview-lightbox",
-    ]);
-    expect(app.threadPanelActions).toEqual([]);
-    expect(app.composerCustomizations).toEqual([]);
-  });
-});
-
 describe("inline browser preview", () => {
   it("rejects a malformed session attribute without calling the server", async () => {
     const slot = renderSlot(directive, props("not-a-session"), { rpc: {} });

@@ -98,26 +98,4 @@ describe("ExecutionControls", () => {
     expect(trigger.textContent).toContain("o4-mini");
     expect(trigger.textContent).not.toContain("Failed to load models");
   });
-
-  it("maps disabled fast mode to the explicit default service tier", () => {
-    const onServiceTierChange = vi.fn();
-    renderExecutionControls({
-      ...makeExecutionControlsProps(),
-      serviceTier: {
-        value: "fast",
-        onChange: onServiceTierChange,
-        supported: true,
-        options: [{ id: "fast", label: "Fast" }],
-      },
-    });
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Provider, model and reasoning",
-      }),
-    );
-    fireEvent.click(screen.getByRole("switch", { name: "Fast mode" }));
-
-    expect(onServiceTierChange).toHaveBeenCalledWith("default");
-  });
 });

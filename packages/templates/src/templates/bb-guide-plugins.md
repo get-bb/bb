@@ -26,6 +26,14 @@ or press **Ctrl+R** in a composer to search, preview, star, and insert prompts.
 history; `bb prompts list [--json]`, `bb prompts star <text...> [--json]`, and
 `bb prompts unstar <id> [--json]` manage starred text and mentions. History restores text, mentions, and attachments into an empty composer. Inserting never sends a message.
 
+The builtin MCP server plugin is disabled by default. Enable it with
+`bb plugin enable bb--mcp` or Settings → Plugins to let ChatGPT, Claude, or
+another MCP client control this bb. `bb mcp status [--json]` prints the remote
+address (`<bb connect address>/mcp`, approved through the bb account) and the
+local address; `bb mcp clients [--json]` lists connected apps and
+`bb mcp revoke <grant-id> [--json]` disconnects one. An approved app can run
+any `bb` command.
+
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.

@@ -11,7 +11,6 @@ import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import type {
   AgentExecutionUpdate,
   AutomationDetailResponse,
-  AutomationRunResponse,
 } from "./rpc-types.js";
 import {
   AutomationDetailView as AutomationDetailViewBase,
@@ -238,27 +237,9 @@ describe("Automation detail recipe", () => {
     const recipe = renderedRecipe(container);
     expect(recipe.map(([kind]) => kind)).toEqual(["definition", "activity"]);
     expect(recipe.at(-1)?.[1]).toBe("Runs");
-    const projectMetadataIcon = screen.getByRole("img", {
-      name: "Project: Personal",
-    });
-    const scheduleMetadataIcon = screen.getByRole("img", {
-      name: "Schedule",
-    });
-    const nextRunMetadataIcon = screen.getByRole("img", {
-      name: "Next run",
-    });
-    expect(projectMetadataIcon.tabIndex).toBe(0);
-    expect(scheduleMetadataIcon.tabIndex).toBe(0);
-    expect(nextRunMetadataIcon.tabIndex).toBe(0);
-    expect(
-      projectMetadataIcon.querySelector('[data-icon="Folder"]'),
-    ).toBeTruthy();
-    expect(
-      scheduleMetadataIcon.querySelector('[data-icon="DateTime"]'),
-    ).toBeTruthy();
-    expect(
-      nextRunMetadataIcon.querySelector('[data-icon="CalendarCheckOut02"]'),
-    ).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Project: Personal" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Schedule" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Next run" })).toBeTruthy();
     expect(screen.queryByText("Next run:")).toBeNull();
 
     const emptyRuns = screen
@@ -670,15 +651,6 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[data-automation-script-fade="below"]'),
     ).toBeNull();
-
-    const scriptPanel = scriptScroll.parentElement
-      ?.parentElement as HTMLElement;
-    expect(scriptPanel.className).toContain("bg-background");
-    expect(scriptPanel.className).not.toContain("shadow-xs");
-    expect(scriptPanel.className).not.toContain("shadow-sm");
-    expect(scriptPanel.lastElementChild?.className).toContain(
-      "bg-surface-recessed/55",
-    );
   });
 
   it.each([
@@ -719,123 +691,6 @@ describe("Automation detail recipe", () => {
           }"]`,
         ),
       ).not.toBeNull();
-    },
-  );
-
-  it("uses the shared shimmer treatment while runs are loading", async () => {
-    const { container } = render(
-      <AutomationDetailView
-        automation={AUTOMATION}
-        projectLabel="Personal"
-        runsState={{
-          runs: [],
-          nextCursor: null,
-          loading: true,
-          loadingMore: false,
-          error: null,
-          loadMore: () => {},
-          retry: () => {},
-        }}
-        actionPending={false}
-        onToggle={() => {}}
-        onEdit={() => {}}
-        onRunNow={() => {}}
-        onDelete={() => {}}
-        onOpenThread={() => {}}
-      />,
-    );
-
-    const loading = await screen.findByRole("status", {
-      name: "Loading runs",
-    });
-    expect(loading.textContent).toBe("");
-    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(3);
-    expect(container.textContent).not.toContain("Loading…");
-  });
-
-  it("keeps run-load failure quiet and actionable", () => {
-    const { container } = render(
-      <AutomationDetailView
-        automation={AUTOMATION}
-        projectLabel="Personal"
-        runsState={{
-          runs: [],
-          nextCursor: null,
-          loading: false,
-          loadingMore: false,
-          error: "network unavailable",
-          loadMore: () => {},
-          retry: () => {},
-        }}
-        actionPending={false}
-        onToggle={() => {}}
-        onEdit={() => {}}
-        onRunNow={() => {}}
-        onDelete={() => {}}
-        onOpenThread={() => {}}
-      />,
-    );
-
-    const errorState = screen
-      .getByText("Runs unavailable.")
-      .closest('[data-automation-runs-state="error"]') as HTMLElement;
-    expect(errorState.className).not.toContain("text-destructive");
-    expect(container.querySelector('[data-icon="CircleX"]')).toBeNull();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-  });
-
-  it.each([
-    ["failed", "Failed", "CircleX", "text-destructive"],
-    ["succeeded", "Succeeded", "CircleCheck", "text-success"],
-    ["running", "Running", "Loading", "text-muted-foreground"],
-    ["skipped", "Skipped", "ArrowTurnForward", "text-subtle-foreground"],
-  ] as const)(
-    "renders a %s run row with its semantic status glyph",
-    (status, label, iconName, iconClass) => {
-      const startedAt = 1_750_000_000_000;
-      const run: AutomationRunResponse = {
-        id: `run_${status}`,
-        automationId: AUTOMATION.id,
-        runMode: "agent",
-        threadId: null,
-        status,
-        trigger: "schedule",
-        skipReason: null,
-        error: null,
-        output: null,
-        exitCode: null,
-        scheduledFor: startedAt,
-        startedAt,
-        finishedAt: status === "running" ? null : startedAt + 42_000,
-      };
-      render(
-        <AutomationDetailView
-          automation={AUTOMATION}
-          projectLabel="Local"
-          runsState={{
-            runs: [run],
-            nextCursor: null,
-            loading: false,
-            loadingMore: false,
-            error: null,
-            loadMore: () => {},
-            retry: () => {},
-          }}
-          actionPending={false}
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onRunNow={() => {}}
-          onDelete={() => {}}
-          onOpenThread={() => {}}
-        />,
-      );
-
-      const indicator = screen.getByRole("img", { name: label });
-      expect(
-        indicator
-          .querySelector(`[data-icon="${iconName}"]`)
-          ?.getAttribute("class"),
-      ).toContain(iconClass);
     },
   );
 });

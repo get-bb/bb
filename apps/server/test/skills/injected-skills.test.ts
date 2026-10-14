@@ -2,16 +2,14 @@ import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
-  mkdtemp,
   readFile,
   rename,
-  rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import {
   hashSkillTreeEntries,
@@ -51,20 +49,6 @@ function resolveInjectedSkillSources(
     skillTreeRegistry: new SkillTreeRegistry(),
   }).map((entry) => entry.runtimeSource);
 }
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), "bb-injected-skills-"));
-  tempDirs.push(root);
-  return root;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-});
 
 function createCapturingLogger(): CapturingLogger {
   const debugs: CapturedLog[] = [];

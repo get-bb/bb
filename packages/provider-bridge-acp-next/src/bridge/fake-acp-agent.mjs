@@ -88,6 +88,12 @@
  * - FAKE_ACP_SESSION_BUSY_PROMPTS=<n>
  *                            → reject the first n prompts as session_busy
  *                              (omp's typed -32003 rejection)
+ * - FAKE_ACP_DELETE_SESSION=1
+ *                            → advertise and serve session/delete
+ * - FAKE_ACP_MODEL_LIST_CWD_LOG
+ *                            → write the `--list-models` working directory
+ * - FAKE_ACP_SESSION_DELETE_LOG
+ *                            → append the id passed to `session delete <id>`
  *
  * Prompt texts that script agent-initiated work after the turn has ended:
  * - "then-unprompted-stream"     → message chunks and a finished tool call
@@ -106,6 +112,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
 const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
+const deleteSession = process.env.FAKE_ACP_DELETE_SESSION === "1";
 const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
@@ -154,11 +161,24 @@ const UNPROMPTED_DELAY_MS = 150;
 // list command from the launch spec's agent binary plus `modelCli.listArgs`,
 // so a list command can only ever be this binary.
 if (process.argv.includes("--list-models")) {
+  if (process.env.FAKE_ACP_MODEL_LIST_CWD_LOG) {
+    writeFileSync(process.env.FAKE_ACP_MODEL_LIST_CWD_LOG, process.cwd());
+  }
   if (process.env.FAKE_ACP_MODEL_LIST_STDERR) {
     process.stderr.write(`${process.env.FAKE_ACP_MODEL_LIST_STDERR}\n`);
     process.exit(1);
   }
   process.stdout.write(`${process.env.FAKE_ACP_MODEL_LINES ?? ""}\n`);
+  process.exit(0);
+}
+
+if (process.argv.slice(-3, -1).join(" ") === "session delete") {
+  if (process.env.FAKE_ACP_SESSION_DELETE_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_SESSION_DELETE_LOG,
+      `${process.argv.at(-1)}\n`,
+    );
+  }
   process.exit(0);
 }
 
@@ -846,11 +866,12 @@ async function handleMessage(message) {
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
-            ...(forkSession || resumeSession
+            ...(forkSession || resumeSession || deleteSession
               ? {
                   sessionCapabilities: {
                     ...(forkSession ? { fork: {} } : {}),
                     ...(resumeSession ? { resume: {} } : {}),
+                    ...(deleteSession ? { delete: {} } : {}),
                   },
                 }
               : {}),
@@ -933,6 +954,17 @@ async function handleMessage(message) {
           },
           activeSessionId,
         );
+      }
+      return;
+    case "session/delete":
+      if (deleteSession) {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "Unknown method session/delete" },
+        });
       }
       return;
     case "session/load":

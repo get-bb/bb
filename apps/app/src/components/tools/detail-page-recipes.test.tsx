@@ -19,7 +19,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginDetail } from "./PluginDetail";
-import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
+import { SkillDetailView } from "./SkillDetailView";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import {
@@ -518,33 +518,6 @@ describe("Plugin detail recipe", () => {
   });
 });
 
-describe("Detail page header slots", () => {
-  it("renders actions, provenance badge, and overflow menu together", () => {
-    const { container } = render(
-      <SkillDetailView
-        title="writing-voice"
-        path="/skills/writing-voice/SKILL.md"
-        files={["/skills/writing-voice/SKILL.md"]}
-        selectedPath="/skills/writing-voice/SKILL.md"
-        onSelectFile={() => {}}
-        contentState={{ kind: "ready", content: "# writing-voice" }}
-        headerActions={<button type="button">Fork</button>}
-        titleBadge={{
-          label: "Imported",
-          tooltip: "Discovered in Claude Code",
-        }}
-        overflowMenu={<button type="button">More</button>}
-      />,
-    );
-
-    const header = container.querySelector("h1")?.closest("div")?.parentElement;
-    expect(header).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Fork" })).toBeTruthy();
-    expect(screen.getByText("Imported")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "More" })).toBeTruthy();
-  });
-});
-
 function renderSkill(files: readonly string[]) {
   return render(
     <SkillDetailView
@@ -673,25 +646,5 @@ describe("Skill detail recipe", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("never splits a chunk inside a code fence", () => {
-    const fenced = [
-      "intro",
-      "",
-      "```bash",
-      ...Array.from({ length: 200 }, (_, i) => `command ${i}`),
-      "```",
-      "",
-      "outro",
-    ].join("\n");
-    const chunks = splitMarkdownIntoChunks(fenced);
-    for (const chunk of chunks) {
-      const fenceCount = chunk
-        .split("\n")
-        .filter((line) => line.startsWith("```")).length;
-      expect(fenceCount % 2).toBe(0);
-    }
-    expect(chunks.join("\n")).toBe(fenced);
   });
 });

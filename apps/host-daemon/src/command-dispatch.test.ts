@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
 import type {
@@ -8,8 +7,8 @@ import type {
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
-import { createDeferredPromise } from "@bb/test-helpers";
-import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
@@ -42,22 +41,6 @@ interface BusySkillCatalogFixture {
   runtime: FakeDispatchRuntime;
   source: HostDaemonInjectedSkillSource;
 }
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
-});
 
 async function writeInjectedSkillSource(
   args: WriteInjectedSkillSourceArgs,

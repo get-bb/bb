@@ -72,7 +72,7 @@ export function useGitDiffPanelState({
   }, [onClearPendingGitDiffIntent, pendingGitDiffCommitSha]);
 
   const hasUncommittedChanges =
-    (workspaceStatus?.workingTree.files.length ?? 0) > 0;
+    (workspaceStatus?.workingTree.fileCount ?? 0) > 0;
 
   useEffect(() => {
     if (

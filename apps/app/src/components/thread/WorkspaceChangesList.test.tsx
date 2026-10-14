@@ -3,7 +3,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  WORKSPACE_CHANGES_LIST_MAX_ROWS,
   WorkspaceChangesList,
   type WorkspaceChangedFile,
 } from "./WorkspaceChangesList";
@@ -20,24 +19,21 @@ function makeFiles(count: number): WorkspaceChangedFile[] {
 afterEach(cleanup);
 
 describe("WorkspaceChangesList", () => {
-  it("renders every file when the list fits under the row cap", () => {
-    render(<WorkspaceChangesList files={makeFiles(3)} />);
+  it("renders every file when the status lists them all", () => {
+    render(<WorkspaceChangesList files={makeFiles(3)} fileCount={3} />);
 
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(screen.queryByText(/more files not shown/)).toBeNull();
   });
 
-  it("caps the scrollable list and reports the hidden remainder", () => {
-    const files = makeFiles(WORKSPACE_CHANGES_LIST_MAX_ROWS + 1234);
-    render(<WorkspaceChangesList files={files} />);
+  it("reports files the capped status omitted", () => {
+    const files = makeFiles(200);
+    render(<WorkspaceChangesList files={files} fileCount={200 + 1234} />);
 
     expect(screen.queryAllByRole("button")).toHaveLength(0);
-    expect(screen.getAllByRole("listitem")).toHaveLength(
-      WORKSPACE_CHANGES_LIST_MAX_ROWS + 1,
-    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(200 + 1);
     expect(
       screen.getByText(`${(1234).toLocaleString()} more files not shown`),
     ).toBeTruthy();
-    expect(screen.queryByTitle(files[files.length - 1]!.path)).toBeNull();
   });
 });

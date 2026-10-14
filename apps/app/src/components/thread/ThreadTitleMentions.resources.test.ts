@@ -3,6 +3,7 @@ import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
   buildThreadTitleMentionResources,
   EMPTY_TITLE_MENTION_RESOURCES,
+  threadTitleTextSegments,
   type ThreadTitleMentionNavigationSource,
 } from "./ThreadTitleMentions";
 
@@ -93,5 +94,128 @@ describe("buildThreadTitleMentionResources", () => {
         EMPTY_TITLE_MENTION_RESOURCES,
       ),
     ).toBe(EMPTY_TITLE_MENTION_RESOURCES);
+  });
+});
+
+describe("threadTitleTextSegments", () => {
+  const rawId = "thr_dcwivn5n8w";
+
+  function resourcesWithThread(title: string) {
+    return {
+      ...EMPTY_TITLE_MENTION_RESOURCES,
+      threadById: new Map([
+        [
+          rawId,
+          makeThreadListEntry({
+            id: rawId,
+            projectId: "proj_target",
+            title,
+            titleFallback: title,
+          }),
+        ],
+      ]),
+    };
+  }
+
+  it("renders serialized mentions in the thread title as pills", () => {
+    const segments = threadTitleTextSegments(
+      "Review @docs/foo.test.ts with @thread:thr_worker",
+      EMPTY_TITLE_MENTION_RESOURCES,
+    );
+
+    expect(segments.map((segment) => segment.text)).toEqual([
+      "Review ",
+      "foo.test.ts",
+      " with ",
+      "thr_worker",
+    ]);
+    expect(segments[1]?.resource).toMatchObject({
+      kind: "path",
+      path: "docs/foo.test.ts",
+    });
+    expect(segments[3]?.resource).toMatchObject({
+      kind: "thread",
+      threadId: "thr_worker",
+    });
+  });
+
+  it("renders a raw thread id in the title as a mention pill", () => {
+    const segments = threadTitleTextSegments(
+      `Continue from ${rawId} docs/foo.ts`,
+      resourcesWithThread("Raw title target"),
+    );
+
+    expect(segments.map((segment) => segment.text)).toEqual([
+      "Continue from ",
+      "Raw title target",
+      " docs/foo.ts",
+    ]);
+    expect(segments[1]?.resource).toMatchObject({
+      kind: "thread",
+      threadId: rawId,
+    });
+  });
+
+  it.each([
+    ["straight closing quote", `Review "${rawId}."`],
+    ["curly closing quote", `Review “${rawId}.”`],
+  ])(
+    "renders a sentence-final raw id before a %s in a title",
+    (_label, title) => {
+      const segments = threadTitleTextSegments(
+        title,
+        resourcesWithThread("Quoted title target"),
+      );
+
+      expect(segments.find((segment) => segment.resource !== null)?.text).toBe(
+        "Quoted title target",
+      );
+    },
+  );
+
+  it("leaves raw-id path, extension, and overlong continuations literal in titles", () => {
+    const title = [
+      `${rawId}.md`,
+      `${rawId}/path`,
+      `${rawId}2`,
+      `/tmp/${rawId}`,
+      `docs/${rawId}`,
+      `C:\\tmp\\${rawId}`,
+      `docs\\${rawId}`,
+      `${rawId}\\logs`,
+    ].join(" ");
+
+    expect(
+      threadTitleTextSegments(title, resourcesWithThread("Should not render")),
+    ).toEqual([
+      {
+        resource: null,
+        serializedText: null,
+        text: title,
+        unresolvedThreadId: null,
+      },
+    ]);
+  });
+
+  it("leaves an unresolvable raw thread id literal and requests it", () => {
+    expect(
+      threadTitleTextSegments(
+        "Unknown thr_2222222222",
+        EMPTY_TITLE_MENTION_RESOURCES,
+      ),
+    ).toEqual([
+      {
+        resource: null,
+        serializedText: null,
+        text: "Unknown ",
+        unresolvedThreadId: null,
+      },
+      {
+        resource: null,
+        serializedText: "thr_2222222222",
+        text: "thr_2222222222",
+        unresolvedThreadId: "thr_2222222222",
+      },
+    ]);
   });
 });

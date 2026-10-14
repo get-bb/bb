@@ -23,9 +23,13 @@ import {
   disconnectFn,
   removeServerFn,
   revokeMachineFn,
+  listConnectedAppsFn,
+  revokeOAuthGrantFn,
   getDashboard,
 } from "@/server/fns";
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
+import type { OAuthGrantView } from "@/server/oauth";
+import { ConnectedApps } from "@/components/connected-apps";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 import {
   dashboardRefreshIntervalMs,
@@ -694,6 +698,18 @@ function AccountDashboard({ state }: { state: ServerState }) {
   const router = useRouter();
   const [connectOpen, setConnectOpen] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
+  const [connectedApps, setConnectedApps] = useState<OAuthGrantView[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listConnectedAppsFn().then((grants) => {
+      if (!cancelled) setConnectedApps(grants);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const single = state.servers.length === 1;
   const refreshIntervalMs = dashboardRefreshIntervalMs(
@@ -735,6 +751,16 @@ function AccountDashboard({ state }: { state: ServerState }) {
   async function revoke(machine: MachineSummary) {
     await revokeMachineFn({ data: machine.id });
     await router.invalidate();
+  }
+
+  async function revokeGrant(grant: OAuthGrantView) {
+    setRevokingGrantId(grant.id);
+    try {
+      await revokeOAuthGrantFn({ data: grant.id });
+      setConnectedApps(await listConnectedAppsFn());
+    } finally {
+      setRevokingGrantId(null);
+    }
   }
 
   return (
@@ -833,6 +859,12 @@ function AccountDashboard({ state }: { state: ServerState }) {
           })
         )}
       </div>
+      <ConnectedApps
+        grants={connectedApps}
+        revokingId={revokingGrantId}
+        relativeTime={relativeTime}
+        onRevoke={(grant) => void revokeGrant(grant)}
+      />
       {dialog}
     </Shell>
   );

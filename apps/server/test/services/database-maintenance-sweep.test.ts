@@ -19,6 +19,7 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { ServerLogger } from "../../src/types.js";
 import { runDatabaseMaintenanceSweep } from "../../src/services/system/periodic-sweeps.js";
 import { testLogger } from "../helpers/test-app.js";
@@ -137,8 +138,7 @@ function buildFreelist(db: DbConnection): void {
 }
 
 function setupBusyDatabaseWithFreelist() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   markDatabaseBusy(db);
   buildFreelist(db);
 
@@ -156,8 +156,7 @@ function setupBusyFileDatabaseWithFreelist(tempDatabase: TempDatabasePath) {
 
 describe("runDatabaseMaintenanceSweep", () => {
   it("drops deferred legacy tables on an idle maintenance pass", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
+    const db = createMigratedConnection();
     createDeferredLegacyTables(db);
     expect(listDeferredLegacyTables(db)).toEqual(
       [...TEST_DEFERRED_LEGACY_TABLE_NAMES].sort(),

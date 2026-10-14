@@ -32,6 +32,7 @@ describe("bb environment command output", () => {
       insertions: 3,
       deletions: 1,
       lineStatsComplete: true,
+      fileCount: 1,
     },
     checkout: {
       kind: "branch",
@@ -53,6 +54,7 @@ describe("bb environment command output", () => {
       insertions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 0,
     },
   };
 

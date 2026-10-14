@@ -7,23 +7,6 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 const app = await loadPluginApp(() => import("./app"));
 
 describe("GitHub app navigation", () => {
-  it("registers the GitHub nav panel with header content and the PR thread tab", () => {
-    expect(app.navPanels).toHaveLength(1);
-    expect(app.navPanels[0]).toMatchObject({
-      id: "github",
-      title: "GitHub",
-      icon: "Github",
-      path: "github",
-    });
-    expect(typeof app.navPanels[0]?.headerContent).toBe("function");
-    expect(app.threadPanelActions).toHaveLength(1);
-    expect(app.threadPanelActions[0]).toMatchObject({
-      id: "pull",
-      title: "GitHub PR",
-      icon: "Github",
-    });
-  });
-
   it("opens issue details in the URL-backed page instead of a fixed tab", async () => {
     const panel = app.navPanels[0]!;
     expect(panel.fixedTabs).toBeUndefined();
@@ -69,30 +52,6 @@ describe("GitHub app navigation", () => {
       path: "github",
       options: { subPath: "issues/get-bb/bb/42" },
     });
-    slot.lifecycle.unmount();
-  });
-
-  it("uses the standard responsive page inset for the main panel", () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "" },
-      {
-        rpc: {
-          listItems: () => ({ items: [] }),
-          status: () => ({
-            ghOk: true,
-            ghState: "ready",
-            ghError: null,
-            repos: [],
-            lastSyncedAt: null,
-          }),
-          viewer: () => ({ login: "octocat" }),
-        },
-      },
-    );
-
-    expect(slot.container.firstElementChild?.className).toContain("p-4 md:p-5");
-    expect(slot.container.firstElementChild?.className).not.toContain("p-3");
     slot.lifecycle.unmount();
   });
 

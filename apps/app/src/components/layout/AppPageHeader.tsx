@@ -10,12 +10,10 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
-  BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
   CHROME_ROW_CLASS,
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
-  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
@@ -24,6 +22,7 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { scrollPageToTop } from "@/lib/page-scroll-to-top";
+import { resolveWindowTopLeftReserveClassName } from "./windowTopLeftReserve";
 
 export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 
@@ -66,13 +65,13 @@ export function AppPageHeader({
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const windowTopLeftReserveClassName =
-    ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing)
-      ? !sidebarKeepsCollapsedRail &&
-        (reserveMacosTrafficLights
-          ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
-          : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS)
-      : false;
+  const windowTopLeftReserveClassName = resolveWindowTopLeftReserveClassName({
+    isCompactViewport,
+    isSidebarShowing,
+    ownsWindowTopLeft,
+    reserveMacosTrafficLights,
+    sidebarKeepsCollapsedRail,
+  });
   return (
     <header
       ref={composedHeaderRef}

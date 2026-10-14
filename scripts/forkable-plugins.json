@@ -21,6 +21,7 @@
     "plugins/pdf-preview",
     "plugins/plugin-api-docs",
     "plugins/plugin-api-tester",
+    "plugins/mcp",
     "plugins/prompt-library",
     "plugins/provider-acp",
     "plugins/provider-acp-next",

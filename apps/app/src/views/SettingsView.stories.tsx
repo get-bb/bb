@@ -1,4 +1,5 @@
 import { MobileAppSection } from "@/components/settings/MobileAppSection";
+import { CliCommandSettingsSectionContent } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSectionContent } from "@/components/settings/CliSkillsSettingsSection";
 import { useEffect, useRef, useState } from "react";
 import { Route, Routes, useNavigate } from "react-router-dom";
@@ -222,6 +223,16 @@ function GeneralSettingsStory({
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
+      />
+      <CliCommandSettingsSectionContent
+        onChange={() => {}}
+        pending={false}
+        status={{
+          installedPath: null,
+          onPath: false,
+          shadowedBy: null,
+          supported: true,
+        }}
       />
       <CliSkillsSettingsSectionContent
         hasConnectedMachine={false}

@@ -117,3 +117,17 @@ export function splitStreamingMarkdown(
     tail: text.slice(settledLength),
   };
 }
+
+export function resolveStreamingMarkdown(
+  text: string,
+  streaming: boolean,
+): { split: StreamingMarkdownSplit | null; liveMarkdown: string } {
+  if (!streaming) {
+    return { split: null, liveMarkdown: text };
+  }
+  const split = splitStreamingMarkdown(text);
+  return {
+    split,
+    liveMarkdown: repairStreamingMarkdownTail(split?.tail ?? text),
+  };
+}

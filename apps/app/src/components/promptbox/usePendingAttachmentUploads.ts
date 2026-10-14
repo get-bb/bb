@@ -8,6 +8,12 @@ export interface PendingAttachmentUpload {
 
 const EMPTY_UPLOADS: readonly PendingAttachmentUpload[] = [];
 
+export function createPendingAttachmentUploads(
+  files: readonly File[],
+): PendingAttachmentUpload[] {
+  return files.map((file) => ({ id: nanoid(), file }));
+}
+
 export function usePendingAttachmentUploads(targetKey: string | null) {
   const [pending, setPending] = useState<{
     targetKey: string | null;
@@ -15,7 +21,7 @@ export function usePendingAttachmentUploads(targetKey: string | null) {
   }>({ targetKey: null, uploads: [] });
 
   const startUploads = useCallback((files: File[]) => {
-    const uploads = files.map((file) => ({ id: nanoid(), file }));
+    const uploads = createPendingAttachmentUploads(files);
     setPending((current) => ({
       targetKey,
       uploads: [...(current.targetKey === targetKey ? current.uploads : []), ...uploads],

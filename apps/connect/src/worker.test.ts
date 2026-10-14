@@ -1,12 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
-import { machine, sha256Hex } from "@bb/connect-db";
+import {
+  GATE_OAUTH_CLIENT_HEADER,
+  GATE_OAUTH_GRANT_HEADER,
+  GATE_OAUTH_SCOPE_HEADER,
+  MCP_LOCAL_PATH,
+  MCP_PUBLIC_PATH,
+  machine,
+  sha256Hex,
+} from "@bb/connect-db";
 
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
 import {
   cacheNamespace,
   dashboardSignInUrl,
+  mcpRequestForTunnelDo,
   requestForTunnelDo,
 } from "./worker";
 import {
@@ -3818,5 +3827,166 @@ describe("gate transport selection", () => {
     expect(
       captured.map((request) => request.headers.get("x-bb-relay")),
     ).toEqual([null, null]);
+  });
+});
+
+describe("gate worker MCP routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails());
+    mockRefreshAccountSession.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("strips visitor-supplied OAuth gate headers on every forward", () => {
+    const req = new Request("https://sawyer.getbb.app/api/v1/threads", {
+      headers: {
+        [GATE_OAUTH_SCOPE_HEADER]: "bb admin",
+        [GATE_OAUTH_GRANT_HEADER]: "forged-grant",
+        [GATE_OAUTH_CLIENT_HEADER]: "forged-client",
+      },
+    });
+    for (const out of [
+      requestForTunnelDo(req, null),
+      requestForTunnelDo(req, "8000", "session"),
+      requestForTunnelDo(req, null, "machine", "mch_verified"),
+    ]) {
+      expect(out.headers.get(GATE_OAUTH_SCOPE_HEADER)).toBeNull();
+      expect(out.headers.get(GATE_OAUTH_GRANT_HEADER)).toBeNull();
+      expect(out.headers.get(GATE_OAUTH_CLIENT_HEADER)).toBeNull();
+    }
+  });
+
+  it("stamps the verified OAuth identity and drops the token and every cookie", () => {
+    const req = new Request("https://sawyer.getbb.app/mcp?session=1", {
+      method: "POST",
+      body: "{}",
+      headers: {
+        authorization: "Bearer bbmcp_secret",
+        cookie: "tenant=1; __Secure-better-auth.session_token=platform",
+        [GATE_AUTH_HEADER]: "machine",
+        [GATE_MACHINE_ID_HEADER]: "forged-machine",
+        [GATE_OAUTH_SCOPE_HEADER]: "bb admin",
+        [GATE_OAUTH_GRANT_HEADER]: "forged-grant",
+        [GATE_OAUTH_CLIENT_HEADER]: "forged-client",
+      },
+    });
+    const out = mcpRequestForTunnelDo(req, {
+      scope: "bb",
+      grantId: "grant-1",
+      clientName: "Claude",
+    });
+    expect(new URL(out.url).pathname).toBe(MCP_LOCAL_PATH);
+    expect(new URL(out.url).search).toBe("?session=1");
+    expect(out.method).toBe("POST");
+    expect(out.headers.get(GATE_AUTH_HEADER)).toBe("oauth");
+    expect(out.headers.get(GATE_MACHINE_ID_HEADER)).toBeNull();
+    expect(out.headers.get(GATE_OAUTH_SCOPE_HEADER)).toBe("bb");
+    expect(out.headers.get(GATE_OAUTH_GRANT_HEADER)).toBe("grant-1");
+    expect(out.headers.get(GATE_OAUTH_CLIENT_HEADER)).toBe("Claude");
+    expect(out.headers.get("authorization")).toBeNull();
+    expect(out.headers.get("cookie")).toBeNull();
+  });
+
+  it("strips spoofed OAuth gate headers from a cookie-authenticated visitor", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: {
+          [GATE_AUTH_HEADER]: "oauth",
+          [GATE_OAUTH_SCOPE_HEADER]: "bb admin",
+          [GATE_OAUTH_GRANT_HEADER]: "forged-grant",
+          [GATE_OAUTH_CLIENT_HEADER]: "forged-client",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(GATE_AUTH_HEADER)).toBe("session");
+    expect(captured[0].headers.get(GATE_OAUTH_SCOPE_HEADER)).toBeNull();
+    expect(captured[0].headers.get(GATE_OAUTH_GRANT_HEADER)).toBeNull();
+    expect(captured[0].headers.get(GATE_OAUTH_CLIENT_HEADER)).toBeNull();
+  });
+
+  it.each([
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/oauth-protected-resource/mcp",
+  ])("does not serve %s on unknown, machine or share hosts", async (path) => {
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+
+    mockResolveLabel.mockResolvedValue(null);
+    const unknown = await worker.fetch(
+      visitorRequest("nobody.getbb.app", path),
+      env as never,
+      ctx,
+    );
+    expect(unknown.status).toBe(404);
+    expect(await unknown.text()).toBe('bb connect: no server for "nobody"\n');
+
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const machineHost = await worker.fetch(
+      visitorRequest("sawyer-air.getbb.app", path),
+      env as never,
+      ctx,
+    );
+    expect(machineHost.headers.get("content-type")).toContain("text/html");
+    expect(await machineHost.text()).toContain("is a machine");
+
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    const share = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", path),
+      env as never,
+      ctx,
+    );
+    expect(share.status).toBe(200);
+    expect(await share.text()).toBe("origin");
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get("x-bb-tunnel-target")).toBe("8000");
+
+    mockParseCookie.mockReturnValue(null);
+    const anonymousShare = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", path),
+      env as never,
+      ctx,
+    );
+    expect(anonymousShare.status).toBe(401);
+    expect(anonymousShare.headers.get("content-type")).toContain("text/html");
+  });
+
+  it("keeps /mcp and the plugin route as ordinary paths on share hosts", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    for (const path of [MCP_PUBLIC_PATH, MCP_LOCAL_PATH]) {
+      const response = await worker.fetch(
+        visitorRequest("sawyer--8000.getbb.app", path),
+        env as never,
+        ctx,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("www-authenticate")).toBeNull();
+    }
+    expect(captured.map((req) => new URL(req.url).pathname)).toEqual([
+      MCP_PUBLIC_PATH,
+      MCP_LOCAL_PATH,
+    ]);
+    expect(captured[0].headers.get(GATE_AUTH_HEADER)).toBe("session");
+
+    mockParseCookie.mockReturnValue(null);
+    const anonymous = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", MCP_PUBLIC_PATH, {
+        headers: { authorization: "Bearer bbmcp_anything" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get("www-authenticate")).toBeNull();
+    expect(anonymous.headers.get("content-type")).toContain("text/html");
   });
 });

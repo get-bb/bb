@@ -1,12 +1,8 @@
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createConnection,
-  migrate,
-  getAppSettings,
-  setAppSettings,
-} from "@bb/db";
+import { getAppSettings, setAppSettings } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { defaultAppSettings } from "@bb/domain";
 import { withTestHarness } from "../helpers/test-app.js";
 import { DEFAULTS } from "@bb/config/defaults";
@@ -235,8 +231,7 @@ describe("telemetry service", () => {
   });
 
   it("honors persisted opt-out at startup and changes without restarting", async () => {
-    const db = createConnection(":memory:");
-    migrate(db);
+    const db = createMigratedConnection();
     try {
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: false });
       const args = {

@@ -35,7 +35,11 @@ export function ChangedFilesDetailRow({
       className={rowClassName}
       valueClassName={rowValueClassName}
     >
-      <WorkspaceChangesList files={section.files} className={listClassName} />
+      <WorkspaceChangesList
+        files={section.files}
+        fileCount={section.stats.fileCount}
+        className={listClassName}
+      />
     </DetailRow>
   );
 }

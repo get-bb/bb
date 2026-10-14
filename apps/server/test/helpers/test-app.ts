@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import {
-  createConnection,
+  ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
   listRunningThreads,
@@ -16,7 +16,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
-import { initDb } from "../../src/db.js";
+import { createMigratedConnection } from "@bb/db/testing";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
@@ -33,6 +33,10 @@ import {
   createAppUpdateService,
   type AppUpdateService,
 } from "../../src/services/system/app-update.js";
+import {
+  createCliCommandService,
+  type CliCommandService,
+} from "../../src/services/system/cli-command.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -90,6 +94,7 @@ export async function installTestBuiltinPlugin(
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appUpdateService?: AppUpdateService;
   appVersionService?: AppVersionService;
+  cliCommandService?: CliCommandService;
   terminalAttachTimeoutMs?: number;
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
@@ -142,13 +147,10 @@ export function createTestDaemonHostKey(
   });
 }
 
-let migratedTemplate: Buffer | null = null;
-
 export function createTestDb(): DbConnection {
-  if (migratedTemplate === null) {
-    migratedTemplate = initDb(":memory:").$client.serialize();
-  }
-  return createConnection(migratedTemplate);
+  const db = createMigratedConnection();
+  ensurePersonalProject(db);
+  return db;
 }
 
 export async function createTestAppHarness(
@@ -157,6 +159,7 @@ export async function createTestAppHarness(
   const {
     appUpdateService,
     appVersionService,
+    cliCommandService,
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
@@ -303,6 +306,18 @@ export async function createTestAppHarness(
     appUpdate,
     appVersion,
     bbAppManagedConfig,
+    cliCommand:
+      cliCommandService ??
+      createCliCommandService({
+        env: {},
+        homeDir: dataDir,
+        launcherPath: null,
+        platform: process.platform,
+        windowsUserPath: {
+          read: () => Promise.reject(new Error("no Windows PATH in tests")),
+          write: () => Promise.reject(new Error("no Windows PATH in tests")),
+        },
+      }),
     config,
     db,
     hub,

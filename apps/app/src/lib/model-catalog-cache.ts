@@ -19,12 +19,16 @@ export function modelCatalogCacheKey({
   environmentId,
   hostId,
   providerId,
+  projectId = null,
 }: {
   environmentId: string | null;
   hostId: string | null;
   providerId: string | null;
+  projectId?: string | null;
 }): string {
-  return modelCatalogCache.key(environmentId, hostId, providerId);
+  return projectId === null
+    ? modelCatalogCache.key(environmentId, hostId, providerId)
+    : modelCatalogCache.key(environmentId, hostId, providerId, projectId);
 }
 
 export const readCachedModelCatalog = modelCatalogCache.read;

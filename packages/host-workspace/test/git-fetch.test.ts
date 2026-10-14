@@ -1,34 +1,12 @@
 import fs from "node:fs/promises";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
+import { initRepo, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchRemoteBranches, runGit } from "../src/git.js";
 
-const tempDirs: string[] = [];
-
 function quote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-async function initRepo(): Promise<string> {
-  const repo = await fs.mkdtemp(path.join(os.tmpdir(), "bb-git-fetch-"));
-  tempDirs.push(repo);
-  await runGit(["init", "-b", "main"], { cwd: repo });
-  await runGit(
-    [
-      "-c",
-      "user.name=Fixture",
-      "-c",
-      "user.email=fixture@example.com",
-      "commit",
-      "--allow-empty",
-      "-m",
-      "Initial commit",
-    ],
-    { cwd: repo },
-  );
-  return repo;
 }
 
 async function writeScript(repo: string, name: string, body: string) {
@@ -37,18 +15,13 @@ async function writeScript(repo: string, name: string, body: string) {
   return script;
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 describe("background Git authentication", () => {
   it("preserves a working GIT_SSH wrapper, including paths with spaces", async () => {
-    const repo = await initRepo();
+    const repo = await initRepo(await makeTempDir("bb-git-fetch-"));
     const wrapper = await writeScript(
       repo,
       "ssh wrapper.sh",
@@ -71,7 +44,7 @@ describe("background Git authentication", () => {
   it.each(["GIT_ASKPASS", "core.askPass", "SSH_ASKPASS"])(
     "suppresses %s on HTTP authentication while preserving explicit refresh prompts",
     async (setting) => {
-      const repo = await initRepo();
+      const repo = await initRepo(await makeTempDir("bb-git-fetch-"));
       const log = path.join(repo, "prompts.log");
       const askpass = await writeScript(
         repo,
@@ -131,7 +104,7 @@ describe("background Git authentication", () => {
   it.skipIf(process.platform === "win32")(
     "kills background transport descendants when a refresh times out",
     async () => {
-      const repo = await initRepo();
+      const repo = await initRepo(await makeTempDir("bb-git-fetch-"));
       const marker = path.join(repo, "late-side-effect");
       const wrapper = await writeScript(
         repo,

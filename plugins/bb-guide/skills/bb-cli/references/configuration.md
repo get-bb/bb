@@ -49,6 +49,17 @@ preserve the configured host or forward to localhost. BB Connect rewrites
 requests to the local server address and needs no additional configuration.
 `BB_SERVER_BIND_HOST=0.0.0.0` remains supported for direct remote access.
 
+Settings → General → Command line installs the bb CLI for use outside bb: it
+puts the `bb` command on PATH on the computer that runs the bb server, so the
+user, a script, or an agent running outside bb (such as Claude Code or Codex)
+can control bb. Threads in bb already have `bb`. `bb settings cli-command` shows the state and
+`bb settings cli-command install` or `remove` changes it.
+Install links the launcher bb keeps at `~/.bb/bin/bb` into a PATH folder such
+as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user PATH). bb never
+replaces another `bb`: install is refused while one runs first in a new
+terminal. Only an installed bb (`npx bb-app` or the desktop app) offers this;
+a source checkout does not.
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject

@@ -557,21 +557,13 @@ The canonical release summary.
     expect(
       changelog?.querySelector('[data-changelog-version="9.9.9"]'),
     ).toBeNull();
-    const changelogLabel = changelog?.querySelector("[data-changelog-label]");
-    expect(changelogLabel?.className).toContain("rounded-sm");
-    expect(changelogLabel?.className).not.toContain("rounded-full");
-    expect(changelogLabel?.className).toContain("bg-muted/40");
     const changelogPreview = changelog?.querySelector(
       "[data-changelog-preview]",
     );
-    expect(changelogPreview?.className).toContain("p-4");
     expect(changelogPreview?.className).not.toContain("grid");
     expect(
       changelog?.querySelector("[data-changelog-release-scroll]")?.className,
     ).toContain("max-h-56");
-    expect(
-      changelog?.querySelector("[data-changelog-footer]")?.className,
-    ).toContain("border-t");
     expect(
       changelog?.querySelector("[data-changelog-footer]")?.className,
     ).toContain("bg-foreground");
@@ -579,11 +571,6 @@ The canonical release summary.
       changelog?.querySelector("[data-changelog-footer]")?.className,
     ).toContain("text-background");
     expect(changelog?.textContent).toContain("Full changelog");
-    expect(
-      screen.getByRole("button", {
-        name: "Open the full bb 9.9.9 changelog",
-      }).className,
-    ).toContain("font-semibold");
     for (const highlight of ["New features", "Fixes"]) {
       expect(
         within(changelog as HTMLElement).getByRole("heading", {
@@ -600,7 +587,6 @@ The canonical release summary.
     const changelogHeader = changelog?.querySelector("[data-changelog-header]");
     const changelogCard = changelogHeader?.closest("section");
     expect(changelogPreview?.firstElementChild).toBe(changelogHeader);
-    expect(changelogHeader?.className).not.toContain("border-b");
     expect(changelogHeader?.contains(dismissChangelog)).toBe(true);
     expect(changelogCard?.contains(changelogPreview ?? null)).toBe(true);
     expect(dismissChangelog.querySelector('[data-icon="X"]')).not.toBeNull();

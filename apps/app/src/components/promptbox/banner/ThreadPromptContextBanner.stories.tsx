@@ -86,6 +86,7 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     insertions: 312,
     deletions: 47,
     lineStatsComplete: true,
+    fileCount: promptboxBannerFiles.length,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -224,6 +225,7 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     insertions: 1284,
     deletions: 312,
     lineStatsComplete: true,
+    fileCount: dirtyUncommittedManyFiles.length,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -258,6 +260,7 @@ const untrackedOnlyStatus: WorkspaceStatus = {
     insertions: 0,
     deletions: 0,
     lineStatsComplete: false,
+    fileCount: 2,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -279,6 +282,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     insertions: 0,
     deletions: 0,
     lineStatsComplete: true,
+    fileCount: 0,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -300,6 +304,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     insertions: 128,
     deletions: 24,
     lineStatsComplete: true,
+    fileCount: 3,
   },
 };
 
