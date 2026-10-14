@@ -91,7 +91,7 @@ export function createDesktopBrowserBrokerClient(args: {
   let retry: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
   let generation = 0;
-  let registryServerOrigin: string | null = null;
+  let serverUrl = args.getServerUrl();
 
   function disconnect(): void {
     generation += 1;
@@ -114,24 +114,14 @@ export function createDesktopBrowserBrokerClient(args: {
     if (stopped || socket !== null) return;
     const currentGeneration = generation;
     try {
-      const serverUrl = args.getServerUrl();
       const serverOrigin = new URL(serverUrl).origin;
-      if (
-        registryServerOrigin !== null &&
-        registryServerOrigin !== serverOrigin
-      )
-        args.broker.resetServer();
-      registryServerOrigin = serverOrigin;
+      args.broker.setServerOrigin(serverOrigin);
       const descriptor = await readServerBrokerDescriptor({
         dataDir: args.dataDir,
         homeDir: args.homeDir,
         serverOrigin,
       });
       if (stopped || generation !== currentGeneration) return;
-      if (new URL(args.getServerUrl()).origin !== serverOrigin) {
-        schedule();
-        return;
-      }
       const connection = new WebSocket(descriptor.url, {
         headers: { authorization: `Bearer ${descriptor.token}` },
         maxPayload: 1024 * 1024,
@@ -159,8 +149,7 @@ export function createDesktopBrowserBrokerClient(args: {
       connection.on("open", () => {
         if (
           stopped ||
-          generation !== currentGeneration ||
-          new URL(args.getServerUrl()).origin !== serverOrigin
+          generation !== currentGeneration
         ) {
           connection.terminate();
           return;
@@ -232,6 +221,7 @@ export function createDesktopBrowserBrokerClient(args: {
   void connect();
   return {
     reconnect() {
+      serverUrl = args.getServerUrl();
       if (retry !== null) clearTimeout(retry);
       retry = null;
       disconnect();

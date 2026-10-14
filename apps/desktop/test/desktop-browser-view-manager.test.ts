@@ -714,6 +714,7 @@ const electronMock = vi.hoisted(() => {
     public readonly webContents: FakePopupWebContents;
     public closeCalls = 0;
     public destroyCalls = 0;
+    public visible = true;
     public readonly loadURLCalls: string[] = [];
     public readonly titleCalls: string[] = [];
     private closedListener: (() => void) | null = null;
@@ -741,6 +742,14 @@ const electronMock = vi.hoisted(() => {
 
     isDestroyed(): boolean {
       return this.destroyed;
+    }
+
+    hide(): void {
+      this.visible = false;
+    }
+
+    showInactive(): void {
+      this.visible = true;
     }
 
     loadURL(url: string): Promise<void> {
@@ -2064,7 +2073,7 @@ describe("DesktopBrowserViewManager", () => {
         });
         expect(view.visible).toBe(true);
         expect(view.webContents.loadURLCalls).toEqual([
-          "https://example.com/",
+          "https://example.com/original",
         ]);
         expect(
           manager.listTabs({ hostWebContentsId: 91, threadId: null }),
@@ -2077,6 +2086,65 @@ describe("DesktopBrowserViewManager", () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
         await rm(dataDir, { recursive: true, force: true });
       }
+    },
+  );
+
+  it.each(["releaseWindow", "destroyAll"] as const)(
+    "isolates colliding server tabs and background events, then cleans up every server through %s",
+    (cleanup) => {
+      const manager = createDesktopBrowserViewManager({
+        pagePreloadPath: "/browser-preload.js",
+      });
+      const hostWindow = new FakeHostWindow({
+        contentBounds: { width: 700, height: 450 },
+        webContentsId: 91,
+      });
+      const attach = (url: string) =>
+        attachBrowserTab({ manager, hostWindow, tabId: "browser:a", url });
+      manager.setServerOrigin("https://first.example");
+      attach("https://example.com/first");
+      const first = requireFakeView(0);
+      const popup = first.webContents.emitWindowOpen("https://example.com/login", {
+        disposition: "new-window",
+      });
+      popup.createWindow?.({});
+      const popupWindow = electronMock.fakeWindows[0]!;
+      manager.setServerOrigin("https://second.example");
+      expect(popupWindow.visible).toBe(false);
+      attach("https://example.com/second");
+      const second = requireFakeView(1);
+      const notify = vi.fn();
+      manager.subscribeAutomationTabs(notify);
+      const pushes = hostWindow.webContents.sentPayloads.length;
+      first.webContents.emitDidNavigate("https://example.com/redirected");
+      first.webContents.emitIpc(BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL, {
+        channel: "background",
+        data: { secret: "first server" },
+      });
+      expect(first.webContents.emitWindowOpen("https://example.com/new")).toEqual({
+        action: "deny",
+      });
+      expect(hostWindow.webContents.sentPayloads).toHaveLength(pushes);
+      expect(notify).not.toHaveBeenCalled();
+      expect(
+        manager.getAutomationTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
+      ).toEqual([{ tabId: "browser:a", webContents: second.webContents }]);
+      manager.setServerOrigin("https://first.example");
+      attach("https://stale.example");
+      expect(first.visible).toBe(true);
+      expect(popupWindow.visible).toBe(true);
+      expect(second.visible).toBe(false);
+      expect(first.webContents.getURL()).toBe("https://example.com/redirected");
+      second.webContents.close();
+      expect(
+        manager.getAutomationTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
+      ).toEqual([{ tabId: "browser:a", webContents: first.webContents }]);
+      manager.setServerOrigin("https://second.example");
+      attach("https://example.com/reopened");
+      manager[cleanup](91);
+      expect(first.webContents.isDestroyed()).toBe(true);
+      expect(requireFakeView(2).webContents.isDestroyed()).toBe(true);
+      expect(popupWindow.isDestroyed()).toBe(true);
     },
   );
 

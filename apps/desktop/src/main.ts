@@ -1753,7 +1753,6 @@ async function loadServerMovedView(move: DesktopServerMove): Promise<void> {
 
 async function applyServerTarget(): Promise<void> {
   startupErrorPage = null;
-  desktopBrowserBrokerClient?.reconnect();
   if (serverTargetStore === null) {
     return;
   }
@@ -1761,6 +1760,9 @@ async function applyServerTarget(): Promise<void> {
   serverTargetGeneration += 1;
   const generation = serverTargetGeneration;
   const isCurrent = (): boolean => serverTargetGeneration === generation;
+  await loadLoadingView();
+  if (!isCurrent()) return;
+  desktopBrowserBrokerClient?.reconnect();
   if (serverTargetStore.getTarget().kind === "builtin") {
     await activateLocalServerMoveIfLocked();
     if (!isCurrent()) {
