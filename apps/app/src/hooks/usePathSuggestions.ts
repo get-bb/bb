@@ -206,26 +206,31 @@ export function usePathSuggestions(
   );
 
   const suggestions = useMemo<PathSuggestion[]>(() => {
-    if (!hasQuery) {
+    if (!hasQuery || isDebouncing) {
       return [];
     }
 
     return buildPathSuggestions({
-      workspacePaths: includeWorkspace
-        ? (workspaceQuery.data?.paths ?? [])
-        : [],
-      threadStoragePaths: includeThreadStorage
-        ? (threadStorageQuery.data?.paths ?? [])
-        : [],
+      workspacePaths:
+        includeWorkspace && !workspaceQuery.isPlaceholderData
+          ? (workspaceQuery.data?.paths ?? [])
+          : [],
+      threadStoragePaths:
+        includeThreadStorage && !threadStorageQuery.isPlaceholderData
+          ? (threadStorageQuery.data?.paths ?? [])
+          : [],
       limit,
     });
   }, [
     hasQuery,
     includeThreadStorage,
     includeWorkspace,
+    isDebouncing,
     limit,
     threadStorageQuery.data?.paths,
+    threadStorageQuery.isPlaceholderData,
     workspaceQuery.data?.paths,
+    workspaceQuery.isPlaceholderData,
   ]);
 
   const isFetching =

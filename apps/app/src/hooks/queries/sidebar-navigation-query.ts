@@ -27,7 +27,11 @@ function fetchSidebarNavigation(
   );
 }
 
-export function useSidebarNavigation(options?: QueryOptions) {
+interface SidebarNavigationQueryOptions extends QueryOptions {
+  staleTime?: number;
+}
+
+export function useSidebarNavigation(options?: SidebarNavigationQueryOptions) {
   const enabled = options?.enabled ?? true;
   useEnvironmentListRealtimeSubscription({ enabled });
   useHostListRealtimeSubscription({ enabled });
@@ -43,6 +47,8 @@ export function useSidebarNavigation(options?: QueryOptions) {
     },
     enabled,
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    staleTime:
+      options?.staleTime ?? REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY.staleTime,
     placeholderData: () => readCachedSidebarBootstrap() ?? undefined,
   });
 }
