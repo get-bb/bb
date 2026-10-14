@@ -47,8 +47,11 @@ one page.
   (`"$env:BB_THREAD_ID"`), separate commands with `;` instead of `&&`, and
   continue a line with a backtick instead of a backslash.
 
-A standalone CLI targets http://127.0.0.1:38886. Use BB_SERVER_URL and
-BB_HOST_DAEMON_PORT only for an intentional non-default target.
+A standalone CLI uses `BB_SERVER_URL` when non-blank, otherwise the saved
+`serverUrl` in the selected data directory (`BB_DATA_DIR`, or `~/.bb`). Without
+either, it targets http://127.0.0.1:38886. Saved machine credentials are sent
+only to the saved server; thread proxy overrides receive no saved credentials.
+Use BB_SERVER_URL and BB_HOST_DAEMON_PORT only for an intentional override.
 
 ## Read only the relevant reference
 

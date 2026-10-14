@@ -287,6 +287,7 @@ describe("port helpers", () => {
 
     expect(() =>
       loadCliConfig({
+        homeDir: "/home/tester",
         env: createHostDaemonRuntimeEnv({
           BB_HOST_DAEMON_PORT: " 5555",
         }),
@@ -515,13 +516,17 @@ describe("consumer-specific config", () => {
       BB_SERVER_URL: "http://localhost:9999",
     });
     const hostDaemonConfig = loadHostDaemonConnectionConfig({ env });
-    const cliConfig = loadCliConfig({ env });
+    const cliConfig = loadCliConfig({
+      homeDir: "/home/tester",
+      env,
+    });
 
     expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
     expect(cliConfig.BB_SERVER_URL).toBe("http://localhost:9999");
 
     expect(() =>
       loadCliConfig({
+        homeDir: "/home/tester",
         env: createHostDaemonRuntimeEnv({
           BB_SERVER_URL: "not-a-url",
         }),
@@ -534,18 +539,20 @@ describe("consumer-specific config", () => {
       BB_SERVER_URL: " http://localhost:9999 ",
     });
     const hostDaemonConfig = loadHostDaemonConnectionConfig({ env });
-    const cliConfig = loadCliConfig({ env });
+    const cliConfig = loadCliConfig({
+      homeDir: "/home/tester",
+      env,
+    });
 
     expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
     expect(cliConfig.BB_SERVER_URL).toBe("http://localhost:9999");
 
-    expect(() =>
+    expect(
       loadCliConfig({
-        env: createHostDaemonRuntimeEnv({
-          BB_SERVER_URL: "   ",
-        }),
-      }),
-    ).toThrow("BB_SERVER_URL must not be empty");
+        homeDir: "/home/tester",
+        env: createHostDaemonRuntimeEnv({ BB_SERVER_URL: "   " }),
+      }).BB_SERVER_URL,
+    ).toBe("http://127.0.0.1:38886");
   });
 
   it("validates host-daemon connection config without requiring data dir", () => {
@@ -621,6 +628,7 @@ describe("consumer-specific config", () => {
 
   it("defaults CLI connection env to the local app instance", () => {
     const cliConfig = loadCliConfig({
+      homeDir: "/home/tester",
       env: {
         NODE_ENV: "development",
       },
@@ -632,6 +640,7 @@ describe("consumer-specific config", () => {
 
   it("lets explicit CLI env overrides win over NODE_ENV-selected defaults", () => {
     const cliConfig = loadCliConfig({
+      homeDir: "/home/tester",
       env: {
         BB_HOST_DAEMON_PORT: "3999",
         BB_SERVER_URL: "http://localhost:9999",

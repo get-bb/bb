@@ -145,6 +145,13 @@ error code, and the unknown command or flag, never argument values.
 `bb diagnostics cli-errors [--since 7d] [--json]` tallies it; `--clear` deletes
 it. `BB_CLI_ERROR_LOG=0` turns recording off.
 
+The standalone `bb` CLI, including the desktop bundled binary, uses a non-blank
+`BB_SERVER_URL` before the saved `serverUrl` in the selected `BB_DATA_DIR`
+(default `~/.bb`). It reads the saved machine headers only for that saved URL.
+Agent threads use the daemon's authenticated loopback proxy without receiving
+saved headers. Requests carrying machine headers reject redirects; requests
+without those headers keep normal redirect behavior.
+
 Machine enrollment v2 stores private `serverHeaders` in machine `config.json`.
 The launcher transports these through `BB_SERVER_HEADERS` (JSON string map) for
 all server requests. Do not print these headers; they can contain access tokens.

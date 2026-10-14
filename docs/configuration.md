@@ -63,7 +63,8 @@ secret managed by bb connect: do not copy, edit, or commit it. Both fields are
 intentionally omitted from `bb-app config list`. At runtime bb-app passes
 `machineCredential` to the standalone host daemon through `BB_SERVER_HEADERS`,
 and the daemon and its bundled `bb` CLI send it to the server as the
-`x-bb-connect-machine` header; `connectMachineId` is only stored. These are
+`x-bb-connect-machine` header. The CLI sends it only to requests for the saved
+`serverUrl`; `connectMachineId` is only stored. These are
 installer-managed transport details, not user configuration knobs; re-add the
 machine instead of setting them by hand.
 
@@ -255,7 +256,7 @@ child; do not set them yourself.
 | ------------------------------ | -------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BB_APP_URL`                   | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
 | `BB_MARKETPLACE_URL`           | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
-| `BB_SERVER_URL`                | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
+| `BB_SERVER_URL`                | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. A `BB_SERVER_URL` environment variable, such as the proxy address bb gives agent threads, overrides the saved value for `bb` CLI commands; `host-daemon` commands use the saved value. The CLI defaults to `http://127.0.0.1:38886` when neither is set.                                                                 |
 | `BB_SERVER_BIND_HOST`          | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
 | `BB_SERVER_PORT`               | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                                   |
 | `BB_HOST_DAEMON_PORT`          | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                           |
@@ -1088,21 +1089,21 @@ schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                                  | Value                                                                                     |
-| ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                  |
-| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                |
-| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                  |
-| `sidebar.sectionOrder`               | Section id list for **By project**                                                        |
-| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
-| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
-| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.footerOrder`                | Footer action order                                                                       |
-| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
-| `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
-| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                  |
-| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`)   |
+| Key                                  | Value                                                                                                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                                         |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                                       |
+| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                                         |
+| `sidebar.sectionOrder`               | Section id list for **By project**                                                                               |
+| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                                                 |
+| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                                               |
+| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin                        |
+| `sidebar.footerOrder`                | Footer action order                                                                                              |
+| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                                                   |
+| `sidebar.pluginPanelOrder`           | Rail destination order                                                                                           |
+| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                                         |
+| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                                          |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`) |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
@@ -1975,6 +1976,16 @@ Bootstrap v2 carries optional provider headers. The machine persists them as
 `serverHeaders` in its private `config.json`; the launcher supplies them to the
 daemon through `BB_SERVER_HEADERS` as a JSON string map. These headers are private
 credentials and cover enrollment, HTTP, WebSocket, and runtime proxy requests.
+The launcher also supplies them to `bb` CLI commands that target the saved
+`serverUrl`, and the CLI attaches them only to requests for that origin. Agent
+threads on the machine get `BB_SERVER_URL` pointing at the daemon's loopback
+proxy, which adds the headers itself; `bb` there uses that address instead of
+the saved `serverUrl` and receives no `BB_SERVER_HEADERS`.
+The desktop bundled CLI reads the same saved connection directly from
+`BB_DATA_DIR` (default `~/.bb`), so it also works in ordinary terminals without
+connection environment variables. A blank `BB_SERVER_URL` uses the saved value.
+Requests carrying private server headers reject redirects instead of forwarding
+them to a redirect destination. Other requests retain normal redirect behavior.
 Direct grants omit headers. Legacy `machineCredential` configuration is translated
 into the corresponding request header when loading an existing machine.
 
