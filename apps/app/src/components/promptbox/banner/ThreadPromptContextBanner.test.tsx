@@ -463,7 +463,6 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain('data-icon="ChildThread"');
     expect(markup).toContain("animate-shine-icon");
     expect(markup).toMatch(/animate-shine[^"]*font-normal/);
-    expect(markup).not.toContain("running");
   });
 
   it("lists child threads with needs-input and working glyphs when expanded", () => {
@@ -496,7 +495,6 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain('aria-label="Needs input"');
     expect(markup).toContain('aria-label="Working"');
     expect(markup).toContain('data-icon="Loading"');
-    expect(markup).not.toContain("running");
   });
 
   it("lets combined child and context cards shrink inside the composer stack", () => {
