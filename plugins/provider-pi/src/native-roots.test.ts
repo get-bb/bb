@@ -29,6 +29,7 @@ async function resolvedSkillPaths(
   for (const root of parsed.skills) {
     expect(root).toMatchObject({
       origin: "user",
+      recursive: true,
       shape: "skills",
       namePrefix: "",
     });
