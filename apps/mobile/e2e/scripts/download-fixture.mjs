@@ -91,7 +91,7 @@ const server = http.createServer((request, response) => {
     new URL(path, upstream),
     {
       method: request.method,
-      headers: { ...request.headers, host: upstream.host },
+      headers: request.headers,
     },
     (result) => {
       response.writeHead(result.statusCode ?? 502, result.headers);
@@ -106,7 +106,7 @@ server.on("upgrade", (request, socket, head) => {
     Number(upstream.port || 80),
     upstream.hostname,
     () => {
-      const headers = { ...request.headers, host: upstream.host };
+      const headers = request.headers;
       const lines = [
         `${request.method} ${stripPrefix(request.url ?? "/")} HTTP/1.1`,
       ];
