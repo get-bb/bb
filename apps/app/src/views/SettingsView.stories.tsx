@@ -127,6 +127,7 @@ function useSettingsStoryState() {
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
   const [keepHistoryAfterContextClear, setKeepHistoryAfterContextClear] =
     useState(false);
+  const [summarizeShellCommands, setSummarizeShellCommands] = useState(true);
   const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
@@ -157,6 +158,8 @@ function useSettingsStoryState() {
     setConfirmThreadArchive,
     keepHistoryAfterContextClear,
     setKeepHistoryAfterContextClear,
+    summarizeShellCommands,
+    setSummarizeShellCommands,
     streamerMode,
     telemetryEnabled,
     setTelemetryEnabled,
@@ -210,6 +213,8 @@ function GeneralSettingsStory({
         onKeepHistoryAfterContextClearChange={
           state.setKeepHistoryAfterContextClear
         }
+        summarizeShellCommands={state.summarizeShellCommands}
+        onSummarizeShellCommandsChange={state.setSummarizeShellCommands}
         desktopBrowserAvailable={desktopBrowserAvailable}
         generalSettingsDisabled={false}
         managedBranchPrefix={state.managedBranchPrefix}

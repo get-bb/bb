@@ -107,6 +107,10 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   messages above the `Context cleared` boundary in the timeline, outline, and
   message lookups. The next prompt still starts a fresh provider conversation,
   and the context meter still resets.
+- `summarizeShellCommands` (default true; Settings → General → Summarize shell
+  commands): false stops titling shell commands that read, list, or search files
+  with a summary such as `Searched for X`. Each command row then shows its
+  command and expands to the command and its output.
 - `confirmThreadArchive` (default true): set false to archive parent and child
   threads in the app without the confirmation popup; the toast still offers
   Undo. CLI and SDK archive calls are always non-interactive.

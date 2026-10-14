@@ -734,6 +734,7 @@ function buildContextWindowUsage(
       completedTurnDisplay: "collapse",
       includeNestedRows: false,
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
@@ -756,6 +757,7 @@ function buildTimelineRows(
       completedTurnDisplay: "collapse",
       includeNestedRows: true,
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       isLatestPage: true,
       threadStatus,
       threadName: "",
@@ -902,6 +904,56 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(row).not.toHaveProperty("statusLabels");
   });
 
+  it("shows a shell command as run when shell command summaries are off", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const command =
+      "until gh pr checks 5487 | grep -qv pending; do sleep 30; done";
+    const events = fromRows([
+      event.turnStarted({ turnId: "turn-1" }),
+      event.commandStarted({ itemId: "poll", command }),
+      event.commandCompleted({ itemId: "poll", command, exitCode: 0 }),
+      event.turnCompleted({ turnId: "turn-1" }),
+    ]);
+    const commandRow = (summarizeShellCommands: boolean) => {
+      const [row] = workRowsOfKind(
+        buildThreadTimelineFromEvents({
+          acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+          contextWindowEvents: [],
+          events,
+          options: {
+            completedTurnDisplay: "collapse",
+            includeDiagnosticOperations: false,
+            includeNestedRows: true,
+            isLatestPage: true,
+            summarizeShellCommands,
+            threadName: "",
+            threadStatus: "idle",
+            workspaceRoot: null,
+          },
+        }).rows,
+        "command",
+      );
+      if (row === undefined) throw new Error("Missing command row");
+      return {
+        activityIntents: row.activityIntents,
+        title: buildTimelineRowTitle(row, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).plain,
+      };
+    };
+
+    const summarized = commandRow(true);
+    expect(summarized.activityIntents).toEqual([
+      { type: "search", command, query: "pending", path: null },
+    ]);
+    expect(summarized.title).toMatch(/^Searched for pending/);
+
+    const unsummarized = commandRow(false);
+    expect(unsummarized.activityIntents).toEqual([]);
+    expect(unsummarized.title).toMatch(/^Ran until gh pr checks 5487/);
+  });
+
   it("hides a delivered tool result whose tool row is suppressed and shows one whose tool row is not", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const subject = (toolName: string, suppress: boolean) => ({
@@ -1030,6 +1082,7 @@ describe("buildThreadTimelineFromEvents", () => {
           completedTurnDisplay: "collapse",
           includeNestedRows: true,
           includeDiagnosticOperations: false,
+          summarizeShellCommands: true,
           isLatestPage: true,
           planCommand: { trigger: "/", name: "plan" },
           providerId,
@@ -1066,6 +1119,7 @@ describe("buildThreadTimelineFromEvents", () => {
         completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
+        summarizeShellCommands: true,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
@@ -1099,6 +1153,7 @@ describe("buildThreadTimelineFromEvents", () => {
         completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
+        summarizeShellCommands: true,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
@@ -1415,6 +1470,7 @@ describe("buildThreadTimelineFromEvents", () => {
         completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
+        summarizeShellCommands: true,
         isLatestPage: true,
         planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
@@ -3127,6 +3183,7 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
       completedTurnDisplay: "collapse",
       includeNestedRows: true,
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       isLatestPage: true,
       threadStatus: "active",
       threadName: "",

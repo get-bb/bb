@@ -1786,6 +1786,7 @@ describe("migrate", () => {
         confirmThreadArchive: true,
         showDiagnosticEvents: true,
         keepHistoryAfterContextClear: false,
+        summarizeShellCommands: true,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},

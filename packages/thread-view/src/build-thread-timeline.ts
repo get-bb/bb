@@ -80,6 +80,7 @@ interface ThreadTimelineFromEventsBaseOptions {
   providerId?: string;
   providerDisplayName?: string;
   planCommand?: PlanCommand | null;
+  summarizeShellCommands: boolean;
   threadStatus: Thread["status"];
   threadName: string;
   workspaceRoot: string | null;
@@ -115,6 +116,7 @@ interface BuildThreadTimelineTurnDetailsFromEventsOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   includeDiagnosticOperations: boolean;
   sourceSeqStart: number;
+  summarizeShellCommands: boolean;
   turnId: string;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -144,6 +146,7 @@ interface BuildTimelineRowsOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   includeNestedRows: boolean;
   rowIdPrefix: string;
+  summarizeShellCommands: boolean;
   workspaceRoot: string | null;
 }
 
@@ -535,7 +538,9 @@ function convertMessage(
           exitCode: message.exitCode,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
-          activityIntents: message.parsedIntents.map(convertActivityIntent),
+          activityIntents: options.summarizeShellCommands
+            ? message.parsedIntents.map(convertActivityIntent)
+            : [],
           ...rowPresentation(message),
         },
       ];
@@ -726,6 +731,7 @@ function convertMessage(
               completedTurnDisplay: options.completedTurnDisplay,
               includeNestedRows: true,
               rowIdPrefix: `${base.id}:child:`,
+              summarizeShellCommands: options.summarizeShellCommands,
               workspaceRoot: options.workspaceRoot,
             }),
           ),
@@ -1173,6 +1179,7 @@ export function buildThreadTimelineFromEvents(
       completedTurnDisplay: args.options.completedTurnDisplay,
       includeNestedRows: args.options.includeNestedRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
+      summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
     }),
     ...buildPendingSteerMessagesFromEvents(
@@ -1276,6 +1283,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     completedTurnDisplay: args.options.completedTurnDisplay,
     includeNestedRows: true,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
+    summarizeShellCommands: args.options.summarizeShellCommands,
     workspaceRoot: args.options.workspaceRoot,
   };
   const plan = planTimelineRows(

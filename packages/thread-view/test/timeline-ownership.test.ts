@@ -126,6 +126,7 @@ describe("timeline source ownership", () => {
       options: {
         completedTurnDisplay: "collapse",
         includeDiagnosticOperations: false,
+        summarizeShellCommands: true,
         sourceSeqStart: turn.sourceSeqStart,
         turnId: turn.turnId,
         threadStatus: "idle",

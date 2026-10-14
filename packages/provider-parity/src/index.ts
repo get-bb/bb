@@ -84,6 +84,7 @@ export const projectParityRows: ParityRowProjector = ({
       includeNestedRows: true,
       isLatestPage: true,
       providerId,
+      summarizeShellCommands: true,
       threadStatus: "idle",
       threadName: "parity",
       workspaceRoot: "/home/user/workspace",

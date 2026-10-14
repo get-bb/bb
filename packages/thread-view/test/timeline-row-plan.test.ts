@@ -14,6 +14,7 @@ const options = {
   completedTurnDisplay: "collapse",
   includeDiagnosticOperations: false,
   isLatestPage: true,
+  summarizeShellCommands: true,
   threadStatus: "idle",
   threadName: "",
   workspaceRoot: null,

@@ -1485,6 +1485,7 @@ export function renderTimelineFixture(
     includeDiagnosticOperations:
       args.projectionOptions.includeDiagnosticOperations ?? false,
     isLatestPage: true,
+    summarizeShellCommands: true,
     threadStatus: args.projectionOptions.threadStatus ?? "idle",
     threadName: args.projectionOptions.threadName ?? "",
     workspaceRoot: null,

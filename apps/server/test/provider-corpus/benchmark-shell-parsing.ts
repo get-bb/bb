@@ -69,6 +69,7 @@ const results = cases.map(({ name, command }) => {
       eventBudget: 1_500,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,
       maxSeq,

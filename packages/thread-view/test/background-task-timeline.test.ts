@@ -38,6 +38,7 @@ function buildTimeline(
       completedTurnDisplay: "collapse",
       includeNestedRows: options.includeNestedRows ?? true,
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",

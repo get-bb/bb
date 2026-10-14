@@ -93,6 +93,7 @@ describe.skipIf(!corpusAvailable())(
             options: {
               completedTurnDisplay: "collapse",
               includeDiagnosticOperations: false,
+              summarizeShellCommands: true,
               includeNestedRows: false,
               isLatestPage: true,
               providerId: thread.providerId,
@@ -172,6 +173,7 @@ describe.skipIf(!corpusAvailable())(
             eventBudget: 1_500,
             includeClearedContextHistory: false,
             includeDiagnosticOperations: false,
+            summarizeShellCommands: true,
             maxInlineOutputChars: 32_000,
             maxSeq: getLatestThreadSequence(db, { threadId }),
             page: { kind: "latest", segmentLimit: 20 },

@@ -218,6 +218,7 @@ function seedThreadWithEarlyHeadState(
 const baseOptions = {
   includeClearedContextHistory: false,
   includeDiagnosticOperations: false,
+  summarizeShellCommands: true,
   includeNestedRows: true,
   maxInlineOutputChars: null,
   maxSeq: 0,

@@ -314,6 +314,8 @@ export function registerSystemRoutes(
       keepHistoryAfterContextClear:
         settings.keepHistoryAfterContextClear ??
         current.keepHistoryAfterContextClear,
+      summarizeShellCommands:
+        settings.summarizeShellCommands ?? current.summarizeShellCommands,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
       onboardingCompletedAt:

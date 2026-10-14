@@ -125,6 +125,7 @@ export function createThreadTimelineWindows(
         thread.providerId,
       ),
       providerDisplayName,
+      summarizeShellCommands: settings.summarizeShellCommands,
     };
     const keyArgs = {
       threadId: thread.id,

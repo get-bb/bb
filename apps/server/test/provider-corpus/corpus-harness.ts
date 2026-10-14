@@ -173,6 +173,7 @@ export function buildRouteTimelinePage(
         args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: args.includeDiagnosticOperations ?? true,
+      summarizeShellCommands: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
       maxSeq:

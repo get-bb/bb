@@ -162,6 +162,7 @@ export function resolveThreadTimelineSurface(
     threadName,
     workspaceRoot,
     options.completedTurnDisplay,
+    options.summarizeShellCommands,
   ]);
   return {
     cursorKey,
@@ -196,6 +197,7 @@ export interface ThreadTimelineSurfaceOptions {
   maxInlineOutputChars: InlineOutputCharLimit;
   providerDisplayName?: string;
   planCommand?: ProviderComposerCommand | null;
+  summarizeShellCommands: boolean;
 }
 
 interface ThreadTimelineSurface {
@@ -219,6 +221,7 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
   itemId: string | null;
   completedTurnDisplay: CompletedTurnDisplay;
   includeDiagnosticOperations: boolean;
+  summarizeShellCommands: boolean;
   providerDisplayName?: string;
 }
 
@@ -1413,6 +1416,7 @@ function buildThreadTimelineInternal(
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
     planCommand: options.planCommand,
+    summarizeShellCommands: options.summarizeShellCommands,
     threadStatus: snapshot.status,
     threadName: surface.threadName,
     workspaceRoot: surface.workspaceRoot,
@@ -1707,6 +1711,7 @@ function buildThreadConversationRows(
         isLatestPage: true,
         providerDisplayName: options.providerDisplayName,
         providerId: thread.providerId,
+        summarizeShellCommands: true,
         threadName: thread.title ?? thread.titleFallback ?? "",
         threadStatus: thread.status,
         workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
@@ -1771,6 +1776,7 @@ function selectThreadConversationOutline(
           isLatestPage: true,
           providerDisplayName: options.providerDisplayName,
           providerId: thread.providerId,
+          summarizeShellCommands: true,
           threadName: thread.title ?? thread.titleFallback ?? "",
           threadStatus: thread.status,
           workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
@@ -2103,6 +2109,7 @@ function buildTimelineTurnSummaryDetailsPage(
       thread.title ?? thread.titleFallback ?? "",
       resolveThreadWorkspaceRoot(db, thread),
       options.completedTurnDisplay,
+      options.summarizeShellCommands,
     ]),
   );
   const contentCursor = readTimelineContentCursor(detailsPage);
@@ -2240,6 +2247,7 @@ function buildTimelineTurnSummaryDetailsPage(
       completedTurnDisplay: options.completedTurnDisplay,
       includeDiagnosticOperations,
       sourceSeqStart: options.sourceSeqStart,
+      summarizeShellCommands: options.summarizeShellCommands,
       turnId: options.turnId,
       providerDisplayName: options.providerDisplayName,
       threadStatus: snapshot.status,

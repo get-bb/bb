@@ -319,6 +319,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           thread.providerId,
         ),
         includeDiagnosticOperations: settings.showDiagnosticEvents,
+        summarizeShellCommands: settings.summarizeShellCommands,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
           thread.providerId,
