@@ -406,34 +406,6 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
   ],
 };
 
-function withPending(
-  pendingIds: readonly string[],
-): ThreadPromptChildThreadsSection {
-  const items = childThreadsFixture.items.map((item) => ({
-    ...item,
-    hasPendingInteraction: pendingIds.includes(item.id),
-  }));
-  return {
-    items: [
-      ...items.filter((item) => item.hasPendingInteraction),
-      ...items.filter((item) => !item.hasPendingInteraction),
-    ],
-    pendingInteractions: items
-      .filter((item) => item.hasPendingInteraction)
-      .map((item) =>
-        childQuestionFixture(
-          item.id,
-          item.title,
-          "Approve running the migration on staging?",
-          [],
-          1,
-        ),
-      ),
-  };
-}
-
-const childThreadsMixedFixture = withPending(["thr_b"]);
-
 function childQuestionFixture(
   childThreadId: string,
   childTitle: string,
@@ -951,16 +923,6 @@ export function Overview() {
           pullRequest={pullRequestFixture}
           pullRequestActions
           section={uncommittedSection}
-        />
-      </StoryRow>
-      <StoryRow
-        label="thread with active child threads (expanded)"
-        hint="needs-input child threads first, then working ones"
-      >
-        <Row
-          childThreads={childThreadsMixedFixture}
-          mergeBase={null}
-          initiallyExpandedSection="childThreads"
         />
       </StoryRow>
       <StoryRow

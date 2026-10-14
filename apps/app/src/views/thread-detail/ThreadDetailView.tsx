@@ -287,10 +287,6 @@ import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-type ChildThreadsSectionItemsOnly = Pick<
-  ThreadPromptChildThreadsSection,
-  "items"
->;
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
   [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -1789,35 +1785,34 @@ function ThreadDetailViewInternal(
       threadOriginKind,
       threadSourceThreadId,
     ]);
-  const childThreadsSection: ChildThreadsSectionItemsOnly | null =
-    useMemo(() => {
-      const list = childThreadSubsetQuery.data ?? [];
-      const activeItems = list
-        .filter(
-          (entry) =>
-            entry.originKind === null &&
-            (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
-              entry.hasPendingInteraction),
-        )
-        .sort((left, right) =>
-          left.hasPendingInteraction === right.hasPendingInteraction
-            ? right.latestAttentionAt - left.latestAttentionAt
-            : left.hasPendingInteraction
-              ? -1
-              : 1,
-        )
-        .map((entry) => ({
-          id: entry.id,
-          title: getThreadDisplayTitle(entry),
-          href: getThreadRoutePath({
-            projectId: entry.projectId,
-            threadId: entry.id,
-          }),
-          hasPendingInteraction: entry.hasPendingInteraction,
-        }));
-      if (activeItems.length === 0) return null;
-      return { items: activeItems };
-    }, [childThreadSubsetQuery.data]);
+  const childThreadsSection = useMemo(() => {
+    const list = childThreadSubsetQuery.data ?? [];
+    const activeItems = list
+      .filter(
+        (entry) =>
+          entry.originKind === null &&
+          (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
+            entry.hasPendingInteraction),
+      )
+      .sort((left, right) =>
+        left.hasPendingInteraction === right.hasPendingInteraction
+          ? right.latestAttentionAt - left.latestAttentionAt
+          : left.hasPendingInteraction
+            ? -1
+            : 1,
+      )
+      .map((entry) => ({
+        id: entry.id,
+        title: getThreadDisplayTitle(entry),
+        href: getThreadRoutePath({
+          projectId: entry.projectId,
+          threadId: entry.id,
+        }),
+        hasPendingInteraction: entry.hasPendingInteraction,
+      }));
+    if (activeItems.length === 0) return null;
+    return { items: activeItems };
+  }, [childThreadSubsetQuery.data]);
   const childPendingInteractions = useChildThreadPendingAttention(
     childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
   );
