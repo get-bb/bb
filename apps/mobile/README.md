@@ -6,7 +6,7 @@ Router, NativeWind v5).
 Status: a native shell around the web interface (#2515). `app/webview.tsx`
 loads the active server's web app in `react-native-webview` and talks to it
 over `@bb/mobile-bridge` (handshake, haptics, app-icon badge, share, open
-external links, open native screens). Threads, projects, plugins and server
+external links, open native screens, save files on iOS). Threads, projects, plugins and server
 settings run in the page. The native screens cover what the page cannot
 own: first-run pairing (Direct URL and bb connect QR / code enrollment),
 saved servers, This device settings (appearance, haptics, notifications,
@@ -554,6 +554,27 @@ payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
   toast.
 - Outbound: the shell handles the bridge `share` request (`useShellBridge` →
   RN `Share.share`); the web app does not send it yet.
+- File downloads (iOS): a WebView download link would replace the app with
+  the file, so the web app's `saveFile` (also the plugin API
+  `experimental_saveFile`) asks the shell instead. The iOS handshake carries
+  `saveFile: { maxTransferBytes, chunkBytes }`; it is a separate field
+  because older pages reject unknown entries in `capabilities`, and a page
+  without it keeps ordinary anchor downloads. A server URL is sent as a
+  `save-file` request: the shell checks it is on the profile's origin,
+  downloads it with the WebView's cookies (`@react-native-cookies/cookies`,
+  WebKit store), and presents the share sheet. Page bytes (`blob:` URLs,
+  recordings) go as `file-transfer-start`, base64 `file-transfer-chunk`s
+  (offsets must be contiguous; 384 KiB chunks, 50 MiB total), then
+  `save-file` with the transfer id. Files are written under
+  `Paths.cache/bb-shell-files/` and deleted after the sheet closes; an
+  abandoned transfer expires after 60 s, and the directory is cleared when
+  the shell mounts. The reply is `{ outcome: "saved" | "dismissed" }` or an
+  error the page shows as a toast. Safety nets for pages that predate this:
+  `onFileDownload` saves attachment responses through the same path,
+  `onOpenWindow` saves `target=_blank` server files instead of loading them
+  over the app, and subframes may load `blob:`/`data:`/`about:` and
+  same-origin URLs so `blob:` previews work on path-prefixed profiles.
+  Android keeps anchor downloads; RN `Share` cannot share a file there.
 - Haptics: `src/lib/haptics/` — `haptic(kind)` maps semantic kinds
   (`selection`, `impact-light|medium|heavy`, `success`, `warning`, `error`)
   onto expo-haptics and honors the Settings → This device → Haptics toggle

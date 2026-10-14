@@ -12,6 +12,7 @@ import {
   isProjectAttachmentPath,
 } from "@/lib/file-content-urls";
 import { formatByteSize } from "@/lib/format-byte-size";
+import { canSaveFileNatively, saveFile } from "@/lib/save-file";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import type {
   ThreadTimelineLocalFileLinkHandler,
@@ -200,6 +201,14 @@ export function ConversationAttachments({
                   href={attachmentHref}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(event) => {
+                    if (!canSaveFileNatively()) return;
+                    event.preventDefault();
+                    void saveFile({
+                      url: attachmentHref,
+                      fileName: detail?.name ?? fileNameFromPath(path),
+                    });
+                  }}
                   className={cn(
                     className,
                     "cursor-pointer hover:bg-state-hover",

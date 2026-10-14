@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMicrophoneSignal } from "./useMicrophoneSignal";
 import { useAudioInputDevices } from "./useAudioInputDevices";
 import { appToast } from "@/components/ui/app-toast";
-import { downloadBlob } from "@/lib/download-blob";
+import { saveFile } from "@/lib/save-file";
 import {
   requestAudioInputStream,
   useAudioInputDevicePreferenceValue,
@@ -512,7 +512,9 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
               },
               cancel: {
                 label: "Download recording",
-                onClick: () => downloadBlob(audioFile, audioFile.name),
+                onClick: () => {
+                  void saveFile({ blob: audioFile, fileName: audioFile.name });
+                },
               },
             });
           } finally {

@@ -31,6 +31,7 @@ import {
   type PluginAppDefinition,
   type PluginAppSetup,
   type ExperimentalClipboardContent,
+  type ExperimentalSaveFileOutcome,
   type PluginCodeThemeState,
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
@@ -1345,6 +1346,9 @@ const testPluginSdkApp = {
     content: ExperimentalClipboardContent,
   ): Promise<boolean> {
     return activeClipboard?.(content) ?? Promise.resolve(true);
+  },
+  experimental_saveFile(): Promise<ExperimentalSaveFileOutcome> {
+    return Promise.resolve("started");
   },
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;

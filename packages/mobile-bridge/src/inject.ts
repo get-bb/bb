@@ -1,4 +1,5 @@
 import type { NativeShellHandshake } from "./handshake.js";
+import { SAVE_FILE_REQUEST_TIMEOUT_MS } from "./save-file.js";
 import { NATIVE_BRIDGE_GLOBAL } from "./version.js";
 
 export interface NativeShellApi extends NativeShellHandshake {
@@ -139,7 +140,7 @@ export function buildBridgeInjectionScript(
           var timer = setTimeout(function () {
             delete pending[id];
             reject(new Error("native request timed out"));
-          }, kind === "clipboard" ? 30000 : 10000);
+          }, kind === "save-file" ? ${SAVE_FILE_REQUEST_TIMEOUT_MS} : kind === "clipboard" ? 30000 : 10000);
           pending[id] = { resolve: resolve, reject: reject, timer: timer };
           post({ type: "request", id: id, request: { kind: kind, payload: payload } });
         });

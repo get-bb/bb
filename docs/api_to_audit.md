@@ -2223,6 +2223,40 @@ true when it is omitted or no slot has rendered.
 4. **Feedback.** Every caller pairs the result with a toast or a manual-copy
    fallback. Decide whether a shared toast helper belongs in the SDK.
 
+## `app.experimental_saveFile` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** `experimental_saveFile({ fileName, url } | { fileName, blob })`
+saves a file through `saveFile`, the function bb's own downloads call: the
+file preview's Download button, the chat attachment fallback link, and the
+voice-input "Download recording" action. Browsers and bb Desktop click a
+temporary download anchor (an object URL for a blob) and resolve `started`.
+In the bb iOS app, whose WebView would otherwise load the file over the app,
+a URL on the page's origin goes to the shell, which downloads it with the
+WebView's cookies; a blob, `blob:` or `data:` URL is read in the page and
+sent in base64 chunks. The shell then shows the share sheet and the promise
+resolves `saved` or `dismissed`. Any failure, including a blob over the
+shell's 50 MiB limit, shows bb's error toast and resolves `failed`; it never
+rejects. A URL on another origin falls back to the anchor everywhere. Callers
+keep a real `href` on their link and call it from the click handler. Tasks
+attachment cards download through it.
+
+The test harness resolves `started` and records nothing.
+
+**Audit before stabilizing.**
+
+1. **Outcome shape.** `started` hides whether a browser download finished,
+   and `saved` only means a share-sheet activity completed (AirDrop and
+   other apps count). Decide whether callers need more than "failed or not".
+2. **Android.** The Android shell does not advertise file saving, so links
+   there keep the WebView's own download behavior. Decide whether Android
+   needs the same path (React Native `Share` cannot share a file).
+3. **Harness inspection.** Plugin tests cannot see what was saved. Decide
+   whether the harness should record requests the way it records clipboard
+   writes.
+4. **Link helper.** Every caller writes the same `preventDefault` click
+   handler next to `href` and `download`. Decide whether a link component
+   belongs in the SDK instead.
+
 ## `app.experimental_usePluginId` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Returns the id of the plugin that owns the calling component,

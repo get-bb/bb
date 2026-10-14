@@ -182,6 +182,26 @@ describe("buildBridgeInjectionScript", () => {
     }
   });
 
+  it("keeps a file save open while the share sheet waits on the user", async () => {
+    vi.useFakeTimers();
+    try {
+      const { native } = installBridge();
+      const promise = native.request("save-file", {
+        fileName: "notes.zip",
+        source: { kind: "url", url: "https://test/api/v1/files/notes.zip" },
+      });
+      const rejected = vi.fn();
+      void promise.catch(rejected);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(rejected).not.toHaveBeenCalled();
+      const assertion = expect(promise).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(20 * 60_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("updates the safe area and notifies subscribers on rotation", () => {
     const { native, run } = installBridge();
     const seen: unknown[] = [];

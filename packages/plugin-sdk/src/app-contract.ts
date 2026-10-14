@@ -1227,6 +1227,27 @@ export interface ExperimentalClipboardContent {
 }
 
 /**
+ * What {@link PluginSdkApp.experimental_saveFile} saves: a URL on the bb
+ * server (such as one of the plugin's own HTTP routes), or bytes already in
+ * the page, plus the file name the user sees.
+ */
+export type ExperimentalSaveFileRequest =
+  | { fileName: string; url: string }
+  | { fileName: string; blob: Blob };
+
+/**
+ * How {@link PluginSdkApp.experimental_saveFile} ended. `started` means the
+ * browser took over an ordinary download and reports nothing further.
+ * `saved` and `dismissed` come from the bb iOS app's share sheet. `failed`
+ * means the save did not happen; bb already showed an error toast.
+ */
+export type ExperimentalSaveFileOutcome =
+  | "started"
+  | "saved"
+  | "dismissed"
+  | "failed";
+
+/**
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
  * with the calling plugin's identity filled in. `spawn` and `fork` stamp
  * `origin: "plugin"` and `originPluginId` unless the call names another
@@ -3860,6 +3881,19 @@ export interface PluginSdkApp {
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
   ): Promise<boolean>;
+  /**
+   * Saves a file through bb's own download path, the one bb's file preview
+   * and attachment downloads use. Browsers and bb Desktop start an ordinary
+   * download. In the bb iOS app, where a download link would otherwise
+   * replace the app, the file goes to the system share sheet (Save to Files,
+   * AirDrop, other apps). A plain function: call it from a click handler and
+   * keep a real `href` on the link for copy-link and accessibility. Resolves
+   * with the outcome and never rejects; failures show bb's error toast.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_saveFile(
+    request: ExperimentalSaveFileRequest,
+  ): Promise<ExperimentalSaveFileOutcome>;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

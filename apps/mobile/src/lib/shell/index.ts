@@ -14,3 +14,14 @@ export {
 export { buildBridgeSharePayload } from "./shell-share";
 export { resolveShellIncomingLink } from "./shell-links";
 export { sendShellCommand, subscribeToShellCommands } from "./shell-commands";
+export {
+  allowsSubframeLoad,
+  buildCookieHeader,
+  createFileTransferRegistry,
+  describeDownloadFailure,
+  isServerApiUrl,
+  resolveOpenWindowAction,
+  resolveServerFileUrl,
+  sanitizeSaveFileName,
+  type FileTransferSink,
+} from "./shell-save-file";

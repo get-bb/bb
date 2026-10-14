@@ -45,6 +45,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatByteSize } from "@/lib/format-byte-size";
+import { saveFile } from "@/lib/save-file";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type {
   FilePreviewLineRange,
@@ -1301,7 +1302,14 @@ function UnsupportedFilePreview({ file }: UnsupportedFilePreviewProps) {
           : "This file type can't be previewed."}
       </p>
       <Button asChild variant="outline" size="sm">
-        <a href={file.url} download={file.name}>
+        <a
+          href={file.url}
+          download={file.name}
+          onClick={(event) => {
+            event.preventDefault();
+            void saveFile({ url: file.url, fileName: file.name });
+          }}
+        >
           <Icon name="Download" aria-hidden />
           Download
         </a>
