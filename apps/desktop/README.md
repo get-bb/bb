@@ -431,15 +431,34 @@ recovery path for those cases.
 
 Use **bb → Desktop Settings → Server → Add Server…** to save and switch to
 another machine's HTTP(S) bb server URL. **Window → Server** opens the same
-menu. Saved URLs remain in the menu across restarts; adding an existing URL
+menu. Both native dialogs accept an optional friendly name (up to 64 characters).
+The menu shows that name, or the URL hostname and port when unnamed. Saved URLs
+remain in the menu across restarts; adding an existing URL
 selects it without creating a duplicate. **This Mac** on macOS or **This
 Computer** on Linux switches back to the built-in server without removing
 saved entries.
 
-**Set Server URL…** edits the last selected custom server. Clearing its URL removes
+**Edit Server…** edits the currently selected custom server and is disabled for
+**This Mac** / **This Computer** and Connect servers. Clearing its URL removes
 that entry and switches an active custom target to the built-in server. Other
 saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
+
+Changing only the name refreshes the menu without switching servers or reloading
+windows, even when another target is active. Clearing the name restores the
+hostname fallback. Editing a URL keeps the entry's position and supplied name.
+Editing into an already saved URL removes the old entry and selects the existing
+entry, preserving the destination's name and position. Adding an existing URL
+with no name keeps its name; supplying a name updates it.
+
+Names are stored alongside the saved URLs in
+`<userData>/server-target.json` as `customServerNames`, keyed by normalized URL.
+Existing unnamed saved servers still load. The name field is omitted when no
+saved server has a name, keeping unnamed settings compatible with older builds.
+Builds with tolerant saved-server parsing (#5286) load the URLs but drop names when rewriting preferences; older
+builds with strict parsing can reject the added field on rollback. Invalid names
+do not discard saved URLs, and names for absent URLs are ignored and pruned on
+the next save.
 
 The app command palette lists **Switch to <server>** for each inactive choice
 from this same Server menu, including Connect discovery. Palette list requests

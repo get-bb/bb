@@ -11,26 +11,34 @@ import {
   serverUrlDialogSubmitRequestSchema,
   type ServerUrlDialogSubmitResponse,
 } from "./server-url-dialog-ipc.js";
-import { normalizeCustomServerUrl } from "./server-target.js";
+import {
+  MAX_SERVER_NAME_LENGTH,
+  normalizeCustomServerUrl,
+  normalizeServerName,
+} from "./server-target.js";
 
 type ServerUrlDialogResult =
   | { kind: "cancelled" }
   | { kind: "clear" }
-  | { kind: "set"; url: string };
+  | { kind: "set"; name: string | null; url: string };
 
 interface OpenServerUrlDialogArgs {
+  initialName: string | null;
   initialUrl: string | null;
   parentWindow: BrowserWindow | null;
   preloadPath: string;
 }
 
-function renderServerUrlDialogHtml(initialUrl: string | null): string {
+function renderServerUrlDialogHtml(
+  initialUrl: string | null,
+  initialName: string | null,
+): string {
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-  <title>${initialUrl === null ? "Add Server" : "Set Server URL"}</title>
+  <title>${initialUrl === null ? "Add Server" : "Edit Server"}</title>
   <style>
 ${DESKTOP_DIALOG_BASE_CSS}
 
@@ -43,6 +51,10 @@ ${DESKTOP_DIALOG_BASE_CSS}
       font-size: 13px;
       padding: 6px 8px;
       width: 100%;
+    }
+
+    input + input {
+      margin-top: 8px;
     }
 
     [data-error] {
@@ -68,10 +80,11 @@ ${DESKTOP_DIALOG_BASE_CSS}
   </style>
 </head>
 <body>
-  <h1>${initialUrl === null ? "Add Server" : "Set Server URL"}</h1>
-  <p>${initialUrl === null ? "Save another bb server to the Server menu." : "Edit this saved server. Leave empty to remove it."}</p>
+  <h1>${initialUrl === null ? "Add Server" : "Edit Server"}</h1>
+  <p>${initialUrl === null ? "Save another bb server to the Server menu." : "Edit this saved server. Leave the URL empty to remove it."}</p>
   <form>
     <input name="url" type="text" placeholder="https://example.com:38886" value="${escapeHtmlText(initialUrl ?? "")}" autocomplete="off" spellcheck="false">
+    <input name="name" type="text" placeholder="Name (optional)" value="${escapeHtmlText(initialName ?? "")}" maxlength="${MAX_SERVER_NAME_LENGTH}" autocomplete="off" spellcheck="false">
     <div data-error></div>
     <div class="actions">
       <button type="button" data-cancel>Cancel</button>
@@ -98,7 +111,7 @@ export function openServerUrlDialog(
   const dialogWindow = createDesktopDialogWindow({
     parentWindow: args.parentWindow,
     preloadPath: args.preloadPath,
-    title: args.initialUrl === null ? "Add Server" : "Set Server URL",
+    title: args.initialUrl === null ? "Add Server" : "Edit Server",
     width: 440,
   });
 
@@ -146,7 +159,11 @@ export function openServerUrlDialog(
         if (normalized === null) {
           return { ok: false, message: "Enter a valid http(s) URL." };
         }
-        finish({ kind: "set", url: normalized });
+        finish({
+          kind: "set",
+          name: normalizeServerName(parsed.data.name),
+          url: normalized,
+        });
         return { ok: true };
       },
     );
@@ -160,7 +177,7 @@ export function openServerUrlDialog(
 
   showDesktopDialogHtml(
     dialogWindow,
-    renderServerUrlDialogHtml(args.initialUrl),
+    renderServerUrlDialogHtml(args.initialUrl, args.initialName),
   );
 
   return result;

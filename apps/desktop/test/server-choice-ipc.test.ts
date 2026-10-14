@@ -105,6 +105,16 @@ describe("server choice IPC", () => {
       list({ ...event, sender: { id: 99, mainFrame: frame } }),
     ).toThrow("limited to bb windows");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await store.setCustomServerName(
+      "https://user:password@custom.example/private",
+      "Office",
+    );
+    expect(list(event)).toContainEqual({ ...initial[1], name: "Office" });
+    await store.setCustomServerName(
+      "https://user:password@custom.example/private",
+      null,
+    );
+    expect(list(event)).toContainEqual(initial[1]);
   });
 
   it("accepts only inactive native choices from the application main frame", async () => {
