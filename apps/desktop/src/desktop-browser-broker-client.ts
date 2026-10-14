@@ -91,7 +91,7 @@ export function createDesktopBrowserBrokerClient(args: {
   let retry: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
   let generation = 0;
-  let serverUrl = args.getServerUrl();
+  let serverUrl: string | null = args.getServerUrl();
 
   function disconnect(): void {
     generation += 1;
@@ -102,7 +102,7 @@ export function createDesktopBrowserBrokerClient(args: {
   }
 
   function schedule(): void {
-    if (stopped || retry !== null) return;
+    if (stopped || serverUrl === null || retry !== null) return;
     retry = setTimeout(() => {
       retry = null;
       void connect();
@@ -111,7 +111,7 @@ export function createDesktopBrowserBrokerClient(args: {
   }
 
   async function connect(): Promise<void> {
-    if (stopped || socket !== null) return;
+    if (stopped || serverUrl === null || socket !== null) return;
     const currentGeneration = generation;
     try {
       const serverOrigin = new URL(serverUrl).origin;
@@ -214,12 +214,18 @@ export function createDesktopBrowserBrokerClient(args: {
         schedule();
       });
     } catch {
-      schedule();
+      if (generation === currentGeneration) schedule();
     }
   }
 
   void connect();
   return {
+    suspend() {
+      serverUrl = null;
+      if (retry !== null) clearTimeout(retry);
+      retry = null;
+      disconnect();
+    },
     reconnect() {
       serverUrl = args.getServerUrl();
       if (retry !== null) clearTimeout(retry);

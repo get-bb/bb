@@ -18,6 +18,11 @@ import { createDesktopBrowserCdpAdapter } from "../src/desktop-browser-cdp-adapt
 import { createDesktopBrowserBroker } from "../src/desktop-browser-broker.js";
 import { createDesktopBrowserBrokerClient } from "../src/desktop-browser-broker-client.js";
 import { captureDesktopBrowserPage } from "../src/desktop-browser-capture.js";
+import { createServerTargetStore } from "../src/server-target.js";
+import {
+  applyServerMove,
+  createServerMoveNoticeStore,
+} from "../src/server-moved.js";
 import type { DesktopBrowserCdpPage } from "../src/desktop-browser-cdp.js";
 import {
   browserPageEvaluationSource,
@@ -1988,7 +1993,13 @@ describe("DesktopBrowserViewManager", () => {
           }),
         );
       });
-      let serverUrl = "https://first.example";
+      const targetStore = createServerTargetStore({
+        storagePath: join(dataDir, "server-target.json"),
+      });
+      const getServerUrl = () => {
+        const target = targetStore.getTarget();
+        return target.kind === "custom" ? target.url : "https://first.example";
+      };
       if (daemon === "enrolled") {
         await writeFile(
           join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
@@ -2003,6 +2014,7 @@ describe("DesktopBrowserViewManager", () => {
         );
       }
       const writeDescriptor = async () => {
+        const serverUrl = getServerUrl();
         const directory =
           daemon === "local"
             ? dataDir
@@ -2025,7 +2037,7 @@ describe("DesktopBrowserViewManager", () => {
         broker,
         dataDir,
         homeDir: dataDir,
-        getServerUrl: () => serverUrl,
+        getServerUrl,
       });
       const hasOriginalTab = (peer: number) =>
         messages.some(
@@ -2053,7 +2065,23 @@ describe("DesktopBrowserViewManager", () => {
           controllerLabel: "Test",
           expiresAt: Date.now() + 60_000,
         });
-        serverUrl = "https://second.example";
+        client.suspend();
+        expect(broker.getControl(91, "browser:a")).toBeNull();
+        expect(view.webContents.isDestroyed()).toBe(false);
+        await applyServerMove({
+          move: {
+            moveId: "move-browser-server",
+            oldCopyKept: true,
+            target: { kind: "custom", url: "https://second.example" },
+            toHostName: "Second machine",
+          },
+          targetStore,
+          noticeStore: createServerMoveNoticeStore({
+            storagePath: join(dataDir, "move-notice.json"),
+          }),
+          showNotice: () => undefined,
+        });
+        expect(peers).toBe(2);
         await writeDescriptor();
         client.reconnect();
         expect(
@@ -2066,7 +2094,7 @@ describe("DesktopBrowserViewManager", () => {
               ({ peer, frame }) =>
                 peer === 3 &&
                 frame.type === "register" &&
-                frame.serverUrl === serverUrl,
+                frame.serverUrl === getServerUrl(),
             ),
           ).toBe(true),
         );
@@ -2103,7 +2131,7 @@ describe("DesktopBrowserViewManager", () => {
         expect(view.webContents.isDestroyed()).toBe(false);
         expect(view.visible).toBe(false);
         expect(view.webContents.audioMuted).toBe(true);
-        serverUrl = "https://first.example";
+        await targetStore.setCustomServerUrl("https://first.example");
         await writeDescriptor();
         client.reconnect();
         await vi.waitFor(() => expect(hasOriginalTab(4)).toBe(true));
