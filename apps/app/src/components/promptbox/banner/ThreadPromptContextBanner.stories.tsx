@@ -722,7 +722,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="archived + child thread"
-        hint="archived row plus parent context; action is hidden because archived is not the only segment"
+        hint="the parent link keeps its own card above the archived row, which keeps its unarchive action"
       >
         <Row
           archived={archivedFixture}
@@ -755,7 +755,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="environment archived + child thread"
-        hint="archived-environment row plus parent context"
+        hint="the parent link keeps its own card above the archived-environment row"
       >
         <Row
           environmentGone={destroyedEnvironmentFixture}
@@ -774,7 +774,10 @@ export function Overview() {
           mergeBase={null}
         />
       </StoryRow>
-      <StoryRow label="child thread (alone)" hint="inline parent link">
+      <StoryRow
+        label="child thread (alone)"
+        hint="the parent link is its own card: muted label, full-ink title link"
+      >
         <Row parentThread={parentThreadFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
@@ -828,13 +831,24 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="child thread + uncommitted"
-        hint="with other context, the parent-thread segment collapses to an icon-only toggle"
+        hint="the parent link stays its own card above the git card"
       >
         <Row section={uncommittedSection} parentThread={parentThreadFixture} />
       </StoryRow>
       <StoryRow
+        label="child thread + pull request"
+        hint="the parent link stays its own card above the pull request card"
+      >
+        <Row
+          parentThread={parentThreadFixture}
+          pullRequest={pullRequestFixture}
+          pullRequestActions
+          mergeBase={null}
+        />
+      </StoryRow>
+      <StoryRow
         label="metadata + pull request + git"
-        hint="relationship metadata renders first, then GitHub PR, then git status"
+        hint="the relationship card renders first, then a card with GitHub PR and git status"
       >
         <Row
           parentThread={forkedFromFixture}
