@@ -19,7 +19,10 @@ export function SettingsSection({
   bodyClassName,
 }: SettingsSectionProps) {
   return (
-    <section className="@container/settings space-y-3">
+    <section
+      data-settings-anchor={typeof title === "string" ? title : undefined}
+      className="@container/settings scroll-mt-4 space-y-3"
+    >
       <div
         className={cn(
           actionPlacement === "inline"
@@ -138,7 +141,10 @@ export function SettingsWithControl({
   const inline = controlPlacement === "inline";
   const trailing = controlPlacement === "trailing";
   return (
-    <div className="@container/settings w-full min-w-0">
+    <div
+      data-settings-anchor={label}
+      className="@container/settings w-full min-w-0"
+    >
       <div
         data-control-placement={controlPlacement}
         className={cn(

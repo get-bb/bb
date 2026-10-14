@@ -11,11 +11,22 @@ import {
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
+
+const FRAMED_CARD_TOP_BORDER_OFFSET_CLASS = "-mt-px";
+
+export function useSidebarHeaderControlAxisClass(): string | undefined {
+  const isFramed = useIsSidebarFramed();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  return shouldUseMacosDesktopChrome(desktopInfo) && !isFramed
+    ? MACOS_CHROME_CONTROL_AXIS_CLASS
+    : undefined;
+}
 
 export function SidebarTopReserveRow({
   testId,
@@ -39,6 +50,7 @@ export function SidebarTopReserveRow({
       className={cn(
         CHROME_ROW_CLASS,
         "shrink-0 justify-end gap-1 px-2",
+        isFramed && FRAMED_CARD_TOP_BORDER_OFFSET_CLASS,
         usesDesktopChrome && !isFramed && MACOS_WINDOW_DRAG_CLASS,
       )}
     >

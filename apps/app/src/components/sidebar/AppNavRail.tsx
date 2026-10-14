@@ -34,12 +34,12 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
+import { useSidebarHeaderControlAxisClass } from "./SidebarChrome";
 import { SidebarNavigationCustomize } from "./SidebarNavigationCustomize";
 import {
   SidebarNavigationIcon,
@@ -402,7 +402,7 @@ export function NavRailSettingsButton({
 export function NavRailNewThreadButton() {
   const { items, actions, isShortcutModifierHeld } = useSidebarNavigation();
   const split = useSidebarNavigationSplit(NEW_THREAD_NAVIGATION_ITEM_ID);
-  const [desktopInfo] = useState(getBbDesktopInfo);
+  const axisClass = useSidebarHeaderControlAxisClass();
   const item = items.find(
     (candidate) => candidate.action.kind === "new-thread",
   );
@@ -417,8 +417,7 @@ export function NavRailNewThreadButton() {
       className={cn(
         PROJECT_LIST_ACTION_BUTTON_CLASS,
         "w-auto flex-1",
-        shouldUseMacosDesktopChrome(desktopInfo) &&
-          MACOS_CHROME_CONTROL_AXIS_CLASS,
+        axisClass,
       )}
       disabled={item.isDisabled}
       aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}

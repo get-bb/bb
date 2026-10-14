@@ -16,8 +16,10 @@ import type {
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
+import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
+import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
@@ -291,16 +293,19 @@ function FilePreferencesStory() {
   }
 
   return (
-    <LocalOpenTargetSettingsSection
-      accessState="available"
-      directoryTargetId={state.directoryTargetId}
-      fileTargetId={state.fileTargetId}
-      hasDaemon={true}
-      onDirectoryTargetChange={handleDirectoryTargetChange}
-      onFileTargetChange={handleFileTargetChange}
-      onRequestAccess={async () => true}
-      targets={connectedTargets}
-    />
+    <>
+      <LocalOpenTargetSettingsSection
+        accessState="available"
+        directoryTargetId={state.directoryTargetId}
+        fileTargetId={state.fileTargetId}
+        hasDaemon={true}
+        onDirectoryTargetChange={handleDirectoryTargetChange}
+        onFileTargetChange={handleFileTargetChange}
+        onRequestAccess={async () => true}
+        targets={connectedTargets}
+      />
+      <FileOpenersSettingsSection />
+    </>
   );
 }
 
@@ -358,6 +363,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
   switch (route.id) {
     case "providers":
       return <ProvidersSettingsStory />;
+    case "ai-services":
+      return <AiServicesSettingsSection />;
     case "appearance":
       return <AppearanceSettingsStory />;
     case "keyboard":

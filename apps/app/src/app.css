@@ -842,6 +842,23 @@
   animation: bb-search-flash 1.6s ease-out forwards;
 }
 
+@keyframes bb-settings-search-flash {
+  0%,
+  25% {
+    background-color: var(--state-hover);
+    box-shadow: 0 0 0 0.5rem var(--state-hover);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0.5rem transparent;
+  }
+}
+
+[data-settings-anchor].bb-search-flash {
+  box-shadow: 0 0 0 0.5rem var(--state-hover);
+  animation-name: bb-settings-search-flash;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bb-search-flash {
     animation: none;
