@@ -132,6 +132,9 @@ export function createServerMenuItems(
       },
     },
     {
+      enabled: args.servers.some(
+        (server) => server.checked && server.id.startsWith("custom:"),
+      ),
       label: SET_SERVER_URL_MENU_LABEL,
       click() {
         args.setServerUrl();

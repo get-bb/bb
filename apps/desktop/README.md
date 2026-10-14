@@ -438,7 +438,8 @@ selects it without creating a duplicate. **This Mac** on macOS or **This
 Computer** on Linux switches back to the built-in server without removing
 saved entries.
 
-**Edit Server…** edits the last selected custom server. Clearing its URL removes
+**Edit Server…** edits the currently selected custom server and is disabled for
+**This Mac** / **This Computer** and Connect servers. Clearing its URL removes
 that entry and switches an active custom target to the built-in server. Other
 saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
