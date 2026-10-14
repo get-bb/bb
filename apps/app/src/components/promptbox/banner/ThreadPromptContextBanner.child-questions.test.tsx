@@ -213,7 +213,6 @@ describe("ThreadPromptContextBanner child questions", () => {
     const header = screen.getByRole("button", {
       name: "4 active child threads, needs input: Child thr_b: Which size?",
     });
-    expect(header.textContent).toContain("Child thr_b: Which size?");
     fireEvent.click(header);
 
     expect(openForm()).toBe(null);

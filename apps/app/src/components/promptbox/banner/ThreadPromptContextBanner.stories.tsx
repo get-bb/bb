@@ -904,7 +904,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="answer child questions in the banner"
-        hint="rows read child: question; open one from a row or the collapsed header, ‹ Active child threads or Esc returns, ‹ › steps through waiting questions"
+        hint="rows read child: question; open one from a row, ‹ Active child threads or Esc returns, ‹ › steps through waiting questions"
       >
         <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
       </StoryRow>
