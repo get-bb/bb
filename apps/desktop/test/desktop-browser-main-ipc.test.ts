@@ -109,6 +109,8 @@ interface SendBrowserIpcArgs {
 }
 
 class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
+  setServerOrigin(): void {}
+
   createTab(): never {
     throw new Error("Not used by renderer IPC");
   }

@@ -20,6 +20,13 @@ in the desktop app attaches the existing view when that window still owns it,
 including after its connection generation changes. While the desktop or host is
 reconnecting, the panel retries for about a minute, then offers Try again.
 
+Switching servers retains each server's native pages in the desktop process.
+Inactive pages and their popups are hidden, media is paused, and automation
+leases are revoked. Returning to the same server origin reattaches its pages
+with their history and unsaved state. Native tab lookup, page events, and broker
+snapshots stay scoped to the active server. Closing the window or quitting the
+desktop app still releases its pages across all servers.
+
 After a window closes or the app relaunches, the panel reopens the saved URL in
 the current window on the same host once the host confirms the old window is
 gone. Native history and unsaved page state are not restored. The desktop broker

@@ -558,6 +558,26 @@ export function listQueuedThreadMessages(
     .all();
 }
 
+export function getQueuedThreadStartMessage(
+  db: DbQueryConnection,
+  threadId: string,
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, threadId),
+          isNotNull(queuedThreadMessages.origin),
+        ),
+      )
+      .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 function getLastQueuedThreadMessage(
   db: DbQueryConnection,
   threadId: string,
