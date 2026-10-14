@@ -1,5 +1,8 @@
 import { Command } from "commander";
-import type { ThreadTimelinePendingTodos } from "@bb/domain";
+import type {
+  ThreadParentNotifications,
+  ThreadTimelinePendingTodos,
+} from "@bb/domain";
 import { action } from "../action.js";
 import {
   resolveContextSnapshot,
@@ -23,6 +26,7 @@ interface StatusPayload {
     title: string | null;
     pinnedAt: number | null;
     parentThreadId: string | null;
+    parentNotifications: ThreadParentNotifications;
     environment: ThreadEnvironmentInfo | null;
   } | null;
   childThreads: Array<{
@@ -118,6 +122,7 @@ export function registerStatusCommand(
               title: status.thread.title ?? null,
               pinnedAt: status.thread.pinnedAt,
               parentThreadId: status.thread.parentThreadId ?? null,
+              parentNotifications: status.thread.parentNotifications,
               environment: environmentInfo,
             };
             serverAvailable = true;
@@ -159,6 +164,9 @@ export function registerStatusCommand(
           }
           if (payload.thread.parentThreadId) {
             console.log(`  Parent: ${payload.thread.parentThreadId}`);
+            console.log(
+              `  Parent notifications: ${payload.thread.parentNotifications}`,
+            );
           }
           if (payload.thread.environment) {
             printEnvironmentInfo(payload.thread.environment);

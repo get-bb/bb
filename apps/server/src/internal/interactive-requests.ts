@@ -112,7 +112,10 @@ function requestChildThreadNeedsAttentionNotification(
   args: RequestChildThreadNeedsAttentionNotificationArgs,
 ): void {
   const childThread = getThread(deps.db, args.childThreadId);
-  if (!childThread || !isParentNotifiableChildThread(childThread)) {
+  if (
+    !childThread ||
+    !isParentNotifiableChildThread(childThread, "needs-attention")
+  ) {
     return;
   }
   const parentThreadId = childThread.parentThreadId;

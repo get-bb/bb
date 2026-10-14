@@ -56,6 +56,7 @@ export function threadListEntry(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,

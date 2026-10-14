@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   ParentSelectorRow,
+  ParentNotificationsRow,
   EnvironmentRow,
   WorkspacePathRow,
   BranchRow,
@@ -130,6 +131,37 @@ export function ParentSelector() {
             onRetryParentThreads={noop}
             defaultOpen
           />
+        </RowStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ParentNotifications() {
+  const thread = makeThread({
+    parentThreadId: "thr_codex_parent",
+    parentNotifications: "stuck",
+  });
+  return (
+    <StoryCard>
+      <StoryRow label="child, stuck">
+        <RowStage>
+          <ParentSelectorRow
+            thread={thread}
+            projectId={baseProps.projectId}
+            parentThreadProjectId={null}
+            parentThreadDisplayName="Codex Parent"
+            parentThreads={parentThreads}
+            canAssignToParent={false}
+            canTakeOverThread
+            isLoadingParentThreads={false}
+            isParentThreadsError={false}
+            updateThreadPending={false}
+            onAssignParent={noop}
+            onParentSelectorOpenChange={noop}
+            onRetryParentThreads={noop}
+          />
+          <ParentNotificationsRow thread={thread} />
         </RowStage>
       </StoryRow>
     </StoryCard>

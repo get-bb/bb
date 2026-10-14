@@ -372,8 +372,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Thread creation may omit visibility for backward compatibility; the server fills visible at the creation boundary.",
-    fields: ["createThreadRequestSchema.visibility"],
+      "Thread creation may omit visibility and parentNotifications; the server fills visible and auto at the creation boundary.",
+    fields: [
+      "createThreadRequestSchema.visibility",
+      "createThreadRequestSchema.parentNotifications",
+    ],
   },
   {
     reason:
@@ -496,6 +499,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "updateThreadRequestSchema.sessionOptions",
       "updateThreadRequestSchema.title",
       "updateThreadRequestSchema.visibility",
+      "updateThreadRequestSchema.parentNotifications",
     ],
   },
   {
@@ -1274,6 +1278,7 @@ describe("server-contract canonical schemas", () => {
           originKind: null,
           originPluginId: null,
           visibility: "visible",
+          parentNotifications: "auto",
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,

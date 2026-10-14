@@ -717,6 +717,7 @@ export async function createThreadFromRequest(
       : {}),
     ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
     originKind,
+    parentNotifications: requestInput.parentNotifications ?? "auto",
     pluginMetadata,
     visibility: resolveCreateThreadVisibility({
       parentThread,

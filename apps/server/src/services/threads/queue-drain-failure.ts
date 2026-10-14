@@ -88,7 +88,7 @@ export function recordQueuedMessageDrainFailure(
   if (
     updated !== null &&
     updated.state === "failed_exhausted" &&
-    isParentNotifiableChildThread(args.thread)
+    isParentNotifiableChildThread(args.thread, "failed")
   ) {
     void queueChildThreadTurnNotificationBestEffort(deps, {
       childThread: args.thread,

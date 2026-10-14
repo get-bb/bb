@@ -1,14 +1,34 @@
 import { getThread, listNonDeletedChildThreads } from "@bb/db";
-import type { Thread } from "@bb/domain";
+import type { Thread, ThreadEventTurnStatus } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 
 const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
+export type ParentNotificationOutcome =
+  | ThreadEventTurnStatus
+  | "needs-attention";
+
 export function isParentNotifiableChildThread<
-  T extends Pick<Thread, "parentThreadId" | "originKind">,
->(thread: T): thread is T & { parentThreadId: string } {
-  return thread.parentThreadId !== null && thread.originKind === null;
+  T extends Pick<
+    Thread,
+    "parentThreadId" | "originKind" | "parentNotifications"
+  >,
+>(
+  thread: T,
+  outcome: ParentNotificationOutcome,
+): thread is T & { parentThreadId: string } {
+  if (thread.parentThreadId === null || thread.originKind !== null) {
+    return false;
+  }
+  switch (thread.parentNotifications) {
+    case "auto":
+      return true;
+    case "stuck":
+      return outcome !== "completed";
+    case "off":
+      return false;
+  }
 }
 
 export type ParentThread = Pick<

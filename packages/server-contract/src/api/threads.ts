@@ -34,6 +34,7 @@ import {
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
   threadEventTypeValues,
+  threadParentNotificationsSchema,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -111,6 +112,11 @@ export const createThreadRequestSchema = z
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
+    /**
+     * Which turn outcomes wake the parent: `auto` (all, the default), `stuck`
+     * (failed, interrupted, or blocked on an approval or question), or `off`.
+     */
+    parentNotifications: threadParentNotificationsSchema.optional(),
     sectionId: z.string().min(1).nullable().optional(),
     pinned: z.boolean().optional(),
     sourceThreadId: z.string().min(1).optional(),
@@ -727,10 +733,12 @@ export const updateThreadRequestSchema = z
       sessionOptionValueSchema.nullable(),
     ),
     visibility: threadVisibilitySchema,
+    parentNotifications: threadParentNotificationsSchema,
   })
   .partial()
   .refine(
     (value) =>
+      value.parentNotifications !== undefined ||
       value.title !== undefined ||
       value.sectionId !== undefined ||
       value.parentThreadId !== undefined ||

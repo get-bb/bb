@@ -127,6 +127,7 @@ describe("createThreadRecord", () => {
               startedOnBehalfOf: null,
               titleFallback: null,
               visibility: "visible",
+              parentNotifications: "auto",
             },
           },
         );
@@ -188,6 +189,7 @@ describe("createThreadRecord", () => {
             startedOnBehalfOf: null,
             titleFallback: null,
             visibility: "visible",
+            parentNotifications: "auto",
           },
         });
         throw new Error("Expected createThreadRecord to throw");

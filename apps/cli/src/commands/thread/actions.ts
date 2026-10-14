@@ -5,6 +5,7 @@ import {
   type PermissionMode,
   type ReasoningLevel,
   type ServiceTier,
+  type ThreadParentNotifications,
   type ThreadVisibility,
 } from "@bb/domain";
 import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
@@ -30,9 +31,11 @@ import {
   resolveExplicitIdFlag,
 } from "../../context-env.js";
 import {
+  parseParentNotifications,
   parsePermissionMode,
   parseServiceTier,
   SERVICE_TIER_HELP,
+  PARENT_NOTIFICATIONS_HELP,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   buildPromptInputs,
@@ -51,6 +54,7 @@ interface ThreadUpdateCommandOptions {
   model?: string;
   reasoningLevel?: string;
   visibility?: string;
+  parentNotifications?: string;
 }
 
 interface ThreadArchiveCommandOptions {
@@ -147,6 +151,7 @@ interface ThreadUpdateBody {
   model?: string;
   reasoningLevel?: ReasoningLevel;
   visibility?: ThreadVisibility;
+  parentNotifications?: ThreadParentNotifications;
 }
 
 export function registerActionsCommands(
@@ -172,6 +177,7 @@ export function registerActionsCommands(
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
+    .option("--parent-notifications <value>", PARENT_NOTIFICATIONS_HELP)
     .action(
       action(
         async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
@@ -188,6 +194,9 @@ export function registerActionsCommands(
             opts.visibility === undefined
               ? undefined
               : threadVisibilitySchema.parse(opts.visibility);
+          const parentNotifications = parseParentNotifications(
+            opts.parentNotifications,
+          );
           if (
             !opts.parentThread &&
             !opts.clearParentThread &&
@@ -196,10 +205,11 @@ export function registerActionsCommands(
             !opts.title &&
             !opts.model &&
             !reasoningLevel &&
-            !visibility
+            !visibility &&
+            !parentNotifications
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, or --visibility.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --parent-notifications.",
             );
           }
 
@@ -234,6 +244,9 @@ export function registerActionsCommands(
           if (visibility) {
             body.visibility = visibility;
           }
+          if (parentNotifications) {
+            body.parentNotifications = parentNotifications;
+          }
 
           const sdk = createCliBbSdk(getUrl());
           const thread = await sdk.threads.update({ threadId, ...body });
@@ -262,6 +275,9 @@ export function registerActionsCommands(
           }
           if (visibility) {
             console.log(`Visibility: ${visibility}`);
+          }
+          if (parentNotifications) {
+            console.log(`Parent notifications: ${parentNotifications}`);
           }
         },
       ),

@@ -34,6 +34,11 @@
       "types": "./src/queued-message-lifecycle.ts",
       "default": "./src/queued-message-lifecycle.ts"
     },
+    "./thread-parent-notifications": {
+      "source": "./src/thread-parent-notifications.ts",
+      "types": "./src/thread-parent-notifications.ts",
+      "default": "./src/thread-parent-notifications.ts"
+    },
     "./thread-visibility": {
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",

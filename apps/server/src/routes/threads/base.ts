@@ -476,6 +476,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if ("visibility" in payload) {
       metadataUpdate.visibility = payload.visibility;
     }
+    if ("parentNotifications" in payload) {
+      metadataUpdate.parentNotifications = payload.parentNotifications;
+    }
     const updated =
       Object.keys(metadataUpdate).length > 0
         ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
