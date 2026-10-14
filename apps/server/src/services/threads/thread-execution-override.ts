@@ -167,7 +167,7 @@ export async function applyThreadExecutionOverride(
   });
 }
 
-export function applyThreadPermissionModeOverride(
+export function assertThreadPermissionModeAllowed(
   deps: LoggedWorkSessionDeps,
   args: ApplyThreadPermissionModeOverrideArgs,
 ): void {
@@ -195,6 +195,14 @@ export function applyThreadPermissionModeOverride(
       `This machine limits permission mode to ${allowed}; ${permissionMode} is not allowed here.`,
     );
   }
+}
+
+export function applyThreadPermissionModeOverride(
+  deps: LoggedWorkSessionDeps,
+  args: ApplyThreadPermissionModeOverrideArgs,
+): void {
+  const { thread, permissionMode } = args;
+  assertThreadPermissionModeAllowed(deps, args);
 
   const existing = getThreadExecutionOverride(deps.db, thread.id);
   if (existing?.permissionModeOverride === permissionMode) return;
@@ -252,10 +260,18 @@ export async function recoverThreadModelOverride(
     existing?.permissionModeOverride != null &&
     existing.permissionModeOverride !== args.permissionMode
   ) {
-    setThreadExecutionOverride(deps.db, {
-      threadId: args.thread.id,
-      permissionModeOverride: args.permissionMode,
-    });
+    try {
+      assertThreadPermissionModeAllowed(deps, {
+        permissionMode: args.permissionMode,
+        thread: args.thread,
+      });
+      setThreadExecutionOverride(deps.db, {
+        threadId: args.thread.id,
+        permissionModeOverride: args.permissionMode,
+      });
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+    }
   }
   if (patch.model === undefined && patch.reasoningLevel === undefined) return;
 

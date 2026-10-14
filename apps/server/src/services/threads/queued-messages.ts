@@ -517,8 +517,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       modelSource: "explicit",
       reasoningLevel: payload.reasoningLevel,
       reasoningLevelSource: "explicit",
-      permissionMode: payload.permissionMode,
-      permissionModeSource: "explicit",
       thread,
     });
   }

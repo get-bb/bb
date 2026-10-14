@@ -197,6 +197,27 @@ describe("PATCH /threads/:id permissionMode", () => {
     });
   });
 
+  it("rejects the whole update before saving a model when the permission mode is not allowed", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedPermissionThread(harness, {
+        hostId: "host-permission-mode-atomic",
+        maxPermissionMode: "auto",
+      });
+
+      const response = await patchThread(harness, thread.id, {
+        model: "claude-opus-4-8",
+        permissionMode: "full",
+      });
+
+      expect(response.status).toBe(400);
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: null,
+        reasoningLevelOverride: null,
+        permissionModeOverride: null,
+      });
+    });
+  });
+
   it("clamps a stored override when the machine ceiling is lowered later", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedPermissionThread(harness, {
@@ -315,6 +336,34 @@ describe("thread permission mode override on the next turn", () => {
         getThreadExecutionOverride(harness.db, thread.id)
           ?.permissionModeOverride,
       ).toBe("auto");
+    });
+  });
+
+  it("does not store an explicit per-turn mode the provider cannot run", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedPermissionThread(harness, {
+        hostId: "host-permission-mode-recover-invalid",
+        providerId: "pi",
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        permissionModeOverride: "full",
+      });
+
+      await recoverThreadModelOverride(harness.deps, {
+        model: undefined,
+        modelSource: undefined,
+        permissionMode: "auto",
+        permissionModeSource: "explicit",
+        reasoningLevel: undefined,
+        reasoningLevelSource: undefined,
+        thread,
+      });
+
+      expect(
+        getThreadExecutionOverride(harness.db, thread.id)
+          ?.permissionModeOverride,
+      ).toBe("full");
     });
   });
 });

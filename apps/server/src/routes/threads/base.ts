@@ -69,6 +69,7 @@ import { handleThreadOwnershipChange } from "../../services/threads/thread-owner
 import {
   applyThreadExecutionOverride,
   applyThreadPermissionModeOverride,
+  assertThreadPermissionModeAllowed,
 } from "../../services/threads/thread-execution-override.js";
 import { applyThreadSessionOptionPatch } from "../../services/threads/thread-session-options.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
@@ -434,6 +435,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       assertValidParentThread(deps, {
         childThreadId: thread.id,
         parentThreadId: payload.parentThreadId,
+      });
+    }
+
+    if (payload.permissionMode !== undefined) {
+      assertThreadPermissionModeAllowed(deps, {
+        thread,
+        permissionMode: payload.permissionMode,
       });
     }
 
