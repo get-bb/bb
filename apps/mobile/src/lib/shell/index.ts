@@ -16,12 +16,8 @@ export { resolveShellIncomingLink } from "./shell-links";
 export { sendShellCommand, subscribeToShellCommands } from "./shell-commands";
 export {
   allowsSubframeLoad,
-  buildCookieHeader,
-  createFileTransferRegistry,
-  describeDownloadFailure,
   isServerApiUrl,
   resolveOpenWindowAction,
   resolveServerFileUrl,
-  sanitizeSaveFileName,
-  type FileTransferSink,
+  supportsNativeDownloads,
 } from "./shell-save-file";

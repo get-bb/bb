@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { saveFileSupportSchema } from "./save-file.js";
 
 export const safeAreaInsetsSchema = z
   .object({
@@ -34,7 +33,7 @@ export const nativeShellHandshakeSchema = z
     secureContext: z.boolean(),
     safeArea: safeAreaInsetsSchema,
     capabilities: z.array(nativeCapabilitySchema).readonly(),
-    saveFile: saveFileSupportSchema.optional(),
+    nativeDownloads: z.literal(true).optional(),
   })
   .strict();
 

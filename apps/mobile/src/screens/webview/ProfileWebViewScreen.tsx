@@ -46,7 +46,7 @@ import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
 import {
-  SHELL_SAVE_FILE_SUPPORT,
+  SHELL_NATIVE_DOWNLOADS_SUPPORTED,
   useShellFileSaver,
 } from "./useShellFileSaver";
 
@@ -137,24 +137,19 @@ export function ProfileWebViewScreen() {
     router.push(settingsSectionHref("device"));
   }, [router]);
 
-  const fileSaver = useShellFileSaver(profile?.serverUrl ?? "");
-  const shellFileSaver = SHELL_SAVE_FILE_SUPPORT === null ? null : fileSaver;
+  const onFileDownload = useShellFileSaver();
 
-  const bridge = useShellBridge(
-    webViewRef,
-    {
-      onReady: (path) => {
-        setLoad({ kind: "ready" });
-        revealApp();
-        rememberPath(path);
-      },
-      onPath: rememberPath,
-      onOpenNative: (screen) => {
-        if (screen === "device-settings") openDeviceSettings();
-      },
+  const bridge = useShellBridge(webViewRef, {
+    onReady: (path) => {
+      setLoad({ kind: "ready" });
+      revealApp();
+      rememberPath(path);
     },
-    shellFileSaver,
-  );
+    onPath: rememberPath,
+    onOpenNative: (screen) => {
+      if (screen === "device-settings") openDeviceSettings();
+    },
+  });
 
   const connectProfileId = profile?.mode === "connect" ? profile.id : null;
   useEffect(
@@ -232,9 +227,9 @@ export function ProfileWebViewScreen() {
         "safe-area",
         "open-native",
       ],
-      ...(SHELL_SAVE_FILE_SUPPORT === null
-        ? {}
-        : { saveFile: SHELL_SAVE_FILE_SUPPORT }),
+      ...(SHELL_NATIVE_DOWNLOADS_SUPPORTED
+        ? { nativeDownloads: true as const }
+        : {}),
     };
   }, [profile, safeArea, sourceUrl]);
 
@@ -369,19 +364,18 @@ export function ProfileWebViewScreen() {
           return false;
         }}
         onFileDownload={
-          shellFileSaver === null
-            ? undefined
-            : (event) =>
-                shellFileSaver.saveStrayDownload(event.nativeEvent.downloadUrl)
+          SHELL_NATIVE_DOWNLOADS_SUPPORTED ? onFileDownload : undefined
         }
         onOpenWindow={
-          shellFileSaver === null
+          !SHELL_NATIVE_DOWNLOADS_SUPPORTED
             ? undefined
             : (event) => {
                 const { targetUrl } = event.nativeEvent;
                 switch (resolveOpenWindowAction(targetUrl, profile.serverUrl)) {
                   case "save":
-                    shellFileSaver.saveStrayDownload(targetUrl);
+                    webViewRef.current?.injectJavaScript(
+                      `var link = document.createElement("a");link.href = ${JSON.stringify(targetUrl)};link.download = "";document.body.append(link);link.click();link.remove();true;`,
+                    );
                     return;
                   case "navigate":
                     webViewRef.current?.injectJavaScript(

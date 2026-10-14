@@ -554,27 +554,31 @@ payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
   toast.
 - Outbound: the shell handles the bridge `share` request (`useShellBridge` →
   RN `Share.share`); the web app does not send it yet.
-- File downloads (iOS): a WebView download link would replace the app with
-  the file, so the web app's `saveFile` (also the plugin API
-  `experimental_saveFile`) asks the shell instead. The iOS handshake carries
-  `saveFile: { maxTransferBytes, chunkBytes }`; it is a separate field
-  because older pages reject unknown entries in `capabilities`, and a page
-  without it keeps ordinary anchor downloads. A server URL is sent as a
-  `save-file` request: the shell checks it is on the profile's origin,
-  downloads it with the WebView's cookies (`@react-native-cookies/cookies`,
-  WebKit store), and presents the share sheet. Page bytes (`blob:` URLs,
-  recordings) go as `file-transfer-start`, base64 `file-transfer-chunk`s
-  (offsets must be contiguous; 384 KiB chunks, 50 MiB total), then
-  `save-file` with the transfer id. Files are written under
-  `Paths.cache/bb-shell-files/` and deleted after the sheet closes; an
-  abandoned transfer expires after 60 s, and the directory is cleared when
-  the shell mounts. The reply is `{ outcome: "saved" | "dismissed" }` or an
-  error the page shows as a toast. Safety nets for pages that predate this:
-  `onFileDownload` saves attachment responses through the same path,
-  `onOpenWindow` saves `target=_blank` server files instead of loading them
-  over the app, and subframes may load `blob:`/`data:`/`about:` and
-  same-origin URLs so `blob:` previews work on path-prefixed profiles.
-  Android keeps anchor downloads; RN `Share` cannot share a file there.
+- File downloads (iOS): `saveFile` and the plugin API
+  `experimental_saveFile` click ordinary download anchors, including object
+  URLs for recordings and other browser-created blobs. The iOS WebView patch
+  turns `shouldPerformDownload` actions and attachment/non-displayable
+  responses into `WKDownload`s. WebKit writes the file in the WebView's
+  request context; bb does not copy cookies, refetch through native HTTP, or
+  transfer bytes through the JavaScript bridge. The patched `onFileDownload`
+  event includes `filePath` for a completed local file or `error` for a
+  failure, alongside the original `downloadUrl`. React Native presents the
+  share sheet and deletes that download's directory after sharing, dismissal,
+  or failure. Partial downloads are cancelled and removed on WebView teardown
+  or page reload. Previous-process cache files are cleared on the first
+  download. There are at most four active WebKit downloads. Files live under
+  `Paths.cache/bb-webkit-downloads/<uuid>/`.
+  The shell queries the installed binary through `nativeDownloadsSupported()`
+  before enabling the new handlers, so an OTA update on an older binary keeps
+  its existing behavior. The handshake advertises `nativeDownloads: true` separately from the strict
+  capabilities enum, so older pages keep recognizing the shell. The page
+  helper resolves `started` or `failed`; completion and share-sheet
+  cancellation are handled by the shell. Older shells keep anchor behavior.
+  `onOpenWindow` converts server API attachments into download anchors,
+  keeps app pages in the shell, and sends other sites out. Subframes can load
+  page-local previews on prefixed profiles. Android retains its existing
+  download behavior. Rebuild the iOS client after changing this patch; Metro
+  updates alone do not install its native download support.
 - Haptics: `src/lib/haptics/` — `haptic(kind)` maps semantic kinds
   (`selection`, `impact-light|medium|heavy`, `success`, `warning`, `error`)
   onto expo-haptics and honors the Settings → This device → Haptics toggle
@@ -583,6 +587,37 @@ payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
   segmented appearance picker (selection), destructive ActionSheet rows and
   confirmations (warning), the servers long-press menu (heavy), and the
   auth-required banner (warning). Screens never import expo-haptics directly.
+
+### Native download verification
+
+Build and install the patched iOS client, then start the normal local QA
+backend from [debugging-and-qa.md](../../docs/debugging-and-qa.md). Start the
+fixture proxy with its printed backend URL and an unused local port:
+
+```bash
+node apps/mobile/e2e/scripts/download-fixture.mjs http://127.0.0.1:<backend-port> <proxy-port>
+```
+
+Save both `http://127.0.0.1:<proxy-port>` and the same URL with `/bb` as
+native server profiles. With each active, open `bb://api/v1/download-fixture`.
+The proxy forwards normal app traffic, strips `/bb`, and also forwards root
+paths, matching the web app's current root-relative API URLs.
+
+- Authenticated file requires an HttpOnly cookie installed by the fixture
+  page. The proxy logs `authorized: true` without printing cookies. A plain
+  curl request without that cookie gets 401.
+- Download blob generates the same 1,536,000 bytes in the page. Both files
+  must match the SHA-256 printed by the fixture server and retain their names.
+- Save to Files and share-sheet dismissal must leave the page intact and
+  remove the corresponding `Library/Caches/bb-webkit-downloads/<uuid>/` file.
+- Missing file must show a 404 toast. Redirect download must finish with the
+  same bytes. Open attachment tab must open the share sheet.
+- Start Slow download, then Reload page before it finishes. The proxy must
+  log the interrupted connection, and its partial cache directory must be
+  removed. Also check interruption by switching profiles or reloading from
+  native device settings.
+
+Cold-launch the development client for native verification.
 
 ## Release (EAS)
 

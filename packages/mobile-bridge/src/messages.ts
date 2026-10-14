@@ -1,10 +1,4 @@
 import { z } from "zod";
-import {
-  fileTransferChunkPayloadSchema,
-  fileTransferStartPayloadSchema,
-  isHttpUrl,
-  saveFilePayloadSchema,
-} from "./save-file.js";
 
 export const HAPTIC_KINDS = [
   "selection",
@@ -18,7 +12,14 @@ export const HAPTIC_KINDS = [
 
 export const hapticKindSchema = z.enum(HAPTIC_KINDS);
 
-const httpUrlSchema = z.string().refine(isHttpUrl, "url must be http or https");
+const httpUrlSchema = z.string().refine((value) => {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "url must be http or https");
 
 const sharePayloadSchema = z
   .object({
@@ -51,21 +52,6 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
         .object({ text: z.string().max(100000), imageUrl: httpUrlSchema })
         .strict(),
     })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("file-transfer-start"),
-      payload: fileTransferStartPayloadSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("file-transfer-chunk"),
-      payload: fileTransferChunkPayloadSchema,
-    })
-    .strict(),
-  z
-    .object({ kind: z.literal("save-file"), payload: saveFilePayloadSchema })
     .strict(),
 ]);
 

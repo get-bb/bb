@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  SAVE_FILE_SUPPORT,
-  base64DecodedLength,
   parsePageToShellMessage,
   parseNativeShellHandshake,
   type NativeShellHandshake,
@@ -167,115 +165,18 @@ describe("parseNativeShellHandshake", () => {
   });
 });
 
-function request(kind: string, payload: unknown) {
-  return parsePageToShellMessage(
-    json({ type: "request", id: "r1-1", request: { kind, payload } }),
-  );
-}
-
-describe("file save messages", () => {
-  it("accepts a transfer, its chunks, and both save sources", () => {
-    expect(request("file-transfer-start", { size: 0 }).ok).toBe(true);
+describe("native download support", () => {
+  it("advertises native downloads without extending the capability enum", () => {
+    const supported = { ...handshake, nativeDownloads: true };
+    expect(parseNativeShellHandshake(supported)).toEqual(supported);
+    expect(parseNativeShellHandshake(handshake)).toEqual(handshake);
     expect(
-      request("file-transfer-start", {
-        size: SAVE_FILE_SUPPORT.maxTransferBytes,
-      }).ok,
-    ).toBe(true);
-    expect(
-      request("file-transfer-chunk", {
-        transferId: "t1_abc",
-        offset: 0,
-        data: "aGVsbG8=",
-      }).ok,
-    ).toBe(true);
-    expect(
-      request("save-file", {
-        fileName: "notes.zip",
-        source: { kind: "transfer", transferId: "t1_abc" },
-      }).ok,
-    ).toBe(true);
-    expect(
-      request("save-file", {
-        fileName: "notes.zip",
-        source: { kind: "url", url: "https://bee.getbb.app/api/v1/x" },
-      }).ok,
-    ).toBe(true);
-  });
-
-  it("refuses a transfer larger than the shell accepts", () => {
-    expect(
-      request("file-transfer-start", {
-        size: SAVE_FILE_SUPPORT.maxTransferBytes + 1,
-      }).ok,
-    ).toBe(false);
-    expect(request("file-transfer-start", { size: -1 }).ok).toBe(false);
-  });
-
-  it("refuses a chunk over the chunk limit or that is not base64", () => {
-    const fullChunk = "A".repeat(
-      Math.ceil(SAVE_FILE_SUPPORT.chunkBytes / 3) * 4,
-    );
-    const chunk = (data: string) =>
-      request("file-transfer-chunk", { transferId: "t1", offset: 0, data });
-    expect(chunk(fullChunk).ok).toBe(true);
-    expect(chunk(`${fullChunk}AAAA`).ok).toBe(false);
-    expect(chunk("not base64!").ok).toBe(false);
-    expect(chunk("abc").ok).toBe(false);
-    expect(chunk("").ok).toBe(false);
-  });
-
-  it("only saves from http or https urls", () => {
-    for (const url of [
-      "file:///etc/passwd",
-      "blob:https://bee.getbb.app/1",
-      "javascript:alert(1)",
-    ]) {
-      expect(
-        request("save-file", { fileName: "x", source: { kind: "url", url } })
-          .ok,
-      ).toBe(false);
-    }
-  });
-
-  it("refuses an empty file name and a transfer id that is not a token", () => {
-    expect(
-      request("save-file", {
-        fileName: "  ",
-        source: { kind: "transfer", transferId: "t1" },
-      }).ok,
-    ).toBe(false);
-    expect(
-      request("save-file", {
-        fileName: "x",
-        source: { kind: "transfer", transferId: "../t1" },
-      }).ok,
-    ).toBe(false);
-  });
-
-  it("counts the bytes a base64 chunk carries", () => {
-    expect(base64DecodedLength("aGVsbG8=")).toBe(5);
-    expect(base64DecodedLength("aGVsbA==")).toBe(4);
-    expect(base64DecodedLength("aGVs")).toBe(3);
-  });
-});
-
-describe("save-file handshake support", () => {
-  it("carries the shell's limits next to the capabilities", () => {
-    const withSave = { ...handshake, saveFile: SAVE_FILE_SUPPORT };
-    expect(parseNativeShellHandshake(withSave)).toEqual(withSave);
-    expect(
-      parseNativeShellHandshake({
-        ...handshake,
-        saveFile: { maxTransferBytes: 0, chunkBytes: 1 },
-      }),
+      parseNativeShellHandshake({ ...handshake, nativeDownloads: "true" }),
     ).toBeNull();
-  });
-
-  it("stays out of the capability list an older page validates strictly", () => {
     expect(
       parseNativeShellHandshake({
         ...handshake,
-        capabilities: [...handshake.capabilities, "save-file"],
+        capabilities: ["native-downloads"],
       }),
     ).toBeNull();
   });

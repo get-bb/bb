@@ -164,13 +164,15 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   the content and false when every path failed; it never rejects. Show your own
   success or failure feedback. Never call `navigator.clipboard` directly.
 - `experimental_saveFile({ fileName, url } | { fileName, blob })` →
-  `Promise<"started" | "saved" | "dismissed" | "failed">` — saves a file
+  `Promise<"started" | "failed">` — saves a file
   through bb's own download path. Browsers and bb Desktop start an ordinary
   download; the bb iOS app, where a download link would replace the app,
   opens the share sheet instead. Pass a URL on the bb server (your plugin's
   HTTP route works) or bytes you already hold. Keep `href` and `download` on
   your link and call it from `onClick` after `event.preventDefault()`. It
-  never rejects; bb shows the error toast on `failed`.
+  never rejects; bb shows the error toast on `failed`. `started` means the
+  browser or shell took over; completion and share cancellation are not
+  reported to the page.
 
 ```tsx
 const composer = useComposer();

@@ -13,7 +13,6 @@ import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { buildBridgeSharePayload, isExternallyOpenable } from "@/lib/shell";
 import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
-import type { ShellFileSaver } from "./useShellFileSaver";
 
 export interface ShellBridgeCallbacks {
   onReady(path: string): void;
@@ -29,7 +28,6 @@ export interface ShellBridge {
 export function useShellBridge(
   webViewRef: React.RefObject<WebView | null>,
   callbacks: ShellBridgeCallbacks,
-  fileSaver: ShellFileSaver | null,
 ): ShellBridge {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -72,66 +70,32 @@ export function useShellBridge(
           return;
         }
         case "request": {
-          const { request } = message;
-          try {
-            switch (request.kind) {
-              case "share": {
-                const payload = buildBridgeSharePayload(
-                  Platform.OS,
-                  request.payload,
-                );
-                const result = await Share.share(
-                  payload.content,
-                  payload.options,
-                );
-                respond(message.id, {
-                  ok: true,
-                  result: { shared: result.action !== Share.dismissedAction },
-                });
-                return;
-              }
-              case "file-transfer-start":
-              case "file-transfer-chunk":
-              case "save-file": {
-                if (fileSaver === null) {
-                  respond(message.id, {
-                    ok: false,
-                    error: "Saving files is not supported here",
-                  });
-                  return;
-                }
-                if (request.kind === "file-transfer-start") {
-                  const transferId = fileSaver.startTransfer(
-                    request.payload.size,
-                  );
-                  respond(message.id, { ok: true, result: { transferId } });
-                  return;
-                }
-                if (request.kind === "file-transfer-chunk") {
-                  const { transferId, offset, data } = request.payload;
-                  const received = fileSaver.appendTransfer(
-                    transferId,
-                    offset,
-                    data,
-                  );
-                  respond(message.id, { ok: true, result: { received } });
-                  return;
-                }
-                const result = await fileSaver.save(request.payload);
-                respond(message.id, { ok: true, result });
-                return;
-              }
-              default:
-                return;
+          if (message.request.kind === "share") {
+            const payload = buildBridgeSharePayload(
+              Platform.OS,
+              message.request.payload,
+            );
+            try {
+              const result = await Share.share(
+                payload.content,
+                payload.options,
+              );
+              respond(message.id, {
+                ok: true,
+                result: { shared: result.action !== Share.dismissedAction },
+              });
+            } catch (error) {
+              respond(message.id, {
+                ok: false,
+                error: describeError(error),
+              });
             }
-          } catch (error) {
-            respond(message.id, { ok: false, error: describeError(error) });
           }
           return;
         }
       }
     },
-    [fileSaver, respond],
+    [respond],
   );
 
   const onMessage = useCallback(
@@ -142,16 +106,7 @@ export function useShellBridge(
           console.warn("shell bridge dropped a message", parsed.reason);
         return;
       }
-      if (__DEV__) {
-        const { message } = parsed;
-        console.log(
-          "shell bridge",
-          message.type === "request" &&
-            message.request.kind === "file-transfer-chunk"
-            ? `file-transfer-chunk ${message.request.payload.offset}`
-            : JSON.stringify(message),
-        );
-      }
+      if (__DEV__) console.log("shell bridge", JSON.stringify(parsed.message));
       void handle(parsed.message);
     },
     [handle],

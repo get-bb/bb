@@ -160,11 +160,10 @@ export interface ExperimentalQuestionFormHost {
  * the host adds room for its microphone controls when voice input is
  * available.
  */
-export interface ExperimentalVoiceInputTextareaProps
-  extends Omit<
-    ComponentPropsWithRef<"textarea">,
-    "value" | "defaultValue" | "onChange" | "children"
-  > {
+export interface ExperimentalVoiceInputTextareaProps extends Omit<
+  ComponentPropsWithRef<"textarea">,
+  "value" | "defaultValue" | "onChange" | "children"
+> {
   value: string;
   /**
    * Receives typed edits and finished transcripts, which the host appends to
@@ -1236,16 +1235,12 @@ export type ExperimentalSaveFileRequest =
   | { fileName: string; blob: Blob };
 
 /**
- * How {@link PluginSdkApp.experimental_saveFile} ended. `started` means the
- * browser took over an ordinary download and reports nothing further.
- * `saved` and `dismissed` come from the bb iOS app's share sheet. `failed`
- * means the save did not happen; bb already showed an error toast.
+ * How {@link PluginSdkApp.experimental_saveFile} started. `started` means
+ * the browser or native shell took over the download; completion and share
+ * cancellation are not reported to the page. `failed` means the download
+ * could not start; bb already showed an error toast.
  */
-export type ExperimentalSaveFileOutcome =
-  | "started"
-  | "saved"
-  | "dismissed"
-  | "failed";
+export type ExperimentalSaveFileOutcome = "started" | "failed";
 
 /**
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
@@ -1256,7 +1251,9 @@ export type ExperimentalSaveFileOutcome =
  */
 export type PluginBoundThreadsArea = Omit<
   BbSdkAreas["threads"],
-  "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
+  | "getPluginMetadata"
+  | "updatePluginMetadata"
+  | "experimental_listPluginMetadata"
 > & {
   getPluginMetadata(
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
@@ -3888,7 +3885,9 @@ export interface PluginSdkApp {
    * replace the app, the file goes to the system share sheet (Save to Files,
    * AirDrop, other apps). A plain function: call it from a click handler and
    * keep a real `href` on the link for copy-link and accessibility. Resolves
-   * with the outcome and never rejects; failures show bb's error toast.
+   * with `started` or `failed` and never rejects. Completion and share-sheet
+   * cancellation are not reported. The native shell shows download errors;
+   * bb shows an error toast when the download cannot start.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_saveFile(
