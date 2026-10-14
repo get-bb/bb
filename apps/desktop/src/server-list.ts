@@ -27,9 +27,9 @@ export function buildDesktopServerChoices(
       active:
         target.kind === "connect" && target.server.handle === server.handle,
     })),
-    ...(store?.getCustomServerUrls() ?? []).map((url) => ({
+    ...(store?.getCustomServers() ?? []).map(({ url, name }) => ({
       id: customServerId(url),
-      name: new URL(url).host,
+      name: name ?? new URL(url).host,
       active: target.kind === "custom" && target.url === url,
     })),
   ];

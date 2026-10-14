@@ -181,3 +181,116 @@ it.each(["none", "mkdir", "writeFile"] as const)(
     expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
   },
 );
+
+it("keeps names through selection, restart, renaming, and clearing without changing the active target", async () => {
+  const storagePath = await createStoragePath();
+  await writeFile(
+    storagePath,
+    JSON.stringify({ customServerUrl: firstUrl, target: "custom" }),
+    "utf8",
+  );
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  expect(store.getCustomServers()).toEqual([{ url: firstUrl, name: null }]);
+  await store.setCustomServerName(firstUrl, "  Office   Mac  ");
+  await store.setCustomServerUrl(secondUrl, { name: "Lab" });
+  await store.setCustomServerUrl(firstUrl);
+  await store.setTarget("builtin");
+  await store.setCustomServerName(firstUrl, "Renamed");
+  expect(store.getTarget()).toEqual({ kind: "builtin" });
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getCustomServers()).toEqual([
+    { url: firstUrl, name: "Renamed" },
+    { url: secondUrl, name: "Lab" },
+  ]);
+  expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  await reloaded.setCustomServerUrl(secondUrl);
+  await reloaded.setCustomServerName(firstUrl, " ");
+  expect(reloaded.getTarget()).toEqual({ kind: "custom", url: secondUrl });
+  await reloaded.setCustomServerName(secondUrl, null);
+  const final = createServerTargetStore({ storagePath });
+  await final.load();
+  expect(final.getCustomServers()).toEqual([
+    { url: firstUrl, name: null },
+    { url: secondUrl, name: null },
+  ]);
+  expect(final.getTarget()).toEqual({ kind: "custom", url: secondUrl });
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).toEqual({
+    connectServer: null,
+    customServerUrl: secondUrl,
+    customServerUrls: [firstUrl, secondUrl],
+    target: "custom",
+  });
+});
+
+it("keeps URL edits in place and merges into the destination's name and position", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setCustomServerUrl(firstUrl, { name: "First" });
+  await store.setCustomServerUrl(secondUrl, { name: "Second" });
+  await store.setCustomServerUrl(thirdUrl, { name: "Third" });
+  const editedUrl = "http://localhost:4004";
+  await store.setCustomServerUrl(editedUrl, { replacedUrl: firstUrl });
+  expect(store.getCustomServers()).toEqual([
+    { url: editedUrl, name: "First" },
+    { url: secondUrl, name: "Second" },
+    { url: thirdUrl, name: "Third" },
+  ]);
+  await store.setCustomServerUrl(`${thirdUrl}/#hash`, {
+    replacedUrl: editedUrl,
+    name: "Ignored on merge",
+  });
+  expect(store.getCustomServers()).toEqual([
+    { url: secondUrl, name: "Second" },
+    { url: thirdUrl, name: "Third" },
+  ]);
+  await store.setCustomServerUrl(thirdUrl, { name: "Added existing" });
+  await store.setCustomServerUrl(thirdUrl);
+  expect(store.getCustomServers()).toEqual([
+    { url: secondUrl, name: "Second" },
+    { url: thirdUrl, name: "Added existing" },
+  ]);
+  await store.setCustomServerUrl(null);
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getCustomServers()).toEqual([
+    { url: secondUrl, name: "Second" },
+  ]);
+  expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).toMatchObject({
+    customServerNames: { [secondUrl]: "Second" },
+  });
+});
+
+it.each([
+  { name: "invalid map", names: 42, expectedName: null },
+  {
+    name: "invalid names",
+    names: { [firstUrl]: 42, [secondUrl]: "Dangling" },
+    expectedName: null,
+  },
+  {
+    name: "normalized names",
+    names: { [`${firstUrl}/#hash`]: "  Office  Mac ", [secondUrl]: "Dangling" },
+    expectedName: "Office Mac",
+  },
+])("preserves saved URLs with $name", async ({ names, expectedName }) => {
+  const storagePath = await createStoragePath();
+  await writeFile(
+    storagePath,
+    JSON.stringify({
+      customServerUrl: firstUrl,
+      target: "custom",
+      customServerNames: names,
+    }),
+    "utf8",
+  );
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  expect(store.getCustomServers()).toEqual([
+    { url: firstUrl, name: expectedName },
+  ]);
+  expect(store.getTarget()).toEqual({ kind: "custom", url: firstUrl });
+});
