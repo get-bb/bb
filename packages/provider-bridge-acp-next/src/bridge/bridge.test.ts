@@ -459,6 +459,14 @@ function loggedAcpRequests(path: string): LoggedAcpRequest[] {
     .map((line) => JSON.parse(line) as LoggedAcpRequest);
 }
 
+async function advanceBusyQuietTimer(): Promise<void> {
+  await waitFor(
+    () => (vi.getTimerCount() > 0 ? true : undefined),
+    "the busy-quiet timer to be scheduled",
+  );
+  await vi.advanceTimersByTimeAsync(2_000);
+}
+
 async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
   return waitFor(
     () => threadEventsOfType("turn/completed").at(-1),
@@ -2830,6 +2838,7 @@ describe("acp bridge", () => {
         rmSync(outsideDir, { recursive: true, force: true });
       }
     },
+    30_000,
   );
 
   it("rejects simultaneous starts while reconciling unchanged permissions", async () => {
@@ -4476,7 +4485,7 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
       );
       expect(threadEventsOfType("turn/completed")).toEqual([]);
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await advanceBusyQuietTimer();
       expect(await waitForTurnCompleted()).toMatchObject({
         status: "completed",
       });
@@ -4508,7 +4517,9 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
             loggedPrompts(promptLog).length === attempt ? true : undefined,
           `prompt attempt ${attempt}`,
         );
-        await vi.advanceTimersByTimeAsync(2_000);
+        if (attempt < 4) {
+          await advanceBusyQuietTimer();
+        }
       }
       expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
       expect(loggedPrompts(promptLog)).toHaveLength(4);

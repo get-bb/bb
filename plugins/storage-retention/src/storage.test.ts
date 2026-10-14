@@ -22,9 +22,14 @@ import {
 const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(
-    directories
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+    directories.splice(0).map((dir) =>
+      fs.rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      }),
+    ),
   );
 });
 async function directory() {
@@ -1404,14 +1409,10 @@ it.skipIf(process.platform === "win32")(
     const launcherPath = path.join(fakeHome, "bb-app-launcher.mjs");
     await fs.writeFile(launcherPath, "setInterval(() => {}, 1000);\n");
     const server = (checkout: string) => {
-      const child = spawn(
-        process.execPath,
-        [launcherPath],
-        {
-          cwd: checkout,
-          stdio: "ignore",
-        },
-      );
+      const child = spawn(process.execPath, [launcherPath], {
+        cwd: checkout,
+        stdio: "ignore",
+      });
       return {
         child,
         exited: new Promise<void>((resolve) =>

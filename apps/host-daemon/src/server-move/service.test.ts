@@ -15,6 +15,7 @@ import {
   ACTIVATION_TOKEN,
   createFixture,
   exists,
+  hasPendingServerExited,
   freePort,
   HOST_KEY,
   LAUNCHER_ENTRY_PATH,
@@ -208,7 +209,7 @@ describe("ServerMoveService.prepare", () => {
       fixture.service.abort({ type: "server_move.abort", moveId: MOVE_ID }),
     ).resolves.toEqual({ ok: true });
 
-    expect(isProcessGroupAlive(result.pid)).toBe(false);
+    expect(await hasPendingServerExited(result.pid)).toBe(true);
     expect(await readJson(join(fixture.dataDir, "config.json"))).toEqual(
       originalConfig,
     );

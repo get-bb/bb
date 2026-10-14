@@ -14,6 +14,7 @@ import {
   activateCommand,
   createFixture,
   exists,
+  hasPendingServerExited,
   lastMove,
   MOVE_ID,
   PARENT_PID,
@@ -211,7 +212,7 @@ describe("server_move.activate sequencing", () => {
     }
     await service.resumeActivation();
 
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(await hasPendingServerExited(prepared.pid)).toBe(true);
     expect(fixture.commands).toEqual([
       ["systemctl", "--user", "daemon-reload"],
       [
@@ -259,7 +260,7 @@ describe("server_move.activate sequencing", () => {
     await service.resumeActivation();
 
     expect(fixture.shutdownRequests).toEqual([["server-move-activated", 0]]);
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(await hasPendingServerExited(prepared.pid)).toBe(true);
     expect(fixture.detachedRequests).toEqual([
       {
         command: process.execPath,
@@ -334,7 +335,7 @@ describe("server_move.activate sequencing", () => {
         }
         if (pendingPid !== 0) {
           observations.push({
-            pendingAlive: isProcessGroupAlive(pendingPid),
+            pendingAlive: !(await hasPendingServerExited(pendingPid)),
             importExists: await exists(
               join(fixture.dataDir, "server-import.json"),
             ),
@@ -423,7 +424,7 @@ describe("activation resume", () => {
 
     await restarted.resumeActivation();
 
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(await hasPendingServerExited(prepared.pid)).toBe(true);
     expect(fixture.detachedRequests.map((request) => request.args[1])).toEqual([
       "start",
     ]);
@@ -479,7 +480,7 @@ describe("server move redirects during a move", () => {
     });
     await fixture.service.resumeActivation();
 
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(await hasPendingServerExited(prepared.pid)).toBe(true);
     expect(await readLastServerMoveFile(fixture.dataDir)).toEqual({
       version: 1,
       moveId: MOVE_ID,

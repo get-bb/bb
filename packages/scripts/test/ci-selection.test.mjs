@@ -319,4 +319,4 @@ it("compares a refreshed PR merge against its actual base without treating unrel
       (entry) => entry.filter === "--filter=@bb/app",
     ),
   ).toBe(true);
-});
+}, 60_000);

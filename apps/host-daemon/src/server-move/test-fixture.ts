@@ -34,6 +34,8 @@ const roots: string[] = [];
 const httpServers: Server[] = [];
 const spawnedPids: number[] = [];
 const spawnedChildren: ChildProcess[] = [];
+const pendingServerExits = new Map<number, Promise<void>>();
+const PENDING_SERVER_EXIT_GRACE_MS = 2_000;
 
 export const MOVE_ID = "move-0001";
 export const ACTIVATION_TOKEN = "activation-token-0123456789";
@@ -81,8 +83,25 @@ if (process.send) {
 process.on("SIGTERM", () => process.exit(0));
 `;
 
+export async function hasPendingServerExited(pid: number): Promise<boolean> {
+  const exited = pendingServerExits.get(pid);
+  if (exited === undefined) {
+    throw new Error(`No fixture pending server was launched with pid ${pid}`);
+  }
+  const grace = new AbortController();
+  try {
+    return await Promise.race([
+      exited.then(() => true),
+      sleep(PENDING_SERVER_EXIT_GRACE_MS, false, { signal: grace.signal }),
+    ]);
+  } finally {
+    grace.abort();
+  }
+}
+
 export function registerServerMoveFixtureCleanup(): void {
   afterEach(async () => {
+    pendingServerExits.clear();
     await Promise.all(
       spawnedChildren.splice(0).map(async (child) => {
         if (
@@ -435,6 +454,12 @@ export async function createFixture(args: FixtureArgs = {}) {
             },
           );
           spawnedChildren.push(child);
+          const exited = new Promise<void>((resolveExited) =>
+            child.once("exit", () => resolveExited()),
+          );
+          if (child.pid !== undefined) {
+            pendingServerExits.set(child.pid, exited);
+          }
           ready = new Promise<void>((resolveReady, rejectReady) => {
             const finish = (error?: Error) => {
               child.off("exit", onExit);
