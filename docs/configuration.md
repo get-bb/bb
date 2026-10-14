@@ -559,7 +559,8 @@ declare:
 
 OpenCode also uses `$OPENCODE_CONFIG_DIR/skills`. Pi and omp use
 `$PI_CODING_AGENT_DIR`; omp selects its profile with `$OMP_PROFILE` or
-`$PI_PROFILE`. Cursor and Hermes roots are scanned recursively. Pi settings
+`$PI_PROFILE`. Cursor and Hermes roots are scanned recursively, and Pi finds
+skills at any depth under its roots. Pi settings
 and packages, omp's `skills.customDirectories`, Hermes' `skills.external_dirs`,
 and Grok's `[skills].paths` in `config.toml` add paths; Grok also reads enabled
 Grok and Claude-compatible plugin skills.
