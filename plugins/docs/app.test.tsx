@@ -1647,7 +1647,8 @@ describe("Docs nav panel", () => {
     fireEvent.click(slot.getByRole("button", { name: "Open in Docs" }));
     expect(slot.navigateCalls).toContainEqual({
       method: "toPluginPanel",
-      args: ["docs", { subPath: "personal/plans/panel-release.md" }],
+      path: "docs",
+      options: { subPath: "personal/plans/panel-release.md" },
     });
   });
 
