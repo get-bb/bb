@@ -172,6 +172,46 @@ describe("application menu", () => {
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
   });
 
+  it.each([
+    { selectedId: "builtin", enabled: false },
+    { selectedId: "connect:office", enabled: false },
+    { selectedId: "custom:office", enabled: true },
+  ])(
+    "enables editing only the selected custom server ($selectedId)",
+    ({ selectedId, enabled }) => {
+      const template = buildApplicationMenuTemplate(
+        menuArgs(() => {}, {
+          servers: [
+            {
+              checked: selectedId === "builtin",
+              id: "builtin",
+              name: BUILTIN_SERVER_NAME,
+            },
+            {
+              checked: selectedId === "connect:office",
+              id: "connect:office",
+              name: "Connect Office",
+            },
+            {
+              checked: selectedId === "custom:office",
+              id: "custom:office",
+              name: "Office",
+            },
+          ],
+        }),
+      );
+      for (const submenu of [
+        findServerSubmenu(template),
+        findDesktopSettingsServerSubmenu(template),
+      ]) {
+        expect(
+          submenu.find((item) => item.label === SET_SERVER_URL_MENU_LABEL)
+            ?.enabled,
+        ).toBe(enabled);
+      }
+    },
+  );
+
   it("builds a Server menu with multiple custom targets and separate add/edit actions", () => {
     const selectServer = vi.fn();
     const setServerUrl = vi.fn();

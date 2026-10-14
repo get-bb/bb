@@ -135,16 +135,17 @@ describe("server target store", () => {
     await store.load();
     await store.setCustomServerUrl("https://first.example");
     await store.setCustomServerUrl("https://second.example");
-    await store.setCustomServerUrl(
-      "https://edited.example",
-      "https://second.example",
-    );
+    await store.setCustomServerUrl("https://edited.example", {
+      replacedUrl: "https://second.example",
+    });
     expect(store.getCustomServerUrls()).toEqual([
       "https://first.example",
       "https://edited.example",
     ]);
     await expect(
-      store.setCustomServerUrl("file:///bad", "https://edited.example"),
+      store.setCustomServerUrl("file:///bad", {
+        replacedUrl: "https://edited.example",
+      }),
     ).rejects.toThrow();
     expect(store.getCustomServerUrls()).toHaveLength(2);
     await store.setCustomServerUrl(null);

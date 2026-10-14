@@ -24,7 +24,7 @@ export function SidebarNavigationCustomize({
         })),
     [model.state.items],
   );
-  const { arrangement, state } = model;
+  const { arrangement } = model;
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -37,13 +37,7 @@ export function SidebarNavigationCustomize({
         variant="compact"
         items={items}
         visibleIds={arrangement.visibleKeys}
-        onActivate={(item, event) =>
-          state.actions.activate(item.id, {
-            openInSplit: event.metaKey || event.ctrlKey,
-          })
-        }
         onDone={() => onClose(true)}
-        onExit={() => onClose(false)}
         onReorder={arrangement.moveAny}
         onVisibleChange={arrangement.setVisible}
       />
