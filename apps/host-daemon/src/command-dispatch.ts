@@ -696,6 +696,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     readAvailableWorkspace(command, options, async (workspace) => ({
       workspaceStatus: await workspace.getStatus({
         mergeBaseBranch: command.mergeBaseBranch,
+        maxFiles: command.maxFiles,
         maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
         maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
       }),

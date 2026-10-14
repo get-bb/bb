@@ -2,7 +2,6 @@ import {
   access,
   lstat,
   mkdir,
-  mkdtemp,
   readFile,
   readdir,
   rm,
@@ -12,9 +11,9 @@ import {
 } from "node:fs/promises";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type {
   HostDaemonInjectedSkillSource,
@@ -43,20 +42,6 @@ interface CapturedWarning {
   context: object;
   message: string;
 }
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "bb-host-skills-"));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-});
 
 function requireSkillRoot(
   roots: readonly AgentRuntimeSkillRoot[],

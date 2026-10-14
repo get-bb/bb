@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -77,20 +75,26 @@ describe("preferences sync", () => {
     expect(store.get(preferencesReadyAtom())).toBe(true);
     expect(store.get(modeAtom)).toBe("machine");
     expect(
-      JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}")
-        .organizationMode,
+      JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}").organizationMode,
     ).toBe("machine");
   });
 
   it("paints from the mirror before the server answers and ignores junk in it", () => {
     mirror.setItem(
       MIRROR_KEY,
-      JSON.stringify({ organizationMode: "project", chronologicalSort: "nonsense" }),
+      JSON.stringify({
+        organizationMode: "project",
+        chronologicalSort: "nonsense",
+      }),
     );
     const store = getDefaultStore();
     expect(hydratePreferencesFromMirror()).toBe(true);
-    expect(store.get(createSyncedPreferenceAtom("organizationMode"))).toBe("project");
-    expect(store.get(createSyncedPreferenceAtom("chronologicalSort"))).toBe("updated");
+    expect(store.get(createSyncedPreferenceAtom("organizationMode"))).toBe(
+      "project",
+    );
+    expect(store.get(createSyncedPreferenceAtom("chronologicalSort"))).toBe(
+      "updated",
+    );
     mirror.setItem(MIRROR_KEY, "{not json");
     expect(hydratePreferencesFromMirror()).toBe(false);
   });
@@ -107,9 +111,9 @@ describe("preferences sync", () => {
       JSON.parse(mirror.getItem("bb.my-sidebar.preferences.v1") ?? "{}")
         .organizationMode,
     ).toBe("machine");
-    expect(JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}").organizationMode).toBe(
-      "project",
-    );
+    expect(
+      JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}").organizationMode,
+    ).toBe("project");
   });
 
   it("applies a local write immediately and coalesces the server write", async () => {
@@ -119,14 +123,23 @@ describe("preferences sync", () => {
     const collapsedAtom = createSyncedPreferenceAtom("collapsedProjects");
     store.set(collapsedAtom, ["proj_a"]);
     store.set(collapsedAtom, (current) => [...current, "proj_b"]);
-    store.set(collapsedAtom, (current) => current.filter((id) => id !== "proj_a"));
+    store.set(collapsedAtom, (current) =>
+      current.filter((id) => id !== "proj_a"),
+    );
     expect(store.get(collapsedAtom)).toEqual(["proj_b"]);
-    expect(rpc.calls.filter((call) => call.method === "setPreference")).toHaveLength(0);
+    expect(
+      rpc.calls.filter((call) => call.method === "setPreference"),
+    ).toHaveLength(0);
     vi.advanceTimersByTime(200);
     await flushPreferenceWritesForTest();
-    expect(rpc.calls.filter((call) => call.method === "setPreference")).toEqual([
-      { method: "setPreference", input: { key: "collapsedProjects", value: ["proj_b"] } },
-    ]);
+    expect(rpc.calls.filter((call) => call.method === "setPreference")).toEqual(
+      [
+        {
+          method: "setPreference",
+          input: { key: "collapsedProjects", value: ["proj_b"] },
+        },
+      ],
+    );
   });
 
   it("takes a remote change from another window unless a local write is pending", async () => {
@@ -158,7 +171,9 @@ describe("preferences sync", () => {
     store.set(modeAtom, "chronological");
     vi.advanceTimersByTime(200);
     await flushPreferenceWritesForTest();
-    expect(rpc.calls.filter((call) => call.method === "setPreference")).toHaveLength(0);
+    expect(
+      rpc.calls.filter((call) => call.method === "setPreference"),
+    ).toHaveLength(0);
   });
 });
 

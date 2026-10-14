@@ -1,5 +1,10 @@
 import { notifyComposerSubmitted } from "@/lib/composer-submissions";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  mutationOptions,
+  type QueryClient,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
@@ -121,10 +126,8 @@ async function deleteThreadQueuedMessageOrConfirmMissing({
   }
 }
 
-export function useCreateThread() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+export function createThreadMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to create thread.",
       lifecycleOperation: "create_thread",
@@ -162,10 +165,13 @@ export function useCreateThread() {
   });
 }
 
-export function useSendThreadMessage() {
+export function useCreateThread() {
   const queryClient = useQueryClient();
+  return useMutation(createThreadMutationOptions(queryClient));
+}
 
-  return useMutation({
+export function sendThreadMessageMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to send message.",
       lifecycleOperation: "send_message",
@@ -223,9 +229,13 @@ export function useSendThreadMessage() {
   });
 }
 
-export function useEditThreadMessage() {
+export function useSendThreadMessage() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutation(sendThreadMessageMutationOptions(queryClient));
+}
+
+export function editThreadMessageMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to edit the message.",
       lifecycleOperation: "edit_message",
@@ -245,10 +255,15 @@ export function useEditThreadMessage() {
   });
 }
 
-export function useCreateThreadQueuedMessage() {
+export function useEditThreadMessage() {
   const queryClient = useQueryClient();
+  return useMutation(editThreadMessageMutationOptions(queryClient));
+}
 
-  return useMutation({
+export function createThreadQueuedMessageMutationOptions(
+  queryClient: QueryClient,
+) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to queue message.",
       lifecycleOperation: "queue_message",
@@ -298,6 +313,11 @@ export function useCreateThreadQueuedMessage() {
   });
 }
 
+export function useCreateThreadQueuedMessage() {
+  const queryClient = useQueryClient();
+  return useMutation(createThreadQueuedMessageMutationOptions(queryClient));
+}
+
 export function useUpdateThreadQueuedMessage() {
   const queryClient = useQueryClient();
 
@@ -341,10 +361,10 @@ export function useUpdateThreadQueuedMessage() {
   });
 }
 
-export function useSendThreadQueuedMessage() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+export function sendThreadQueuedMessageMutationOptions(
+  queryClient: QueryClient,
+) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to send queued message.",
       lifecycleOperation: "send_queued_message",
@@ -377,6 +397,11 @@ export function useSendThreadQueuedMessage() {
       });
     },
   });
+}
+
+export function useSendThreadQueuedMessage() {
+  const queryClient = useQueryClient();
+  return useMutation(sendThreadQueuedMessageMutationOptions(queryClient));
 }
 
 export function useReorderThreadQueuedMessage() {
@@ -424,10 +449,10 @@ export function useReorderThreadQueuedMessage() {
   });
 }
 
-export function useSetThreadQueuedMessageGroupBoundary() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+export function setThreadQueuedMessageGroupBoundaryMutationOptions(
+  queryClient: QueryClient,
+) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to group queued messages.",
       lifecycleOperation: "set_queued_message_group_boundary",
@@ -470,10 +495,17 @@ export function useSetThreadQueuedMessageGroupBoundary() {
   });
 }
 
-export function useDeleteThreadQueuedMessage() {
+export function useSetThreadQueuedMessageGroupBoundary() {
   const queryClient = useQueryClient();
+  return useMutation(
+    setThreadQueuedMessageGroupBoundaryMutationOptions(queryClient),
+  );
+}
 
-  return useMutation({
+export function deleteThreadQueuedMessageMutationOptions(
+  queryClient: QueryClient,
+) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to delete queued message.",
       showErrorToast: false,
@@ -498,6 +530,11 @@ export function useDeleteThreadQueuedMessage() {
       });
     },
   });
+}
+
+export function useDeleteThreadQueuedMessage() {
+  const queryClient = useQueryClient();
+  return useMutation(deleteThreadQueuedMessageMutationOptions(queryClient));
 }
 
 export function useStopThread() {
@@ -530,10 +567,8 @@ export function useStopThread() {
   });
 }
 
-export function useCancelThreadPlan() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+export function cancelThreadPlanMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: { errorMessage: "Failed to exit Plan mode." },
     mutationFn: async (threadId: string) => {
       await sdk.threads.cancelPlan({ threadId });
@@ -545,10 +580,13 @@ export function useCancelThreadPlan() {
   });
 }
 
-export function useClearThreadGoal() {
+export function useCancelThreadPlan() {
   const queryClient = useQueryClient();
+  return useMutation(cancelThreadPlanMutationOptions(queryClient));
+}
 
-  return useMutation({
+export function clearThreadGoalMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: { errorMessage: "Failed to clear Goal." },
     mutationFn: async (threadId: string) => {
       await sdk.threads.clearGoal({ threadId });
@@ -558,4 +596,9 @@ export function useClearThreadGoal() {
       invalidateThreadBannerQueries({ queryClient, threadId });
     },
   });
+}
+
+export function useClearThreadGoal() {
+  const queryClient = useQueryClient();
+  return useMutation(clearThreadGoalMutationOptions(queryClient));
 }

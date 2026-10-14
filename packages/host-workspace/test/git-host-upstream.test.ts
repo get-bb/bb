@@ -1,14 +1,13 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGit } from "../src/git.js";
 import { Workspace } from "../src/workspace.js";
 
 const execFileAsync = promisify(execFile);
-const tempDirs: string[] = [];
 
 const localBranch = "bb/review-github-issue-1235-thr_test";
 const forkRemote = "review-fork";
@@ -32,12 +31,6 @@ function pullRequestJson(): string {
     mergeStateStatus: "CLEAN",
     mergeable: "MERGEABLE",
   });
-}
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(directory);
-  return directory;
 }
 
 async function createTrackedForkWorkspace(
@@ -158,13 +151,8 @@ async function readGhCalls(logPath: string): Promise<string[][]> {
   }
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((directory) => fs.rm(directory, { recursive: true, force: true })),
-  );
 });
 
 describe("pull request lookup for differently named upstream branches", () => {

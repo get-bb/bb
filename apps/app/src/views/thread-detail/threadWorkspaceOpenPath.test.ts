@@ -54,6 +54,7 @@ function makeWorkspaceChangedFilesSection(
       insertions: 1,
       deletions: 1,
       lineStatsComplete: true,
+      fileCount: 1,
     },
     ...overrides,
   };

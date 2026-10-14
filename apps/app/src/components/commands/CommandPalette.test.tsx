@@ -9,7 +9,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { createStore, Provider } from "jotai";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -42,6 +42,7 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { LocationProbe } from "@/test/location-probe";
 
 beforeAll(async () => {
   await import("./ThreadSearchPaletteMode");
@@ -273,11 +274,6 @@ function Handler({ command }: { command: AppCommandId }) {
     return true;
   });
   return null;
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return <output data-testid="location">{location.pathname}</output>;
 }
 
 const threadUpdatedAt = Date.now();

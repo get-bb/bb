@@ -14,32 +14,15 @@ import type {
 } from "@bb/shared-ui/question-form-state";
 import { ThreadQuestionFormHost } from "./ThreadQuestionFormHost";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
-import { defaultAppSettings } from "@bb/domain";
 type InteractionPayload = { questions: Question[] };
 type InteractionResponse = { answers: Record<string, QuestionAnswer> };
 
 vi.mock("@/hooks/useVoiceInput", () => ({ useVoiceInput: vi.fn() }));
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: { ...defaultAppSettings },
-      keybindings: [1, 2, 3].map((digit) => ({
-        command: `question.select.${digit}`,
-        desktopOnly: false,
-        shortcut: {
-          key: String(digit),
-          mod: false,
-          meta: false,
-          control: false,
-          alt: false,
-          shift: false,
-        },
-        when: { all: ["questionOpen"], none: [] },
-      })),
-    },
-  }),
-}));
+vi.mock(
+  "@/hooks/queries/system-queries",
+  () => import("@/test/question-shortcuts-system-queries-mock"),
+);
 vi.mock("@/lib/bb-desktop", () => ({ getBbDesktopInfo: () => null }));
 const pane = vi.hoisted(() => ({ isFocused: true }));
 vi.mock("@/views/thread-detail/PaneContext", () => ({

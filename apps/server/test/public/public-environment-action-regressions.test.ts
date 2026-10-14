@@ -128,6 +128,7 @@ describe("public environment action regressions", () => {
             insertions: 0,
             deletions: 0,
             lineStatsComplete: true,
+            fileCount: 0,
             files: [],
             hasUncommittedChanges: false,
             state: "clean",

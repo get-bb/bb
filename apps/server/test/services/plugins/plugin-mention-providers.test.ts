@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
@@ -666,8 +667,7 @@ describe("mention search time box", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-mention-timeout-"));
     service = createPluginService({
       aiServices: createAiServiceRegistry(),
@@ -745,8 +745,7 @@ describe("mention resolve time box", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-resolve-timeout-"));
     service = createPluginService({
       aiServices: createAiServiceRegistry(),

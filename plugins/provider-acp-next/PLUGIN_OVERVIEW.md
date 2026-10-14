@@ -9,6 +9,7 @@ Use one bb workspace with the coding agents you already run on your machine. Thi
 - A `Custom agents` setting. Add any other ACP agent as a JSON array with an `id`, a `displayName`, and a `command`.
 - Permission modes `accept-edits` and `full` for every ACP provider.
 - Reasoning levels and a model picker where the agent reports them.
+- The agent's own modes in the composer. opencode's are read in the project you are starting a thread in, so custom agents from the project's `.opencode/` directory are listed.
 - Skills from the agent's own skill directories, listed next to bb skills.
 
 ## How it works

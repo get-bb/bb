@@ -37,6 +37,7 @@ import {
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppUpdateService } from "../../../apps/server/src/services/system/app-update.js";
+import { createCliCommandService } from "../../../apps/server/src/services/system/cli-command.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
@@ -261,6 +262,16 @@ async function startIntegrationServer(
   });
   const serverDeps = {
     appUpdate,
+    cliCommand: createCliCommandService({
+      env: {},
+      homeDir: serverDataDir,
+      launcherPath: null,
+      platform: process.platform,
+      windowsUserPath: {
+        read: () => Promise.reject(new Error("no Windows PATH in tests")),
+        write: () => Promise.reject(new Error("no Windows PATH in tests")),
+      },
+    }),
     appVersion,
     bbAppManagedConfig,
     providerRegistry,

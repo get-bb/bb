@@ -549,7 +549,7 @@ export function registerEnvironmentCommands(
         console.log(`State: ${status.workingTree.state}`);
         console.log(`Branch: ${status.branch.currentBranch ?? "(detached)"}`);
         console.log(`Default branch: ${status.branch.defaultBranch}`);
-        console.log(`Changed files: ${status.workingTree.files.length}`);
+        console.log(`Changed files: ${status.workingTree.fileCount}`);
         if (status.workingTree.lineStatsComplete) {
           console.log(`Insertions: +${status.workingTree.insertions}`);
           console.log(`Deletions: -${status.workingTree.deletions}`);

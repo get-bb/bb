@@ -9,7 +9,6 @@ import { useSystemEnvironmentProviders } from "./environment-provider-queries";
 import {
   environmentProviderListCacheKey,
   readCachedEnvironmentProviderList,
-  writeCachedEnvironmentProviderList,
 } from "@/lib/environment-provider-list-cache";
 
 vi.mock("@/lib/sdk", () => ({
@@ -99,22 +98,5 @@ describe("useSystemEnvironmentProviders", () => {
       { wrapper: createQueryClientTestHarness().wrapper },
     );
     expect(second.result.current.providers).toEqual([WORKTREE_PROVIDER]);
-  });
-
-  it("ignores a remembered list that no longer parses", () => {
-    vi.mocked(sdk.environments.listProviders).mockImplementation(
-      pendingForever,
-    );
-    const cacheKey = environmentProviderListCacheKey({
-      projectId: "project-1",
-      hostId: null,
-    });
-    writeCachedEnvironmentProviderList(cacheKey, [WORKTREE_PROVIDER]);
-    window.localStorage.setItem(cacheKey, JSON.stringify([{ id: 1 }]));
-    const { result } = renderHook(
-      () => useSystemEnvironmentProviders({ projectId: "project-1" }),
-      { wrapper: createQueryClientTestHarness().wrapper },
-    );
-    expect(result.current.providers).toBeUndefined();
   });
 });

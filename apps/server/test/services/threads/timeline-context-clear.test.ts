@@ -7,16 +7,15 @@ import {
   type Thread,
 } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   insertEvents,
   listEvents,
-  migrate,
   noopNotifier,
   upsertHost,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
@@ -60,8 +59,7 @@ function clientTurnRequestedEvent(
 }
 
 function setup(): { db: DbConnection; thread: Thread } {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

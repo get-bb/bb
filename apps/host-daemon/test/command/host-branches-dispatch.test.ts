@@ -1,15 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { dispatchOnlineRpcCommand } from "../../src/command-dispatch.js";
-import {
-  cleanupTempDirs,
-  createHarness,
-  makeTempDir,
-  runGitCommand,
-} from "./dispatch-helpers.js";
-
-afterEach(cleanupTempDirs);
+import { createHarness, runGitCommand } from "./dispatch-helpers.js";
 
 function gitShellPath(filePath: string): string {
   return filePath.replaceAll("\\", "/");

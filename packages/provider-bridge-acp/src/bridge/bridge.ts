@@ -206,6 +206,26 @@ type AcpDeferredStartEmitter = (
 ) => void;
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
+const agentConnections = new Set<AcpAgentConnection>();
+let shuttingDown = false;
+
+function createBridgeAgentConnection(
+  options: Parameters<typeof createAcpAgentConnection>[0],
+): AcpAgentConnection {
+  if (shuttingDown) {
+    throw new Error("ACP bridge is shutting down");
+  }
+  const connection = createAcpAgentConnection({
+    ...options,
+    onExit: (info) => {
+      agentConnections.delete(connection);
+      options.onExit(info);
+    },
+  });
+  agentConnections.add(connection);
+  return connection;
+}
+
 const bbThreadIdByProviderThreadId = new Map<string, string>();
 const pendingRuntimeRequests = new Map<
   number,
@@ -844,7 +864,7 @@ async function loadSessionDiscoveredModels(
     ...withoutBridgeRuntimeEnv(process.env),
     ...(agent.envVars ?? {}),
   };
-  const connection = createAcpAgentConnection({
+  const connection = createBridgeAgentConnection({
     command: agent.command,
     args: agent.args,
     cwd: agent.cwd ?? process.cwd(),
@@ -1784,7 +1804,7 @@ async function startAgentSession(
       ? { OPENCODE_CLIENT: "acp", OPENCODE_ENABLE_QUESTION_TOOL: "false" }
       : {}),
   };
-  const connection = createAcpAgentConnection({
+  const connection = createBridgeAgentConnection({
     command: params.agent.command,
     args: launch.args,
     cwd: params.cwd,
@@ -3008,11 +3028,19 @@ function handleParsedMessage(parsed: unknown): void {
 export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 async function stopAllSessions(): Promise<void> {
-  await Promise.all(
-    Array.from(sessionsByBbThreadId.values()).map((session) =>
-      stopSession(session),
+  const results = await Promise.allSettled([
+    ...Array.from(sessionsByBbThreadId.values(), (session) =>
+      releaseSession(session),
     ),
-  );
+    ...Array.from(agentConnections, (connection) => connection.kill()),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      process.stderr.write(
+        `acp bridge: shutdown cleanup failed: ${String(result.reason)}\n`,
+      );
+    }
+  }
   const dynamicToolBridge = dynamicToolBridgePromise
     ? await dynamicToolBridgePromise.catch(() => null)
     : null;
@@ -3025,15 +3053,23 @@ async function stopAllSessions(): Promise<void> {
   });
 }
 
+function shutdownBridge(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  void stopAllSessions()
+    .catch((error: unknown) => {
+      process.stderr.write(`acp bridge: shutdown failed: ${String(error)}\n`);
+    })
+    .finally(() => process.exit(0));
+}
+
 if (process.argv.includes("--mcp-stdio")) {
   runAcpDynamicToolMcpServer();
 }
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
-  onClose: () => {
-    void stopAllSessions().finally(() => {
-      process.exit(0);
-    });
-  },
+  onClose: shutdownBridge,
+  onSigterm: shutdownBridge,
+  onSigint: shutdownBridge,
 });

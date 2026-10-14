@@ -113,6 +113,7 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
       insertions: 3,
       deletions: 1,
       lineStatsComplete: true,
+      fileCount: 1,
       files: [
         {
           path: "src/index.ts",
@@ -137,6 +138,7 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
       insertions: 5,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 1,
       files: [
         {
           path: "README.md",
@@ -678,6 +680,7 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
             insertions: 0,
             deletions: 0,
             lineStatsComplete: true,
+            fileCount: 0,
             files: [],
             hasUncommittedChanges: false,
             state: "clean",
@@ -1228,7 +1231,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(234);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(235);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1798,6 +1801,7 @@ describe("host-daemon command schemas", () => {
       {
         type: "workspace.status",
         environmentId: "env_123",
+        maxFiles: 200,
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
         workspaceContext: {
@@ -2733,6 +2737,7 @@ describe("host-daemon command schemas", () => {
     const workspaceStatus = {
       type: "workspace.status",
       environmentId: "env_123",
+      maxFiles: 200,
       maxUntrackedLineStatFiles: 50,
       maxUntrackedLineStatBytes: 8 * 1024 * 1024,
       workspaceContext: {

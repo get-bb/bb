@@ -614,6 +614,7 @@ export function makeWorkspaceStatus(
       insertions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 0,
       files: [],
     },
     branch: {
@@ -635,6 +636,7 @@ export function makeWorkspaceStatus(
       insertions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 0,
       files: [],
     },
   };

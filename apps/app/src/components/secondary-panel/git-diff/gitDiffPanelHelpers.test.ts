@@ -6,8 +6,11 @@ import {
   buildGitDiffTarget,
   COMMITTED_GIT_DIFF_SELECTION,
   filterDiffFilesByPath,
+  selectScopedMergeBaseBranch,
+  selectScopedPendingGitDiffIntent,
   shouldResetSelectedGitDiffSelection,
   UNCOMMITTED_GIT_DIFF_SELECTION,
+  type PendingGitDiffIntent,
 } from "./gitDiffPanelHelpers";
 
 function makeCommit(
@@ -204,5 +207,43 @@ describe("gitDiffPanelHelpers", () => {
     it("matches a renamed file by its previous path", () => {
       expect(paths("*.txt")).toEqual(["docs/new-name.md"]);
     });
+  });
+});
+
+describe("git diff panel scope", () => {
+  it("never carries a merge-base branch into another environment", () => {
+    const selection = { branch: "branch-a", environmentId: "env-a" };
+
+    expect(selectScopedMergeBaseBranch(selection, "env-a")).toBe("branch-a");
+    expect(selectScopedMergeBaseBranch(selection, "env-b")).toBeUndefined();
+    expect(selectScopedMergeBaseBranch(selection, undefined)).toBeUndefined();
+  });
+
+  it("keeps a pending intent only with the owner that requested it", () => {
+    const intent: PendingGitDiffIntent = {
+      environmentId: "env-left",
+      kind: "file",
+      path: "left.ts",
+      threadId: "left",
+    };
+
+    expect(
+      selectScopedPendingGitDiffIntent(intent, {
+        environmentId: "env-left",
+        threadId: "left",
+      }),
+    ).toBe(intent);
+    expect(
+      selectScopedPendingGitDiffIntent(intent, {
+        environmentId: "env-right",
+        threadId: "left",
+      }),
+    ).toBeNull();
+    expect(
+      selectScopedPendingGitDiffIntent(intent, {
+        environmentId: "env-left",
+        threadId: "right",
+      }),
+    ).toBeNull();
   });
 });

@@ -9,20 +9,11 @@ import {
   type DesktopBrowserCdpPage,
   type DesktopBrowserCdpScope,
 } from "../src/desktop-browser-cdp.js";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 const messageSchema = z.record(z.string(), z.json());
 type Message = z.infer<typeof messageSchema>;
 const disposers: Array<() => Promise<void>> = [];
-
-function deferred() {
-  let resolve: () => void = () => {
-    throw new Error("Deferred promise is not initialized");
-  };
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -521,8 +512,8 @@ describe("thread-scoped browser CDP", () => {
         await openBridge();
       const page = tabs.get("a");
       if (page === undefined) throw new Error("Missing fixture page");
-      const entered = deferred();
-      const ready = deferred();
+      const entered = createDeferredPromise<void>();
+      const ready = createDeferredPromise<void>();
       const originalSend = page.send;
       page.send = async (command, params, sessionId, signal) => {
         if (command === method) {
@@ -609,9 +600,9 @@ describe("thread-scoped browser CDP", () => {
     "aborts delayed %s callbacks before they mutate tabs after lease replacement",
     async (operation) => {
       const { bridge, adapter, scopeA, tabs } = await openBridge();
-      const entered = deferred();
-      const release = deferred();
-      const finished = deferred();
+      const entered = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      const finished = createDeferredPromise<void>();
       let mutations = 0;
       let aborted = false;
       async function beforeMutation(signal: AbortSignal) {

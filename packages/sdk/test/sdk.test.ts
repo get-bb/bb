@@ -738,16 +738,16 @@ describe("@bb/sdk", () => {
   });
 
   it("routes provider list and model discovery through portable host selectors", async () => {
+    const executionOptions = {
+      providers: [],
+      models: [],
+      selectedOnlyModels: [],
+      modelLoadError: null,
+    };
     const queue = createFetchQueue([
       { body: [] },
-      {
-        body: {
-          providers: [],
-          models: [],
-          selectedOnlyModels: [],
-          modelLoadError: null,
-        },
-      },
+      { body: executionOptions },
+      { body: executionOptions },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -766,6 +766,13 @@ describe("@bb/sdk", () => {
         providerId: "acp-remote",
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
+    await expect(
+      sdk.providers.models({
+        hostId: "host_remote",
+        projectId: "proj_remote",
+        providerId: "acp-remote",
+      }),
+    ).resolves.toMatchObject({ models: [], providers: [] });
 
     expect(queue.requests).toEqual([
       {
@@ -777,6 +784,11 @@ describe("@bb/sdk", () => {
         bodyText: undefined,
         method: "GET",
         url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/execution-options?hostId=host_remote&projectId=proj_remote&providerId=acp-remote",
       },
     ]);
   });

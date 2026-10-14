@@ -23,6 +23,15 @@ import {
 import { getEnv } from "./env.js";
 import { getSessionUserId } from "./current-user.server.js";
 import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
+import { getRequestQuery } from "./request-query.server.js";
+import {
+  type OAuthAuthorizeResult,
+  type OAuthGrantView,
+  completeOAuthAuthorization,
+  listOAuthGrantsForUser,
+  prepareOAuthAuthorization,
+  revokeOAuthGrantForUser,
+} from "./oauth.js";
 
 type DashboardState =
   | { authed: false; emailPasswordEnabled: boolean }
@@ -183,4 +192,88 @@ export const denyLinkFn = createServerFn({ method: "POST" })
   .validator(linkCodeValidator)
   .handler(async ({ data }) =>
     withSessionUser((_userId, deps) => denyServerLink(deps, data.code)),
+  );
+
+export const listConnectedAppsFn = createServerFn({ method: "GET" }).handler(
+  async (): Promise<OAuthGrantView[]> => {
+    const userId = await getSessionUserId();
+    if (!userId) return [];
+    return listOAuthGrantsForUser(depsFromEnv(getEnv()).db, userId);
+  },
+);
+
+export const revokeOAuthGrantFn = createServerFn({ method: "POST" })
+  .validator((grantId: string) => String(grantId))
+  .handler(async ({ data: grantId }) =>
+    withSessionUser(async (userId, deps) => {
+      if (!grantId) return { error: "not-found" as const };
+      return (await revokeOAuthGrantForUser(deps.db, userId, grantId))
+        ? { ok: true as const }
+        : { error: "not-found" as const };
+    }),
+  );
+
+type OAuthAuthorizePageState =
+  | { kind: "sign-in"; emailPasswordEnabled: boolean }
+  | OAuthAuthorizeResult;
+
+function oauthQueryValidator(input: { query: string }): { query: string } {
+  return { query: typeof input?.query === "string" ? input.query : "" };
+}
+
+function oauthDecisionValidator(input: { query: string; approved: boolean }): {
+  query: string;
+  approved: boolean;
+} {
+  return {
+    ...oauthQueryValidator(input),
+    approved: input?.approved === true,
+  };
+}
+
+export const getOAuthAuthorizePageFn = createServerFn({ method: "GET" })
+  .validator((input: { browserQuery: string | null }) => ({
+    browserQuery:
+      typeof input?.browserQuery === "string" ? input.browserQuery : null,
+  }))
+  .handler(
+    async ({
+      data,
+    }): Promise<{ query: string; page: OAuthAuthorizePageState }> => {
+      const env = getEnv();
+      const query = data.browserQuery ?? getRequestQuery();
+      const userId = await getSessionUserId();
+      if (!userId) {
+        return {
+          query,
+          page: {
+            kind: "sign-in",
+            emailPasswordEnabled: resolveDevEmailPasswordEnabled(env),
+          },
+        };
+      }
+      return {
+        query,
+        page: await prepareOAuthAuthorization(
+          env,
+          depsFromEnv(env).db,
+          userId,
+          new URLSearchParams(query),
+        ),
+      };
+    },
+  );
+
+export const decideOAuthAuthorizationFn = createServerFn({ method: "POST" })
+  .validator(oauthDecisionValidator)
+  .handler(async ({ data }) =>
+    withSessionUser((userId, deps) =>
+      completeOAuthAuthorization(
+        getEnv(),
+        deps.db,
+        userId,
+        new URLSearchParams(data.query),
+        { approved: data.approved },
+      ),
+    ),
   );

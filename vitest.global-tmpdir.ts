@@ -34,6 +34,11 @@ export default function setup(): () => void {
     delete holder[ACTIVE];
     if (active.previous === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = active.previous;
-    rmSync(active.root, { recursive: true, force: true });
+    rmSync(active.root, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   };
 }

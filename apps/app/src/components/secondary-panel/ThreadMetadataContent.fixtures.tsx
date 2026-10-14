@@ -110,6 +110,7 @@ export const STORY_DIRTY_WORKING_TREE: Omit<WorkspaceWorkingTree, "state"> = {
   insertions: 47,
   deletions: 21,
   lineStatsComplete: true,
+  fileCount: 3,
   files: [
     {
       path: "apps/app/src/components/sidebar/ProjectRow.tsx",
@@ -142,6 +143,7 @@ export const STORY_COMMITTED_MERGE_BASE: WorkspaceMergeBase = {
   insertions: 110,
   deletions: 24,
   lineStatsComplete: true,
+  fileCount: 2,
   files: [
     {
       path: "apps/app/src/components/right-panel/ThreadMetadataContent.stories.tsx",
