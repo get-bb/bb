@@ -26,7 +26,9 @@ const SEND_BUFFER_HIGH_WATER_BYTES = 1024 * 1024;
 const SEND_BUFFER_POLL_MS = 10;
 
 const UNREGISTERED_PORT_BODY = "this port is not shared";
+const WS_TRANSPORT_OPEN = 1;
 const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 const INITIAL_THREAD_LOAD_PATH =
   /^\/api\/v1\/threads\/[^/]+\/(?:timeline|conversation-outline)(?:\?|$)/u;
 
@@ -74,6 +76,53 @@ function responseHeaderPairs(response: IncomingMessage): HeaderPair[] {
   return headers;
 }
 
+const DOT_SEGMENT_PATTERN = /(?:^|\/)(?:\.|\.\.)(?:\/|$)/u;
+
+export interface CanonicalStreamPath {
+  forward: string;
+  guard: string;
+}
+
+function hasForbiddenShape(pathname: string): boolean {
+  return (
+    pathname.includes("//") ||
+    pathname.includes("\\") ||
+    DOT_SEGMENT_PATTERN.test(pathname)
+  );
+}
+
+export function canonicalStreamPath(
+  rawPath: string,
+): CanonicalStreamPath | null {
+  if (!rawPath.startsWith("/") || rawPath.startsWith("//")) return null;
+  const withoutQuery = rawPath.split("?", 1)[0] ?? rawPath;
+  if (hasForbiddenShape(withoutQuery)) return null;
+  let url: URL;
+  try {
+    url = new URL(rawPath, "http://bb.local");
+  } catch {
+    return null;
+  }
+  if (url.host !== "bb.local") return null;
+  let decoded: string;
+  let decodedNormalized: string;
+  try {
+    decoded = decodeURIComponent(withoutQuery);
+    decodedNormalized = decodeURIComponent(url.pathname);
+  } catch {
+    return null;
+  }
+  if (decoded !== decodedNormalized) return null;
+  if (decoded !== withoutQuery && hasForbiddenShape(decoded)) return null;
+  if (decoded.split("/").length !== withoutQuery.split("/").length) {
+    return null;
+  }
+  return {
+    forward: `${url.pathname}${url.search}`,
+    guard: `${decoded}${url.search}`,
+  };
+}
+
 function isInitialThreadLoad(path: string): boolean {
   if (!INITIAL_THREAD_LOAD_PATH.test(path)) {
     return false;
@@ -97,12 +146,14 @@ interface HttpStream {
   meta: OpenHttpFrame;
   chunks: Buffer[];
   abort: AbortController;
+  guarded: StreamGuardInput | null;
 }
 interface WsStream {
   socket: NodeWebSocket;
   buffered: Frame[];
   open: boolean;
   countsAsRemoteClient: boolean;
+  guarded: StreamGuardInput | null;
 }
 
 interface ResolvedStreamOrigin {
@@ -125,10 +176,37 @@ export type StreamOriginResult =
   | { kind: "ok"; resolved: ResolvedStreamOrigin }
   | { kind: "unregistered" };
 
+export interface StreamGuardInput {
+  kind: "http" | "ws";
+  method: string;
+  path: string;
+  headers: HeaderPair[];
+  target: string | undefined;
+}
+
+export type StreamGuardResult =
+  | { allow: true }
+  | { allow: false; status: number; code: string; message: string };
+
+export interface TunnelTransport {
+  readonly readyState: number;
+  readonly bufferedAmount?: number;
+  send(data: Uint8Array | string): void;
+  on(
+    event: "message",
+    listener: (data: Uint8Array, isBinary: boolean) => void,
+  ): void;
+  on(event: "close", listener: () => void): void;
+  terminate(): void;
+}
+
 interface TunnelSessionOptions {
-  tunnel: NodeWebSocket;
+  tunnel: TunnelTransport;
   log: TunnelClientLogger;
   resolveOrigin: (target: string | undefined) => StreamOriginResult;
+  guardStream?: (stream: StreamGuardInput) => StreamGuardResult;
+  stripRequestHeaders?: readonly string[];
+  injectRequestHeaders?: () => Record<string, string>;
   onRemoteClientsChange?: (remoteClients: number) => void;
   onActivity?: (at: number) => void;
   monotonicNow?: () => number;
@@ -168,7 +246,7 @@ export class TunnelSession {
       lastReceivedAgeMs:
         this.lastReceivedAt === null ? null : now - this.lastReceivedAt,
       lastSentAgeMs: this.lastSentAt === null ? null : now - this.lastSentAt,
-      bufferedBytes: this.options.tunnel.bufferedAmount,
+      bufferedBytes: this.options.tunnel.bufferedAmount ?? 0,
     };
   }
 
@@ -197,11 +275,11 @@ export class TunnelSession {
       this.sendRaw(HEARTBEAT_REQUEST, Buffer.byteLength(HEARTBEAT_REQUEST));
     }, HEARTBEAT_INTERVAL_MS);
 
-    tunnel.on("message", (data: Buffer, isBinary: boolean) => {
+    tunnel.on("message", (data: Uint8Array, isBinary: boolean) => {
       this.bytesReceived += data.byteLength;
       this.lastReceivedAt = Date.now();
       if (!isBinary) {
-        if (data.toString() === HEARTBEAT_RESPONSE) {
+        if (textDecoder.decode(data) === HEARTBEAT_RESPONSE) {
           this.lastAck = Date.now();
           this.lastReceivedAckAt = this.lastAck;
           this.stallGraceSinceAck = false;
@@ -215,6 +293,39 @@ export class TunnelSession {
       }
     });
     tunnel.on("close", () => this.dispose());
+  }
+
+  reguard(): number {
+    let closed = 0;
+    for (const [streamId, stream] of [...this.wsStreams]) {
+      if (stream.guarded === null) continue;
+      const verdict = this.guard(stream.guarded);
+      if (verdict.allow) continue;
+      closed += 1;
+      this.forgetWsStream(streamId, stream);
+      stream.socket.close(1008, verdict.code);
+      this.send({
+        type: "close-stream",
+        streamId,
+        code: 1008,
+        reason: verdict.code,
+      });
+    }
+    for (const [streamId, stream] of [...this.httpStreams]) {
+      if (stream.guarded === null) continue;
+      const verdict = this.guard(stream.guarded);
+      if (verdict.allow) continue;
+      closed += 1;
+      this.httpStreams.delete(streamId);
+      stream.abort.abort();
+      this.send({
+        type: "close-stream",
+        streamId,
+        code: 1008,
+        reason: verdict.code,
+      });
+    }
+    return closed;
   }
 
   dispose(): void {
@@ -246,7 +357,7 @@ export class TunnelSession {
   }
 
   private send(frame: Frame): void {
-    if (this.options.tunnel.readyState === NodeWebSocket.OPEN) {
+    if (this.options.tunnel.readyState === WS_TRANSPORT_OPEN) {
       const encoded = encodeFrame(frame);
       this.sendRaw(encoded, encoded.byteLength);
     }
@@ -256,8 +367,8 @@ export class TunnelSession {
     const { tunnel } = this.options;
     while (
       !signal.aborted &&
-      tunnel.readyState === NodeWebSocket.OPEN &&
-      tunnel.bufferedAmount > SEND_BUFFER_HIGH_WATER_BYTES
+      tunnel.readyState === WS_TRANSPORT_OPEN &&
+      (tunnel.bufferedAmount ?? 0) > SEND_BUFFER_HIGH_WATER_BYTES
     ) {
       await new Promise((resolve) => setTimeout(resolve, SEND_BUFFER_POLL_MS));
     }
@@ -269,6 +380,49 @@ export class TunnelSession {
     this.lastSentAt = Date.now();
   }
 
+  private applyHeaderPolicy(
+    headers: Record<string, string>,
+  ): Record<string, string> {
+    const strip = new Set(
+      (this.options.stripRequestHeaders ?? []).map((name) =>
+        name.toLowerCase(),
+      ),
+    );
+    const out: Record<string, string> = {};
+    for (const [name, value] of Object.entries(headers)) {
+      if (!strip.has(name.toLowerCase())) out[name] = value;
+    }
+    return { ...out, ...(this.options.injectRequestHeaders?.() ?? {}) };
+  }
+
+  private guardApplies(target: string | undefined): boolean {
+    return this.options.guardStream !== undefined && target === undefined;
+  }
+
+  private guard(stream: StreamGuardInput): StreamGuardResult {
+    return this.options.guardStream?.(stream) ?? { allow: true };
+  }
+
+  private rejectGuardedHttp(
+    streamId: number,
+    verdict: Extract<StreamGuardResult, { allow: false }>,
+  ): void {
+    const body = textEncoder.encode(
+      JSON.stringify({ error: verdict.message, code: verdict.code }),
+    );
+    this.send({
+      type: "resp-head",
+      streamId,
+      status: verdict.status,
+      headers: [
+        ["content-type", "application/json; charset=utf-8"],
+        ["cache-control", "no-store"],
+      ],
+    });
+    for (const c of chunkBody(streamId, body)) this.send(c);
+    this.send({ type: "body-end", streamId });
+  }
+
   private onFrame(frame: Frame): void {
     this.noteActivity();
     switch (frame.type) {
@@ -277,6 +431,7 @@ export class TunnelSession {
           meta: frame,
           chunks: [],
           abort: new AbortController(),
+          guarded: null,
         };
         this.httpStreams.set(frame.streamId, stream);
         if (!frame.hasBody) void this.executeHttp(frame.streamId, stream);
@@ -349,6 +504,35 @@ export class TunnelSession {
     stream: HttpStream,
   ): Promise<void> {
     const { meta } = stream;
+    let path = meta.path;
+    if (this.guardApplies(meta.target)) {
+      const canonical = canonicalStreamPath(meta.path);
+      if (canonical === null) {
+        this.rejectGuardedHttp(streamId, {
+          allow: false,
+          status: 400,
+          code: "malformed_path",
+          message: "request path is not canonical",
+        });
+        this.httpStreams.delete(streamId);
+        return;
+      }
+      path = canonical.forward;
+      const guarded: StreamGuardInput = {
+        kind: "http",
+        method: meta.method,
+        path: canonical.guard,
+        headers: meta.headers,
+        target: meta.target,
+      };
+      const verdict = this.guard(guarded);
+      if (!verdict.allow) {
+        this.rejectGuardedHttp(streamId, verdict);
+        this.httpStreams.delete(streamId);
+        return;
+      }
+      stream.guarded = guarded;
+    }
     const originResult = this.options.resolveOrigin(meta.target);
     if (originResult.kind === "unregistered") {
       this.rejectUnregisteredHttp(streamId);
@@ -356,16 +540,18 @@ export class TunnelSession {
       return;
     }
     const { resolved } = originResult;
-    const headers = headersForLoopbackRequest(meta.headers, {
-      publicOrigin: resolved.publicOrigin,
-      loopbackOrigin: new URL(resolved.origin).origin,
-      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
-    });
+    const headers = this.applyHeaderPolicy(
+      headersForLoopbackRequest(meta.headers, {
+        publicOrigin: resolved.publicOrigin,
+        loopbackOrigin: new URL(resolved.origin).origin,
+        ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+      }),
+    );
     try {
       const startedAt = performance.now();
       const body = meta.hasBody ? Buffer.concat(stream.chunks) : undefined;
       const res = await requestOriginHttp({
-        url: new URL(`${resolved.origin.replace(/\/$/u, "")}${meta.path}`),
+        url: new URL(`${resolved.origin.replace(/\/$/u, "")}${path}`),
         method: meta.method,
         headers,
         body,
@@ -428,6 +614,38 @@ export class TunnelSession {
   }
 
   private openOriginWs(frame: OpenWsFrame): void {
+    let path = frame.path;
+    let guarded: StreamGuardInput | null = null;
+    if (this.guardApplies(frame.target)) {
+      const canonical = canonicalStreamPath(frame.path);
+      if (canonical === null) {
+        this.send({
+          type: "close-stream",
+          streamId: frame.streamId,
+          code: 1008,
+          reason: "malformed_path",
+        });
+        return;
+      }
+      path = canonical.forward;
+      guarded = {
+        kind: "ws",
+        method: "GET",
+        path: canonical.guard,
+        headers: frame.headers,
+        target: frame.target,
+      };
+      const verdict = this.guard(guarded);
+      if (!verdict.allow) {
+        this.send({
+          type: "close-stream",
+          streamId: frame.streamId,
+          code: 1008,
+          reason: verdict.code,
+        });
+        return;
+      }
+    }
     const originResult = this.options.resolveOrigin(frame.target);
     if (originResult.kind === "unregistered") {
       this.send({
@@ -440,15 +658,17 @@ export class TunnelSession {
     }
     const { resolved } = originResult;
     const wsOrigin = resolved.origin.replace(/^http/, "ws");
-    const headers = headersForLoopbackRequest(frame.headers, {
-      publicOrigin: resolved.publicOrigin,
-      loopbackOrigin: new URL(resolved.origin).origin,
-      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
-    });
+    const headers = this.applyHeaderPolicy(
+      headersForLoopbackRequest(frame.headers, {
+        publicOrigin: resolved.publicOrigin,
+        loopbackOrigin: new URL(resolved.origin).origin,
+        ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+      }),
+    );
     const countsAsRemoteClient = isBareBbRealtimeWs(frame.path, frame.target);
     let socket: NodeWebSocket;
     try {
-      socket = new NodeWebSocket(`${wsOrigin}${frame.path}`, frame.protocols, {
+      socket = new NodeWebSocket(`${wsOrigin}${path}`, frame.protocols, {
         headers,
       });
     } catch (e) {
@@ -465,6 +685,7 @@ export class TunnelSession {
       buffered: [],
       open: false,
       countsAsRemoteClient,
+      guarded,
     };
     this.wsStreams.set(frame.streamId, stream);
     if (countsAsRemoteClient) this.adjustRemoteClients(1);

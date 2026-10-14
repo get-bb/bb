@@ -13,8 +13,12 @@ import {
 } from "@bb/tunnel-contract";
 import {
   humanizeTransportError,
+  CONNECT_TUNNEL_HEADER,
   ReconnectBackoff,
+  SEALED_DEVICE_HEADER,
   TunnelSession,
+  type StreamGuardInput,
+  type StreamGuardResult,
   type StreamOriginResult,
 } from "@bb/tunnel-client";
 import type { PluginLogger } from "@get-bb/plugin-sdk";
@@ -51,6 +55,9 @@ interface ConnectTunnelOptions {
   getLoopbackBaseUrl: () => string;
   log: PluginLogger;
   onStatusChange?: (status: ConnectStatus) => void;
+  guardStream?: (stream: StreamGuardInput) => StreamGuardResult;
+  sealedRemoteClients?: () => number;
+  onPaired?: () => Promise<void>;
 }
 
 function identityOf(account: Account | null): ConnectIdentity | null {
@@ -146,7 +153,11 @@ export class ConnectTunnel {
     this.pairing = true;
     this.publish();
     try {
+      const before = this.identity;
       this.setAccount(await work());
+      if (before === null && this.identity !== null) {
+        await this.options.onPaired?.();
+      }
     } finally {
       this.pairing = false;
       this.publish();
@@ -220,7 +231,8 @@ export class ConnectTunnel {
       lastError: this.lastError,
       nextRetryAt: state === "reconnecting" ? this.nextRetryAt : null,
       since: this.stateSince,
-      remoteClients: this.remoteClients,
+      remoteClients:
+        this.remoteClients + (this.options.sealedRemoteClients?.() ?? 0),
       lastRemoteActivityAt: this.lastRemoteActivityAt,
       shares,
     };
@@ -229,6 +241,18 @@ export class ConnectTunnel {
   private dashboardUrl(): string {
     const base = this.identity?.baseUrl ?? this.options.defaultBaseUrl;
     return `${base.replace(/\/$/u, "")}/dashboard`;
+  }
+
+  reguard(): number {
+    return this.session?.reguard() ?? 0;
+  }
+
+  noteRemoteActivity(at: number): void {
+    this.lastRemoteActivityAt = at;
+  }
+
+  republish(): void {
+    this.publish();
   }
 
   private computeState(): ConnectStateName {
@@ -509,6 +533,11 @@ export class ConnectTunnel {
         tunnel,
         log: this.options.log,
         resolveOrigin: (target) => this.resolveStreamOrigin(target),
+        ...(this.options.guardStream !== undefined
+          ? { guardStream: this.options.guardStream }
+          : {}),
+        stripRequestHeaders: [SEALED_DEVICE_HEADER, CONNECT_TUNNEL_HEADER],
+        injectRequestHeaders: () => ({ [CONNECT_TUNNEL_HEADER]: "1" }),
         onRemoteClientsChange: (count) => {
           this.remoteClients = count;
           this.publish();

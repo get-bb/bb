@@ -96,6 +96,7 @@ interface ShareRegistryOptions {
   hostResolver: ShareHostResolver;
   getLoopbackBaseUrl: () => string;
   getIdentity: () => ShareIdentity | null;
+  servesThisBb?: (port: number) => Promise<boolean>;
   log: Pick<PluginLogger, "warn">;
   onChange?: () => void;
 }
@@ -246,6 +247,14 @@ export class ShareRegistry {
     ) {
       throw new SharePortError(
         `Cannot share port ${validated}: that is the bb server's own port — the bare handle URL already serves bb`,
+      );
+    }
+    if (
+      host.isServer &&
+      (await this.options.servesThisBb?.(validated)) === true
+    ) {
+      throw new SharePortError(
+        `Cannot share port ${validated}: it answers as this bb, so sharing it would expose the API in the clear`,
       );
     }
     if (this.options.getIdentity() === null) {

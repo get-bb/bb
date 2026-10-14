@@ -16,17 +16,22 @@
     "drizzle-orm": "^0.38.0"
   },
   "devDependencies": {
+    "@bb/sealed-channel": "workspace:*",
+    "bb-plugin-connect": "workspace:*",
     "@bb/tsconfig": "workspace:*",
+    "@bb/tunnel-client": "workspace:*",
     "@better-auth/drizzle-adapter": "^1.6.23",
     "@cloudflare/workers-types": "^4.20260610.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
-    "better-sqlite3": "12.10.0",
+    "@types/ws": "^8.18.1",
     "better-auth": "^1.6.23",
+    "better-sqlite3": "12.10.0",
     "esbuild": "^0.28.1",
     "miniflare": "^4.20260701.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "wrangler": "^4.100.0"
+    "wrangler": "^4.100.0",
+    "ws": "^8.18.0"
   }
 }

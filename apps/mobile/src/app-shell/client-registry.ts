@@ -1,4 +1,5 @@
-import { getProfileStore } from "@/lib/native";
+import { getProfileStore, getSealedDeviceIdentityStore } from "@/lib/native";
+import { describeThisDevice } from "@/lib/device-label";
 import { createServerMovedProfileHandler } from "@/lib/profiles/server-moved";
 import {
   createProfileClientRegistry,
@@ -23,6 +24,13 @@ export function getAppProfileClientRegistry(): ProfileClientRegistry {
             description: error instanceof Error ? error.message : String(error),
           });
         });
+      },
+      sealed: {
+        identity: () => getSealedDeviceIdentityStore().load(),
+        deviceName: describeThisDevice(),
+        onPinned: async (profileId, trust) => {
+          await getProfileStore().updateProfile(profileId, { sealed: trust });
+        },
       },
     });
   }

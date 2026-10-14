@@ -25,6 +25,7 @@ export {
   mobilePairingPayload,
   parseMobilePairingPayload,
   type MobilePairingPayload,
+  type MobilePairingSealedPayload,
 } from "./mobile-pairing.js";
 export {
   DEFAULT_CONNECT_BASE_URL,

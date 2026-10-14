@@ -60,9 +60,13 @@ Agents, host daemons and plugin backends run on the server or enrolled hosts.
   allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
   hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
   machine (QR / code from Settings → Mobile or
-  `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
-  seven-day rolling sessions that end when the device is revoked; see
-  [multiple-devices.md](multiple-devices.md).
+  `bb connect machine-code`, without an experiment), keeps the credential in
+  the device keychain, and mints seven-day rolling sessions that end when the
+  device is revoked. The QR code also pins the server's encryption key, so
+  the app's own requests and realtime socket travel in a sealed connection the
+  relay cannot read; the web view page inside the app has the browser's
+  limits. See [multiple-devices.md](multiple-devices.md) and
+  [connect-end-to-end-encryption.md](connect-end-to-end-encryption.md).
 - Distribution: iOS beta through TestFlight and Android alpha APKs from the
   [Android testing release](https://github.com/get-bb/bb/releases/tag/android-testing).
   EAS builds and developer builds from source are available; see the

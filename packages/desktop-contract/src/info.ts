@@ -62,6 +62,33 @@ export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
+export const bbDesktopSealedContextSchema = z
+  .object({
+    remote: z.boolean(),
+    publicKey: z.string().min(1),
+    deviceName: z.string().min(1),
+  })
+  .strict();
+export type BbDesktopSealedContext = z.infer<
+  typeof bbDesktopSealedContextSchema
+>;
+
+export const bbDesktopSealedTrustSchema = z
+  .object({
+    serverKey: z.string().min(1),
+    fingerprint: z.string().min(1),
+    verified: z.boolean(),
+  })
+  .strict();
+export type BbDesktopSealedTrust = z.infer<typeof bbDesktopSealedTrustSchema>;
+
+export interface BbDesktopSealedApi {
+  getContext(): Promise<BbDesktopSealedContext>;
+  signClientAuth(transcript: string): Promise<string>;
+  getTrust(origin: string): Promise<BbDesktopSealedTrust | null>;
+  setTrust(origin: string, trust: BbDesktopSealedTrust | null): Promise<void>;
+}
+
 export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
   getServerChoices?(): Promise<BbDesktopServerChoice[]>;
@@ -69,6 +96,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
     listener: (choices: BbDesktopServerChoice[]) => void,
   ): () => void;
   selectServer?(id: string): void;
+  sealed?: BbDesktopSealedApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   focusWindow?(): void;

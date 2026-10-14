@@ -1,6 +1,7 @@
 export {
   PROFILE_LABEL_MAX_LENGTH,
   type NewServerProfile,
+  type SealedServerTrust,
   type ServerProfile,
   type ServerProfilePatch,
 } from "./profile";

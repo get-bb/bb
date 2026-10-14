@@ -1,0 +1,38 @@
+{
+  "name": "@bb/sealed-channel",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./node": {
+      "source": "./src/node.ts",
+      "types": "./src/node.ts",
+      "default": "./src/node.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/tunnel-contract": "workspace:*",
+    "@noble/ciphers": "^2.1.1",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.4.0",
+    "zod": "^4.3.6",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

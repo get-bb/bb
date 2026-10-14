@@ -1,22 +1,42 @@
+import { z } from "zod";
 import { deriveConnectBaseUrl } from "./urls.js";
+
+const sealedPayloadSchema = z
+  .object({
+    serverKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
+    fingerprint: z.string().regex(/^(?:[0-9A-F]{4}-){5}[0-9A-F]{4}$/u),
+    deviceCode: z.string().regex(/^[A-Z2-9]{4}(?:-?[A-Z2-9]{4}){2}$/u),
+  })
+  .strict();
+
+export interface MobilePairingSealedPayload {
+  serverKey: string;
+  fingerprint: string;
+  deviceCode: string;
+}
 
 export interface MobilePairingPayload {
   code: string;
   serverUrl: string;
   apex: string;
   expiresAt: number;
+  sealed?: MobilePairingSealedPayload;
 }
 
-export function mobilePairingPayload(machineCode: {
-  code: string;
-  serverUrl: string;
-  expiresAt: number;
-}): MobilePairingPayload {
+export function mobilePairingPayload(
+  machineCode: {
+    code: string;
+    serverUrl: string;
+    expiresAt: number;
+  },
+  sealed?: MobilePairingSealedPayload,
+): MobilePairingPayload {
   return {
     code: machineCode.code,
     serverUrl: machineCode.serverUrl,
     apex: deriveConnectBaseUrl(machineCode.serverUrl),
     expiresAt: machineCode.expiresAt,
+    ...(sealed !== undefined ? { sealed } : {}),
   };
 }
 
@@ -28,7 +48,13 @@ export function encodeMobilePairingPayload(
     serverUrl: payload.serverUrl,
     apex: payload.apex,
     expiresAt: payload.expiresAt,
+    ...(payload.sealed !== undefined ? { sealed: payload.sealed } : {}),
   });
+}
+
+function parseSealedPayload(value: unknown): MobilePairingSealedPayload | null {
+  const parsed = sealedPayloadSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function isHttpUrl(value: unknown): value is string {
@@ -58,6 +84,7 @@ export function parseMobilePairingPayload(
     serverUrl?: unknown;
     apex?: unknown;
     expiresAt?: unknown;
+    sealed?: unknown;
   };
   if (
     typeof record.code !== "string" ||
@@ -69,10 +96,14 @@ export function parseMobilePairingPayload(
   ) {
     return null;
   }
+  const sealed =
+    record.sealed === undefined ? null : parseSealedPayload(record.sealed);
+  if (record.sealed !== undefined && sealed === null) return null;
   return {
     code: record.code,
     serverUrl: record.serverUrl,
     apex: record.apex,
     expiresAt: record.expiresAt,
+    ...(sealed !== null ? { sealed } : {}),
   };
 }

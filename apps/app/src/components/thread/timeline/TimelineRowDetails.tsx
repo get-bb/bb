@@ -27,6 +27,7 @@ import {
 } from "./useTimelineWorkRowFullOutput.js";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
+import { SealedImage } from "@/lib/sealed";
 
 interface WorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
@@ -112,7 +113,7 @@ function ImageWorkRowBody({ resolveImageViewSrc, row }: ImageWorkRowBodyProps) {
         onClick={() => setLightboxOpen(true)}
         aria-label={`Open image preview: ${imageName}`}
       >
-        <img
+        <SealedImage
           src={imageSrc}
           alt=""
           className="block h-auto w-full object-contain"

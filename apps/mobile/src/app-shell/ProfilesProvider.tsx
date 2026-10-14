@@ -24,6 +24,7 @@ import { installAppStateQueryEvents } from "@/lib/query/app-state-query-events";
 import { createProfileQueryClient } from "@/lib/query/query-client";
 import type { ProfileClient } from "@/lib/sdk";
 import { getAppProfileClientRegistry } from "./client-registry";
+import { getPushRegistrationController } from "@/notifications/push-controller";
 import { getActiveProfileConnector } from "./connector";
 
 export interface ProfilesContextValue {
@@ -82,6 +83,14 @@ export function ProfilesProvider({ children }: { children: ReactNode }) {
       addProfile: (input) => store.addProfile(input),
       updateProfile: (id, patch) => store.updateProfile(id, patch),
       async removeProfile(id) {
+        await getPushRegistrationController()
+          .reconcileRemovedProfiles(
+            store
+              .listProfiles()
+              .map((profile) => profile.id)
+              .filter((profileId) => profileId !== id),
+          )
+          .catch(() => undefined);
         await store.removeProfile(id);
         getAppProfileClientRegistry().disposeClient(id);
       },

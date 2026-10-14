@@ -86,6 +86,17 @@ manual reassignment asks to replace the current binding or cancel. Audit
 cross-platform conflicts and plugin lifecycle before extending the context
 model or default binding policy.
 
+## `PluginCliContext.experimental_remoteCaller`
+
+The server sets `experimental_remoteCaller: true` on the CLI context when the
+invoking HTTP request carries a bb Connect marker (`x-bb-gate-auth` from the
+relay gate, `x-bb-connect-tunnel` from the readable tunnel client, or
+`x-bb-sealed-device` from a sealed connection). The Connect plugin uses it to
+refuse device management and encryption policy changes from remote surfaces.
+Stabilize once the marker set is settled and other plugins need the same
+distinction; audit whether a richer caller descriptor (surface, device id)
+should replace the boolean.
+
 ## Discoverable RPC
 
 `bb.rpc.register` accepts optional `experimental_discoverable` and `experimental_description` options. Method definitions accept `experimental_description`. Discoverable registration exports wire schemas through Standard JSON Schema; validation-only schemas remain usable without publication. Descriptions are published separately and absent descriptions become null. Discovery advertises methods without changing RPC authorization or dispatch.

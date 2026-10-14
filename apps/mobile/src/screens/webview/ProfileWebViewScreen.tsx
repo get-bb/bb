@@ -25,7 +25,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
 import { revealApp, useProfiles } from "@/app-shell";
-import { nativeSessionCache } from "@/lib/native";
+import { getSealedDeviceIdentityStore, nativeSessionCache } from "@/lib/native";
+import { describeThisDevice } from "@/lib/device-label";
 import {
   buildShellUrl,
   isExternallyOpenable,
@@ -42,6 +43,8 @@ import { firstParam, settingsSectionHref } from "@/screens/shell/hrefs";
 import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
+import { SealedStateBanner, useSealedState } from "./SealedStateBanner";
+import { pageMustSeal, webViewSealedVerdict } from "@/lib/sealed";
 import { useShellBridge } from "./useShellBridge";
 
 const APP_VERSION =
@@ -131,6 +134,16 @@ export function ProfileWebViewScreen() {
     router.push(settingsSectionHref("device"));
   }, [router]);
 
+  const sealedTrust =
+    profile?.mode === "connect" ? (profile.sealed ?? null) : null;
+  const sealedClient = connection?.client ?? null;
+  const sealedState = useSealedState(sealedClient);
+  const sealedVerdict = webViewSealedVerdict(sealedState);
+  useEffect(() => {
+    if (sealedClient?.sealed && sealedVerdict === "wait") {
+      void sealedClient.sealed.probe().catch(() => undefined);
+    }
+  }, [sealedClient, sealedVerdict]);
   const bridge = useShellBridge(webViewRef, {
     onReady: (path) => {
       setLoad({ kind: "ready" });
@@ -140,6 +153,18 @@ export function ProfileWebViewScreen() {
     onPath: rememberPath,
     onOpenNative: (screen) => {
       if (screen === "device-settings") openDeviceSettings();
+    },
+    sealed: {
+      identity: () => getSealedDeviceIdentityStore().load(),
+      deviceName: describeThisDevice(),
+      trustFor: (origin) =>
+        profile !== null && new URL(profile.serverUrl).origin === origin
+          ? sealedTrust
+          : null,
+      expectsSealed: (origin) =>
+        profile !== null &&
+        new URL(profile.serverUrl).origin === origin &&
+        (sealedTrust !== null || pageMustSeal(sealedState)),
     },
   });
 
@@ -218,6 +243,7 @@ export function ProfileWebViewScreen() {
         "open-external",
         "safe-area",
         "open-native",
+        "sealed",
       ],
     };
   }, [profile, safeArea, sourceUrl]);
@@ -309,6 +335,19 @@ export function ProfileWebViewScreen() {
     return null;
   }
 
+  if (sealedVerdict !== "allow") {
+    return (
+      <View className="flex-1 bg-background" testID="shell-webview-held">
+        <SealedStateBanner
+          client={sealedClient}
+          onRepair={() =>
+            router.push(`/connect?profileId=${encodeURIComponent(profile.id)}`)
+          }
+        />
+      </View>
+    );
+  }
+
   return (
     <WebViewKeyboardFrame
       style={{ flex: 1, backgroundColor: tokens.background }}
@@ -369,6 +408,12 @@ export function ProfileWebViewScreen() {
         }}
         onContentProcessDidTerminate={retry}
         onRenderProcessGone={retry}
+      />
+      <SealedStateBanner
+        client={connection?.client ?? null}
+        onRepair={() =>
+          router.push(`/connect?profileId=${encodeURIComponent(profile.id)}`)
+        }
       />
       {screen.serverErrorStatus !== null ? (
         <View

@@ -22,7 +22,15 @@ machine cannot be removed.
 The simplest managed route is **bb connect**. Sign the server in to your bb
 account from Settings → bb connect (or `bb account login`, or
 `bb connect --code ...` with a dashboard code), then open its getbb.app URL.
-The server owns the tunnel and reconnects after restart.
+The server owns the tunnel and reconnects after restart. Remote browsers, the
+desktop app, and the mobile app open a sealed connection that the getbb.app
+relay cannot decrypt in transit; the browser, the desktop window, and the
+phone's web view still run page code the relay serves, so only the mobile
+app's own requests are end-to-end encrypted against a relay that tampers with
+code. Once you turn on Require end-to-end encryption in Settings → Remote
+access, a new browser waits there for your approval or a device code. See
+[connect-end-to-end-encryption.md](connect-end-to-end-encryption.md) for what
+the relay can still see and how to verify fingerprints.
 
 For a private tailnet route, keep bb on its loopback default and publish it
 through Tailscale Serve:
@@ -107,9 +115,12 @@ and can revoke.
 
 The phone keeps its credential in the device keychain and mints sessions from
 it; it never holds the server's pairing secret. A session lasts seven days and
-renews while the phone is in use. To cut a phone off, revoke it in the
-getbb.app dashboard machine list; its session stops working within about 20
-seconds. Every phone takes one of
+renews while the phone is in use. The QR code also carries the server's
+encryption key and a one-time device code, so a scanned phone talks to the
+server over a sealed connection from the start and needs no manual approval.
+To cut a phone off, revoke it in the getbb.app dashboard machine list and
+under Settings → Remote access → Sealed connections; its session stops working
+within about 20 seconds. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
 should be revoked first. On a trusted network the app can also use a direct
 server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
@@ -171,7 +182,10 @@ the getbb.app dashboard machine list, where you can revoke it. After a revoke,
 the app drops the credential and asks the local server again.
 
 A remote server has no realtime link for keybindings and theme. The app re-reads
-them when it starts, when it becomes active, and every five minutes.
+them when it starts, when it becomes active, and every five minutes. Those
+reads, and everything the window sends, go through a sealed connection once
+the server approves the desktop app as a device; the app's device key is
+protected by the OS keychain.
 
 ## Add an execution machine
 

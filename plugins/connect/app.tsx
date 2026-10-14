@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
@@ -12,6 +13,7 @@ import {
   encodeMobilePairingPayload,
   mobilePairingPayload,
   type MobilePairingPayload,
+  type MobilePairingSealedPayload,
 } from "@bb/connect-client";
 import type { connectRpcContract } from "./src/rpc.js";
 import type { MachineCodeErrorCode } from "./src/machine-code.js";
@@ -34,11 +36,33 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
+import {
+  SEALED_REALTIME_CHANNEL,
+  type SealedDeviceCode,
+  type SealedDeviceSummary,
+  type SealedStatus,
+} from "@/src/sealed/types";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+const SEALED_ROUTE_BASE = "/api/v1/plugins/connect/http/sealed";
+
+async function sealedManage<T>(path: string, body: unknown = null): Promise<T> {
+  const response = await fetch(`${SEALED_ROUTE_BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as
+    | { ok: true; result: T }
+    | { ok: false; error: string };
+  if (!payload.ok) throw new Error(payload.error);
+  return payload.result;
 }
 
 const DANGER_QUIET_CLASS =
@@ -656,10 +680,15 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
     if (minting) return;
     setMinting(true);
     setErrorCode(null);
-    rpc.call("createMachineCode").then(
+    sealedManage<{
+      code: string;
+      expiresAt: number;
+      serverUrl: string;
+      sealed: MobilePairingSealedPayload;
+    }>("/mobile-pairing").then(
       (result) => {
         setMinting(false);
-        setPayload(mobilePairingPayload(result));
+        setPayload(mobilePairingPayload(result, result.sealed));
       },
       (rpcError: unknown) => {
         setMinting(false);
@@ -722,7 +751,15 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
           minting={minting}
           onRenew={mint}
         />
-      ) : null}
+      ) : (
+        <p className="text-xs text-subtle-foreground/75">
+          Pair the bb mobile app with this bb. It gets a one-time code to scan
+          or type; the phone then reaches this bb through {dashboardHost}. The
+          QR code also carries this bb&apos;s encryption key, so a scanned phone
+          verifies it and its native requests are sealed from the start; the
+          page inside the app has the browser&apos;s limits.
+        </p>
+      )}
 
       {errorCode !== null ? (
         <p role="alert" className="text-xs text-destructive-text">
@@ -746,6 +783,392 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
           )}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+const sealedDeviceSummarySchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  surface: z.enum(["browser", "desktop", "mobile", "mobile-webview"]),
+  status: z.enum(["pending", "approved", "revoked"]),
+  fingerprint: z.string(),
+  createdAt: z.number(),
+  approvedAt: z.number().nullable(),
+  revokedAt: z.number().nullable(),
+  lastSeenAt: z.number().nullable(),
+  connected: z.boolean(),
+  parentId: z.string().nullable(),
+  approvedVia: z
+    .enum(["device-code", "manual", "delegation", "account-gate"])
+    .nullable(),
+});
+
+const sealedStatusSchema = z.object({
+  protocolVersion: z.number(),
+  publicKey: z.string().min(1),
+  fingerprint: z.string().min(1),
+  identityCreatedAt: z.number(),
+  required: z.boolean(),
+  activeChannels: z.number(),
+  devices: z.array(sealedDeviceSummarySchema),
+});
+
+function asSealedStatus(payload: unknown): SealedStatus | null {
+  const parsed = sealedStatusSchema.safeParse(payload);
+  return parsed.success ? parsed.data : null;
+}
+
+function formatSeen(at: number | null): string {
+  if (at === null) return "never connected";
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 1) return "seen just now";
+  if (minutes < 60) return `seen ${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `seen ${hours} h ago`;
+  return `seen ${new Date(at).toLocaleDateString()}`;
+}
+
+const VIA_LABEL: Record<
+  NonNullable<SealedDeviceSummary["approvedVia"]>,
+  string
+> = {
+  "device-code": "device code",
+  manual: "you",
+  delegation: "its parent device",
+  "account-gate": "the account gate (before encryption was required)",
+};
+
+const SURFACE_LABEL: Record<SealedDeviceSummary["surface"], string> = {
+  browser: "Browser",
+  desktop: "Desktop app",
+  mobile: "Mobile app",
+  "mobile-webview": "Mobile app page",
+  cli: "CLI",
+  other: "Device",
+};
+
+function DeviceRow({
+  device,
+  busy,
+  onApprove,
+  onRevoke,
+  onRemove,
+}: {
+  device: SealedDeviceSummary;
+  busy: boolean;
+  onApprove: () => void;
+  onRevoke: () => void;
+  onRemove: () => void;
+}) {
+  const tone =
+    device.status === "approved"
+      ? device.connected
+        ? "ok"
+        : "muted"
+      : device.status === "pending"
+        ? "warn"
+        : "muted";
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+      <StatusDot tone={tone} />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm">
+          <span className="truncate font-medium">{device.name}</span>
+          <span className="text-xs text-subtle-foreground">
+            {SURFACE_LABEL[device.surface]} ·{" "}
+            {device.status === "pending"
+              ? "waiting for approval"
+              : device.status === "revoked"
+                ? "revoked"
+                : device.connected
+                  ? "connected"
+                  : formatSeen(device.lastSeenAt)}
+          </span>
+        </div>
+        <div className="font-mono text-2xs text-subtle-foreground">
+          {device.id} · {device.fingerprint}
+          {device.approvedVia !== null
+            ? ` · approved via ${VIA_LABEL[device.approvedVia]}`
+            : ""}
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        {device.status === "pending" ? (
+          <Button type="button" size="sm" disabled={busy} onClick={onApprove}>
+            Approve
+          </Button>
+        ) : null}
+        {device.status !== "revoked" ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={DANGER_QUIET_CLASS}
+            disabled={busy}
+            onClick={onRevoke}
+          >
+            Revoke
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground"
+            disabled={busy}
+            onClick={onRemove}
+          >
+            Remove
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DeviceCodeCard({
+  code,
+  onDone,
+}: {
+  code: SealedDeviceCode;
+  onDone: () => void;
+}) {
+  const remaining = useCountdown(code.expiresAt);
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
+      <div className="flex items-center gap-3">
+        <span className="font-mono text-lg tracking-widest">{code.code}</span>
+        <QuietCopyButton text={code.code} label="Copy device code" />
+        <span className="flex-1" />
+        <span className="text-xs text-subtle-foreground">
+          {remaining === null
+            ? ""
+            : remaining <= 0
+              ? "expired"
+              : `expires in ${formatCountdown(remaining)}`}
+        </span>
+        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+          Done
+        </Button>
+      </div>
+      <p className="text-xs text-subtle-foreground/75">
+        Enter this code on a device that shows the &ldquo;waiting for
+        approval&rdquo; screen. It pins this bb&apos;s key ({code.fingerprint})
+        and approves the device in one step. The code works once.
+      </p>
+    </div>
+  );
+}
+
+function EncryptionSection() {
+  const rpc = useRpc<typeof connectRpcContract>();
+  const [status, setStatus] = useState<SealedStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [deviceCode, setDeviceCode] = useState<SealedDeviceCode | null>(null);
+
+  const refresh = useCallback(() => {
+    rpc.call("sealedStatus").then(
+      (result) => {
+        const next = asSealedStatus(result);
+        if (next !== null) setStatus(next);
+      },
+      (rpcError: unknown) => setError(errorText(rpcError)),
+    );
+  }, [rpc]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useRealtime(SEALED_REALTIME_CHANNEL, (payload) => {
+    const next = asSealedStatus(payload);
+    if (next !== null) setStatus(next);
+  });
+
+  const run = useCallback(
+    (work: () => Promise<unknown>) => {
+      setBusy(true);
+      setError(null);
+      work()
+        .then(() => refresh())
+        .catch((rpcError: unknown) => setError(errorText(rpcError)))
+        .finally(() => setBusy(false));
+    },
+    [refresh],
+  );
+
+  if (status === null) return null;
+  const pending = status.devices.filter(
+    (device) => device.status === "pending",
+  );
+  const others = status.devices.filter((device) => device.status !== "pending");
+
+  return (
+    <div className="space-y-2.5 border-t border-border-seam pt-4">
+      <div className="flex items-center">
+        <h3 className="text-2xs font-semibold uppercase tracking-wide text-subtle-foreground">
+          Sealed connections
+        </h3>
+        <span className="flex-1" />
+        {deviceCode === null ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                const code =
+                  await sealedManage<SealedDeviceCode>("/device-codes");
+                setDeviceCode(code);
+              })
+            }
+          >
+            <Icon name="Plus" className="size-3.5" />
+            Device code
+          </Button>
+        ) : null}
+      </div>
+
+      <p className="text-xs text-subtle-foreground/75">
+        Remote devices open a sealed connection that the getbb.app relay cannot
+        decrypt. Only the mobile app's own requests are end-to-end encrypted
+        with code the relay cannot alter; browsers, the desktop window, and the
+        phone's web view run relay-served code. Compare this fingerprint with
+        the one a device shows before approving it, and treat approval as
+        granting that device full access to this bb.
+      </p>
+      <div className="flex items-center gap-2">
+        <code className="font-mono text-xs tracking-wide">
+          {status.fingerprint}
+        </code>
+        <QuietCopyButton text={status.fingerprint} label="Copy fingerprint" />
+        <span className="flex-1" />
+        <span className="text-xs text-subtle-foreground">
+          {status.activeChannels === 0
+            ? "no sealed connections"
+            : `${status.activeChannels} sealed connection${status.activeChannels === 1 ? "" : "s"}`}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm">
+            Require sealed connections for remote access
+          </p>
+          <p className="text-xs text-subtle-foreground/75">
+            Refuse readable API and realtime traffic from the relay, close
+            readable streams that are open, and ask every device approved so far
+            to be approved again. Port shares, machine daemons, and the app
+            shell stay readable.
+          </p>
+        </div>
+        <Switch
+          checked={status.required}
+          disabled={busy}
+          aria-label="Require sealed connections for remote access"
+          onCheckedChange={(checked) =>
+            run(() => sealedManage("/require", { required: checked }))
+          }
+        />
+      </div>
+
+      {deviceCode !== null ? (
+        <DeviceCodeCard
+          key={deviceCode.code}
+          code={deviceCode}
+          onDone={() => setDeviceCode(null)}
+        />
+      ) : null}
+
+      {pending.length > 0 ? (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-1">
+          {pending.map((device) => (
+            <DeviceRow
+              key={device.id}
+              device={device}
+              busy={busy}
+              onApprove={() =>
+                run(() =>
+                  sealedManage("/devices/approve", { deviceId: device.id }),
+                )
+              }
+              onRevoke={() =>
+                run(() =>
+                  sealedManage("/devices/revoke", { deviceId: device.id }),
+                )
+              }
+              onRemove={() =>
+                run(() =>
+                  sealedManage("/devices/remove", { deviceId: device.id }),
+                )
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {others.length > 0 ? (
+        <div className="divide-y divide-border-seam">
+          {others.map((device) => (
+            <DeviceRow
+              key={device.id}
+              device={device}
+              busy={busy}
+              onApprove={() =>
+                run(() =>
+                  sealedManage("/devices/approve", { deviceId: device.id }),
+                )
+              }
+              onRevoke={() =>
+                run(() =>
+                  sealedManage("/devices/revoke", { deviceId: device.id }),
+                )
+              }
+              onRemove={() =>
+                run(() =>
+                  sealedManage("/devices/remove", { deviceId: device.id }),
+                )
+              }
+            />
+          ))}
+        </div>
+      ) : status.devices.length === 0 ? (
+        <p className="text-xs text-subtle-foreground/75">
+          No device has opened a sealed connection yet. Devices appear here the
+          first time they connect and wait for your approval unless they used a
+          device code or the mobile QR code.
+        </p>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={DANGER_QUIET_CLASS}
+          disabled={busy}
+          onClick={() => {
+            if (
+              !window.confirm(
+                "Rotate the encryption key? Every device must verify the new fingerprint before it can connect again.",
+              )
+            ) {
+              return;
+            }
+            run(() => sealedManage("/rotate-key"));
+          }}
+        >
+          Rotate key
+        </Button>
+        <span className="flex-1" />
+        {error !== null ? (
+          <p className="text-xs text-destructive-text">{error}</p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1396,6 +1819,8 @@ function ConnectedContent({
       </div>
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
+
+      <EncryptionSection />
 
       <SharedPortsSection shares={status.shares} dimmed={false} />
 

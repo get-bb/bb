@@ -250,6 +250,16 @@ function pluginHttpSubPath(context: Context, id: string): string {
     : "/";
 }
 
+const CONNECT_CALLER_HEADERS = [
+  "x-bb-gate-auth",
+  "x-bb-connect-tunnel",
+  "x-bb-sealed-device",
+];
+
+function isConnectOriginatedRequest(headers: Headers): boolean {
+  return CONNECT_CALLER_HEADERS.some((name) => headers.get(name) !== null);
+}
+
 function notRunningError(
   id: string,
   lookup: Extract<PluginWireLookup<unknown>, { outcome: "not-running" }>,
@@ -522,11 +532,15 @@ export function registerPluginRoutes(
       threadId?: string;
       projectId?: string;
       signal?: AbortSignal;
+      experimental_remoteCaller?: boolean;
     } = {};
     if (typeof body?.cwd === "string") ctx.cwd = body.cwd;
     if (typeof body?.threadId === "string") ctx.threadId = body.threadId;
     if (typeof body?.projectId === "string") ctx.projectId = body.projectId;
     ctx.signal = context.req.raw.signal;
+    if (isConnectOriginatedRequest(context.req.raw.headers)) {
+      ctx.experimental_remoteCaller = true;
+    }
     return pluginCliResponse(
       plugins.runCliCommand(context.req.param("id"), argv, ctx),
       PLUGIN_CLI_KEEPALIVE_MS,

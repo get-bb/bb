@@ -19,6 +19,7 @@ export {
 } from "./push-store";
 export {
   createPushSubscriptionsApi,
+  type PushFetchResolver,
   type PushSubscriptionsApi,
 } from "./push-subscriptions-api";
 export {
