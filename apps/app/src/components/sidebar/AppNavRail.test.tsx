@@ -510,6 +510,44 @@ describe("AppNavRail", () => {
     ]);
   });
 
+  it.each([
+    { name: "Docs", isCompactViewport: false },
+    { name: "Search threads", isCompactViewport: false },
+    { name: "Docs", isCompactViewport: true },
+    { name: "Search threads", isCompactViewport: true },
+  ])(
+    "toggles $name visibility from its customization row (compact: $isCompactViewport) without activating it",
+    async ({ name, isCompactViewport }) => {
+      renderRail(THREAD_PATH, {
+        visibleKeys: ["__bb__/skills"],
+        isCompactViewport,
+      });
+      if (isCompactViewport) fireEvent.click(railButton("More"));
+      else fireEvent.keyDown(railButton("More"), { key: "Enter" });
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "Customize rail" }),
+      );
+
+      const editor = await screen.findByTestId("nav-rail-customize");
+      const checkbox = within(editor).getByRole("checkbox", {
+        name: `Show ${name} in sidebar`,
+      });
+      expect(checkbox.getAttribute("aria-checked")).toBe("false");
+
+      for (const checked of [true, false]) {
+        fireEvent.click(within(editor).getByRole("button", { name }), {
+          ctrlKey: !checked,
+        });
+        expect(checkbox.getAttribute("aria-checked")).toBe(String(checked));
+        expect(railLabels().includes(name)).toBe(checked);
+        expect(screen.getByTestId("nav-rail-customize")).toBe(editor);
+        expect(pathname()).toBe(THREAD_PATH);
+        expect(mocks.onNavigate).not.toHaveBeenCalled();
+        expect(mocks.dispatch).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it("customizes the rail from a popover beside it without leaving Settings", async () => {
     renderRail(THREAD_PATH);
     fireEvent.click(railButton("Settings"));
