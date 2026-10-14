@@ -16,6 +16,7 @@ import {
   type AppInstallKind,
   type AppSourceOrigin,
 } from "./app-install.js";
+import { CLI_LAUNCHER_ENV_NAME } from "./cli-command.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
@@ -216,6 +217,13 @@ export const BB_APP_UPDATE_MODE_ENV = defineEnvVar<AppUpdateMode>({
     "Internal marker the bb-app launcher hands its server child when it runs under the in-app update shim: npm for package installs, source for pnpm start checkouts. The server offers in-app updates only when it is set.",
   name: APP_UPDATE_MODE_ENV_NAME,
   parse: parseAppUpdateModeEnvValue,
+});
+
+export const BB_CLI_LAUNCHER_ENV = defineEnvVar<string>({
+  description:
+    "Internal path the bb-app launcher hands its server child: the bb command launcher it wrote in the data directory for this install. The server offers to put the bb command on PATH only when it is set.",
+  name: CLI_LAUNCHER_ENV_NAME,
+  parse: parseNonEmptyStringEnvValue,
 });
 
 export const BB_APP_INSTALL_KIND_ENV = defineEnvVar<AppInstallKind>({

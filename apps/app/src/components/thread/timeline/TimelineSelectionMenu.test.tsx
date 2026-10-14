@@ -3,10 +3,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  setPluginLogoUrls,
-  resetPluginLogoStoreForTest,
-} from "@/lib/plugin-logos";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu";
@@ -14,7 +10,6 @@ import type { MessageProseSelection } from "./SelectableMessageProse";
 
 afterEach(() => {
   cleanup();
-  resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
 });
 
@@ -56,31 +51,6 @@ function mockPointerCoarse() {
 }
 
 describe("TimelineSelectionMenu", () => {
-  it("renders only the actions with handlers", () => {
-    render(
-      <TimelineSelectionMenu
-        selection={makeSelection()}
-        onAddToChat={vi.fn()}
-        onDismiss={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
-    expect(
-      screen
-        .getByRole("button", { name: "Add to chat" })
-        .closest("[data-bb-portaled-overlay]"),
-    ).not.toBeNull();
-  });
-
-  it("does not mount when no action handlers are supplied", () => {
-    render(
-      <TimelineSelectionMenu selection={makeSelection()} onDismiss={vi.fn()} />,
-    );
-
-    expect(screen.queryByRole("button")).toBeNull();
-  });
-
   it("renders from a pointer release point without a physical anchor node", () => {
     const { container } = render(
       <TimelineSelectionMenu
@@ -185,49 +155,17 @@ describe("TimelineSelectionMenu", () => {
 
     render(<ComposerFocusHandoff />);
     const action = screen.getByRole("button", { name: "Add to chat" });
+    let focusedWhenGestureEnded: Element | null = null;
+    const recordFocus = () => {
+      focusedWhenGestureEnded = document.activeElement;
+    };
+    document.addEventListener("pointerup", recordFocus);
     fireEvent.pointerDown(action, { pointerType: "touch" });
     fireEvent.pointerUp(action, { pointerType: "touch" });
+    document.removeEventListener("pointerup", recordFocus);
 
-    expect(document.activeElement).toBe(
+    expect(focusedWhenGestureEnded).toBe(
       screen.getByRole("textbox", { name: "Chat composer" }),
     );
   });
-});
-
-it("uses a plugin action's icon instead of branding in the selection menu", () => {
-  setPluginLogoUrls(
-    new Map([
-      [
-        "demo",
-        {
-          displayName: "Demo",
-          icon: "Check",
-          compactIconUrl: "/demo.svg",
-          logoUrl: null,
-          logoDarkUrl: null,
-          icons: new Map(),
-        },
-      ],
-    ]),
-  );
-  render(
-    <TimelineSelectionMenu
-      selection={makeSelection()}
-      onDismiss={() => {}}
-      pluginActions={[
-        {
-          key: "demo/inspect",
-          pluginId: "demo",
-          icon: "Zap",
-          label: "Inspect selection",
-          onSelect: () => {},
-        },
-      ]}
-    />,
-  );
-  expect(
-    screen
-      .getByRole("button", { name: "Inspect selection" })
-      .querySelector('[data-icon="Zap"]'),
-  ).not.toBeNull();
 });

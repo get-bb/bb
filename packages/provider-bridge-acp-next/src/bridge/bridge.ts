@@ -908,9 +908,103 @@ function freshDeclaredSessionOptions(
     : null;
 }
 
+const ACP_DISCOVERY_SESSION_DELETE_TIMEOUT_MS = 2_000;
+const ACP_DISCOVERY_SESSION_CLI_DELETE_TIMEOUT_MS = 15_000;
+
+interface AcpDiscoverySession {
+  capabilities: AcpAgentCapabilities;
+  sessionId: string;
+}
+
+function discoverySessionCliDeleteArgs(args: {
+  dialectId: string;
+  agentArgs: readonly string[];
+  sessionId: string;
+}): string[] | null {
+  if (
+    args.dialectId !== "opencode" ||
+    args.agentArgs.at(-1) !== "acp" ||
+    !/^[A-Za-z0-9_-]+$/u.test(args.sessionId)
+  ) {
+    return null;
+  }
+  return [...args.agentArgs.slice(0, -1), "session", "delete", args.sessionId];
+}
+
+async function endDiscoveryConnection(args: {
+  connection: AcpAgentConnection;
+  agent: AcpAgentCommandParam;
+  env: Record<string, string | undefined>;
+  dialectId: string;
+  session: AcpDiscoverySession | null;
+}): Promise<void> {
+  const { connection, agent, session } = args;
+  const agentDeletes = session?.capabilities.session.delete === true;
+  if (session !== null && agentDeletes) {
+    await connection
+      .request({
+        method: "session/delete",
+        params: { sessionId: session.sessionId },
+        resultSchema: z.unknown(),
+        timeoutMs: ACP_DISCOVERY_SESSION_DELETE_TIMEOUT_MS,
+      })
+      .catch(() => undefined);
+  }
+  await connection.kill();
+  if (session === null || agentDeletes) {
+    return;
+  }
+  const cliArgs = discoverySessionCliDeleteArgs({
+    dialectId: args.dialectId,
+    agentArgs: agent.args,
+    sessionId: session.sessionId,
+  });
+  if (cliArgs === null) {
+    return;
+  }
+  void execPortableFile(agent.command, cliArgs, {
+    cwd: agent.cwd ?? process.cwd(),
+    env: args.env,
+    maxBuffer: 64 * 1024,
+    timeout: ACP_DISCOVERY_SESSION_CLI_DELETE_TIMEOUT_MS,
+  }).catch(() => undefined);
+}
+
+async function resolveModelListWorkspace(
+  cwd: string | undefined,
+): Promise<string | undefined> {
+  if (cwd === undefined) {
+    return undefined;
+  }
+  const stats = await fs.stat(cwd).catch(() => null);
+  return stats?.isDirectory() === true ? cwd : undefined;
+}
+
+function inModelListWorkspace(
+  params: AcpModelListParams,
+  workspace: string | undefined,
+): AcpModelListParams {
+  if (workspace === undefined) {
+    return params;
+  }
+  const place = (command: AcpAgentCommandParam): AcpAgentCommandParam =>
+    command.cwd === undefined ? { ...command, cwd: workspace } : command;
+  return {
+    ...params,
+    ...(params.listCommand === undefined
+      ? {}
+      : { listCommand: place(params.listCommand) }),
+    ...(params.agent === undefined ? {} : { agent: place(params.agent) }),
+    ...(params.optionsAgent === undefined
+      ? {}
+      : { optionsAgent: place(params.optionsAgent) }),
+  };
+}
+
 async function loadDeclaredSessionOptions(
   agent: AcpAgentCommandParam,
   parameterizedModelPicker: boolean,
+  dialectId: string,
 ): Promise<ThreadSessionOption[]> {
   const key = declaredSessionOptionsKey(agent, parameterizedModelPicker);
   const cached = freshDeclaredSessionOptions(key);
@@ -949,6 +1043,7 @@ async function loadDeclaredSessionOptions(
       );
     }, MODEL_LIST_TIMEOUT_MS);
   });
+  let discoverySession: AcpDiscoverySession | null = null;
   try {
     await Promise.race([
       (async () => {
@@ -961,11 +1056,17 @@ async function loadDeclaredSessionOptions(
           env: childEnv,
           capabilities,
         });
-        await connection.request({
+        const newSession = await connection.request({
           method: "session/new",
           params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
           resultSchema: z.unknown(),
         });
+        const sessionId = isJsonObject(newSession)
+          ? newSession["sessionId"]
+          : undefined;
+        if (typeof sessionId === "string") {
+          discoverySession = { capabilities, sessionId };
+        }
       })(),
       timeoutReached,
     ]);
@@ -979,7 +1080,13 @@ async function loadDeclaredSessionOptions(
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
-    await connection.kill();
+    await endDiscoveryConnection({
+      connection,
+      agent,
+      env: childEnv,
+      dialectId,
+      session: discoverySession,
+    });
   }
   return settleDeclaredSessionOptions(key);
 }
@@ -997,6 +1104,7 @@ async function loadSessionDiscoveredModels(
   agent: AcpAgentCommandParam,
   reasoningProbePriorityModelIds: readonly string[],
   parameterizedModelPicker: boolean,
+  dialectId: string,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify({
     agent,
@@ -1049,6 +1157,7 @@ async function loadSessionDiscoveredModels(
   });
 
   let discoveredCapabilities: AcpAgentCapabilities | null = null;
+  let discoverySession: AcpDiscoverySession | null = null;
   try {
     const newSession = await Promise.race([
       (async () => {
@@ -1062,11 +1171,13 @@ async function loadSessionDiscoveredModels(
           env: childEnv,
           capabilities,
         });
-        return await connection.request({
+        const created = await connection.request({
           method: "session/new",
           params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
           resultSchema: acpSessionNewResultSchema,
         });
+        discoverySession = { capabilities, sessionId: created.sessionId };
+        return created;
       })(),
       timeoutReached,
     ]);
@@ -1122,7 +1233,13 @@ async function loadSessionDiscoveredModels(
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
-    await connection.kill();
+    await endDiscoveryConnection({
+      connection,
+      agent,
+      env: childEnv,
+      dialectId,
+      session: discoverySession,
+    });
     settleDeclaredSessionOptions(
       declaredSessionOptionsKey(agent, parameterizedModelPicker),
     );
@@ -3337,11 +3454,16 @@ async function handleModelList(
   params: AcpModelListParams,
   dialectId: string | undefined,
 ): Promise<void> {
+  const resolvedDialectId = resolveAcpDialect({
+    dialectId,
+    command: params.optionsAgent?.command ?? params.agent?.command ?? "",
+  }).id;
   const declaredOptions = (): Promise<ThreadSessionOption[]> =>
     params.optionsAgent
       ? loadDeclaredSessionOptions(
           params.optionsAgent,
           params.parameterizedModelPicker,
+          resolvedDialectId,
         )
       : Promise.resolve([]);
   function withDeclaredOptions(
@@ -3385,6 +3507,7 @@ async function handleModelList(
           params.agent,
           params.reasoningProbePriorityModelIds,
           params.parameterizedModelPicker,
+          resolvedDialectId,
         )
       : null;
   if (sessionDiscoveredModels) {
@@ -3510,9 +3633,12 @@ async function handleRequest(
       );
       await handleModelList(
         request.id,
-        buildAcpModelListParams(
-          decodeLaunchSpec(request.params.providerOptions),
-          modelPicker,
+        inModelListWorkspace(
+          buildAcpModelListParams(
+            decodeLaunchSpec(request.params.providerOptions),
+            modelPicker,
+          ),
+          await resolveModelListWorkspace(request.params.cwd),
         ),
         decodeDialectId(request.params.providerOptions),
       );

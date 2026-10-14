@@ -64,6 +64,13 @@
       "when": 1790788984846,
       "tag": "0008_credential_hash_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791756797997,
+      "tag": "0009_mcp_oauth",
+      "breakpoints": true
     }
   ]
 }

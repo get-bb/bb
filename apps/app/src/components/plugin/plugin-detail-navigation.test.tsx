@@ -451,9 +451,12 @@ describe("plugin details in the active workspace", () => {
     act(() =>
       openPluginDetailsInWorkspace({ pluginId: "tasks", title: "Tasks" }),
     );
-    act(() => screen.getByRole("button", { name: "Close Tasks" }).click());
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "notes", title: "Notes" }),
+    );
+    act(() => screen.getByRole("button", { name: "Close Notes" }).click());
     expect(screen.getByTestId("workspace").dataset.active).toBe(
-      "marketplace-plugin:docs",
+      "marketplace-plugin:tasks",
     );
     act(() => screen.getByRole("button", { name: "Hide panel" }).click());
     expect(closePanel).toHaveBeenCalledOnce();

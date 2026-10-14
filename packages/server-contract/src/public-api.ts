@@ -8,10 +8,12 @@ import {
 } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
+  recordTelemetryEventRequestSchema,
   setAiServiceSelectionRequestSchema,
   systemProviderEnabledRequestSchema,
   testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
+  type RecordTelemetryEventRequest,
   type SetAiServiceSelectionRequest,
   type SystemAiServicesResponse,
   type SystemProviderCatalogEntry,
@@ -221,6 +223,7 @@ import type {
   SystemAppUpdateApplyRequest,
   SystemAppUpdateQuery,
   SystemAppUpdateStatus,
+  SystemCliCommandStatus,
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -1919,6 +1922,14 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<TestAiServiceResponse>(),
     }),
+    recordTelemetryEvent: defineRoute({
+      path: "/system/telemetry/events",
+      method: "post",
+      request: jsonRequest<EmptyInput, RecordTelemetryEventRequest>(
+        recordTelemetryEventRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     generalSettings: defineRoute({
       path: "/settings/general",
       method: "put",
@@ -2124,6 +2135,24 @@ export const publicApiRoutes = {
         systemAppUpdateAcknowledgeRequestSchema,
       ),
       response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    cliCommand: defineRoute({
+      path: "/system/cli-command",
+      method: "get",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemCliCommandStatus>(),
+    }),
+    installCliCommand: defineRoute({
+      path: "/system/cli-command/install",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemCliCommandStatus>(),
+    }),
+    removeCliCommand: defineRoute({
+      path: "/system/cli-command/remove",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemCliCommandStatus>(),
     }),
   },
 };

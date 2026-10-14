@@ -2,12 +2,10 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   closeSession,
-  createConnection,
   createEnvironment,
   createProject,
   createThread,
   hostDaemonSessions,
-  migrate,
   markProjectDeleted,
   noopNotifier,
   openSession,
@@ -15,6 +13,7 @@ import {
   upsertHost,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { Host, Project } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { ApiError } from "../../src/errors.js";
@@ -39,8 +38,7 @@ interface SetupResult {
 type ThrowingCallback = () => void;
 
 function setup(): SetupResult {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const hub = new NotificationHub();
   const hostRow = upsertHost(db, noopNotifier, {
     id: "host_entity_lookup",

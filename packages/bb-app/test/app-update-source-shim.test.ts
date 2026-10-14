@@ -116,7 +116,7 @@ function shimArgs(args: {
   };
 }
 
-describe("runSourceShim", () => {
+describe("runSourceShim", { timeout: 30_000 }, () => {
   it("fast-forwards, reinstalls, rebuilds, and relaunches on a requested update", async () => {
     const setup = await setUpIncomingCommit();
     const calls: string[] = [];

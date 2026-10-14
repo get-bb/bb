@@ -4,5 +4,6 @@ export * from "./availability.js";
 export * from "./app-links.js";
 export * from "./crypto.js";
 export * from "./credentials.js";
+export * from "./oauth.js";
 export * from "./write-result.js";
 export * from "./tunnel-status.js";

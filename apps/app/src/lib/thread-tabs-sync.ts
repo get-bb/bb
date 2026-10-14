@@ -14,6 +14,7 @@ import {
 import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
+  ensureOpenFixedPanelHasActiveTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
@@ -90,6 +91,31 @@ export function reconcileFixedPanelTabsState(
       tabs,
     },
   };
+}
+
+export type FixedPanelTabsHydration =
+  | { kind: "migrate-local-tabs" }
+  | { kind: "replace"; state: FixedPanelTabsState };
+
+export function resolveFixedPanelTabsHydration({
+  current,
+  hasPendingWrite,
+  localTabs,
+  server,
+}: {
+  current: FixedPanelTabsState;
+  hasPendingWrite: boolean;
+  localTabs: readonly FixedPanelTab[];
+  server: ThreadTabsResponse;
+}): FixedPanelTabsHydration | null {
+  if (hasPendingWrite) return null;
+  if (server.revision === 0 && localTabs.length > 0) {
+    return { kind: "migrate-local-tabs" };
+  }
+  const next = ensureOpenFixedPanelHasActiveTab(
+    reconcileFixedPanelTabsState(current, server.tabs),
+  );
+  return next === current ? null : { kind: "replace", state: next };
 }
 
 function getWriteQueue(queryClient: QueryClient): Map<string, Promise<void>> {

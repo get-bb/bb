@@ -103,6 +103,12 @@ stored answer is discarded when the bridge fingerprint changes (plugin bundle
 digest, bridge options, env passthrough). A list that depends on login state,
 CLI version, or environment values is corrected only by the next refresh.
 
+A `workspace`-scoped provider's `model/list` carries `cwd`: the environment's
+directory for an existing thread or a reused environment, and the project's
+checkout on the chosen machine for a new thread in a project. It is absent when
+neither is known (a thread without a project, or a project with no checkout on
+that machine). A `host`-scoped provider never receives it.
+
 Still experimental on the declaration (see api_to_audit.md):
 `experimental_visibility` (`"installed"` hides the row until the bridge's
 health probe finds the agent), `experimental_bridgeOptions` (immutable JSON

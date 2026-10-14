@@ -51,22 +51,16 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
+import { LocationProbe } from "@/test/location-probe";
 
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("react-resizable-panels", async () => {
-  const { createRequire } = await import("node:module");
-  const { dirname, join } = await import("node:path");
-  const require = createRequire(import.meta.url);
-  return require(
-    join(
-      dirname(require.resolve("react-resizable-panels/package.json")),
-      "dist/react-resizable-panels.browser.cjs.js",
-    ),
-  );
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-browser"),
+);
 
 const GITHUB_PLUGIN = makePluginListItem({
   id: "github",
@@ -136,20 +130,6 @@ function RoutedPluginsView() {
       <LocationProbe />
     </>
   );
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <>
-      <output data-testid="route-path">{location.pathname}</output>
-      <output data-testid="route-search">{location.search}</output>
-    </>
-  );
-}
-
-function routeUrl(): string {
-  return `${screen.getByTestId("route-path").textContent}${screen.getByTestId("route-search").textContent}`;
 }
 
 function HistoryBackButton() {
@@ -913,7 +893,7 @@ describe("BB Official plugin detail routing", () => {
       expect(screen.getByRole("button", { name: "Close GitHub" })).toBeTruthy();
       fireEvent.click(screen.getByRole("link", { name: "Browse plugins" }));
       await waitFor(() =>
-        expect(screen.getByTestId("route-search").textContent).toBe(""),
+        expect(screen.getByTestId("location").textContent).toBe("/plugins"),
       );
       expect(
         screen.getByRole("button", { name: "Close Automations" }),
@@ -996,7 +976,9 @@ describe("BB Official plugin detail routing", () => {
     );
 
     await waitFor(() => {
-      expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/canvas?q=canvas&listing=bb-community",
+      );
     });
     await waitFor(() => {
       expect(document.querySelector("[data-plugin-summary]")?.textContent).toBe(
@@ -1014,7 +996,9 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("button", { name: "View installed plugin" }),
     );
     await waitFor(() => {
-      expect(routeUrl()).toBe("/plugins/canvas?q=canvas");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/canvas?q=canvas",
+      );
     });
     await waitFor(() => {
       expect(document.querySelector("[data-plugin-summary]")?.textContent).toBe(
@@ -1025,7 +1009,9 @@ describe("BB Official plugin detail routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "View listing" }));
     await waitFor(() => {
-      expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/canvas?q=canvas&listing=bb-community",
+      );
     });
   });
 
@@ -1349,9 +1335,8 @@ describe("BB Official plugin detail routing", () => {
         screen.getByRole("button", { name: `Close ${pluginName}` }),
       );
       await waitFor(() => {
-        expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
-        expect(screen.getByTestId("route-search").textContent).toBe(
-          installed ? "?view=installed&query=Local+GitHub" : "",
+        expect(screen.getByTestId("location").textContent).toBe(
+          installed ? "/plugins?view=installed&query=Local+GitHub" : "/plugins",
         );
         expect(document.activeElement).toBe(card);
         if (installed) expect(search).toHaveProperty("value", "Local GitHub");
@@ -1365,8 +1350,8 @@ describe("BB Official plugin detail routing", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
       await waitFor(() => {
-        expect(screen.getByTestId("route-path").textContent).toBe(
-          "/plugins/github",
+        expect(screen.getByTestId("location").textContent).toBe(
+          installed ? "/plugins/github?view=installed" : "/plugins/github",
         );
       });
     },
@@ -1447,9 +1432,7 @@ describe("BB Official plugin detail routing", () => {
           name: "Search installed plugins",
         }),
       ).toBeTruthy();
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        path.split("?")[0],
-      );
+      expect(screen.getByTestId("location").textContent).toBe(path);
       const pluginButton = await screen.findByRole("button", {
         name: "GitHub plugin details",
       });
@@ -1463,13 +1446,10 @@ describe("BB Official plugin detail routing", () => {
     expect(screen.getAllByText("GitHub", { selector: "h1" })).toHaveLength(1);
     fireEvent.click(relatedPluginButton);
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins/automations",
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/automations?view=installed",
       );
     });
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?view=installed",
-    );
     expect(
       await screen.findByRole("button", { name: "Close Automations" }),
     ).toBeTruthy();
@@ -1539,23 +1519,17 @@ describe("BB Official plugin detail routing", () => {
       (await screen.findAllByRole("link", { name: "BB Official" }))[0]!,
     );
     expect(await screen.findByRole("heading", { name: /^BB/u })).toBeTruthy();
-    let params = new URLSearchParams(
-      screen.getByTestId("route-search").textContent ?? "",
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins?category=code-and-reviews&sort=recently-added&author=11%3Abb-official%3Agithub%3Aget-bb",
     );
-    expect(params.get("author")).toBe("11:bb-official:github:get-bb");
-    expect(params.getAll("category")).toEqual(["code-and-reviews"]);
-    expect(params.get("sort")).toBe("recently-added");
 
     fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: /^BB/u })).toBeNull();
     });
-    params = new URLSearchParams(
-      screen.getByTestId("route-search").textContent ?? "",
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins?category=code-and-reviews&sort=recently-added",
     );
-    expect(params.has("author")).toBe(false);
-    expect(params.getAll("category")).toEqual(["code-and-reviews"]);
-    expect(params.get("sort")).toBe("recently-added");
 
     fireEvent.click(
       (await screen.findAllByRole("link", { name: "BB Official" }))[0]!,
@@ -1626,14 +1600,11 @@ describe("BB Official plugin detail routing", () => {
     const authorLinks = screen.getAllByRole("link", { name: "BB Official" });
     fireEvent.click(authorLinks.at(-1)!);
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins?author=11%3Abb-official%3Agithub%3Aget-bb",
+      );
     });
     expect(await screen.findByRole("heading", { name: /^BB/u })).toBeTruthy();
-    expect(
-      new URLSearchParams(
-        screen.getByTestId("route-search").textContent ?? "",
-      ).get("author"),
-    ).toBe("11:bb-official:github:get-bb");
   });
 });
 
@@ -2447,7 +2418,7 @@ describe("detail disable workspace cleanup", () => {
       if (fails) {
         expect(store.get(splitLayoutAtom)).toEqual(layout);
         expect(store.get(maximizedPaneIdAtom)).toBe("github");
-        expect(screen.getByTestId("route-path").textContent).toBe(
+        expect(screen.getByTestId("location").textContent).toBe(
           "/plugins/github/main",
         );
       } else {
@@ -2455,9 +2426,9 @@ describe("detail disable workspace cleanup", () => {
           content: { kind: "new-thread" },
         });
         expect(store.get(maximizedPaneIdAtom)).toBeNull();
-        expect(screen.getByTestId("route-path").textContent).toBe("/");
+        expect(screen.getByTestId("location").textContent).toBe("/");
         fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
-        expect(screen.getByTestId("route-path").textContent).toBe("/skills");
+        expect(screen.getByTestId("location").textContent).toBe("/skills");
       }
     },
   );
@@ -2549,16 +2520,16 @@ describe("plugin detail source and settings", () => {
       "value",
       "get-bb/bb",
     );
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?view=installed&configure=github",
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins/github?view=installed&configure=github",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
     expect(
       await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?view=installed",
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins/github?view=installed",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
@@ -2640,8 +2611,8 @@ describe("plugin detail source and settings", () => {
       "value",
       "get-bb/bb",
     );
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?view=installed&configure=github",
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins/github?view=installed&configure=github",
     );
   });
 
@@ -2666,13 +2637,16 @@ describe("plugin detail source and settings", () => {
       "value",
       "get-bb/bb",
     );
-    expect(screen.getByTestId("route-path").textContent).toBe("/threads/thr_1");
-    expect(screen.getByTestId("route-search").textContent).toBe("?panel=files");
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/threads/thr_1?panel=files",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
     expect(
       await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
-    expect(screen.getByTestId("route-search").textContent).toBe("?panel=files");
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/threads/thr_1?panel=files",
+    );
   });
 });

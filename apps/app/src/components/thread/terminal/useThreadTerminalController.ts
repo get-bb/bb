@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   TerminalCreateTarget,
@@ -46,16 +46,53 @@ interface TerminalTitleRenameRequest {
 type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 
-function shouldMountTerminalViewForPanel({
-  hasPanelOpened,
-  isPanelOpen,
-  isPanelPersistedOpen,
-}: {
+interface TerminalPanelVisibility {
   hasPanelOpened: boolean;
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
-}): boolean {
-  return isPanelOpen || (isPanelPersistedOpen && hasPanelOpened);
+}
+
+export function resolveTerminalPanelMount({
+  hasPanelOpened,
+  isPanelOpen,
+  isPanelPersistedOpen,
+}: TerminalPanelVisibility): {
+  hasPanelOpened: boolean;
+  shouldFetchTerminals: boolean;
+  shouldMountTerminalView: boolean;
+} {
+  const nextHasPanelOpened = isPanelOpen
+    ? true
+    : isPanelPersistedOpen && hasPanelOpened;
+  return {
+    hasPanelOpened: nextHasPanelOpened,
+    shouldFetchTerminals: isPanelOpen,
+    shouldMountTerminalView:
+      isPanelOpen || (isPanelPersistedOpen && nextHasPanelOpened),
+  };
+}
+
+export function selectActiveTerminalSession({
+  sessions,
+  target,
+  terminalId,
+}: {
+  sessions: readonly TerminalSession[];
+  target: TerminalCreateTarget;
+  terminalId: string;
+}): TerminalSession | null {
+  return (
+    sessions.find(
+      (session) =>
+        session.id === terminalId &&
+        isVisibleTerminalSession(session) &&
+        (target.kind !== "host_path" ||
+          (session.threadId === null &&
+            session.environmentId === null &&
+            session.hostId === target.hostId &&
+            (target.cwd === null || session.initialCwd === target.cwd))),
+    ) ?? null
+  );
 }
 
 export function useThreadTerminalController({
@@ -70,40 +107,24 @@ export function useThreadTerminalController({
   const pendingTitleRenameTimeoutRef =
     useRef<TerminalTitleRenameTimeout | null>(null);
   const [hasPanelOpened, setHasPanelOpened] = useState(isPanelOpen);
-  if (isPanelOpen && !hasPanelOpened) {
-    setHasPanelOpened(true);
-  } else if (!isPanelOpen && !isPanelPersistedOpen && hasPanelOpened) {
-    setHasPanelOpened(false);
-  }
-  const shouldMountTerminalView = shouldMountTerminalViewForPanel({
+  const panelMount = resolveTerminalPanelMount({
     hasPanelOpened,
     isPanelOpen,
     isPanelPersistedOpen,
   });
+  if (panelMount.hasPanelOpened !== hasPanelOpened) {
+    setHasPanelOpened(panelMount.hasPanelOpened);
+  }
+  const { shouldMountTerminalView } = panelMount;
   const terminalsQuery = useTerminals(terminalQueryScopeForTarget(target), {
-    enabled: isPanelOpen,
+    enabled: panelMount.shouldFetchTerminals,
   });
   const renameTerminal = useRenameTerminal();
-  const sessions = useMemo(() => {
-    const currentSessions =
-      terminalsQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
-    if (target.kind !== "host_path") {
-      return currentSessions;
-    }
-    return currentSessions.filter(
-      (session) =>
-        session.threadId === null &&
-        session.environmentId === null &&
-        session.hostId === target.hostId &&
-        (target.cwd === null || session.initialCwd === target.cwd),
-    );
-  }, [target, terminalsQuery.data?.sessions]);
-  const visibleSessions = useMemo(
-    () => sessions.filter(isVisibleTerminalSession),
-    [sessions],
-  );
-  const activeSession =
-    visibleSessions.find((session) => session.id === terminalId) ?? null;
+  const activeSession = selectActiveTerminalSession({
+    sessions: terminalsQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS,
+    target,
+    terminalId,
+  });
 
   useEffect(() => {
     return () => {

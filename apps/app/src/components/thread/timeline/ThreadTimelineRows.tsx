@@ -1964,7 +1964,7 @@ function isUnreadDividerCandidateAfterCutoff({
   return !isUserAuthoredConversationRow(row);
 }
 
-function buildTimelineRowsListItems({
+export function buildTimelineRowsListItems({
   rows,
   unreadDividerPlacement,
 }: BuildTimelineRowsListItemsArgs): TimelineRowsListItem[] {

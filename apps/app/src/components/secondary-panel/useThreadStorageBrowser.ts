@@ -31,6 +31,82 @@ function ancestorsOf(path: string | null): ReadonlySet<string> {
   return new Set(path ? threadStorageAncestorPaths(path) : []);
 }
 
+function withPaths(
+  folders: ReadonlySet<string>,
+  paths: readonly string[],
+): ReadonlySet<string> {
+  return paths.every((path) => folders.has(path))
+    ? folders
+    : new Set([...folders, ...paths]);
+}
+
+export interface ThreadStorageFolderState {
+  expandedFolders: ReadonlySet<string>;
+  foldersShowingAll: ReadonlySet<string>;
+  lastSelectedPath: string | null;
+  revealedPath: string | null;
+  threadId: string;
+}
+
+export function initialThreadStorageFolderState(
+  threadId: string,
+  selectedPath: string | null,
+): ThreadStorageFolderState {
+  return {
+    expandedFolders: ancestorsOf(selectedPath),
+    foldersShowingAll: ancestorsOf(selectedPath),
+    lastSelectedPath: selectedPath,
+    revealedPath: selectedPath,
+    threadId,
+  };
+}
+
+export function syncThreadStorageFolderState(
+  state: ThreadStorageFolderState,
+  { selectedPath, threadId }: { selectedPath: string | null; threadId: string },
+): ThreadStorageFolderState {
+  if (threadId !== state.threadId) {
+    return initialThreadStorageFolderState(threadId, selectedPath);
+  }
+  if (selectedPath === state.revealedPath) {
+    return state;
+  }
+  const ancestors = [...ancestorsOf(selectedPath)];
+  return {
+    expandedFolders: withPaths(state.expandedFolders, ancestors),
+    foldersShowingAll: withPaths(state.foldersShowingAll, ancestors),
+    lastSelectedPath: selectedPath ?? state.lastSelectedPath,
+    revealedPath: selectedPath,
+    threadId,
+  };
+}
+
+export function toggleThreadStorageFolderChain(
+  expandedFolders: ReadonlySet<string>,
+  chainPaths: readonly string[],
+): ReadonlySet<string> {
+  const key = chainPaths.at(-1);
+  if (key === undefined) return expandedFolders;
+  const next = new Set(expandedFolders);
+  if (expandedFolders.has(key)) {
+    for (const path of chainPaths) next.delete(path);
+  } else {
+    for (const path of chainPaths) next.add(path);
+  }
+  return next;
+}
+
+export function filterThreadStorageFiles(
+  files: readonly WorkspaceFile[],
+  searchQuery: string,
+): readonly WorkspaceFile[] {
+  const normalized = searchQuery.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return files;
+  }
+  return files.filter((file) => file.path.toLowerCase().includes(normalized));
+}
+
 export function useThreadStorageBrowser({
   files,
   onSelectPath,
@@ -38,66 +114,47 @@ export function useThreadStorageBrowser({
   threadId,
 }: UseThreadStorageBrowserArgs): ThreadStorageBrowserController {
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedFolders, setExpandedFolders] = useState(() =>
-    ancestorsOf(selectedPath),
+  const [folderState, setFolderState] = useState(() =>
+    initialThreadStorageFolderState(threadId, selectedPath),
   );
-  const [foldersShowingAll, setFoldersShowingAll] = useState(() =>
-    ancestorsOf(selectedPath),
-  );
-  const [revealedPath, setRevealedPath] = useState(selectedPath);
-  const [lastSelectedPath, setLastSelectedPath] = useState(selectedPath);
-  const [folderStateThreadId, setFolderStateThreadId] = useState(threadId);
-  if (threadId !== folderStateThreadId) {
-    setFolderStateThreadId(threadId);
-    setRevealedPath(selectedPath);
-    setLastSelectedPath(selectedPath);
-    setExpandedFolders(ancestorsOf(selectedPath));
-    setFoldersShowingAll(ancestorsOf(selectedPath));
-  } else if (selectedPath !== revealedPath) {
-    setRevealedPath(selectedPath);
-    if (selectedPath !== null) setLastSelectedPath(selectedPath);
-    const ancestors = [...ancestorsOf(selectedPath)];
-    if (ancestors.some((path) => !expandedFolders.has(path))) {
-      setExpandedFolders(new Set([...expandedFolders, ...ancestors]));
-    }
-    if (ancestors.some((path) => !foldersShowingAll.has(path))) {
-      setFoldersShowingAll(new Set([...foldersShowingAll, ...ancestors]));
-    }
+  const syncedFolderState = syncThreadStorageFolderState(folderState, {
+    selectedPath,
+    threadId,
+  });
+  if (syncedFolderState !== folderState) {
+    setFolderState(syncedFolderState);
   }
   const toggleFolder = useCallback((chainPaths: readonly string[]) => {
-    const key = chainPaths.at(-1);
-    if (key === undefined) return;
-    setExpandedFolders((current) => {
-      const next = new Set(current);
-      if (current.has(key)) {
-        for (const path of chainPaths) next.delete(path);
-      } else {
-        for (const path of chainPaths) next.add(path);
-      }
-      return next;
+    if (chainPaths.length === 0) return;
+    setFolderState((current) => {
+      const expandedFolders = toggleThreadStorageFolderChain(
+        current.expandedFolders,
+        chainPaths,
+      );
+      return expandedFolders === current.expandedFolders
+        ? current
+        : { ...current, expandedFolders };
     });
   }, []);
   const showAllInFolder = useCallback((folderPath: string) => {
-    setFoldersShowingAll((current) => new Set([...current, folderPath]));
+    setFolderState((current) => ({
+      ...current,
+      foldersShowingAll: new Set([...current.foldersShowingAll, folderPath]),
+    }));
   }, []);
 
   const loadedFiles = files ?? EMPTY_STORAGE_FILES;
-  const filteredFiles = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
-    if (normalized.length === 0) {
-      return loadedFiles;
-    }
-    return loadedFiles.filter((file) =>
-      file.path.toLowerCase().includes(normalized),
-    );
-  }, [loadedFiles, searchQuery]);
+  const filteredFiles = useMemo(
+    () => filterThreadStorageFiles(loadedFiles, searchQuery),
+    [loadedFiles, searchQuery],
+  );
 
   return {
-    expandedFolders,
+    expandedFolders: syncedFolderState.expandedFolders,
     toggleFolder,
-    foldersShowingAll,
+    foldersShowingAll: syncedFolderState.foldersShowingAll,
     showAllInFolder,
-    lastSelectedPath,
+    lastSelectedPath: syncedFolderState.lastSelectedPath,
     filteredFiles,
     loadedFiles,
     searchQuery,

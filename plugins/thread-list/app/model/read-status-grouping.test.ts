@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { makeSidebarThread, type SidebarThreadOverrides } from "./fixtures.js";
 import {
   buildSectionThreadList,
@@ -9,6 +9,9 @@ import {
   collapseParentThreads,
   createThreadUnreadPredicate,
   groupComparatorByReadStatus,
+  rememberHeldReadStatus,
+  resolveHeldReadStatus,
+  restoreHeldReadStatus,
 } from "./read-status-grouping.js";
 
 const read = { lastReadAt: 10_000 };
@@ -90,5 +93,49 @@ describe("collapseParentThreads", () => {
     expect(
       [...collapseParentThreads(threads, ["other-parent"])].sort(),
     ).toEqual(["child", "parent"]);
+  });
+});
+
+describe("resolveHeldReadStatus", () => {
+  afterEach(() => rememberHeldReadStatus(null));
+
+  it("keeps the open thread unread until another thread opens", () => {
+    const opened = resolveHeldReadStatus(
+      null,
+      [thread("opened"), thread("other", read)],
+      "opened",
+    );
+    const afterRead = resolveHeldReadStatus(
+      opened,
+      [thread("opened", read), thread("other", read)],
+      "opened",
+    );
+    expect(createThreadUnreadPredicate(afterRead)(thread("opened", read))).toBe(
+      true,
+    );
+
+    const afterSwitch = resolveHeldReadStatus(
+      afterRead,
+      [thread("opened", read), thread("other", read)],
+      "other",
+    );
+    expect(
+      createThreadUnreadPredicate(afterSwitch)(thread("opened", read)),
+    ).toBe(false);
+  });
+
+  it("keeps the held status when the sidebar remounts", () => {
+    rememberHeldReadStatus(
+      resolveHeldReadStatus(null, [thread("remounted")], "remounted"),
+    );
+
+    const remounted = resolveHeldReadStatus(
+      restoreHeldReadStatus("remounted"),
+      [thread("remounted", read)],
+      "remounted",
+    );
+    expect(
+      createThreadUnreadPredicate(remounted)(thread("remounted", read)),
+    ).toBe(true);
   });
 });

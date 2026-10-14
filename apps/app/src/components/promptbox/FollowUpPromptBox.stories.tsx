@@ -407,6 +407,7 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     insertions: 128,
     deletions: 24,
     lineStatsComplete: true,
+    fileCount: 3,
   },
   branch: {
     currentBranch: STORY_BRANCH_NAME,

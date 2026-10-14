@@ -70,6 +70,7 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
         hasUncommittedChanges: true,
         insertions: 1,
         lineStatsComplete: true,
+        fileCount: 0,
         state: "dirty_uncommitted",
       },
     },

@@ -75,36 +75,10 @@ vi.mock("jotai", async (importOriginal) => {
   };
 });
 
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<
-    {
-      getLayout: () => number[];
-      setLayout: (layout: number[]) => void;
-    },
-    { children?: ReactNode }
-  >(({ children }, ref) => {
-    React.useImperativeHandle(
-      ref,
-      () => ({ getLayout: () => [50, 50], setLayout: () => {} }),
-      [],
-    );
-    return React.createElement(
-      "div",
-      { "data-testid": "panel-group" },
-      children,
-    );
-  });
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: { children?: ReactNode }) =>
-    React.createElement("div", { "data-testid": "panel" }, children);
-  const PanelResizeHandle = ({ children }: { children?: ReactNode }) =>
-    React.createElement("div", null, children);
-
-  return { Panel, PanelGroup, PanelResizeHandle };
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-stub"),
+);
 
 vi.mock(
   "@/components/secondary-panel/ThreadMetadataContent",

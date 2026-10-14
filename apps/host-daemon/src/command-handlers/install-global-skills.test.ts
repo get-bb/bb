@@ -1,15 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import type { HostDaemonSkillTree } from "@bb/host-daemon-contract";
 import {
   installGlobalSkills,
@@ -17,20 +10,6 @@ import {
 } from "./install-global-skills.js";
 
 const logger = { debug: () => undefined, warn: () => undefined };
-
-const tempDirs: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
-});
-
-async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "bb-install-global-skills-"));
-  tempDirs.push(dir);
-  return dir;
-}
 
 function createTreePayload(name: string, body: string): HostDaemonSkillTree {
   const entries = [

@@ -169,6 +169,22 @@ function scrollTo(position: number) {
   fireEvent.scroll(scrollContainer());
 }
 
+function clampScrollTopToContent(container: HTMLElement) {
+  let scrollTop = 0;
+  const maxScrollTop = () =>
+    container.querySelector("a") === null ? 0 : Number.MAX_SAFE_INTEGER;
+  Object.defineProperty(container, "scrollTop", {
+    configurable: true,
+    get: () => {
+      scrollTop = Math.min(scrollTop, maxScrollTop());
+      return scrollTop;
+    },
+    set: (value: number) => {
+      scrollTop = Math.min(value, maxScrollTop());
+    },
+  });
+}
+
 function selectTab(name: string) {
   fireEvent.click(screen.getByRole("button", { name }));
 }
@@ -197,6 +213,7 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
 
   it("retains separate document positions when the outgoing layout clamps", () => {
     renderHarness();
+    clampScrollTopToContent(scrollContainer());
     scrollTo(780);
     selectTab("short.md");
     scrollTo(0);

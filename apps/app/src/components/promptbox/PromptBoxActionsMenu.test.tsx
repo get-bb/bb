@@ -34,6 +34,7 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import type { PluginComposerPlusMenuContribution } from "@/components/plugin/PluginComposerActions";
 import { emptyPromptDraftState } from "@bb/client-core";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -223,7 +224,7 @@ describe("PromptBoxActionsMenu", () => {
     },
   );
 
-  it("restores composer focus after an update-only plugin item", async () => {
+  it("restores composer focus after an update-only plugin item in the compact drawer", async () => {
     const view: ComposerView = {
       scope: { kind: "new-thread", projectId: null },
       layout: "expanded",
@@ -255,23 +256,22 @@ describe("PromptBoxActionsMenu", () => {
       },
     ];
     render(
-      <MemoryRouter>
-        <PluginComposerHostProvider value={host}>
-          <PluginComposerViewProvider value={view}>
-            <input id="composer-focus-target" aria-label="Composer" />
-            <PromptBoxActionsMenu
-              onAction={() => {}}
-              pluginItems={pluginItems}
-            />
-          </PluginComposerViewProvider>
-        </PluginComposerHostProvider>
-      </MemoryRouter>,
+      <CompactViewportOverrideProvider isCompactViewport>
+        <MemoryRouter>
+          <PluginComposerHostProvider value={host}>
+            <PluginComposerViewProvider value={view}>
+              <input id="composer-focus-target" aria-label="Composer" />
+              <PromptBoxActionsMenu
+                onAction={() => {}}
+                pluginItems={pluginItems}
+              />
+            </PluginComposerViewProvider>
+          </PluginComposerHostProvider>
+        </MemoryRouter>
+      </CompactViewportOverrideProvider>,
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Prompt actions" }),
-      { button: 0 },
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Prompt actions" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Update prompt" }),
     );
@@ -299,7 +299,7 @@ describe("PromptBoxActionsMenu", () => {
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
       setDraft: vi.fn(),
-      focus: vi.fn(),
+      focus: () => document.getElementById("composer-focus-target")?.focus(),
     };
     const pluginItems: readonly PluginComposerPlusMenuContribution[] = [
       {
@@ -359,6 +359,7 @@ describe("PromptBoxActionsMenu", () => {
       <MemoryRouter>
         <PluginComposerHostProvider value={host}>
           <PluginComposerViewProvider value={view}>
+            <input id="composer-focus-target" aria-label="Composer" />
             <button id="plugin-focus-target">Plugin focus target</button>
             <PromptBoxActionsMenu
               actions={[{ kind: "plan", text: "/plan " }]}
@@ -385,9 +386,12 @@ describe("PromptBoxActionsMenu", () => {
     expect(screen.queryByText("Zeta Writer")).toBeNull();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Improve prompt" }));
-    await waitFor(() => {
-      expect(focusedByPlugin).toHaveBeenCalledWith("plus-menu-test");
-      expect(document.activeElement?.id).toBe("plugin-focus-target");
-    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", { name: "Improve prompt" }),
+      ).toBeNull(),
+    );
+    expect(focusedByPlugin).toHaveBeenCalledWith("plus-menu-test");
+    expect(document.activeElement?.id).toBe("plugin-focus-target");
   });
 });

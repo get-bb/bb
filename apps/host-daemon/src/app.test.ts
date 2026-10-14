@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import {
@@ -16,7 +15,7 @@ import {
   type HostDaemonContributedEnvEntry,
 } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
-import { createDeferredPromise } from "@bb/test-helpers";
+import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DISPATCH_TEST_BRIDGE_LAUNCH,
@@ -76,8 +75,6 @@ type StartIdleProviderSessionReaperArgsForTest = Parameters<
   typeof startIdleProviderSessionReaper
 >[0];
 
-const tempDirs: string[] = [];
-
 function createLogger() {
   return {
     debug: vi.fn(),
@@ -85,12 +82,6 @@ function createLogger() {
     warn: vi.fn(),
     error: vi.fn(),
   } satisfies HostDaemonLogger;
-}
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
 }
 
 function readFetchUrl(input: RequestInfo | URL): URL {
@@ -376,14 +367,9 @@ async function settleReaperPromiseChain(): Promise<void> {
   }
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 async function createAppFixture(

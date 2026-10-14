@@ -238,6 +238,66 @@ export const aiRequestLog = sqliteTable(
   ],
 );
 
+export const oauthGrant = sqliteTable(
+  "oauth_grant",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => server.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    clientName: text("client_name").notNull(),
+    resource: text("resource").notNull(),
+    scope: text("scope").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+    lastUsedAt: timestampMs("last_used_at"),
+    revokedAt: timestampMs("revoked_at"),
+  },
+  (table) => [
+    index("oauth_grant_user_id_idx").on(table.userId),
+    index("oauth_grant_server_id_idx").on(table.serverId),
+  ],
+);
+
+export const oauthCode = sqliteTable(
+  "oauth_code",
+  {
+    codeHash: text("code_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => server.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    clientName: text("client_name").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    resource: text("resource").notNull(),
+    scope: text("scope").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    expiresAt: timestampMs("expires_at").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [index("oauth_code_expires_at_idx").on(table.expiresAt)],
+);
+
+export const oauthRefreshToken = sqliteTable(
+  "oauth_refresh_token",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    grantId: text("grant_id")
+      .notNull()
+      .references(() => oauthGrant.id, { onDelete: "cascade" }),
+    expiresAt: timestampMs("expires_at").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+    rotatedAt: timestampMs("rotated_at"),
+  },
+  (table) => [index("oauth_refresh_token_grant_id_idx").on(table.grantId)],
+);
+
 export const schema = {
   user,
   session,
@@ -251,4 +311,7 @@ export const schema = {
   auditLog,
   aiUsageDay,
   aiRequestLog,
+  oauthGrant,
+  oauthCode,
+  oauthRefreshToken,
 };

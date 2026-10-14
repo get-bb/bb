@@ -18,7 +18,6 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createConnection,
   getInstalledPlugin,
   getPluginKvValue,
   getInstalledPluginRegistration,
@@ -26,13 +25,13 @@ import {
   listPluginSchedules,
   listPluginArtifacts,
   listPluginStateSnapshots,
-  migrate,
   setPluginSettingsValues,
   upsertPluginSchedule,
   upsertInstalledPlugin,
   upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
@@ -90,8 +89,7 @@ async function commitPlugin(
 describe("plugin update scheduling", () => {
   it("waits one full interval when no plugins are eligible for update checks", async () => {
     const HOUR = 60 * 60 * 1_000;
-    const emptyDb = createConnection(":memory:");
-    migrate(emptyDb);
+    const emptyDb = createMigratedConnection();
     const scheduled: number[] = [];
     const emptyService = createPluginService({
       aiServices: createAiServiceRegistry(),
@@ -123,8 +121,7 @@ describe("plugin update scheduling", () => {
 
   it("defers a periodic update check while the server is moving", async () => {
     const HOUR = 60 * 60 * 1_000;
-    const frozenDb = createConnection(":memory:");
-    migrate(frozenDb);
+    const frozenDb = createMigratedConnection();
     const scheduled: { delayMs: number; onElapsed: () => Promise<void> }[] = [];
     const notifySystem = vi.fn();
     const frozenService = createPluginService({
@@ -173,8 +170,7 @@ describe("plugin update scheduling", () => {
 
   it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
     const HOUR = 60 * 60 * 1_000;
-    const schedulingDb = createConnection(":memory:");
-    migrate(schedulingDb);
+    const schedulingDb = createMigratedConnection();
     const schedulingWorkDir = await mkdtemp(
       join(tmpdir(), "bb-plugin-update-scheduling-"),
     );
@@ -334,8 +330,7 @@ describe("plugin update service and routes", () => {
     | undefined;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-"));
     repo = join(workDir, "repo");
     await mkdir(repo, { recursive: true });

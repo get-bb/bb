@@ -88,7 +88,7 @@ export function CommitsSection({
         <>
           <InfoSubheading
             label="Files changed"
-            count={committedFiles.files.length}
+            count={committedFiles.stats.fileCount}
             trailing={<ChangedFilesTally section={committedFiles} />}
           />
           <ChangedFilesList

@@ -427,7 +427,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "read-state-changed": {
     flush: "debounced",
-    dirty: [markThreadDetailQueryStale, markThreadListQueriesStale],
+    dirty: [markThreadDetailQueryStale, dirtyActiveThreadListQueries],
   },
   "tabs-changed": {
     flush: "immediate",
@@ -992,41 +992,6 @@ function markThreadDetailQueryStale({
     queryKey: threadQueryKey(threadId),
     refetchType: "none",
   });
-}
-
-function markThreadListQueriesStale({
-  projectId,
-  queryClient,
-}: ThreadRealtimeDirtyContext): void {
-  queryClient.invalidateQueries({
-    queryKey: sidebarNavigationQueryKey(),
-    refetchType: "none",
-  });
-  if (!projectId) {
-    queryClient.invalidateQueries({
-      queryKey: threadsQueryKey(),
-      refetchType: "none",
-    });
-    return;
-  }
-  for (const queryKey of getCachedProjectThreadListInvalidationQueryKeys({
-    projectId,
-    queryClient,
-  })) {
-    queryClient.invalidateQueries({
-      queryKey,
-      refetchType: "none",
-    });
-  }
-  for (const queryKey of getCachedGlobalThreadListInvalidationQueryKeys({
-    queryClient,
-  })) {
-    queryClient.invalidateQueries({
-      exact: true,
-      queryKey,
-      refetchType: "none",
-    });
-  }
 }
 
 function patchThreadListPendingInteractionState({

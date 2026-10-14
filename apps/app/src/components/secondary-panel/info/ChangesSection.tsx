@@ -7,6 +7,7 @@ import {
   DiffStatsTally,
 } from "@/components/ui/diff-stats-tally.js";
 import {
+  formatOmittedChangedFilesLabel,
   selectWorkspaceChangedFilesSections,
   toChangeTally,
   type WorkspaceChangedFileSelection,
@@ -60,19 +61,27 @@ export function ChangedFilesList({
   onChangedFileClick,
   onOpenChangedFile,
 }: ChangedFilesHandlers & { section: WorkspaceChangedFilesSection }) {
+  const omittedFilesLabel = formatOmittedChangedFilesLabel(section.stats);
   return (
-    <InfoList
-      items={section.files}
-      getKey={(file) => `${file.status}:${file.path}`}
-      renderItem={(file) => (
-        <ChangedFileRow
-          file={file}
-          section={section}
-          onChangedFileClick={onChangedFileClick}
-          onOpenChangedFile={onOpenChangedFile}
-        />
-      )}
-    />
+    <>
+      <InfoList
+        items={section.files}
+        getKey={(file) => `${file.status}:${file.path}`}
+        renderItem={(file) => (
+          <ChangedFileRow
+            file={file}
+            section={section}
+            onChangedFileClick={onChangedFileClick}
+            onOpenChangedFile={onOpenChangedFile}
+          />
+        )}
+      />
+      {omittedFilesLabel ? (
+        <p className="m-0 text-2xs leading-6 text-subtle-foreground">
+          {omittedFilesLabel}
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -87,7 +96,7 @@ export function UncommittedChangesSection({
   return (
     <InfoSection
       label="Uncommitted files"
-      count={section.files.length}
+      count={section.stats.fileCount}
       collapse={collapse}
       trailing={<ChangedFilesTally section={section} />}
     >

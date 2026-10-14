@@ -185,6 +185,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
   },
   {
+    name: "mcp",
+    pluginId: "bb--mcp",
+    defaultEnabled: false,
+  },
+  {
     name: "scheduled-send",
     pluginId: "scheduled-send",
     defaultEnabled: true,

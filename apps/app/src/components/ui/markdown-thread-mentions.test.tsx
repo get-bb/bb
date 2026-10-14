@@ -174,31 +174,40 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.get).not.toHaveBeenCalled();
   });
 
-  it("resolves many unknown raw ids in one bounded request", async () => {
+  it("resolves many unknown raw ids in bounded requests", async () => {
     const alphabet = "23456789abcdefghijkmnpqrstuvwxyz";
-    const threadIds = Array.from({ length: 40 }, (_, index) => {
+    const threadIds = Array.from({ length: 48 }, (_, index) => {
       const high = alphabet[Math.floor(index / alphabet.length)] ?? "2";
       const low = alphabet[index % alphabet.length] ?? "2";
       return `thr_22222222${high}${low}`;
     });
-    const content = [...threadIds, threadIds[0]].join(" ");
+    const firstMessage = [...threadIds.slice(0, 40), threadIds[0]].join(" ");
+    const secondMessage = threadIds.slice(40).join(" ");
     const { container } = renderMarkdown(
-      <MarkdownPreview
-        content={content}
-        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
-      />,
+      <>
+        <MarkdownPreview
+          content={firstMessage}
+          threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+        />
+        <MarkdownPreview
+          content={secondMessage}
+          threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+        />
+      </>,
       [],
     );
 
     await waitFor(() => {
-      expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
+      expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(2);
     });
-    const request = vi.mocked(sdk.threads.resolveMentions).mock.calls[0]?.[0];
-    expect(request?.threadIds).toEqual(threadIds.slice(0, 32));
-    expect(new Set(request?.threadIds).size).toBe(32);
+    expect(
+      vi
+        .mocked(sdk.threads.resolveMentions)
+        .mock.calls.map(([request]) => request.threadIds),
+    ).toEqual([threadIds.slice(0, 32), threadIds.slice(40)]);
     expect(sdk.threads.get).not.toHaveBeenCalled();
     expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
-    expect(container.textContent).toBe(content);
+    expect(container.textContent).toBe(`${firstMessage}${secondMessage}`);
   });
 
   it("renders an exact raw-id inline-code span as a linked pill", () => {
@@ -324,7 +333,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
   });
 
-  it("checks raw-id boundaries across formatting and Markdown link labels", () => {
+  it("checks raw-id boundaries across formatting, inline code and Markdown link labels", () => {
     const id = "thr_dcwivn5n8w";
     const content = [
       `prefix**${id}**`,
@@ -334,6 +343,8 @@ describe("MarkdownPreview thread mentions", () => {
       String.raw`docs\\**${id}**`,
       `**${id}**/logs`,
       String.raw`**${id}**\\logs`,
+      `prefix\`${id}\``,
+      `\`${id}\`/logs`,
       `[prefix**${id}**](https://example.com/word)`,
       `[/tmp/**${id}**](https://example.com/unix)`,
       `[**${id}**/logs](https://example.com/continuation)`,
@@ -344,7 +355,14 @@ describe("MarkdownPreview thread mentions", () => {
         content={content}
         threadMentions={{ mentions: [], preserveSoftBreaks: true }}
       />,
-      [],
+      [
+        threadResponse({
+          id,
+          projectId: "proj_target",
+          title: "Boundary target",
+          titleFallback: "Boundary target",
+        }),
+      ],
     );
 
     expect(container.textContent).toContain(`prefix${id}`);
