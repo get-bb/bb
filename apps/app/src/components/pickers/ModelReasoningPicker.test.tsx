@@ -1487,7 +1487,7 @@ describe("ModelReasoningPicker service tiers", () => {
     expect(onAgentOptionChange).toHaveBeenLastCalledWith("depth", "shallow");
   });
 
-  it("keeps up to six reasoning levels on one wrapping row and lays a longer ladder out as an even grid", () => {
+  it("keeps a short ladder on one row and lays out a crowded ladder as an even grid", () => {
     const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
     const layoutOf = (
       pickerReasoningOptions: readonly PickerOption<ReasoningLevel>[],
@@ -1510,6 +1510,24 @@ describe("ModelReasoningPicker service tiers", () => {
     };
 
     expect(layoutOf(reasoningOptions)).toEqual(["flex flex-wrap", true]);
+    const standardLadder = [
+      { value: "low", label: "Low" },
+      { value: "medium", label: "Medium" },
+      { value: "high", label: "High" },
+      { value: "xhigh", label: "Extra High" },
+      { value: "max", label: "Max" },
+    ];
+    expect(layoutOf(standardLadder)).toEqual(["flex flex-wrap", true]);
+    expect(
+      layoutOf([...standardLadder, { value: "ultra", label: "Ultra" }]),
+    ).toEqual(["flex flex-wrap", true]);
+    expect(
+      layoutOf([
+        ...standardLadder.slice(0, 4),
+        { value: "ultracode", label: "Ultracode" },
+        { value: "max", label: "Max" },
+      ]),
+    ).toEqual(["grid grid-cols-3", true]);
     expect(
       layoutOf(levels.map((level) => ({ value: level, label: level }))),
     ).toEqual(["grid grid-cols-4", true]);
