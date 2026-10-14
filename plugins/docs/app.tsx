@@ -952,23 +952,11 @@ function InlineDocument({
             : "my-2 min-w-0 overflow-hidden rounded-lg border border-border bg-background"
         }
       >
-        <header
-          className={
-            panel
-              ? "flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2"
-              : "flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground"
-          }
-        >
-          {panel ? (
-            <div className="min-w-0 flex-1 truncate text-sm font-medium">
-              {document.title}
-            </div>
-          ) : (
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="shrink-0 font-semibold">Docs</span>
-              <span className="truncate opacity-70">{document.title}</span>
-            </div>
-          )}
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-semibold">Docs</span>
+            <span className="truncate opacity-70">{document.title}</span>
+          </div>
           {(state.busy || state.saving || asking) && (
             <span
               role="status"
@@ -1027,6 +1015,17 @@ function InlineDocument({
               disabled={!state.loaded}
               onClick={() => void copy()}
             />
+            {panel && (
+              <DocumentAction
+                label="Open in Docs"
+                icon="ExternalLink"
+                onClick={() =>
+                  navigate.toPluginPanel("docs", {
+                    subPath: `${document.vaultId}/${document.path}`,
+                  })
+                }
+              />
+            )}
             {openInTab && (
               <>
                 <span className="mx-1 h-4 border-l border-border" />
@@ -1038,21 +1037,6 @@ function InlineDocument({
               </>
             )}
           </div>
-          {panel && (
-            <Button
-              className="size-8 shrink-0"
-              size="icon"
-              variant="ghost"
-              aria-label="Open in Docs"
-              onClick={() =>
-                navigate.toPluginPanel("docs", {
-                  subPath: `${document.vaultId}/${document.path}`,
-                })
-              }
-            >
-              <HugeiconsIcon icon={ArrowUpRight01Icon} />
-            </Button>
-          )}
         </header>
         {(state.error || askError) && (
           <div
@@ -1290,24 +1274,23 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
     return <InlineDocument document={document} panel />;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2">
-        <div className="min-w-0 flex-1 truncate text-sm font-medium">
-          {document.title}
-        </div>
-        <Button
-          className="size-8 shrink-0"
-          size="icon"
-          variant="ghost"
-          aria-label="Open in Docs"
-          onClick={() =>
-            navigate.toPluginPanel("docs", {
-              subPath: `${document.vaultId}/${document.path}`,
-            })
-          }
-        >
-          <HugeiconsIcon icon={ArrowUpRight01Icon} />
-        </Button>
-      </div>
+      <TooltipProvider delayDuration={200}>
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-semibold">Docs</span>
+            <span className="truncate opacity-70">{document.title}</span>
+          </div>
+          <DocumentAction
+            label="Open in Docs"
+            icon="ExternalLink"
+            onClick={() =>
+              navigate.toPluginPanel("docs", {
+                subPath: `${document.vaultId}/${document.path}`,
+              })
+            }
+          />
+        </header>
+      </TooltipProvider>
       <HtmlPreview {...document} panel />
     </div>
   );
