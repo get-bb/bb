@@ -82,5 +82,4 @@ describe("useQueuedMessagesExpanded", () => {
     expect(renderExpanded(props, store, true).result.current[0]).toBe(false);
     expect(desktop.result.current[0]).toBe(true);
   });
-
 });

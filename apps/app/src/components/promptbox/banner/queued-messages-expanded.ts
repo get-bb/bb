@@ -94,7 +94,13 @@ export function useQueuedMessagesExpanded({
   const setExpanded = useCallback(
     (expanded: boolean) => {
       setToggledQueues((current) =>
-        setQueueExpanded(current, threadId, expanded, queuedMessages, defaultExpanded),
+        setQueueExpanded(
+          current,
+          threadId,
+          expanded,
+          queuedMessages,
+          defaultExpanded,
+        ),
       );
     },
     [defaultExpanded, queuedMessages, setToggledQueues, threadId],

@@ -217,9 +217,20 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     act(() => next.click());
     expect(visiblePage()).toBe("Thread");
     expect(previous.disabled).toBe(false);
-    expect(current().querySelector('[data-guide-mobile-scene="conversation"]')).not.toBeNull();
-    for (const id of ["timeline-renderers", "message-directives", "code-fence-renderers", "pending-interaction", "app-overlay"]) {
-      expect(current().querySelector(`a[href="#surface-${id}"]`), id).not.toBeNull();
+    expect(
+      current().querySelector('[data-guide-mobile-scene="conversation"]'),
+    ).not.toBeNull();
+    for (const id of [
+      "timeline-renderers",
+      "message-directives",
+      "code-fence-renderers",
+      "pending-interaction",
+      "app-overlay",
+    ]) {
+      expect(
+        current().querySelector(`a[href="#surface-${id}"]`),
+        id,
+      ).not.toBeNull();
     }
     act(() => next.click());
     expect(visiblePage()).toBe("Side panel");

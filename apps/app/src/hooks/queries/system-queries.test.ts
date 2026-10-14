@@ -447,16 +447,10 @@ describe("useSystemExecutionOptions", () => {
   it("shows the machine's catalog for a project until that project's own catalog lands, then remembers it per project", async () => {
     const projectModel = { ...CODEX_MODEL, model: "project-model" };
     vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
-    const first = createQueryClientTestHarness();
-    const warm = renderHook(
-      () =>
-        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
-      { wrapper: first.wrapper },
+    await warmExecutionOptions(
+      { hostId: "host-a", providerId: "codex" },
+      (data) => expect(data).toEqual(CODEX_CATALOG),
     );
-    await waitFor(() =>
-      expect(warm.result.current.data).toEqual(CODEX_CATALOG),
-    );
-    warm.unmount();
 
     let resolveProject: (
       value: SystemExecutionOptionsResponse,
@@ -473,36 +467,35 @@ describe("useSystemExecutionOptions", () => {
       projectId: "proj-a",
     };
     const project = createQueryClientTestHarness();
-    const { result, unmount } = renderHook(
-      () => useSystemExecutionOptions(projectArgs),
-      { wrapper: project.wrapper },
+    const observer = observe(
+      project.queryClient,
+      liveSystemExecutionOptionsQueryOptions(projectArgs),
     );
-    expect(result.current.isPlaceholderData).toBe(true);
-    expect(result.current.data?.models).toEqual([CODEX_MODEL]);
-    await waitFor(() =>
+    expect(observer.getCurrentResult().isPlaceholderData).toBe(true);
+    expect(observer.getCurrentResult().data?.models).toEqual([CODEX_MODEL]);
+    await vi.waitFor(() =>
       expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining(projectArgs),
       ),
     );
     resolveProject({ ...CODEX_CATALOG, models: [projectModel] });
-    await waitFor(() =>
-      expect(result.current.data?.models).toEqual([projectModel]),
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data?.models).toEqual([projectModel]),
     );
-    expect(result.current.isPlaceholderData).toBe(false);
-    unmount();
+    expect(observer.getCurrentResult().isPlaceholderData).toBe(false);
+    stopObserving();
 
     vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
     const reload = createQueryClientTestHarness();
     const remembered = (projectId: string | undefined) =>
-      renderHook(
-        () =>
-          useSystemExecutionOptions({
-            hostId: "host-a",
-            providerId: "codex",
-            ...(projectId === undefined ? {} : { projectId }),
-          }),
-        { wrapper: reload.wrapper },
-      ).result.current.data?.models;
+      reloadExecutionOptions(
+        {
+          hostId: "host-a",
+          providerId: "codex",
+          ...(projectId === undefined ? {} : { projectId }),
+        },
+        reload.queryClient,
+      ).data?.models;
     expect(remembered("proj-a")).toEqual([projectModel]);
     expect(remembered(undefined)).toEqual([CODEX_MODEL]);
     expect(remembered("proj-b")).toEqual([CODEX_MODEL]);

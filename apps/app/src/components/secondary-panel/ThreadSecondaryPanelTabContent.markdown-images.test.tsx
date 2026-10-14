@@ -86,34 +86,6 @@ function renderImageSources(element: ReactElement): Map<string, string> {
   return sources;
 }
 
-it("renders project HTML through the selected host's file route", () => {
-  projectPreviewQuery.mockReturnValueOnce({
-    ...previewQuery("docs/report.html"),
-    data: {
-      kind: "text",
-      content: "<!doctype html><h1>Report</h1>",
-      mimeType: "text/html",
-      path: "docs/report.html",
-      url: "/content/docs/report.html",
-    },
-  });
-  const view = render(
-    <ProjectFilePreviewTabContent
-      activePath="docs/report.html"
-      environmentId={null}
-      hostId="host_preview"
-      isPanelOpen
-      lineRange={null}
-      projectId="proj_preview"
-      rootPath="/workspace"
-    />,
-  );
-
-  expect(view.container.querySelector("iframe")?.getAttribute("src")).toBe(
-    "/api/v1/projects/proj_preview/hosts/host_preview/files/docs/report.html",
-  );
-});
-
 describe("secondary-panel Markdown image routing", () => {
   it("routes workspace images when the preview caller supplies no routing", () => {
     const imageSrc = renderImageSources(

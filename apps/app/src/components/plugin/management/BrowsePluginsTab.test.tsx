@@ -736,14 +736,14 @@ describe("BrowsePluginsTab installed plugin switch", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.startsWith("/api/v1/plugin-catalog/search")) {
-          return jsonResponse({
+          return Response.json({
             results: [installedEntry, TASKS_ENTRY],
             collections: [],
             categories: [],
           });
         }
         if (url === "/api/v1/plugins" && init?.method !== "POST") {
-          return jsonResponse({
+          return Response.json({
             plugins: [
               makeInstalledPlugin({
                 id: "memory",
@@ -754,7 +754,7 @@ describe("BrowsePluginsTab installed plugin switch", () => {
           });
         }
         if (url === "/api/v1/plugins/memory/enable") {
-          return jsonResponse({
+          return Response.json({
             ok: true,
             plugin: makeInstalledPlugin({
               id: "memory",
@@ -763,7 +763,7 @@ describe("BrowsePluginsTab installed plugin switch", () => {
             }),
           });
         }
-        return jsonResponse({ error: "not found" }, 404);
+        return Response.json({ error: "not found" }, { status: 404 });
       },
     );
     vi.stubGlobal("fetch", fetchMock);
