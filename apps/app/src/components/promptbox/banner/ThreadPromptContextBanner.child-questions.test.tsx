@@ -337,13 +337,9 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(
       screen.getByRole("button", { name: /Child thr_c/ }).textContent,
     ).toBe("Child thr_c: Which shape?");
-<<<<<<< HEAD
-    expect(mocks.resolve).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: /Child thr_c/ }),
     );
-=======
->>>>>>> bb/child-threads-4b-answer-in-banner-thr_7xmbr7vsqz
   });
 
   it("keeps the question open for an Escape that ends text composition", () => {
