@@ -265,7 +265,7 @@ function QuestionInputBlock({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
-      {showPrompt && (density === "compact" || question.prompt) ? (
+      {showPrompt && question.prompt ? (
         <div className="text-xs font-medium text-foreground">
           {question.prompt}
         </div>
