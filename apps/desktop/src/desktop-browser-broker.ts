@@ -56,6 +56,7 @@ export function createDesktopBrowserBroker(args: {
   const registryListeners = new Set<() => void>();
   const snapshots = new Map<string, string>();
   let hostId: string | null = null;
+  let serverOrigin: string | null = null;
 
   function instanceForWindow(webContentsId: number): InstanceEntry | undefined {
     return [...instances.values()].find(
@@ -316,15 +317,17 @@ export function createDesktopBrowserBroker(args: {
           instance.descriptor.generation = randomUUID();
       } else changed();
     },
-    resetServer() {
+    setServerOrigin(value: string) {
+      if (serverOrigin === value) return;
+      serverOrigin = value;
       hostId = null;
       for (const lease of [...leases.values()]) revoke(lease);
-      args.manager.destroyAll();
       for (const instance of instances.values()) {
         instance.threads.clear();
         instance.descriptor.generation = randomUUID();
       }
       snapshots.clear();
+      args.manager.setServerOrigin(value);
     },
     getTarget(webContentsId: number): BbDesktopBrowserTarget | null {
       const instance = instanceForWindow(webContentsId);

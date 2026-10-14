@@ -1,4 +1,9 @@
-import { getAppSettings, getProjectExecutionDefaults, getThread } from "@bb/db";
+import {
+  getAppSettings,
+  getProjectExecutionDefaults,
+  getQueuedThreadStartMessage,
+  getThread,
+} from "@bb/db";
 import {
   DEFAULT_SERVICE_TIER,
   isStandardReasoningLevel,
@@ -8,9 +13,11 @@ import {
   type PermissionMode,
   type ProjectExecutionDefaults,
   type ReasoningLevel,
+  type RecordedThreadExecutionOptions,
   type ResolvedThreadExecutionOptions,
   type ServiceTier,
   type ThreadExecutionSource,
+  type Thread,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -25,6 +32,7 @@ import {
   resolveThreadExecutionPermissionMode,
 } from "./thread-default-policy.js";
 import { getLastExecutionOptions } from "./thread-events.js";
+import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 interface ExecutionPlanFieldInput<TValue> {
@@ -66,6 +74,26 @@ interface ExistingThreadExecutionPlan {
   resolvedExecution: ResolvedThreadExecutionOptions;
 }
 
+function getStoredThreadExecutionOptions(
+  deps: Pick<AppDeps, "db">,
+  thread: Thread,
+): RecordedThreadExecutionOptions | null {
+  const lastExecution = getLastExecutionOptions(deps, thread.id);
+  if (lastExecution !== null || thread.status !== "pending") {
+    return lastExecution;
+  }
+  const queuedStart = getQueuedThreadStartMessage(deps.db, thread.id);
+  if (queuedStart === null) return null;
+  const queued = toThreadQueuedMessage(queuedStart);
+  return {
+    model: queued.model,
+    reasoningLevel: queued.reasoningLevel,
+    permissionMode: queued.permissionMode,
+    serviceTier: queued.serviceTier,
+    source: "client/turn/requested",
+  };
+}
+
 export function resolveExistingThreadPermissionMode(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
   threadId: string,
@@ -83,9 +111,9 @@ export function resolveExistingThreadPermissionMode(
     thread.parentThreadId !== null
       ? getThread(deps.db, thread.parentThreadId)
       : null;
-  const lastExecutionPermissionMode = getLastExecutionOptions(
+  const lastExecutionPermissionMode = getStoredThreadExecutionOptions(
     deps,
-    thread.id,
+    thread,
   )?.permissionMode;
   const permissionMode = clampPermissionModeToHost(deps, {
     hostId: resolveEnvironmentHostId(deps, thread.environmentId),
@@ -293,11 +321,11 @@ export async function resolveExistingThreadExecutionPlan(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveExistingThreadExecutionPlanArgs,
 ): Promise<ExistingThreadExecutionPlan> {
-  const lastExecution = getLastExecutionOptions(deps, args.threadId);
   const thread = getThread(deps.db, args.threadId);
   if (!thread) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
+  const lastExecution = getStoredThreadExecutionOptions(deps, thread);
   const rawProjectExecution =
     args.projectDefaults === undefined
       ? getProjectExecutionDefaults(deps.db, {
