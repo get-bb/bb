@@ -33,7 +33,7 @@ const SERVER_MENU_ITEM_IDS = [
   DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID,
   WINDOW_SERVER_MENU_ITEM_ID,
 ];
-export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
+export const SET_SERVER_URL_MENU_LABEL = "Edit Server…";
 export const CONNECT_SERVERS_SKIPPED_MENU_LABELS: Record<
   ConnectServerSyncSkipReason,
   string
@@ -132,6 +132,9 @@ export function createServerMenuItems(
       },
     },
     {
+      enabled: args.servers.some(
+        (server) => server.checked && server.id.startsWith("custom:"),
+      ),
       label: SET_SERVER_URL_MENU_LABEL,
       click() {
         args.setServerUrl();
