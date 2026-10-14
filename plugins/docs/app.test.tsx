@@ -1644,7 +1644,11 @@ describe("Docs nav panel", () => {
     );
     expect(slot.queryByRole("button", { name: "Add to chat" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
-    expect(slot.queryByRole("button", { name: "Open in Docs" })).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Open in Docs" }));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      args: ["docs", { subPath: "personal/plans/panel-release.md" }],
+    });
   });
 
   it("preserves the file opener host through autosave, conflict overwrite, and reload", async () => {
