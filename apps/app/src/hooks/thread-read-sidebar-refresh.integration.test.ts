@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
 import { sdk } from "@/lib/sdk";
+import { bindSdkToPlugin } from "@/lib/plugin-bound-sdk";
 import {
   makeSidebarBootstrapResponse,
   makeProjectWithThreadsResponse,
@@ -24,14 +25,21 @@ afterEach(() => {
 });
 
 it.each(
-  (["read", "unread"] as const).flatMap((mode) =>
-    [false, true].flatMap((fails) =>
-      [false, true].map((refreshing) => ({ mode, fails, refreshing })),
+  (["core", "plugin"] as const).flatMap((surface) =>
+    (["read", "unread"] as const).flatMap((mode) =>
+      [false, true].flatMap((fails) =>
+        [false, true].map((refreshing) => ({
+          surface,
+          mode,
+          fails,
+          refreshing,
+        })),
+      ),
     ),
   ),
 )(
-  "preserves sidebar refreshes when marking $mode (fails=$fails, refreshing=$refreshing)",
-  async ({ mode, fails, refreshing }) => {
+  "preserves sidebar refreshes through $surface when marking $mode (fails=$fails, refreshing=$refreshing)",
+  async ({ surface, mode, fails, refreshing }) => {
     const queryClient = createAppQueryClient({
       defaultOptions: {
         mutations: { retry: false },
@@ -100,7 +108,13 @@ it.each(
         });
         await vi.waitFor(() => expect(fetchSidebar).toHaveBeenCalledTimes(1));
       }
-      const marking = mutation.mutate({ threadId: parent.id });
+      const bound = bindSdkToPlugin(sdk, "test", queryClient);
+      const marking =
+        surface === "core"
+          ? mutation.mutate({ threadId: parent.id })
+          : mode === "read"
+            ? bound.threads.markRead({ threadId: parent.id })
+            : bound.threads.markUnread({ threadId: parent.id });
       if (fails) await expect(marking).rejects.toBe(failure);
       else await marking;
       if (refreshing) expect(signals[0]?.aborted).toBe(true);

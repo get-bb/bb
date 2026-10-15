@@ -1,5 +1,5 @@
 import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import type {
   UpdateThreadRequest,
@@ -433,17 +433,6 @@ export async function beginThreadReadStateTransaction({
   queryClient,
   threadId,
 }: BeginThreadReadStateTransactionArgs): Promise<ThreadReadStateTransaction> {
-  const interruptedQueryKeys = [
-    threadQueryKey(threadId),
-    threadsQueryKey(),
-    sidebarNavigationQueryKey(),
-  ].flatMap((queryKey) =>
-    queryClient
-      .getQueryCache()
-      .findAll({ queryKey })
-      .filter((query) => query.state.fetchStatus !== "idle")
-      .map((query) => query.queryKey),
-  );
   const transaction = await runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>
       applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
@@ -463,27 +452,11 @@ export async function beginThreadReadStateTransaction({
     queryClient,
     threadId,
   });
-  return { ...transaction, lastReadAt, interruptedQueryKeys };
+  return { ...transaction, lastReadAt };
 }
 
 export interface ThreadReadStateTransaction extends ThreadListMutationTransaction {
   lastReadAt: number | null;
-  interruptedQueryKeys: QueryKey[];
-}
-
-export function settleThreadReadStateTransaction({
-  queryClient,
-  transaction,
-}: {
-  queryClient: QueryClient;
-  transaction: ThreadReadStateTransaction | undefined;
-}): void {
-  for (const queryKey of transaction?.interruptedQueryKeys ?? []) {
-    void queryClient.invalidateQueries(
-      { exact: true, queryKey },
-      { cancelRefetch: false },
-    );
-  }
 }
 
 export function rollbackThreadReadStateTransaction({
