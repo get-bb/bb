@@ -1,7 +1,8 @@
 import {
-  MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX,
+  MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_SIZE_PX,
+  MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   RAIL_CONTROL_SIZE_PX,
   RAIL_PADDING_PX,
   SIDEBAR_FOOTER_CARD_GAP_PX,
@@ -98,8 +99,9 @@ export function getMacosWindowChromeGeometry(
   desktopInfo: BbDesktopInfoResult,
 ): MacosWindowChromeGeometry {
   const inset =
-    desktopInfo?.macosTrafficLightInset ?? MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX;
-  const topInset = desktopInfo?.macosTrafficLightTopInset ?? inset;
+    desktopInfo?.macosTrafficLightInset ?? MACOS_TRAFFIC_LIGHT_INSET_PX;
+  const topInset =
+    desktopInfo?.macosTrafficLightTopInset ?? MACOS_TRAFFIC_LIGHT_TOP_INSET_PX;
   const trafficLightCenterY = topInset + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2;
   const trafficLightReserve =
     inset +

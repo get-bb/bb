@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX,
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_SIZE_PX,
@@ -71,8 +70,8 @@ describe("desktop chrome geometry", () => {
   ])(
     "keeps $name chrome clear of and centered on the traffic lights",
     ({ inset, topInset }) => {
-      const reportedInset = inset ?? MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX;
-      const reportedTopInset = topInset ?? reportedInset;
+      const reportedInset = inset ?? MACOS_TRAFFIC_LIGHT_INSET_PX;
+      const reportedTopInset = topInset ?? MACOS_TRAFFIC_LIGHT_TOP_INSET_PX;
       const geometry = getMacosWindowChromeGeometry({
         ...macosDesktopApi,
         macosTrafficLightInset: inset,
