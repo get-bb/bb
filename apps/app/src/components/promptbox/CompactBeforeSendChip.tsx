@@ -43,11 +43,11 @@ export function CompactBeforeSendChip({
               "gap-1.5 rounded-full border text-xs tabular-nums [&_[data-icon-root]]:size-3.5",
               compactFirst
                 ? "border-warning/20 bg-warning/5 text-warning-text hover:bg-warning/10 hover:text-warning-text aria-pressed:bg-warning/5 aria-pressed:text-warning-text aria-pressed:hover:bg-warning/10"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+                : "border-border text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
           >
             <Icon
-              name="Minimize2"
+              name="CircleArrowShrink"
               className="max-md:pointer-coarse:hidden"
               aria-hidden
             />
