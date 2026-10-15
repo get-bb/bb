@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { useLatestRef } from "@/hooks/useLatestRef";
 import {
+  browserNavigationEdgeGuardPx,
   findTouchById,
   hasTextSelectionWithin,
   isHorizontallyScrollableElement,
@@ -10,7 +11,6 @@ import {
 const DRAG_INTENT_PX = 12;
 const DRAG_SETTLE_MS = 220;
 const DRAG_CLICK_SUPPRESSION_MS = 400;
-const BROWSER_NAVIGATION_EDGE_PX = 24;
 const IGNORED_TARGET_SELECTOR =
   'input, textarea, select, [contenteditable="true"], [role="slider"], [data-vaul-no-drag], [data-no-sidebar-swipe], [data-no-secondary-panel-swipe]';
 
@@ -252,12 +252,13 @@ export function useHorizontalDismissDrag(options: Options) {
     ) => {
       if (hasTextSelectionWithin(boundary)) return;
       const view = boundary.ownerDocument.defaultView;
+      const edgeGuardPx = browserNavigationEdgeGuardPx();
       if (
         (optionsRef.current.direction === "left" &&
           view !== null &&
-          x > view.innerWidth - BROWSER_NAVIGATION_EDGE_PX) ||
+          x > view.innerWidth - edgeGuardPx) ||
         (optionsRef.current.direction === "right" &&
-          x < BROWSER_NAVIGATION_EDGE_PX)
+          x < edgeGuardPx)
       ) {
         return;
       }

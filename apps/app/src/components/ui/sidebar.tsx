@@ -14,6 +14,7 @@ import {
   usePanelShelfState,
 } from "./secondary-panel-shelf-visibility.js";
 import {
+  browserNavigationEdgeGuardPx,
   findTouchById,
   hasTextSelectionWithin,
   isHorizontallyScrollableElement,
@@ -24,7 +25,6 @@ const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.86;
 const SIDEBAR_MOBILE_MAX_WIDTH_PX = 360;
 const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, ${SIDEBAR_MOBILE_MAX_WIDTH_PX}px)`;
-const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
@@ -206,7 +206,7 @@ function createSidebarInsetSwipeSession({
 
 function isSidebarSwipeEdgeZoneTouch(clientX: number): boolean {
   return (
-    clientX >= SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX &&
+    clientX >= browserNavigationEdgeGuardPx() &&
     clientX < SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX
   );
 }
@@ -1420,7 +1420,7 @@ const SidebarInset = React.forwardRef<
       const touch = event.touches.item(0);
       if (
         touch == null ||
-        touch.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX
+        touch.clientX < browserNavigationEdgeGuardPx()
       ) {
         return;
       }
@@ -1476,7 +1476,7 @@ const SidebarInset = React.forwardRef<
         event.pointerType !== "touch" ||
         !event.isPrimary ||
         event.button !== 0 ||
-        event.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX ||
+        event.clientX < browserNavigationEdgeGuardPx() ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
       ) {
@@ -1576,7 +1576,7 @@ const SidebarInset = React.forwardRef<
         event.defaultPrevented ||
         !isCompactViewport ||
         openMobile ||
-        event.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX ||
+        event.clientX < browserNavigationEdgeGuardPx() ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
       ) {
