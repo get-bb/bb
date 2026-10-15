@@ -1124,7 +1124,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",
     description:
-      "When an idle Claude Code or Pi thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before the next send. Click the chip to keep the full history for that send.",
+      "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
