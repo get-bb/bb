@@ -1,3 +1,7 @@
+import {
+  includeColdEventRows,
+  selectColdEventRecords,
+} from "./cold-event-chunks.js";
 import { prepareCachedQuery } from "../connection.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { events, threadPruningCursors } from "../schema.js";
@@ -28,6 +32,18 @@ interface Support {
   itemId: string | null;
   parentToolCallId: string | null;
   hasOutput: number;
+}
+
+function hasCommandOutput(data: string): boolean {
+  const payload: unknown = JSON.parse(data);
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "item" in payload &&
+    typeof payload.item === "object" &&
+    payload.item !== null &&
+    "aggregatedOutput" in payload.item
+  );
 }
 
 export function emptyResolvedItemPruningProbe(): ResolvedItemPruningProbe {
@@ -95,7 +111,7 @@ const prepareOutput = (db: DbQueryConnection) =>
     db,
     "events_thread_turn_type_item_sequence_idx",
     completionPredicate,
-    sql<number>`CASE WHEN json_valid(data) THEN json_type(data, '$.item.aggregatedOutput') IS NOT NULL ELSE 0 END`,
+    sql<number>`CASE WHEN json_valid(bb_text(data)) THEN json_type(bb_text(data), '$.item.aggregatedOutput') IS NOT NULL ELSE 0 END`,
   );
 const prepareCompletion = (db: DbQueryConnection) =>
   prepareSupport(
@@ -135,7 +151,11 @@ function pruneResolvedItemCandidates(
           : candidate.type === "item/commandExecution/outputDelta"
             ? prepareOutput
             : prepareCompletion;
-    return prepareCachedQuery(db, build).all({
+    const afterSequence =
+      args.kind === "background" && probe.probePhase === 1
+        ? Math.max(candidate.sequence, probe.probeSequence)
+        : probe.probeSequence;
+    const inline = prepareCachedQuery(db, build).all({
       threadId: args.threadId,
       turnId: candidate.turnId,
       itemId: candidate.itemId,
@@ -147,6 +167,38 @@ function pruneResolvedItemCandidates(
       beforeSequence: candidate.sequence,
       limit,
     });
+    if (
+      (build !== prepareLifecycle &&
+        build !== prepareCompletion &&
+        build !== prepareOutput) ||
+      candidate.itemId === null
+    )
+      return inline;
+    return includeColdEventRows(
+      db,
+      {
+        threadId: args.threadId,
+        itemIds: [candidate.itemId],
+        types: ["item/completed"],
+        afterSequence,
+        turnId:
+          build === prepareCompletion || build === prepareOutput
+            ? (candidate.turnId ?? undefined)
+            : undefined,
+        limit,
+      },
+      inline,
+      (row) => ({
+        id: row.id,
+        sequence: row.sequence,
+        type: row.type,
+        itemKind: row.itemKind,
+        itemId: row.itemId,
+        parentToolCallId: row.parentToolCallId,
+        hasOutput:
+          build === prepareOutput ? Number(hasCommandOutput(row.data)) : 1,
+      }),
+    );
   };
   for (const candidate of rows) {
     if (remaining <= 0) break;
@@ -171,9 +223,28 @@ function pruneResolvedItemCandidates(
         db.get(sql`SELECT 1 FROM events WHERE id = ${probe.probeWitnessId}
         AND thread_id = ${args.threadId} AND turn_id = ${candidate.turnId} AND type = 'item/completed'
         AND item_id = ${candidate.itemId} AND item_kind = ${kind} AND parent_tool_call_id IS ${candidate.parentToolCallId}
-        AND (${candidate.type} <> 'item/commandExecution/outputDelta' OR CASE WHEN json_valid(data) THEN json_type(data, '$.item.aggregatedOutput') IS NOT NULL ELSE 0 END)`);
+        AND (${candidate.type} <> 'item/commandExecution/outputDelta' OR CASE WHEN json_valid(bb_text(data)) THEN json_type(bb_text(data), '$.item.aggregatedOutput') IS NOT NULL ELSE 0 END)`);
       remaining -= 1;
-      if (!witness) {
+      const coldWitness =
+        !witness &&
+        candidate.itemId !== null &&
+        candidate.turnId !== null &&
+        kind !== undefined
+          ? selectColdEventRecords(db, {
+              threadId: args.threadId,
+              turnId: candidate.turnId,
+              itemIds: [candidate.itemId],
+              itemKinds: [kind],
+              types: ["item/completed"],
+              limit: 1,
+              predicate: (row) =>
+                row.id === probe.probeWitnessId &&
+                row.parentToolCallId === candidate.parentToolCallId &&
+                (candidate.type !== "item/commandExecution/outputDelta" ||
+                  hasCommandOutput(row.data)),
+            })[0]
+          : undefined;
+      if (!witness && !coldWitness) {
         probe.probePhase = 0;
         probe.probeSequence = 0;
         probe.probeWitnessId = null;

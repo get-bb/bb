@@ -1,3 +1,4 @@
+import { storedText } from "@bb/db";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
@@ -1190,9 +1191,9 @@ function shouldPreserveThreadProvisionCancellationOutcome(
         and(
           eq(events.threadId, args.thread.id),
           eq(events.type, "system/thread-provisioning"),
-          sql`json_extract(${events.data}, '$.status') = 'cancelled'`,
+          sql`json_extract(${storedText(events.data)}, '$.status') = 'cancelled'`,
           or(
-            sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
+            sql`json_extract(${storedText(events.data)}, '$.provisioningId') = ${args.provisioningId}`,
             sql`${events.sequence} = (select max(last.sequence) from events last where last.thread_id = ${args.thread.id} and last.environment_id = ${args.thread.environmentId} and last.type = 'system/thread-provisioning')`,
           ),
         ),

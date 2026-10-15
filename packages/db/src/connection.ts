@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { resourceUsage, threadCpuUsage } from "node:process";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { registerHostPathSqlFunctions } from "./data/host-path-sql.js";
+import { registerStoredTextSqlFunctions } from "./stored-text.js";
 import {
   finishQueryDiagnostics,
   type QueryDiagnosticsLogFields,
@@ -286,6 +287,7 @@ export function createConnection(
   sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   registerHostPathSqlFunctions(sqlite);
+  registerStoredTextSqlFunctions(sqlite);
   instrumentSqliteClient(sqlite, options);
 
   const db = drizzle({ client: sqlite, schema });

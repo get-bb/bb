@@ -663,9 +663,7 @@ function dropEventToolNameColumn(db: DbConnection): void {
   dropThreadConversationOutlinesTable(db);
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
-  // The same rewind also rewinds the later deferred-message table (0108).
   db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
-  // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
     .all();
@@ -703,20 +701,6 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
   }
 }
 
-/**
- * Undo migration 0110, the dispatch-queue rework.
- *
- * 0110 adds the queue's wait columns (schedule, typed wait, wait holder,
- * payload kind and its retry reference), the system-notice and failure-reason
- * sidecars, their two partial indexes, and the thread's pending start
- * context.
- * A rewind that clears its journal row must remove all of them before the
- * replay's ADDs hit a table that already has them.
- *
- * The table 0110 DROPs (`deferred_thread_messages`, added by 0108) needs
- * nothing here. Every rewind that clears 0110's journal row also clears
- * 0108's, so the replay recreates the table before 0110 drops it again.
- */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropIdleLifecycleIndexes(db);
   rewindThreadPruningWork(db);
@@ -783,7 +767,6 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
 function dropQueueReworkSchema(db: DbConnection): void {
   dropQueuedMessageAttemptColumns(db);
   rewindEnvironmentProvisioningMigration(db);
-  // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
     "queued_thread_messages_due_idx",
     "queued_thread_messages_wait_holder_idx",
@@ -1786,6 +1769,7 @@ describe("migrate", () => {
         confirmThreadArchive: true,
         showDiagnosticEvents: true,
         keepHistoryAfterContextClear: false,
+        coldEventCompression: false,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},

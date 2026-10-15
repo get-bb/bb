@@ -1009,6 +1009,20 @@
       "when": 1792010323040,
       "tag": "0143_queued_message_state",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "6",
+      "when": 1792055497492,
+      "tag": "0144_cold_event_chunks",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "6",
+      "when": 1792062732919,
+      "tag": "0145_stored_payload_compression",
+      "breakpoints": true
     }
   ]
 }

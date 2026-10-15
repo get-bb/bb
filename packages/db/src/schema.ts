@@ -39,6 +39,7 @@ import type {
   ProjectKind,
 } from "@bb/domain";
 import type { RetainedEventOutputPath } from "./retained-event-output.js";
+import { compressedText, STORED_TEXT_MIN_BYTES } from "./stored-text.js";
 
 export const authUsers = sqliteTable(
   "user",
@@ -730,7 +731,7 @@ export const threadSearchSegments = sqliteTable(
     sourceKind: text("source_kind").$type<ThreadSearchSourceKind>().notNull(),
     sourceKey: text("source_key").notNull(),
     sourceSeq: integer("source_seq"),
-    text: text("text").notNull(),
+    text: compressedText("text").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -744,6 +745,11 @@ export const threadSearchSegments = sqliteTable(
       table.threadId,
       table.sourceSeq,
     ),
+    index("thread_search_segments_compression_idx")
+      .on(table.id)
+      .where(
+        sql`typeof(${table.text}) = 'text' AND octet_length(${table.text}) >= ${sql.raw(String(STORED_TEXT_MIN_BYTES))}`,
+      ),
   ],
 );
 
@@ -799,7 +805,7 @@ export const events = sqliteTable(
     itemId: text("item_id"),
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
     parentToolCallId: text("parent_tool_call_id"),
-    data: text("data").notNull().default("{}"),
+    data: compressedText("data").notNull().default("{}"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -845,6 +851,11 @@ export const events = sqliteTable(
         sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
       ),
     index("events_environment_idx").on(table.environmentId),
+    index("events_compression_idx")
+      .on(table.id)
+      .where(
+        sql`typeof(${table.data}) = 'text' AND octet_length(${table.data}) >= ${sql.raw(String(STORED_TEXT_MIN_BYTES))}`,
+      ),
     index("events_provider_identity_idx")
       .on(table.providerThreadId, table.createdAt)
       .where(sql`${table.type} = 'thread/identity'`),
@@ -874,13 +885,47 @@ export const retainedEventOutputs = sqliteTable(
       .primaryKey()
       .references(() => events.id, { onDelete: "cascade" }),
     outputPath: text("output_path").$type<RetainedEventOutputPath>().notNull(),
-    value: text("value").notNull(),
+    value: compressedText("value").notNull(),
     expiresAt: integer("expires_at").notNull(),
   },
   (table) => [
     index("retained_event_outputs_expiry_idx").on(
       table.expiresAt,
       table.eventId,
+    ),
+    index("retained_event_outputs_compression_idx")
+      .on(table.eventId)
+      .where(
+        sql`typeof(${table.value}) = 'text' AND octet_length(${table.value}) >= ${sql.raw(String(STORED_TEXT_MIN_BYTES))}`,
+      ),
+  ],
+);
+
+export const eventColdChunks = sqliteTable(
+  "event_cold_chunks",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    seqStart: integer("seq_start").notNull(),
+    seqEnd: integer("seq_end").notNull(),
+    eventCount: integer("event_count").notNull(),
+    uncompressedBytes: integer("uncompressed_bytes").notNull(),
+    codec: text("codec").notNull().default("zstd-3"),
+    itemIds: text("item_ids", { mode: "json" }).$type<string[]>().notNull(),
+    payload: blob("payload", { mode: "buffer" }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("event_cold_chunks_thread_seq_idx").on(
+      table.threadId,
+      table.seqStart,
+      table.seqEnd,
+    ),
+    check(
+      "event_cold_chunks_range_check",
+      sql`${table.seqStart} <= ${table.seqEnd} AND ${table.eventCount} > 0`,
     ),
   ],
 );
@@ -955,10 +1000,15 @@ export const promptHistoryEntries = sqliteTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     scope: text("scope").$type<PromptHistoryScope>().notNull(),
     requestSequence: integer("request_sequence").notNull(),
-    input: text("input").notNull(),
+    input: compressedText("input").notNull(),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
+    index("prompt_history_entries_compression_idx")
+      .on(table.id)
+      .where(
+        sql`typeof(${table.input}) = 'text' AND octet_length(${table.input}) >= ${sql.raw(String(STORED_TEXT_MIN_BYTES))}`,
+      ),
     uniqueIndex("prompt_history_entries_thread_request_idx").on(
       table.threadId,
       table.requestSequence,

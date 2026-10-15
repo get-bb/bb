@@ -18,6 +18,8 @@ import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
+  runColdEventCompressionMaintenance,
+  runStoredPayloadCompressionMaintenance,
   DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
   DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
@@ -29,6 +31,7 @@ import {
   getDatabaseCompactionStats,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
+  getAppSettings,
   getEnvironment,
   isDatabaseMaintenanceIdle,
   listArchivedThreadsPendingTeardown,
@@ -80,7 +83,6 @@ interface PluginScheduleSweeper {
 
 type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
-  /** Liveness directory for `plugin:<id>` wait holders. */
   plugins: QueueWaitPluginDirectory;
 };
 
@@ -175,6 +177,7 @@ export async function runPeriodicSweepJobs(
 
 export function runDatabaseMaintenanceSweep(
   deps: DatabaseMaintenanceSweepDeps,
+  options: { allowFullCompaction: boolean } = { allowFullCompaction: true },
 ): void {
   const deferredLegacyTables = listDeferredLegacyTables(deps.db);
   if (deferredLegacyTables.length > 0) {
@@ -216,17 +219,24 @@ export function runDatabaseMaintenanceSweep(
         { freelistStats },
         "Incremental database vacuum skipped below freelist threshold",
       );
+      if (
+        !options.allowFullCompaction ||
+        !getAppSettings(deps.db).coldEventCompression
+      )
+        return;
+    } else {
+      try {
+        const result = runIncrementalVacuum(deps.db, {
+          maxPages: options.allowFullCompaction
+            ? DATABASE_INCREMENTAL_VACUUM_MAX_PAGES
+            : 256,
+        });
+        deps.logger.info({ result }, "Incremental database vacuum completed");
+      } catch (error) {
+        deps.logger.warn({ err: error }, "Incremental database vacuum failed");
+      }
       return;
     }
-    try {
-      const result = runIncrementalVacuum(deps.db, {
-        maxPages: DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
-      });
-      deps.logger.info({ result }, "Incremental database vacuum completed");
-    } catch (error) {
-      deps.logger.warn({ err: error }, "Incremental database vacuum failed");
-    }
-    return;
   }
 
   const activity = getDatabaseMaintenanceActivity(deps.db);
@@ -596,7 +606,37 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
-    run: runDatabaseMaintenanceSweep,
+    run: (deps) => runDatabaseMaintenanceSweep(deps),
+  },
+  {
+    cadenceMs: 60_000,
+    category: "maintenance",
+    name: "cold-event-compression",
+    run(deps, now) {
+      const outcome = runColdEventCompressionMaintenance(deps.db, {
+        limitThreads: 1,
+        now,
+      });
+      const payload = runStoredPayloadCompressionMaintenance(deps.db);
+      if (!outcome.enabled) return;
+      if (outcome.eventsCompressed === 0 && payload.rowsCompressed === 0)
+        return;
+      for (const threadId of outcome.threadIds) {
+        deps.hub.notifyThread(threadId, ["history-compacted"]);
+      }
+      if (getDatabaseAutoVacuumMode(deps.db) === "incremental") {
+        runDatabaseMaintenanceSweep(deps, { allowFullCompaction: false });
+      }
+      deps.logger.info(
+        {
+          after: outcome.after,
+          before: outcome.before,
+          summary: outcome.summary,
+          payload,
+        },
+        "Cold event compression completed",
+      );
+    },
   },
   {
     cadenceMs: 0,

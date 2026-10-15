@@ -107,6 +107,19 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   messages above the `Context cleared` boundary in the timeline, outline, and
   message lookups. The next prompt still starts a fresh provider conversation,
   and the context meter still resets.
+- `coldEventCompression` (default false; Settings → General → Compress chat
+  storage): `bb settings general coldEventCompression true` enables lossless
+  zstd compression of event payloads, retained tool output, saved prompts and
+  search text when it saves space. A bounded background pass runs every minute;
+  completed history in threads idle for seven days is also packed into chunks.
+  Data retention and normal pruning are unchanged. Incremental vacuum reclaims
+  freed pages, and the hourly sweep can fully compact a fragmented database
+  while app work is idle. Disabling stops future compression; compressed data
+  stays readable. New turns append normally. Rewind snapshots are unaffected.
+  The SDK uses
+  `sdk.system.updateGeneralSettings({ ...settings, coldEventCompression: true })`.
+  The database upgrade also removes duplicate text from the search index,
+  independently of this setting; search results use the original search text.
 - `confirmThreadArchive` (default true): set false to archive parent and child
   threads in the app without the confirmation popup; the toast still offers
   Undo. CLI and SDK archive calls are always non-interactive.

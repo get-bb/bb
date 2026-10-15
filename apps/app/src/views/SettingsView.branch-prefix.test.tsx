@@ -21,6 +21,8 @@ function renderSection(overrides?: {
       onShowGitChangesChange={vi.fn()}
       confirmThreadArchive={true}
       onConfirmThreadArchiveChange={vi.fn()}
+      coldEventCompression={false}
+      onColdEventCompressionChange={() => {}}
       keepHistoryAfterContextClear={false}
       onKeepHistoryAfterContextClearChange={vi.fn()}
       desktopBrowserAvailable={false}

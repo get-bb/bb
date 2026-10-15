@@ -1102,7 +1102,7 @@ function listThreadSearchMatchRows(
       segmentOrder,
       sourceKind,
       sourceSeq,
-      (SELECT text FROM thread_search_segments
+      (SELECT bb_text(text) FROM thread_search_segments
        WHERE rowid = ranked_segments.segmentRowid) AS text,
       threadId
     FROM ranked_segments
@@ -1208,7 +1208,6 @@ export function searchThreadsWithPendingInteractionState(
   };
 }
 
-/** How `countThreads` buckets its result; omitted asks for the total only. */
 export type CountThreadsGroupBy = "host" | "provider" | "project";
 
 export interface CountThreadsOptions {
@@ -1216,40 +1215,22 @@ export interface CountThreadsOptions {
   hostId?: string;
   providerId?: string;
   projectId?: string;
-  /**
-   * `{ kind: "root" }` counts threads with no parent, `{ kind: "id" }` counts
-   * one parent's children, and omitting the option does not filter on
-   * parentage. Three states, three shapes — a nullable string would have made
-   * "no parent" and "no filter" the same value.
-   */
   parent?: { kind: "root" } | { kind: "id"; parentThreadId: string };
   groupBy?: CountThreadsGroupBy;
-  /** Archived rows are excluded unless this is true; deleted rows always are. */
   includeArchived?: boolean;
-  /** Hidden rows are excluded unless this is true. */
   includeHidden?: boolean;
 }
 
 export interface ThreadCountGroupRow {
-  /** The host/provider/project id, or null for threads that have none. */
   key: string | null;
   count: number;
 }
 
 export interface CountThreadsResult {
   total: number;
-  /** Present exactly when `groupBy` was asked for. */
   groups?: ThreadCountGroupRow[];
 }
 
-/**
- * `SELECT count(*)` over threads, optionally grouped. Backs `bb thread count`,
- * which answers "how many" in the database instead of paging threads into
- * memory to count them. The host filter and the `host` grouping both need the
- * environment row, so they join it; every other shape reads `threads` alone.
- * (Limiters do not use this: reconciling several pools needs the rows, which
- * is `listRunningThreads`' job.)
- */
 export function countThreads(
   db: DbQueryConnection,
   options: CountThreadsOptions,
@@ -1319,51 +1300,16 @@ export function countThreads(
   };
 }
 
-/**
- * The statuses that occupy capacity. A `starting` thread is provisioning or
- * cold-starting and a `active` one is executing a turn; both hold a real slot
- * on a real machine. `idle` deliberately does not — an idle thread has a
- * session but is consuming nothing — and `pending`, `stopping` and `error` are
- * not running work either.
- */
 const OCCUPYING_THREAD_STATUSES: readonly ThreadStatus[] = [
   "starting",
   "active",
 ];
 
-/**
- * One thread currently occupying capacity: its id, and the machine that id is
- * occupying.
- */
 export interface RunningThreadRow {
   id: string;
-  /** The machine it runs on, or null while no environment has been chosen. */
   hostId: string | null;
 }
 
-/**
- * Every thread currently occupying capacity.
- *
- * `countThreads` answers "how many", which holds one pool but cannot say which
- * threads make it up — so a limiter over several pools (all hosts, one host)
- * had to issue a count per pool and could not reconcile them. The rows answer
- * every such question at once, and the set is bounded by what is actually
- * running: a handful of rows, not a page of threads.
- *
- * The row is deliberately just `{ id, hostId }`. `hostId` is here because a
- * per-host pool cannot be derived from an id without a query per row; anything
- * else a caller needs it fetches by id, which keeps this from accreting a
- * projection of the threads table.
- *
- * Archived and deleted rows are excluded because neither runs: archival stops
- * a thread once its undo grace expires, and a soft-deleted row is gone. Hidden threads are NOT excluded —
- * visibility is a UI fact and a hidden thread burns a slot like any other, so
- * hiding it here would under-report real occupancy.
- *
- * `threads_archived_status_idx` (archived_at, status) serves this directly:
- * `archived_at IS NULL` is the leading equality and the status set is the
- * range that follows.
- */
 export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
   return db
     .select({
@@ -1406,16 +1352,40 @@ export function listArchivedThreadsPendingTeardown(
     id: threads.id,
     status: threads.status,
   };
-  const archived = and(isNotNull(threads.archivedAt), isNull(threads.deletedAt));
+  const archived = and(
+    isNotNull(threads.archivedAt),
+    isNull(threads.deletedAt),
+  );
   return db
     .select(selection)
     .from(threads)
-    .where(and(archived, inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES])))
+    .where(
+      and(
+        archived,
+        inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES]),
+      ),
+    )
     .union(
       db
         .select(selection)
         .from(threads)
-        .where(and(archived, inArray(threads.id, db.select({ threadId: terminalSessions.threadId }).from(terminalSessions).where(inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES))))),
+        .where(
+          and(
+            archived,
+            inArray(
+              threads.id,
+              db
+                .select({ threadId: terminalSessions.threadId })
+                .from(terminalSessions)
+                .where(
+                  inArray(
+                    terminalSessions.status,
+                    NON_TERMINAL_SESSION_STATUSES,
+                  ),
+                ),
+            ),
+          ),
+        ),
     )
     .all();
 }
@@ -2181,7 +2151,11 @@ export function archiveThread(
       )
       .returning()
       .all();
-    markThreadPruningPolicyWork(tx, archived.map((thread) => thread.id), "rate-limits");
+    markThreadPruningPolicyWork(
+      tx,
+      archived.map((thread) => thread.id),
+      "rate-limits",
+    );
     return archived;
   });
   for (const thread of updated) {

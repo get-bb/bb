@@ -303,6 +303,9 @@ describe("timeline grouping context cache", () => {
       });
       expect(statements).toEqual([
         expect.stringContaining('"parent_tool_call_id" is not null'),
+        expect.stringContaining(
+          'from "event_cold_chunks" where "event_cold_chunks"."thread_id" = ? limit ?',
+        ),
       ]);
     });
   });

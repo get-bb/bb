@@ -75,6 +75,7 @@ import type {
 import { upsertHost } from "../../src/data/hosts.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createMigratedConnection } from "../../src/testing.js";
+import { compressColdThreadEvents } from "../../src/data/cold-event-chunks.js";
 
 function setup() {
   const db = createMigratedConnection();
@@ -1628,11 +1629,7 @@ describe("events", () => {
         sequenceStart: 0,
         threadId: thread.id,
       }),
-    ).toEqual([
-      { sequence: 7 },
-      { sequence: 6 },
-      { sequence: 5 },
-    ]);
+    ).toEqual([{ sequence: 7 }, { sequence: 6 }, { sequence: 5 }]);
   });
 
   it("keeps window-hint lookup bounded as request history grows", () => {
@@ -1641,11 +1638,18 @@ describe("events", () => {
       const statement = db.$client.prepare(
         "INSERT INTO events (id, thread_id, scope_kind, sequence, type, data, created_at) VALUES (?, ?, 'thread', ?, 'client/turn/requested', ?, 0)",
       );
-      const payload = JSON.stringify({ input: [{ type: "text", text: "x".repeat(2_000) }] });
+      const payload = JSON.stringify({
+        input: [{ type: "text", text: "x".repeat(2_000) }],
+      });
       const seed = (start: number, end: number): void => {
         db.$client.transaction(() => {
           for (let sequence = start; sequence <= end; sequence += 1) {
-            statement.run(`request-${sequence}`, thread.id, sequence, sequence % 20 === 0 ? "{}" : payload);
+            statement.run(
+              `request-${sequence}`,
+              thread.id,
+              sequence,
+              sequence % 20 === 0 ? "{}" : payload,
+            );
           }
         })();
       };
@@ -1737,7 +1741,12 @@ describe("events", () => {
         sequenceStart: 0,
         threadId: thread.id,
       }),
-    ).toEqual([{ sequence: 9 }, { sequence: 6 }, { sequence: 2 }, { sequence: 1 }]);
+    ).toEqual([
+      { sequence: 9 },
+      { sequence: 6 },
+      { sequence: 2 },
+      { sequence: 1 },
+    ]);
     expect(
       listTimelineWindowHintsDescending(db, {
         beforeSequence: 100,
@@ -1874,6 +1883,48 @@ describe("events", () => {
         rows.map((row) => ({ ...row, ...overrides[row.sequence] })),
       );
 
+      expect(
+        getFirstParentedTimelineBoundarySequence(db, {
+          maxSeq: 10,
+          sequenceStart: 0,
+          ...range,
+          threadId: thread.id,
+        }),
+      ).toBe(expected);
+
+      insertEvents(
+        db,
+        noopNotifier,
+        rows.map((row) => ({
+          ...row,
+          ...overrides[row.sequence],
+          sequence: (overrides[row.sequence]?.sequence ?? row.sequence) + 100,
+        })),
+      );
+      insertEvents(
+        db,
+        noopNotifier,
+        [200, 201].map((sequence) => ({
+          ...threadEventFields,
+          threadId: thread.id,
+          sequence,
+          type: "item/completed" as const,
+          itemKind: "agentMessage" as const,
+          data: JSON.stringify({
+            item: { type: "agentMessage", text: "padding".repeat(1000) },
+          }),
+        })),
+      );
+      const now = Date.now();
+      db.$client
+        .prepare(
+          "UPDATE threads SET status = 'idle', updated_at = ? WHERE id = ?",
+        )
+        .run(now - 8 * 24 * 60 * 60 * 1000, thread.id);
+      expect(
+        compressColdThreadEvents(db, { now, threadId: thread.id })
+          .eventsCompressed,
+      ).toBeGreaterThan(0);
       expect(
         getFirstParentedTimelineBoundarySequence(db, {
           maxSeq: 10,

@@ -16,6 +16,24 @@ describe("bb settings commands", () => {
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
 
+  it("sets cold history compression while preserving unrelated general settings", async () => {
+    const settings = { ...defaultAppSettings, showGitChanges: false };
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: settings,
+      })),
+      "v1.settings.general.$put": put,
+    });
+    await runCommand(
+      ["settings", "general", "coldEventCompression", "true"],
+      register,
+    );
+    expect(put).toHaveBeenCalledWith({
+      json: { ...settings, coldEventCompression: true },
+    });
+  });
+
   it("clears the setup guide completion time and keeps every other setting", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({

@@ -1,3 +1,4 @@
+import { storedText } from "@bb/db";
 import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
@@ -108,8 +109,8 @@ function findCommittedOperation(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "system/operation"),
-        sql`json_extract(${events.data}, '$.operation') = 'edit_message'`,
-        sql`json_extract(${events.data}, '$.operationId') = ${args.operationId}`,
+        sql`json_extract(${storedText(events.data)}, '$.operation') = 'edit_message'`,
+        sql`json_extract(${storedText(events.data)}, '$.operationId') = ${args.operationId}`,
       ),
     )
     .limit(1)
@@ -233,7 +234,7 @@ function resolveEditableTurnCandidate(
       and(
         eq(events.threadId, thread.id),
         eq(events.type, "turn/input/accepted"),
-        sql`json_extract(${events.data}, '$.clientRequestId') = ${request.requestId}`,
+        sql`json_extract(${storedText(events.data)}, '$.clientRequestId') = ${request.requestId}`,
       ),
     )
     .orderBy(events.sequence)
@@ -377,9 +378,9 @@ function resolveEditableTurn(
       and(
         eq(events.threadId, thread.id),
         eq(events.type, "client/turn/requested"),
-        sql`json_extract(${events.data}, '$.initiator') = 'user'`,
-        sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
-        sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+        sql`json_extract(${storedText(events.data)}, '$.initiator') = 'user'`,
+        sql`json_extract(${storedText(events.data)}, '$.senderThreadId') IS NULL`,
+        sql`json_extract(${storedText(events.data)}, '$.target.kind') IN ('new-turn', 'thread-start')`,
       ),
     )
     .orderBy(desc(events.sequence))

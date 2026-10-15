@@ -1,4 +1,5 @@
 import { markThreadPruningPolicyWork } from "./thread-pruning-work.js";
+import { storedText } from "../stored-text.js";
 import { and, eq, inArray } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
@@ -274,7 +275,7 @@ function findCompletedEventOutputCandidate(
       CompletedEventOutputCandidateRow
     >(
       `
-        SELECT id, created_at, created_at AS scan_created_at, data, thread_id
+        SELECT id, created_at, created_at AS scan_created_at, bb_text(data) AS data, thread_id
         FROM events
         WHERE type = ?
           AND item_kind = ?
@@ -282,12 +283,12 @@ function findCompletedEventOutputCandidate(
           AND (created_at, id) > (?, ?)
           AND (created_at, id) <= (?, ?)
           AND CASE
-          WHEN octet_length(data) > ? THEN 0
-          WHEN json_valid(data) THEN
-            json_type(data, ?) = 'text'
-            AND json_type(data, ?) IS NULL
-            AND json_extract(data, ?) = ?
-            AND octet_length(json_extract(data, ?)) > ?
+          WHEN bb_text_bytes(data) > ? THEN 0
+          WHEN json_valid(bb_text(data)) THEN
+            json_type(bb_text(data), ?) = 'text'
+            AND json_type(bb_text(data), ?) IS NULL
+            AND json_extract(bb_text(data), ?) = ?
+            AND octet_length(json_extract(bb_text(data), ?)) > ?
           ELSE 0 END
         ORDER BY created_at, id
         LIMIT 1
@@ -344,21 +345,21 @@ function findLegacyImageGenerationCandidate(
       CompletedEventOutputCandidateRow
     >(
       `
-        SELECT id, created_at, 0 AS scan_created_at, data, thread_id
+        SELECT id, created_at, 0 AS scan_created_at, bb_text(data) AS data, thread_id
         FROM events
         WHERE id > ?
           AND id <= ?
           AND type = ?
           AND created_at < ?
           AND CASE
-          WHEN octet_length(data) > ? THEN 0
-          WHEN json_valid(data) THEN
-            json_extract(data, '$.rawType') = ?
-            AND json_extract(data, '$.rawEvent.method') = ?
-            AND json_extract(data, '$.rawEvent.params.item.type') = ?
-            AND json_type(data, '$.rawEvent.params.item.result') = 'text'
-            AND json_type(data, '$.rawEvent.params.item.truncation.result') IS NULL
-            AND octet_length(json_extract(data, '$.rawEvent.params.item.result')) > ?
+          WHEN bb_text_bytes(data) > ? THEN 0
+          WHEN json_valid(bb_text(data)) THEN
+            json_extract(bb_text(data), '$.rawType') = ?
+            AND json_extract(bb_text(data), '$.rawEvent.method') = ?
+            AND json_extract(bb_text(data), '$.rawEvent.params.item.type') = ?
+            AND json_type(bb_text(data), '$.rawEvent.params.item.result') = 'text'
+            AND json_type(bb_text(data), '$.rawEvent.params.item.truncation.result') IS NULL
+            AND octet_length(json_extract(bb_text(data), '$.rawEvent.params.item.result')) > ?
           ELSE 0 END
         ORDER BY id
         LIMIT 1
@@ -668,14 +669,21 @@ function migrateNextCompletedEventOutput(
         .update(events)
         .set({ data: prepared.data })
         .where(
-          and(eq(events.id, candidate.id), eq(events.data, candidate.data)),
+          and(
+            eq(events.id, candidate.id),
+            eq(storedText(events.data), candidate.data),
+          ),
         )
         .run();
       if (update.changes !== 1) {
         throw new Error(strategy.eventChangedError);
       }
       if (prepared.data !== candidate.data)
-        markThreadPruningPolicyWork(tx, [candidate.thread_id], "resolved-items");
+        markThreadPruningPolicyWork(
+          tx,
+          [candidate.thread_id],
+          "resolved-items",
+        );
       bumpThreadEventRewriteGeneration(candidate.thread_id);
       if (retained) {
         insertPreparedRetainedEventOutput(tx, {

@@ -1,3 +1,4 @@
+import { storedText } from "@bb/db";
 import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
@@ -125,14 +126,14 @@ function preserveTerminalProvisioningStatus(
   }
   const latest = deps.db
     .select({
-      status: sql<unknown>`json_extract(${storedEvents.data}, '$.status')`,
+      status: sql<unknown>`json_extract(${storedText(storedEvents.data)}, '$.status')`,
     })
     .from(storedEvents)
     .where(
       and(
         eq(storedEvents.threadId, entry.envelope.threadId),
         eq(storedEvents.type, "system/thread-provisioning"),
-        sql`json_extract(${storedEvents.data}, '$.provisioningId') = ${event.provisioningId}`,
+        sql`json_extract(${storedText(storedEvents.data)}, '$.provisioningId') = ${event.provisioningId}`,
       ),
     )
     .orderBy(desc(storedEvents.sequence))
@@ -648,7 +649,7 @@ function hasThreadCommandFailureSystemErrorForTurn(
           eq(storedEvents.turnId, args.turnId),
           eq(storedEvents.scopeKind, "turn"),
           eq(storedEvents.type, "system/error"),
-          sql`json_extract(${storedEvents.data}, '$.code') = 'thread_command_failed'`,
+          sql`json_extract(${storedText(storedEvents.data)}, '$.code') = 'thread_command_failed'`,
         ),
       )
       .limit(1)
@@ -735,7 +736,7 @@ function wasTurnManuallyStopped(
           eq(storedEvents.threadId, args.threadId),
           eq(storedEvents.type, "system/thread/interrupted"),
           gt(storedEvents.sequence, turnStarted.sequence),
-          sql`json_extract(${storedEvents.data}, '$.reason') = 'manual-stop'`,
+          sql`json_extract(${storedText(storedEvents.data)}, '$.reason') = 'manual-stop'`,
         ),
       )
       .limit(1)

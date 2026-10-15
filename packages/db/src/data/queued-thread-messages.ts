@@ -1,3 +1,4 @@
+import { storedText } from "../stored-text.js";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -65,33 +66,16 @@ export interface CreateQueuedThreadMessageInput {
   threadId: string;
   content: PromptInput[];
   senderThreadId?: string | null;
-  /**
-   * How the dispatch this row is queued from was requested, and the plugin
-   * that requested it, so a drained re-attempt carries the provenance its
-   * first attempt had. Both null for everything but a thread's first dispatch.
-   */
   origin?: ThreadCreateOrigin | null;
   originPluginId?: string | null;
-  /**
-   * The thread that asked for this dispatch, when one did. Distinct from
-   * `senderThreadId`, which is the sender of a message TO an existing thread:
-   * a thread-start has a requester and no message sender.
-   */
   requestedBy?: StartedOnBehalfOf | null;
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;
   serviceTier: string;
-  /**
-   * Why the row is queued, written in the SAME insert rather than by a
-   * follow-up update: a row that existed with no wait for even one statement
-   * could be claimed by a concurrent drain, which is exactly the dispatch the
-   * wait exists to prevent.
-   */
   waitingOn: QueuedMessageWaitingOn | null;
   sendAt: number | null;
   payload: QueuedMessagePayload;
-  /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
 }
 
@@ -365,8 +349,7 @@ export interface QueuedThreadMessageEditHoldArgs {
   threadId: string;
 }
 
-export interface HoldQueuedThreadMessageForEditArgs
-  extends QueuedThreadMessageEditHoldArgs {
+export interface HoldQueuedThreadMessageForEditArgs extends QueuedThreadMessageEditHoldArgs {
   heldUntil: number;
 }
 
@@ -406,16 +389,6 @@ function collectLeadGroupIds(
   return ids;
 }
 
-/**
- * A thread's live queue split into its groups: each maximal `groupWithNext`
- * chain with a matching envelope, in queue order.
- *
- * Grouping is computed over ALL live rows, never over an eligibility-filtered
- * subset. A filtered list has holes, and walking `groupWithNext` across a hole
- * either splits a group (dispatching a tail without the head that a re-queue
- * left waiting) or staples an unrelated later row onto it. Membership is one
- * question, eligibility another; callers apply eligibility to whole groups.
- */
 function partitionQueuedMessageGroups(
   queuedMessages: readonly QueuedThreadMessageRow[],
 ): QueuedThreadMessageRow[][] {
@@ -429,21 +402,8 @@ function partitionQueuedMessageGroups(
   return groups;
 }
 
-/**
- * The waits that mean "this row is only behind the turn that is running". The
- * manual-stop queue pause exists to hold exactly these back, because a user
- * who stopped a thread did not thereby ask for whatever was lined up behind
- * it.
- */
 const ORDINARY_TURN_END_WAIT_KINDS = ["thread-busy", "turn-starting"] as const;
 
-/**
- * Every wait an idle thread clears by being idle. `stopping` joins the
- * ordinary two rather than replacing them: it is drainable for the same
- * reason, and deliberately outside {@link ORDINARY_TURN_END_WAIT_KINDS} so the
- * manual-stop pause lets it through — a row acquires it only from an action
- * the user took after requesting the stop.
- */
 const IDLE_DRAINABLE_WAIT_KINDS = [
   ...ORDINARY_TURN_END_WAIT_KINDS,
   "stopping",
@@ -467,11 +427,6 @@ export function isOrdinaryTurnEndQueuedMessage(
   return row.systemNotice === null && hasOrdinaryTurnEndWait(row);
 }
 
-/**
- * The JS mirror of {@link drainableQueuedThreadMessage}'s wait condition, for
- * deciding whole-group eligibility over rows already in hand. Kept next to a
- * pointer at the SQL so the two cannot drift silently.
- */
 function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
   if (isQueuedMessageFailedState(row.state)) return false;
   if (row.waitingOn === null) return true;
@@ -665,10 +620,7 @@ function resolveQueuedThreadMessageNeighbor(
     return false;
   }
 
-  const neighbor = getQueuedThreadMessage(
-    db,
-    args.neighborQueuedMessageId,
-  );
+  const neighbor = getQueuedThreadMessage(db, args.neighborQueuedMessageId);
   if (
     !neighbor ||
     neighbor.threadId !== args.threadId ||
@@ -1019,7 +971,7 @@ export function deleteQueuedRetriesForThreadEventSuffixInTransaction(
                 eq(events.type, "client/turn/requested"),
                 sql`${events.sequence} >= ${args.cutoffSequence}`,
                 sql`${events.sequence} <= ${args.oldMaxSequence}`,
-                sql`json_extract(${events.data}, '$.requestId') = ${queuedThreadMessages.retryOfTurnRequestId}`,
+                sql`json_extract(${storedText(events.data)}, '$.requestId') = ${queuedThreadMessages.retryOfTurnRequestId}`,
               ),
             ),
         ),
@@ -1050,7 +1002,7 @@ function manuallyStoppedQueuePauseQuery(
       and(
         sql`${interruption.threadId} = ${threadId}`,
         eq(interruption.type, "system/thread/interrupted"),
-        sql`json_extract(${interruption.data}, '$.reason') = 'manual-stop'`,
+        sql`json_extract(${storedText(interruption.data)}, '$.reason') = 'manual-stop'`,
         notExists(
           db
             .select({ sequence: laterInterruption.sequence })
@@ -1101,11 +1053,6 @@ export function isThreadQueueAutoSendPaused(
   return manuallyStoppedQueuePauseQuery(db, threadId).get() !== undefined;
 }
 
-/**
- * The SQL mirror of {@link isOrdinaryTurnEndQueuedMessage}, negated: the rows
- * the manual-stop queue pause does not apply to. Kept beside the JS predicate
- * it mirrors so the two cannot drift silently.
- */
 function notOrdinaryTurnEndQueuedThreadMessage() {
   return or(
     isNotNull(queuedThreadMessages.systemNotice),
@@ -1119,14 +1066,6 @@ function notOrdinaryTurnEndQueuedThreadMessage() {
   );
 }
 
-/**
- * Threads a drain could move right now.
- *
- * `pending` is included alongside `idle`, and the environment join is a LEFT
- * join because of it: a `pending` thread has never provisioned, so it has no
- * environment row to join to, and an inner join silently dropped exactly the
- * threads whose first message is waiting to start them.
- */
 export function listIdleThreadsWithQueuedMessages(
   db: DbConnection,
 ): QueuedMessageThreadRow[] {
@@ -1147,14 +1086,7 @@ export function listIdleThreadsWithQueuedMessages(
           notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
           notOrdinaryTurnEndQueuedThreadMessage(),
         ),
-        or(
-          isNull(threads.environmentId),
-          ne(environments.status, "destroyed"),
-        ),
-        // Only rows an idle thread actually unblocks. A thread whose only
-        // queued row is waiting on a clock or a plugin is not a drain
-        // candidate, and listing it would re-run the whole send pipeline
-        // every sweep tick for a row that cannot move.
+        or(isNull(threads.environmentId), ne(environments.status, "destroyed")),
         drainableQueuedThreadMessage(),
       ),
     )
@@ -1194,12 +1126,6 @@ export type QueuedThreadMessageGroupClaimPolicy =
   | {
       kind: "automatic";
       isGroupEligible: QueuedThreadMessageGroupEligibility;
-      /**
-       * True only for the retry the row's own `next_attempt_at` booked. A recorded
-       * failure hides a row from every other automatic claim — otherwise the
-       * idle drain would re-run a failing send every sweep tick — and the one
-       * claim that must see through it is the retry of that failure.
-       */
       retryingFailure: boolean;
     }
   | { kind: "explicit-send" };
@@ -1279,13 +1205,6 @@ export function claimNextQueuedThreadMessageGroup(
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
-      // The idle drain takes the first group whose EVERY member it may act
-      // on. A group with one waiting member is skipped whole — dispatching
-      // its drainable tail alone would split a batch the sender composed as
-      // one prompt — and skipping it does not block the independent rows
-      // behind it: the queue is a queue, not a pipeline. The one exception is
-      // a group someone is editing: the drainable rows behind it wait for the
-      // edit, so it still goes first once it is saved or cancelled.
       const queuedMessages = listQueuedThreadMessages(tx, threadId);
       const pauseOrdinaryMessages = isThreadQueueAutoSendPaused(tx, threadId);
       const now = Date.now();
@@ -1335,10 +1254,7 @@ export function reorderQueuedThreadMessage({
   try {
     result = db.transaction(
       (tx): ReorderQueuedThreadMessageResult => {
-        const movedQueuedMessage = getQueuedThreadMessage(
-          tx,
-          queuedMessageId,
-        );
+        const movedQueuedMessage = getQueuedThreadMessage(tx, queuedMessageId);
         if (!movedQueuedMessage || movedQueuedMessage.threadId !== threadId) {
           return { kind: "not_found" };
         }
@@ -1527,7 +1443,6 @@ export function setQueuedThreadMessageGroupBoundary({
 }
 
 export interface RequeueClaimedQueuedThreadMessagesArgs {
-  /** Every row the drain claimed, lead first. */
   claims: readonly ClaimedQueuedThreadMessageMutationArgs[];
   threadId: string;
   waitingOn: QueuedMessageWaitingOn;
@@ -1616,7 +1531,12 @@ export function releaseStaleQueuedMessageClaims(
             eq(queuedThreadMessages.state, "claimed"),
             lt(queuedThreadMessages.claimedAt, args.claimedBefore),
             ...(protectedClaimTokens.length > 0
-              ? [notInArray(queuedThreadMessages.claimToken, protectedClaimTokens)]
+              ? [
+                  notInArray(
+                    queuedThreadMessages.claimToken,
+                    protectedClaimTokens,
+                  ),
+                ]
               : []),
           ),
         )
@@ -1705,12 +1625,6 @@ export function deleteClaimedQueuedThreadMessageBatchInTransaction(
   return true;
 }
 
-/**
- * A row is live while no drain worker holds it. Queueing, re-queueing and
- * clearing a wait are all lost updates against a row that is already being
- * dispatched, so every wait mutation is gated on liveness in the same
- * statement that performs it.
- */
 function liveQueuedThreadMessage() {
   return ne(queuedThreadMessages.state, "claimed");
 }
@@ -1721,20 +1635,6 @@ function automaticallyDrainableQueuedThreadMessage() {
   ]);
 }
 
-/**
- * Rows the IDLE drain may claim: a row with no wait at all, or one waiting
- * on the thread being busy or its turn starting — waits an idle thread
- * clears.
- *
- * Every other wait belongs to a different drain and must be invisible here, or
- * the idle sweep would dispatch a message scheduled for 9am the moment the
- * thread went quiet. That is also why an ineligible row does not BLOCK the
- * ones behind it: the queue is a queue, not a pipeline, so a row queued
- * on a plugin for an hour is overtaken by the follow-up the user sent after
- * it rather than stalling the whole thread. Plain queued rows are all
- * `thread-busy`, so among themselves they keep strict FIFO order, which is
- * what makes today's queue behaviour unchanged.
- */
 function drainableQueuedThreadMessage() {
   return and(
     automaticallyDrainableQueuedThreadMessage(),
@@ -1753,11 +1653,6 @@ export interface ListQueuedThreadMessagesForApiArgs {
   waitHolder?: QueuedMessageWaitHolder;
 }
 
-/**
- * The cross-thread queued-row list behind `GET /queued-messages`. Both filters
- * are genuinely absent by default: unfiltered means every live row in the
- * workspace, which is what a whole-workspace pending view asks for.
- */
 export function listQueuedThreadMessagesForApi(
   db: DbQueryConnection,
   args: ListQueuedThreadMessagesForApiArgs,
@@ -1783,24 +1678,9 @@ export function listQueuedThreadMessagesForApi(
 export interface QueuedThreadMessageCounts {
   threadId: string;
   queuedMessageCount: number;
-  /**
-   * How many of those rows last failed to dispatch. Counted in the same pass
-   * as the total because both answers come from the same rows, and the thread
-   * list needs them together: a thread with queued work shows a clock, and one
-   * whose queued work failed shows the failure instead.
-   */
   failedQueuedMessageCount: number;
 }
 
-/**
- * How many live rows each of these threads has queued, and how many of those
- * failed. One grouped query rather than one per thread: the thread list renders
- * a glyph per row and would otherwise issue a query per visible thread.
- *
- * Batched over the SQLite variable limit because the thread list is unbounded —
- * a workspace with tens of thousands of threads builds its sidebar from one
- * call.
- */
 export function listQueuedThreadMessageCountsByThreadIds(
   db: DbQueryConnection,
   args: { threadIds: readonly string[] },
@@ -1831,12 +1711,6 @@ export function listQueuedThreadMessageCountsByThreadIds(
   });
 }
 
-/**
- * The single place `wait_holder` is derived from `waiting_on`. Keeping it here
- * — rather than letting callers pass a holder — is what makes the
- * denormalization safe: the two columns are always written together, from the
- * same value.
- */
 function waitHolderFor(
   waitingOn: QueuedMessageWaitingOn,
 ): QueuedMessageWaitHolder | null {
@@ -1849,11 +1723,6 @@ export interface SetQueuedThreadMessageWaitingOnArgs {
   id: string;
   threadId: string;
   waitingOn: QueuedMessageWaitingOn;
-  /**
-   * The row's scheduled instant. Passed on every call rather than left alone,
-   * because a re-queue is a fresh statement of when this row may run: a
-   * `time` wait sets it, and every other wait kind clears it by passing null.
-   */
   sendAt: number | null;
 }
 
@@ -1867,10 +1736,6 @@ export interface ListQueuedThreadMessagesWaitingOnKindArgs {
   threadId: string;
 }
 
-/**
- * Queue a live row on a typed wait. Returns the updated row, or null when the
- * row is gone, belongs to another thread, or has already been claimed.
- */
 export function setQueuedThreadMessageWaitingOn(
   db: DbConnection,
   notifier: DbNotifier,
@@ -1910,30 +1775,9 @@ export interface SetQueuedThreadMessageFailureReasonArgs {
   threadId: string;
   failureReason: string;
   now: number;
-  /**
-   * How long to wait before each further automatic attempt, indexed by the
-   * failures already recorded. Running off the end is what makes a failure
-   * terminal, so the caller decides how many attempts a row gets and how far
-   * apart — the policy is the server's, the counting is this row's.
-   */
   retryDelaysMs: readonly number[];
 }
 
-/**
- * Records why a drain attempt on this row failed outright.
- *
- * Only the drain writes this: an inline attempt has a caller still listening
- * and reports to them instead. The row's wait is deliberately untouched — it
- * is still waiting on whatever it was waiting on, and the failure is a separate
- * fact about the last attempt rather than a new reason to wait. A later
- * successful re-queue clears it (see `requeueClaimedQueuedThreadMessages`).
- *
- * Recording a failure also spends one of the row's attempts and books the next
- * one. What failed a dispatch is usually a condition with an end — a provider
- * whose plugin is still loading, a workspace mid-rebuild — so the row is owed
- * another try before anybody is asked to look at it. It is terminal only once
- * `retryDelaysMs` runs out, which is the `failed_exhausted` state.
- */
 export function setQueuedThreadMessageFailureReason(
   db: DbConnection,
   notifier: DbNotifier,
@@ -1968,16 +1812,6 @@ export function setQueuedThreadMessageFailureReason(
   return updated;
 }
 
-/**
- * Every live row whose booked retry has come due, oldest first.
- *
- * Deliberately not filtered by wait: the retry is not the wait's wake firing
- * again, it is core re-asking the whole question from scratch, which is the
- * only thing that can move a row whose wait went stale while it sat failed
- * (a `host-offline` row whose host came back during the failure, say). Rows
- * on archived or deleted threads are excluded for the same reason the due
- * sweep excludes them: nobody is waiting for those to send.
- */
 export function listRetryableFailedQueuedThreadMessages(
   db: DbQueryConnection,
   now: number,
@@ -2003,15 +1837,13 @@ export function listRetryableFailedQueuedThreadMessages(
         ),
       ),
     )
-    .orderBy(asc(queuedThreadMessages.nextAttemptAt), asc(queuedThreadMessages.id))
+    .orderBy(
+      asc(queuedThreadMessages.nextAttemptAt),
+      asc(queuedThreadMessages.id),
+    )
     .all();
 }
 
-/**
- * Drop a live row's wait, leaving it an ordinary queued row eligible at the
- * next drain. `sendAt` is cleared with it: a row with no wait is not waiting
- * for a clock either.
- */
 export function clearQueuedThreadMessageWaitingOn(
   db: DbConnection,
   notifier: DbNotifier,
@@ -2042,18 +1874,6 @@ export function clearQueuedThreadMessageWaitingOn(
   return updated;
 }
 
-/**
- * Rows whose scheduled instant has arrived and that a drain may act on now,
- * oldest-due first. Threads that are archived or deleted are excluded here
- * rather than by the caller, so a scheduled send into a thread the user threw
- * away never wakes the sweep every cycle (the #1789 shape).
- *
- * The thread check is a correlated EXISTS rather than a join on purpose. A
- * join lets SQLite drive from `threads` — scanning every live thread to find
- * the few with a due row — which throws away the state due index entirely.
- * EXISTS forces the queue table to be the outer loop, so the sweep costs one
- * index range scan plus a primary-key probe per hit.
- */
 export function listDueScheduledQueuedThreadMessages(
   db: DbQueryConnection,
   now: number,
@@ -2083,17 +1903,6 @@ export function listDueScheduledQueuedThreadMessages(
     .all();
 }
 
-/**
- * Every live row a given wait owner holds, in queue order. Asked when one
- * plugin's waits must be cleared at once, on its disable or uninstall —
- * clearing by holder is what `wait_holder`'s indexed equality lookup exists
- * for.
- *
- * Ordered by `createdAt` for the same reason as
- * {@link listQueuedThreadMessagesWithPluginWait}: `id` is a random suffix, so
- * it sorts nothing, and one holder's rows span threads so `sortKey` alone
- * cannot order them either.
- */
 export function listQueuedThreadMessagesByWaitHolder(
   db: DbQueryConnection,
   waitHolder: QueuedMessageWaitHolder,
@@ -2115,33 +1924,12 @@ export function listQueuedThreadMessagesByWaitHolder(
     .all();
 }
 
-/** The columns the plugin-wait walkers act on; see the query below. */
 export interface QueuedThreadMessagePluginWaitRef {
   id: string;
   threadId: string;
   waitHolder: QueuedMessageWaitHolder;
 }
 
-/**
- * Every live row on SOME plugin's wait, across every thread, in queue order.
- *
- * The orphan sweep asks this once per tick and then filters by which plugins
- * are loaded, rather than asking per plugin: the set of holders is not known
- * up front (it is whichever plugins happen to be holding something), and the
- * partial wait index covers exactly these rows, so one range scan answers it.
- *
- * Deliberately a projection, not full rows: both walkers only clear waits or
- * re-attempt by id, so returning prompt bodies here would ship every held
- * message's content on a ten-second timer for nothing.
- *
- * Ordered by `createdAt` and NOT by `id`: row ids are random suffixes, so
- * sorting by them is sorting by nothing. It matters because the requested
- * drain re-offers these rows to the dispatch hook in this order, and a full
- * pool is supposed to drain in the order it filled. `sortKey` cannot do the
- * job either — its fractional keys are seeded per thread, so they order a
- * thread's own rows and are meaningless between threads; it breaks a
- * same-millisecond tie within one thread, and `id` makes the sort total.
- */
 export function listQueuedThreadMessagePluginWaitRefs(
   db: DbQueryConnection,
 ): QueuedThreadMessagePluginWaitRef[] {
@@ -2169,12 +1957,6 @@ export function listQueuedThreadMessagePluginWaitRefs(
     );
 }
 
-/**
- * A thread's live rows on one kind of wait, in queue order. Read
- * straight out of the stored JSON so the kind has exactly one home; the
- * thread predicate is what makes this selective, so no index on the extracted
- * kind is warranted.
- */
 export function listQueuedThreadMessagesWaitingOnKind(
   db: DbQueryConnection,
   args: ListQueuedThreadMessagesWaitingOnKindArgs,
@@ -2193,15 +1975,6 @@ export function listQueuedThreadMessagesWaitingOnKind(
     .all();
 }
 
-/**
- * Whether a retry of this original turn request already exists on the queue.
- *
- * Claimed rows count on purpose: a retry a drain has claimed and is deciding
- * about is as live as a waiting one, and the window between its claim and its
- * dispatch is exactly when a second retry of the same turn would otherwise
- * slip past. Targeted on the retry column rather than loading the thread's
- * rows to inspect their payloads.
- */
 export function hasQueuedRetryOfTurnRequest(
   db: DbQueryConnection,
   args: { threadId: string; retryOfTurnRequestId: string },
@@ -2224,14 +1997,6 @@ export function hasQueuedRetryOfTurnRequest(
   );
 }
 
-/**
- * Threads on one host with live rows parked on a `host-offline` wait.
- *
- * Joined through the thread's environment by host ID rather than matched on
- * the wait's stored `hostName`: the name on the wait is display text captured
- * at failure time, and a renamed host would orphan every row that matched on
- * it.
- */
 export function listThreadIdsWithHostOfflineQueueWaits(
   db: DbQueryConnection,
   hostId: string,

@@ -1,3 +1,12 @@
+import { storedText } from "../stored-text.js";
+import {
+  deleteColdEventSuffix,
+  includeColdEventRows,
+  readColdEventJsonString,
+  selectColdEventRecords,
+  threadHasColdChunks,
+  type ColdEventRecord,
+} from "./cold-event-chunks.js";
 import { markThreadPruningWork } from "./thread-pruning-work.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
@@ -78,7 +87,7 @@ import {
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
-const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
+const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 900;
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
@@ -205,7 +214,7 @@ function listLatestItemLifecycleRows(
   db: DbQueryConnection,
   lookupKeys: readonly ItemLifecycleLookupKey[],
 ): LatestItemLifecycleRow[] {
-  return queryInSqliteVariableBatches({
+  const rows = queryInSqliteVariableBatches({
     dedupeKey: buildItemLifecycleKey,
     fixedVariableCount: 0,
     queryBatch: (keys) => {
@@ -213,14 +222,15 @@ function listLatestItemLifecycleRows(
         keys.map((key) => sql`(${key.threadId}, ${key.itemId})`),
         sql`, `,
       );
-      return db.all<LatestItemLifecycleRow>(sql`
+      return db.all<LatestItemLifecycleRow & { sequence: number }>(sql`
         WITH requested_item(thread_id, item_id) AS (
           VALUES ${requestedValues}
         )
         SELECT
           lifecycle.thread_id AS threadId,
           lifecycle.item_id AS itemId,
-          lifecycle.type AS type
+          lifecycle.type AS type,
+          lifecycle.sequence AS sequence
         FROM requested_item requested
         JOIN ${events} AS lifecycle
           INDEXED BY events_item_lifecycle_thread_item_sequence_idx
@@ -248,8 +258,33 @@ function listLatestItemLifecycleRows(
     values: lookupKeys,
     variableCountPerValue: 2,
   });
+  const latest = new Map(rows.map((row) => [buildItemLifecycleKey(row), row]));
+  const byThread = new Map<string, Set<string>>();
+  for (const key of lookupKeys) {
+    const ids = byThread.get(key.threadId) ?? new Set<string>();
+    ids.add(key.itemId);
+    byThread.set(key.threadId, ids);
+  }
+  for (const [threadId, ids] of byThread) {
+    for (const row of selectColdEventRecords(db, {
+      threadId,
+      itemIds: [...ids],
+      types: ["item/completed"],
+    })) {
+      if (row.itemId === null) continue;
+      const key = buildItemLifecycleKey({ threadId, itemId: row.itemId });
+      const previous = latest.get(key);
+      if (!previous || previous.sequence < row.sequence)
+        latest.set(key, {
+          threadId,
+          itemId: row.itemId,
+          type: "item/completed",
+          sequence: row.sequence,
+        });
+    }
+  }
+  return [...latest.values()];
 }
-
 export interface MissingStoredTurnStartedDetails {
   eventType: ThreadEventType;
   scopeKind: ThreadEventScopeKind;
@@ -334,11 +369,12 @@ export function deleteThreadEventSuffixInTransaction(
       ),
     )
     .run();
-  if (result.changes > 0) {
+  const deletedEventCount = result.changes + deleteColdEventSuffix(db, args);
+  if (deletedEventCount > 0) {
     bumpThreadEventRewriteGeneration(args.threadId);
     markThreadPruningWork(db, [args.threadId]);
   }
-  return { deletedEventCount: result.changes };
+  return { deletedEventCount };
 }
 
 export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
@@ -1056,9 +1092,13 @@ export function getHighWaterMarks(
           )}
         )
         SELECT thread_id AS threadId, (
-          SELECT sequence FROM events
-          WHERE events.thread_id = requested.thread_id
-          ORDER BY sequence DESC LIMIT 1
+          SELECT MAX(sequence) FROM (
+            SELECT sequence FROM events
+            WHERE events.thread_id = requested.thread_id
+            UNION ALL
+            SELECT seq_end AS sequence FROM event_cold_chunks
+            WHERE event_cold_chunks.thread_id = requested.thread_id
+          )
         ) AS maxSeq
         FROM requested
       `),
@@ -1082,7 +1122,7 @@ export interface ListEventsOptions {
 
 const storedEventRowFields = {
   createdAt: events.createdAt,
-  data: events.data,
+  data: storedText(events.data),
   id: events.id,
   itemId: events.itemId,
   itemKind: events.itemKind,
@@ -1099,6 +1139,30 @@ export type StoredEventRow = Pick<
   typeof events.$inferSelect,
   keyof typeof storedEventRowFields
 >;
+
+function coldRecordToStoredEventRow(event: ColdEventRecord): StoredEventRow {
+  return {
+    createdAt: event.createdAt,
+    data: event.data,
+    id: event.id,
+    itemId: event.itemId,
+    itemKind: event.itemKind,
+    parentToolCallId: event.parentToolCallId,
+    providerThreadId: event.providerThreadId,
+    scopeKind: event.scopeKind,
+    sequence: event.sequence,
+    threadId: event.threadId,
+    turnId: event.turnId,
+    type: event.type,
+  };
+}
+
+function coldRecordToListedEvent(event: ColdEventRecord) {
+  return {
+    ...coldRecordToStoredEventRow(event),
+    environmentId: event.environmentId,
+  };
+}
 
 export type InlineOutputCharLimit = number | null;
 
@@ -1345,30 +1409,29 @@ export interface OpenBackgroundTaskItemRow {
 
 export function listEvents(db: DbConnection, options: ListEventsOptions) {
   const { threadId, afterSequence, limit } = options;
-
-  if (afterSequence != null) {
-    const q = db
-      .select()
-      .from(events)
-      .where(
-        sql`${events.threadId} = ${threadId} AND ${events.sequence} > ${afterSequence}`,
-      )
-      .orderBy(events.sequence);
-    if (limit) return q.limit(limit).all();
-    return q.all();
-  }
-
-  const q = db
-    .select()
-    .from(events)
-    .where(eq(events.threadId, threadId))
-    .orderBy(events.sequence);
-  if (limit) return q.limit(limit).all();
-  return q.all();
+  const hasCold = threadHasColdChunks(db, threadId);
+  const where =
+    afterSequence != null
+      ? sql`${events.threadId} = ${threadId} AND ${events.sequence} > ${afterSequence}`
+      : eq(events.threadId, threadId);
+  const q = db.select().from(events).where(where).orderBy(events.sequence);
+  const inline = !limit ? q.all() : q.limit(limit).all();
+  if (!hasCold) return inline;
+  return includeColdEventRows(
+    db,
+    {
+      afterSequence,
+      limit,
+      order: "asc",
+      threadId,
+    },
+    inline,
+    coldRecordToListedEvent,
+  );
 }
 
 export function listStoredEventRows(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: ListStoredEventRowsArgs,
 ): StoredEventRow[] {
   if (args.types?.length === 0) {
@@ -1377,6 +1440,8 @@ export function listStoredEventRows(
 
   const limit = args.limit ?? Number.MAX_SAFE_INTEGER;
   const order = args.order ?? "asc";
+  const readCold = threadHasColdChunks(db, args.threadId);
+  const pageLimit = limit;
   const types = args.types === undefined ? undefined : [...new Set(args.types)];
   const listPage = (
     pageTypes: readonly ThreadEventType[] | undefined,
@@ -1403,18 +1468,34 @@ export function listStoredEventRows(
         ),
       )
       .orderBy(order === "desc" ? desc(events.sequence) : events.sequence)
-      .limit(limit)
+      .limit(pageLimit)
       .all();
   };
+  const finish = (rows: StoredEventRow[]): StoredEventRow[] =>
+    readCold
+      ? includeColdEventRows(
+          db,
+          {
+            afterSequence: args.afterSequence,
+            beforeSequence: args.beforeSequence,
+            limit: args.limit,
+            order,
+            threadId: args.threadId,
+            types,
+          },
+          rows,
+          coldRecordToStoredEventRow,
+        )
+      : rows;
 
   if (types === undefined || args.limit === undefined) {
-    return listPage(types);
+    return finish(listPage(types));
   }
 
   const rowsByType = types.map((type) => listPage([type]));
   const offsets = rowsByType.map(() => 0);
   const merged: StoredEventRow[] = [];
-  while (merged.length < limit) {
+  while (merged.length < pageLimit) {
     let selectedTypeIndex = -1;
     let selectedRow: StoredEventRow | undefined;
     for (let typeIndex = 0; typeIndex < rowsByType.length; typeIndex += 1) {
@@ -1434,7 +1515,7 @@ export function listStoredEventRows(
     merged.push(selectedRow);
     offsets[selectedTypeIndex] = (offsets[selectedTypeIndex] ?? 0) + 1;
   }
-  return merged;
+  return finish(merged);
 }
 
 export function listLatestThreadStateEventRowsByThreadIds(
@@ -1455,7 +1536,7 @@ export function listLatestThreadStateEventRowsByThreadIds(
       );
       const kindPredicate = sql`(
         candidate.type <> 'thread/extensionState/updated'
-        OR json_extract(candidate.data, '$.kind') = ${args.kind}
+        OR json_extract(bb_text(candidate.data), '$.kind') = ${args.kind}
       )`;
       const requestedThreads = sql.join(
         threadIds.map((threadId) => sql`(${threadId})`),
@@ -1566,7 +1647,7 @@ export function listStoredClientTurnRequestRowsByKeys(
           and(
             eq(events.threadId, threadId),
             inArray(
-              sql<string>`json_extract(${events.data}, '$.requestId')`,
+              sql<string>`json_extract(${storedText(events.data)}, '$.requestId')`,
               requestIds,
             ),
           ),
@@ -1581,6 +1662,29 @@ export function listStoredClientTurnRequestRowsByKeys(
     values: args.keys,
     variableCountPerValue: 2,
   });
+  const requestIdsByThread = new Map<string, Set<string>>();
+  for (const key of args.keys) {
+    const requestIds =
+      requestIdsByThread.get(key.threadId) ?? new Set<string>();
+    requestIds.add(key.requestId);
+    requestIdsByThread.set(key.threadId, requestIds);
+  }
+  const seen = new Set(rows.map((row) => row.id));
+  for (const [threadId, requestIds] of requestIdsByThread) {
+    for (const event of selectColdEventRecords(db, {
+      threadId,
+      types: ["client/turn/requested"],
+      predicate: (event) => {
+        const requestId = readColdEventJsonString(event.data, "requestId");
+        return requestId !== null && requestIds.has(requestId);
+      },
+    })) {
+      if (!seen.has(event.id)) {
+        rows.push(coldRecordToStoredEventRow(event));
+        seen.add(event.id);
+      }
+    }
+  }
   return rows.sort(
     (left, right) =>
       left.threadId.localeCompare(right.threadId) ||
@@ -1592,7 +1696,7 @@ export function findStoredEventRow(
   db: DbQueryConnection,
   args: FindStoredEventRowArgs,
 ): StoredEventRow | null {
-  return (
+  const inline =
     db
       .select(storedEventRowFields)
       .from(events)
@@ -1607,8 +1711,19 @@ export function findStoredEventRow(
       )
       .orderBy(events.sequence)
       .limit(1)
-      .get() ?? null
-  );
+      .get() ?? null;
+  const cold = selectColdEventRecords(db, {
+    afterSequence: args.afterSequence,
+    beforeSequence: inline?.sequence,
+    limit: 1,
+    order: "asc",
+    threadId: args.threadId,
+    types: [args.type],
+  })[0];
+  if (!cold) return inline;
+  const coldRow = coldRecordToStoredEventRow(cold);
+  if (!inline || coldRow.sequence < inline.sequence) return coldRow;
+  return inline;
 }
 
 export function listStoredEventRowsByParentToolCallIds(
@@ -1620,7 +1735,7 @@ export function listStoredEventRowsByParentToolCallIds(
     return [];
   }
 
-  return db
+  const rows = db
     .select(storedEventRowSqlFields(args.maxInlineOutputChars))
     .from(
       sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
@@ -1628,6 +1743,19 @@ export function listStoredEventRowsByParentToolCallIds(
     .where(and(...conditions, isNotNull(events.parentToolCallId)))
     .orderBy(events.sequence)
     .all();
+  return includeColdEventRows(
+    db,
+    {
+      beforeSequence: args.beforeSequence,
+      excludedTypes: args.excludedTypes,
+      maxInlineOutputChars: args.maxInlineOutputChars,
+      parentToolCallIds: args.parentToolCallIds,
+      sequenceStart: args.sequenceStart,
+      threadId: args.threadId,
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 function storedEventRowsByParentToolCallIdsConditions(
@@ -1670,7 +1798,7 @@ export function listStoredDelegatingItemRowsByItemIds(
     return [];
   }
 
-  return db
+  const rows = db
     .select(
       storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
     )
@@ -1685,6 +1813,18 @@ export function listStoredDelegatingItemRowsByItemIds(
     )
     .orderBy(events.sequence)
     .all();
+  return includeColdEventRows(
+    db,
+    {
+      itemIds,
+      itemKinds: ["toolCall", "delegation"],
+      maxInlineOutputChars: args.maxInlineOutputChars,
+      threadId: args.threadId,
+      types: ["item/started", "item/completed"],
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function isTimelineCursorSequencePresent(
@@ -1702,7 +1842,14 @@ export function isTimelineCursorSequencePresent(
     )
     .limit(1)
     .get();
-  return row !== undefined;
+  if (row !== undefined) return true;
+  return (
+    selectColdEventRecords(db, {
+      sequenceStart: args.sequence,
+      threadId: args.threadId,
+      throughSequence: args.sequence,
+    }).length > 0
+  );
 }
 
 export interface ScopedItemRef {
@@ -1726,6 +1873,19 @@ function dedupeScopedItemRefs(
     byKey.set(scopedItemRefKey(item), item);
   }
   return [...byKey.values()];
+}
+
+function coldScopedItemPredicate(items: readonly ScopedItemRef[]) {
+  const keys = new Set(items.map(scopedItemRefKey));
+  return (event: ColdEventRecord): boolean =>
+    event.itemId !== null &&
+    keys.has(
+      scopedItemRefKey({
+        itemId: event.itemId,
+        scopeKind: event.scopeKind,
+        turnId: event.turnId,
+      }),
+    );
 }
 
 function scopedItemRefsPredicate(
@@ -1789,7 +1949,7 @@ export function listItemEventSpansByItems(
     return [];
   }
 
-  return db
+  const rows = db
     .select({
       itemId: sql<string>`${events.itemId}`,
       maxSequence: sql<number>`MAX(${events.sequence})`,
@@ -1806,6 +1966,33 @@ export function listItemEventSpansByItems(
     )
     .groupBy(events.scopeKind, events.turnId, events.itemId)
     .all();
+  const spans = new Map(rows.map((row) => [scopedItemRefKey(row), row]));
+  for (const event of selectColdEventRecords(db, {
+    threadId: args.threadId,
+    itemIds: items.map((item) => item.itemId),
+    types: ITEM_EVENT_TYPES,
+    predicate: coldScopedItemPredicate(items),
+  })) {
+    if (event.itemId === null) continue;
+    const item = {
+      itemId: event.itemId,
+      scopeKind: event.scopeKind,
+      turnId: event.turnId,
+    };
+    const key = scopedItemRefKey(item);
+    const span = spans.get(key);
+    if (span) {
+      span.minSequence = Math.min(span.minSequence, event.sequence);
+      span.maxSequence = Math.max(span.maxSequence, event.sequence);
+    } else {
+      spans.set(key, {
+        ...item,
+        minSequence: event.sequence,
+        maxSequence: event.sequence,
+      });
+    }
+  }
+  return [...spans.values()];
 }
 
 export interface GetStoredItemLifecycleSequenceRangeArgs {
@@ -1831,10 +2018,18 @@ export function getStoredItemLifecycleSequenceRange(
       )
       AND lifecycle.turn_id = ${args.turnId}
   `);
-  if (range === undefined || range.first === null || range.last === null) {
-    return null;
+  let first = range?.first ?? null;
+  let last = range?.last ?? null;
+  for (const event of selectColdEventRecords(db, {
+    itemIds: [args.itemId],
+    threadId: args.threadId,
+    turnId: args.turnId,
+    types: ["item/started", "item/completed", "item/backgroundTask/completed"],
+  })) {
+    first = first === null ? event.sequence : Math.min(first, event.sequence);
+    last = last === null ? event.sequence : Math.max(last, event.sequence);
   }
-  return { first: range.first, last: range.last };
+  return first === null || last === null ? null : { first, last };
 }
 
 export interface ListStoredItemLifecycleRowsByItemsArgs {
@@ -1852,7 +2047,7 @@ export function listStoredItemLifecycleRowsByItems(
     return [];
   }
 
-  return db
+  const rows = db
     .select(
       storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
     )
@@ -1866,6 +2061,18 @@ export function listStoredItemLifecycleRowsByItems(
     )
     .orderBy(events.sequence)
     .all();
+  return includeColdEventRows(
+    db,
+    {
+      threadId: args.threadId,
+      itemIds: items.map((item) => item.itemId),
+      types: ["item/started", "item/completed"],
+      predicate: coldScopedItemPredicate(items),
+      maxInlineOutputChars: args.maxInlineOutputChars,
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export interface ListStoredBufferedTextDeltaRowsByItemsArgs {
@@ -1911,7 +2118,8 @@ export function listStoredClientTurnRequestIdsInRange(
     .select({
       requestId: sql<
         string | null
-      >`json_extract(${events.data}, '$.requestId')`,
+      >`json_extract(${storedText(events.data)}, '$.requestId')`,
+      sequence: events.sequence,
     })
     .from(events)
     .where(
@@ -1924,20 +2132,32 @@ export function listStoredClientTurnRequestIdsInRange(
     )
     .orderBy(events.sequence)
     .all();
-
-  return rows.map((row) => clientTurnRequestIdSchema.parse(row.requestId));
+  const cold = selectColdEventRecords(db, {
+    sequenceStart: args.seqStart,
+    threadId: args.threadId,
+    throughSequence: args.seqEnd,
+    types: ["client/turn/requested"],
+  }).flatMap((event) => {
+    const requestId = readColdEventJsonString(event.data, "requestId");
+    return requestId === null ? [] : [{ requestId, sequence: event.sequence }];
+  });
+  const seen = new Set(rows.map((row) => row.sequence));
+  return [...rows, ...cold.filter((row) => !seen.has(row.sequence))]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((row) => clientTurnRequestIdSchema.parse(row.requestId));
 }
 
 export function getStoredTurnRequestEventForTurn(
   db: DbQueryConnection,
   args: GetStoredTurnRequestEventForTurnArgs,
 ): StoredTurnRequestEventRow | null {
-  const acceptedInput =
+  const inlineAccepted =
     db
       .select({
         clientRequestId: sql<
           string | null
-        >`json_extract(${events.data}, '$.clientRequestId')`,
+        >`json_extract(${storedText(events.data)}, '$.clientRequestId')`,
+        sequence: events.sequence,
       })
       .from(events)
       .where(
@@ -1950,17 +2170,25 @@ export function getStoredTurnRequestEventForTurn(
       .orderBy(desc(events.sequence))
       .limit(1)
       .get() ?? null;
-  const requestIdResult = clientTurnRequestIdSchema.safeParse(
-    acceptedInput?.clientRequestId,
-  );
+  const coldAccepted = selectColdEventRecords(db, {
+    threadId: args.threadId,
+    turnId: args.turnId,
+    types: ["turn/input/accepted"],
+  }).at(-1);
+  const clientRequestId =
+    coldAccepted !== undefined &&
+    (inlineAccepted === null || coldAccepted.sequence > inlineAccepted.sequence)
+      ? readColdEventJsonString(coldAccepted.data, "clientRequestId")
+      : (inlineAccepted?.clientRequestId ?? null);
+  const requestIdResult = clientTurnRequestIdSchema.safeParse(clientRequestId);
   if (!requestIdResult.success) {
     return null;
   }
 
-  return (
+  const inlineRequest =
     db
       .select({
-        data: events.data,
+        data: storedText(events.data),
         sequence: events.sequence,
         threadId: events.threadId,
         type: events.type,
@@ -1970,12 +2198,25 @@ export function getStoredTurnRequestEventForTurn(
         and(
           eq(events.threadId, args.threadId),
           eq(events.type, "client/turn/requested"),
-          sql`json_extract(${events.data}, '$.requestId') = ${requestIdResult.data}`,
+          sql`json_extract(${storedText(events.data)}, '$.requestId') = ${requestIdResult.data}`,
         ),
       )
       .limit(1)
-      .get() ?? null
-  );
+      .get() ?? null;
+  if (inlineRequest) return inlineRequest;
+  const coldRequest = selectColdEventRecords(db, {
+    predicate: (event) =>
+      readColdEventJsonString(event.data, "requestId") === requestIdResult.data,
+    threadId: args.threadId,
+    types: ["client/turn/requested"],
+  })[0];
+  if (!coldRequest) return null;
+  return {
+    data: coldRequest.data,
+    sequence: coldRequest.sequence,
+    threadId: coldRequest.threadId,
+    type: coldRequest.type,
+  };
 }
 
 export interface StoredThreadEventDataRow {
@@ -1993,29 +2234,15 @@ export function getLatestStoredThreadEventOfTypes(
     afterSequence: number;
   },
 ): StoredThreadEventDataRow | null {
-  if (args.types.length === 0) {
-    return null;
-  }
-  return (
-    db
-      .select({
-        data: events.data,
-        sequence: events.sequence,
-        turnId: events.turnId,
-        type: events.type,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          inArray(events.type, [...args.types]),
-          gt(events.sequence, args.afterSequence),
-        ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null
-  );
+  const row = listStoredEventRows(db, { ...args, order: "desc", limit: 1 })[0];
+  return row
+    ? {
+        data: row.data,
+        sequence: row.sequence,
+        turnId: row.turnId,
+        type: row.type,
+      }
+    : null;
 }
 
 export function getLatestStoredRateLimitsEvent(
@@ -2025,7 +2252,7 @@ export function getLatestStoredRateLimitsEvent(
   return (
     db
       .select({
-        data: events.data,
+        data: storedText(events.data),
         sequence: events.sequence,
         turnId: events.turnId,
         type: events.type,
@@ -2053,10 +2280,10 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
 
   const clientRequestIdConditions = args.clientRequestIds.map(
     (clientRequestId) =>
-      sql`json_extract(${events.data}, '$.clientRequestId') = ${clientRequestId}`,
+      sql`json_extract(${storedText(events.data)}, '$.clientRequestId') = ${clientRequestId}`,
   );
 
-  return db
+  const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -2069,6 +2296,24 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
     )
     .orderBy(events.sequence)
     .all();
+  const wanted = new Set(args.clientRequestIds);
+  return includeColdEventRows(
+    db,
+    {
+      afterSequence: args.afterSequence,
+      predicate: (event) => {
+        const requestId = readColdEventJsonString(
+          event.data,
+          "clientRequestId",
+        );
+        return requestId !== null && wanted.has(requestId);
+      },
+      threadId: args.threadId,
+      types: ["turn/input/accepted"],
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function listStoredTurnRejectedRowsByClientRequestIds(
@@ -2081,10 +2326,10 @@ export function listStoredTurnRejectedRowsByClientRequestIds(
 
   const clientRequestIdConditions = args.clientRequestIds.map(
     (clientRequestId) =>
-      sql`json_extract(${events.data}, '$.requestId') = ${clientRequestId}`,
+      sql`json_extract(${storedText(events.data)}, '$.requestId') = ${clientRequestId}`,
   );
 
-  return db
+  const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -2097,6 +2342,21 @@ export function listStoredTurnRejectedRowsByClientRequestIds(
     )
     .orderBy(events.sequence)
     .all();
+  const wanted = new Set(args.clientRequestIds);
+  return includeColdEventRows(
+    db,
+    {
+      afterSequence: args.afterSequence,
+      predicate: (event) => {
+        const requestId = readColdEventJsonString(event.data, "requestId");
+        return requestId !== null && wanted.has(requestId);
+      },
+      threadId: args.threadId,
+      types: ["client/turn/rejected"],
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function getLatestThreadInterruptedReason(
@@ -2105,7 +2365,7 @@ export function getLatestThreadInterruptedReason(
 ): SystemThreadInterruptedReason | null {
   const row = db
     .select({
-      reason: sql<string>`json_extract(${events.data}, '$.reason')`,
+      reason: sql<string>`json_extract(${storedText(events.data)}, '$.reason')`,
     })
     .from(events)
     .where(
@@ -2131,7 +2391,7 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
     return [];
   }
 
-  return db
+  const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -2144,6 +2404,17 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
     )
     .orderBy(events.sequence)
     .all();
+  return includeColdEventRows(
+    db,
+    {
+      threadId: args.threadId,
+      throughSequence: args.sequenceCutoff,
+      turnIds: args.turnIds,
+      types: ["turn/started"],
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function listStoredTurnCompletedRowsByTurnIds(
@@ -2154,7 +2425,7 @@ export function listStoredTurnCompletedRowsByTurnIds(
     return [];
   }
 
-  return db
+  const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -2166,6 +2437,16 @@ export function listStoredTurnCompletedRowsByTurnIds(
     )
     .orderBy(events.sequence)
     .all();
+  return includeColdEventRows(
+    db,
+    {
+      threadId: args.threadId,
+      turnIds: args.turnIds,
+      types: ["turn/completed"],
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
@@ -2298,7 +2579,7 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
       and(
         eq(events.threadId, args.threadId),
         inArray(events.sequence, latestSequences),
-        sql`json_extract(${events.data}, '$.item.status') = 'pending'`,
+        sql`json_extract(${storedText(events.data)}, '$.item.status') = 'pending'`,
         notInArray(events.itemId, completedItemIds),
       ),
     )
@@ -2354,7 +2635,7 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       active_event.thread_id AS threadId,
       SUM(
         CASE
-          WHEN json_extract(active_event.data, '$.item.taskType') =
+          WHEN json_extract(bb_text(active_event.data), '$.item.taskType') =
             ${LOCAL_WORKFLOW_TASK_TYPE}
           THEN 1
           ELSE 0
@@ -2362,7 +2643,7 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       ) AS activeWorkflowCount,
       SUM(
         CASE
-          WHEN json_extract(active_event.data, '$.item.taskType') IN (
+          WHEN json_extract(bb_text(active_event.data), '$.item.taskType') IN (
             ${LOCAL_AGENT_TASK_TYPE},
             ${LOCAL_SUBAGENT_TASK_TYPE}
           )
@@ -2372,7 +2653,7 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       ) AS activeBackgroundAgentCount,
       SUM(
         CASE
-          WHEN json_extract(active_event.data, '$.item.taskType') =
+          WHEN json_extract(bb_text(active_event.data), '$.item.taskType') =
             ${LOCAL_BASH_TASK_TYPE}
           THEN 1
           ELSE 0
@@ -2384,15 +2665,15 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       AND active_event.sequence = latest.sequence
     WHERE latest.is_completed = 0
       AND latest.sequence IS NOT NULL
-      AND json_extract(active_event.data, '$.item.status') = 'pending'
-      AND json_extract(active_event.data, '$.item.taskType') IN (
+      AND json_extract(bb_text(active_event.data), '$.item.status') = 'pending'
+      AND json_extract(bb_text(active_event.data), '$.item.taskType') IN (
         ${LOCAL_WORKFLOW_TASK_TYPE},
         ${LOCAL_AGENT_TASK_TYPE},
         ${LOCAL_SUBAGENT_TASK_TYPE},
         ${LOCAL_BASH_TASK_TYPE}
       )
       AND COALESCE(
-        json_extract(active_event.data, '$.item.skipTranscript'),
+        json_extract(bb_text(active_event.data), '$.item.skipTranscript'),
         0
       ) = 0
     GROUP BY active_event.thread_id
@@ -2485,7 +2766,7 @@ export function hasStoredSpawnAgentToolCall(
   db: DbQueryConnection,
   threadId: string,
 ): boolean {
-  return (
+  const inline =
     db
       .select({ found: sql<number>`1` })
       .from(sql`${events} INDEXED BY events_delegating_item_lookup_idx`)
@@ -2494,11 +2775,20 @@ export function hasStoredSpawnAgentToolCall(
           eq(events.threadId, threadId),
           sql`${events.itemKind} IN ('toolCall', 'delegation')`,
           eq(events.itemKind, "toolCall"),
-          sql`json_extract(${events.data}, '$.item.tool') = 'spawnAgent'`,
+          sql`json_extract(${storedText(events.data)}, '$.item.tool') = 'spawnAgent'`,
         ),
       )
       .limit(1)
-      .get() !== undefined
+      .get() !== undefined;
+  return (
+    inline ||
+    selectColdEventRecords(db, {
+      threadId,
+      itemKinds: ["toolCall"],
+      predicate: (row) =>
+        readColdEventJsonString(row.data, "item.tool") === "spawnAgent",
+      limit: 1,
+    }).length > 0
   );
 }
 
@@ -2667,12 +2957,13 @@ function storedConversationOutlineStructuralWhere(
   )!;
 }
 
-function storedConversationOutlineStructuralEventRowFields() {
-  return {
-    ...storedEventRowFields,
-    data: sql<string>`CASE ${events.itemKind}
+function storedConversationOutlineStructuralData(
+  data: SQL<string> = sql<string>`${storedText(events.data)}`,
+  itemKind: SQL = sql`${events.itemKind}`,
+): SQL<string> {
+  return sql<string>`CASE ${itemKind}
       WHEN 'toolCall' THEN json_remove(
-        ${events.data},
+        ${data},
         '$.item.arguments',
         '$.item.result',
         '$.item.error',
@@ -2680,15 +2971,21 @@ function storedConversationOutlineStructuralEventRowFields() {
         '$.item.truncation'
       )
       WHEN 'backgroundTask' THEN json_remove(
-        ${events.data},
+        ${data},
         '$.item.workflow',
         '$.item.usage',
         '$.item.summary',
         '$.item.error',
         '$.item.outputFile'
       )
-      ELSE ${events.data}
-    END`,
+      ELSE ${data}
+    END`;
+}
+
+function storedConversationOutlineStructuralEventRowFields() {
+  return {
+    ...storedEventRowFields,
+    data: storedConversationOutlineStructuralData(),
   };
 }
 
@@ -2715,14 +3012,31 @@ export function getLatestStoredConversationOutlineSequence(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "system/operation"),
-        sql`json_extract(${events.data}, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}`,
-        sql`json_extract(${events.data}, '$.status') = 'completed'`,
+        sql`json_extract(${storedText(events.data)}, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}`,
+        sql`json_extract(${storedText(events.data)}, '$.status') = 'completed'`,
       ),
     );
 
-  return unionAll(lifecycle, completedConversation, structural, contextClear)
+  const inline = unionAll(
+    lifecycle,
+    completedConversation,
+    structural,
+    contextClear,
+  )
     .all()
     .reduce((latest, row) => Math.max(latest, row.sequence ?? 0), 0);
+  const cold = selectColdEventRecords(db, {
+    threadId: args.threadId,
+    types: ["item/completed"],
+    itemKinds: [
+      ...conversationOutlineItemKinds,
+      ...conversationOutlineStructuralItemKinds,
+    ],
+    afterSequence: inline,
+    order: "desc",
+    limit: 1,
+  })[0];
+  return cold?.sequence ?? inline;
 }
 
 export function listStoredConversationOutlineEventRows(
@@ -2790,8 +3104,8 @@ export function getStoredConversationOutlineProjectionState(
               SELECT 1 FROM events AS root_request
               WHERE root_request.thread_id = accepted_root.thread_id
                 AND root_request.type = 'client/turn/requested'
-                AND json_extract(root_request.data, '$.requestId') = json_extract(accepted_root.data, '$.clientRequestId')
-                AND json_extract(root_request.data, '$.target.kind') IN ('new-turn', 'thread-start')
+                AND json_extract(bb_text(root_request.data), '$.requestId') = json_extract(bb_text(accepted_root.data), '$.clientRequestId')
+                AND json_extract(bb_text(root_request.data), '$.target.kind') IN ('new-turn', 'thread-start')
             )
         )`,
       ),
@@ -2842,7 +3156,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineLifecycleWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineLifecycleWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const completedConversationRows = db
@@ -2851,7 +3168,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineCompletedWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineCompletedWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const structuralRows = db
@@ -2866,7 +3186,7 @@ function selectStoredConversationOutlineEventRows(
         ),
         or(
           eq(events.type, "item/started"),
-          sql`json_extract(${events.data}, '$.item.status') <> 'completed'`,
+          sql`json_extract(${storedText(events.data)}, '$.item.status') <> 'completed'`,
           sql`NOT EXISTS (
             SELECT 1
             FROM events AS earlier_structural_start
@@ -2892,7 +3212,67 @@ function selectStoredConversationOutlineEventRows(
     completedConversationRows,
     structuralRows,
   ).all();
-  return rows.sort((left, right) => left.sequence - right.sequence);
+  const nestedTurns = rootOnly
+    ? new Set(
+        db
+          .select({ turnId: events.turnId })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, args.threadId),
+              eq(events.type, "turn/started"),
+              isNotNull(events.parentToolCallId),
+            ),
+          )
+          .all()
+          .map((row) => row.turnId),
+      )
+    : new Set<string | null>();
+  const structuralData = new Map<string, string>();
+  return includeColdEventRows(
+    db,
+    {
+      threadId: args.threadId,
+      sequenceStart: args.sequenceStart,
+      types: ["item/completed"],
+      itemKinds: [
+        ...conversationOutlineItemKinds,
+        ...conversationOutlineStructuralItemKinds,
+      ],
+      predicate: (event) => {
+        if (
+          rootOnly &&
+          (event.parentToolCallId !== null || nestedTurns.has(event.turnId))
+        )
+          return false;
+        if (event.itemKind !== "toolCall") return true;
+        const row = db.get<{ data: string }>(sql`
+          WITH source(data) AS (VALUES (${event.data}))
+          SELECT ${storedConversationOutlineStructuralData(sql<string>`source.data`, sql`${event.itemKind}`)} AS data
+          FROM source
+          WHERE json_extract(bb_text(source.data), '$.item.status') <> 'completed'
+            OR NOT EXISTS (
+              SELECT 1 FROM events AS earlier_structural_start
+                INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+              WHERE earlier_structural_start.thread_id = ${event.threadId}
+                AND earlier_structural_start.item_id = ${event.itemId}
+                AND earlier_structural_start.type IN ('item/started', 'item/completed', 'item/backgroundTask/completed')
+                AND earlier_structural_start.type = 'item/started'
+                AND earlier_structural_start.item_kind = ${event.itemKind}
+                AND earlier_structural_start.sequence < ${event.sequence}
+            )
+        `);
+        if (!row) return false;
+        structuralData.set(event.id, row.data);
+        return true;
+      },
+    },
+    rows,
+    (event) => ({
+      ...coldRecordToStoredEventRow(event),
+      data: structuralData.get(event.id) ?? event.data,
+    }),
+  );
 }
 
 export interface TimelineWindowHint {
@@ -2908,7 +3288,7 @@ export interface ListTimelineWindowHintsDescendingArgs {
 
 const visibleTimelineRequestInputSql = sql`EXISTS (
   SELECT 1
-  FROM json_each(events.data, '$.input') AS input_part
+  FROM json_each(bb_text(events.data), '$.input') AS input_part
   WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
     AND (
       (
@@ -2946,22 +3326,45 @@ export function findTimelineWindowBudgetFloorSequence(
     conditions.push(lt(events.sequence, args.beforeSequence));
   }
 
-  const row = db
+  if (!threadHasColdChunks(db, args.threadId)) {
+    const row = db
+      .select({ sequence: events.sequence })
+      .from(events)
+      .where(and(...conditions))
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .offset(args.eventBudget)
+      .get();
+    return row?.sequence;
+  }
+  const inline = db
     .select({ sequence: events.sequence })
     .from(events)
     .where(and(...conditions))
     .orderBy(desc(events.sequence))
-    .limit(1)
-    .offset(args.eventBudget)
-    .get();
-  return row?.sequence;
+    .limit(args.eventBudget + 1)
+    .all();
+  const cold = selectColdEventRecords(db, {
+    beforeSequence: args.beforeSequence,
+    excludedTypes: args.excludedTypes,
+    sequenceStart: args.sequenceStart,
+    threadId: args.threadId,
+    limit: args.eventBudget + 1,
+    order: "desc",
+  });
+  const seen = new Set(inline.map((row) => row.sequence));
+  const sequences = [
+    ...inline,
+    ...cold.filter((row) => !seen.has(row.sequence)),
+  ].sort((left, right) => right.sequence - left.sequence);
+  return sequences[args.eventBudget]?.sequence;
 }
 
 export function listTimelineInterruptionRows(
   db: DbConnection,
   args: { threadId: string; sequenceStart: number; maxSeq: number },
 ): StoredEventRow[] {
-  return db
+  const rows = db
     .select(storedEventRowSqlFields(null))
     .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
     .where(
@@ -2974,6 +3377,17 @@ export function listTimelineInterruptionRows(
     )
     .orderBy(events.sequence)
     .all();
+  return includeColdEventRows(
+    db,
+    {
+      sequenceStart: args.sequenceStart,
+      threadId: args.threadId,
+      throughSequence: args.maxSeq,
+      types: ["system/thread/interrupted"],
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
@@ -2983,11 +3397,41 @@ const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
   "turn/completed",
 ] as const satisfies readonly ThreadEventType[];
 
+function coldEventHasVisibleUserInput(data: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null || !("input" in parsed))
+    return false;
+  const input = parsed.input;
+  if (!Array.isArray(input)) return false;
+  return input.some((part) => {
+    if (typeof part !== "object" || part === null) return false;
+    const record = part as {
+      text?: unknown;
+      type?: unknown;
+      visibility?: unknown;
+    };
+    if (record.visibility === "agent-only") return false;
+    if (record.type === "text") {
+      return typeof record.text === "string" && record.text !== "";
+    }
+    return (
+      record.type === "image" ||
+      record.type === "localImage" ||
+      record.type === "localFile"
+    );
+  });
+}
+
 export function listTimelineOrderingContext(
   db: DbConnection,
   args: { threadId: string; sequenceStart: number; maxSeq: number },
 ) {
-  return db
+  const rows = db
     .select({
       sequence: sql<number>`${events.sequence}`,
       turnId: sql<string | null>`${events.turnId}`,
@@ -2995,16 +3439,16 @@ export function listTimelineOrderingContext(
       parentToolCallId: sql<string | null>`${events.parentToolCallId}`,
       requestId: sql<
         string | null
-      >`json_extract(${events.data}, '$.requestId')`,
+      >`json_extract(${storedText(events.data)}, '$.requestId')`,
       clientRequestId: sql<
         string | null
-      >`json_extract(${events.data}, '$.clientRequestId')`,
+      >`json_extract(${storedText(events.data)}, '$.clientRequestId')`,
       expectedTurnId: sql<
         string | null
-      >`json_extract(${events.data}, '$.target.expectedTurnId')`,
+      >`json_extract(${storedText(events.data)}, '$.target.expectedTurnId')`,
       hasVisibleUserInput: sql<number>`CASE
         WHEN ${events.type} = 'client/turn/requested'
-          AND json_extract(${events.data}, '$.initiator') = 'user'
+          AND json_extract(${storedText(events.data)}, '$.initiator') = 'user'
         THEN CASE WHEN ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END
         ELSE 0
       END`,
@@ -3020,6 +3464,36 @@ export function listTimelineOrderingContext(
     )
     .orderBy(events.sequence)
     .all();
+  if (!threadHasColdChunks(db, args.threadId)) return rows;
+  const seen = new Set(rows.map((row) => row.sequence));
+  const cold = selectColdEventRecords(db, {
+    sequenceStart: args.sequenceStart,
+    threadId: args.threadId,
+    throughSequence: args.maxSeq,
+    types: [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES],
+  })
+    .filter((event) => !seen.has(event.sequence))
+    .map((event) => ({
+      clientRequestId: readColdEventJsonString(event.data, "clientRequestId"),
+      expectedTurnId: readColdEventJsonString(
+        event.data,
+        "target.expectedTurnId",
+      ),
+      hasVisibleUserInput:
+        event.type === "client/turn/requested" &&
+        readColdEventJsonString(event.data, "initiator") === "user" &&
+        coldEventHasVisibleUserInput(event.data)
+          ? 1
+          : 0,
+      parentToolCallId: event.parentToolCallId,
+      requestId: readColdEventJsonString(event.data, "requestId"),
+      sequence: event.sequence,
+      turnId: event.turnId,
+      type: event.type,
+    }));
+  return [...rows, ...cold].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
 }
 
 export function getTimelineGroupingContextChangesInRange(
@@ -3040,7 +3514,25 @@ export function getTimelineGroupingContextChangesInRange(
       ),
     )
     .get();
-  return { ordering: row?.ordering === 1, parented: row?.parented === 1 };
+  let ordering = row?.ordering === 1;
+  let parented = row?.parented === 1;
+  if ((!ordering || !parented) && threadHasColdChunks(db, args.threadId)) {
+    const cold = selectColdEventRecords(db, {
+      afterSequence: args.afterSequence,
+      threadId: args.threadId,
+      throughSequence: args.throughSequence,
+    });
+    ordering =
+      ordering ||
+      cold.some((event) =>
+        TIMELINE_ORDERING_CONTEXT_EVENT_TYPES.includes(
+          event.type as (typeof TIMELINE_ORDERING_CONTEXT_EVENT_TYPES)[number],
+        ),
+      );
+    parented =
+      parented || cold.some((event) => event.parentToolCallId !== null);
+  }
+  return { ordering, parented };
 }
 
 export function listStoredEventRowsInSequenceRange(
@@ -3053,7 +3545,8 @@ export function listStoredEventRowsInSequenceRange(
     throughSequence: number;
   },
 ): StoredEventRow[] {
-  return db
+  const hasCold = threadHasColdChunks(db, args.threadId);
+  const rows = db
     .select(storedEventRowSqlFields(args.maxInlineOutputChars))
     .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
     .where(
@@ -3066,12 +3559,126 @@ export function listStoredEventRowsInSequenceRange(
     .orderBy(events.sequence)
     .limit(args.limit)
     .all();
+  if (!hasCold) return rows;
+  return includeColdEventRows(
+    db,
+    {
+      afterSequence: args.afterSequence,
+      limit: args.limit,
+      maxInlineOutputChars: args.maxInlineOutputChars,
+      threadId: args.threadId,
+      throughSequence: args.throughSequence,
+    },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function getFirstParentedTimelineBoundarySequence(
   db: DbConnection,
   args: { threadId: string; sequenceStart: number; maxSeq: number },
 ): number | null {
+  if (threadHasColdChunks(db, args.threadId)) {
+    const inline = db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          lte(events.sequence, args.maxSeq),
+          or(
+            inArray(events.type, ["turn/started", "client/turn/requested"]),
+            inArray(events.itemKind, ["toolCall", "delegation"]),
+            isNotNull(events.parentToolCallId),
+          ),
+        ),
+      )
+      .all();
+    const rows = includeColdEventRows(
+      db,
+      {
+        threadId: args.threadId,
+        throughSequence: args.maxSeq,
+        predicate: (event) =>
+          event.type === "turn/started" ||
+          event.type === "client/turn/requested" ||
+          event.itemKind === "toolCall" ||
+          event.itemKind === "delegation" ||
+          event.parentToolCallId !== null,
+      },
+      inline,
+      coldRecordToStoredEventRow,
+    );
+    const rootTurns = new Set(
+      rows
+        .filter(
+          (row) =>
+            row.type === "turn/started" &&
+            row.parentToolCallId === null &&
+            row.turnId !== null,
+        )
+        .map((row) => row.turnId),
+    );
+    const childEnds = new Map<string, number>();
+    for (const row of rows) {
+      if (row.parentToolCallId !== null) {
+        childEnds.set(
+          row.parentToolCallId,
+          Math.max(childEnds.get(row.parentToolCallId) ?? 0, row.sequence),
+        );
+      }
+    }
+    const spans = new Map<string, { start: number; end: number }>();
+    for (const row of rows) {
+      if (
+        row.sequence < args.sequenceStart ||
+        row.parentToolCallId !== null ||
+        row.itemId === null ||
+        row.turnId === null ||
+        !rootTurns.has(row.turnId) ||
+        (row.itemKind !== "toolCall" && row.itemKind !== "delegation")
+      )
+        continue;
+      const end = childEnds.get(row.itemId);
+      if (end === undefined) continue;
+      const key = scopedItemRefKey({
+        itemId: row.itemId,
+        turnId: row.turnId,
+        scopeKind: row.scopeKind,
+      });
+      const span = spans.get(key);
+      spans.set(key, {
+        start: Math.min(span?.start ?? row.sequence, row.sequence),
+        end,
+      });
+    }
+    for (const row of rows) {
+      if (
+        row.type !== "client/turn/requested" ||
+        readColdEventJsonString(row.data, "initiator") !== "user" ||
+        !coldEventHasVisibleUserInput(row.data)
+      )
+        continue;
+      const kind =
+        readColdEventJsonString(row.data, "target.kind") ?? "new-turn";
+      if (
+        kind !== "thread-start" &&
+        kind !== "new-turn" &&
+        !(
+          (kind === "auto" || kind === "steer") &&
+          readColdEventJsonString(row.data, "target.expectedTurnId") === null
+        )
+      )
+        continue;
+      if (
+        [...spans.values()].some(
+          (span) => row.sequence > span.start && row.sequence < span.end,
+        )
+      )
+        return row.sequence;
+    }
+    return null;
+  }
   const result = db.get<{ sequence: number | null }>(sql`
     WITH nested_history AS MATERIALIZED (
       SELECT 1
@@ -3111,14 +3718,14 @@ export function getFirstParentedTimelineBoundarySequence(
       AND ${events.threadId} = ${args.threadId}
       AND ${visibleTimelineRequestInputSql}
       AND (
-        COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
+        COALESCE(json_extract(${storedText(events.data)}, '$.target.kind'), 'new-turn')
           IN ('thread-start', 'new-turn')
         OR (
-          json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
-          AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
+          json_extract(${storedText(events.data)}, '$.target.kind') IN ('auto', 'steer')
+          AND json_extract(${storedText(events.data)}, '$.target.expectedTurnId') IS NULL
         )
       )
-      AND json_extract(${events.data}, '$.initiator') = 'user'
+      AND json_extract(${storedText(events.data)}, '$.initiator') = 'user'
   `);
   return result?.sequence ?? null;
 }
@@ -3127,7 +3734,19 @@ export function listTimelineWindowHintsDescending(
   db: DbConnection,
   args: ListTimelineWindowHintsDescendingArgs,
 ): TimelineWindowHint[] {
-  return db.all<TimelineWindowHint>(sql`
+  if (!threadHasColdChunks(db, args.threadId)) {
+    return db.all<TimelineWindowHint>(sql`
+      SELECT sequence
+      FROM events INDEXED BY events_thread_type_sequence_idx
+      WHERE thread_id = ${args.threadId}
+        AND type = 'client/turn/requested'
+        AND sequence >= ${args.sequenceStart}
+        AND sequence < ${args.beforeSequence}
+      ORDER BY sequence DESC
+      LIMIT ${args.limit}
+    `);
+  }
+  const inline = db.all<TimelineWindowHint>(sql`
     SELECT sequence
     FROM events INDEXED BY events_thread_type_sequence_idx
     WHERE thread_id = ${args.threadId}
@@ -3137,6 +3756,19 @@ export function listTimelineWindowHintsDescending(
     ORDER BY sequence DESC
     LIMIT ${args.limit}
   `);
+  const cold = selectColdEventRecords(db, {
+    beforeSequence: args.beforeSequence,
+    sequenceStart: args.sequenceStart,
+    threadId: args.threadId,
+    types: ["client/turn/requested"],
+    limit: args.limit,
+    order: "desc",
+  });
+  const seen = new Set(inline.map((row) => row.sequence));
+  return [...inline, ...cold.filter((row) => !seen.has(row.sequence))]
+    .sort((left, right) => right.sequence - left.sequence)
+    .slice(0, args.limit)
+    .map((row) => ({ sequence: row.sequence }));
 }
 
 export interface TimelineCursorSequenceLookupArgs {
@@ -3166,35 +3798,21 @@ function storedTimelineWindowDataColumn(
   maxInlineOutputChars: InlineOutputCharLimit,
 ) {
   return maxInlineOutputChars === null
-    ? events.data
+    ? storedText(events.data)
     : truncatedEventDataColumn(maxInlineOutputChars);
 }
 
-export function findStoredTimelineWindowByteBudgetFloor(
-  db: DbConnection,
-  args: FindStoredTimelineWindowByteBudgetFloorArgs,
+interface TimelineByteBudgetRow {
+  created_at: number;
+  data_bytes: number;
+  sequence: number;
+  turn_id: string | null;
+}
+
+function foldTimelineWindowByteBudget(
+  rows: Iterable<TimelineByteBudgetRow>,
+  maxDataBytes: number,
 ): StoredTimelineWindowByteBudgetFloor {
-  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
-  const query = db
-    .select({
-      createdAt: events.createdAt,
-      dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
-      sequence: events.sequence,
-      turnId: events.turnId,
-    })
-    .from(events)
-    .where(and(...storedTimelineWindowConditions(args)))
-    .orderBy(desc(events.sequence))
-    .toSQL();
-  const statement = db.$client.prepare<
-    unknown[],
-    {
-      created_at: number;
-      data_bytes: number;
-      sequence: number;
-      turn_id: string | null;
-    }
-  >(query.sql);
   let includedDataBytes = 0;
   let sequenceStart: number | null = null;
   let result: StoredTimelineWindowByteBudgetFloor | null = null;
@@ -3203,13 +3821,13 @@ export function findStoredTimelineWindowByteBudgetFloor(
     { kind: "single-event-too-large" }
   > | null = null;
 
-  for (const row of statement.iterate(...query.params)) {
+  for (const row of rows) {
     if (oversizedEvent !== null) {
       oversizedEvent.hasOlderRows = true;
       result = oversizedEvent;
       break;
     }
-    if (includedDataBytes + row.data_bytes > args.maxDataBytes) {
+    if (includedDataBytes + row.data_bytes > maxDataBytes) {
       if (sequenceStart === null) {
         oversizedEvent = {
           createdAt: row.created_at,
@@ -3232,13 +3850,92 @@ export function findStoredTimelineWindowByteBudgetFloor(
     sequenceStart = row.sequence;
   }
 
-  if (result !== null) {
-    return result;
-  }
-  if (oversizedEvent !== null) {
-    return oversizedEvent;
-  }
+  if (result !== null) return result;
+  if (oversizedEvent !== null) return oversizedEvent;
   return { eventDataBytes: includedDataBytes, kind: "fits" };
+}
+
+function coldTimelineWindowQuery(args: ListStoredTimelineWindowEventRowsArgs) {
+  return {
+    beforeSequence: args.beforeSequence,
+    excludedTypes: args.excludedTypes,
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    sequenceStart: args.sequenceStart,
+    threadId: args.threadId,
+  };
+}
+
+export function findStoredTimelineWindowByteBudgetFloor(
+  db: DbConnection,
+  args: FindStoredTimelineWindowByteBudgetFloorArgs,
+): StoredTimelineWindowByteBudgetFloor {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const query = db
+    .select({
+      createdAt: events.createdAt,
+      dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      sequence: events.sequence,
+      turnId: events.turnId,
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .orderBy(desc(events.sequence))
+    .toSQL();
+  const statement = db.$client.prepare<unknown[], TimelineByteBudgetRow>(
+    query.sql,
+  );
+  if (!threadHasColdChunks(db, args.threadId)) {
+    return foldTimelineWindowByteBudget(
+      statement.iterate(...query.params),
+      args.maxDataBytes,
+    );
+  }
+  function* coldRows(): Generator<TimelineByteBudgetRow> {
+    let beforeSequence = args.beforeSequence;
+    while (true) {
+      const row = selectColdEventRecords(db, {
+        ...coldTimelineWindowQuery(args),
+        beforeSequence,
+        order: "desc",
+        limit: 1,
+      })[0];
+      if (!row) return;
+      yield {
+        created_at: row.createdAt,
+        data_bytes: Buffer.byteLength(row.data),
+        sequence: row.sequence,
+        turn_id: row.turnId,
+      };
+      beforeSequence = row.sequence;
+    }
+  }
+  function* mergedRows(): Generator<TimelineByteBudgetRow> {
+    const inline = statement.iterate(...query.params);
+    const cold = coldRows();
+    try {
+      let left = inline.next();
+      let right = cold.next();
+      while (!left.done || !right.done) {
+        if (
+          !left.done &&
+          (right.done || left.value.sequence >= right.value.sequence)
+        ) {
+          const row = left.value;
+          yield row;
+          left = inline.next();
+          if (!right.done && right.value.sequence === row.sequence)
+            right = cold.next();
+        } else if (!right.done) {
+          yield right.value;
+          right = cold.next();
+        }
+      }
+    } finally {
+      inline.return?.();
+      cold.return(undefined);
+    }
+  }
+  return foldTimelineWindowByteBudget(mergedRows(), args.maxDataBytes);
 }
 
 export function listStoredTimelineTurnEventRows(
@@ -3246,7 +3943,7 @@ export function listStoredTimelineTurnEventRows(
   args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
 ): StoredEventRow[] {
   if (args.turnIds.length === 0) return [];
-  return queryInSqliteVariableBatches({
+  const rows = queryInSqliteVariableBatches({
     values: args.turnIds,
     variableCountPerValue: 1,
     dedupeKey: (turnId) => turnId,
@@ -3265,13 +3962,68 @@ export function listStoredTimelineTurnEventRows(
         )
         .all(),
   }).sort((left, right) => left.sequence - right.sequence);
+  if (!threadHasColdChunks(db, args.threadId)) return rows;
+  return includeColdEventRows(
+    db,
+    { ...coldTimelineWindowQuery(args), turnIds: args.turnIds },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function listTimelineRootWindowTurnIds(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs,
 ): string[] {
-  return db
+  if (!threadHasColdChunks(db, args.threadId)) {
+    return db
+      .selectDistinct({ turnId: sql<string>`${events.turnId}` })
+      .from(events)
+      .where(
+        and(
+          ...storedTimelineWindowConditions(args),
+          isNotNull(events.turnId),
+          isNull(events.parentToolCallId),
+          sql`EXISTS (SELECT 1 FROM events AS root_start
+      WHERE root_start.thread_id = ${events.threadId}
+        AND root_start.turn_id = ${events.turnId}
+        AND root_start.type = 'turn/started'
+        AND root_start.parent_tool_call_id IS NULL)`,
+        ),
+      )
+      .all()
+      .map((row) => row.turnId);
+  }
+  const started = new Set<string>();
+  for (const row of db
+    .selectDistinct({ turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/started"),
+        isNull(events.parentToolCallId),
+        isNotNull(events.turnId),
+      ),
+    )
+    .all()) {
+    if (row.turnId !== null) started.add(row.turnId);
+  }
+  for (const event of selectColdEventRecords(db, {
+    predicate: (row) => row.parentToolCallId === null && row.turnId !== null,
+    threadId: args.threadId,
+    types: ["turn/started"],
+  })) {
+    if (event.turnId !== null) started.add(event.turnId);
+  }
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const add = (turnId: string | null) => {
+    if (turnId === null || seen.has(turnId) || !started.has(turnId)) return;
+    seen.add(turnId);
+    ids.push(turnId);
+  };
+  for (const row of db
     .selectDistinct({ turnId: sql<string>`${events.turnId}` })
     .from(events)
     .where(
@@ -3279,22 +4031,25 @@ export function listTimelineRootWindowTurnIds(
         ...storedTimelineWindowConditions(args),
         isNotNull(events.turnId),
         isNull(events.parentToolCallId),
-        sql`EXISTS (SELECT 1 FROM events AS root_start
-      WHERE root_start.thread_id = ${events.threadId}
-        AND root_start.turn_id = ${events.turnId}
-        AND root_start.type = 'turn/started'
-        AND root_start.parent_tool_call_id IS NULL)`,
       ),
     )
-    .all()
-    .map((row) => row.turnId);
+    .all()) {
+    add(row.turnId);
+  }
+  for (const event of selectColdEventRecords(db, {
+    ...coldTimelineWindowQuery(args),
+    predicate: (row) => row.parentToolCallId === null && row.turnId !== null,
+  })) {
+    add(event.turnId);
+  }
+  return ids;
 }
 
 export function listStoredTimelineThreadWindowEventRows(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs,
 ): StoredEventRow[] {
-  return db
+  const rows = db
     .select(
       storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
     )
@@ -3302,13 +4057,20 @@ export function listStoredTimelineThreadWindowEventRows(
     .where(and(...storedTimelineWindowConditions(args), isNull(events.turnId)))
     .orderBy(events.sequence)
     .all();
+  if (!threadHasColdChunks(db, args.threadId)) return rows;
+  return includeColdEventRows(
+    db,
+    { ...coldTimelineWindowQuery(args), turnIdNull: true },
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 export function listStoredTimelineWindowEventRows(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs,
 ): StoredEventRow[] {
-  return db
+  const rows = db
     .select(
       storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
     )
@@ -3316,6 +4078,13 @@ export function listStoredTimelineWindowEventRows(
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
     .all();
+  if (!threadHasColdChunks(db, args.threadId)) return rows;
+  return includeColdEventRows(
+    db,
+    coldTimelineWindowQuery(args),
+    rows,
+    coldRecordToStoredEventRow,
+  );
 }
 
 function getLatestContextWindowBoundary(
@@ -3332,9 +4101,9 @@ function getLatestContextWindowBoundary(
         eq(events.type, "thread/contextWindowUsage/updated"),
         isNotNestedTurnUsageEvent,
         sql`(
-          json_extract(${events.data}, '$.contextWindowUsage.snapshot') IS NOT NULL
-          OR json_extract(${events.data}, '$.contextWindowUsage.usedTokens') IS NULL
-          OR json_extract(${events.data}, '$.contextWindowUsage.estimated') = 0
+          json_extract(${storedText(events.data)}, '$.contextWindowUsage.snapshot') IS NOT NULL
+          OR json_extract(${storedText(events.data)}, '$.contextWindowUsage.usedTokens') IS NULL
+          OR json_extract(${storedText(events.data)}, '$.contextWindowUsage.estimated') = 0
         )`,
       ),
     )
@@ -3382,7 +4151,7 @@ function listLatestRowsForContextWindowUsage(
         gte(events.sequence, args.sequenceStart),
         eq(events.type, args.eventType),
         isNotNestedTurnUsageEvent,
-        sql`json_extract(${events.data}, ${args.contextWindowJsonPath}) IS NOT NULL`,
+        sql`json_extract(${storedText(events.data)}, ${args.contextWindowJsonPath}) IS NOT NULL`,
       ),
     )
     .orderBy(desc(events.sequence))
@@ -3412,11 +4181,23 @@ export function listContextWindowUsageRows(
   });
 }
 
+function coldEventHasThreadOutput(event: ColdEventRecord): boolean {
+  if (event.type === "system/manager/user_message") {
+    const text = readColdEventJsonString(event.data, "text");
+    return text !== null && text !== "";
+  }
+  if (event.type === "item/completed" && event.itemKind === "agentMessage") {
+    const text = readColdEventJsonString(event.data, "item.text");
+    return text !== null && text !== "";
+  }
+  return false;
+}
+
 export function getLatestThreadOutputEventRow(
   db: DbConnection,
   args: GetLatestThreadOutputEventRowArgs,
 ): StoredEventRow | null {
-  return (
+  const inline =
     db
       .select(storedEventRowFields)
       .from(events)
@@ -3424,19 +4205,30 @@ export function getLatestThreadOutputEventRow(
         sql`${events.threadId} = ${args.threadId} AND (
         (
           ${events.type} = 'system/manager/user_message'
-          AND COALESCE(json_extract(${events.data}, '$.text'), '') <> ''
+          AND COALESCE(json_extract(${storedText(events.data)}, '$.text'), '') <> ''
         )
         OR (
           ${events.type} = 'item/completed'
           AND ${events.itemKind} = 'agentMessage'
-          AND COALESCE(json_extract(${events.data}, '$.item.text'), '') <> ''
+          AND COALESCE(json_extract(${storedText(events.data)}, '$.item.text'), '') <> ''
         )
       )`,
       )
       .orderBy(desc(events.sequence))
       .limit(1)
-      .get() ?? null
-  );
+      .get() ?? null;
+  const cold = selectColdEventRecords(db, {
+    predicate: coldEventHasThreadOutput,
+    afterSequence: inline?.sequence,
+    order: "desc",
+    limit: 1,
+    threadId: args.threadId,
+    types: ["system/manager/user_message", "item/completed"],
+  })[0];
+  if (!cold) return inline;
+  const coldRow = coldRecordToStoredEventRow(cold);
+  if (!inline || coldRow.sequence > inline.sequence) return coldRow;
+  return inline;
 }
 
 export function getLatestThreadSystemErrorEventRow(
@@ -3464,27 +4256,27 @@ const isNotDiagnosticEvent = sql`(
   AND (
     ${events.type} <> 'provider/unhandled'
     OR COALESCE((
-      json_extract(${events.data}, '$.rawEvent.method') = 'sdk/message'
-      AND json_extract(${events.data}, '$.rawEvent.params.message.subtype')
+      json_extract(${storedText(events.data)}, '$.rawEvent.method') = 'sdk/message'
+      AND json_extract(${storedText(events.data)}, '$.rawEvent.params.message.subtype')
         IN ('model_fallback', 'model_refusal_fallback')
-      AND json_type(${events.data}, '$.rawEvent.params.message.original_model') = 'text'
-      AND length(json_extract(${events.data}, '$.rawEvent.params.message.original_model')) > 0
-      AND json_type(${events.data}, '$.rawEvent.params.message.fallback_model') = 'text'
-      AND length(json_extract(${events.data}, '$.rawEvent.params.message.fallback_model')) > 0
+      AND json_type(${storedText(events.data)}, '$.rawEvent.params.message.original_model') = 'text'
+      AND length(json_extract(${storedText(events.data)}, '$.rawEvent.params.message.original_model')) > 0
+      AND json_type(${storedText(events.data)}, '$.rawEvent.params.message.fallback_model') = 'text'
+      AND length(json_extract(${storedText(events.data)}, '$.rawEvent.params.message.fallback_model')) > 0
     ), 0)
     OR CASE
-      WHEN instr(${events.data}, '"imageGeneration"') = 0 THEN 0
-      WHEN json_valid(${events.data}) THEN
-        json_extract(${events.data}, '$.rawType') = 'item/completed'
-        AND json_extract(${events.data}, '$.rawEvent.method') = 'item/completed'
-        AND json_extract(${events.data}, '$.rawEvent.params.item.type') = 'imageGeneration'
+      WHEN instr(${storedText(events.data)}, '"imageGeneration"') = 0 THEN 0
+      WHEN json_valid(${storedText(events.data)}) THEN
+        json_extract(${storedText(events.data)}, '$.rawType') = 'item/completed'
+        AND json_extract(${storedText(events.data)}, '$.rawEvent.method') = 'item/completed'
+        AND json_extract(${storedText(events.data)}, '$.rawEvent.params.item.type') = 'imageGeneration'
         AND (
-          json_type(${events.data}, '$.rawEvent.params.item.truncation.result') = 'object'
-          OR json_type(${events.data}, '$.rawEvent.params.item.result') IS NULL
-          OR json_type(${events.data}, '$.rawEvent.params.item.result') = 'null'
+          json_type(${storedText(events.data)}, '$.rawEvent.params.item.truncation.result') = 'object'
+          OR json_type(${storedText(events.data)}, '$.rawEvent.params.item.result') IS NULL
+          OR json_type(${storedText(events.data)}, '$.rawEvent.params.item.result') = 'null'
           OR (
-            json_type(${events.data}, '$.rawEvent.params.item.result') = 'text'
-            AND length(json_extract(${events.data}, '$.rawEvent.params.item.result'))
+            json_type(${storedText(events.data)}, '$.rawEvent.params.item.result') = 'text'
+            AND length(json_extract(${storedText(events.data)}, '$.rawEvent.params.item.result'))
               <= ${COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS}
           )
         )
@@ -3546,8 +4338,8 @@ export function getLatestCompletedThreadContextClearSequence(
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     eq(events.type, "system/operation"),
-    sql`json_extract(${events.data}, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}`,
-    sql`json_extract(${events.data}, '$.status') = 'completed'`,
+    sql`json_extract(${storedText(events.data)}, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}`,
+    sql`json_extract(${storedText(events.data)}, '$.status') = 'completed'`,
   ];
   if (args.atOrBeforeSequence !== undefined) {
     conditions.push(lte(events.sequence, args.atOrBeforeSequence));
@@ -3726,8 +4518,8 @@ function readNewestStoredProviderThreadIdentity(
           FROM events AS context_clear
           WHERE context_clear.thread_id = ${args.threadId}
             AND context_clear.type = 'system/operation'
-            AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-            AND json_extract(context_clear.data, '$.status') = 'completed'
+            AND json_extract(bb_text(context_clear.data), '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
+            AND json_extract(bb_text(context_clear.data), '$.status') = 'completed'
         ), 0)`,
         args.excludedProviderThreadIds.length === 0
           ? undefined
@@ -4002,7 +4794,7 @@ export function listThreadIdsStoppedSinceLastTurnStart(
       and(
         inArray(events.threadId, [...args.threadIds]),
         eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
+        sql`json_extract(${storedText(events.data)}, '$.reason') = 'manual-stop'`,
         sql`${events.sequence} = (
           SELECT MAX(latest.sequence)
           FROM events AS latest
@@ -4030,7 +4822,7 @@ export function listThreadIdsWithLatestHostDaemonRestartInterruption(
       and(
         inArray(events.threadId, [...args.threadIds]),
         eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'host-daemon-restarted'`,
+        sql`json_extract(${storedText(events.data)}, '$.reason') = 'host-daemon-restarted'`,
         sql`${events.sequence} = (
           SELECT MAX(latest.sequence)
           FROM events AS latest
@@ -4049,7 +4841,7 @@ export function getLastStoredTurnRequestEvent(
   return (
     db
       .select({
-        data: events.data,
+        data: storedText(events.data),
         sequence: events.sequence,
         threadId: events.threadId,
         type: events.type,
@@ -4061,7 +4853,7 @@ export function getLastStoredTurnRequestEvent(
           ${events.type} = 'client/turn/requested'
           OR (
             ${events.type} IN ('client/thread/start', 'client/turn/start')
-            AND json_type(${events.data}, '$.input') IS NOT NULL
+            AND json_type(${storedText(events.data)}, '$.input') IS NOT NULL
           )
         )`,
       )
@@ -4139,7 +4931,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
 
   const rows = db
     .select({
-      data: events.data,
+      data: storedText(events.data),
       environmentId: threads.environmentId,
       itemId: events.itemId,
       providerThreadId: events.providerThreadId,
@@ -4195,7 +4987,7 @@ export function listOpenBackgroundTaskItemRowsForThread(
 
   const rows = db
     .select({
-      data: events.data,
+      data: storedText(events.data),
       environmentId: threads.environmentId,
       itemId: events.itemId,
       providerThreadId: events.providerThreadId,

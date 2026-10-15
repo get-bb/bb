@@ -1,3 +1,4 @@
+import { storedTextBytes } from "../stored-text.js";
 import { and, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import {
   parseLegacyImageGenerationCompletion,
@@ -357,7 +358,7 @@ function listRetainedEventOutputSizes(
         .select({
           eventId: retainedEventOutputs.eventId,
           outputPath: retainedEventOutputs.outputPath,
-          valueBytes: sql<number>`octet_length(${retainedEventOutputs.value})`,
+          valueBytes: storedTextBytes(retainedEventOutputs.value),
         })
         .from(retainedEventOutputs)
         .where(

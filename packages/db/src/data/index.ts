@@ -1,3 +1,4 @@
+export { runStoredPayloadCompressionMaintenance } from "./stored-payload-compression.js";
 export {
   createProject,
   ensurePersonalProject,
@@ -361,6 +362,19 @@ export {
   listThreadTurnInterruptionEventStates,
   MissingStoredTurnStartedError,
 } from "./events.js";
+export {
+  ColdEventChunkVerifyError,
+  compressColdThreadEvents,
+  formatColdEventCompressionReport,
+  measureColdEventCompression,
+  runColdEventCompressionMaintenance,
+} from "./cold-event-chunks.js";
+export type {
+  ColdEventCompressionResult,
+  ColdEventCompressionSkipped,
+  ColdEventStorageSnapshot,
+  CompressColdThreadEventsArgs,
+} from "./cold-event-chunks.js";
 export {
   getDatabaseDataVersion,
   getThreadEventRewriteGeneration,

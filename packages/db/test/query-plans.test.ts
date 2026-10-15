@@ -249,9 +249,12 @@ describe("slow query index plans", () => {
       const captured = captureStatements(db, () => {
         expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
       });
-      expect(captured).toHaveLength(1);
+      expect(captured).toHaveLength(2);
       expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
         "USING INDEX events_delegating_item_lookup_idx (thread_id=?)",
+      );
+      expect(queryPlanDetails({ db, ...captured[1]! })).toContain(
+        "USING INDEX event_cold_chunks_thread_seq_idx (thread_id=?)",
       );
       db.$client
         .prepare(`INSERT INTO events
@@ -453,8 +456,6 @@ describe("slow query index plans", () => {
   });
 
   it("finds the occupying threads through the archived/status index", () => {
-    // A dispatch gate calls this on every admission decision, so a plan that
-    // degraded to a table scan would put one on every send in the server.
     const { db } = setup();
 
     const captured = captureStatements(db, () => {
@@ -493,8 +494,11 @@ describe("slow query index plans", () => {
           }),
         ).toEqual([]);
       });
-      expect(captured).toHaveLength(queryCount);
-      for (const query of captured) {
+      const eventQueries = captured.filter(
+        (query) => !query.sql.includes("event_cold_chunks"),
+      );
+      expect(eventQueries).toHaveLength(queryCount);
+      for (const query of eventQueries) {
         const details = queryPlanDetails({
           db,
           params: query.params,
@@ -503,6 +507,9 @@ describe("slow query index plans", () => {
         expect(details).toMatch(/USING INDEX events_thread_type_sequence_idx/u);
         expect(details).not.toMatch(/events_thread_sequence_idx/u);
       }
+      expect(
+        captured.some((query) => query.sql.includes("event_cold_chunks")),
+      ).toBe(true);
 
       db.$client.close();
     },
@@ -720,7 +727,11 @@ describe("slow query index plans", () => {
   ])("$name through the thread sequence index", ({ run }) => {
     const { db, thread } = setup();
 
-    const [query] = captureStatements(db, () => run(db, thread.id));
+    const query = captureStatements(db, () => run(db, thread.id)).find(
+      (statement) =>
+        statement.sql.includes("events") &&
+        !statement.sql.includes("event_cold_chunks"),
+    );
     if (!query) {
       throw new Error("Expected the sequence-range SQL");
     }
@@ -1218,7 +1229,7 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "get" &&
         fields.sql.startsWith(
-          "SELECT id, created_at, created_at AS scan_created_at, data, thread_id FROM events",
+          "SELECT id, created_at, created_at AS scan_created_at, bb_text(data) AS data, thread_id FROM events",
         ) &&
         fields.bindingArgumentCount === 14,
     });
@@ -1319,7 +1330,7 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "get" &&
         fields.sql.startsWith(
-          "SELECT id, created_at, 0 AS scan_created_at, data, thread_id FROM events",
+          "SELECT id, created_at, 0 AS scan_created_at, bb_text(data) AS data, thread_id FROM events",
         ) &&
         fields.bindingArgumentCount === 9,
     });

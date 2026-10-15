@@ -42,6 +42,10 @@ export function createEventId(): string {
   return createId("evt");
 }
 
+export function createColdEventChunkId(): string {
+  return createId("chk");
+}
+
 export function createPromptHistoryEntryId(): string {
   return createId("phist");
 }

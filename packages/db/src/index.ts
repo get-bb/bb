@@ -11,6 +11,7 @@ export * from "./schema.js";
 export {
   createQueuedThreadMessageId,
   createEventId,
+  createColdEventChunkId,
   createHostId,
   createThreadProvisioningId,
 } from "./ids.js";
@@ -26,3 +27,4 @@ export { noopNotifier } from "./notifier.js";
 export type { DbNotifier } from "./notifier.js";
 
 export * from "./data/index.js";
+export { storedText, storedTextBytes } from "./stored-text.js";

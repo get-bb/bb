@@ -14,6 +14,8 @@ import {
   type SlowDbQueryLogger,
   getDatabaseAutoVacuumMode,
   getDatabaseFreelistStats,
+  getAppSettings,
+  setAppSettings,
   listDeferredLegacyTables,
   migrate,
   noopNotifier,
@@ -155,6 +157,59 @@ function setupBusyFileDatabaseWithFreelist(tempDatabase: TempDatabasePath) {
 }
 
 describe("runDatabaseMaintenanceSweep", () => {
+  it.each([
+    { enabled: false, active: false, allowFullCompaction: true, scans: false },
+    { enabled: true, active: true, allowFullCompaction: true, scans: false },
+    { enabled: true, active: false, allowFullCompaction: false, scans: false },
+    { enabled: true, active: false, allowFullCompaction: true, scans: true },
+  ])(
+    "checks internal fragmentation under $enabled / $active / $allowFullCompaction",
+    ({ enabled, active, allowFullCompaction, scans }) => {
+      const slowQueryLogger = new CapturingSlowQueryLogger();
+      const db = createMigratedConnection({
+        slowQueryLogger,
+        slowQueryThresholdMs: 0,
+      });
+      try {
+        setAppSettings(db, {
+          ...getAppSettings(db),
+          coldEventCompression: enabled,
+        });
+        if (active) markDatabaseBusy(db);
+        slowQueryLogger.clear();
+        runDatabaseMaintenanceSweep(
+          { db, logger: testLogger },
+          { allowFullCompaction },
+        );
+        expect(
+          slowQueryLogger.debugLogs.some((entry) =>
+            entry.sql.includes("dbstat"),
+          ),
+        ).toBe(scans);
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
+
+  it("leaves reclamation for later when called from the compression sweep", () => {
+    const { db } = setupBusyDatabaseWithFreelist();
+    try {
+      const before = getDatabaseFreelistStats(db);
+      runDatabaseMaintenanceSweep(
+        { db, logger: testLogger },
+        { allowFullCompaction: false },
+      );
+      const after = getDatabaseFreelistStats(db);
+      expect(after.databaseBytes).toBeLessThan(before.databaseBytes);
+      expect(after.freelistCount).toBeGreaterThan(0);
+      runDatabaseMaintenanceSweep({ db, logger: testLogger });
+      expect(getDatabaseFreelistStats(db).freelistCount).toBe(0);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("drops deferred legacy tables on an idle maintenance pass", () => {
     const db = createMigratedConnection();
     createDeferredLegacyTables(db);

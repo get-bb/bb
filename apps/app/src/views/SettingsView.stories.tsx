@@ -127,6 +127,7 @@ function useSettingsStoryState() {
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
   const [keepHistoryAfterContextClear, setKeepHistoryAfterContextClear] =
     useState(false);
+  const [coldEventCompression, setColdEventCompression] = useState(false);
   const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
@@ -155,6 +156,8 @@ function useSettingsStoryState() {
     setShowGitChanges,
     confirmThreadArchive,
     setConfirmThreadArchive,
+    coldEventCompression,
+    setColdEventCompression,
     keepHistoryAfterContextClear,
     setKeepHistoryAfterContextClear,
     streamerMode,
@@ -206,6 +209,8 @@ function GeneralSettingsStory({
         onShowGitChangesChange={state.setShowGitChanges}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
+        coldEventCompression={state.coldEventCompression}
+        onColdEventCompressionChange={state.setColdEventCompression}
         keepHistoryAfterContextClear={state.keepHistoryAfterContextClear}
         onKeepHistoryAfterContextClearChange={
           state.setKeepHistoryAfterContextClear

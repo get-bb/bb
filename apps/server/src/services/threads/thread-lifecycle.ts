@@ -1,3 +1,4 @@
+import { storedText } from "@bb/db";
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
@@ -700,11 +701,11 @@ function hasTerminalClientTurnRequestEvent(
           or(
             and(
               eq(events.type, "turn/input/accepted"),
-              sql`json_extract(${events.data}, '$.clientRequestId') = ${command.requestId}`,
+              sql`json_extract(${storedText(events.data)}, '$.clientRequestId') = ${command.requestId}`,
             ),
             and(
               eq(events.type, "client/turn/rejected"),
-              sql`json_extract(${events.data}, '$.requestId') = ${command.requestId}`,
+              sql`json_extract(${storedText(events.data)}, '$.requestId') = ${command.requestId}`,
             ),
           ),
         ),

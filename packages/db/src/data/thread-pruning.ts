@@ -284,7 +284,7 @@ function advanceThreadPruningTransaction(
               candidateIds: rows.map((row) => row.id),
             };
             const relevantIds = rows.map((row) => row.id);
-            const bytesQuery = sql`SELECT COALESCE(SUM(octet_length(data)), 0) AS bytes FROM events WHERE ${inArray(events.id, relevantIds)} AND ${events.type} = ${type}`;
+            const bytesQuery = sql`SELECT COALESCE(SUM(bb_text_bytes(data)), 0) AS bytes FROM events WHERE ${inArray(events.id, relevantIds)} AND ${events.type} = ${type}`;
             const before =
               threadScope !== undefined ||
               (policy === "usage" && (cursor.step === 0 || cursor.step === 2))
@@ -320,7 +320,7 @@ function advanceThreadPruningTransaction(
                       : "thread/tokenUsage/updated";
                   const hasContext =
                     cursor.step === 0
-                      ? sql`CASE WHEN json_valid(data) THEN json_extract(data, '$.contextWindowUsage.modelContextWindow') IS NOT NULL ELSE 0 END`
+                      ? sql`CASE WHEN json_valid(bb_text(data)) THEN json_extract(bb_text(data), '$.contextWindowUsage.modelContextWindow') IS NOT NULL ELSE 0 END`
                       : sql`0`;
                   const usage = tx.all<{
                     sequence: number;

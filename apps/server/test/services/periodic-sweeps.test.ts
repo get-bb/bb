@@ -11,6 +11,11 @@ import {
   listQueuedThreadMessages,
   RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
+  eventColdChunks,
+  listEvents,
+  setAppSettings,
+  getAppSettings,
+  getDatabaseFreelistStats,
   threads,
   threadPruningCursors,
 } from "@bb/db";
@@ -108,6 +113,75 @@ const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
 };
 
 describe("runPeriodicSweeps", () => {
+  it("compresses cold history only after opt-in and notifies timeline clients", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const now = Date.now() + 24 * 60 * 60 * 1000;
+      insertEvents(
+        harness.db,
+        noopNotifier,
+        Array.from({ length: 30 }, (_, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          scope: threadScope(),
+          itemId: `message-${index}`,
+          itemKind: "agentMessage" as const,
+          parentToolCallId: null,
+          type: "item/completed" as const,
+          data: JSON.stringify({
+            item: { type: "agentMessage", text: "history".repeat(30_000) },
+          }),
+        })),
+      );
+      harness.db
+        .update(threads)
+        .set({ updatedAt: now - 8 * 24 * 60 * 60 * 1000 })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const history = listEvents(harness.db, { threadId: thread.id });
+      const changes: (readonly string[])[] = [];
+      const unsubscribe = harness.deps.hub.onChangedMessage((message) => {
+        if (message.entity === "thread" && message.id === thread.id)
+          changes.push(message.changes);
+      });
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+      };
+      try {
+        await runPeriodicSweeps(deps);
+        expect(harness.db.select().from(eventColdChunks).all()).toEqual([]);
+        expect(
+          changes.some((change) => change.includes("history-compacted")),
+        ).toBe(false);
+        const before = getDatabaseFreelistStats(harness.db);
+        setAppSettings(harness.db, {
+          ...getAppSettings(harness.db),
+          coldEventCompression: true,
+        });
+        clock.mockReturnValue(now + 60_000);
+        await runPeriodicSweeps(deps);
+        expect(
+          harness.db.select().from(eventColdChunks).all().length,
+        ).toBeGreaterThan(0);
+        expect(listEvents(harness.db, { threadId: thread.id })).toEqual(
+          history,
+        );
+        expect(getDatabaseFreelistStats(harness.db).databaseBytes).toBeLessThan(
+          before.databaseBytes,
+        );
+        expect(
+          changes.some((change) => change.includes("history-compacted")),
+        ).toBe(true);
+      } finally {
+        clock.mockRestore();
+        unsubscribe();
+      }
+    });
+  });
+
   it("deletes expired retained outputs across yielded advances without changing previews", async () => {
     const now = Date.now();
     await withTestHarness(async (harness) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAppSettings } from "@bb/db";
+import { getAppSettings, runColdEventCompressionMaintenance } from "@bb/db";
 import { appSettingsSchema, defaultAppSettings } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
@@ -7,6 +7,51 @@ import { withTestHarness } from "../helpers/test-app.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 
 describe("general settings", () => {
+  it("enables compression through the API and preserves it for older clients", async () => {
+    await withTestHarness(async (harness) => {
+      const put = async (settings: object) => {
+        const response = await harness.app.request("/api/v1/settings/general", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(settings),
+        });
+        expect(response.status).toBe(200);
+        return appSettingsSchema
+          .extend({
+            showUnhandledProviderEvents:
+              appSettingsSchema.shape.showDiagnosticEvents,
+          })
+          .parse(await readJson(response));
+      };
+      expect(getAppSettings(harness.db).coldEventCompression).toBe(false);
+      const enabled = await put({
+        ...defaultAppSettings,
+        coldEventCompression: true,
+      });
+      expect(enabled.coldEventCompression).toBe(true);
+      expect(
+        runColdEventCompressionMaintenance(harness.db, { now: Date.now() })
+          .enabled,
+      ).toBe(true);
+      const { coldEventCompression, ...older } = enabled;
+      expect(coldEventCompression).toBe(true);
+      expect(
+        (await put({ ...older, showGitChanges: false })).coldEventCompression,
+      ).toBe(true);
+      const { showDiagnosticEvents, ...legacy } = older;
+      expect(showDiagnosticEvents).toBe(false);
+      expect(
+        (await put({ ...legacy, showUnhandledProviderEvents: true }))
+          .coldEventCompression,
+      ).toBe(true);
+      await put({ ...enabled, coldEventCompression: false });
+      expect(
+        runColdEventCompressionMaintenance(harness.db, { now: Date.now() })
+          .enabled,
+      ).toBe(false);
+    });
+  });
+
   it("reports only the server's local host in /system/config", async () => {
     await withTestHarness(async (harness) => {
       seedHostSession(harness.deps, { name: "remote" });

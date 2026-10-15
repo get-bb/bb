@@ -57,6 +57,10 @@ export const SETTINGS_SEARCH_INDEX: Record<
         keywords: ["history", "clear context"],
       },
       {
+        title: "Compress chat storage",
+        keywords: ["compression", "storage", "disk", "history"],
+      },
+      {
         title: "Setup guide",
         keywords: ["onboarding", "getting started", "welcome"],
       },

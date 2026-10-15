@@ -311,6 +311,8 @@ export function registerSystemRoutes(
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
       showGitChanges: settings.showGitChanges ?? current.showGitChanges,
+      coldEventCompression:
+        settings.coldEventCompression ?? current.coldEventCompression,
       keepHistoryAfterContextClear:
         settings.keepHistoryAfterContextClear ??
         current.keepHistoryAfterContextClear,
