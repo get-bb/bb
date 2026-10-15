@@ -14,18 +14,6 @@ const RESERVED_PLUGIN_NAME_TAGS: ReadonlyMap<string, PluginNameTag> = new Map<
   ["experimental", { label: "Experimental", tone: "attention" }],
 ]);
 
-const TRUST_LABELS: ReadonlySet<string> = new Set([
-  "bb",
-  "bb official",
-  "official",
-  "verified",
-  "built-in",
-  "built in",
-  "builtin",
-  "included",
-  "included with bb",
-]);
-
 export function splitPluginDisplayName(displayName: string): {
   name: string;
   tag: PluginNameTag | null;
@@ -41,8 +29,7 @@ export function splitPluginDisplayName(displayName: string): {
     label.length === 0 ||
     label.length > PLUGIN_NAME_TAG_MAX_LENGTH ||
     label.includes("[") ||
-    label.includes("]") ||
-    TRUST_LABELS.has(key)
+    label.includes("]")
   ) {
     return plain;
   }
