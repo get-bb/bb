@@ -6,8 +6,9 @@ import { Route, Routes, useNavigate } from "react-router-dom";
 import {
   defaultAppTheme,
   defaultExperiments,
+  earlyAdopterExperiments,
   type AppTheme,
-  type Experiments,
+  type ExperimentUpdates,
   defaultAppSettings,
   type AppSettings,
 } from "@bb/domain";
@@ -139,13 +140,10 @@ function useSettingsStoryState() {
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
     useState<StoredTargetId>("default-app");
-  const [experiments, setExperiments] =
-    useState<Experiments>(defaultExperiments);
 
   return {
     appearance,
     directoryTargetId,
-    experiments,
     fileTargetId,
     managedBranchPrefix,
     navigateToThreadAfterCreate,
@@ -166,7 +164,6 @@ function useSettingsStoryState() {
     showDiagnosticEvents,
     setAppearance,
     setDirectoryTargetId,
-    setExperiments,
     setFileTargetId,
     setManagedBranchPrefix,
     setNavigateToThreadAfterCreate,
@@ -315,18 +312,21 @@ function FilePreferencesStory() {
 }
 
 function ExperimentsStory() {
-  const state = useSettingsStoryState();
   const [earlyAdopter, setEarlyAdopter] = useState(false);
+  const [overrides, setOverrides] = useState<ExperimentUpdates>({});
 
   return (
     <ExperimentsSettingsSection
       disabled={false}
       earlyAdopter={earlyAdopter}
       onEarlyAdopterChange={setEarlyAdopter}
-      experiments={state.experiments}
+      experiments={{
+        ...(earlyAdopter ? earlyAdopterExperiments : defaultExperiments),
+        ...overrides,
+      }}
       performanceDiagnosticsAvailable={true}
       onExperimentChange={(key, enabled) =>
-        state.setExperiments((current) => ({ ...current, [key]: enabled }))
+        setOverrides((current) => ({ ...current, [key]: enabled }))
       }
     />
   );
