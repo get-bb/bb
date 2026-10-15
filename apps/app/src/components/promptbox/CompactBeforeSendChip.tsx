@@ -46,7 +46,11 @@ export function CompactBeforeSendChip({
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            <Icon name="Minimize2" aria-hidden />
+            <Icon
+              name="Minimize2"
+              className="max-md:pointer-coarse:hidden"
+              aria-hidden
+            />
             {compactFirst ? (
               <span>
                 Compact
