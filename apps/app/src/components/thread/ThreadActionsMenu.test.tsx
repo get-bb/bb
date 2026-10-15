@@ -568,6 +568,35 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     },
   );
 
+  it("keeps a submenu row's detail out of sight but in its accessible name", async () => {
+    renderSurface(
+      surface,
+      { thread: baseThread },
+      {
+        threadActions: [
+          {
+            id: "level",
+            title: "Level",
+            icon: "Notification",
+            group: experimental_THREAD_ACTION_GROUPS.state,
+            item: () => ({
+              label: "Level",
+              detail: "Muted",
+              icon: "Notification",
+              choices: {
+                items: [{ id: "muted", label: "Muted", selected: true }],
+              },
+              run: vi.fn(),
+            }),
+          },
+        ],
+      },
+    );
+    await surface.open();
+    const row = await screen.findByRole("menuitem", { name: "Level, Muted" });
+    expect(within(row).getByText(", Muted").className).toContain("sr-only");
+  });
+
   it("runs each action's effect", async () => {
     sdkThreads.pin.mockResolvedValue({ ...baseThread, pinnedAt: 9 });
     sdkThreads.markUnread.mockResolvedValue({

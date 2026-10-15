@@ -1516,8 +1516,9 @@ export interface PluginThreadActionRunInput {
 export interface PluginThreadAction {
   label: string;
   /**
-   * Short secondary text on a muted second line under the label, e.g. the
-   * current value of a choice list.
+   * Short secondary text, e.g. the current value of a choice list. Shown on
+   * a muted second line under the label, except on rows with `choices`,
+   * where only tooltips and screen readers include it.
    */
   detail?: string;
   icon: BbIconName;

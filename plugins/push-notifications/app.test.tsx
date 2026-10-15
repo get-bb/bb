@@ -143,6 +143,7 @@ function renderNotifications(
     return action === null
       ? null
       : {
+          detail: action.detail ?? null,
           icon: action.icon,
           inheritLabel:
             action.choices?.items.find((choice) => choice.id === "inherit")
@@ -200,12 +201,14 @@ describe("thread notifications action", () => {
     );
     await waitFor(() => expect(summary()?.selected).toBe("muted"));
     expect(summary()).toEqual({
+      detail: "Muted",
       icon: "push-notifications/off",
       inheritLabel: "Default (All activity)",
       hint: null,
       selected: "muted",
     });
     expect(summary({ id: "thr_child", parentThreadId: "thr_top" })).toEqual({
+      detail: "Muted",
       icon: "push-notifications/off",
       inheritLabel: "Default (Needs input only)",
       hint: "Limited by a parent thread",
@@ -214,24 +217,28 @@ describe("thread notifications action", () => {
     expect(
       summary({ id: "thr_grandchild", parentThreadId: "thr_child" }),
     ).toEqual({
+      detail: "Muted",
       icon: "push-notifications/off",
       inheritLabel: "Default (Needs input only)",
       hint: "Limited by an ancestor thread",
       selected: "inherit",
     });
     expect(summary({ id: "thr_other", parentThreadId: "thr_top" })).toEqual({
+      detail: "Needs input only",
       icon: "BellDot",
       inheritLabel: "Default (Needs input only)",
       hint: null,
       selected: "inherit",
     });
     expect(summary({ id: "thr_new" })).toEqual({
+      detail: "All activity",
       icon: "push-notifications/ringing",
       inheritLabel: "Default (All activity)",
       hint: null,
       selected: "inherit",
     });
     expect(summary({ id: "thr_unshown" })).toEqual({
+      detail: "All activity",
       icon: "push-notifications/ringing",
       inheritLabel: "Default (All activity)",
       hint: null,
@@ -339,7 +346,7 @@ describe("thread notifications action", () => {
     ]);
     await waitFor(() => expect(listCalls()).toHaveLength(1));
     const child = { id: "thr_child", parentThreadId: "thr_top" };
-    expect(summary(child)?.icon).toBe("BellDot");
+    expect(summary(child)?.detail).toBe("Needs input only");
 
     await view.behavior.emitRealtime("threadNotifications", {
       threads: {
@@ -351,7 +358,7 @@ describe("thread notifications action", () => {
       },
     });
     expect(summary(child)).toMatchObject({
-      icon: "push-notifications/off",
+      detail: "Muted",
       hint: "Limited by a parent thread",
     });
     expect(summary()?.selected).toBe("muted");

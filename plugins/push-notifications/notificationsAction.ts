@@ -227,6 +227,9 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
       const hint = resolved === null ? undefined : capHint(resolved.row);
       return {
         label: "Notifications",
+        ...(resolved === null
+          ? {}
+          : { detail: NOTIFICATION_LEVEL_LABELS[resolved.row.effective] }),
         icon:
           resolved === null ? "BellDot" : LEVEL_ICONS[resolved.row.effective],
         choices: {
