@@ -7,10 +7,12 @@ import {
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   RAIL_CONTROL_SIZE_PX,
   RAIL_PADDING_PX,
+  SIDEBAR_FOOTER_CARD_GAP_PX,
   TITLE_BAR_CONTROL_SIZE_PX,
   TITLE_BAR_NAV_GAP_PX,
   TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
   TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX,
+  WINDOW_FRAME_LIP_PX,
   type BbDesktopInfo,
 } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
@@ -128,6 +130,12 @@ describe("desktop chrome geometry", () => {
     );
     expect(properties.get("--bb-title-bar-sidebar-toggle-gap")).toBe(
       `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
+    );
+    expect(properties.get("--bb-frame-window-lip")).toBe(
+      `${WINDOW_FRAME_LIP_PX}px`,
+    );
+    expect(properties.get("--bb-frame-footer-inset")).toBe(
+      `${SIDEBAR_FOOTER_CARD_GAP_PX - 1}px`,
     );
     expect(properties.get("--bb-title-bar-trailing-edge-gap")).toBe(
       `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,

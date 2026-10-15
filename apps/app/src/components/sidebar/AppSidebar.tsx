@@ -288,11 +288,11 @@ export function AppSidebar({
             </SidebarCollapsibleBody>
             <div
               className={cn(
-                "col-start-1 row-start-2 flex shrink-0 items-center justify-center pt-2 pb-1.5",
+                "col-start-1 row-start-2 flex shrink-0 items-center justify-center pt-2 pb-(--bb-frame-footer-inset)",
                 NAV_RAIL_WIDTH_CLASS,
                 isFramed && "border-b border-transparent",
                 !isFramed &&
-                  "bg-surface-recessed -mb-[env(safe-area-inset-bottom)] pb-[calc(0.375rem_+_env(safe-area-inset-bottom))]",
+                  "bg-surface-recessed -mb-[env(safe-area-inset-bottom)] pb-[calc(var(--bb-frame-footer-inset)_+_env(safe-area-inset-bottom))]",
               )}
             >
               {railFooter}
@@ -307,7 +307,9 @@ export function AppSidebar({
                   "rounded-tl-none border-t-0 [clip-path:inset(0_-6px_0_0_round_0_0_0_0.75rem)]",
               )}
             >
-              <SidebarFooter className="w-full justify-center pb-1.5 pl-1.5">
+              <SidebarFooter
+                className="w-full justify-center pb-(--bb-frame-footer-inset) pl-(--bb-frame-footer-inset)"
+              >
                 <SidebarMenu
                   className={cn(
                     "flex-row items-center gap-1",
