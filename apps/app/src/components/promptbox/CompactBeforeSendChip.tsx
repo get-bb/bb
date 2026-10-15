@@ -1,12 +1,7 @@
 import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  OPTION_BASE_CLASS_NAME,
-  OPTION_INTERACTIVE_CLASS_NAME,
-  OPTION_MUTED_CLASS_NAME,
-} from "@bb/shared-ui/option-display";
 import {
   Tooltip,
   TooltipContent,
@@ -28,7 +23,7 @@ export function CompactBeforeSendChip({
 }: CompactBeforeSendOffer) {
   const tokensLabel = formatCompactTokenCount(tokens);
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -36,20 +31,32 @@ export function CompactBeforeSendChip({
             variant="ghost"
             size="sm"
             aria-pressed={compactFirst}
-            aria-label={`Compact ${tokensLabel} tokens of history before sending`}
+            aria-label={
+              compactFirst
+                ? `Compact ${tokensLabel} tokens before sending`
+                : `Keep all ${tokensLabel} tokens of history`
+            }
+            onMouseDown={(event) => event.preventDefault()}
             onClick={onToggle}
             className={cn(
-              OPTION_BASE_CLASS_NAME,
-              OPTION_INTERACTIVE_CLASS_NAME,
-              LIST_HOVER_TRANSITION,
-              "h-6 tabular-nums max-md:pointer-coarse:h-11 max-md:pointer-coarse:px-2",
+              COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+              "gap-1.5 rounded-full border text-xs tabular-nums [&_[data-icon-root]]:size-3.5",
               compactFirst
-                ? "text-warning-text hover:text-warning-text aria-pressed:bg-transparent aria-pressed:text-warning-text aria-pressed:hover:bg-state-hover"
-                : OPTION_MUTED_CLASS_NAME,
+                ? "border-warning/20 bg-warning/5 text-warning-text hover:bg-warning/10 hover:text-warning-text aria-pressed:bg-warning/5 aria-pressed:text-warning-text aria-pressed:hover:bg-warning/10"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            <Icon name="Minimize2" className="size-3.5" aria-hidden />
-            {compactFirst ? "Compact" : "Full"} {tokensLabel}
+            <Icon name="Minimize2" aria-hidden />
+            {compactFirst ? (
+              <span>
+                Compact
+                <span className="max-md:pointer-coarse:hidden">
+                  {` ${tokensLabel}`}
+                </span>
+              </span>
+            ) : (
+              "Keep history"
+            )}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top">
