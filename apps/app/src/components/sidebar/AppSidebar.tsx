@@ -274,7 +274,7 @@ export function AppSidebar({
                 isBodyHidden && "row-span-2",
                 isFramed &&
                   !isBodyHidden &&
-                  "rounded-bl-none border-b-0 [clip-path:inset(0_-6px_0_0_round_0.75rem_0_0_0)]",
+                  "rounded-bl-none border-b-0 [clip-path:inset(0_-6px_0_0_round_var(--bb-frame-card-radius)_0_0_0)]",
               )}
             >
               <div
@@ -304,7 +304,7 @@ export function AppSidebar({
               className={cn(
                 "col-start-2 row-start-2",
                 isFramed &&
-                  "rounded-tl-none border-t-0 [clip-path:inset(0_-6px_0_0_round_0_0_0_0.75rem)]",
+                  "rounded-tl-none border-t-0 [clip-path:inset(0_-6px_0_0_round_0_0_0_var(--bb-frame-card-radius))]",
               )}
             >
               <SidebarFooter
