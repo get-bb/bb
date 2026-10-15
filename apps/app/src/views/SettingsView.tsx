@@ -1180,8 +1180,9 @@ export function ExperimentsSettingsSection({
                 Become an early adopter
               </h3>
               <p className="mt-0.5 text-xs leading-snug text-subtle-foreground">
-                Get the experiments marked Early adopter turned on as they ship.
-                An experiment you switch yourself keeps your choice.
+                Get new experiments turned on by default sooner and help us try
+                out features before they reach everyone. Turn this off anytime;
+                experiments you switch yourself keep your choice.
               </p>
             </div>
             <Switch
