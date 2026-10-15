@@ -50,6 +50,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-text: var(--destructive-text);
   --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
   --color-warning: var(--warning);
   --color-warning-text: var(--warning-text);
   --color-success: var(--success);
@@ -507,6 +508,8 @@
    * fill is ~3.56:1 there) while keeping its 3:1 UI duties. */
   --destructive-text: oklch(0.45 0.19 25.8625);
   --attention: oklch(0.74 0.15 80);
+  /* Text on an --attention fill: the darkest anchor in each theme. */
+  --attention-foreground: var(--ink);
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
@@ -737,6 +740,7 @@
    * dark canvas; the --destructive fill stays for icons/buttons/ring (3:1 UI). */
   --destructive-text: oklch(0.65 0.16 22);
   --attention: oklch(0.8 0.15 80);
+  --attention-foreground: var(--canvas);
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);

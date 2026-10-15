@@ -106,8 +106,8 @@ function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
               className={cn(
                 "pointer-events-none absolute",
                 item.badge.count === undefined
-                  ? "top-1 right-1"
-                  : "-top-0.5 -right-0.5",
+                  ? "top-0.5 right-0.5"
+                  : "-top-1 -right-1",
               )}
             />
           ) : null}
@@ -163,7 +163,7 @@ export function AppNavRail(_props: ExperimentalSidebarNavigationProps) {
               {hiddenBadgeTone !== null ? (
                 <NavigationBadgeMark
                   badge={{ tone: hiddenBadgeTone }}
-                  className="pointer-events-none absolute top-1 right-1"
+                  className="pointer-events-none absolute top-0.5 right-0.5"
                 />
               ) : null}
             </RailButton>

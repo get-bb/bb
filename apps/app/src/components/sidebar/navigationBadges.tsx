@@ -195,18 +195,14 @@ export function strongestNavigationBadgeTone(
   return strongest;
 }
 
-const DOT_TONE_CLASS: Record<ExperimentalBadgeTone, string> = {
-  neutral: "bg-primary",
-  warning: "bg-attention",
-  critical: "bg-destructive",
+const TONE_CLASS: Record<ExperimentalBadgeTone, string> = {
+  neutral: "bg-muted-foreground text-background",
+  warning: "bg-attention text-attention-foreground",
+  critical: "bg-destructive text-destructive-foreground",
 };
 
-const PILL_TONE_CLASS: Record<ExperimentalBadgeTone, string> = {
-  neutral: "bg-primary text-primary-foreground",
-  warning: "border border-attention/50 bg-surface-attention text-warning-text",
-  critical:
-    "border border-surface-destructive-border bg-surface-destructive text-destructive-text",
-};
+const RAIL_CUTOUT_CLASS =
+  "rounded-full bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] p-[1.5px]";
 
 export function NavigationBadgeMark({
   badge,
@@ -218,51 +214,49 @@ export function NavigationBadgeMark({
   className?: string;
 }) {
   const tone = badge.tone ?? "neutral";
+  const max = size === "rail" ? RAIL_MAX_DRAWN_COUNT : LIST_MAX_DRAWN_COUNT;
   const value =
     badge.count !== undefined
-      ? badge.count >
-        (size === "rail" ? RAIL_MAX_DRAWN_COUNT : LIST_MAX_DRAWN_COUNT)
-        ? `${size === "rail" ? RAIL_MAX_DRAWN_COUNT : LIST_MAX_DRAWN_COUNT}+`
+      ? badge.count > max
+        ? `${max}+`
         : String(badge.count)
       : size === "list"
         ? (badge.text ?? null)
         : null;
-  if (value === null) {
-    return (
+  const kind =
+    value === null ? "dot" : badge.count !== undefined ? "count" : "text";
+  const mark =
+    value === null ? (
       <span
-        aria-hidden="true"
-        data-nav-rail-badge="dot"
-        data-nav-badge-tone={tone}
         className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          DOT_TONE_CLASS[tone],
-          className,
+          "block rounded-full",
+          size === "rail" ? "size-2" : "size-1.5",
+          TONE_CLASS[tone],
         )}
       />
-    );
-  }
-  return (
-    <span
-      aria-hidden="true"
-      data-nav-rail-badge={badge.count !== undefined ? "count" : "text"}
-      data-nav-badge-tone={tone}
-      className={cn(
-        "flex shrink-0 rounded-full",
-        tone !== "neutral" && "bg-sidebar",
-        className,
-      )}
-    >
+    ) : (
       <span
         className={cn(
-          "flex items-center justify-center rounded-full font-medium leading-none tabular-nums whitespace-nowrap",
-          PILL_TONE_CLASS[tone],
-          size === "rail"
-            ? "h-3 min-w-3 px-0.5 text-2xs"
-            : "h-4 min-w-4 px-1 text-2xs",
+          "flex items-center justify-center rounded-full font-semibold leading-none tabular-nums whitespace-nowrap text-2xs",
+          size === "rail" ? "h-3.5 min-w-3.5 px-1" : "h-4 min-w-4 px-1.5",
+          TONE_CLASS[tone],
         )}
       >
         {value}
       </span>
+    );
+  return (
+    <span
+      aria-hidden="true"
+      data-nav-rail-badge={kind}
+      data-nav-badge-tone={tone}
+      className={cn(
+        "flex shrink-0",
+        size === "rail" && RAIL_CUTOUT_CLASS,
+        className,
+      )}
+    >
+      {mark}
     </span>
   );
 }
