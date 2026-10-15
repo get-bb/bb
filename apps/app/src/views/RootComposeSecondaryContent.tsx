@@ -6,6 +6,7 @@ import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSectio
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import { SecondaryPanelAtWindowTopContext } from "@/components/secondary-panel/secondaryPanelWindowTopContext";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import {
   CHROME_ROW_HEIGHT_CLASS,
@@ -82,7 +83,7 @@ export function RootComposeSecondaryContent({
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
 
   const mainContent = (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden pt-(--bb-window-frame-top)">
       {rendersWindowDragStrip ? (
         <div
           data-testid="root-compose-main-window-drag-strip"
@@ -155,24 +156,28 @@ export function RootComposeSecondaryContent({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <LazyThreadSecondaryPanel
-            {...threadSecondaryPanelProps}
-            drawerFallback={<DrawerPanelLoadingSkeleton />}
-            renderBrowserDeck={(activeBrowserTabId, pane) =>
-              renderBrowserDeck?.({
-                activeBrowserTabId,
-                canHandleBrowserCommands:
-                  canShowNativeBrowserView && pane.isFocused,
-                canShowNativeBrowserView,
-                onNativeFocus: pane.onFocusPane,
-              })
-            }
-            renderAsDrawer={presentation === "drawer"}
-            isConversationCollapsed={false}
-            onToggleConversationCollapse={onToggleMainCollapse}
-            showNewTabButton
-            resizablePanelId={resizablePanelId}
-          />
+          <SecondaryPanelAtWindowTopContext.Provider
+            value={paneContext?.isTopRow !== false}
+          >
+            <LazyThreadSecondaryPanel
+              {...threadSecondaryPanelProps}
+              drawerFallback={<DrawerPanelLoadingSkeleton />}
+              renderBrowserDeck={(activeBrowserTabId, pane) =>
+                renderBrowserDeck?.({
+                  activeBrowserTabId,
+                  canHandleBrowserCommands:
+                    canShowNativeBrowserView && pane.isFocused,
+                  canShowNativeBrowserView,
+                  onNativeFocus: pane.onFocusPane,
+                })
+              }
+              renderAsDrawer={presentation === "drawer"}
+              isConversationCollapsed={false}
+              onToggleConversationCollapse={onToggleMainCollapse}
+              showNewTabButton
+              resizablePanelId={resizablePanelId}
+            />
+          </SecondaryPanelAtWindowTopContext.Provider>
         )}
       />
     </div>

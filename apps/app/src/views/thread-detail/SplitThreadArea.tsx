@@ -1327,6 +1327,10 @@ function NonThreadPaneContent({
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
         !isBoundedPane && content.kind === "new-thread" && "-m-4 md:-m-5",
+        !isBoundedPane &&
+          !panel &&
+          content.kind !== "new-thread" &&
+          "pt-(--bb-window-frame-top)",
       )}
     >
       {isBoundedPane || panel ? (

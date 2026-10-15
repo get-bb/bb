@@ -21,9 +21,11 @@ import {
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
   getBbDesktopInfo,
+  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   useAppCommandHandler,
@@ -36,7 +38,6 @@ import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useDefaultRequestRename } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
-import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
@@ -119,6 +120,7 @@ export function ThreadDetailHeader({
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isSidebarFramed = useIsSidebarFramed();
   const headerRef = useRef<HTMLElement>(null!);
   const {
     beginPaneDrag,
@@ -179,12 +181,8 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
   const showRightPanelToggle =
-    !titleBarHostsRightPanelToggle &&
-    secondaryPanelHost === null &&
-    (!isSecondaryPanelOpen || isCompactViewport);
+    secondaryPanelHost === null && (!isSecondaryPanelOpen || isCompactViewport);
 
   const center = (
     <>
@@ -302,6 +300,9 @@ export function ThreadDetailHeader({
               className={cn(
                 HEADER_ICON_BUTTON_CLASS,
                 CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+                isTopRow &&
+                  isSidebarFramed &&
+                  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
               )}
               aria-label={
                 panelShortcut
@@ -319,9 +320,7 @@ export function ThreadDetailHeader({
             </Button>
           </span>
         ) : null}
-        {reservesWindowPanelToggle &&
-        !isWindowPanelOpen &&
-        !titleBarHostsRightPanelToggle ? (
+        {reservesWindowPanelToggle && !isWindowPanelOpen ? (
           <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
         ) : null}
       </div>

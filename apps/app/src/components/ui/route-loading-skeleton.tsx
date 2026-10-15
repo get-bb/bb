@@ -1,5 +1,13 @@
 import { HEADER_SEAM_CLASS } from "@/components/layout/AppPageHeader";
-import { CHROME_ROW_CLASS } from "@/lib/bb-desktop";
+import {
+  useIsSidebarFramed,
+  useOptionalIsSidebarShowing,
+} from "@/components/ui/sidebar.js";
+import {
+  CHROME_ROW_CLASS,
+  MACOS_TITLE_BAR_BAND_CLASS,
+  MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
+} from "@/lib/bb-desktop";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useEffect, type ReactNode } from "react";
@@ -22,6 +30,9 @@ export function RouteLoadingSkeleton({
   children,
   isBoundedPane,
 }: RouteLoadingSkeletonProps) {
+  const isSidebarFramed = useIsSidebarFramed();
+  const isSidebarShowing = useOptionalIsSidebarShowing();
+  const isInTitleBar = isSidebarFramed && !isBoundedPane;
   useEffect(() => {
     mountedRouteLoadingSkeletons += 1;
     return () => {
@@ -42,12 +53,22 @@ export function RouteLoadingSkeleton({
       <div
         className={cn(
           CHROME_ROW_CLASS,
-          HEADER_SEAM_CLASS,
           "shrink-0 gap-2",
-          isBoundedPane ? "px-4" : "px-3 pl-12",
+          isInTitleBar
+            ? [MACOS_TITLE_BAR_BAND_CLASS, "px-4"]
+            : [HEADER_SEAM_CLASS, isBoundedPane ? "px-4" : "px-3 pl-12"],
         )}
       >
-        <Skeleton className="h-4 w-40 max-w-[50%]" />
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 items-center",
+            isInTitleBar &&
+              isSidebarShowing === false &&
+              MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
+          )}
+        >
+          <Skeleton className="h-4 w-40 max-w-[50%]" />
+        </div>
       </div>
       <div className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-hidden px-4">
         {children}

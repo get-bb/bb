@@ -29,6 +29,14 @@ export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =
   "[transform:translateY(var(--bb-macos-chrome-control-y,calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-app-chrome-row-height)/2)))]";
+export const MACOS_TITLE_BAR_ROW_CLASS = "h-(--bb-window-title-bar-height)";
+export const MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS =
+  "w-7 -mr-(--bb-panel-chrome-padding) [&_[data-icon-root]]:translate-x-0.5";
+export const MACOS_TITLE_BAR_CONTROL_SIZE_CLASS =
+  "[&_button]:h-7 [&_[data-tab-pill]]:h-7";
+export const MACOS_TITLE_BAR_BAND_CLASS = `${MACOS_TITLE_BAR_ROW_CLASS} box-content pb-px`;
+export const MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS =
+  "pl-[calc(var(--bb-window-title-bar-controls-end)_+_12px_-_var(--bb-sidebar-control-size)_-_2*var(--bb-sidebar-rail-padding)_-_1px_-_1rem)]";
 export const MACOS_TITLE_BAR_CONTROL_AXIS_CLASS =
   "[--bb-macos-chrome-control-y:calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-window-title-bar-height)/2)]";
 export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_CHROME_CONTROL_AXIS_CLASS}`;
@@ -62,14 +70,18 @@ export function shouldReserveMacosTrafficLights({
 }
 
 const MACOS_TRAFFIC_LIGHT_CLEARANCE_PX = 12;
+const WINDOW_CARD_RADIUS_PX = 12;
 const MACOS_CHROME_CONTROL_SIZE_PX = 28;
 const COLLAPSED_SIDEBAR_TRIGGER_GAP_PX = 8;
+const TITLE_BAR_CONTROL_COUNT = 3;
+const TITLE_BAR_CONTROL_GAP_PX = 4;
 const PAGE_HEADER_BASE_INSET_PX = 16;
 
 export interface MacosWindowChromeGeometry {
   trafficLightCenterY: number;
   titleBarHeight: number;
   trafficLightReserve: number;
+  titleBarControlsEnd: number;
   collapsedTopLeftReserve: number;
 }
 
@@ -88,12 +100,27 @@ export function getMacosWindowChromeGeometry(
     trafficLightCenterY,
     titleBarHeight: 2 * trafficLightCenterY,
     trafficLightReserve,
+    titleBarControlsEnd:
+      trafficLightReserve +
+      TITLE_BAR_CONTROL_COUNT * MACOS_CHROME_CONTROL_SIZE_PX +
+      (TITLE_BAR_CONTROL_COUNT - 1) * TITLE_BAR_CONTROL_GAP_PX,
     collapsedTopLeftReserve:
       trafficLightReserve +
       MACOS_CHROME_CONTROL_SIZE_PX +
       COLLAPSED_SIDEBAR_TRIGGER_GAP_PX -
       PAGE_HEADER_BASE_INSET_PX,
   };
+}
+
+export function getWindowCardMask(
+  titleBarHeight: number,
+  squareTopLeft: boolean,
+): string {
+  const corner = squareTopLeft
+    ? `<rect y='${titleBarHeight}' width='${WINDOW_CARD_RADIUS_PX}' height='${WINDOW_CARD_RADIUS_PX}'/>`
+    : "";
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'><rect width='100%' height='${titleBarHeight}'/><rect y='${titleBarHeight}' width='100%' height='100%' rx='${WINDOW_CARD_RADIUS_PX}'/>${corner}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
 interface StyleTarget {
@@ -115,8 +142,20 @@ export function applyMacosWindowChromeGeometry(
     `${geometry.titleBarHeight}px`,
   );
   root.style.setProperty(
+    "--bb-window-card-mask",
+    getWindowCardMask(geometry.titleBarHeight, false),
+  );
+  root.style.setProperty(
+    "--bb-window-card-mask-square-left",
+    getWindowCardMask(geometry.titleBarHeight, true),
+  );
+  root.style.setProperty(
     "--bb-macos-traffic-light-reserve",
     `${geometry.trafficLightReserve}px`,
+  );
+  root.style.setProperty(
+    "--bb-window-title-bar-controls-end",
+    `${geometry.titleBarControlsEnd}px`,
   );
   root.style.setProperty(
     "--bb-macos-collapsed-top-left-reserve",

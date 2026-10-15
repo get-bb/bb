@@ -45,7 +45,6 @@ import {
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
-import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
@@ -81,13 +80,21 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
+  MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
+  MACOS_TITLE_BAR_BAND_CLASS,
+  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
+import { SecondaryPanelAtWindowTopContext } from "./secondaryPanelWindowTopContext";
+import { TitleBarScrollFade } from "@/components/ui/title-bar-scroll-fade";
 import {
+  useIsSidebarFramed,
   useOptionalIsSidebarShowing,
   useSidebarKeepsCollapsedRail,
 } from "@/components/ui/sidebar.js";
@@ -138,8 +145,12 @@ export function getSecondaryPanelChromeStackClassName(
   );
 }
 
+const FRAMED_PANEL_SURFACE_CLASS =
+  "isolate bg-transparent before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:top-[calc(var(--bb-window-title-bar-height)+1px)] before:-z-10 before:rounded-tr-xl before:bg-sidebar";
+
 interface CollapsedPanelTrafficLightReserveArgs {
   isConversationCollapsed: boolean;
+  isPanelInFrame: boolean;
   renderAsDrawer: boolean;
   isSidebarShowing: boolean | null;
   sidebarKeepsCollapsedRail: boolean;
@@ -148,11 +159,19 @@ interface CollapsedPanelTrafficLightReserveArgs {
 
 export function resolveCollapsedPanelTrafficLightReserveClassName({
   isConversationCollapsed,
+  isPanelInFrame,
   renderAsDrawer,
   isSidebarShowing,
   sidebarKeepsCollapsedRail,
   reserveMacosTrafficLights,
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
+  if (isPanelInFrame) {
+    return (
+      isConversationCollapsed &&
+      isSidebarShowing === false &&
+      MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS
+    );
+  }
   if (!reserveMacosTrafficLights) return false;
   if (renderAsDrawer) return MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
   return (
@@ -428,12 +447,14 @@ function ThreadSecondaryPanelContent({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
+  const isFramed = useIsSidebarFramed();
+  const isAtWindowTop = useContext(SecondaryPanelAtWindowTopContext);
+  const isPanelInFrame = isFramed && isAtWindowTop && !renderAsDrawer;
   const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
   const collapsedPanelTrafficLightReserveClassName =
     resolveCollapsedPanelTrafficLightReserveClassName({
       isConversationCollapsed,
+      isPanelInFrame,
       renderAsDrawer,
       isSidebarShowing,
       sidebarKeepsCollapsedRail,
@@ -514,6 +535,7 @@ function ThreadSecondaryPanelContent({
         CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
         "relative",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+        isPanelInFrame && MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
       )}
       onClick={onClose}
       aria-label={
@@ -796,8 +818,9 @@ function ThreadSecondaryPanelContent({
         tabs={surfaceTabs}
       >
         <div
-          className={getSecondaryPanelChromeStackClassName(
-            showsSurfaceDiffToolbar,
+          className={cn(
+            getSecondaryPanelChromeStackClassName(showsSurfaceDiffToolbar),
+            isPanelInFrame && "bg-transparent",
           )}
         >
           <div
@@ -808,8 +831,15 @@ function ThreadSecondaryPanelContent({
               renderAsDrawer ? "px-2" : "px-(--bb-panel-chrome-padding)",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
-                usesWindowChrome &&
-                MACOS_CHROME_CONTROL_AXIS_CLASS,
+                usesWindowChrome && [
+                  MACOS_CHROME_CONTROL_AXIS_CLASS,
+                  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+                ],
+              isPanelInFrame &&
+                usesWindowChrome && [
+                  MACOS_TITLE_BAR_BAND_CLASS,
+                  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+                ],
             )}
           >
             <div
@@ -859,9 +889,7 @@ function ThreadSecondaryPanelContent({
                   : null}
                 {renderRemoveSplitButton(onRemoveSplit)}
                 {showOuterControls &&
-                (renderAsDrawer ||
-                  (inlinePanelToggle === "button" &&
-                    !titleBarHostsRightPanelToggle))
+                (renderAsDrawer || inlinePanelToggle === "button")
                   ? renderHidePanelButton()
                   : null}
               </div>
@@ -891,7 +919,10 @@ function ThreadSecondaryPanelContent({
             />
           ) : null}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
+          {isPanelInFrame && usesWindowChrome ? (
+            <TitleBarScrollFade tone="sidebar" />
+          ) : null}
           {browserSurface}
           {isBrowserSurfaceActive ? null : hasActiveSurfaceTab ? (
             <div
@@ -1118,11 +1149,14 @@ function ThreadSecondaryPanelContent({
       className={cn(
         "flex h-full min-h-0 flex-col overflow-hidden bg-sidebar",
         renderAsDrawer && "min-w-0 flex-1",
+        isPanelInFrame && FRAMED_PANEL_SURFACE_CLASS,
         !renderAsDrawer && [
           "absolute inset-y-0 left-0",
           hostLayout === null &&
             !isConversationCollapsed &&
-            "border-l border-border-seam",
+            (isPanelInFrame
+              ? "before:border-l before:border-border-seam"
+              : "border-l border-border-seam"),
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
         ],
