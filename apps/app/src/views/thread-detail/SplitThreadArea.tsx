@@ -1511,6 +1511,7 @@ function SplitDivider({
   onResize,
 }: SplitDividerProps) {
   const horizontal = dir === "row";
+  const isSidebarFramed = useIsSidebarFramed();
   const finishResizeRef = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
@@ -1622,7 +1623,7 @@ function SplitDivider({
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
         "group relative z-[25] flex-shrink-0 transition-colors",
-        "bg-border-seam",
+        isSidebarFramed ? "bg-border" : "bg-border-seam",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",

@@ -48,11 +48,11 @@ const SIDEBAR_FRAME_CLASS =
   "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-window-title-bar-height) pr-(--bb-window-frame-lip) pb-(--bb-window-frame-lip) [--bb-window-frame-top:var(--bb-window-title-bar-height)] [--bb-window-frame-lip:var(--bb-frame-window-lip)]";
 const SIDEBAR_FRAMED_PANEL_CLASS =
   "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
-const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-y border-l border-border-seam";
+const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-y border-l border-border";
 const SIDEBAR_FRAMED_INSET_CLASS =
-  "isolate px-px pb-px [mask-repeat:no-repeat] [mask-size:100%_100%] -mt-(--bb-window-title-bar-height) h-[calc(100%+var(--bb-window-title-bar-height))] bg-transparent [clip-path:inset(0_round_0_0_var(--bb-frame-card-radius)_0)] before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:top-(--bb-window-title-bar-height) before:-z-10 before:rounded-tr-(--bb-frame-card-radius) before:rounded-br-(--bb-frame-card-radius) before:border-y before:border-r before:border-l before:border-border-seam before:bg-background";
+  "isolate px-px pb-px [mask-repeat:no-repeat] [mask-size:100%_100%] -mt-(--bb-window-title-bar-height) h-[calc(100%+var(--bb-window-title-bar-height))] bg-transparent [clip-path:inset(0_round_0_0_var(--bb-frame-card-radius)_0)] before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:top-(--bb-window-title-bar-height) before:-z-10 before:rounded-tr-(--bb-frame-card-radius) before:rounded-br-(--bb-frame-card-radius) before:border-y before:border-r before:border-l before:border-border before:bg-background";
 const SIDEBAR_FRAMED_EXPANDED_INSET_CLASS =
-  "[mask-image:var(--bb-window-card-mask-square-left)] after:pointer-events-none after:absolute after:top-0 after:left-0 after:h-(--bb-window-title-bar-height) after:w-px after:bg-border-seam";
+  "[mask-image:var(--bb-window-card-mask-square-left)] after:pointer-events-none after:absolute after:top-0 after:left-0 after:h-(--bb-window-title-bar-height) after:w-px after:bg-border";
 const SIDEBAR_FRAMED_COLLAPSED_INSET_CLASS =
   "[mask-image:var(--bb-window-card-mask)] [clip-path:inset(0_round_0_0_var(--bb-frame-card-radius)_var(--bb-frame-card-radius))] before:rounded-tl-(--bb-frame-card-radius) before:rounded-bl-(--bb-frame-card-radius) [transition:clip-path_0s_linear_200ms] before:[transition:border-top-left-radius_0s_linear_200ms,border-bottom-left-radius_0s_linear_200ms]";
 

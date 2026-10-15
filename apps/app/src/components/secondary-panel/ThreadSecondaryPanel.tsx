@@ -1155,7 +1155,7 @@ function ThreadSecondaryPanelContent({
           hostLayout === null &&
             !isConversationCollapsed &&
             (isPanelInFrame
-              ? "before:border-l before:border-border-seam"
+              ? "before:border-l before:border-border"
               : "border-l border-border-seam"),
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
@@ -1315,6 +1315,7 @@ function SecondaryPanelResizeHandle({
   hitTargetRef,
 }: SecondaryPanelResizeHandleProps) {
   const isResizing = useAtomValue(threadSecondaryPanelResizingAtom);
+  const dividerClass = useIsSidebarFramed() ? "bg-border" : "bg-border-seam";
   return (
     <PanelResizeHandle
       id="thread-detail-secondary-panel-handle"
@@ -1329,7 +1330,8 @@ function SecondaryPanelResizeHandle({
         isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
         matchesSplitDividers
           ? [
-              "bg-border-seam hover:bg-ring/40",
+              dividerClass,
+              "hover:bg-ring/40",
               isOpen && !isConversationCollapsed
                 ? "w-px opacity-100"
                 : "pointer-events-none w-0 opacity-0",
@@ -1357,7 +1359,7 @@ function SecondaryPanelResizeHandle({
             "pointer-events-none absolute inset-y-0 left-full z-10 w-px transition-colors",
             isResizing
               ? "bg-accent-foreground/50"
-              : "bg-border-seam group-hover:bg-accent-foreground/35",
+              : [dividerClass, "group-hover:bg-accent-foreground/35"],
           )}
         />
       )}
