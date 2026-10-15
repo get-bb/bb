@@ -292,7 +292,7 @@ async function openMenu(): Promise<HTMLElement> {
 async function menuRows(): Promise<string[]> {
   const menu = await openMenu();
   return Array.from(
-    menu.querySelectorAll('[role="menuitem"], [role="separator"]'),
+    menu.querySelectorAll('[role="menuitem"], [role="separator"], hr'),
   )
     .filter(
       (element) =>
@@ -300,7 +300,7 @@ async function menuRows(): Promise<string[]> {
         menu,
     )
     .map((element) =>
-      element.getAttribute("role") === "separator"
+      element.getAttribute("role") === "separator" || element.tagName === "HR"
         ? "---"
         : (element.textContent?.trim() ?? ""),
     );
@@ -774,12 +774,12 @@ describe("thread action registrations", () => {
       screen.getAllByRole("listitem").map((item) => item.textContent),
     ).toEqual([
       "bb--core/split",
-      "bb--core/newThreadInEnvironment",
       "bb--core/copyLink",
+      "bb--core/newThreadInEnvironment",
       "bb--core/read",
       "bb--core/pin",
-      "fixture/move",
       "bb--core/rename",
+      "fixture/move",
       "bb--core/archive",
       "bb--core/delete",
       "fixture/notify",
