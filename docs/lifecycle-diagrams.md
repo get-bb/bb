@@ -37,7 +37,7 @@ flowchart LR
     starting -->|"run.succeeded"| idle
     starting -->|"run.failed ⟨notDeleted⟩"| error
     starting -->|"stop.requested"| stopping
-    active -->|"run.succeeded"| idle
+    active -->|"run.succeeded<br/>stop.settled"| idle
     active -->|"run.failed ⟨notDeleted⟩"| error
     active -->|"stop.requested"| stopping
     stopping -->|"stop.settled<br/>run.succeeded"| idle
