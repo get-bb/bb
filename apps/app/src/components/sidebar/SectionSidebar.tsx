@@ -129,7 +129,9 @@ export function SectionSidebar({
         }
       />
       <SidebarContent>
-        <div className="min-w-0 px-2">{children}</div>
+        <div className="min-w-0 px-2 pb-2.5 max-md:pointer-coarse:pb-1.5">
+          {children}
+        </div>
       </SidebarContent>
       <SidebarResizeHandle
         testId={`${testIdPrefix}-sidebar-resize-handle`}
