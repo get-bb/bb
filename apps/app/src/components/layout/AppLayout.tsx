@@ -263,11 +263,11 @@ function SidebarTriggerOverlay({
       >
         <div
           className={cn(
-            "pointer-events-auto flex items-center gap-(--bb-chrome-control-gap)",
+            "pointer-events-auto flex items-center gap-(--bb-title-bar-sidebar-toggle-gap)",
             MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
           )}
         >
-          <SidebarHistoryNavigationControls />
+          <SidebarHistoryNavigationControls className="gap-(--bb-title-bar-nav-gap)" />
           <div className="relative flex items-center">
             <SidebarTrigger {...triggerProps} />
             <AppCommandShortcutHint

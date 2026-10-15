@@ -5,6 +5,8 @@ import {
   RAIL_CONTROL_SIZE_PX,
   RAIL_PADDING_PX,
   TITLE_BAR_CONTROL_SIZE_PX,
+  TITLE_BAR_NAV_GAP_PX,
+  TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
   type BbDesktopWindowState,
@@ -78,7 +80,6 @@ const MACOS_TRAFFIC_LIGHT_CLEARANCE_PX = 12;
 const WINDOW_CARD_RADIUS_PX = 12;
 const COLLAPSED_SIDEBAR_TRIGGER_GAP_PX = 8;
 const TITLE_BAR_CONTROL_COUNT = 3;
-const TITLE_BAR_CONTROL_GAP_PX = 4;
 const PAGE_HEADER_BASE_INSET_PX = 16;
 
 export interface MacosWindowChromeGeometry {
@@ -107,7 +108,8 @@ export function getMacosWindowChromeGeometry(
     titleBarControlsEnd:
       trafficLightReserve +
       TITLE_BAR_CONTROL_COUNT * TITLE_BAR_CONTROL_SIZE_PX +
-      (TITLE_BAR_CONTROL_COUNT - 1) * TITLE_BAR_CONTROL_GAP_PX,
+      TITLE_BAR_NAV_GAP_PX +
+      TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
     collapsedTopLeftReserve:
       trafficLightReserve +
       TITLE_BAR_CONTROL_SIZE_PX +
@@ -140,6 +142,11 @@ export function applyAppFrameGeometry(root: StyleTarget): void {
   root.style.setProperty(
     "--bb-title-bar-control-size",
     `${TITLE_BAR_CONTROL_SIZE_PX}px`,
+  );
+  root.style.setProperty("--bb-title-bar-nav-gap", `${TITLE_BAR_NAV_GAP_PX}px`);
+  root.style.setProperty(
+    "--bb-title-bar-sidebar-toggle-gap",
+    `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
   );
 }
 

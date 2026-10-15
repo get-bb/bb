@@ -8,6 +8,8 @@ import {
   RAIL_CONTROL_SIZE_PX,
   RAIL_PADDING_PX,
   TITLE_BAR_CONTROL_SIZE_PX,
+  TITLE_BAR_NAV_GAP_PX,
+  TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
   type BbDesktopInfo,
 } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
@@ -119,6 +121,12 @@ describe("desktop chrome geometry", () => {
     );
     expect(properties.get("--bb-title-bar-control-size")).toBe(
       `${TITLE_BAR_CONTROL_SIZE_PX}px`,
+    );
+    expect(properties.get("--bb-title-bar-nav-gap")).toBe(
+      `${TITLE_BAR_NAV_GAP_PX}px`,
+    );
+    expect(properties.get("--bb-title-bar-sidebar-toggle-gap")).toBe(
+      `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
     );
   });
 
