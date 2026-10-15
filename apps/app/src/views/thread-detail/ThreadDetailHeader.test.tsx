@@ -15,6 +15,9 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS } from "@/lib/bb-desktop";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { MemoryRouter } from "react-router-dom";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import {
   ThreadActionCollectors,
@@ -593,6 +596,44 @@ describe("ThreadDetailHeader", () => {
     expect(input.closest("p")?.className).toContain(
       "[-webkit-app-region:no-drag]",
     );
+  });
+
+  it("places the window toggle's reserved slot over the title-bar toggle so its whole box stays clickable", () => {
+    window.bbDesktop = createBbDesktopApi({
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <SidebarProvider framed>
+          <PaneContext.Provider
+            value={{ ...PANE_CONTEXT, reservesWindowPanelToggle: true }}
+          >
+            <ThreadDetailHeader
+              actionsMenu={null}
+              isSecondaryPanelOpen={false}
+              onOpenThreadGitAction={vi.fn()}
+              onToggleSecondaryPanel={vi.fn()}
+              threadHeaderGitActions={[]}
+              threadId={THREAD_ID}
+              threadTitle="Pinned toggle"
+            />
+          </PaneContext.Provider>
+        </SidebarProvider>
+      </MemoryRouter>,
+    );
+
+    const slot = container.querySelector("span[aria-hidden].header-icon-button");
+    expect(slot).not.toBeNull();
+    const classes = slot?.className.split(" ") ?? [];
+    for (const token of MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS.split(" ")) {
+      expect(classes).toContain(token);
+    }
   });
 
   it("does not start a pane drag while the header title is being edited", async () => {

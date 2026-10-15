@@ -321,7 +321,15 @@ export function ThreadDetailHeader({
           </span>
         ) : null}
         {reservesWindowPanelToggle && !isWindowPanelOpen ? (
-          <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
+          <span
+            aria-hidden
+            className={cn(
+              HEADER_ICON_BUTTON_CLASS,
+              isTopRow &&
+                isSidebarFramed &&
+                MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+            )}
+          />
         ) : null}
       </div>
     </>

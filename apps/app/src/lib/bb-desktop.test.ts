@@ -10,6 +10,7 @@ import {
   TITLE_BAR_CONTROL_SIZE_PX,
   TITLE_BAR_NAV_GAP_PX,
   TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
+  TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX,
   type BbDesktopInfo,
 } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
@@ -128,6 +129,16 @@ describe("desktop chrome geometry", () => {
     expect(properties.get("--bb-title-bar-sidebar-toggle-gap")).toBe(
       `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
     );
+    expect(properties.get("--bb-title-bar-trailing-edge-gap")).toBe(
+      `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,
+    );
+  });
+
+  it("mirrors the right-panel toggle's center to the red light's", () => {
+    expect(TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX).toBe(
+      MACOS_TRAFFIC_LIGHT_INSET_PX + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2,
+    );
+    expect(MACOS_TRAFFIC_LIGHT_INSET_PX).toBe(MACOS_TRAFFIC_LIGHT_TOP_INSET_PX);
   });
 
   it("applies the reported geometry to the document root", () => {

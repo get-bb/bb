@@ -7,6 +7,7 @@ import {
   TITLE_BAR_CONTROL_SIZE_PX,
   TITLE_BAR_NAV_GAP_PX,
   TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
+  TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
   type BbDesktopWindowState,
@@ -35,10 +36,10 @@ export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =
   "[transform:translateY(var(--bb-macos-chrome-control-y,calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-app-chrome-row-height)/2)))]";
 export const MACOS_TITLE_BAR_ROW_CLASS = "h-(--bb-window-title-bar-height)";
-const MACOS_TITLE_BAR_CORNER_TOGGLE_ICON_CLASS =
-  "[&_[data-icon-root]]:translate-x-[calc(var(--bb-title-bar-control-size)/2_-_0.75rem)]";
-export const MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS = `w-(--bb-title-bar-control-size) -mr-(--bb-panel-chrome-padding) ${MACOS_TITLE_BAR_CORNER_TOGGLE_ICON_CLASS}`;
-export const MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS = `right-0 [&_button]:w-(--bb-title-bar-control-size) ${MACOS_TITLE_BAR_CORNER_TOGGLE_ICON_CLASS}`;
+export const MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS =
+  "w-(--bb-title-bar-control-size) -mr-[calc(var(--bb-panel-chrome-padding)_-_var(--bb-title-bar-trailing-edge-gap)_+_var(--bb-window-frame-lip))]";
+export const MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS =
+  "right-[calc(var(--bb-title-bar-trailing-edge-gap)_-_var(--bb-window-frame-lip))] [&_button]:w-(--bb-title-bar-control-size)";
 export const MACOS_TITLE_BAR_CONTROL_SIZE_CLASS =
   "[&_button]:h-(--bb-title-bar-control-size) [&_[data-tab-pill]]:h-(--bb-title-bar-control-size)";
 export const MACOS_TITLE_BAR_BAND_CLASS = `${MACOS_TITLE_BAR_ROW_CLASS} box-content pb-px`;
@@ -147,6 +148,10 @@ export function applyAppFrameGeometry(root: StyleTarget): void {
   root.style.setProperty(
     "--bb-title-bar-sidebar-toggle-gap",
     `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
+  );
+  root.style.setProperty(
+    "--bb-title-bar-trailing-edge-gap",
+    `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,
   );
 }
 
