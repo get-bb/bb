@@ -437,6 +437,8 @@ describe("framed desktop sidebar", () => {
       "before:rounded-tr-xl",
       "before:rounded-br-xl",
       "before:border-r",
+      "px-px",
+      "pb-px",
     ]) {
       expect(inset.classList.contains(edge)).toBe(true);
     }

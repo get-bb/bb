@@ -1,5 +1,5 @@
-export const MACOS_TRAFFIC_LIGHT_INSET_PX = 15;
-export const MACOS_TRAFFIC_LIGHT_TOP_INSET_PX = 15;
+export const MACOS_TRAFFIC_LIGHT_INSET_PX = 17;
+export const MACOS_TRAFFIC_LIGHT_TOP_INSET_PX = 17;
 export const TITLE_BAR_CONTROL_SIZE_PX = 28;
 export const RAIL_CONTROL_SIZE_PX = 24;
 export const WINDOW_FRAME_LIP_PX = 8;

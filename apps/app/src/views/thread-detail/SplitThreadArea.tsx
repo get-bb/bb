@@ -28,6 +28,7 @@ import {
 import { useIsMutating } from "@tanstack/react-query";
 import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import {
   dimInactiveSplitsAtom,
@@ -887,6 +888,7 @@ interface SplitTreeProps {
 function SplitTree(props: SplitTreeProps) {
   const { node, path, isTopRow, isLeftEdge, isRightEdge, focusedPaneId } =
     props;
+  const isSidebarFramed = useIsSidebarFramed();
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
@@ -941,6 +943,9 @@ function SplitTree(props: SplitTreeProps) {
           data-pane-focus-scrim=""
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
+            isSidebarFramed &&
+              (isMaximized || isTopRow) &&
+              "top-[calc(var(--bb-window-frame-top)_+_1px)]",
             isFocused || !props.dimsInactiveSplits
               ? "bg-transparent"
               : "bg-background/30",
