@@ -311,7 +311,7 @@ export function AppSidebar({
                 className={cn(
                   "w-full justify-center pl-(--bb-frame-footer-inset)",
                   isFramed
-                    ? "box-content h-(--bb-window-footer-row-height) pb-0 pointer-fine:pl-[calc(var(--bb-frame-footer-inset)_+_(2rem_-_var(--bb-title-bar-control-size))/2)] pointer-fine:[&_[data-sidebar=menu-button]]:size-(--bb-title-bar-control-size) pointer-fine:[&_[data-sidebar=menu]]:gap-[calc(0.25rem_+_2rem_-_var(--bb-title-bar-control-size))]"
+                    ? "box-content h-(--bb-window-footer-row-height) pb-0 pointer-fine:pl-[calc(var(--bb-frame-footer-inset)_+_(2rem_-_var(--bb-title-bar-control-size))/2)] pointer-fine:[&_[data-sidebar=menu-button]]:size-(--bb-title-bar-control-size) [&_[data-sidebar=menu-button]]:ring-inset pointer-fine:[&_[data-sidebar=menu]]:gap-[calc(0.25rem_+_2rem_-_var(--bb-title-bar-control-size))]"
                     : "pb-(--bb-frame-footer-inset)",
                 )}
               >
