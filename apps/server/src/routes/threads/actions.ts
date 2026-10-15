@@ -39,7 +39,10 @@ import {
 } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { resolvePromptAttachmentReferences } from "../../services/projects/attachments.js";
-import { threadTargetHostId } from "../../services/threads/dispatch-attempt.js";
+import {
+  compactThreadContext,
+  threadTargetHostId,
+} from "../../services/threads/dispatch-attempt.js";
 import {
   createQueuedMessageForThread,
   holdQueuedMessageForEdit,
@@ -52,10 +55,7 @@ import {
   ensureThreadIsWritable,
   ensureThreadQueueIsWritable,
 } from "../../services/threads/thread-send.js";
-import {
-  acceptThreadSendRequest,
-  compactThreadContext,
-} from "../../services/threads/thread-send-request.js";
+import { acceptThreadSendRequest } from "../../services/threads/thread-send-request.js";
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import { clearThreadContext } from "../../services/threads/thread-context-clear.js";
 import {

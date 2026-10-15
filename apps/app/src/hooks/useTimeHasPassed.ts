@@ -8,7 +8,7 @@ export function useTimeHasPassed(atMs: number | null): boolean {
     if (atMs === null || now >= atMs) return;
     const timeout = setTimeout(
       () => setNow(Date.now()),
-      Math.min(atMs - now, MAX_TIMEOUT_MS),
+      Math.max(0, Math.min(atMs - Date.now(), MAX_TIMEOUT_MS)),
     );
     return () => clearTimeout(timeout);
   }, [atMs, now]);

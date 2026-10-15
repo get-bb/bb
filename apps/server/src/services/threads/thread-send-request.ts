@@ -1,5 +1,4 @@
 import {
-  createStandaloneBuiltinCompactCommandInput,
   isStandaloneBuiltinClearCommand,
   isStandaloneBuiltinCompactCommand,
   type Thread,
@@ -12,7 +11,7 @@ import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
-import { ensureThreadIsWritable, sendThreadMessage } from "./thread-send.js";
+import { sendThreadMessage } from "./thread-send.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import { runWithTurnTrace } from "../system/turn-trace.js";
 
@@ -51,10 +50,9 @@ export async function acceptThreadSendRequest(
     if (request.mode === "steer") {
       throwInvalidCompactFirst("cannot steer a turn");
     }
-    await compactThreadContext(deps, args.thread);
   }
   const payload: SendMessageRequest = compactFirst
-    ? { ...request, mode: "queue-if-active" }
+    ? { ...request, mode: "queue-if-active", compactFirst }
     : request;
 
   const outcome = await runWithTurnTrace(
@@ -85,36 +83,4 @@ export async function acceptThreadSendRequest(
 
 function throwInvalidCompactFirst(reason: string): never {
   throw new ApiError(400, "invalid_request", `compactFirst ${reason}`);
-}
-
-export async function compactThreadContext(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  thread: Thread,
-): Promise<void> {
-  ensureThreadIsWritable(thread);
-  if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      `Provider "${thread.providerId}" does not support manual context compaction`,
-    );
-  }
-  if (thread.status !== "idle" && thread.status !== "error") {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Context can only be compacted while the thread is idle or errored",
-    );
-  }
-
-  const environment = await requireThreadCommandEnvironment(deps, { thread });
-  await sendThreadMessage(deps, {
-    environment,
-    payload: {
-      input: createStandaloneBuiltinCompactCommandInput(),
-      mode: "start",
-    },
-    thread,
-    trigger: "user",
-  });
 }

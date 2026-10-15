@@ -368,6 +368,54 @@ describe("public thread compaction", () => {
     });
   });
 
+  it("rejects invalid follow-up attachments before starting compaction", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedCompactableThread(harness, {
+        providerId: "pi",
+        providerThreadId: "provider-thread-invalid-attachment",
+      });
+      const responder = registerSuccessfulTurnResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const sequenceBefore = getLatestThreadSequence(harness.db, {
+        threadId: thread.id,
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            compactFirst: true,
+            mode: "queue-if-active",
+            input: [
+              {
+                type: "localFile",
+                path: "/tmp/report.txt",
+                sourceProjectId: thread.projectId,
+              },
+            ],
+          }),
+        },
+      );
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        message:
+          "A source project can only be specified for an uploaded attachment",
+      });
+      expect(
+        responder.requests.filter(
+          ({ command }) => command.type === "turn.submit",
+        ),
+      ).toHaveLength(0);
+      expect(getLatestThreadSequence(harness.db, { threadId: thread.id })).toBe(
+        sequenceBefore,
+      );
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
   it.each([
     [{ mode: "steer" }, 400, "compactFirst cannot steer a turn"],
     [
