@@ -914,6 +914,25 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("sends thread ID filters comma-separated, keeping an empty list", async () => {
+    const queue = createFetchQueue([{ body: [] }, { body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.list({ threadIds: ["thr_a", "thr_b"] });
+    await sdk.threads.list({ threadIds: [] });
+
+    expect(queue.requests.map((request) => request.url)).toEqual([
+      "http://bb.test/api/v1/threads?threadIds=thr_a%2Cthr_b",
+      "http://bb.test/api/v1/threads?threadIds=",
+    ]);
+  });
+
   it("routes bounded thread mention resolution through one HTTP request", async () => {
     const resolved = [
       {

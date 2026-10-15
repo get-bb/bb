@@ -6,7 +6,7 @@ import {
   hostStorageContract,
   type MeasuredTarget,
 } from "./host-contract.js";
-import { readThreads } from "./sdk-data.js";
+import { readThreads, readThreadsById } from "./sdk-data.js";
 import { LARGE_FILE_MIN_BYTES } from "./rules.js";
 import { developerStorageScanSchema } from "./storage-types.js";
 import type {
@@ -722,12 +722,16 @@ export function createStorage(
     let bytes = 0;
     for (let offset = 0; offset < entries.length; offset += 100) {
       lifecycle.signal.throwIfAborted();
-      const [current, workspaces] = await Promise.all([
-        readThreads(bb, lifecycle.signal),
+      const candidates = entries.slice(offset, offset + 100);
+      const [byId, workspaces] = await Promise.all([
+        readThreadsById(
+          bb,
+          candidates.map((entry) => entry.name),
+          lifecycle.signal,
+        ),
         workspaceEntries(hostId, rootPath),
       ]);
-      const byId = new Map(current.map((thread) => [thread.id, thread]));
-      const batch = entries.slice(offset, offset + 100).filter((entry) => {
+      const batch = candidates.filter((entry) => {
         if (workspaces.has(entry.name)) return false;
         const thread = byId.get(entry.name);
         return eligibility === "orphan"
@@ -763,15 +767,10 @@ export function createStorage(
       const cached = read(hostId);
       if (!cached)
         throw new Error("Scan the machine before removing orphaned storage");
-      const [rootPath, threads] = await Promise.all([
-        storageRoot(hostId),
-        readThreads(bb, lifecycle.signal),
-      ]);
-      const ids = new Set(threads.map((thread) => thread.id));
       const removed = await discard(
         hostId,
-        rootPath,
-        cached.entries.filter((entry) => !ids.has(entry.name)),
+        await storageRoot(hostId),
+        cached.entries,
       );
       return {
         removedCount: removed.count,
@@ -788,31 +787,25 @@ export function createStorage(
       const cached = read(hostId);
       if (!cached)
         throw new Error("Scan the machine before clearing large files");
-      const [rootPath, threads] = await Promise.all([
-        storageRoot(hostId),
-        readThreads(bb, lifecycle.signal),
-      ]);
-      const byId = new Map(threads.map((thread) => [thread.id, thread]));
-      const names = cached.largeFiles
-        .filter((entry) => {
-          const thread = byId.get(entry.name);
-          return thread !== undefined && clearableArchived(thread);
-        })
-        .map((entry) => entry.name);
+      const rootPath = await storageRoot(hostId);
+      const names = cached.largeFiles.map((entry) => entry.name);
       let fileCount = 0;
       let bytes = 0;
       for (let offset = 0; offset < names.length; offset += 100) {
         lifecycle.signal.throwIfAborted();
-        const [current, workspaces] = await Promise.all([
-          readThreads(bb, lifecycle.signal),
+        const candidates = names.slice(offset, offset + 100);
+        const [byId, workspaces] = await Promise.all([
+          readThreadsById(bb, candidates, lifecycle.signal),
           workspaceEntries(hostId, rootPath),
         ]);
-        const eligible = new Set(
-          current.filter(clearableArchived).map((thread) => thread.id),
-        );
-        const batch = names
-          .slice(offset, offset + 100)
-          .filter((name) => eligible.has(name) && !workspaces.has(name));
+        const batch = candidates.filter((name) => {
+          const thread = byId.get(name);
+          return (
+            thread !== undefined &&
+            clearableArchived(thread) &&
+            !workspaces.has(name)
+          );
+        });
         if (batch.length === 0) continue;
         const { removed } = await worker.call(
           "discardLargeFiles",
@@ -896,17 +889,10 @@ export function createStorage(
         throw new Error(
           "Scan the machine before clearing archived thread files",
         );
-      const [rootPath, threads] = await Promise.all([
-        storageRoot(hostId),
-        readThreads(bb, lifecycle.signal),
-      ]);
-      const eligible = new Set(
-        threads.filter(clearableArchived).map((thread) => thread.id),
-      );
       const removed = await discard(
         hostId,
-        rootPath,
-        cached.entries.filter((entry) => eligible.has(entry.name)),
+        await storageRoot(hostId),
+        cached.entries,
         progress,
         "archived",
       );
@@ -1014,13 +1000,18 @@ export function createStorage(
   }
   async function startClearLargeFiles({ hostId }: { hostId: string | null }) {
     const candidates = await largeFileTargets(hostId);
-    const threads = await readThreads(bb, lifecycle.signal);
-    const eligible = new Set(
-      threads.filter(clearableArchived).map((thread) => thread.id),
-    );
-    const targets = candidates.filter((target) =>
-      read(target)?.largeFiles.some((entry) => eligible.has(entry.name)),
-    );
+    const targets: string[] = [];
+    for (const target of candidates) {
+      const names = (read(target)?.largeFiles ?? []).map((entry) => entry.name);
+      const byId = await readThreadsById(bb, names, lifecycle.signal);
+      if (
+        names.some((name) => {
+          const thread = byId.get(name);
+          return thread !== undefined && clearableArchived(thread);
+        })
+      )
+        targets.push(target);
+    }
     for (const target of candidates) {
       await requireHost(target, true);
       if (!read(target))

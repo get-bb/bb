@@ -447,6 +447,7 @@ export interface ListThreadsOptions {
   sourceThreadId?: string;
   originKind?: ThreadOriginKind;
   originPluginId?: string;
+  threadIds?: readonly string[];
   limit?: number;
   offset?: number;
   includeHidden?: boolean;
@@ -710,6 +711,9 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
       ? eq(threads.environmentId, options.environmentId)
       : undefined,
     options.hostId ? eq(environments.hostId, options.hostId) : undefined,
+    options.threadIds === undefined
+      ? undefined
+      : inArray(threads.id, [...options.threadIds]),
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
     nonDeletedThreads(),
@@ -1451,6 +1455,7 @@ export function listThreadsWithPendingInteractionState(
   db: DbConnection,
   options: ListThreadsOptions,
 ): ThreadWithPendingInteractionState[] {
+  if (options.threadIds?.length === 0) return [];
   let query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsFilters(options)))
     .orderBy(...buildListThreadsOrderBy(options))

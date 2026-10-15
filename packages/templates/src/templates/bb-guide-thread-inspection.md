@@ -16,6 +16,7 @@ Listing:
     --environment <id>                     Filter by environment
     --machine <id-or-name>                 Filter by the machine the environment is on (alias --host)
     --parent-thread <id>                   Filter by parent thread
+    --thread <id>                          Only this thread; unknown or deleted IDs are left out (repeatable, up to 200)
     --archived                             Show only archived threads
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections

@@ -640,6 +640,37 @@ describe("threads", () => {
     ).toHaveLength(2);
   });
 
+  it("narrows the list to the requested thread IDs, leaving out unknown and deleted ones", () => {
+    const { db, project } = setup();
+    const [kept, archived, deleted, other] = Array.from({ length: 4 }, () =>
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      }),
+    );
+    archiveThread(db, noopNotifier, archived!.id);
+    markThreadDeleted(db, noopNotifier, { threadId: deleted!.id });
+    const threadIds = [kept!.id, archived!.id, deleted!.id, "thr_unknown"];
+
+    expect(
+      listThreadsWithPendingInteractionState(db, { threadIds })
+        .map((thread) => thread.id)
+        .sort(),
+    ).toEqual([kept!.id, archived!.id].sort());
+    expect(
+      listThreadsWithPendingInteractionState(db, {
+        threadIds,
+        archived: true,
+      }).map((thread) => thread.id),
+    ).toEqual([archived!.id]);
+    expect(
+      listThreadsWithPendingInteractionState(db, { threadIds: [] }),
+    ).toEqual([]);
+    expect(
+      listThreadsWithPendingInteractionState(db, {}).map((thread) => thread.id),
+    ).toContain(other!.id);
+  });
+
   it("filters threads by parent presence", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {

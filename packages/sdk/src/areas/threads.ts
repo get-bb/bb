@@ -103,6 +103,12 @@ export interface ThreadListArgs {
   projectId?: string;
   signal?: AbortSignal;
   sourceThreadId?: string;
+  /**
+   * Only threads with these IDs, at most 200 per call. The other filters still
+   * apply, unknown and deleted IDs are left out, and an empty list matches no
+   * threads.
+   */
+  threadIds?: readonly string[];
   unsectioned?: boolean;
 }
 
@@ -719,6 +725,9 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
     ...(args?.originKind ? { originKind: args.originKind } : {}),
     ...(args?.originPluginId ? { originPluginId: args.originPluginId } : {}),
+    ...(args?.threadIds === undefined
+      ? {}
+      : { threadIds: args.threadIds.join(",") }),
     ...(args?.archived === undefined
       ? {}
       : { archived: args.archived ? "true" : "false" }),

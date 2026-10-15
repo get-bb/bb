@@ -377,6 +377,42 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("lists only the requested thread IDs, treats an empty list as no threads and caps the list", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const first = seedThread(harness.deps, { projectId: project.id });
+      const second = seedThread(harness.deps, { projectId: project.id });
+      seedThread(harness.deps, { projectId: project.id });
+      const list = async (threadIds: string) => {
+        const response = await harness.app.request(
+          `/api/v1/threads?threadIds=${threadIds}`,
+        );
+        expect(response.status).toBe(200);
+        return z
+          .array(threadSchema)
+          .parse(await readJson(response))
+          .map((thread) => thread.id)
+          .sort();
+      };
+
+      await expect(
+        list(`${first.id},thr_unknown,${second.id}`),
+      ).resolves.toEqual([first.id, second.id].sort());
+      await expect(list("")).resolves.toEqual([]);
+      const tooMany = await harness.app.request(
+        `/api/v1/threads?threadIds=${Array.from({ length: 201 }, (_, index) => `thr_${index}`).join(",")}`,
+      );
+      expect(tooMany.status).toBe(400);
+      const blank = await harness.app.request(
+        `/api/v1/threads?threadIds=${first.id},,${second.id}`,
+      );
+      expect(blank.status).toBe(400);
+    });
+  });
+
   it("allows creating or assigning a hidden thread in a section", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

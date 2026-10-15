@@ -867,6 +867,16 @@ export type ThreadArchiveAllResponse = z.infer<
   typeof threadArchiveAllResponseSchema
 >;
 
+export const THREAD_LIST_MAX_IDS = 200;
+
+/**
+ * Reads the `threadIds` list filter. The empty string is the empty set, so a
+ * caller with no IDs gets no threads instead of every thread.
+ */
+export function parseThreadListThreadIds(value: string): string[] {
+  return value === "" ? [] : value.split(",");
+}
+
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
@@ -880,6 +890,20 @@ export const threadListQuerySchema = z.object({
   originKind: threadOriginKindSchema.optional(),
   originPluginId: z.string().min(1).optional(),
   includeHidden: z.enum(["true", "false"]).optional(),
+  threadIds: z
+    .string()
+    .refine(
+      (value) => {
+        const ids = parseThreadListThreadIds(value);
+        return (
+          ids.length <= THREAD_LIST_MAX_IDS && ids.every((id) => id.length > 0)
+        );
+      },
+      {
+        message: `threadIds must be at most ${THREAD_LIST_MAX_IDS} comma-separated thread IDs`,
+      },
+    )
+    .optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),
 });

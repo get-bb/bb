@@ -40,6 +40,20 @@ describe("bb thread list command output", () => {
     });
   });
 
+  it("bb thread list narrows to repeated --thread IDs", async () => {
+    const list = vi.fn(async () => []);
+    stubServerApi({ "v1.threads.$get": list });
+
+    await runCommand(
+      ["thread", "list", "--thread", "thr_a", "--thread", "thr_b", "--json"],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({
+      query: { threadIds: "thr_a,thr_b" },
+    });
+  });
+
   it("bb thread list accepts a removed machine ID without looking it up among active machines", async () => {
     const list = vi.fn(async () => []);
     const hosts = vi.fn(async () => []);

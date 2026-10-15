@@ -227,9 +227,12 @@ const timeline = await bb.sdk.threads.timeline({ threadId });
 await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 ```
 
-`threads.list` filters on `projectId`, `environmentId`, `parentThreadId`, `sourceThreadId`,
-`sectionId`, `originKind`, `originPluginId`, `archived`, `unsectioned`,
-`hasParent`, and `includeHidden`, and it pages with `limit` and `offset`.
+`threads.list` filters on `projectId`, `environmentId`, `hostId`,
+`parentThreadId`, `sourceThreadId`, `sectionId`, `originKind`,
+`originPluginId`, `archived`, `unsectioned`, `hasParent`, and `includeHidden`,
+and it pages with `limit` and `offset`. `threadIds` (at most 200) narrows it to
+those threads and leaves out unknown or deleted IDs, so it also answers which
+of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
