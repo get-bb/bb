@@ -442,7 +442,8 @@ saved entries.
 disabled for **This Mac** / **This Computer**. For a Connect server it changes
 only the name; the address comes from the bb account and is read-only. For a
 custom server, clearing its URL removes
-that entry and switches an active custom target to the built-in server. Other
+that entry and, with Show This Mac/Computer checked, switches an active custom
+target to the built-in server. Other
 saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
 
@@ -493,6 +494,27 @@ existing ten-minute background refresh). The optional `window.bbDesktop`
 only `{id, name, active}`; custom server IDs are opaque hashes. Selection is
 validated against native choices and runs the menu's existing authentication,
 window navigation, and runtime lifecycle. Older desktop shells omit these actions.
+
+Desktop Settings → Server → **Show This Mac** (or **Show This Computer** off macOS)
+defaults to checked and is disabled while This Mac/Computer is selected.
+Unchecking hides the built-in server from server choices
+while another server is active and alternatives exist. It stays listed when
+active or when it is the only choice. This setting does not stop the local
+runtime or change the active server.
+
+The desktop stores `showBuiltinServer: false` in `<userData>/server-target.json`;
+missing means shown, and saving the default omits the field. Other top-level
+metadata is preserved. This is a desktop-local preference, with no server
+settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
+may drop it on save; older strict readers can reject the whole file, so keep a
+backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+When a custom URL is removed while the built-in server is hidden, an active
+custom target switches to the first remaining custom URL in saved order, then
+the saved Connect server, then a discovered Connect server in handle order,
+and finally the built-in server if no alternative exists. With the checkbox
+checked, removing an active custom target still switches to the built-in server.
+The native menus, renderer Server popup, and app palette use the same choices.
 
 ### Server moves
 

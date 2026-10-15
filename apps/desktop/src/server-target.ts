@@ -11,6 +11,7 @@ interface CustomServer {
 }
 
 interface SetCustomServerUrlOptions {
+  availableConnectServers?: readonly ConnectServerRef[];
   replacedUrl?: string;
   name?: string | null;
 }
@@ -55,6 +56,8 @@ export interface ServerTargetStore {
   getCustomServers(): CustomServer[];
   setCustomServerName(url: string, name: string | null): Promise<void>;
   getTarget(): DesktopServerTarget;
+  getShowBuiltinServer(): boolean;
+  setShowBuiltinServer(show: boolean): Promise<void>;
   load(): Promise<void>;
   refreshConnectServer(server: ConnectServerRef): Promise<boolean>;
   setConnectServer(server: ConnectServerRef): Promise<void>;
@@ -72,7 +75,8 @@ const persistedConnectServerSchema = z.object({
   url: z.string().min(1),
 });
 
-const persistedServerTargetSchema = z.object({
+const persistedServerTargetSchema = z.looseObject({
+  showBuiltinServer: z.boolean().default(true),
   connectServer: persistedConnectServerSchema.nullable().optional(),
   customServerUrl: z.string().min(1).nullable(),
   customServerUrls: z.array(z.string().min(1)).default([]),
@@ -135,6 +139,8 @@ export function createServerTargetStore(
   let customServers: CustomServer[] = [];
   let connectServerNames = new Map<string, string>();
   let target: "builtin" | "connect" | "custom" = "builtin";
+  let showBuiltinServer = true;
+  let persistedSettings: PersistedServerTarget | null = null;
   let pendingPersist: Promise<void> = Promise.resolve();
 
   function persist(): Promise<void> {
@@ -144,15 +150,19 @@ export function createServerTargetStore(
         .map((server) => [server.url, server.name]),
     );
     const payload = {
+      ...persistedSettings,
+      showBuiltinServer: showBuiltinServer ? undefined : false,
       connectServer,
       customServerUrl,
       customServerUrls: customServers.map((server) => server.url),
-      ...(Object.keys(customServerNames).length === 0
-        ? {}
-        : { customServerNames }),
-      ...(connectServerNames.size === 0
-        ? {}
-        : { connectServerNames: Object.fromEntries(connectServerNames) }),
+      customServerNames:
+        Object.keys(customServerNames).length === 0
+          ? undefined
+          : customServerNames,
+      connectServerNames:
+        connectServerNames.size === 0
+          ? undefined
+          : Object.fromEntries(connectServerNames),
       target,
     };
     const data = `${JSON.stringify(payload, null, 2)}\n`;
@@ -165,6 +175,13 @@ export function createServerTargetStore(
   }
 
   return {
+    getShowBuiltinServer() {
+      return showBuiltinServer;
+    },
+    async setShowBuiltinServer(show) {
+      showBuiltinServer = show;
+      await persist();
+    },
     async adoptConnectServers(servers) {
       const serversByUrl = new Map<string, ConnectServerRef>();
       for (const server of servers) {
@@ -235,6 +252,8 @@ export function createServerTargetStore(
       } catch {
         persisted = null;
       }
+      persistedSettings = persisted;
+      showBuiltinServer = persisted?.showBuiltinServer ?? true;
       if (persisted === null) {
         connectServer = null;
         customServerUrl = null;
@@ -340,7 +359,22 @@ export function createServerTargetStore(
       if (normalized === null) {
         customServerUrl = customServers[0]?.url ?? null;
         if (target === "custom") {
-          target = "builtin";
+          const fallbackConnectServer =
+            connectServer ??
+            [...(options.availableConnectServers ?? [])].sort((a, b) =>
+              a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0,
+            )[0] ??
+            null;
+          if (showBuiltinServer) {
+            target = "builtin";
+          } else if (customServerUrl !== null) {
+            target = "custom";
+          } else if (fallbackConnectServer !== null) {
+            connectServer = { ...fallbackConnectServer };
+            target = "connect";
+          } else {
+            target = "builtin";
+          }
         }
       } else {
         customServerUrl = normalized;

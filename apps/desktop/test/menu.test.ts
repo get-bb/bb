@@ -13,7 +13,11 @@ import {
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
-import { BUILTIN_SERVER_NAME } from "../src/server-target.js";
+import { buildDesktopServerChoices } from "../src/server-list.js";
+import {
+  createServerTargetStore,
+  BUILTIN_SERVER_NAME,
+} from "../src/server-target.js";
 
 function menuArgs(
   reloadWindow: InstallApplicationMenuArgs["reloadWindow"],
@@ -32,6 +36,8 @@ function menuArgs(
     connectServersSkipReason: null,
     createNewWindow: () => {},
     isMac: true,
+    showBuiltinServer: true,
+    toggleBuiltinServer: () => {},
     openAbout: () => {},
     openNewTab: () => {},
     openNewThread: () => {},
@@ -238,7 +244,7 @@ describe("application menu", () => {
     );
     const serverSubmenu = findServerSubmenu(template);
 
-    expect(serverSubmenu).toHaveLength(6);
+    expect(serverSubmenu).toHaveLength(8);
     expect(
       serverSubmenu.slice(0, 3).map((item) => [item.type, item.checked]),
     ).toEqual([
@@ -293,6 +299,8 @@ describe("application menu", () => {
       "<separator>",
       "Add Server…",
       SET_SERVER_URL_MENU_LABEL,
+      "<separator>",
+      "Show This Mac",
     ]);
     expect(labels(findServerSubmenu(template))).toEqual(
       labels(desktopSettingsServerSubmenu),
@@ -339,6 +347,8 @@ describe("application menu", () => {
         label,
         "Add Server…",
         SET_SERVER_URL_MENU_LABEL,
+        "<separator>",
+        "Show This Mac",
       ]);
       const signIn = serverSubmenu[3];
       expect(signIn?.enabled).toBeUndefined();
@@ -371,6 +381,8 @@ describe("application menu", () => {
         "<separator>",
         "Add Server…",
         SET_SERVER_URL_MENU_LABEL,
+        "<separator>",
+        "Show This Mac",
       ]);
     },
   );
@@ -405,3 +417,102 @@ describe("application menu", () => {
     expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 });
+
+it.each([true, false])(
+  "exposes the platform visibility checkbox (Mac: %s)",
+  (isMac) => {
+    const toggleBuiltinServer = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        isMac,
+        showBuiltinServer: false,
+        servers: [{ id: "custom:remote", name: "Remote", checked: true }],
+        toggleBuiltinServer,
+      }),
+    );
+    const appMenu = template[0].submenu as MenuItemConstructorOptions[];
+    const settings = appMenu.find((item) => item.label === "Desktop Settings")
+      ?.submenu as MenuItemConstructorOptions[];
+    expect(settings.some((item) => item.type === "checkbox")).toBe(false);
+    for (const submenu of [
+      findDesktopSettingsServerSubmenu(template),
+      findServerSubmenu(template),
+    ]) {
+      const checkbox = submenu.find((item) => item.type === "checkbox");
+      expect(checkbox?.label).toBe(
+        isMac ? "Show This Mac" : "Show This Computer",
+      );
+      expect(checkbox?.checked).toBe(false);
+      expect(checkbox?.enabled).toBe(true);
+      checkbox?.click?.({} as never, undefined, {} as never);
+    }
+    expect(toggleBuiltinServer).toHaveBeenCalledTimes(2);
+  },
+);
+
+it.each([
+  { active: true, alternatives: 1, show: false, custom: false, visible: true },
+  { active: true, alternatives: 0, show: false, custom: false, visible: true },
+  {
+    active: false,
+    alternatives: 1,
+    show: false,
+    custom: false,
+    visible: false,
+  },
+  { active: false, alternatives: 1, show: true, custom: false, visible: true },
+  { active: false, alternatives: 1, show: false, custom: true, visible: false },
+])(
+  "shares native and palette visibility: %j",
+  async ({ active, alternatives, show, custom, visible }) => {
+    const store = createServerTargetStore({
+      storagePath: "/test/server-target.json",
+      fs: {
+        mkdir: async () => undefined,
+        readFile: async () => "",
+        writeFile: async () => undefined,
+      },
+    });
+    const connect = {
+      handle: "laptop",
+      name: "Laptop",
+      url: "https://laptop.getbb.app",
+    };
+    if (alternatives) {
+      if (custom) await store.setCustomServerUrl("https://custom.example");
+      else await store.setConnectServer(connect);
+    }
+    if (active) await store.setTarget("builtin");
+    await store.setShowBuiltinServer(show);
+    const choices = buildDesktopServerChoices(
+      store,
+      alternatives && !custom ? [connect] : [],
+    );
+    expect(choices.some((choice) => choice.id === "builtin")).toBe(visible);
+    expect(choices.filter((choice) => choice.active)).toHaveLength(1);
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        showBuiltinServer: show,
+        servers: choices.map(({ id, name, active }) => ({
+          id,
+          name,
+          checked: active,
+        })),
+      }),
+    );
+    for (const items of [
+      findServerSubmenu(template),
+      findDesktopSettingsServerSubmenu(template),
+    ]) {
+      expect(
+        items.filter((item) => item.type === "radio").map((item) => item.label),
+      ).toEqual(choices.map((choice) => choice.name));
+      expect(items.find((item) => item.type === "checkbox")?.enabled).toBe(
+        !active,
+      );
+      expect(items.filter((item) => item.type === "radio")).toHaveLength(
+        alternatives + Number(visible),
+      );
+    }
+  },
+);

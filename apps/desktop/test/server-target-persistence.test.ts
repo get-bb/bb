@@ -75,6 +75,7 @@ it.each([
     );
     await store.setCustomServerUrl(thirdUrl);
     expect(JSON.parse(await readFile(storagePath, "utf8"))).toEqual({
+      ...("futureSetting" in settings ? { futureSetting: true } : {}),
       connectServer: connect,
       customServerUrl: thirdUrl,
       customServerUrls: urls,
@@ -344,4 +345,83 @@ it("keeps an existing Connect server name when adopting a named custom URL", asy
   expect(await store.adoptConnectServers([connectServer])).toBe(true);
   expect(store.getConnectServerName(connectServer.handle)).toBe("Chosen");
   expect(store.getCustomServers()).toEqual([]);
+});
+
+it("persists hidden visibility without changing the active target and preserves sibling metadata", async () => {
+  const storagePath = await createStoragePath();
+  await writeFile(
+    storagePath,
+    JSON.stringify({
+      customServerUrl: firstUrl,
+      customServerUrls: [firstUrl],
+      target: "custom",
+      customServerNames: { [firstUrl]: "Work" },
+    }),
+  );
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  expect(store.getShowBuiltinServer()).toBe(true);
+  await store.setShowBuiltinServer(false);
+  expect(store.getTarget()).toEqual({ kind: "custom", url: firstUrl });
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getShowBuiltinServer()).toBe(false);
+  expect(reloaded.getTarget()).toEqual({ kind: "custom", url: firstUrl });
+  await reloaded.setTarget("builtin");
+  await reloaded.setShowBuiltinServer(true);
+  expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  const saved = JSON.parse(await readFile(storagePath, "utf8"));
+  expect(saved.customServerNames).toEqual({ [firstUrl]: "Work" });
+  expect(saved).not.toHaveProperty("showBuiltinServer");
+});
+
+it.each([
+  { show: false, custom: true, connect: true, expected: "custom" },
+  { show: false, custom: false, connect: true, expected: "connect" },
+  { show: false, custom: true, connect: false, expected: "custom" },
+  { show: false, custom: false, connect: false, expected: "builtin" },
+  { show: true, custom: true, connect: true, expected: "builtin" },
+  { show: true, custom: false, connect: true, expected: "builtin" },
+])(
+  "persists the removal fallback: %j",
+  async ({ show, custom, connect, expected }) => {
+    const storagePath = await createStoragePath();
+    const store = createServerTargetStore({ storagePath });
+    await store.load();
+    if (connect) await store.setConnectServer(connectServer);
+    if (custom) await store.setCustomServerUrl(firstUrl);
+    await store.setCustomServerUrl(secondUrl);
+    await store.setShowBuiltinServer(show);
+    await store.setCustomServerUrl(null);
+    const reloaded = createServerTargetStore({ storagePath });
+    await reloaded.load();
+    expect(reloaded.getShowBuiltinServer()).toBe(show);
+    expect(reloaded.getCustomServerUrls()).toEqual(custom ? [firstUrl] : []);
+    expect(reloaded.getTarget()).toEqual(
+      expected === "connect"
+        ? { kind: "connect", server: connectServer }
+        : expected === "custom"
+          ? { kind: "custom", url: firstUrl }
+          : { kind: "builtin" },
+    );
+  },
+);
+
+it("falls back to discovered Connect servers in handle order when none is saved", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setCustomServerUrl(firstUrl);
+  await store.setShowBuiltinServer(false);
+  const discovered = [
+    { ...connectServer, handle: "z-last" },
+    { ...connectServer, handle: "a-first" },
+  ];
+  await store.setCustomServerUrl(null, { availableConnectServers: discovered });
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getTarget()).toEqual({
+    kind: "connect",
+    server: discovered[1],
+  });
 });

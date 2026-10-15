@@ -795,6 +795,20 @@ function buildMenuServerItems(connectServers: ConnectServerRef[]) {
 function buildServerMenuArgs(): ServerMenuArgs {
   const connectServers = listMenuConnectServers();
   return {
+    isMac: process.platform === "darwin",
+    showBuiltinServer: serverTargetStore?.getShowBuiltinServer() ?? true,
+    toggleBuiltinServer() {
+      if (serverTargetStore === null) return;
+      void serverTargetStore
+        .setShowBuiltinServer(!serverTargetStore.getShowBuiltinServer())
+        .then(refreshApplicationMenu)
+        .catch((error: unknown) => {
+          desktopLogger.warn(
+            `[desktop] could not save server visibility: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          refreshApplicationMenu();
+        });
+    },
     addServer() {
       void openSetServerUrlDialog(true);
     },
@@ -2056,6 +2070,7 @@ async function openSetServerUrlDialog(add = false): Promise<void> {
   await serverTargetStore.setCustomServerUrl(
     result.kind === "set" ? result.url : null,
     {
+      availableConnectServers: listMenuConnectServers(),
       ...(previousUrl === null ? {} : { replacedUrl: previousUrl }),
       ...(result.kind === "set" && !(add && result.name === null)
         ? { name: result.name }

@@ -7,6 +7,7 @@ import {
 } from "electron";
 import type { BbDesktopZoomCommand } from "@bb/desktop-contract";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
+import { builtinServerName } from "./server-target.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
 
 const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
@@ -49,6 +50,8 @@ interface ApplicationMenuServerItem {
 export interface InstallApplicationMenuArgs {
   accelerators: ApplicationMenuAccelerators;
   isMac: boolean;
+  showBuiltinServer: boolean;
+  toggleBuiltinServer(): void;
   openAbout(): void;
   openNewTab(): void;
   openNewThread(): void;
@@ -89,6 +92,9 @@ function createServerDaemonLogsMenuItems(
 
 export type ServerMenuArgs = Pick<
   InstallApplicationMenuArgs,
+  | "isMac"
+  | "showBuiltinServer"
+  | "toggleBuiltinServer"
   | "addServer"
   | "connectServersSkipReason"
   | "selectServer"
@@ -142,6 +148,18 @@ export function createServerMenuItems(
       label: SET_SERVER_URL_MENU_LABEL,
       click() {
         args.setServerUrl();
+      },
+    },
+    { type: "separator" },
+    {
+      checked: args.showBuiltinServer,
+      enabled: !args.servers.some(
+        (server) => server.id === "builtin" && server.checked,
+      ),
+      label: `Show ${builtinServerName(args.isMac ? "darwin" : "linux")}`,
+      type: "checkbox",
+      click() {
+        args.toggleBuiltinServer();
       },
     },
   ];
