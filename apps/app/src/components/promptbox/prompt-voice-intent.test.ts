@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PromptDraftState } from "@bb/client-core";
 import type { PromptBoxHandle } from "./PromptBoxInternal";
 import {
-  createPromptVoiceIntent,
+  deliverPromptVoiceTranscript,
   transcribeAfterCompletionTransition,
 } from "./prompt-voice-intent";
 
@@ -47,60 +47,13 @@ describe("transcribeAfterCompletionTransition", () => {
   });
 });
 
-describe("createPromptVoiceIntent", () => {
-  it("sends only a successful send transcript, never a cancelled or add-to-draft transcript", () => {
-    const intent = createPromptVoiceIntent();
-    const promptBox = createPromptBox();
-    const target = { promptBox, draft: undefined };
-
-    expect(intent.claimStop("recording", true)).toBe(true);
-    expect(intent.claimStop("recording", true)).toBe(false);
-    intent.deliverTranscript("first transcript", target);
-    expect(promptBox.sendVoiceTranscript).toHaveBeenCalledExactlyOnceWith(
-      "first transcript",
-    );
-
-    intent.claimStop("recording", true);
-    intent.cancel();
-    intent.deliverTranscript("cancelled transcript", target);
-    expect(promptBox.sendVoiceTranscript).toHaveBeenCalledOnce();
-    expect(promptBox.insertTextAtCursor).toHaveBeenCalledWith(
-      "cancelled transcript",
-    );
-
-    intent.claimStop("recording", false);
-    intent.deliverTranscript("draft transcript", target);
-    expect(promptBox.insertTextAtCursor).toHaveBeenCalledWith(
-      "draft transcript",
-    );
-    expect(promptBox.sendVoiceTranscript).toHaveBeenCalledOnce();
-  });
-
-  it("does not carry send intent into another recording after transcription fails", () => {
-    const intent = createPromptVoiceIntent();
-    const promptBox = createPromptBox();
-
-    intent.claimStop("recording", true);
-    intent.settle("error");
-    intent.settle("recording");
-    intent.deliverTranscript("later transcript", {
-      promptBox,
-      draft: undefined,
-    });
-
-    expect(promptBox.sendVoiceTranscript).not.toHaveBeenCalled();
-    expect(promptBox.insertTextAtCursor).toHaveBeenCalledExactlyOnceWith(
-      "later transcript",
-    );
-  });
-
+describe("deliverPromptVoiceTranscript", () => {
   it.each([
     ["send", true],
-    ["stop", false],
+    ["insert", false],
   ] as const)(
-    "preserves %s intent for the originating draft after unmount",
-    async (_action, send) => {
-      const intent = createPromptVoiceIntent();
+    "preserves %s delivery for the originating draft after unmount",
+    async (delivery, send) => {
       const promptBox = createPromptBox();
       let draft: PromptDraftState = {
         text: "Existing",
@@ -118,10 +71,9 @@ describe("createPromptVoiceIntent", () => {
         submit,
       };
 
-      intent.claimStop("recording", send);
-      intent.setMounted(false);
       draft = { ...draft, text: "Existing and later edits" };
-      await intent.deliverTranscript("late transcript", {
+      await deliverPromptVoiceTranscript("late transcript", delivery, {
+        mounted: false,
         promptBox,
         draft: origin,
       });
@@ -134,18 +86,18 @@ describe("createPromptVoiceIntent", () => {
   );
 
   it("appends a completed transcript to the originating draft without a prompt box", () => {
-    const intent = createPromptVoiceIntent();
     let draft: PromptDraftState = {
       text: "Existing and later edits",
       mentions: [],
       attachments: [],
     };
 
-    intent.deliverTranscript("new words", {
+    void deliverPromptVoiceTranscript("new words", "insert", {
+      mounted: true,
       promptBox: null,
       draft: {
         getCurrent: () => draft,
-        setDraft: (next) => {
+        setDraft: (next: PromptDraftState) => {
           draft = next;
         },
       },

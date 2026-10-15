@@ -40,8 +40,13 @@ beforeEach(() => {
     isRecording: false,
     isProcessing: false,
     isListening: false,
+    delivery: "insert",
+    failedRecordings: [],
     start: vi.fn(async () => {}),
     stop: vi.fn(),
+    retry: vi.fn(),
+    discard: vi.fn(),
+    download: vi.fn(),
     cancel: vi.fn(),
   });
   Object.defineProperty(window, "matchMedia", {
@@ -590,7 +595,7 @@ describe("question answer dictation", () => {
     const recording = vi.mocked(useVoiceInput).mock.calls.at(-1)?.[0];
     fireEvent.click(slot.getByRole("button", { name: "Start voice input" }));
     fireEvent.change(input, { target: { value: "Edited" } });
-    act(() => recording?.onTranscript("dictated answer"));
+    act(() => recording?.onTranscript("dictated answer", "insert"));
     expect(input).toHaveProperty("value", "Edited dictated answer");
     expect(submit).not.toHaveBeenCalled();
     fireEvent.click(getButtonByText(slot, "Submit answer"));
@@ -608,12 +613,13 @@ describe("question answer dictation", () => {
     const recording = vi.mocked(useVoiceInput).mock.calls.at(-1)?.[0];
     fireEvent.click(getButtonByText(slot, "Postgres"));
     fireEvent.click(getButtonByText(slot, "Other…"));
-    act(() => recording?.onTranscript("discard this"));
+    act(() => recording?.onTranscript("discard this", "insert"));
     expect(slot.getByRole("textbox")).toHaveProperty("value", "Keep this");
   });
 
   it("blocks navigation and submission while transcription is pending", () => {
     const idle = vi.mocked(useVoiceInput)({
+      recordingKey: null,
       onTranscript: vi.fn(),
       onTranscribe: vi.fn(),
     });

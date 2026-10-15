@@ -300,6 +300,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      idb-keyval:
+        specifier: ^6.3.0
+        version: 6.3.0
       jotai:
         specifier: ^2.19.0
         version: 2.19.0(@babel/core@7.29.0)(@babel/template@7.29.7)(@types/react@19.2.13)(react@19.2.4)
@@ -457,6 +460,9 @@ importers:
       cacache:
         specifier: ^20.0.4
         version: 20.0.4
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       lightningcss:
         specifier: ^1.32.0
         version: 1.32.0
@@ -13020,6 +13026,10 @@ packages:
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
 
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
+
   fast-copy@4.0.2:
     resolution: {integrity: sha512-ybA6PDXIXOXivLJK/z9e+Otk7ve13I4ckBvGO5I2RRmBU1gMHLVDJYEuJYhGwez7YNlYji2M2DvVU+a9mSFDlw==}
 
@@ -13606,6 +13616,9 @@ packages:
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
+
+  idb-keyval@6.3.0:
+    resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -25782,6 +25795,8 @@ snapshots:
 
   extend@3.0.2: {}
 
+  fake-indexeddb@6.2.5: {}
+
   fast-copy@4.0.2: {}
 
   fast-deep-equal@3.1.3: {}
@@ -26562,6 +26577,8 @@ snapshots:
   iconv-lite@0.7.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  idb-keyval@6.3.0: {}
 
   ieee754@1.2.1: {}
 

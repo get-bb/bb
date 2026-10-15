@@ -18,6 +18,7 @@ import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import {
+  composerScopeIdentity,
   type PluginComposerHost,
   usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
@@ -184,7 +185,11 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   }, []);
-  const voice = usePromptVoice(promptBoxRef, pluginComposerHost ?? undefined);
+  const voice = usePromptVoice(
+    promptBoxRef,
+    pluginComposerHost ?? undefined,
+    pluginComposerHost ? composerScopeIdentity(pluginComposerHost.scope) : null,
+  );
   const attachmentCount = attachments.items?.length ?? 0;
   const [composerLayout, setComposerLayout] =
     useState<ComposerView["layout"]>("expanded");

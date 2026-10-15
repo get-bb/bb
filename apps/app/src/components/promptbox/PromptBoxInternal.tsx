@@ -60,6 +60,10 @@ import {
   voiceUnsupportedMessage,
   type VoiceUnsupportedReason,
 } from "@/hooks/voice-input-support";
+import type {
+  FailedVoiceRecording,
+  VoiceDelivery,
+} from "@/lib/voice-recording-store";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -132,6 +136,7 @@ import {
   type AttachmentMentionSuggestion,
 } from "@/hooks/promptMentionCandidates";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
+import { FailedVoiceRecordings } from "./FailedVoiceRecordings";
 import {
   ComposerPlusMenuSlot,
   type PromptBoxAction,
@@ -588,13 +593,18 @@ type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
+  delivery: VoiceDelivery;
   microphoneWarning: string | null;
   isSupported: boolean;
   unsupportedReason?: VoiceUnsupportedReason | null;
   stream: MediaStream | null;
+  failedRecordings: readonly FailedVoiceRecording[];
   start: () => void | Promise<void>;
   stop: () => void;
   send: () => void;
+  retry: (recording: FailedVoiceRecording) => void;
+  discard: (recording: FailedVoiceRecording) => void;
+  download: (recording: FailedVoiceRecording) => void;
   cancel: () => void;
 }
 
@@ -3776,6 +3786,16 @@ export function PromptBoxInternal({
           {modeHeader}
         </div>
       ) : null}
+      {voice && voice.failedRecordings.length > 0 ? (
+        <FailedVoiceRecordings
+          recordings={voice.failedRecordings}
+          className="px-1.5 pt-1.5"
+          retryDisabled={voice.state === "recording" || isVoiceProcessing}
+          onRetry={voice.retry}
+          onDownload={voice.download}
+          onDiscard={voice.discard}
+        />
+      ) : null}
       <div
         data-promptbox-layout=""
         className={cn(COLLAPSING_GRID_CLASS, showCompactLayout && "relative")}
@@ -3967,6 +3987,7 @@ export function PromptBoxInternal({
                   <VoiceRecordingBar
                     isCompact={showCompactLayout}
                     state={renderedVoiceActionState}
+                    delivery={voice.delivery}
                     stream={voice.stream}
                     microphoneWarning={voice.microphoneWarning}
                     submitIcon={submitIcon ?? "CornerDownLeft"}

@@ -27,6 +27,7 @@ import { modifierSubmitShortcutLabel } from "./modifier-submit-shortcut";
 import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
+  composerScopeIdentity,
   PluginComposerHostProvider,
   PluginComposerViewProvider,
   type PluginComposerHost,
@@ -288,6 +289,7 @@ function FollowUpPromptBoxWithComposer({
     voiceDraft
       ? { ...voiceDraft, submit: pluginComposerHost?.submit }
       : (pluginComposerHost ?? undefined),
+    composerScope ? composerScopeIdentity(composerScope) : null,
   );
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
