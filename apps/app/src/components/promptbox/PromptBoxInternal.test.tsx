@@ -3845,7 +3845,7 @@ describe("PromptBoxInternal compact layout", () => {
     },
   );
 
-  it("sends the complete updated draft through the primary submit action once after voice completion", async () => {
+  it("submits the updated draft in the same commit as the voice transcript, before voice state settles", () => {
     const promptBoxRef = createRef<PromptBoxHandle>();
     const onSubmit = vi.fn();
     function Harness() {
@@ -3881,15 +3881,13 @@ describe("PromptBoxInternal compact layout", () => {
     }
     render(<Harness />);
     act(() => promptBoxRef.current?.sendVoiceTranscript("more words"));
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
+      "Existing prompt more words",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Finish transcription" }),
     );
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
-        "Existing prompt more words",
-      ),
-    );
+    expect(onSubmit).toHaveBeenCalledOnce();
   });
 
   it("keeps the transcribed draft without submitting when primary submission is unavailable", async () => {

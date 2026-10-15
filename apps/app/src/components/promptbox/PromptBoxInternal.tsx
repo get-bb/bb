@@ -3164,12 +3164,10 @@ export function PromptBoxInternal({
     return beforeCursor.length > 0 ? beforeCursor : undefined;
   }, []);
 
-  const [voiceSubmitBaseline, setVoiceSubmitBaseline] = useState<string | null>(
-    null,
-  );
+  const voiceSubmitBaselineRef = useRef<string | null>(null);
   const sendVoiceTranscript = useCallback(
     (text: string) => {
-      setVoiceSubmitBaseline(valueRef.current);
+      voiceSubmitBaselineRef.current = valueRef.current;
       insertTextAtCursor(text);
     },
     [insertTextAtCursor],
@@ -3195,13 +3193,16 @@ export function PromptBoxInternal({
     ],
   );
 
-  const canSubmitAction = (action: typeof immediateSubmitAction) =>
+  const canSubmitActionAfterVoice = (action: typeof immediateSubmitAction) =>
     action.onSubmit !== undefined &&
     (!action.requiresInput || hasSubmittableInput) &&
     !isAttaching &&
     !isSubmitting &&
-    !submitDisabled &&
-    !showVoiceActionGroup;
+    !submitDisabled;
+  const canSubmitAction = (action: typeof immediateSubmitAction) =>
+    canSubmitActionAfterVoice(action) && !showVoiceActionGroup;
+  const canSubmitVoiceTranscript =
+    hasSubmittableInput && canSubmitActionAfterVoice(primarySubmitAction);
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
   const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
@@ -3360,33 +3361,27 @@ export function PromptBoxInternal({
       ? submitDisabledReason
       : submitTitle;
 
+  const dispatchSubmit = useCallback(() => {
+    if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
+    onSubmit?.();
+  }, [onSubmit]);
+
   const submitPrompt = useCallback(() => {
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
     if (!canPrimarySubmit) return;
-    if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
-    onSubmit?.();
+    dispatchSubmit();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }
-  }, [canPrimarySubmit, onSubmit]);
+  }, [canPrimarySubmit, dispatchSubmit]);
 
-  useEffect(() => {
-    if (
-      voiceSubmitBaseline === null ||
-      showVoiceActionGroup ||
-      value === voiceSubmitBaseline
-    )
-      return;
-    setVoiceSubmitBaseline(null);
-    if (canSubmit) submitPrompt();
-  }, [
-    voiceSubmitBaseline,
-    showVoiceActionGroup,
-    value,
-    canSubmit,
-    submitPrompt,
-  ]);
+  useLayoutEffect(() => {
+    const baseline = voiceSubmitBaselineRef.current;
+    if (baseline === null || value === baseline) return;
+    voiceSubmitBaselineRef.current = null;
+    if (canSubmitVoiceTranscript) dispatchSubmit();
+  }, [value, canSubmitVoiceTranscript, dispatchSubmit]);
 
   const handleSubmitClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
