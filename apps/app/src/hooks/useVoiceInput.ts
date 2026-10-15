@@ -9,7 +9,8 @@ import {
   deleteVoiceRecordingsForKey,
   failVoiceRecording,
   saveVoiceRecording,
-  setVoiceRecordingRetrying,
+  startVoiceRecordingRetry,
+  finishVoiceRecordingRetry,
   useFailedVoiceRecordings,
   type FailedVoiceRecording,
   type VoiceDelivery,
@@ -162,7 +163,6 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   const mountedRef = useRef(true);
   const acceptedRecordingPendingRef = useRef(false);
   const transcriptionAbortRef = useRef<AbortController | null>(null);
-  const retryAbortsRef = useRef(new Map<string, AbortController>());
   const wakeLockSentinelRef = useRef<WakeLockSentinel | null>(null);
   const wakeLockRequestRef = useRef<Promise<void> | null>(null);
   const shouldHoldWakeLockRef = useRef(false);
@@ -442,8 +442,6 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       if (result.kind === "cancelled") {
         if (onCancel === "discard") {
           void deleteVoiceRecording(recording.id);
-        } else {
-          setVoiceRecordingRetrying(recording.id, false);
         }
         return;
       }
@@ -678,24 +676,17 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
   const retry = useCallback(
     (recording: FailedVoiceRecording) => {
-      if (recording.retrying || retryAbortsRef.current.has(recording.id)) {
-        return;
-      }
-      const abortController = new AbortController();
-      retryAbortsRef.current.set(recording.id, abortController);
-      setVoiceRecordingRetrying(recording.id, true);
-      void runTranscription(recording, abortController.signal, undefined).then(
-        (result) => {
-          retryAbortsRef.current.delete(recording.id);
-          return settleTranscription(recording, result, "keep");
-        },
-      );
+      const signal = startVoiceRecordingRetry(recording.id);
+      if (!signal) return;
+      void runTranscription(recording, signal, undefined).then((result) => {
+        if (!finishVoiceRecordingRetry(recording.id, signal)) return;
+        return settleTranscription(recording, result, "keep");
+      });
     },
     [runTranscription, settleTranscription],
   );
 
   const discard = useCallback((recording: FailedVoiceRecording) => {
-    retryAbortsRef.current.get(recording.id)?.abort();
     void deleteVoiceRecording(recording.id);
   }, []);
 

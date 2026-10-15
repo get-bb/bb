@@ -218,6 +218,55 @@ it("retries in the banner while the composer stays free, and discarding stops th
   expect(onTranscript).not.toHaveBeenCalled();
 });
 
+it.each([false, true])(
+  "keeps retry ownership across remounts with discard=%s",
+  async (discard) => {
+    let resolveRetry!: (text: string) => void;
+    const transcribe = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Service unavailable"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveRetry = resolve;
+          }),
+      );
+    const onTranscript = vi.fn();
+    const options = {
+      recordingKey: `thread/remounted-retry-${discard}`,
+      onTranscribe: transcribe,
+      onTranscript,
+    };
+    const first = renderHook(() => useVoiceInput(options));
+    await act(() => first.result.current.start());
+    vi.advanceTimersByTime(1500);
+    await act(async () => first.result.current.stop("send"));
+    const [failed] = first.result.current.failedRecordings;
+    if (!failed) throw new Error("Missing failed recording");
+    act(() => first.result.current.retry(failed));
+    const signal = transcribe.mock.calls[1]?.[0].signal;
+    first.unmount();
+
+    const second = renderHook(() => useVoiceInput(options));
+    expect(second.result.current.failedRecordings[0]?.retrying).toBe(true);
+    if (discard) {
+      act(() => second.result.current.discard(failed));
+      expect(second.result.current.failedRecordings).toEqual([]);
+    }
+    await act(async () => resolveRetry("Retried words"));
+    expect(signal?.aborted).toBe(discard);
+    if (discard) {
+      expect(onTranscript).not.toHaveBeenCalled();
+    } else {
+      expect(onTranscript).toHaveBeenCalledExactlyOnceWith(
+        "Retried words",
+        "send",
+      );
+    }
+    expect(second.result.current.failedRecordings).toEqual([]);
+  },
+);
+
 it("delivers a live transcript after the completion transition, but never animates a retry", async () => {
   let finishTransition: (() => void) | undefined;
   const playCompletionTransition = vi.fn(

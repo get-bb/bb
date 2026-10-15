@@ -28,6 +28,7 @@ export interface FailedVoiceRecording extends VoiceRecording {
 interface VoiceRecordingEntry {
   recording: VoiceRecording;
   persisted: boolean;
+  retryController: AbortController | null;
   status: "transcribing" | "failed" | "retrying";
   errorMessage: string | null;
 }
@@ -115,6 +116,7 @@ function hydrate(key: string): void {
           promptContext: promptContext ?? undefined,
         },
         persisted: true,
+        retryController: null,
         status: "failed",
         errorMessage: null,
       });
@@ -151,6 +153,7 @@ export function saveVoiceRecording(
   entries.set(saved.id, {
     recording: saved,
     persisted: options.persist,
+    retryController: null,
     status: "transcribing",
     errorMessage: null,
   });
@@ -174,11 +177,28 @@ export function saveVoiceRecording(
   return saved;
 }
 
-export function setVoiceRecordingRetrying(id: string, retrying: boolean): void {
+export function startVoiceRecordingRetry(id: string): AbortSignal | null {
   const entry = entries.get(id);
-  if (!entry || entry.status === "transcribing") return;
-  entry.status = retrying ? "retrying" : "failed";
+  if (!entry || entry.status !== "failed") return null;
+  const controller = new AbortController();
+  entry.retryController = controller;
+  entry.status = "retrying";
   notify(entry.recording.key);
+  return controller.signal;
+}
+
+export function finishVoiceRecordingRetry(
+  id: string,
+  signal: AbortSignal,
+): boolean {
+  const entry = entries.get(id);
+  if (!entry || entry.retryController?.signal !== signal || signal.aborted) {
+    return false;
+  }
+  entry.retryController = null;
+  entry.status = "failed";
+  notify(entry.recording.key);
+  return true;
 }
 
 export function failVoiceRecording(id: string, errorMessage: string): void {
@@ -193,6 +213,7 @@ export function deleteVoiceRecording(id: string): Promise<void> {
   const entry = entries.get(id);
   if (!entry) return Promise.resolve();
   entries.delete(id);
+  entry.retryController?.abort();
   notify(entry.recording.key);
   if (!entry.persisted) return Promise.resolve();
   return enqueueDatabaseTask((store) => del([entry.recording.key, id], store));
