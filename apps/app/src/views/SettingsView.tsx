@@ -14,6 +14,7 @@ import {
   defaultAppSettings,
   defaultAppTheme,
   defaultExperiments,
+  earlyAdopterExperiments,
   experimentKeys,
   managedBranchPrefixSchema,
   type AppTheme,
@@ -215,6 +216,8 @@ function appPaletteLabel(
 interface ExperimentsSettingsSectionProps {
   performanceDiagnosticsAvailable: boolean;
   disabled: boolean;
+  earlyAdopter: boolean;
+  onEarlyAdopterChange: (enabled: boolean) => void;
   experiments: Experiments;
   onExperimentChange: (key: ExperimentKey, enabled: boolean) => void;
 }
@@ -1144,9 +1147,13 @@ export function visibleExperimentKeys(
   );
 }
 
+const EARLY_ADOPTER_LABEL = "Early adopter";
+
 export function ExperimentsSettingsSection({
   performanceDiagnosticsAvailable,
   disabled,
+  earlyAdopter,
+  onEarlyAdopterChange,
   experiments,
   onExperimentChange,
 }: ExperimentsSettingsSectionProps) {
@@ -1157,6 +1164,17 @@ export function ExperimentsSettingsSection({
         description="Early features that are off by default. Opt in to try them."
       >
         <div className="space-y-5">
+          <SettingsWithControl
+            label={EARLY_ADOPTER_LABEL}
+            description="Turn on the experiments marked Early adopter. An experiment you switch yourself keeps your choice."
+          >
+            <Switch
+              checked={earlyAdopter}
+              disabled={disabled}
+              onCheckedChange={onEarlyAdopterChange}
+              aria-label={EARLY_ADOPTER_LABEL}
+            />
+          </SettingsWithControl>
           {visibleExperimentKeys(performanceDiagnosticsAvailable).map(
             (experimentKey) => {
               const definition = EXPERIMENT_DEFINITIONS[experimentKey];
@@ -1164,6 +1182,11 @@ export function ExperimentsSettingsSection({
                 <SettingsWithControl
                   key={experimentKey}
                   label={definition.label}
+                  labelBadge={
+                    earlyAdopterExperiments[experimentKey]
+                      ? EARLY_ADOPTER_LABEL
+                      : undefined
+                  }
                   description={definition.description}
                 >
                   <Switch
@@ -1337,6 +1360,10 @@ export function SettingsView() {
       <ExperimentsSettingsSection
         disabled={
           systemConfigQuery.data === undefined
+        }
+        earlyAdopter={generalSettings.earlyAdopter}
+        onEarlyAdopterChange={(enabled) =>
+          updateGeneralSettingsMutation.mutate({ earlyAdopter: enabled })
         }
         experiments={experiments}
         performanceDiagnosticsAvailable={

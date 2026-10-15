@@ -24,3 +24,10 @@ export const defaultExperiments: Experiments = {
   performanceDiagnostics: false,
   timelinePush: false,
 };
+
+export const earlyAdopterExperiments: Experiments = {
+  changelogPreview: false,
+  serverMove: false,
+  performanceDiagnostics: false,
+  timelinePush: true,
+};

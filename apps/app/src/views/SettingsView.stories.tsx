@@ -316,10 +316,13 @@ function FilePreferencesStory() {
 
 function ExperimentsStory() {
   const state = useSettingsStoryState();
+  const [earlyAdopter, setEarlyAdopter] = useState(false);
 
   return (
     <ExperimentsSettingsSection
       disabled={false}
+      earlyAdopter={earlyAdopter}
+      onEarlyAdopterChange={setEarlyAdopter}
       experiments={state.experiments}
       performanceDiagnosticsAvailable={true}
       onExperimentChange={(key, enabled) =>

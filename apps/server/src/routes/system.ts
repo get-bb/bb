@@ -318,6 +318,7 @@ export function registerSystemRoutes(
         settings.summarizeShellCommands ?? current.summarizeShellCommands,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
+      earlyAdopter: settings.earlyAdopter ?? current.earlyAdopter,
       onboardingCompletedAt:
         settings.onboardingCompletedAt === undefined
           ? current.onboardingCompletedAt

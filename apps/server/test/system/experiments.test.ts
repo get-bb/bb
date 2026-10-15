@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getExperiments } from "@bb/db";
-import { defaultExperiments, experimentsSchema } from "@bb/domain";
+import {
+  defaultAppSettings,
+  defaultExperiments,
+  earlyAdopterExperiments,
+  experimentsSchema,
+} from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
@@ -11,6 +16,20 @@ function putExperiments(harness: TestAppHarness, body: object) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function putGeneralSettings(harness: TestAppHarness, body: object) {
+  return harness.app.request("/api/v1/settings/general", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function configExperiments(harness: TestAppHarness) {
+  const response = await harness.app.request("/api/v1/system/config");
+  return systemConfigResponseSchema.parse(await readJson(response))
+    .experiments;
 }
 
 describe("experiments settings", () => {
@@ -110,6 +129,38 @@ describe("experiments settings", () => {
       const response = await putExperiments(harness, body);
       expect(response.status).toBe(400);
       expect(getExperiments(harness.db)).toEqual(defaultExperiments);
+    });
+  });
+
+  it("serves the early adopter defaults while the setting is on and keeps experiments the user set", async () => {
+    await withTestHarness(async (harness) => {
+      await putExperiments(harness, { timelinePush: false });
+      expect(
+        (
+          await putGeneralSettings(harness, {
+            ...defaultAppSettings,
+            earlyAdopter: true,
+          })
+        ).status,
+      ).toBe(200);
+      expect(await configExperiments(harness)).toEqual({
+        ...earlyAdopterExperiments,
+        timelinePush: false,
+      });
+
+      harness.db.$client.prepare("DELETE FROM system_experiments").run();
+      expect(await configExperiments(harness)).toEqual(earlyAdopterExperiments);
+
+      const { earlyAdopter: omitted, ...legacy } = defaultAppSettings;
+      expect(omitted).toBe(false);
+      expect((await putGeneralSettings(harness, legacy)).status).toBe(200);
+      expect(await configExperiments(harness)).toEqual(earlyAdopterExperiments);
+
+      await putGeneralSettings(harness, {
+        ...defaultAppSettings,
+        earlyAdopter: false,
+      });
+      expect(await configExperiments(harness)).toEqual(defaultExperiments);
     });
   });
 });

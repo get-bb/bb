@@ -221,10 +221,11 @@ for the command surface.
 | `providerOrder`                                                            | `[]`                                | Settings → Providers (move a provider up or down). JSON list of provider ids that lead the picker, such as `'["claude-code","codex"]'`; unlisted ids follow in plugin install order and unknown ids are ignored.                                                                                                                                                                                                                                                                                                                               |
 | `defaultProviderId`                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                                                                                                                                                                                                                                                                                           |
 | `telemetryEnabled`                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `earlyAdopter`                                                             | `false`                             | Settings → Experiments → Early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                               |
 | `machineServerUrl`, `defaultMachineAccess`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
-Older clients that omit `showGitChanges`, `keepHistoryAfterContextClear`, or
-`summarizeShellCommands` preserve the saved value. For older SDK callers, the
+Older clients that omit `showGitChanges`, `keepHistoryAfterContextClear`,
+`summarizeShellCommands`, or `earlyAdopter` preserve the saved value. For older SDK callers, the
 general-settings API still accepts and returns `showUnhandledProviderEvents` as
 a deprecated alias of `showDiagnosticEvents`, and an existing value is
 preserved; when a read-modify-write payload contains conflicting values, the one
@@ -723,6 +724,13 @@ palette's Active/Archived filter is browser-local and has no CLI/SDK setting.
 Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 bb stores only the experiments you set; the others follow the shipped default.
+
+The `earlyAdopter` general setting (Settings → Experiments → Early adopter,
+`bb settings general earlyAdopter on`) switches the shipped default to the
+early adopter default: experiments marked Early adopter (currently
+`timelinePush`) turn on, and the rest stay off. An experiment you set yourself
+keeps your value either way. `/system/config` and `sdk.system.config()` return
+the resolved values in `experiments`.
 
 - `changelogPreview` shows the latest release notes as a dismissible card on
   Settings → Updates.

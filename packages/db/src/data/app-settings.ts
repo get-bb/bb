@@ -147,6 +147,15 @@ export function setAiServiceSelection(
   return selections;
 }
 
+export function getEarlyAdopter(db: DbConnection): boolean {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, appSettingsKeySchema.enum.earlyAdopter))
+    .get();
+  return row !== undefined && parseStoredValue(row.value) === true;
+}
+
 export function getPluginSafeMode(db: DbConnection): boolean {
   const row = db
     .select({ value: appSettingsValues.value })

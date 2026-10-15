@@ -220,6 +220,7 @@ export const SETTINGS_SEARCH_INDEX: Record<
   experiments: {
     keywords: ["beta", "preview", "labs", "feature flags"],
     settings: [
+      { title: "Early adopter", keywords: ["beta", "opt in", "preview"] },
       { title: "Changelog preview", keywords: ["release notes", "updates"] },
       {
         title: "Server performance diagnostics",
