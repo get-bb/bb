@@ -62,6 +62,7 @@ import {
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -104,7 +105,12 @@ import {
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { getBrowserUrlHost } from "@/lib/browser-url";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  getBbDesktopInfo,
+  isDesktopBrowserAvailable,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 import {
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
@@ -1375,15 +1381,20 @@ function RootComposeSurface({
   );
   const titleBarHostsRightPanelToggle =
     useWindowTitleBarHostsRightPanelToggle();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const showPinnedToggle =
     !titleBarHostsRightPanelToggle &&
     (paneContext?.secondaryPanelHost ?? null) === null &&
     (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
     <div
-      className={`fixed z-40 mt-(--bb-window-frame-top) mr-(--bb-window-frame-lip) ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS} ${
-        isSecondaryPanelOpen ? "pointer-events-none invisible" : ""
-      }`}
+      className={cn(
+        "fixed z-40 mt-(--bb-window-frame-top) mr-(--bb-window-frame-lip)",
+        ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
+        usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
+        isSecondaryPanelOpen && "pointer-events-none invisible",
+      )}
     >
       <RootComposeRightPanelToggle
         isOpen={isSecondaryPanelOpen}

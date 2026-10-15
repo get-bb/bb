@@ -14,6 +14,7 @@ import { CatalogEntryIconChip } from "@/components/plugin/management/plugin-ui";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import {
   MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import {
@@ -73,7 +74,10 @@ export function OnboardingLayout({
         className={cn(
           "flex h-14 shrink-0 items-center gap-3 pr-4",
           reserveMacosTrafficLights
-            ? cn("pl-[84px]", MACOS_WINDOW_DRAG_CLASS)
+            ? cn(
+                MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
+                MACOS_WINDOW_DRAG_CLASS,
+              )
             : "pl-4",
         )}
       >

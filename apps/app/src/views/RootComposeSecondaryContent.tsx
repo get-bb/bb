@@ -11,6 +11,7 @@ import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -100,6 +101,7 @@ export function RootComposeSecondaryContent({
                 ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
                 MACOS_APP_REGION_NO_DRAG_CLASS,
+                MACOS_CHROME_CONTROL_AXIS_CLASS,
               )}
             />
           ) : null}

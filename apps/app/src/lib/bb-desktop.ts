@@ -1,12 +1,18 @@
-import type {
-  BbDesktopApi,
-  BbDesktopBrowserApi,
-  BbDesktopWindowState,
+import {
+  MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX,
+  MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX,
+  MACOS_TRAFFIC_LIGHT_SIZE_PX,
+  type BbDesktopApi,
+  type BbDesktopBrowserApi,
+  type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 
-export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
-export const MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS = "pl-[84px]";
-export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS = "pl-[104px]";
+export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS =
+  "left-(--bb-macos-traffic-light-reserve)";
+export const MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS =
+  "pl-(--bb-macos-traffic-light-reserve)";
+export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS =
+  "pl-(--bb-macos-collapsed-top-left-reserve)";
 
 export const BROWSER_SIDEBAR_TRIGGER_INSET_CLASS =
   "pl-[calc(var(--bb-sidebar-rail-padding)-2px)] max-md:pointer-coarse:pl-(--bb-sidebar-rail-padding)";
@@ -22,7 +28,9 @@ export const CHROME_ROW_HEIGHT_CLASS = "h-(--bb-app-chrome-row-height)";
 export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =
-  "[transform:translateY(var(--bb-macos-chrome-control-y,2px))]";
+  "[transform:translateY(var(--bb-macos-chrome-control-y,calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-app-chrome-row-height)/2)))]";
+export const MACOS_TITLE_BAR_CONTROL_AXIS_CLASS =
+  "[--bb-macos-chrome-control-y:calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-window-title-bar-height)/2)]";
 export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_CHROME_CONTROL_AXIS_CLASS}`;
 
 type BbDesktopInfoResult = BbDesktopApi | null;
@@ -51,6 +59,69 @@ export function shouldReserveMacosTrafficLights({
   windowState: BbDesktopWindowState;
 }): boolean {
   return shouldUseMacosDesktopChrome(desktopInfo) && !windowState.isFullScreen;
+}
+
+const MACOS_TRAFFIC_LIGHT_CLEARANCE_PX = 12;
+const MACOS_CHROME_CONTROL_SIZE_PX = 28;
+const COLLAPSED_SIDEBAR_TRIGGER_GAP_PX = 8;
+const PAGE_HEADER_BASE_INSET_PX = 16;
+
+export interface MacosWindowChromeGeometry {
+  trafficLightCenterY: number;
+  titleBarHeight: number;
+  trafficLightReserve: number;
+  collapsedTopLeftReserve: number;
+}
+
+export function getMacosWindowChromeGeometry(
+  desktopInfo: BbDesktopInfoResult,
+): MacosWindowChromeGeometry {
+  const inset =
+    desktopInfo?.macosTrafficLightInset ?? MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX;
+  const topInset = desktopInfo?.macosTrafficLightTopInset ?? inset;
+  const trafficLightCenterY = topInset + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2;
+  const trafficLightReserve =
+    inset +
+    MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX +
+    MACOS_TRAFFIC_LIGHT_CLEARANCE_PX;
+  return {
+    trafficLightCenterY,
+    titleBarHeight: 2 * trafficLightCenterY,
+    trafficLightReserve,
+    collapsedTopLeftReserve:
+      trafficLightReserve +
+      MACOS_CHROME_CONTROL_SIZE_PX +
+      COLLAPSED_SIDEBAR_TRIGGER_GAP_PX -
+      PAGE_HEADER_BASE_INSET_PX,
+  };
+}
+
+interface StyleTarget {
+  style: Pick<CSSStyleDeclaration, "setProperty">;
+}
+
+export function applyMacosWindowChromeGeometry(
+  root: StyleTarget,
+  desktopInfo: BbDesktopInfoResult,
+): void {
+  if (!shouldUseMacosDesktopChrome(desktopInfo)) return;
+  const geometry = getMacosWindowChromeGeometry(desktopInfo);
+  root.style.setProperty(
+    "--bb-macos-traffic-light-center-y",
+    `${geometry.trafficLightCenterY}px`,
+  );
+  root.style.setProperty(
+    "--bb-window-title-bar-height",
+    `${geometry.titleBarHeight}px`,
+  );
+  root.style.setProperty(
+    "--bb-macos-traffic-light-reserve",
+    `${geometry.trafficLightReserve}px`,
+  );
+  root.style.setProperty(
+    "--bb-macos-collapsed-top-left-reserve",
+    `${geometry.collapsedTopLeftReserve}px`,
+  );
 }
 
 export const DEFAULT_WINDOW_FIND_TOP_OFFSET = 48;

@@ -45,7 +45,12 @@ import {
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "@/components/secondary-panel/panelTransitionTokens";
-import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import {
+  getBbDesktopInfo,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import { usePanelResizeSnap } from "@/components/secondary-panel/usePanelResizeSnap";
 import {
@@ -153,6 +158,8 @@ export function SplitWorkspaceSecondaryPanelHost({
   useWindowRightPanel({ isOpen, enabled: model === null });
   const titleBarHostsRightPanelToggle =
     useWindowTitleBarHostsRightPanelToggle();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
   const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
@@ -207,6 +214,7 @@ export function SplitWorkspaceSecondaryPanelHost({
             "absolute right-4 top-2.5 z-40",
             !showsCornerToggle && "hidden",
             MACOS_APP_REGION_NO_DRAG_CLASS,
+            usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           )}
         >
           <AppCommandShortcutHint

@@ -76,6 +76,7 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
@@ -252,7 +253,8 @@ function SidebarTriggerOverlay({
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
           "fixed inset-x-0 top-0 pr-[calc(var(--bb-window-frame-lip)_+_var(--bb-panel-chrome-padding)_+_1px)]",
-          "flex h-(--bb-window-title-bar-height) items-center [--bb-macos-chrome-control-y:calc(26px_-_var(--bb-window-title-bar-height)/2)]",
+          "flex h-(--bb-window-title-bar-height) items-center",
+          MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS
             : BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
