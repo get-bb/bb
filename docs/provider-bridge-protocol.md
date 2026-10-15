@@ -182,6 +182,14 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   independently, leaving it absent until first reported. Do not infer missing
   counts as zero or treat cached totals as billable cache reads; these counts
   change neither the context meter nor provider-reported usage windows.
+  `usage` may also carry `promptCacheTtlMs`, how long the provider keeps the
+  session's prompt cache after a request. A cache hit refreshes entries at
+  the TTL they were written with, so a bridge reports the TTL of its latest
+  observed cache write and repeats it on later `usage` deltas, resetting
+  where it sends `session.reset`; omit it until the provider reports one.
+  Claude derives it from `cache_creation` (any 1h write ⇒ 1h, else 5m) and
+  Pi from `cacheWrite1h`, which only its Anthropic and Bedrock APIs report;
+  Codex and ACP agents report no retention and omit it.
 - **Context meter.** The context meter is always the separate `contextWindow`
   delta, which may name a vouched `providerTurnId` (codex sends one beside
   each `usage`). It may carry the session's cumulative `cost`

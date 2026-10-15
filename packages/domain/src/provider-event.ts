@@ -316,10 +316,13 @@ export type ThreadEventContextWindowUsage = z.infer<
   typeof threadEventContextWindowUsageSchema
 >;
 
+export const promptCacheTtlMsSchema = z.number().int().positive();
+
 const threadEventTokenUsageSchema = z.object({
   total: threadEventTokenUsageBreakdownSchema,
   last: threadEventTokenUsageBreakdownSchema,
   modelContextWindow: z.number().nullable(),
+  promptCacheTtlMs: promptCacheTtlMsSchema.optional(),
 });
 
 export const threadEventWarningCategorySchema = z.enum([

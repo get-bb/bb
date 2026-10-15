@@ -1630,6 +1630,37 @@ describe("pi delta translation equivalence", () => {
     },
   );
 
+  it("reports the prompt cache TTL of the latest cache write across turns", () => {
+    const harness = createHarness();
+    const turns: [Record<string, unknown>, number | undefined][] = [
+      [{ cacheWrite: 9 }, undefined],
+      [{ cacheWrite: 9, cacheWrite1h: 9 }, 3_600_000],
+      [{ cacheWrite: 0, cacheWrite1h: 0 }, 3_600_000],
+      [{ cacheWrite: 9, cacheWrite1h: 0 }, 300_000],
+      [{ cacheWrite: 9, cacheWrite1h: "invalid" }, 300_000],
+    ];
+
+    const reported = turns.map(([cache]) => {
+      harness.translate(loadFixture("agent-start.json"));
+      const event = harness
+        .translate({
+          type: "agent_end",
+          messages: [
+            {
+              role: "assistant",
+              content: [],
+              usage: { input: 80, output: 20, ...cache },
+            },
+          ],
+        })
+        .find((event) => event.type === "thread/tokenUsage/updated");
+      expect(event?.tokenUsage.last.inputTokens).toBe(80);
+      return event?.tokenUsage.promptCacheTtlMs;
+    });
+
+    expect(reported).toEqual(turns.map(([, ttl]) => ttl));
+  });
+
   it.each(["cacheRead", "cacheWrite"])(
     "invalid %s cannot discard Pi completion or valid usage",
     (field) => {
