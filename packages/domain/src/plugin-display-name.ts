@@ -1,6 +1,6 @@
-export const PLUGIN_NAME_TAG_MAX_LENGTH = 24;
+const PLUGIN_NAME_TAG_MAX_LENGTH = 24;
 
-export type PluginNameTagTone = "attention" | "neutral";
+type PluginNameTagTone = "attention" | "neutral";
 
 export interface PluginNameTag {
   label: string;
