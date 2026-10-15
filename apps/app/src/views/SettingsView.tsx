@@ -1158,34 +1158,40 @@ export function ExperimentsSettingsSection({
   onExperimentChange,
 }: ExperimentsSettingsSectionProps) {
   return (
-    <div className="space-y-6">
-      <section
-        data-settings-anchor={EARLY_ADOPTER_LABEL}
-        aria-label={EARLY_ADOPTER_LABEL}
-        className="flex scroll-mt-4 items-start gap-3 rounded-lg border border-border bg-accent px-4 py-3.5"
-      >
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background">
-          <Icon name="Beaker" className="size-4 text-foreground" aria-hidden />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">
-            Become an early adopter
-          </h2>
-          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground">
-            Get the experiments marked Early adopter turned on as they ship. An
-            experiment you switch yourself keeps your choice.
-          </p>
-        </div>
-        <Switch
-          checked={earlyAdopter}
-          disabled={disabled}
-          onCheckedChange={onEarlyAdopterChange}
-          aria-label={EARLY_ADOPTER_LABEL}
-        />
-      </section>
+    <>
       <SettingsSection
         title="Experiments"
         description="Early features that are off by default. Opt in to try them."
+        banner={
+          <section
+            data-settings-anchor={EARLY_ADOPTER_LABEL}
+            aria-label={EARLY_ADOPTER_LABEL}
+            className="flex scroll-mt-4 items-start gap-3 rounded-lg border border-border bg-accent px-4 py-3.5"
+          >
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background">
+              <Icon
+                name="Beaker"
+                className="size-4 text-foreground"
+                aria-hidden
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-foreground">
+                Become an early adopter
+              </h3>
+              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground">
+                Get the experiments marked Early adopter turned on as they ship.
+                An experiment you switch yourself keeps your choice.
+              </p>
+            </div>
+            <Switch
+              checked={earlyAdopter}
+              disabled={disabled}
+              onCheckedChange={onEarlyAdopterChange}
+              aria-label={EARLY_ADOPTER_LABEL}
+            />
+          </section>
+        }
       >
         <div className="space-y-5">
           {visibleExperimentKeys(performanceDiagnosticsAvailable).map(
@@ -1216,7 +1222,7 @@ export function ExperimentsSettingsSection({
           )}
         </div>
       </SettingsSection>
-    </div>
+    </>
   );
 }
 

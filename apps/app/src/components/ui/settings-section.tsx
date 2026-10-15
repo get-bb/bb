@@ -4,6 +4,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 interface SettingsSectionProps {
   action?: ReactNode;
   actionPlacement?: "inline" | "responsive";
+  banner?: ReactNode;
   children: ReactNode;
   description?: string;
   title: ReactNode;
@@ -13,6 +14,7 @@ interface SettingsSectionProps {
 export function SettingsSection({
   action,
   actionPlacement = "responsive",
+  banner,
   children,
   description,
   title,
@@ -51,6 +53,7 @@ export function SettingsSection({
         </div>
         {action ? <div className="shrink-0 self-start">{action}</div> : null}
       </div>
+      {banner}
       <div
         className={cn(
           "rounded-lg border border-border bg-card px-4 py-3.5",
