@@ -210,7 +210,7 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
     coreThreadAction({
       id: "pin",
       group: GROUPS.state,
-      order: 40,
+      order: 20,
       title: "Pin",
       icon: "Pin",
       item: ({ thread, sdk }) => {
