@@ -3,6 +3,7 @@ import {
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   RAIL_PADDING_PX,
+  WINDOW_CARD_RADIUS_PX,
   type BbDesktopInfo,
 } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
@@ -75,7 +76,9 @@ describe("desktop chrome geometry", () => {
     expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("92px");
     expect(
       decodeURIComponent(properties.get("--bb-window-card-mask") ?? ""),
-    ).toContain("<rect y='56' width='100%' height='100%' rx='12'/>");
+    ).toContain(
+      `<rect y='56' width='100%' height='100%' rx='${WINDOW_CARD_RADIUS_PX}'/>`,
+    );
   });
 
   it("assumes the current light position when the shell reports none", () => {
