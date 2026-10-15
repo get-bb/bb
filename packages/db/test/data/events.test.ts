@@ -3891,6 +3891,101 @@ describe("events", () => {
     ).toEqual([]);
   });
 
+  it("keeps selected task-state history isolated by thread and sequence cutoff", () => {
+    const { db, project, thread } = setup();
+    try {
+      const otherThread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const fixtures: [
+        string,
+        number,
+        ThreadEventType,
+        string,
+        "backgroundTask" | "delegation",
+      ][] = [
+        [thread.id, 1, "item/backgroundTask/progress", "task-1", "backgroundTask"],
+        [thread.id, 2, "item/delegation/progress", "delegate-1", "delegation"],
+        [thread.id, 3, "item/backgroundTask/progress", "task-1", "backgroundTask"],
+        [thread.id, 4, "item/delegation/progress", "delegate-1", "delegation"],
+        [thread.id, 5, "item/backgroundTask/completed", "task-1", "backgroundTask"],
+        [thread.id, 6, "item/delegation/completed", "delegate-1", "delegation"],
+        [thread.id, 7, "item/completed", "task-1", "backgroundTask"],
+        [thread.id, 8, "item/completed", "delegate-1", "delegation"],
+        [thread.id, 9, "item/backgroundTask/progress", "unselected", "backgroundTask"],
+        [otherThread.id, 3, "item/backgroundTask/completed", "task-1", "backgroundTask"],
+        [otherThread.id, 4, "item/delegation/completed", "delegate-1", "delegation"],
+        [otherThread.id, 10, "item/backgroundTask/progress", "task-1", "backgroundTask"],
+        [otherThread.id, 11, "item/delegation/progress", "delegate-1", "delegation"],
+      ];
+      insertEvents(
+        db,
+        noopNotifier,
+        fixtures.map(([threadId, sequence, type, itemId, itemKind]) => ({
+          threadId,
+          sequence,
+          type,
+          itemId,
+          itemKind,
+          scope: threadScope(),
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              id: itemId,
+              type: itemKind,
+              status: type.endsWith("/completed") ? "completed" : "pending",
+            },
+          }),
+        })),
+      );
+
+      for (const [beforeSequence, expectedSequences] of [
+        [0, []],
+        [3, [1, 2]],
+        [5, [3, 4]],
+        [6, [4, 5]],
+        [7, [5, 6]],
+        [undefined, [5, 6]],
+      ] satisfies [number | undefined, number[]][]) {
+        const rows = listLatestBackgroundTaskStateRowsByItemIds(db, {
+          threadId: thread.id,
+          itemIds: ["task-1", "delegate-1", "missing", "task-1"],
+          beforeSequence,
+        });
+        expect(rows.map((row) => row.sequence)).toEqual(expectedSequences);
+        expect(rows.every((row) => row.threadId === thread.id)).toBe(true);
+      }
+
+      expect(
+        listLatestBackgroundTaskStateRowsByItemIds(db, {
+          threadId: otherThread.id,
+          itemIds: ["task-1", "delegate-1", "missing"],
+        }).map((row) => ({
+          threadId: row.threadId,
+          itemId: row.itemId,
+          sequence: row.sequence,
+          type: row.type,
+        })),
+      ).toEqual([
+        {
+          threadId: otherThread.id,
+          itemId: "task-1",
+          sequence: 10,
+          type: "item/backgroundTask/progress",
+        },
+        {
+          threadId: otherThread.id,
+          itemId: "delegate-1",
+          sequence: 11,
+          type: "item/delegation/progress",
+        },
+      ]);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("returns latest non-terminal open backgroundTask state rows for a thread", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {

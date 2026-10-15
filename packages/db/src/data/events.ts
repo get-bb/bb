@@ -2220,12 +2220,6 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     return [];
   }
 
-  const stateTypes = [
-    "item/backgroundTask/progress",
-    "item/backgroundTask/completed",
-    "item/delegation/progress",
-    "item/delegation/completed",
-  ] satisfies ThreadEventType[];
   const latest = alias(events, "latest_background_task_state");
 
   return db
@@ -2246,7 +2240,7 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
                   ? undefined
                   : lt(latest.sequence, args.beforeSequence),
                 inArray(latest.itemId, [...args.itemIds]),
-                inArray(latest.type, stateTypes),
+                sql`${latest.type} IN ('item/backgroundTask/progress', 'item/backgroundTask/completed', 'item/delegation/progress', 'item/delegation/completed')`,
               ),
             )
             .groupBy(latest.itemId),

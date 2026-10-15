@@ -26,6 +26,7 @@ import {
   getLastStoredProviderThreadId,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
+  listLatestBackgroundTaskStateRowsByItemIds,
   listItemEventSpansByItems,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
@@ -754,6 +755,32 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
+
+  it.each([undefined, 50])(
+    "seeks selected task states through their covering index with cutoff %s",
+    (beforeSequence) => {
+      const { db, thread } = setup();
+      try {
+        const captured = captureStatements(db, () => {
+          expect(
+            listLatestBackgroundTaskStateRowsByItemIds(db, {
+              threadId: thread.id,
+              itemIds: ["task-1", "delegate-1"],
+              beforeSequence,
+            }),
+          ).toEqual([]);
+        });
+        expect(captured).toHaveLength(1);
+        const details = queryPlanDetails({ db, ...captured[0]! });
+        expect(details).toMatch(
+          /USING COVERING INDEX events_task_state_thread_item_type_sequence_idx \(thread_id=\? AND item_id=\?/u,
+        );
+        expect(details).not.toContain("USE TEMP B-TREE FOR GROUP BY");
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
 
   it("scans background-task history once without a completed-set join", () => {
     const { db, thread } = setup();

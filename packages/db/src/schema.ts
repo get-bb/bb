@@ -827,6 +827,11 @@ export const events = sqliteTable(
     index("events_background_task_thread_type_item_sequence_idx")
       .on(table.threadId, table.type, table.itemId, table.sequence)
       .where(sql`${table.itemKind} = 'backgroundTask'`),
+    index("events_task_state_thread_item_type_sequence_idx")
+      .on(table.threadId, table.itemId, table.type, table.sequence)
+      .where(
+        sql`${table.type} IN ('item/backgroundTask/progress', 'item/backgroundTask/completed', 'item/delegation/progress', 'item/delegation/completed')`,
+      ),
     index("events_thread_type_sequence_idx").on(
       table.threadId,
       table.type,

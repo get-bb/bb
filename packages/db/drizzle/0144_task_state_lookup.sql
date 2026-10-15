@@ -1,0 +1,1 @@
+CREATE INDEX `events_task_state_thread_item_type_sequence_idx` ON `events` (`thread_id`,`item_id`,`type`,`sequence`) WHERE "events"."type" IN ('item/backgroundTask/progress', 'item/backgroundTask/completed', 'item/delegation/progress', 'item/delegation/completed');

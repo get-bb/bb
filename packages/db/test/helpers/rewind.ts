@@ -1,5 +1,11 @@
 import type { DbConnection } from "../../src/index.js";
 
+function dropTaskStateLookupIndex(db: DbConnection): void {
+  db.$client.exec(
+    "DROP INDEX IF EXISTS events_task_state_thread_item_type_sequence_idx",
+  );
+}
+
 export function dropPluginEnabledFollowsDefaultColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], { name: string }>("PRAGMA table_info(plugins)")
@@ -10,6 +16,7 @@ export function dropPluginEnabledFollowsDefaultColumn(db: DbConnection): void {
 }
 
 export function rewindThreadPruningWork(db: DbConnection): void {
+  dropTaskStateLookupIndex(db);
   db.$client.exec(`
     DROP TABLE IF EXISTS thread_pruning_work;
     DELETE FROM __drizzle_migrations WHERE created_at >= 1791399370294;
@@ -71,6 +78,7 @@ export function rewindQueuedMessageStateMigration(db: DbConnection): void {
     .prepare<[], QueuedTableColumn>("PRAGMA table_info(queued_thread_messages)")
     .all();
   if (!columns.some((column) => column.name === "state")) return;
+  dropTaskStateLookupIndex(db);
   const keptColumns = columns.filter((column) => column.name !== "state");
   const definitions = keptColumns
     .map((column) =>
