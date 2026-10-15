@@ -788,15 +788,58 @@ const electronMock = vi.hoisted(() => {
     }
   }
 
+  class FakeBaseWindow {
+    public readonly contentView = {
+      children: new Array<WebContentsView>(),
+      addChildView(view: WebContentsView): void {
+        this.children.push(view);
+      },
+      removeChildView(view: WebContentsView): void {
+        const index = this.children.indexOf(view);
+        if (index !== -1) this.children.splice(index, 1);
+      },
+    };
+    public excludedFromShownWindowsMenu = false;
+    private destroyed = false;
+
+    constructor(
+      public readonly options: {
+        show: boolean;
+        focusable: boolean;
+        skipTaskbar: boolean;
+      },
+    ) {}
+
+    isDestroyed(): boolean {
+      return this.destroyed;
+    }
+
+    destroy(): void {
+      this.destroyed = true;
+    }
+  }
+
   const fakeSessions: FakeSession[] = [];
   const fakeViews: FakeWebContentsView[] = [];
   const fakeWindows: FakeBrowserWindow[] = [];
+  const fakeParkingWindows: FakeBaseWindow[] = [];
 
   return {
     fakeCapturedImage,
     fakeSessions,
     fakeViews,
     fakeWindows,
+    fakeParkingWindows,
+    BaseWindow: class extends FakeBaseWindow {
+      constructor(options: {
+        show: boolean;
+        focusable: boolean;
+        skipTaskbar: boolean;
+      }) {
+        super(options);
+        fakeParkingWindows.push(this);
+      }
+    },
     createFakeWebContents() {
       const contents = new FakeWebContents(nextWebContentsId);
       nextWebContentsId += 1;
@@ -827,6 +870,7 @@ const electronMock = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
+  BaseWindow: electronMock.BaseWindow,
   BrowserWindow: electronMock.FakeBrowserWindow,
   WebContentsView: electronMock.FakeWebContentsView,
   session: electronMock.session,
@@ -912,6 +956,7 @@ beforeEach(() => {
   electronMock.fakeSessions.length = 0;
   electronMock.fakeViews.length = 0;
   electronMock.fakeWindows.length = 0;
+  electronMock.fakeParkingWindows.length = 0;
 });
 
 async function settlePendingCaptures(
@@ -2153,6 +2198,9 @@ describe("DesktopBrowserViewManager", () => {
       expect(first.webContents.isDestroyed()).toBe(true);
       expect(requireFakeView(2).webContents.isDestroyed()).toBe(true);
       expect(popupWindow.isDestroyed()).toBe(true);
+      expect(
+        electronMock.fakeParkingWindows.every((window) => window.isDestroyed()),
+      ).toBe(true);
     },
   );
 
@@ -2207,6 +2255,14 @@ describe("DesktopBrowserViewManager", () => {
         const attached = hostWindow.contentView.addedViews.slice();
         manager.setServerOrigin("https://second.example");
         expect(hostWindow.contentView.removedViews).toEqual(attached);
+        const parkingWindow = electronMock.fakeParkingWindows[0]!;
+        expect(parkingWindow.contentView.children).toEqual(attached);
+        expect(parkingWindow.options).toEqual({
+          show: false,
+          focusable: false,
+          skipTaskbar: true,
+        });
+        expect(parkingWindow.excludedFromShownWindowsMenu).toBe(true);
         expect(view.webContents.getBackgroundThrottling()).toBe(true);
         if (owner === "automation") page.detach();
         else {
@@ -2217,6 +2273,7 @@ describe("DesktopBrowserViewManager", () => {
         expect(view.webContents.isDestroyed()).toBe(false);
         manager.setServerOrigin("https://first.example");
         expect(hostWindow.contentView.addedViews).toEqual([...attached, ...attached]);
+        expect(parkingWindow.isDestroyed()).toBe(true);
         expect(view.webContents.getBackgroundThrottling()).toBe(false);
         expect(requireFakeView(0).webContents.getBackgroundThrottling()).toBe(true);
         expect(view.webContents.getURL()).toBe("https://example.com/animated");

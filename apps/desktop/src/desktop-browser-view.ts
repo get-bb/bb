@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { captureDesktopBrowserPage } from "./desktop-browser-capture.js";
 import { setDesktopBrowserServerActive } from "./desktop-browser-throttling.js";
 import {
+  BaseWindow,
   BrowserWindow,
   Menu,
   WebContentsView,
@@ -432,6 +433,7 @@ export function createDesktopBrowserViewManager(
   let entries = new Map<string, BrowserViewEntry>();
   const serverEntries = new Map<string, Map<string, BrowserViewEntry>>();
   let serverOrigin: string | null = null;
+  let parkingWindow: BaseWindow | null = null;
   const automationTabListeners = new Set<() => void>();
   const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
@@ -442,6 +444,16 @@ export function createDesktopBrowserViewManager(
   function notifyAutomationTabs(): void {
     for (const listener of automationTabListeners) {
       listener();
+    }
+  }
+
+  function removeParkedView(view: WebContentsView): void {
+    if (parkingWindow === null || parkingWindow.isDestroyed()) return;
+    parkingWindow.contentView.removeChildView(view);
+    if (parkingWindow.contentView.children.length === 0) {
+      const emptyWindow = parkingWindow;
+      parkingWindow = null;
+      emptyWindow.destroy();
     }
   }
 
@@ -952,6 +964,7 @@ export function createDesktopBrowserViewManager(
 
   function disposeEntry(key: string, entry: BrowserViewEntry): void {
     entry.registry.delete(key);
+    removeParkedView(entry.view);
     clearEntryRendererRecoveryTimer(entry);
     for (const popupWindow of [...entry.popupWindows]) {
       if (!popupWindow.isDestroyed()) popupWindow.destroy();
@@ -1109,6 +1122,15 @@ export function createDesktopBrowserViewManager(
         applyEntryVisibility(entry, entry.hostWindow);
         if (!entry.hostWindow.isDestroyed())
           entry.hostWindow.contentView.removeChildView(entry.view);
+        if (parkingWindow === null || parkingWindow.isDestroyed()) {
+          parkingWindow = new BaseWindow({
+            show: false,
+            focusable: false,
+            skipTaskbar: true,
+          });
+          parkingWindow.excludedFromShownWindowsMenu = true;
+        }
+        parkingWindow.contentView.addChildView(entry.view);
         for (const popup of entry.popupWindows) {
           if (popup.isDestroyed()) continue;
           popup.webContents.setAudioMuted(true);
@@ -1120,6 +1142,7 @@ export function createDesktopBrowserViewManager(
       entries = serverEntries.get(value) ?? new Map();
       serverEntries.set(value, entries);
       for (const entry of entries.values()) {
+        removeParkedView(entry.view);
         if (!entry.hostWindow.isDestroyed())
           entry.hostWindow.contentView.addChildView(entry.view);
         setDesktopBrowserServerActive(entry.webContents, true);
