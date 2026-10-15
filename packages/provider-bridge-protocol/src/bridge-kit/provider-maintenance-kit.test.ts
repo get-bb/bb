@@ -1,14 +1,26 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   compareVersions,
   downloadedInstallerCommand,
   formatCommand,
   installationVerification,
+  npmGlobalInstallCommand,
   npmGlobalInstallSource,
+  npmPrefixOwningExecutable,
+  probeNpmGlobalPackage,
   readCliVersion,
+  resolveExecutablePath,
   selectResolvedExecutable,
   versionFrom,
 } from "./provider-maintenance-kit.js";
@@ -173,6 +185,107 @@ describe("provider maintenance kit", () => {
         npmBin: null,
       }),
     ).toBe("notInstalled");
+  });
+
+  describe.skipIf(process.platform === "win32")("npm prefix ownership", () => {
+    const npmPackage = "@example/tool";
+
+    async function npmPrefixWithTool(): Promise<{
+      root: string;
+      prefix: string;
+      executable: string;
+    }> {
+      const root = await realpath(
+        await mkdtemp(path.join(tmpdir(), "bb-npm-prefix-")),
+      );
+      const prefix = path.join(root, "npm-global");
+      const packageDir = path.join(prefix, "lib", "node_modules", npmPackage);
+      const cli = path.join(packageDir, "cli.js");
+      const bin = path.join(prefix, "bin");
+      await Promise.all([
+        mkdir(packageDir, { recursive: true }),
+        mkdir(bin, { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(
+          path.join(packageDir, "package.json"),
+          JSON.stringify({ name: npmPackage, version: "1.1.0" }),
+        ),
+        writeFile(cli, "#!/bin/sh\necho 1.1.0\n", { mode: 0o755 }),
+      ]);
+      const executable = path.join(bin, "tool");
+      await symlink(path.relative(bin, cli), executable);
+      return { root, prefix, executable };
+    }
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("installs into the npm prefix that owns the executable on PATH", async () => {
+      const { root, prefix, executable } = await npmPrefixWithTool();
+      try {
+        vi.stubEnv(
+          "PATH",
+          `${path.dirname(executable)}${path.delimiter}${process.env.PATH ?? ""}`,
+        );
+        const resolved = await resolveExecutablePath("tool");
+        expect(resolved).toBe(executable);
+        const owningPrefix = await npmPrefixOwningExecutable(
+          resolved,
+          npmPackage,
+        );
+        expect(owningPrefix).toBe(prefix);
+        expect(npmGlobalInstallCommand(npmPackage, owningPrefix).args).toEqual([
+          "install",
+          "-g",
+          "--prefix",
+          prefix,
+          `${npmPackage}@latest`,
+        ]);
+        expect(await probeNpmGlobalPackage(npmPackage, owningPrefix)).toEqual({
+          npmBin: path.join(prefix, "bin"),
+          npmGlobalPackageVersion: "1.1.0",
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }, 30_000);
+
+    it("keeps the plain command when the owning prefix is npm's default", async () => {
+      const { root, prefix, executable } = await npmPrefixWithTool();
+      try {
+        vi.stubEnv("NPM_CONFIG_PREFIX", prefix);
+        const owningPrefix = await npmPrefixOwningExecutable(
+          executable,
+          npmPackage,
+        );
+        expect(owningPrefix).toBeNull();
+        expect(npmGlobalInstallCommand(npmPackage, owningPrefix).args).toEqual([
+          "install",
+          "-g",
+          `${npmPackage}@latest`,
+        ]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }, 30_000);
+
+    it("finds no prefix for an executable outside an npm package", async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "bb-npm-prefix-none-"));
+      try {
+        const executable = path.join(root, "tool");
+        await writeFile(executable, "#!/bin/sh\necho 1.1.0\n", {
+          mode: 0o755,
+        });
+        expect(
+          await npmPrefixOwningExecutable(executable, npmPackage),
+        ).toBeNull();
+        expect(await npmPrefixOwningExecutable(null, npmPackage)).toBeNull();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 
   it("verifies an update against the latest version, or a change when the registry was unreachable", () => {

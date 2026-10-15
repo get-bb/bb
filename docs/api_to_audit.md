@@ -966,7 +966,7 @@ bridges need to say about a rejection (installation was deliberately left to
 runtime should bound the `rateLimited` ladder from the hint rather than from
 a constant.
 
-## Provider maintenance toolkit (`experimental_resolveExecutablePath`, `experimental_readCliVersion`, `experimental_commandOutput`, `experimental_versionFrom`, `experimental_compareVersions`, `experimental_formatCommand`, `experimental_npmCommand`, `experimental_npmGlobalInstallCommand`, `experimental_npmLatestVersion`, `experimental_probeNpmGlobalPackage`, `experimental_npmGlobalInstallSource`, `experimental_installationVerification`, `experimental_downloadedInstallerCommand`, `experimental_clampPercent`) (`@get-bb/plugin-sdk/provider-bridge`)
+## Provider maintenance toolkit (`experimental_resolveExecutablePath`, `experimental_readCliVersion`, `experimental_commandOutput`, `experimental_versionFrom`, `experimental_compareVersions`, `experimental_formatCommand`, `experimental_npmCommand`, `experimental_npmGlobalInstallCommand`, `experimental_npmLatestVersion`, `experimental_npmPrefixOwningExecutable`, `experimental_probeNpmGlobalPackage`, `experimental_npmGlobalInstallSource`, `experimental_installationVerification`, `experimental_downloadedInstallerCommand`, `experimental_clampPercent`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 These are the host-local probes and install commands behind a bridge's
 `provider/health`, `provider/usage` and `provider/installation/*` answers for
@@ -977,7 +977,12 @@ a user-installed CLI.
   `readCliVersion` runs `--version` with stdin closed and returns the first
   valid SemVer token or null. `commandOutput` returns trimmed stdout+stderr
   or null. The others are `versionFrom`, `npmLatestVersion` and
-  `probeNpmGlobalPackage`.
+  `probeNpmGlobalPackage`. `npmPrefixOwningExecutable` returns the npm prefix
+  whose `lib/node_modules/<package>` (Windows: `node_modules/<package>`) holds
+  the resolved executable, or null when that prefix is npm's default or none
+  owns it. Pass it to `probeNpmGlobalPackage` and `npmGlobalInstallCommand`,
+  which then add `--prefix`, so an update replaces the install bb runs even
+  when the host daemon does not see the user's `NPM_CONFIG_PREFIX`.
 - Decisions: `compareVersions` uses SemVer precedence and throws `TypeError`
   on invalid input. `npmGlobalInstallSource` returns `npmGlobal`, `external`
   or `notInstalled`. `installationVerification` passes an install on

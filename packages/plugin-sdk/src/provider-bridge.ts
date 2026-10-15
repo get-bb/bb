@@ -206,6 +206,7 @@ export {
   npmGlobalInstallCommand as experimental_npmGlobalInstallCommand,
   npmGlobalInstallSource as experimental_npmGlobalInstallSource,
   npmLatestVersion as experimental_npmLatestVersion,
+  npmPrefixOwningExecutable as experimental_npmPrefixOwningExecutable,
   planStepsPresentation as experimental_planStepsPresentation,
   presentationDetail as experimental_presentationDetail,
   presentationFileName as experimental_presentationFileName,

@@ -15,6 +15,7 @@ import {
   experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
   experimental_npmGlobalInstallSource as npmGlobalInstallSource,
   experimental_npmLatestVersion as npmLatestVersion,
+  experimental_npmPrefixOwningExecutable as npmPrefixOwningExecutable,
   experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
@@ -126,7 +127,10 @@ async function piGlobalInstallCommand(
 ): Promise<ProviderInstallationCommand> {
   return (await isBunManagedPi(executablePath))
     ? bunGlobalInstallCommand(PI_NPM_PACKAGE)
-    : npmGlobalInstallCommand(PI_NPM_PACKAGE);
+    : npmGlobalInstallCommand(
+        PI_NPM_PACKAGE,
+        await npmPrefixOwningExecutable(executablePath, PI_NPM_PACKAGE),
+      );
 }
 
 export async function probePiVersion(): Promise<PiVersionProbe> {
@@ -174,13 +178,19 @@ export async function getPiProviderInstallationStatus(
   checkUpdates = true,
 ): Promise<ProviderInstallationStatus> {
   const launch = resolvePiLaunch(process.env);
+  const resolvingExecutable = resolveExecutablePath(launch.command);
   const [resolvedExecutable, probe, latestVersion, npmGlobal] =
     await Promise.all([
-      resolveExecutablePath(launch.command),
+      resolvingExecutable,
       probePiVersion(),
       checkUpdates ? npmLatestVersion(PI_NPM_PACKAGE) : null,
       checkUpdates
-        ? probeNpmGlobalPackage(PI_NPM_PACKAGE)
+        ? resolvingExecutable.then(async (executablePath) =>
+            probeNpmGlobalPackage(
+              PI_NPM_PACKAGE,
+              await npmPrefixOwningExecutable(executablePath, PI_NPM_PACKAGE),
+            ),
+          )
         : { npmBin: null, npmGlobalPackageVersion: null },
     ]);
   const currentVersion = probe.version;

@@ -88,6 +88,7 @@ Read the installed declarations for exact current signatures.
 - `experimental_npmGlobalInstallCommand`
 - `experimental_npmGlobalInstallSource`
 - `experimental_npmLatestVersion`
+- `experimental_npmPrefixOwningExecutable`
 - `experimental_planStepsPresentation`
 - `experimental_presentationDetail`
 - `experimental_presentationFileName`

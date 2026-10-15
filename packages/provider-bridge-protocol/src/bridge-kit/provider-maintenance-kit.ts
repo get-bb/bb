@@ -1,7 +1,7 @@
 import { execPortableFile } from "@bb/process-utils";
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import semverCompare from "semver/functions/compare.js";
@@ -128,12 +128,58 @@ export function formatCommand(
     .join(" ");
 }
 
+function npmPrefixArgs(prefix: string | null): string[] {
+  return prefix === null ? [] : ["--prefix", prefix];
+}
+
 export function npmGlobalInstallCommand(
   npmPackage: string,
+  prefix: string | null = null,
 ): ProviderInstallationCommand {
   const command = npmCommand();
-  const args = ["install", "-g", `${npmPackage}@latest`];
+  const args = [
+    "install",
+    "-g",
+    ...npmPrefixArgs(prefix),
+    `${npmPackage}@latest`,
+  ];
   return { command, args, displayCommand: formatCommand(command, args) };
+}
+
+async function npmOwningPrefix(
+  executablePath: string,
+  npmPackage: string,
+): Promise<string | null> {
+  if (process.platform === "win32") {
+    const shimDirectory = path.dirname(executablePath);
+    return access(path.join(shimDirectory, "node_modules", npmPackage)).then(
+      () => shimDirectory,
+      () => null,
+    );
+  }
+  const resolved = await realpath(executablePath).catch(() => null);
+  const marker = `${path.sep}${path.join("lib", "node_modules", npmPackage)}${path.sep}`;
+  const index = resolved?.indexOf(marker) ?? -1;
+  return resolved !== null && index > 0 ? resolved.slice(0, index) : null;
+}
+
+export async function npmPrefixOwningExecutable(
+  executablePath: string | null,
+  npmPackage: string,
+): Promise<string | null> {
+  if (executablePath === null) return null;
+  const [owningPrefix, defaultPrefix] = await Promise.all([
+    npmOwningPrefix(executablePath, npmPackage),
+    commandOutput(npmCommand(), ["prefix", "-g"]).then(firstLine),
+  ]);
+  if (owningPrefix === null) return null;
+  const [resolvedOwningPrefix, resolvedDefaultPrefix] = await Promise.all([
+    realpath(owningPrefix).catch(() => owningPrefix),
+    defaultPrefix === null
+      ? null
+      : realpath(defaultPrefix).catch(() => defaultPrefix),
+  ]);
+  return resolvedOwningPrefix === resolvedDefaultPrefix ? null : owningPrefix;
 }
 
 export async function npmLatestVersion(
@@ -151,13 +197,20 @@ export interface NpmGlobalPackageProbe {
 
 export async function probeNpmGlobalPackage(
   npmPackage: string,
+  prefix: string | null = null,
 ): Promise<NpmGlobalPackageProbe> {
   const npm = npmCommand();
-  const [prefixOutput, listOutput] = await Promise.all([
-    commandOutput(npm, ["prefix", "-g"]),
-    commandOutput(npm, ["list", "-g", npmPackage, "--depth=0", "--json"]),
+  const [npmPrefix, listOutput] = await Promise.all([
+    prefix ?? commandOutput(npm, ["prefix", "-g"]).then(firstLine),
+    commandOutput(npm, [
+      "list",
+      "-g",
+      ...npmPrefixArgs(prefix),
+      npmPackage,
+      "--depth=0",
+      "--json",
+    ]),
   ]);
-  const npmPrefix = firstLine(prefixOutput);
   return {
     npmBin:
       npmPrefix === null
