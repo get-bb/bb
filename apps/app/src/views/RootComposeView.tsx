@@ -859,7 +859,7 @@ function RootComposeSurface({
     terminalSessions: loadedTerminalSessions,
   });
   const panelBrowser = usePanelBrowser({
-    available: isDesktopBrowserAvailable() && rootPanelThreadId !== null,
+    available: isDesktopBrowserAvailable(),
     browserTabs,
     isFocused: isFocusedPane,
     openTab,
@@ -1024,9 +1024,6 @@ function RootComposeSurface({
       canShowNativeBrowserView: boolean;
       onNativeFocus: () => void;
     }) => {
-      if (rootPanelThreadId === null) {
-        return null;
-      }
       return (
         <LazyBrowserTabDeck
           browserTabs={browserTabs}
@@ -1035,11 +1032,11 @@ function RootComposeSurface({
           onAddressFocusRequestConsumed={
             panelBrowser.handleAddressFocusRequestConsumed
           }
-          environmentId={rootPanelEnvironmentId}
+          environmentId={null}
           canShowNativeBrowserView={canShowNativeBrowserView}
           canHandleBrowserCommands={canHandleBrowserCommands}
           onNativeFocus={onNativeFocus}
-          threadId={rootPanelThreadId}
+          threadId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
           onUpdate={updateBrowserTab}
         />
       );
@@ -1048,8 +1045,6 @@ function RootComposeSurface({
       panelBrowser.addressFocusRequest,
       browserTabs,
       panelBrowser.handleAddressFocusRequestConsumed,
-      rootPanelEnvironmentId,
-      rootPanelThreadId,
       updateBrowserTab,
     ],
   );
