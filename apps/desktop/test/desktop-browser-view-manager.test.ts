@@ -200,11 +200,18 @@ type FakePermissionRequestHandler = (
   webContents: unknown,
   permission: string,
   callback: (granted: boolean) => void,
+  details?: {
+    requestingUrl: string;
+    isMainFrame: boolean;
+    mediaTypes?: string[];
+  },
 ) => void;
 
 type FakePermissionCheckHandler = (
   webContents: unknown,
   permission: string,
+  requestingOrigin?: string,
+  details?: { isMainFrame: boolean; mediaType: string },
 ) => boolean;
 
 interface FakeWindowOpenDetails {
@@ -830,6 +837,8 @@ const electronMock = vi.hoisted(() => {
   const fakeParkingWindows: FakeBaseWindow[] = [];
 
   return {
+    showMessageBox: vi.fn(),
+    askForMediaAccess: vi.fn(),
     fakeCapturedImage,
     fakeSessions,
     fakeViews,
@@ -879,6 +888,8 @@ vi.mock("electron", () => ({
   BrowserWindow: electronMock.FakeBrowserWindow,
   WebContentsView: electronMock.FakeWebContentsView,
   session: electronMock.session,
+  dialog: { showMessageBox: electronMock.showMessageBox },
+  systemPreferences: { askForMediaAccess: electronMock.askForMediaAccess },
   nativeImage: { createFromBuffer: () => electronMock.fakeCapturedImage },
 }));
 
@@ -958,6 +969,8 @@ class FakeHostWindow implements DesktopBrowserHostWindow {
 
 beforeEach(() => {
   vi.useRealTimers();
+  electronMock.showMessageBox.mockReset().mockResolvedValue({ response: 1 });
+  electronMock.askForMediaAccess.mockReset().mockResolvedValue(true);
   electronMock.fakeSessions.length = 0;
   electronMock.fakeViews.length = 0;
   electronMock.fakeWindows.length = 0;
@@ -2066,7 +2079,9 @@ describe("DesktopBrowserViewManager", () => {
           expiresAt: Date.now() + 60_000,
         });
         client.suspend();
-        expect(broker.getControl(91, "browser:a")).toMatchObject({ control: null });
+        expect(broker.getControl(91, "browser:a")).toMatchObject({
+          control: null,
+        });
         expect(broker.getTarget(91)).toBeNull();
         expect(view.webContents.isDestroyed()).toBe(false);
         await applyServerMove({
@@ -2183,9 +2198,12 @@ describe("DesktopBrowserViewManager", () => {
       manager.setServerOrigin("https://first.example");
       attach("https://example.com/first");
       const first = requireFakeView(0);
-      const popup = first.webContents.emitWindowOpen("https://example.com/login", {
-        disposition: "new-window",
-      });
+      const popup = first.webContents.emitWindowOpen(
+        "https://example.com/login",
+        {
+          disposition: "new-window",
+        },
+      );
       popup.createWindow?.({});
       const popupWindow = electronMock.fakeWindows[0]!;
       manager.setServerOrigin("https://second.example");
@@ -2202,13 +2220,18 @@ describe("DesktopBrowserViewManager", () => {
         channel: "background",
         data: { secret: "first server" },
       });
-      expect(first.webContents.emitWindowOpen("https://example.com/new")).toEqual({
+      expect(
+        first.webContents.emitWindowOpen("https://example.com/new"),
+      ).toEqual({
         action: "deny",
       });
       expect(hostWindow.webContents.sentPayloads).toHaveLength(pushes);
       expect(notify).not.toHaveBeenCalled();
       expect(
-        manager.getAutomationTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
+        manager.getAutomationTabs({
+          hostWebContentsId: 91,
+          threadId: "thread-1",
+        }),
       ).toEqual([{ tabId: "browser:a", webContents: second.webContents }]);
       manager.setServerOrigin("https://first.example");
       attach("https://stale.example");
@@ -2219,7 +2242,10 @@ describe("DesktopBrowserViewManager", () => {
       expect(first.webContents.getURL()).toBe("https://example.com/redirected");
       second.webContents.close();
       expect(
-        manager.getAutomationTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
+        manager.getAutomationTabs({
+          hostWebContentsId: 91,
+          threadId: "thread-1",
+        }),
       ).toEqual([{ tabId: "browser:a", webContents: first.webContents }]);
       manager.setServerOrigin("https://second.example");
       attach("https://example.com/reopened");
@@ -2266,7 +2292,8 @@ describe("DesktopBrowserViewManager", () => {
           resolve({ data: Buffer.from("jpeg").toString("base64") });
       });
       const capture = vi.spyOn(view.webContents, "capturePage");
-      let pendingCapture: ReturnType<typeof captureDesktopBrowserPage> | null = null;
+      let pendingCapture: ReturnType<typeof captureDesktopBrowserPage> | null =
+        null;
       try {
         if (owner === "automation") {
           page.attach();
@@ -2301,10 +2328,15 @@ describe("DesktopBrowserViewManager", () => {
         expect(view.webContents.getBackgroundThrottling()).toBe(true);
         expect(view.webContents.isDestroyed()).toBe(false);
         manager.setServerOrigin("https://first.example");
-        expect(hostWindow.contentView.addedViews).toEqual([...attached, ...attached]);
+        expect(hostWindow.contentView.addedViews).toEqual([
+          ...attached,
+          ...attached,
+        ]);
         expect(parkingWindow.isDestroyed()).toBe(true);
         expect(view.webContents.getBackgroundThrottling()).toBe(false);
-        expect(requireFakeView(0).webContents.getBackgroundThrottling()).toBe(true);
+        expect(requireFakeView(0).webContents.getBackgroundThrottling()).toBe(
+          true,
+        );
         expect(view.webContents.getURL()).toBe("https://example.com/animated");
         page.attach();
         await expect(page.send("Runtime.enable", {})).resolves.toEqual({});
@@ -4109,6 +4141,70 @@ describe("DesktopBrowserViewManager", () => {
     expect(reloadingView.visible).toBe(true);
   });
 
+  it.each(["allow", "deny", "navigate", "system-deny", "dialog-error"])(
+    "handles microphone consent: %s",
+    async (outcome) => {
+      const { view } = createRendererRecoveryFixture(74);
+      const browserSession = electronMock.fakeSessions.at(-1)!;
+      const request = browserSession.permissionRequestHandler!;
+      const check = browserSession.permissionCheckHandler!;
+      const url = view.webContents.getURL();
+      const origin = new URL(url).origin;
+      const details = {
+        requestingUrl: url,
+        isMainFrame: true,
+        mediaTypes: ["audio"],
+      };
+      const checkDetails = { isMainFrame: true, mediaType: "audio" };
+      expect(check(view.webContents, "media", origin, checkDetails)).toBe(
+        false,
+      );
+      electronMock.showMessageBox.mockImplementation(async () => {
+        if (outcome === "navigate")
+          await view.webContents.loadURL("https://other.example/");
+        if (outcome === "dialog-error") throw new Error("Dialog unavailable");
+        return { response: outcome === "deny" ? 0 : 1 };
+      });
+      electronMock.askForMediaAccess.mockResolvedValue(
+        outcome !== "system-deny",
+      );
+      const granted = await new Promise<boolean>((resolve) =>
+        request(view.webContents, "media", resolve, details),
+      );
+      const expected =
+        outcome === "allow" ||
+        (outcome === "system-deny" && process.platform !== "darwin");
+      expect(granted).toBe(expected);
+      expect(electronMock.showMessageBox).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: expect.stringContaining(origin) }),
+      );
+      expect(check(view.webContents, "media", origin, checkDetails)).toBe(
+        expected,
+      );
+      expect(
+        check(view.webContents, "media", "https://other.example", checkDetails),
+      ).toBe(false);
+      expect(
+        check(view.webContents, "media", origin, {
+          ...checkDetails,
+          mediaType: "video",
+        }),
+      ).toBe(false);
+      for (const deniedDetails of [
+        { ...details, mediaTypes: ["video"] },
+        { ...details, mediaTypes: ["audio", "video"] },
+        { ...details, mediaTypes: [] },
+        { ...details, isMainFrame: false },
+      ]) {
+        expect(
+          await new Promise<boolean>((resolve) =>
+            request(view.webContents, "media", resolve, deniedDetails),
+          ),
+        ).toBe(false);
+      }
+    },
+  );
+
   it("allows clipboard-sanitized-write but denies clipboard-read and device permissions", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
@@ -4150,9 +4246,14 @@ describe("DesktopBrowserViewManager", () => {
 
     const requestGrants: boolean[] = [];
     for (const permission of permissions) {
-      requestHandler(null, permission, (granted) => {
-        requestGrants.push(granted);
-      });
+      requestHandler(
+        requireFakeView(0).webContents,
+        permission,
+        (granted) => {
+          requestGrants.push(granted);
+        },
+        { requestingUrl: "https://example.com/", isMainFrame: true },
+      );
     }
     expect(requestGrants).toEqual([true, false, false, false, false]);
   });

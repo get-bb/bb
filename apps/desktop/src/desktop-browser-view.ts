@@ -7,6 +7,8 @@ import {
   Menu,
   WebContentsView,
   session,
+  dialog,
+  systemPreferences,
   type BrowserWindowConstructorOptions,
   type Session,
   type WebContents,
@@ -421,6 +423,18 @@ function buildBrowserState(
   };
 }
 
+function microphoneOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" ||
+      (parsed.protocol === "http:" && isLoopbackHostname(parsed.hostname))
+      ? parsed.origin
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function isAllowedBrowserPermission(permission: string): boolean {
   return permission === "clipboard-sanitized-write";
 }
@@ -590,11 +604,66 @@ export function createDesktopBrowserViewManager(
       return hardenedSession;
     }
     const browserSession = session.fromPartition(partition);
-    browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
-      callback(isAllowedBrowserPermission(permission));
-    });
-    browserSession.setPermissionCheckHandler((_wc, permission) =>
-      isAllowedBrowserPermission(permission),
+    const microphoneGrants = new WeakMap<WebContents, string>();
+    browserSession.setPermissionRequestHandler(
+      (wc, permission, callback, details) => {
+        if (permission !== "media") {
+          callback(isAllowedBrowserPermission(permission));
+          return;
+        }
+        const origin = microphoneOrigin(details.requestingUrl);
+        if (
+          wc.isDestroyed() ||
+          !details.isMainFrame ||
+          origin === null ||
+          microphoneOrigin(wc.getURL()) !== origin ||
+          !("mediaTypes" in details) ||
+          details.mediaTypes?.length !== 1 ||
+          details.mediaTypes[0] !== "audio"
+        ) {
+          callback(false);
+          return;
+        }
+        const requestingUrl = wc.getURL();
+        const requestMicrophone = async (): Promise<boolean> => {
+          if (microphoneGrants.get(wc) !== origin) {
+            const result = await dialog.showMessageBox({
+              type: "question",
+              title: "Microphone access",
+              message: "Allow this site to use your microphone?",
+              detail: `${origin} can use your microphone in this browser tab until you close it.`,
+              buttons: ["Don’t allow", "Allow"],
+              defaultId: 0,
+              cancelId: 0,
+              noLink: true,
+            });
+            if (result.response !== 1) return false;
+          }
+          if (wc.isDestroyed() || wc.getURL() !== requestingUrl) return false;
+          if (
+            process.platform === "darwin" &&
+            !(await systemPreferences.askForMediaAccess("microphone"))
+          )
+            return false;
+          if (wc.isDestroyed() || wc.getURL() !== requestingUrl) return false;
+          microphoneGrants.set(wc, origin);
+          return true;
+        };
+        void requestMicrophone().then(callback, () => callback(false));
+      },
+    );
+    browserSession.setPermissionCheckHandler(
+      (wc, permission, requestingOrigin, details) =>
+        isAllowedBrowserPermission(permission) ||
+        (permission === "media" &&
+          wc !== null &&
+          !wc.isDestroyed() &&
+          details.isMainFrame &&
+          details.mediaType === "audio" &&
+          microphoneOrigin(requestingOrigin) !== null &&
+          microphoneOrigin(wc.getURL()) ===
+            microphoneOrigin(requestingOrigin) &&
+          microphoneGrants.get(wc) === microphoneOrigin(requestingOrigin)),
     );
     hardenedSession = browserSession;
     return browserSession;
