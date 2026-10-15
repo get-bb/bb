@@ -1,5 +1,8 @@
 import { Button } from "@bb/shared-ui/button";
-import { COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+  COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -116,12 +119,13 @@ function CompactBeforeSendPicker({
               : `Prompt cache expired: keeping all ${tokensLabel} tokens`
           }
           className={cn(
-            "size-8 max-md:pointer-coarse:size-10 [&_[data-icon-root]]:size-4",
-            PILL_CLASS,
-            compactFirst ? COMPACT_TONE_CLASS : KEEP_TONE_CLASS,
+            COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+            compactFirst
+              ? "text-warning-text hover:text-warning-text data-[state=open]:text-warning-text"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Icon name="CircleArrowShrink" aria-hidden />
+          <Icon name="CircleArrowShrink" className="size-4" aria-hidden />
         </Button>
       }
     />

@@ -4018,6 +4018,7 @@ export function PromptBoxInternal({
                     !showCompactLayout && !suppressPluginComposerCustomizations
                   }
                 >
+                  {!showCompactLayout ? submitAccessory : null}
                   {!showCompactLayout || showCompactVoiceAction ? (
                     <>
                       {voice &&
@@ -4052,7 +4053,6 @@ export function PromptBoxInternal({
                       ) : null}
                     </>
                   ) : null}
-                  {!showCompactLayout ? submitAccessory : null}
                   <div
                     data-promptbox-submit-group=""
                     className="flex shrink-0 flex-row items-center"
