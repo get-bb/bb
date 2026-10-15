@@ -19,7 +19,7 @@ const gitConfig = [
   ["url.https://github.com/.insteadOf", "ssh://git@github.com/"],
 ] as const;
 const identitySchema = z.object({
-  login: z.string().regex(/^[a-zA-Z0-9-]+$/u),
+  login: z.string().regex(/^[a-zA-Z0-9_-]+$/u),
   id: z.number().int().positive(),
   email: z.email().nullable(),
 });
