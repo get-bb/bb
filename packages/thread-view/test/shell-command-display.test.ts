@@ -37,6 +37,23 @@ describe("formatShellCommandForDisplay", () => {
 
   it.each([
     [
+      "printf '%s\\n' 'padding to make this command longer than eighty characters' && printf '<%s>\\n' hello\\ ",
+      "printf '%s\\n' 'padding to make this command longer than eighty characters' &&\n  printf '<%s>\\n' hello\\ ",
+    ],
+    [
+      "printf '%s\\n' 'padding to make this command longer than eighty characters' | cat - hello\\ ",
+      "printf '%s\\n' 'padding to make this command longer than eighty characters' |\n  cat - hello\\ ",
+    ],
+    [
+      "printf '%s\\n' 'padding to make this command longer than eighty characters' hello\\\t",
+      "printf '%s\\n' 'padding to make this command longer than eighty characters' hello\\\t",
+    ],
+  ])("preserves escaped trailing whitespace: %s", (command, expected) => {
+    expect(formatShellCommandForDisplay(command)).toBe(expected);
+  });
+
+  it.each([
+    [
       'git commit -m "fix: keep a && b | c; together" && git push origin feature/long-branch-name',
       'git commit -m "fix: keep a && b | c; together" &&\n  git push origin feature/long-branch-name',
     ],

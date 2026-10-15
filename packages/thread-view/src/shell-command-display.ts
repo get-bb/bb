@@ -209,7 +209,7 @@ function sliceAtEnds(
   const pieces: string[] = [];
   let pieceStart = start;
   for (const end of ends) {
-    pieces.push(command.slice(pieceStart, end).trim());
+    pieces.push(command.slice(pieceStart, end).trimStart());
     pieceStart = end;
   }
   return pieces;
@@ -226,7 +226,7 @@ function layoutLines(
   const lines: string[] = [];
   let lineStart = 0;
   for (const lineEnd of lineEnds) {
-    const line = command.slice(lineStart, lineEnd).trim();
+    const line = command.slice(lineStart, lineEnd).trimStart();
     const pipeEnds = breaks
       .filter(
         (item) =>
