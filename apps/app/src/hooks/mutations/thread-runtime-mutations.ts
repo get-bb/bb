@@ -177,33 +177,8 @@ export function sendThreadMessageMutationOptions(queryClient: QueryClient) {
       lifecycleOperation: "send_message",
       showErrorToast: false,
     },
-    mutationFn: async ({
-      id,
-      input,
-      model,
-      serviceTier,
-      reasoningLevel,
-      permissionMode,
-      mode,
-      sendAt,
-      senderThreadId,
-      pluginSubmission,
-      executionInputSources,
-    }: SendThreadMessageMutationRequest) => {
-      return await sdk.threads.send({
-        threadId: id,
-        input,
-        model,
-        serviceTier,
-        reasoningLevel,
-        permissionMode,
-        ...(sendAt === undefined ? {} : { sendAt }),
-        ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
-        executionInputSources,
-        mode,
-        ...(senderThreadId !== undefined ? { senderThreadId } : {}),
-      });
-    },
+    mutationFn: async ({ id, ...request }: SendThreadMessageMutationRequest) =>
+      await sdk.threads.send({ threadId: id, ...request }),
     onMutate: async (variables): Promise<SendThreadMessageTransaction> =>
       beginSendThreadMessageTransaction({
         queryClient,

@@ -370,6 +370,25 @@ describe("thread runtime mutations", () => {
     );
   });
 
+  it("forwards compactFirst when sending a thread message", async () => {
+    const queryClient = createTestQueryClient();
+    const mutation = new MutationObserver(
+      queryClient,
+      sendThreadMessageMutationOptions(queryClient),
+    );
+
+    await mutation.mutate({
+      id: "thread-1",
+      mode: "queue-if-active",
+      input: [{ type: "text", text: "Resume", mentions: [] }],
+      compactFirst: true,
+    });
+
+    expect(sdk.threads.send).toHaveBeenCalledWith(
+      expect.objectContaining({ compactFirst: true, threadId: "thread-1" }),
+    );
+  });
+
   it("restores a queued-row steer when provisioning keeps it queued", async () => {
     const queuedMessage = makeQueuedMessage({
       waitingOn: { kind: "thread-busy" },

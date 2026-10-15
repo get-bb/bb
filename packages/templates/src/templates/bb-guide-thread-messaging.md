@@ -141,8 +141,9 @@ Queued messages:
 
   --compact-first runs the same /compact turn as `bb thread compact` and queues
   the message behind it, so it needs an idle or errored thread whose provider
-  supports manual compaction; it cannot be combined with --send-at or
-  --mode steer. The SDK takes `compactFirst: true` on `threads.send`.
+  supports manual compaction; it cannot be combined with --send-at. The SDK
+  takes `compactFirst: true` on `threads.send`, which also rejects
+  `mode: "steer"`.
 
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
