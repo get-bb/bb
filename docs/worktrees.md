@@ -48,6 +48,11 @@ pnpm bb thread spawn \
 Omit `--base-branch` for bb's smart default. Explicit values are exact:
 `main` is local and `origin/main` is remote.
 
+New worktree branches start at the selected base without tracking it as an
+upstream, even when Git's `branch.autoSetupMerge` is enabled. Publish with
+`git push -u origin HEAD` to set the upstream to the task's remote branch.
+Reusing an existing branch preserves its upstream configuration.
+
 ## Copy local files with `.worktreeinclude`
 
 A new worktree checks out tracked files only. Your `.env`, your local

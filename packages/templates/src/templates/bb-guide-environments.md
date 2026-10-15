@@ -12,6 +12,10 @@ Environments determine where threads run. Multiple threads can share an environm
 The first-party choices are Project checkout (the project's existing directory),
 Worktree (a fresh Git worktree), and Personal workspace (a projectless workspace).
 
+New Worktree branches start at the selected base without an upstream, regardless
+of Git's branch.autoSetupMerge setting. Publish with `git push -u origin HEAD`
+to track the task's remote branch. Existing branches keep their upstream.
+
 Making your repo work with bb:
 
   If the default environment plugin is disabled or missing, creation fails

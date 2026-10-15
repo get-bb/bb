@@ -156,24 +156,30 @@ afterEach(() => {
 });
 
 describe("pull request lookup for differently named upstream branches", () => {
-  it("uses the managed local branch when it tracks the origin base branch", async () => {
-    const workspacePath = await createManagedBaseTrackedWorkspace();
-    const { logPath } = await installFakeGh("found");
-    const workspace = new Workspace(workspacePath);
+  it.each(["origin-base", "none"])(
+    "uses the managed local branch with %s upstream",
+    async (upstream) => {
+      const workspacePath = await createManagedBaseTrackedWorkspace();
+      if (upstream === "none") {
+        await runGit(["branch", "--unset-upstream"], { cwd: workspacePath });
+      }
+      const { logPath } = await installFakeGh("found");
+      const workspace = new Workspace(workspacePath);
 
-    await expect(workspace.getPullRequest()).resolves.toMatchObject({
-      outcome: "found",
-      pullRequest: { number: 1236 },
-    });
-    await workspace.runPullRequestAction({ operation: "ready" });
+      await expect(workspace.getPullRequest()).resolves.toMatchObject({
+        outcome: "found",
+        pullRequest: { number: 1236 },
+      });
+      await workspace.runPullRequestAction({ operation: "ready" });
 
-    const calls = (await readGhCalls(logPath)).filter(
-      (call) => call[0] === "pr",
-    );
-    expect(calls).toHaveLength(2);
-    expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
-    expect(calls[1]).toEqual(["pr", "ready"]);
-  });
+      const calls = (await readGhCalls(logPath)).filter(
+        (call) => call[0] === "pr",
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
+      expect(calls[1]).toEqual(["pr", "ready"]);
+    },
+  );
 
   it("uses the local branch when a differently named remote aliases origin", async () => {
     const workspacePath = await createTrackedForkWorkspace(

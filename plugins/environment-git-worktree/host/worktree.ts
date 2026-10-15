@@ -556,6 +556,7 @@ export async function createWorktree(
     gitArgs = [
       "worktree",
       "add",
+      "--no-track",
       "-B",
       args.branchName,
       args.targetPath,

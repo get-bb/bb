@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   realpath,
   rm,
@@ -124,6 +125,76 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it.each([
+    { existingBranch: false, branchMode: "reset" },
+    { existingBranch: false, branchMode: "reuse-existing" },
+    { existingBranch: true, branchMode: "reuse-existing" },
+    { existingBranch: true, branchMode: "reset" },
+  ] as const)(
+    "creates with a locked config (existing=$existingBranch, mode=$branchMode)",
+    async ({ existingBranch, branchMode }) => {
+      const { sourcePath, dataDir } = await createSourceRepository();
+      await git(sourcePath, "remote", "add", "origin", sourcePath);
+      await git(sourcePath, "fetch", "origin");
+      await git(sourcePath, "config", "branch.autoSetupMerge", "always");
+      const branchName = "bb/config-lock";
+      if (existingBranch) {
+        await git(
+          sourcePath,
+          "update-ref",
+          "refs/remotes/origin/published",
+          "HEAD",
+        );
+        await git(
+          sourcePath,
+          "branch",
+          "--track",
+          branchName,
+          "origin/published",
+        );
+      }
+      const configPath = join(sourcePath, ".git", "config");
+      const originalConfig = await readFile(configPath, "utf8");
+      const lockPath = `${configPath}.lock`;
+      await writeFile(lockPath, "another Git writer\n");
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "config-lock",
+            sourcePath,
+            pathKey: "config-lock",
+            branchName,
+          }),
+          branchMode,
+          baseBranch: { kind: "named", name: "origin/main" },
+        });
+        expect(result.status).toBe("created");
+        if (result.status !== "created") throw new Error(result.message);
+        expect(await readFile(join(result.path, "README.md"), "utf8")).toBe(
+          "hello\n",
+        );
+        expect(await git(result.path, "rev-parse", "HEAD")).toBe(
+          await git(sourcePath, "rev-parse", "origin/main"),
+        );
+        expect(
+          (
+            await git(
+              result.path,
+              "for-each-ref",
+              "--format=%(upstream:short)",
+              `refs/heads/${branchName}`,
+            )
+          ).trim(),
+        ).toBe(existingBranch ? "origin/published" : "");
+        expect(await readFile(lockPath, "utf8")).toBe("another Git writer\n");
+        expect(await readFile(configPath, "utf8")).toBe(originalConfig);
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
   it("resolves adoption paths with trailing slashes and symlink aliases", async () => {
     const { root, sourcePath, dataDir } = await createSourceRepository();
     const worktreePath = join(root, "feature");
