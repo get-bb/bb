@@ -112,7 +112,7 @@ export function applyAppFrameGeometry(
     "--bb-frame-footer-inset": `${SIDEBAR_FOOTER_CARD_GAP_PX - CARD_BORDER_PX}px`,
     "--bb-title-bar-control-size": `${TITLE_BAR_CONTROL_SIZE_PX}px`,
     "--bb-title-bar-sidebar-toggle-gap": `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
-    "--bb-title-bar-trailing-edge-gap": `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,
+    "--bb-title-bar-trailing-edge-gap": `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2 - CARD_BORDER_PX}px`,
   };
   if (shouldUseMacosDesktopChrome(desktopInfo)) {
     const inset =
