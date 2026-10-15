@@ -267,7 +267,7 @@ function SidebarTriggerOverlay({
             MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
           )}
         >
-          <SidebarHistoryNavigationControls className="gap-(--bb-title-bar-nav-gap)" />
+          <SidebarHistoryNavigationControls className="gap-0" />
           <div className="relative flex items-center">
             <SidebarTrigger {...triggerProps} />
             <AppCommandShortcutHint

@@ -13,7 +13,6 @@ import { installAppQueryClientBrowserEvents } from "./lib/query-client";
 import { appQueryClient } from "./lib/app-query-client";
 import {
   applyAppFrameGeometry,
-  applyMacosWindowChromeGeometry,
   getBbDesktopInfo,
 } from "./lib/bb-desktop";
 import { applyCachedAppThemeCss } from "./lib/themes";
@@ -29,8 +28,7 @@ registerProviderCliInstallQueryClient(appQueryClient);
 initializePreferredTheme();
 applyCachedAppThemeCss();
 initializeFavicon();
-applyAppFrameGeometry(document.documentElement);
-applyMacosWindowChromeGeometry(document.documentElement, getBbDesktopInfo());
+applyAppFrameGeometry(document.documentElement, getBbDesktopInfo());
 
 createRoot(document.getElementById("root")!, {
   onUncaughtError: (error, errorInfo) => {

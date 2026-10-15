@@ -7,7 +7,6 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
-import { SecondaryPanelAtWindowTopContext } from "@/components/secondary-panel/secondaryPanelWindowTopContext";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -142,30 +141,27 @@ function ThreadDetailSecondaryContentBody({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <SecondaryPanelAtWindowTopContext.Provider
-            value={paneContext?.isTopRow !== false}
-          >
-            <LazyThreadSecondaryPanel
-              {...threadSecondaryPanelProps}
-              drawerFallback={<ThreadMetadataLoadingSkeleton />}
-              renderBrowserDeck={(activeBrowserTabId, pane) =>
-                renderBrowserDeck?.({
-                  activeBrowserTabId,
-                  canHandleBrowserCommands:
-                    canShowNativeBrowserView && pane.isFocused,
-                  canShowNativeBrowserView,
-                  onNativeFocus: pane.onFocusPane,
-                })
-              }
-              renderAsDrawer={presentation === "drawer"}
-              isConversationCollapsed={
-                presentation === "inline" && isMainCollapsed
-              }
-              onToggleConversationCollapse={onToggleMainCollapse}
-              resizablePanelId={resizablePanelId}
-              metadataContent={metadataContent}
-            />
-          </SecondaryPanelAtWindowTopContext.Provider>
+          <LazyThreadSecondaryPanel
+            {...threadSecondaryPanelProps}
+            drawerFallback={<ThreadMetadataLoadingSkeleton />}
+            renderBrowserDeck={(activeBrowserTabId, pane) =>
+              renderBrowserDeck?.({
+                activeBrowserTabId,
+                canHandleBrowserCommands:
+                  canShowNativeBrowserView && pane.isFocused,
+                canShowNativeBrowserView,
+                onNativeFocus: pane.onFocusPane,
+              })
+            }
+            renderAsDrawer={presentation === "drawer"}
+            isConversationCollapsed={
+              presentation === "inline" && isMainCollapsed
+            }
+            onToggleConversationCollapse={onToggleMainCollapse}
+            resizablePanelId={resizablePanelId}
+            isAtWindowTop={paneContext?.isTopRow !== false}
+            metadataContent={metadataContent}
+          />
         )}
       />
     </div>

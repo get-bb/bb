@@ -91,7 +91,6 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
-import { SecondaryPanelAtWindowTopContext } from "./secondaryPanelWindowTopContext";
 import { TitleBarScrollFade } from "@/components/ui/title-bar-scroll-fade";
 import {
   useIsSidebarFramed,
@@ -232,6 +231,7 @@ export interface ThreadSecondaryPanelProps {
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
   renderAsDrawer: boolean;
+  isAtWindowTop?: boolean;
 }
 
 export function ThreadSecondaryPanel(props: ThreadSecondaryPanelProps) {
@@ -273,6 +273,7 @@ function ThreadSecondaryPanelContent({
   isConversationCollapsed,
   onToggleConversationCollapse,
   renderAsDrawer,
+  isAtWindowTop = false,
 }: ThreadSecondaryPanelProps) {
   const resolvedGitDiffTabStatus =
     gitDiffTabStatus ?? (canUseGitUi ? "eligible" : "ineligible");
@@ -448,7 +449,6 @@ function ThreadSecondaryPanelContent({
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
   const isFramed = useIsSidebarFramed();
-  const isAtWindowTop = useContext(SecondaryPanelAtWindowTopContext);
   const isPanelInFrame = isFramed && isAtWindowTop && !renderAsDrawer;
   const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
   const collapsedPanelTrafficLightReserveClassName =

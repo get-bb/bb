@@ -7,7 +7,6 @@ import {
   RAIL_PADDING_PX,
   SIDEBAR_FOOTER_CARD_GAP_PX,
   TITLE_BAR_CONTROL_SIZE_PX,
-  TITLE_BAR_NAV_GAP_PX,
   TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
   TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX,
   WINDOW_FRAME_LIP_PX,
@@ -87,44 +86,7 @@ const COLLAPSED_SIDEBAR_TRIGGER_GAP_PX = 8;
 const TITLE_BAR_CONTROL_COUNT = 3;
 const PAGE_HEADER_BASE_INSET_PX = 16;
 
-export interface MacosWindowChromeGeometry {
-  trafficLightCenterY: number;
-  titleBarHeight: number;
-  trafficLightReserve: number;
-  titleBarControlsEnd: number;
-  collapsedTopLeftReserve: number;
-}
-
-export function getMacosWindowChromeGeometry(
-  desktopInfo: BbDesktopInfoResult,
-): MacosWindowChromeGeometry {
-  const inset =
-    desktopInfo?.macosTrafficLightInset ?? MACOS_TRAFFIC_LIGHT_INSET_PX;
-  const topInset =
-    desktopInfo?.macosTrafficLightTopInset ?? MACOS_TRAFFIC_LIGHT_TOP_INSET_PX;
-  const trafficLightCenterY = topInset + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2;
-  const trafficLightReserve =
-    inset +
-    MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX +
-    MACOS_TRAFFIC_LIGHT_CLEARANCE_PX;
-  return {
-    trafficLightCenterY,
-    titleBarHeight: 2 * trafficLightCenterY,
-    trafficLightReserve,
-    titleBarControlsEnd:
-      trafficLightReserve +
-      TITLE_BAR_CONTROL_COUNT * TITLE_BAR_CONTROL_SIZE_PX +
-      TITLE_BAR_NAV_GAP_PX +
-      TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
-    collapsedTopLeftReserve:
-      trafficLightReserve +
-      TITLE_BAR_CONTROL_SIZE_PX +
-      COLLAPSED_SIDEBAR_TRIGGER_GAP_PX -
-      PAGE_HEADER_BASE_INSET_PX,
-  };
-}
-
-export function getWindowCardMask(
+function getWindowCardMask(
   titleBarHeight: number,
   squareTopLeft: boolean,
 ): string {
@@ -139,66 +101,47 @@ interface StyleTarget {
   style: Pick<CSSStyleDeclaration, "setProperty">;
 }
 
-export function applyAppFrameGeometry(root: StyleTarget): void {
-  root.style.setProperty("--bb-frame-rail-padding", `${RAIL_PADDING_PX}px`);
-  root.style.setProperty(
-    "--bb-frame-rail-control-size",
-    `${RAIL_CONTROL_SIZE_PX}px`,
-  );
-  root.style.setProperty(
-    "--bb-title-bar-control-size",
-    `${TITLE_BAR_CONTROL_SIZE_PX}px`,
-  );
-  root.style.setProperty("--bb-title-bar-nav-gap", `${TITLE_BAR_NAV_GAP_PX}px`);
-  root.style.setProperty(
-    "--bb-title-bar-sidebar-toggle-gap",
-    `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
-  );
-  root.style.setProperty("--bb-frame-window-lip", `${WINDOW_FRAME_LIP_PX}px`);
-  root.style.setProperty(
-    "--bb-frame-footer-inset",
-    `${SIDEBAR_FOOTER_CARD_GAP_PX - CARD_BORDER_PX}px`,
-  );
-  root.style.setProperty(
-    "--bb-title-bar-trailing-edge-gap",
-    `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,
-  );
-}
-
-export function applyMacosWindowChromeGeometry(
+export function applyAppFrameGeometry(
   root: StyleTarget,
   desktopInfo: BbDesktopInfoResult,
 ): void {
-  if (!shouldUseMacosDesktopChrome(desktopInfo)) return;
-  const geometry = getMacosWindowChromeGeometry(desktopInfo);
-  root.style.setProperty(
-    "--bb-macos-traffic-light-center-y",
-    `${geometry.trafficLightCenterY}px`,
-  );
-  root.style.setProperty(
-    "--bb-window-title-bar-height",
-    `${geometry.titleBarHeight}px`,
-  );
-  root.style.setProperty(
-    "--bb-window-card-mask",
-    getWindowCardMask(geometry.titleBarHeight, false),
-  );
-  root.style.setProperty(
-    "--bb-window-card-mask-square-left",
-    getWindowCardMask(geometry.titleBarHeight, true),
-  );
-  root.style.setProperty(
-    "--bb-macos-traffic-light-reserve",
-    `${geometry.trafficLightReserve}px`,
-  );
-  root.style.setProperty(
-    "--bb-window-title-bar-controls-end",
-    `${geometry.titleBarControlsEnd}px`,
-  );
-  root.style.setProperty(
-    "--bb-macos-collapsed-top-left-reserve",
-    `${geometry.collapsedTopLeftReserve}px`,
-  );
+  const properties: Record<string, string> = {
+    "--bb-frame-rail-padding": `${RAIL_PADDING_PX}px`,
+    "--bb-frame-rail-control-size": `${RAIL_CONTROL_SIZE_PX}px`,
+    "--bb-frame-window-lip": `${WINDOW_FRAME_LIP_PX}px`,
+    "--bb-frame-footer-inset": `${SIDEBAR_FOOTER_CARD_GAP_PX - CARD_BORDER_PX}px`,
+    "--bb-title-bar-control-size": `${TITLE_BAR_CONTROL_SIZE_PX}px`,
+    "--bb-title-bar-sidebar-toggle-gap": `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
+    "--bb-title-bar-trailing-edge-gap": `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,
+  };
+  if (shouldUseMacosDesktopChrome(desktopInfo)) {
+    const inset =
+      desktopInfo?.macosTrafficLightInset ?? MACOS_TRAFFIC_LIGHT_INSET_PX;
+    const centerY =
+      (desktopInfo?.macosTrafficLightTopInset ??
+        MACOS_TRAFFIC_LIGHT_TOP_INSET_PX) +
+      MACOS_TRAFFIC_LIGHT_SIZE_PX / 2;
+    const titleBarHeight = 2 * centerY;
+    const reserve =
+      inset +
+      MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX +
+      MACOS_TRAFFIC_LIGHT_CLEARANCE_PX;
+    Object.assign(properties, {
+      "--bb-macos-traffic-light-center-y": `${centerY}px`,
+      "--bb-window-title-bar-height": `${titleBarHeight}px`,
+      "--bb-window-card-mask": getWindowCardMask(titleBarHeight, false),
+      "--bb-window-card-mask-square-left": getWindowCardMask(
+        titleBarHeight,
+        true,
+      ),
+      "--bb-macos-traffic-light-reserve": `${reserve}px`,
+      "--bb-window-title-bar-controls-end": `${reserve + TITLE_BAR_CONTROL_COUNT * TITLE_BAR_CONTROL_SIZE_PX + TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
+      "--bb-macos-collapsed-top-left-reserve": `${reserve + TITLE_BAR_CONTROL_SIZE_PX + COLLAPSED_SIDEBAR_TRIGGER_GAP_PX - PAGE_HEADER_BASE_INSET_PX}px`,
+    });
+  }
+  for (const [name, value] of Object.entries(properties)) {
+    root.style.setProperty(name, value);
+  }
 }
 
 export const DEFAULT_WINDOW_FIND_TOP_OFFSET = 48;

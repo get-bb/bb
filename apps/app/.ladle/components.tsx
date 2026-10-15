@@ -19,7 +19,7 @@ import { applyAppFrameGeometry } from "../src/lib/bb-desktop";
 import { ModelPickerStoryQueryProvider } from "./model-picker-query-provider";
 import "./ladle.css";
 
-applyAppFrameGeometry(document.documentElement);
+applyAppFrameGeometry(document.documentElement, null);
 
 const storyModelPickerMetaSchema = z.object({
   modelPickerCatalog: z.object({

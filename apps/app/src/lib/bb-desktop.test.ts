@@ -1,25 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX,
   MACOS_TRAFFIC_LIGHT_INSET_PX,
-  MACOS_TRAFFIC_LIGHT_SIZE_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
-  RAIL_CONTROL_SIZE_PX,
   RAIL_PADDING_PX,
-  SIDEBAR_FOOTER_CARD_GAP_PX,
-  TITLE_BAR_CONTROL_SIZE_PX,
-  TITLE_BAR_NAV_GAP_PX,
-  TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
-  TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX,
-  WINDOW_FRAME_LIP_PX,
   type BbDesktopInfo,
 } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
   DEFAULT_WINDOW_FIND_TOP_OFFSET,
   applyAppFrameGeometry,
-  applyMacosWindowChromeGeometry,
-  getMacosWindowChromeGeometry,
   resolveWindowFindTopOffset,
   shouldReserveMacosTrafficLights,
 } from "./bb-desktop";
@@ -36,19 +25,33 @@ const desktopInfo: BbDesktopInfo = {
 
 const macosDesktopApi = createBbDesktopApi(desktopInfo);
 
+function applyGeometry(
+  desktopApi: Parameters<typeof applyAppFrameGeometry>[1],
+): Map<string, string> {
+  const properties = new Map<string, string>();
+  applyAppFrameGeometry(
+    {
+      style: {
+        setProperty: (name: string, value: string) =>
+          properties.set(name, value),
+      },
+    },
+    desktopApi,
+  );
+  return properties;
+}
+
 describe("desktop chrome geometry", () => {
   it("reserves macOS traffic-light space only when lights are visible", () => {
-    const desktopApi = createBbDesktopApi(desktopInfo);
-
     expect(
       shouldReserveMacosTrafficLights({
-        desktopInfo: desktopApi,
+        desktopInfo: macosDesktopApi,
         windowState: { isFullScreen: false },
       }),
     ).toBe(true);
     expect(
       shouldReserveMacosTrafficLights({
-        desktopInfo: desktopApi,
+        desktopInfo: macosDesktopApi,
         windowState: { isFullScreen: true },
       }),
     ).toBe(false);
@@ -60,132 +63,39 @@ describe("desktop chrome geometry", () => {
     ).toBe(false);
   });
 
-  it.each([
-    {
-      name: "current desktop",
-      inset: MACOS_TRAFFIC_LIGHT_INSET_PX,
-      topInset: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
-    },
-    { name: "older desktop", inset: undefined, topInset: undefined },
-  ])(
-    "keeps $name chrome clear of and centered on the traffic lights",
-    ({ inset, topInset }) => {
-      const reportedInset = inset ?? MACOS_TRAFFIC_LIGHT_INSET_PX;
-      const reportedTopInset = topInset ?? MACOS_TRAFFIC_LIGHT_TOP_INSET_PX;
-      const geometry = getMacosWindowChromeGeometry({
-        ...macosDesktopApi,
-        macosTrafficLightInset: inset,
-        macosTrafficLightTopInset: topInset,
-      });
-      const CONTROL_SIZE = TITLE_BAR_CONTROL_SIZE_PX;
-      const TRAFFIC_LIGHT_CLEARANCE = 12;
-      const COLLAPSED_TRIGGER_GAP = 8;
-      const PAGE_HEADER_BASE_INSET = 16;
+  it("sizes the title bar around the lights the desktop shell reports", () => {
+    const properties = applyGeometry({
+      ...macosDesktopApi,
+      macosTrafficLightInset: 20,
+      macosTrafficLightTopInset: 21,
+    });
 
-      expect(geometry.trafficLightCenterY).toBe(
-        reportedTopInset + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2,
-      );
-      expect(geometry.titleBarHeight).toBe(2 * geometry.trafficLightCenterY);
-      expect(geometry.trafficLightCenterY + CONTROL_SIZE / 2).toBeLessThan(
-        geometry.titleBarHeight,
-      );
-      expect(geometry.trafficLightReserve).toBe(
-        reportedInset +
-          MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX +
-          TRAFFIC_LIGHT_CLEARANCE,
-      );
-      expect(PAGE_HEADER_BASE_INSET + geometry.collapsedTopLeftReserve).toBe(
-        geometry.trafficLightReserve + CONTROL_SIZE + COLLAPSED_TRIGGER_GAP,
-      );
-    },
-  );
+    expect(properties.get("--bb-macos-traffic-light-center-y")).toBe("28px");
+    expect(properties.get("--bb-window-title-bar-height")).toBe("56px");
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("92px");
+    expect(
+      decodeURIComponent(properties.get("--bb-window-card-mask") ?? ""),
+    ).toContain("<rect y='56' width='100%' height='100%' rx='12'/>");
+  });
 
-  it("puts the close button above the rail icons on the current desktop", () => {
-    expect(MACOS_TRAFFIC_LIGHT_INSET_PX + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2).toBe(
-      RAIL_PADDING_PX + RAIL_CONTROL_SIZE_PX / 2,
+  it("assumes the current light position when the shell reports none", () => {
+    const properties = applyGeometry(macosDesktopApi);
+
+    expect(properties.get("--bb-window-title-bar-height")).toBe(
+      `${2 * (MACOS_TRAFFIC_LIGHT_TOP_INSET_PX + 7)}px`,
+    );
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe(
+      `${MACOS_TRAFFIC_LIGHT_INSET_PX + 72}px`,
     );
   });
 
-  it("writes the rail and title-bar control sizes on every platform", () => {
-    const properties = new Map<string, string>();
-    applyAppFrameGeometry({
-      style: {
-        setProperty: (name: string, value: string) =>
-          properties.set(name, value),
-      },
-    });
+  it("writes the frame sizes everywhere but the title bar only on macOS", () => {
+    const properties = applyGeometry(null);
 
     expect(properties.get("--bb-frame-rail-padding")).toBe(
       `${RAIL_PADDING_PX}px`,
     );
-    expect(properties.get("--bb-frame-rail-control-size")).toBe(
-      `${RAIL_CONTROL_SIZE_PX}px`,
-    );
-    expect(properties.get("--bb-title-bar-control-size")).toBe(
-      `${TITLE_BAR_CONTROL_SIZE_PX}px`,
-    );
-    expect(properties.get("--bb-title-bar-nav-gap")).toBe(
-      `${TITLE_BAR_NAV_GAP_PX}px`,
-    );
-    expect(properties.get("--bb-title-bar-sidebar-toggle-gap")).toBe(
-      `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
-    );
-    expect(properties.get("--bb-frame-window-lip")).toBe(
-      `${WINDOW_FRAME_LIP_PX}px`,
-    );
-    expect(properties.get("--bb-frame-footer-inset")).toBe(
-      `${SIDEBAR_FOOTER_CARD_GAP_PX - 1}px`,
-    );
-    expect(properties.get("--bb-title-bar-trailing-edge-gap")).toBe(
-      `${TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX - TITLE_BAR_CONTROL_SIZE_PX / 2}px`,
-    );
-  });
-
-  it("mirrors the right-panel toggle's center to the red light's", () => {
-    expect(TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX).toBe(
-      MACOS_TRAFFIC_LIGHT_INSET_PX + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2,
-    );
-    expect(MACOS_TRAFFIC_LIGHT_INSET_PX).toBe(MACOS_TRAFFIC_LIGHT_TOP_INSET_PX);
-  });
-
-  it("applies the reported geometry to the document root", () => {
-    const properties = new Map<string, string>();
-    const root = {
-      style: {
-        setProperty: (name: string, value: string) =>
-          properties.set(name, value),
-      },
-    };
-
-    applyMacosWindowChromeGeometry(root, {
-      ...macosDesktopApi,
-      macosTrafficLightInset: MACOS_TRAFFIC_LIGHT_INSET_PX,
-      macosTrafficLightTopInset: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
-    });
-    const titleBarHeight =
-      2 * (MACOS_TRAFFIC_LIGHT_TOP_INSET_PX + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2);
-    expect(properties.get("--bb-window-title-bar-height")).toBe(
-      `${titleBarHeight}px`,
-    );
-    const cardMask = decodeURIComponent(
-      properties.get("--bb-window-card-mask") ?? "",
-    );
-    expect(cardMask).toContain(`<rect width='100%' height='${titleBarHeight}'/>`);
-    expect(cardMask).toContain(
-      `<rect y='${titleBarHeight}' width='100%' height='100%' rx='12'/>`,
-    );
-    expect(
-      decodeURIComponent(
-        properties.get("--bb-window-card-mask-square-left") ?? "",
-      ),
-    ).toContain(`<rect y='${titleBarHeight}' width='12' height='12'/>`);
-    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe(
-      `${MACOS_TRAFFIC_LIGHT_INSET_PX + MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX + 12}px`,
-    );
-
-    properties.clear();
-    applyMacosWindowChromeGeometry(root, null);
-    expect(properties.size).toBe(0);
+    expect(properties.has("--bb-window-title-bar-height")).toBe(false);
   });
 });
 
