@@ -183,7 +183,7 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
     coreThreadAction({
       id: "read",
       group: GROUPS.state,
-      order: 10,
+      order: 30,
       title: "Mark read / unread",
       icon: "MailOpen",
       item: ({ thread, sdk }) => ({
@@ -210,7 +210,7 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
     coreThreadAction({
       id: "pin",
       group: GROUPS.state,
-      order: 30,
+      order: 40,
       title: "Pin",
       icon: "Pin",
       item: ({ thread, sdk }) => {

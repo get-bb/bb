@@ -66,7 +66,7 @@ export const moveThreadAction: PluginThreadActionRegistration<
   title: "Move to section",
   icon: "SectionMove",
   group: experimental_THREAD_ACTION_GROUPS.organize,
-  order: 20,
+  order: 50,
   useData: useMoveDestinations,
   item: ({ thread, data: destinations, sdk }) => {
     if (
