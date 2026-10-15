@@ -405,15 +405,27 @@ describe("framed desktop sidebar", () => {
     const body = screen.getByTestId("body");
     expect(screen.getByTestId("framed-probe").textContent).toBe("true");
     expect(screen.getByTestId("wrapper").dataset.framed).toBe("");
-    expect(body.classList.contains("rounded-tl-xl")).toBe(true);
-    expect(body.classList.contains("rounded-bl-xl")).toBe(true);
-    expect(inset.classList.contains("before:rounded-tl-xl")).toBe(false);
-    expect(inset.classList.contains("before:rounded-bl-xl")).toBe(false);
+    expect(body.classList.contains("rounded-tl-(--bb-frame-card-radius)")).toBe(
+      true,
+    );
+    expect(body.classList.contains("rounded-bl-(--bb-frame-card-radius)")).toBe(
+      true,
+    );
+    expect(
+      inset.classList.contains("before:rounded-tl-(--bb-frame-card-radius)"),
+    ).toBe(false);
+    expect(
+      inset.classList.contains("before:rounded-bl-(--bb-frame-card-radius)"),
+    ).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
-    expect(inset.classList.contains("before:rounded-tl-xl")).toBe(true);
-    expect(inset.classList.contains("before:rounded-bl-xl")).toBe(true);
+    expect(
+      inset.classList.contains("before:rounded-tl-(--bb-frame-card-radius)"),
+    ).toBe(true);
+    expect(
+      inset.classList.contains("before:rounded-bl-(--bb-frame-card-radius)"),
+    ).toBe(true);
   });
 
   it("keeps a lip of window frame beside and below the card", () => {
@@ -434,8 +446,8 @@ describe("framed desktop sidebar", () => {
       "var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip)",
     );
     for (const edge of [
-      "before:rounded-tr-xl",
-      "before:rounded-br-xl",
+      "before:rounded-tr-(--bb-frame-card-radius)",
+      "before:rounded-br-(--bb-frame-card-radius)",
       "before:border-r",
       "px-px",
       "pb-px",

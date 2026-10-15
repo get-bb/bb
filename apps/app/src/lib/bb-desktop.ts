@@ -9,6 +9,7 @@ import {
   TITLE_BAR_CONTROL_SIZE_PX,
   TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX,
   TITLE_BAR_TRAILING_CONTROL_CENTER_INSET_PX,
+  WINDOW_CARD_RADIUS_PX,
   WINDOW_FRAME_LIP_PX,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
@@ -81,7 +82,6 @@ export function shouldReserveMacosTrafficLights({
 
 const MACOS_TRAFFIC_LIGHT_CLEARANCE_PX = 12;
 const CARD_BORDER_PX = 1;
-const WINDOW_CARD_RADIUS_PX = 12;
 const COLLAPSED_SIDEBAR_TRIGGER_GAP_PX = 8;
 const TITLE_BAR_CONTROL_COUNT = 3;
 const PAGE_HEADER_BASE_INSET_PX = 16;
@@ -109,6 +109,7 @@ export function applyAppFrameGeometry(
     "--bb-frame-rail-padding": `${RAIL_PADDING_PX}px`,
     "--bb-frame-rail-control-size": `${RAIL_CONTROL_SIZE_PX}px`,
     "--bb-frame-window-lip": `${WINDOW_FRAME_LIP_PX}px`,
+    "--bb-frame-card-radius": `${WINDOW_CARD_RADIUS_PX}px`,
     "--bb-frame-footer-inset": `${SIDEBAR_FOOTER_CARD_GAP_PX - CARD_BORDER_PX}px`,
     "--bb-title-bar-control-size": `${TITLE_BAR_CONTROL_SIZE_PX}px`,
     "--bb-title-bar-sidebar-toggle-gap": `${TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
