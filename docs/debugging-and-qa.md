@@ -15,6 +15,11 @@
 
 ## Desktop Browser Tab Recovery
 
+When the desktop app connects to a BB Connect server, it installs and renews
+the Connect desktop session in both the app and embedded browser cookie stores.
+This also authenticates shared-port links under the same Connect domain. The
+browser keeps its separate profile; unrelated site cookies are not copied.
+
 Saved desktop browser tabs keep their URL and owning host/window. Opening one
 in the desktop app attaches the existing view when that window still owns it,
 including after its connection generation changes. While the desktop or host is

@@ -52,7 +52,7 @@ describe("createAccountCookieSource", () => {
         : gateResponse(),
     );
     const result = await installConnectDesktopSession({
-      cookieStore: createCookieStore(),
+      cookieStores: [createCookieStore()],
       mintCookie: createAccountCookieSource({
         accountCookie: {
           name: "__Secure-better-auth.session_token",
@@ -190,6 +190,32 @@ function successfulSource() {
 }
 
 describe("installConnectDesktopSession", () => {
+  it("authenticates and renews both app and browser cookie stores", async () => {
+    const appCookies = createCookieStore();
+    const browserCookies = createCookieStore();
+    for (const value of ["initial-session", "renewed-session"]) {
+      const mintCookie = vi.fn(async () => ({
+        cookie: { ...COOKIE, value },
+        ok: true as const,
+      }));
+      const result = await installConnectDesktopSession({
+        cookieStores: [appCookies, browserCookies],
+        mintCookie,
+        remoteServerUrl: "https://laptop.getbb.app",
+      });
+      expect(result.ok).toBe(true);
+      for (const store of [appCookies, browserCookies]) {
+        expect(
+          await store.get({
+            name: COOKIE.name,
+            url: "https://laptop.getbb.app",
+          }),
+        ).toEqual([{ name: COOKIE.name, value }]);
+      }
+      expect(mintCookie).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("installs and verifies the cookie the source minted", async () => {
     const cookieStore = createCookieStore();
     const set = vi.spyOn(cookieStore, "set");
@@ -197,7 +223,7 @@ describe("installConnectDesktopSession", () => {
 
     await expect(
       installConnectDesktopSession({
-        cookieStore,
+        cookieStores: [cookieStore],
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),
@@ -222,7 +248,7 @@ describe("installConnectDesktopSession", () => {
   it("passes a mint failure through untouched", async () => {
     await expect(
       installConnectDesktopSession({
-        cookieStore: createCookieStore(),
+        cookieStores: [createCookieStore()],
         mintCookie: async () => ({
           code: "unauthorized",
           detail: "revoked",
@@ -236,14 +262,17 @@ describe("installConnectDesktopSession", () => {
   it("fails when Electron rejects or does not retain the cookie", async () => {
     await expect(
       installConnectDesktopSession({
-        cookieStore: {
-          async get() {
-            return [];
+        cookieStores: [
+          createCookieStore(),
+          {
+            async get() {
+              return [];
+            },
+            async set() {
+              throw new Error("cookie rejected");
+            },
           },
-          async set() {
-            throw new Error("cookie rejected");
-          },
-        },
+        ],
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),
@@ -255,12 +284,15 @@ describe("installConnectDesktopSession", () => {
 
     await expect(
       installConnectDesktopSession({
-        cookieStore: {
-          async get() {
-            return [];
+        cookieStores: [
+          createCookieStore(),
+          {
+            async get() {
+              return [];
+            },
+            async set() {},
           },
-          async set() {},
-        },
+        ],
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),
