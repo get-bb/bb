@@ -6,6 +6,8 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import { internalAuthHeaders } from "../helpers/commands.js";
 import {
   registerHostRpcResponder,
   EMPTY_WORKSPACE_AGENT_CONTEXT,
@@ -323,45 +325,77 @@ describe("public thread banner actions", () => {
     });
   });
 
-  it("persists a successful Plan cancellation and returns zero after refetch", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedBannerFixture(harness, { status: "active" });
-      seedActivePlan(harness, fixture);
-      const responder = registerHostRpcResponder(harness, {
-        hostId: fixture.hostId,
-        sessionId: fixture.sessionId,
-        handle: ({ command }) => {
-          expect(command).toMatchObject({
-            type: "thread.plan.cancel",
-            threadId: fixture.threadId,
-            expectedTurnId: "turn-plan-1",
-          });
-          return { ok: true, result: { cancelled: true } };
-        },
+  it.each([false, true])(
+    "settles Plan cancellation with an early completion event: %s",
+    async (earlyCompletion) => {
+      await withTestHarness(async (harness) => {
+        const fixture = seedBannerFixture(harness, { status: "active" });
+        seedActivePlan(harness, fixture);
+        const responder = registerHostRpcResponder(harness, {
+          hostId: fixture.hostId,
+          sessionId: fixture.sessionId,
+          handle: async ({ command }) => {
+            expect(command).toMatchObject({
+              type: "thread.plan.cancel",
+              threadId: fixture.threadId,
+              expectedTurnId: "turn-plan-1",
+            });
+            if (earlyCompletion) {
+              const completion = await harness.app.request(
+                "/internal/session/events",
+                {
+                  method: "POST",
+                  headers: internalAuthHeaders(harness),
+                  body: JSON.stringify({
+                    sessionId: fixture.sessionId,
+                    eventGroups: groupHostDaemonEvents([
+                      {
+                        threadId: fixture.threadId,
+                        event: {
+                          type: "turn/completed",
+                          threadId: fixture.threadId,
+                          providerThreadId: "provider-thread-1",
+                          scope: turnScope("turn-plan-1"),
+                          status: "interrupted",
+                        },
+                      },
+                    ]),
+                  }),
+                },
+              );
+              expect(completion.status).toBe(200);
+              expect(getThread(harness.db, fixture.threadId)?.status).toBe(
+                "idle",
+              );
+            }
+            return { ok: true, result: { cancelled: true } };
+          },
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${fixture.threadId}/plan/cancel`,
+          { method: "POST" },
+        );
+
+        expect(
+          response.status,
+          JSON.stringify(await readJson(response.clone())),
+        ).toBe(200);
+        expect(responder.requests).toHaveLength(1);
+        expect(getThread(harness.db, fixture.threadId)?.status).toBe("idle");
+        await expect(
+          readBannerActivity(harness, fixture),
+        ).resolves.toMatchObject({
+          activePlanModeCount: 0,
+        });
+        await expect(
+          readBannerActivity(harness, fixture),
+        ).resolves.toMatchObject({
+          activePlanModeCount: 0,
+        });
       });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${fixture.threadId}/plan/cancel`,
-        { method: "POST" },
-      );
-
-      expect(
-        response.status,
-        JSON.stringify(await readJson(response.clone())),
-      ).toBe(200);
-      expect(responder.requests).toHaveLength(1);
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activePlanModeCount: 0,
-        },
-      );
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activePlanModeCount: 0,
-        },
-      );
-    });
-  });
+    },
+  );
 
   it("keeps Plan active when provider cancellation fails", async () => {
     await withTestHarness(async (harness) => {
