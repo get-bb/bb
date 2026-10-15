@@ -898,7 +898,7 @@ export function CommandPaletteWireframe({
                   </span>
                   <CommandPaletteActionMark onRun={runReleaseChecklist} />
                   <span className="flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left">
-                    Copy thread link
+                    Copy link
                     <span className="ml-auto text-muted-foreground">
                       Thread
                     </span>

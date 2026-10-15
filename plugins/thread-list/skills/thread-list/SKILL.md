@@ -66,7 +66,7 @@ keys still work. The default is `'["bb--core/archive"]'` and `'[]'` leaves
 only the menu. For example,
 `bb thread-list prefs set rowActions '["bb--core/pin","bb--core/archive"]'`.
 In the app, a thread
-row's actions menu has Customize row actions, which turns that row's quick
+row's actions menu has Customize actions, which turns that row's quick
 actions into three editable slots in place; each slot picks an action, a filled
 slot can Hide, and filled slots drag to reorder. Done, Escape, or a click
 elsewhere finishes.

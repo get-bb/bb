@@ -1564,7 +1564,7 @@ export interface PluginThreadActionItemInput<Data> {
  * Add an action to every thread actions menu: the thread header's menu, the
  * sidebar row's menu and right-click menu, the compact long-press drawer, and,
  * when the user picks it, a sidebar row's quick-action buttons. bb's own
- * actions (Open in split, Copy thread link, Mark read, Pin, Rename, Archive,
+ * actions (Open in split, Copy link, Mark read, Pin, Rename, Archive,
  * Delete, …) are registrations of this same shape.
  *
  * `useData` is a React hook the host calls once for the whole app, never per

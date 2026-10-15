@@ -168,10 +168,10 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
       id: "copyLink",
       group: GROUPS.open,
       order: 20,
-      title: "Copy thread link",
+      title: "Copy link",
       icon: "Copy",
       item: ({ thread }) => ({
-        label: "Copy thread link",
+        label: "Copy link",
         icon: "Copy",
         run: () =>
           copyToClipboardWithToast(getThreadUrl(thread), {

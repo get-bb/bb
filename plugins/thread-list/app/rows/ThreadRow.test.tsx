@@ -305,7 +305,7 @@ function hostThreadActions({
     });
     const isArchived = thread.archivedAt !== null;
     return [
-      entry("bb--core/copyLink", "Copy thread link", "Copy"),
+      entry("bb--core/copyLink", "Copy link", "Copy"),
       entry(
         "bb--core/pin",
         thread.pinnedAt === null ? "Pin" : "Unpin",
@@ -473,7 +473,7 @@ describe("ThreadRow", () => {
       Array.from(controls?.querySelectorAll("button") ?? []).map((button) =>
         button.getAttribute("aria-label"),
       ),
-    ).toEqual(["Pin", "Copy thread link", "Archive", "Thread actions"]);
+    ).toEqual(["Pin", "Copy link", "Archive", "Thread actions"]);
     expect(
       document
         .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
@@ -547,7 +547,7 @@ describe("ThreadRow", () => {
   });
 
   it.each(["dropdown", "context"] as const)(
-    "adds Customize row actions to the %s menu",
+    "adds Customize actions to the %s menu",
     async (surface) => {
       const customize = vi.fn();
       renderThreadRow({ onCustomizeRowActions: customize });
@@ -559,18 +559,18 @@ describe("ThreadRow", () => {
         );
       }
       fireEvent.click(
-        await screen.findByRole("menuitem", { name: "Customize row actions" }),
+        await screen.findByRole("menuitem", { name: "Customize actions" }),
       );
       expect(customize).toHaveBeenCalledWith("thr_test");
     },
   );
 
-  it("leaves Customize row actions out when the list cannot customize", async () => {
+  it("leaves Customize actions out when the list cannot customize", async () => {
     renderThreadRow();
     fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
     await screen.findByRole("menuitem", { name: "Rename" });
     expect(
-      screen.queryByRole("menuitem", { name: "Customize row actions" }),
+      screen.queryByRole("menuitem", { name: "Customize actions" }),
     ).toBeNull();
   });
 

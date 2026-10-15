@@ -167,7 +167,7 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 
 `app.slots.experimental_threadAction` adds an entry to the thread header's
 actions menu, the sidebar row's menu, its right-click menu, the compact
-long-press drawer, and, when the user picks it in Customize row actions, a
+long-press drawer, and, when the user picks it in Customize actions, a
 sidebar row's quick-action buttons. bb's own actions are registrations of the
 same shape.
 

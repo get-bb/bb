@@ -1507,7 +1507,7 @@ resolves with that slot's `experimental_copyToClipboard` render option
 **Core callers.** The export is `copyToClipboard` from
 `apps/app/src/lib/clipboard.ts`. Core copies call it directly or through
 `copyToClipboardWithToast` and `useClipboardCopy`: `CopyButton`, the message
-action bar, file preview, terminal, and the Copy thread link thread action.
+action bar, file preview, terminal, and the Copy link thread action.
 
 Docs: `frontend-hooks-and-ui.md`.
 

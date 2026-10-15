@@ -443,7 +443,7 @@ function ThreadRowComponent({
             key: CUSTOMIZE_ROW_ACTIONS_KEY,
             group: experimental_THREAD_ACTION_GROUPS.settings,
             action: {
-              label: "Customize row actions",
+              label: "Customize actions",
               icon: "FilterHorizontal",
               run: () => {
                 const begin = () => customizeRowActions(thread.id);

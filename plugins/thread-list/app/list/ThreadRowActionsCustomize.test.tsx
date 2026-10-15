@@ -27,7 +27,7 @@ const REGISTRATIONS: readonly PluginThreadActionRegistrationInfo[] = [
   {
     key: "bb--core/copyLink",
     pluginId: "bb--core",
-    title: "Copy thread link",
+    title: "Copy link",
     icon: "Copy",
   },
   {
