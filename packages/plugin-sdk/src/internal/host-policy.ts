@@ -3511,6 +3511,7 @@ function normalizePluginAgentSelectionIds(args: {
 export function normalizePluginAgentConfiguration(args: {
   knownSkillIds: ReadonlySet<string>;
   knownToolIds: ReadonlySet<string>;
+  onWarning: (message: string) => void;
   pluginId: string;
   value: unknown;
 }): {
@@ -3551,6 +3552,15 @@ export function normalizePluginAgentConfiguration(args: {
           PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
         )
       : null;
+  if (
+    typeof output.instructions === "string" &&
+    instructions !== null &&
+    output.instructions.length > instructions.length
+  ) {
+    args.onWarning(
+      `configure() output.instructions truncated from ${output.instructions.length} to ${PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS} characters`,
+    );
+  }
   const toolSelections = normalizePluginAgentToolSelections({
     knownIds: args.knownToolIds,
     pluginId: args.pluginId,

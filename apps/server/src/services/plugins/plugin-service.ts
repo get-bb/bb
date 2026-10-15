@@ -2258,6 +2258,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         .map(([pluginId, plugin]) => ({
           pluginId,
           provider: plugin.handle.agentConfigurationProvider,
+          log: plugin.handle.api.log,
         }));
       const configuringPluginIds = plugins
         .filter(({ provider }) => provider !== null)
@@ -2277,7 +2278,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         metadataByPluginId.set(row.pluginId, metadata ?? {});
       }
 
-      for (const { pluginId, provider } of plugins) {
+      for (const { pluginId, provider, log } of plugins) {
         const pluginTools = allTools.filter(
           (entry) => entry.pluginId === pluginId,
         );
@@ -2298,6 +2299,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           normalizePluginAgentConfiguration({
             knownSkillIds,
             knownToolIds,
+            onWarning: (message) => log.warn(message),
             pluginId,
             value: provider({
               ...context,

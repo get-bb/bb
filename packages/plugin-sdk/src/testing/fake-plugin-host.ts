@@ -2106,6 +2106,7 @@ function createFakePluginHostInternal(
         const normalized = normalizePluginAgentConfiguration({
           knownSkillIds: new Set(agentSkillIds),
           knownToolIds: new Set(agentTools.map((tool) => tool.name)),
+          onWarning: (message) => emitLog("warn", message),
           pluginId,
           value: agentConfigurationProvider({ ...context, pluginMetadata }),
         });

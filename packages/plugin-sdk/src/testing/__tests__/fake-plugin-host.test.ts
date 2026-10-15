@@ -1549,6 +1549,15 @@ describe("agent tools", () => {
     expect(alpha.tools.map((tool) => tool.name)).toEqual(["alpha_tool"]);
     expect(alpha.skills).toEqual(["alpha-skill"]);
     expect(alpha.instructions).toHaveLength(4096);
+    expect(harness.logEntries).toHaveLength(2);
+    for (const entry of harness.logEntries) {
+      expect(entry).toEqual({
+        level: "warn",
+        message: expect.stringContaining(
+          "configure() output.instructions truncated from 5000 to 4096 characters",
+        ),
+      });
+    }
     expect(beta.tools.map((tool) => tool.name)).toEqual(["beta_tool"]);
     expect(beta.skills).toEqual(["beta-skill"]);
     expect(contexts).toEqual([configurationContext, betaContext]);
@@ -1557,6 +1566,25 @@ describe("agent tools", () => {
       "beta_tool",
     ]);
   });
+
+  it.each([
+    { label: "at the limit", instructions: "x".repeat(4096) },
+    { label: "blank", instructions: " ".repeat(5000) },
+  ])(
+    "does not warn for $label dynamic instructions",
+    async ({ instructions }) => {
+      const { bb, harness } = createFakePluginHost();
+      bb.agents.configure(() => ({ tools: [], skills: [], instructions }));
+
+      const result =
+        await harness.resolveAgentConfiguration(configurationContext);
+
+      expect(result.instructions).toBe(
+        instructions.trim() ? instructions : null,
+      );
+      expect(harness.logEntries).toEqual([]);
+    },
+  );
 
   it("fails closed for unknown and duplicate configure ids", async () => {
     const unknown = createFakePluginHost({ agentSkillIds: ["known-skill"] });
