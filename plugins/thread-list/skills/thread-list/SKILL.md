@@ -34,7 +34,8 @@ On first load the plugin copies any non-default `sidebar.*` values from
 `environmentGrouping` decides whether sibling threads sharing one worktree
 collapse into a single row: `"auto"` (default) groups them in every
 organization except chronological, `false` never groups, and `true` always
-groups. `sortDirection` is `default` (each field's natural order: newest first
+groups. Children sharing their parent’s worktree stay directly beneath the
+parent without another worktree header. `sortDirection` is `default` (each field's natural order: newest first
 for dates, A–Z for titles), `ascending`, or `descending`.
 
 `hiddenGroups` (default `[]`) moves groups into More, the same as a group
