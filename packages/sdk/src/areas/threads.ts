@@ -776,6 +776,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     // Present ⇒ the message joins the queue waiting for the clock instead
     // of attempting now; the response reports `delivery: "queued"`.
     sendAt: args.sendAt,
+    compactFirst: args.compactFirst,
   };
 }
 

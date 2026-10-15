@@ -171,7 +171,9 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live
 connection as row deltas instead of reloading the latest window after each
-update.
+update. `compactExpiredCache` offers a Compact chip in the composer when an idle
+thread's prompt cache has expired and its context holds at least 100k tokens;
+see `bb guide thread-messaging` for `--compact-first`.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `timelinePush`; an experiment you set yourself keeps your value.

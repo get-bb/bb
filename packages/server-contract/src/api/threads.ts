@@ -261,6 +261,14 @@ const sendMessageRequestFieldsSchema = z.object({
    * sweep re-attempts it then. Absent ⇒ attempt the dispatch now.
    */
   sendAt: z.number().int().nonnegative().optional(),
+  /**
+   * Compact the thread's context with the provider's manual compaction, then
+   * deliver this message once compaction finishes; the response reports
+   * `delivery: "queued"`. Needs an idle or errored thread whose provider
+   * supports manual compaction, and cannot be combined with `sendAt` or
+   * `mode: "steer"`. Absent ⇒ send without compacting.
+   */
+  compactFirst: z.literal(true).optional(),
 });
 
 export const sendMessageRequestSchema = sendMessageRequestFieldsSchema;
@@ -296,7 +304,12 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestFieldsSchema
-  .omit({ mode: true, sendAt: true, pluginSubmission: true })
+  .omit({
+    mode: true,
+    sendAt: true,
+    pluginSubmission: true,
+    compactFirst: true,
+  })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),

@@ -60,6 +60,10 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import {
+  CompactBeforeSendChip,
+  type CompactBeforeSendOffer,
+} from "@/components/promptbox/CompactBeforeSendChip";
+import {
   PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_TRACK_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
@@ -154,6 +158,7 @@ export interface FollowUpPromptBoxProps {
   environmentSummary: ReactNode | null;
   compactEnvironmentSummary?: ReactNode;
   contextWindowUsage: ContextWindowUsage | null;
+  compactBeforeSend?: CompactBeforeSendOffer | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
   sessionOptionsControl?: ReactNode;
@@ -232,6 +237,7 @@ function FollowUpPromptBoxWithComposer({
   environmentSummary,
   compactEnvironmentSummary = null,
   contextWindowUsage,
+  compactBeforeSend = null,
   execution,
   permission,
   sessionOptionsControl = null,
@@ -810,6 +816,9 @@ function FollowUpPromptBoxWithComposer({
           <div className="flex shrink-0 items-center gap-2 max-md:gap-0">
             {sessionOptionsControl}
             {permissionControl}
+            {compactBeforeSend ? (
+              <CompactBeforeSendChip {...compactBeforeSend} />
+            ) : null}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />
             ) : null}

@@ -21,6 +21,7 @@ Messaging:
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --compact-first                        Compact the idle thread's context, then send when compaction finishes
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                         CLI-local absolute path, file: URL, or uploaded image path
 
@@ -137,6 +138,11 @@ Queued messages:
   as a steer; it does not bypass the invariants, so a provisioning row remains
   queued until the workspace is ready.
   `queue delete` discards it instead. Both are always permitted.
+
+  --compact-first runs the same /compact turn as `bb thread compact` and queues
+  the message behind it, so it needs an idle or errored thread whose provider
+  supports manual compaction; it cannot be combined with --send-at or
+  --mode steer. The SDK takes `compactFirst: true` on `threads.send`.
 
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already

@@ -29,6 +29,7 @@ import {
 } from "./timeline-cache.js";
 import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
 import { createTimelineLatestRowsCache } from "./timeline-latest-rows-cache.js";
+import { isCompactionOfferEnabled } from "./compaction-offer.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -114,6 +115,7 @@ export function createThreadTimelineWindows(
     );
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const surfaceOptions = {
+      compactionOfferEnabled: isCompactionOfferEnabled(deps, thread.providerId),
       completedTurnDisplay,
       deferContent: request.deferContent,
       includeClearedContextHistory,

@@ -31,6 +31,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   performanceDiagnosticsAvailable: false,
   experiments: {
     changelogPreview: false,
+    compactExpiredCache: false,
     serverMove: false,
     performanceDiagnostics: false,
     timelinePush: false,

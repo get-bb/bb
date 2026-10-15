@@ -43,6 +43,7 @@ import type {
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import type { CompactBeforeSendOffer } from "@/components/promptbox/CompactBeforeSendChip";
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
@@ -539,6 +540,7 @@ interface RowConfig {
   promptPlaceholder?: string;
   environmentSummary?: ReactNode | null;
   contextWindowUsage?: ThreadContextWindowUsage | null;
+  compactBeforeSend?: CompactBeforeSendOffer | null;
   stack?: ReactNode | null;
   queuedMessages?: readonly ThreadQueuedMessage[];
   collapseResetKey?: string;
@@ -579,6 +581,7 @@ function Row({
   promptPlaceholder,
   environmentSummary = localEnvironmentSummary,
   contextWindowUsage = null,
+  compactBeforeSend = null,
   stack = null,
   queuedMessages: initialQueuedMessages,
   collapseResetKey = "thr_demo",
@@ -788,6 +791,7 @@ function Row({
         }
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
+        compactBeforeSend={compactBeforeSend}
         execution={execution}
         permission={permission}
         activePromptMode={activePromptMode}
@@ -812,6 +816,27 @@ function StackedCardsWithPillsRow() {
       queuedMessages={queuedMessages}
       contextWindowUsage={usage}
       environmentSummary={multiMachineEnvironmentSummary}
+    />
+  );
+}
+
+const expiredCacheUsage: ThreadContextWindowUsage = {
+  usedTokens: 331_000,
+  modelContextWindow: 1_000_000,
+  estimated: false,
+};
+
+function CompactBeforeSendRow() {
+  const [compactFirst, setCompactFirst] = useState(true);
+  return (
+    <Row
+      submitMode={{ kind: "ready" }}
+      contextWindowUsage={expiredCacheUsage}
+      compactBeforeSend={{
+        compactFirst,
+        tokens: expiredCacheUsage.usedTokens,
+        onToggle: () => setCompactFirst((current) => !current),
+      }}
     />
   );
 }
@@ -892,6 +917,12 @@ export function Overview() {
           }}
           environmentSummary={detachedWorktreeEnvironmentSummary}
         />
+      </StoryRow>
+      <StoryRow
+        label="prompt cache expired"
+        hint="click the chip to switch between compacting first and keeping the full history"
+      >
+        <CompactBeforeSendRow />
       </StoryRow>
       <StoryRow label="with promptbox context banner">
         <Row

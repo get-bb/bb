@@ -158,11 +158,13 @@ import {
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
+import { useTimeHasPassed } from "@/hooks/useTimeHasPassed";
 import {
   buildAutoFollowUpRequest,
   buildCreateQueuedFollowUpRequest,
   buildFollowUpSubmitMode,
   buildFollowUpShortcutRequest,
+  canCompactBeforeSend,
   canSubmitFollowUpShortcut,
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
@@ -938,6 +940,21 @@ export function ThreadDetailPromptArea({
     resolveMentionLink,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
+  const compactionOfferAt = contextWindowUsage?.compactionOfferAt;
+  const compactionOfferDue = useTimeHasPassed(
+    compactionOfferAt === undefined ? null : Date.parse(compactionOfferAt),
+  );
+  const [fullHistoryThreadId, setFullHistoryThreadId] = useState<string | null>(
+    null,
+  );
+  const compactBeforeSendTokens =
+    compactionOfferDue &&
+    contextWindowUsage &&
+    canCompactBeforeSend(runtimeDisplayStatus)
+      ? contextWindowUsage.usedTokens
+      : null;
+  const compactFirst =
+    compactBeforeSendTokens !== null && fullHistoryThreadId !== thread.id;
   const shouldSteerWhenReady =
     runtimeDisplayStatus === "provisioning" ||
     runtimeDisplayStatus === "starting";
@@ -1309,12 +1326,14 @@ export function ThreadDetailPromptArea({
         }
       } else {
         const request = buildAutoFollowUpRequest({
+          compactFirst,
           threadId: thread.id,
           input: submittedInput,
           execution: followUpExecutionSelection,
         });
         if (request) {
           await sendMessage.mutateAsync(request);
+          setFullHistoryThreadId(null);
         }
       }
     } catch (nextError) {
@@ -1328,6 +1347,7 @@ export function ThreadDetailPromptArea({
       });
     }
   }, [
+    compactFirst,
     createHandoffThread,
     createQueuedMessage,
     currentPromptDraft,
@@ -1377,6 +1397,7 @@ export function ThreadDetailPromptArea({
       }
       const submittedDraft = promptDraft.getCurrent();
       const request = buildAutoFollowUpRequest({
+        compactFirst: compactFirst && submitOptions.sendAt === undefined,
         threadId: thread.id,
         input: promptDraftToInput(submittedDraft),
         execution: followUpExecutionSelection,
@@ -1395,6 +1416,7 @@ export function ThreadDetailPromptArea({
             : { sendAt: submitOptions.sendAt }),
           ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
         });
+        setFullHistoryThreadId(null);
       } catch (scheduleError) {
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
@@ -1409,6 +1431,7 @@ export function ThreadDetailPromptArea({
       }
     },
     [
+      compactFirst,
       createHandoffThread,
       shouldHideComposer,
       effectiveSelectedModel,
@@ -2400,6 +2423,16 @@ export function ThreadDetailPromptArea({
       environmentSummary={environmentSummary}
       compactEnvironmentSummary={compactEnvironmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
+      compactBeforeSend={
+        compactBeforeSendTokens === null
+          ? null
+          : {
+              compactFirst,
+              tokens: compactBeforeSendTokens,
+              onToggle: () =>
+                setFullHistoryThreadId(compactFirst ? thread.id : null),
+            }
+      }
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}
       sessionOptionsControl={sessionOptionsControl}

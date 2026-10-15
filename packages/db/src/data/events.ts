@@ -3412,6 +3412,28 @@ export function listContextWindowUsageRows(
   });
 }
 
+export function getLatestTokenUsageRow(
+  db: DbConnection,
+  args: ListContextWindowUsageRowsArgs,
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          gte(events.sequence, args.sequenceStart),
+          eq(events.type, "thread/tokenUsage/updated"),
+          isNotNestedTurnUsageEvent,
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 export function getLatestThreadOutputEventRow(
   db: DbConnection,
   args: GetLatestThreadOutputEventRowArgs,

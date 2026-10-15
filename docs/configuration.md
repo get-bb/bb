@@ -734,6 +734,14 @@ set yourself keeps your value either way. `/system/config` and
 
 - `changelogPreview` shows the latest release notes as a dismissible card on
   Settings → Updates.
+- `compactExpiredCache` reports `compactionOfferAt` on a thread's context
+  usage (timeline `contextWindowUsage` and `bb thread context`) once the
+  provider has reported a prompt-cache lifetime, the provider supports manual
+  compaction, and the context holds at least 100k tokens. After that time the
+  composer shows a Compact chip beside the context meter; while it is on, the
+  next send passes `compactFirst` so the server runs `/compact` and queues the
+  message behind it. Clicking the chip keeps the full history for that one
+  send.
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel

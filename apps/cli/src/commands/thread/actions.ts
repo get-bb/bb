@@ -95,6 +95,7 @@ interface ThreadTellCommandOptions {
   file?: string[];
   image?: string[];
   sendAt?: string;
+  compactFirst?: boolean;
 }
 
 interface ThreadActionOptions {
@@ -134,6 +135,7 @@ interface PostThreadMessageArgs {
   files?: readonly string[];
   images?: readonly string[];
   sendAt?: number;
+  compactFirst: boolean;
 }
 
 // The server's own answer plus the mode we asked for. `sendAt` used to be
@@ -516,6 +518,10 @@ export function registerActionsCommands(
       "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
     )
     .option("--send-at <when>", SEND_AT_HELP)
+    .option(
+      "--compact-first",
+      "Compact the idle thread's context first, then send this message when compaction finishes",
+    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -558,9 +564,14 @@ export function registerActionsCommands(
             ...(opts.sendAt === undefined
               ? {}
               : { sendAt: parseSendAt(opts.sendAt) }),
+            compactFirst: opts.compactFirst === true,
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
-          console.log(describeThreadTellOutcome(id, response));
+          console.log(
+            opts.compactFirst === true
+              ? `Thread ${id} compacting; the message sends when compaction finishes`
+              : describeThreadTellOutcome(id, response),
+          );
         },
       ),
     );
@@ -679,6 +690,7 @@ async function postThreadMessage(
       ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
       ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
       ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
+      ...(args.compactFirst ? { compactFirst: true } : {}),
     });
   } catch (error: unknown) {
     throw await withRestoreEnvironmentHint(sdk, args.threadId, error);

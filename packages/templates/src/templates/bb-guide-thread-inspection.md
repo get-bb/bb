@@ -73,7 +73,10 @@ Inspecting:
   a provider request; `--json` prints `{ usage: ... }` (`null` when unavailable).
   Claude Code includes an estimated breakdown when available; other providers
   report totals. When the provider reports the session's cumulative cost,
-  `usage.cost` is `{ amount, currency }`.
+  `usage.cost` is `{ amount, currency }`. With the `compactExpiredCache`
+  experiment on, `usage.compactionOfferAt` is when the provider's prompt cache
+  for this context expires (Claude Code and Pi report cache lifetimes); after
+  it, `bb thread tell --compact-first` avoids re-reading the context uncached.
 
   `thread commands` lists the slash commands advertised for the current
   session; ACP agents report these live, so the list is empty until the agent

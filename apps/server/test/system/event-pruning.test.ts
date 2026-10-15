@@ -214,6 +214,7 @@ describe("thread event pruning", () => {
         eventBudget: 1_000_000,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: true,
+        compactionOfferEnabled: false,
         summarizeShellCommands: true,
         maxInlineOutputChars: null,
         maxSeq: 0,

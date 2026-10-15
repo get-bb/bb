@@ -40,6 +40,7 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         changelogPreview: false,
+        compactExpiredCache: false,
         serverMove: false,
         performanceDiagnostics: false,
         timelinePush: false,
@@ -68,6 +69,7 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           changelogPreview: true,
+          compactExpiredCache: true,
           serverMove: true,
           performanceDiagnostics: true,
           timelinePush: true,
@@ -76,12 +78,14 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
+        compactExpiredCache: true,
         serverMove: true,
         performanceDiagnostics: true,
         timelinePush: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
+        compactExpiredCache: true,
         serverMove: true,
         performanceDiagnostics: true,
         timelinePush: true,
@@ -92,6 +96,7 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         changelogPreview: true,
+        compactExpiredCache: true,
         serverMove: true,
         performanceDiagnostics: true,
         timelinePush: true,
@@ -106,6 +111,7 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
+        compactExpiredCache: false,
         serverMove: true,
         performanceDiagnostics: false,
         timelinePush: false,

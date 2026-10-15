@@ -1121,6 +1121,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
+  compactExpiredCache: {
+    label: "Compact before resuming expired sessions",
+    description:
+      "When an idle Claude Code or Pi thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before the next send. Click the chip to keep the full history for that send.",
+  },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:

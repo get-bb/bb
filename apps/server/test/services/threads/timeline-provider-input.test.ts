@@ -162,6 +162,7 @@ describe("timeline pages with provider-recorded input", () => {
       eventBudget: 1_000_000,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
       summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,

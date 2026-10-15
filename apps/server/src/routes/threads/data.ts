@@ -33,6 +33,10 @@ import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import { requireThreadStorageTarget } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
+  isCompactionOfferEnabled,
+  withCompactionOffer,
+} from "../../services/threads/compaction-offer.js";
+import {
   toThreadEventWithMeta,
   buildThreadConversationOutlineProjectionKey,
   getThreadMessage,
@@ -219,8 +223,19 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       threadId: thread.id,
       sequenceStart,
     });
+    const usage = extractThreadContextWindowUsage(
+      rows.map(toThreadEventWithMeta),
+    );
     return context.json({
-      usage: extractThreadContextWindowUsage(rows.map(toThreadEventWithMeta)),
+      usage:
+        usage === null
+          ? null
+          : withCompactionOffer(deps.db, {
+              enabled: isCompactionOfferEnabled(deps, thread.providerId),
+              sequenceStart,
+              threadId: thread.id,
+              usage,
+            }),
     });
   });
 
