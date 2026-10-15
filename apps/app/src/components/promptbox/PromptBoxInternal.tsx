@@ -3790,7 +3790,7 @@ export function PromptBoxInternal({
         <FailedVoiceRecordings
           recordings={voice.failedRecordings}
           className="px-1.5 pt-1.5"
-          retryDisabled={voice.state === "recording" || isVoiceProcessing}
+          retryDisabled={false}
           onRetry={voice.retry}
           onDownload={voice.download}
           onDiscard={voice.discard}

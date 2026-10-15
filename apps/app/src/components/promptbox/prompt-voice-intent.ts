@@ -39,16 +39,3 @@ export function deliverPromptVoiceTranscript(
   });
   if (send) return draft.submit?.({ experimental_data: null }, undefined);
 }
-
-export async function transcribeAfterCompletionTransition(
-  transcribe: () => Promise<string>,
-  playCompletionTransition: () => Promise<void> | undefined,
-  signal: AbortSignal | undefined,
-): Promise<string> {
-  const text = await transcribe();
-  await playCompletionTransition();
-  if (signal?.aborted) {
-    throw new DOMException("Voice transcription was cancelled", "AbortError");
-  }
-  return text;
-}

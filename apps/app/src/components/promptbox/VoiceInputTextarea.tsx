@@ -64,7 +64,7 @@ export function VoiceInputTextarea({
         <FailedVoiceRecordings
           recordings={voice.failedRecordings}
           className="mb-2"
-          retryDisabled={disabled === true || voice.isListening}
+          retryDisabled={disabled === true}
           onRetry={voice.retry}
           onDownload={voice.download}
           onDiscard={voice.discard}

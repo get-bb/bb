@@ -81,11 +81,14 @@ export function FailedVoiceRecordings({
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={retryDisabled}
+                  disabled={retryDisabled || recording.retrying}
                   onClick={() => onRetry(recording)}
-                  className={ACTION_BUTTON_CLASS}
+                  className={cn(
+                    ACTION_BUTTON_CLASS,
+                    recording.retrying && "disabled:opacity-100",
+                  )}
                 >
-                  Retry
+                  {recording.retrying ? "Retrying…" : "Retry"}
                 </Button>
                 <Button
                   type="button"

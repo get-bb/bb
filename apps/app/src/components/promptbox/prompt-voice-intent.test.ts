@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PromptDraftState } from "@bb/client-core";
 import type { PromptBoxHandle } from "./PromptBoxInternal";
-import {
-  deliverPromptVoiceTranscript,
-  transcribeAfterCompletionTransition,
-} from "./prompt-voice-intent";
+import { deliverPromptVoiceTranscript } from "./prompt-voice-intent";
 
 function createPromptBox() {
   return {
@@ -16,36 +13,6 @@ function createPromptBox() {
     playVoiceCompletionTransition: vi.fn(async () => {}),
   } satisfies PromptBoxHandle;
 }
-
-describe("transcribeAfterCompletionTransition", () => {
-  it("waits for the completion transition after transcription resolves", async () => {
-    let finishTransition: (() => void) | undefined;
-    const playCompletionTransition = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishTransition = resolve;
-        }),
-    );
-    const transcription = transcribeAfterCompletionTransition(
-      async () => "Transcript",
-      playCompletionTransition,
-      undefined,
-    );
-
-    await vi.waitFor(() =>
-      expect(playCompletionTransition).toHaveBeenCalledOnce(),
-    );
-    let settled = false;
-    void transcription.then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-
-    finishTransition?.();
-    await expect(transcription).resolves.toBe("Transcript");
-  });
-});
 
 describe("deliverPromptVoiceTranscript", () => {
   it.each([

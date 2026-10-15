@@ -5,7 +5,6 @@ import type { VoiceDelivery } from "@/lib/voice-recording-store";
 import type { PromptBoxHandle, PromptVoiceConfig } from "./PromptBoxInternal";
 import {
   deliverPromptVoiceTranscript,
-  transcribeAfterCompletionTransition,
   type PromptVoiceDraftTarget,
 } from "./prompt-voice-intent";
 
@@ -50,21 +49,17 @@ export function usePromptVoice(
     [promptBoxRef],
   );
 
-  const onTranscribe = useCallback(
-    (args: Parameters<typeof requestVoiceTranscription>[0]) =>
-      transcribeAfterCompletionTransition(
-        () => requestVoiceTranscription(args),
-        () => promptBoxRef.current?.playVoiceCompletionTransition(),
-        args.signal,
-      ),
+  const playCompletionTransition = useCallback(
+    () => promptBoxRef.current?.playVoiceCompletionTransition(),
     [promptBoxRef],
   );
 
   const voiceInput = useVoiceInput({
     recordingKey,
     onTranscript,
-    onTranscribe,
+    onTranscribe: requestVoiceTranscription,
     getPromptContext,
+    playCompletionTransition,
   });
 
   const { stop: stopVoiceInput } = voiceInput;

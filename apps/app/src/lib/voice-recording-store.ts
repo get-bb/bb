@@ -22,12 +22,13 @@ export interface VoiceRecording {
 
 export interface FailedVoiceRecording extends VoiceRecording {
   errorMessage: string | null;
+  retrying: boolean;
 }
 
 interface VoiceRecordingEntry {
   recording: VoiceRecording;
   persisted: boolean;
-  transcribing: boolean;
+  status: "transcribing" | "failed" | "retrying";
   errorMessage: string | null;
 }
 
@@ -79,8 +80,14 @@ function readSnapshot(key: string): readonly FailedVoiceRecording[] {
   if (cached) return cached;
   const failed: FailedVoiceRecording[] = [];
   for (const entry of entries.values()) {
-    if (entry.recording.key !== key || entry.transcribing) continue;
-    failed.push({ ...entry.recording, errorMessage: entry.errorMessage });
+    if (entry.recording.key !== key || entry.status === "transcribing") {
+      continue;
+    }
+    failed.push({
+      ...entry.recording,
+      errorMessage: entry.errorMessage,
+      retrying: entry.status === "retrying",
+    });
   }
   failed.sort((left, right) => left.createdAt - right.createdAt);
   const snapshot = failed.length === 0 ? EMPTY_RECORDINGS : failed;
@@ -108,7 +115,7 @@ function hydrate(key: string): void {
           promptContext: promptContext ?? undefined,
         },
         persisted: true,
-        transcribing: false,
+        status: "failed",
         errorMessage: null,
       });
       restored = true;
@@ -144,7 +151,7 @@ export function saveVoiceRecording(
   entries.set(saved.id, {
     recording: saved,
     persisted: options.persist,
-    transcribing: true,
+    status: "transcribing",
     errorMessage: null,
   });
   notify(saved.key);
@@ -167,20 +174,17 @@ export function saveVoiceRecording(
   return saved;
 }
 
-export function setVoiceRecordingTranscribing(
-  id: string,
-  transcribing: boolean,
-): void {
+export function setVoiceRecordingRetrying(id: string, retrying: boolean): void {
   const entry = entries.get(id);
-  if (!entry || entry.transcribing === transcribing) return;
-  entry.transcribing = transcribing;
+  if (!entry || entry.status === "transcribing") return;
+  entry.status = retrying ? "retrying" : "failed";
   notify(entry.recording.key);
 }
 
 export function failVoiceRecording(id: string, errorMessage: string): void {
   const entry = entries.get(id);
   if (!entry) return;
-  entry.transcribing = false;
+  entry.status = "failed";
   entry.errorMessage = errorMessage;
   notify(entry.recording.key);
 }
@@ -196,7 +200,7 @@ export function deleteVoiceRecording(id: string): Promise<void> {
 
 export function deleteVoiceRecordingsForKey(key: string): void {
   for (const [id, entry] of entries) {
-    if (entry.recording.key === key && !entry.transcribing) {
+    if (entry.recording.key === key && entry.status !== "transcribing") {
       void deleteVoiceRecording(id);
     }
   }

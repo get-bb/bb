@@ -177,7 +177,7 @@ it("keeps the first completion choice when stop and send race", async () => {
   );
 });
 
-it("keeps a failed recording when its retry is cancelled", async () => {
+it("retries in the banner while the composer stays free, and discarding stops the retry", async () => {
   const transcribe = vi
     .fn()
     .mockRejectedValueOnce(new Error("Service unavailable"))
@@ -189,11 +189,12 @@ it("keeps a failed recording when its retry is cancelled", async () => {
           );
         }),
     );
+  const onTranscript = vi.fn();
   const { result } = renderHook(() =>
     useVoiceInput({
-      recordingKey: "thread/cancel-retry",
+      recordingKey: "thread/retry-in-banner",
       onTranscribe: transcribe,
-      onTranscript: vi.fn(),
+      onTranscript,
     }),
   );
   await act(() => result.current.start());
@@ -203,16 +204,58 @@ it("keeps a failed recording when its retry is cancelled", async () => {
   if (!failed) throw new Error("Missing failed recording");
 
   act(() => result.current.retry(failed));
-  expect(result.current.state).toBe("transcribing");
-  expect(result.current.delivery).toBe("send");
-  expect(result.current.failedRecordings).toEqual([]);
-  await act(async () => result.current.cancel());
+  expect(result.current.state).toBe("idle");
   expect(result.current.failedRecordings).toEqual([
-    expect.objectContaining({
-      id: failed.id,
-      errorMessage: "Service unavailable",
-    }),
+    expect.objectContaining({ id: failed.id, retrying: true }),
   ]);
+  await act(() => result.current.start());
+  expect(result.current.state).toBe("recording");
+
+  const signal = transcribe.mock.calls[1]?.[0].signal;
+  await act(async () => result.current.discard(failed));
+  expect(signal?.aborted).toBe(true);
+  expect(result.current.failedRecordings).toEqual([]);
+  expect(onTranscript).not.toHaveBeenCalled();
+});
+
+it("delivers a live transcript after the completion transition, but never animates a retry", async () => {
+  let finishTransition: (() => void) | undefined;
+  const playCompletionTransition = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finishTransition = resolve;
+      }),
+  );
+  const transcribe = vi
+    .fn()
+    .mockResolvedValueOnce("Live words")
+    .mockRejectedValueOnce(new Error("Service unavailable"))
+    .mockResolvedValueOnce("Retried words");
+  const onTranscript = vi.fn();
+  const { result } = renderHook(() =>
+    useVoiceInput({
+      recordingKey: "thread/transition",
+      onTranscribe: transcribe,
+      onTranscript,
+      playCompletionTransition,
+    }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop("insert"));
+  expect(playCompletionTransition).toHaveBeenCalledOnce();
+  expect(onTranscript).not.toHaveBeenCalled();
+  await act(async () => finishTransition?.());
+  expect(onTranscript).toHaveBeenCalledExactlyOnceWith("Live words", "insert");
+
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop("insert"));
+  const [failed] = result.current.failedRecordings;
+  if (!failed) throw new Error("Missing failed recording");
+  await act(async () => result.current.retry(failed));
+  expect(onTranscript).toHaveBeenLastCalledWith("Retried words", "insert");
+  expect(playCompletionTransition).toHaveBeenCalledOnce();
 });
 
 it("discards the recording when the user cancels its first transcription", async () => {

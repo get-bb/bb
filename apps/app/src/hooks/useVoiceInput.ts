@@ -9,7 +9,7 @@ import {
   deleteVoiceRecordingsForKey,
   failVoiceRecording,
   saveVoiceRecording,
-  setVoiceRecordingTranscribing,
+  setVoiceRecordingRetrying,
   useFailedVoiceRecordings,
   type FailedVoiceRecording,
   type VoiceDelivery,
@@ -44,7 +44,13 @@ interface UseVoiceInputOptions {
     signal?: AbortSignal;
   }) => Promise<string>;
   getPromptContext?: () => string | undefined;
+  playCompletionTransition?: () => Promise<void> | undefined;
 }
+
+type TranscriptionResult =
+  | { kind: "transcript"; text: string }
+  | { kind: "cancelled" }
+  | { kind: "failed"; message: string };
 
 const MIN_RECORDING_DURATION_MS = 1_000;
 const CHUNK_TIMESLICE_MS = 250;
@@ -156,6 +162,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   const mountedRef = useRef(true);
   const acceptedRecordingPendingRef = useRef(false);
   const transcriptionAbortRef = useRef<AbortController | null>(null);
+  const retryAbortsRef = useRef(new Map<string, AbortController>());
   const wakeLockSentinelRef = useRef<WakeLockSentinel | null>(null);
   const wakeLockRequestRef = useRef<Promise<void> | null>(null);
   const shouldHoldWakeLockRef = useRef(false);
@@ -396,50 +403,55 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     });
   }, [requestRecordingWakeLock]);
 
-  const transcribeRecording = useCallback(
-    async (recording: VoiceRecording, onCancel: "discard" | "keep") => {
-      setState("transcribing");
-      setDelivery(recording.delivery);
-      setVoiceRecordingTranscribing(recording.id, true);
-      const abortController = new AbortController();
-      transcriptionAbortRef.current = abortController;
-      const settleCancelled = () => {
-        if (onCancel === "discard") {
-          void deleteVoiceRecording(recording.id);
-        } else {
-          setVoiceRecordingTranscribing(recording.id, false);
-        }
-        setState("idle");
-      };
-      let normalized: string;
+  const runTranscription = useCallback(
+    async (
+      recording: VoiceRecording,
+      signal: AbortSignal,
+      beforeDelivery: (() => Promise<void> | undefined) | undefined,
+    ): Promise<TranscriptionResult> => {
       try {
         const transcript = await options.onTranscribe({
           file: recording.file,
           promptContext: recording.promptContext,
-          signal: abortController.signal,
+          signal,
         });
-        if (abortController.signal.aborted) {
-          settleCancelled();
-          return;
-        }
-        normalized = normalizeTranscript(transcript);
-        if (normalized.length === 0) {
+        const text = normalizeTranscript(transcript);
+        if (!signal.aborted && text.length === 0) {
           throw new Error("Voice transcription returned an empty result.");
         }
+        await beforeDelivery?.();
+        return signal.aborted
+          ? { kind: "cancelled" }
+          : { kind: "transcript", text };
       } catch (error) {
-        if (
-          abortController.signal.aborted ||
+        return signal.aborted ||
           (error instanceof DOMException && error.name === "AbortError")
-        ) {
-          settleCancelled();
-          return;
+          ? { kind: "cancelled" }
+          : { kind: "failed", message: resolveRecordingErrorMessage(error) };
+      }
+    },
+    [options],
+  );
+
+  const settleTranscription = useCallback(
+    async (
+      recording: VoiceRecording,
+      result: TranscriptionResult,
+      onCancel: "discard" | "keep",
+    ) => {
+      if (result.kind === "cancelled") {
+        if (onCancel === "discard") {
+          void deleteVoiceRecording(recording.id);
+        } else {
+          setVoiceRecordingRetrying(recording.id, false);
         }
-        const message = resolveRecordingErrorMessage(error);
-        setState("idle");
+        return;
+      }
+      if (result.kind === "failed") {
         if (mountedRef.current) {
-          failVoiceRecording(recording.id, message);
+          failVoiceRecording(recording.id, result.message);
         } else if (persistRecordings) {
-          failVoiceRecording(recording.id, message);
+          failVoiceRecording(recording.id, result.message);
           appToast.error("Couldn't transcribe your recording", {
             description: "It's saved in its composer so you can retry.",
           });
@@ -447,20 +459,37 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
           void deleteVoiceRecording(recording.id);
         }
         return;
-      } finally {
-        if (transcriptionAbortRef.current === abortController) {
-          transcriptionAbortRef.current = null;
-        }
       }
       void deleteVoiceRecording(recording.id);
       try {
-        await options.onTranscript(normalized, recording.delivery);
-        setState("idle");
+        await options.onTranscript(result.text, recording.delivery);
       } catch (error) {
-        showError(resolveRecordingErrorMessage(error));
+        appToast.error("Voice input failed", {
+          description: resolveRecordingErrorMessage(error),
+        });
       }
     },
-    [options, persistRecordings, showError],
+    [options, persistRecordings],
+  );
+
+  const transcribeRecording = useCallback(
+    async (recording: VoiceRecording) => {
+      setState("transcribing");
+      setDelivery(recording.delivery);
+      const abortController = new AbortController();
+      transcriptionAbortRef.current = abortController;
+      const result = await runTranscription(
+        recording,
+        abortController.signal,
+        options.playCompletionTransition,
+      );
+      if (transcriptionAbortRef.current === abortController) {
+        transcriptionAbortRef.current = null;
+      }
+      await settleTranscription(recording, result, "discard");
+      setState("idle");
+    },
+    [options, runTranscription, settleTranscription],
   );
 
   const start = useCallback(async () => {
@@ -584,7 +613,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
           },
           { persist: persistRecordings },
         );
-        await transcribeRecording(recording, "discard");
+        await transcribeRecording(recording);
       };
 
       recorder.start(CHUNK_TIMESLICE_MS);
@@ -649,19 +678,24 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
   const retry = useCallback(
     (recording: FailedVoiceRecording) => {
-      if (
-        startingRef.current ||
-        state === "recording" ||
-        state === "transcribing"
-      ) {
+      if (recording.retrying || retryAbortsRef.current.has(recording.id)) {
         return;
       }
-      void transcribeRecording(recording, "keep");
+      const abortController = new AbortController();
+      retryAbortsRef.current.set(recording.id, abortController);
+      setVoiceRecordingRetrying(recording.id, true);
+      void runTranscription(recording, abortController.signal, undefined).then(
+        (result) => {
+          retryAbortsRef.current.delete(recording.id);
+          return settleTranscription(recording, result, "keep");
+        },
+      );
     },
-    [state, transcribeRecording],
+    [runTranscription, settleTranscription],
   );
 
   const discard = useCallback((recording: FailedVoiceRecording) => {
+    retryAbortsRef.current.get(recording.id)?.abort();
     void deleteVoiceRecording(recording.id);
   }, []);
 
