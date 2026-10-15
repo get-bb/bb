@@ -1,3 +1,4 @@
+import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   applyAppKeybindingOverrides,
@@ -37,7 +38,7 @@ export async function beginKeyboardSettingsCacheTransaction({
   queryClient,
 }: BeginKeyboardSettingsCacheTransactionArgs): Promise<KeyboardSettingsCacheTransaction> {
   const queryKey = systemConfigQueryKey();
-  await queryClient.cancelQueries({ queryKey });
+  await cancelOptimisticQueries(queryClient, { queryKey });
   const previous = queryClient.getQueryData<SystemConfigResponse>(queryKey);
   if (previous !== undefined) {
     queryClient.setQueryData<SystemConfigResponse>(queryKey, {
@@ -79,7 +80,7 @@ export async function beginGeneralSettingsCacheTransaction({
   queryClient,
 }: BeginGeneralSettingsCacheTransactionArgs): Promise<GeneralSettingsCacheTransaction> {
   const queryKey = systemConfigQueryKey();
-  await queryClient.cancelQueries({ queryKey });
+  await cancelOptimisticQueries(queryClient, { queryKey });
   const previous = queryClient.getQueryData<SystemConfigResponse>(queryKey);
   if (previous !== undefined) {
     queryClient.setQueryData<SystemConfigResponse>(queryKey, {
@@ -136,7 +137,7 @@ export async function beginExperimentsCacheTransaction({
   updates,
 }: BeginExperimentsCacheTransactionArgs): Promise<ExperimentsCacheTransaction> {
   const queryKey = systemConfigQueryKey();
-  await queryClient.cancelQueries({ queryKey });
+  await cancelOptimisticQueries(queryClient, { queryKey });
   const previous = queryClient.getQueryData<SystemConfigResponse>(queryKey);
   if (previous !== undefined) {
     queryClient.setQueryData<SystemConfigResponse>(queryKey, {

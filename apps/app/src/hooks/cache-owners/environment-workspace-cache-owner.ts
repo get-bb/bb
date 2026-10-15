@@ -1,3 +1,4 @@
+import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
 import type { QueryClient } from "@tanstack/react-query";
 import type { Environment, ThreadListEntry } from "@bb/domain";
 import {
@@ -107,11 +108,13 @@ export async function beginEnvironmentNameUpdateTransaction({
   name,
   queryClient,
 }: BeginEnvironmentNameUpdateTransactionArgs): Promise<EnvironmentNameUpdateTransaction> {
-  await queryClient.cancelQueries({
+  await cancelOptimisticQueries(queryClient, {
     queryKey: environmentQueryKey(environmentId),
   });
-  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
-  await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
+  await cancelOptimisticQueries(queryClient, { queryKey: threadsQueryKey() });
+  await cancelOptimisticQueries(queryClient, {
+    queryKey: sidebarNavigationQueryKey(),
+  });
 
   const previousEnvironment = queryClient.getQueryData<Environment>(
     environmentQueryKey(environmentId),

@@ -832,3 +832,25 @@ read; symlinked skill directories or files and roots escaping the workspace are
 skipped before reading. Command lookup sets `includeAgentInstructions: false`,
 so an invalid `.bb/AGENTS.md` cannot break the command catalog; turn
 preparation sets it to `true` and reports instruction-read errors.
+
+## Interrupted Optimistic Query Refreshes
+
+Optimistic cache owners use `cancelOptimisticQueries` instead of calling
+`queryClient.cancelQueries` directly. During a mutation it records interrupted
+reads and the mutations pending at cancellation. It invalidates those queries
+after those mutations finish, including success, error, and settled callbacks.
+A later optimistic cancellation of the same query extends that wait even if
+the query is already idle. Active queries refresh; inactive queries become
+stale for their next mount. Removed queries are discarded from recovery.
+
+This deliberately waits for every mutation pending at cancellation because a
+cache owner does not have the identity of its calling mutation. Later unrelated
+mutations do not delay recovery. Queries without an interrupted read are not
+refetched. Calling cache-owner helpers outside a mutation retains ordinary
+cancellation behavior. Browser suspension and realtime replacement reads have
+their own recovery paths and continue to use ordinary cancellation.
+
+For a stale drawer or sidebar, check whether an optimistic mutation canceled
+the last realtime refresh, then whether its recovery ran after the mutation
+callbacks. Cover this ordering with real Query and Mutation observers; an
+isolated rollback helper test does not exercise mutation settlement.
