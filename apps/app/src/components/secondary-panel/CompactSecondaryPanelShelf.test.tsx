@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
-import { getCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+import {
+  getCompactSecondaryPanelPresentation,
+  isCompactSecondaryPanelSwipeOpening,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 
 function createTouch(clientX: number, clientY: number): Touch {
   return { identifier: 1, clientX, clientY } as Touch;
@@ -83,6 +86,87 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(APP_OVERLAY_LAYER.sharedPortaledOverlay).toBeGreaterThan(
       APP_OVERLAY_LAYER.secondaryPanelFullPage,
     );
+  });
+
+  it("opens from a leftward swipe on the main content and snaps back from a short one", () => {
+    vi.useFakeTimers();
+    try {
+      const onOpen = vi.fn();
+      Object.defineProperty(document.documentElement, "clientWidth", {
+        configurable: true,
+        value: 400,
+      });
+      render(
+        <>
+          <main data-sidebar="inset">
+            <div data-testid="main-body" />
+            <textarea data-testid="composer" />
+          </main>
+          <CompactSecondaryPanelShelf
+            open={false}
+            onClose={vi.fn()}
+            onOpen={onOpen}
+            srLabel="Right panel"
+          >
+            <div data-testid="panel-body" />
+          </CompactSecondaryPanelShelf>
+        </>,
+      );
+      const inset = document.querySelector<HTMLElement>(
+        '[data-sidebar="inset"]',
+      );
+      if (inset === null) throw new Error("missing inset");
+      const shelf = screen.getByTestId("secondary-panel-shelf");
+      const body = screen.getByTestId("main-body");
+
+      fireTouch(body, "touchstart", createTouch(300, 160));
+      fireTouch(window, "touchmove", createTouch(260, 162));
+      expect(Number.parseFloat(inset.style.translate)).toBeCloseTo(-40);
+      expect(shelf.style.visibility).toBe("visible");
+      fireTouch(window, "touchend", createTouch(260, 162));
+      vi.advanceTimersByTime(250);
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(inset.style.translate).toBe("");
+      expect(shelf.style.visibility).toBe("");
+
+      fireTouch(body, "touchstart", createTouch(100, 160));
+      fireTouch(window, "touchmove", createTouch(300, 162));
+      fireTouch(window, "touchend", createTouch(300, 162));
+      vi.advanceTimersByTime(250);
+      expect(onOpen).not.toHaveBeenCalled();
+
+      inset.setAttribute("data-sidebar-shelf", "open");
+      fireTouch(body, "touchstart", createTouch(300, 160));
+      fireTouch(window, "touchmove", createTouch(100, 162));
+      expect(inset.style.translate).toBe("");
+      fireTouch(window, "touchend", createTouch(100, 162));
+      vi.advanceTimersByTime(250);
+      expect(onOpen).not.toHaveBeenCalled();
+      inset.removeAttribute("data-sidebar-shelf");
+
+      const composer = screen.getByTestId("composer");
+      fireTouch(composer, "touchstart", createTouch(300, 160));
+      fireTouch(window, "touchmove", createTouch(100, 162));
+      fireTouch(window, "touchend", createTouch(100, 162));
+      vi.advanceTimersByTime(250);
+      expect(onOpen).not.toHaveBeenCalled();
+
+      fireTouch(body, "touchstart", createTouch(300, 160));
+      fireTouch(window, "touchmove", createTouch(100, 162));
+      expect(Number.parseFloat(inset.style.translate)).toBeCloseTo(-200);
+      expect(isCompactSecondaryPanelSwipeOpening()).toBe(true);
+      fireTouch(window, "touchend", createTouch(100, 162));
+      expect(onOpen).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(250);
+      expect(onOpen).toHaveBeenCalledOnce();
+      expect(isCompactSecondaryPanelSwipeOpening()).toBe(false);
+      expect(inset.style.translate).toBe("");
+      expect(shelf.style.visibility).toBe("");
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+      Reflect.deleteProperty(document.documentElement, "clientWidth");
+    }
   });
 
   it("navigates tab swipes without dismissing while preserving body dismissal", () => {

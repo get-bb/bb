@@ -46,6 +46,7 @@ type Options = {
   onDismiss: () => void;
   onProgress: (progress: DragProgress) => void;
   resetKey: string;
+  shouldBeginDrag: () => boolean;
   suppressClick: boolean;
 };
 
@@ -162,8 +163,10 @@ export function useHorizontalDismissDrag(options: Options) {
           return;
         }
         if (
-          session.target !== null &&
-          (!session.target.isConnected || startsInHorizontalScroller(session))
+          !optionsRef.current.shouldBeginDrag() ||
+          (session.target !== null &&
+            (!session.target.isConnected ||
+              startsInHorizontalScroller(session)))
         ) {
           clearSession();
           return;
@@ -278,10 +281,8 @@ export function useHorizontalDismissDrag(options: Options) {
     [listen, optionsRef],
   );
 
-  const beginPointerDrag = React.useCallback<
-    React.PointerEventHandler<HTMLDivElement>
-  >(
-    (event) => {
+  const beginNativePointerDrag = React.useCallback(
+    (event: PointerEvent, boundary: Element) => {
       if (
         !optionsRef.current.enabled ||
         event.defaultPrevented ||
@@ -299,16 +300,14 @@ export function useHorizontalDismissDrag(options: Options) {
         event.clientX,
         event.clientY,
         event.target,
-        event.currentTarget,
+        boundary,
       );
     },
     [optionsRef, start],
   );
 
-  const beginTouchDrag = React.useCallback<
-    React.TouchEventHandler<HTMLDivElement>
-  >(
-    (event) => {
+  const beginNativeTouchDrag = React.useCallback(
+    (event: TouchEvent, boundary: Element) => {
       if (
         !optionsRef.current.enabled ||
         event.defaultPrevented ||
@@ -330,10 +329,24 @@ export function useHorizontalDismissDrag(options: Options) {
         touch.clientX,
         touch.clientY,
         event.target,
-        event.currentTarget,
+        boundary,
       );
     },
     [clearSession, optionsRef, start],
+  );
+
+  const beginPointerDrag = React.useCallback<
+    React.PointerEventHandler<HTMLDivElement>
+  >(
+    (event) => beginNativePointerDrag(event.nativeEvent, event.currentTarget),
+    [beginNativePointerDrag],
+  );
+
+  const beginTouchDrag = React.useCallback<
+    React.TouchEventHandler<HTMLDivElement>
+  >(
+    (event) => beginNativeTouchDrag(event.nativeEvent, event.currentTarget),
+    [beginNativeTouchDrag],
   );
 
   React.useLayoutEffect(() => {
@@ -360,5 +373,10 @@ export function useHorizontalDismissDrag(options: Options) {
     [clearSession, clearSettle, optionsRef],
   );
 
-  return { beginPointerDrag, beginTouchDrag };
+  return {
+    beginNativePointerDrag,
+    beginNativeTouchDrag,
+    beginPointerDrag,
+    beginTouchDrag,
+  };
 }

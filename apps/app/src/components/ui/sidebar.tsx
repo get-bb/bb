@@ -9,7 +9,10 @@ import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-po
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
-import { usePanelShelfState } from "./secondary-panel-shelf-visibility.js";
+import {
+  isCompactSecondaryPanelSwipeOpening,
+  usePanelShelfState,
+} from "./secondary-panel-shelf-visibility.js";
 import {
   findTouchById,
   hasTextSelectionWithin,
@@ -996,6 +999,7 @@ const SidebarMobilePanel = React.forwardRef<
         applySidebarMobileDragStyles({ progress, settling });
       },
       resetKey: open ? "open" : "closed",
+      shouldBeginDrag: () => true,
       suppressClick: true,
     });
 
@@ -1264,9 +1268,10 @@ const SidebarInset = React.forwardRef<
         }
 
         if (
-          session.startTarget !== null &&
-          (!session.startTarget.isConnected ||
-            isInsideHorizontalScrollRegion(session.startTarget))
+          isCompactSecondaryPanelSwipeOpening() ||
+          (session.startTarget !== null &&
+            (!session.startTarget.isConnected ||
+              isInsideHorizontalScrollRegion(session.startTarget)))
         ) {
           clearSidebarMobileDragStyles();
           clearSwipeSession();

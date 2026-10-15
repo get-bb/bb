@@ -116,6 +116,7 @@ function ThreadDetailSecondaryContentBody({
       <SecondaryPanelLayout
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
+        onSwipeOpen={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
         panelGroupKey="thread-detail"
         resetKey={timeline.threadId}

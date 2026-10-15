@@ -25,6 +25,7 @@ import {
   useSidebar,
   useSidebarKeepsCollapsedRail,
 } from "./sidebar";
+import { setCompactSecondaryPanelSwipeOpening } from "./secondary-panel-shelf-visibility";
 
 afterEach(() => {
   cleanup();
@@ -1223,6 +1224,20 @@ describe("mobile sidebar text-selection arbitration", () => {
 
     expect(getMobilePanel()?.dataset.state).toBe("open");
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+  });
+
+  it("yields a right swipe while the right panel is being swiped open", () => {
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+
+    setCompactSecondaryPanelSwipeOpening(true);
+    try {
+      fireTouch(prose, "touchstart", createTouch(120, 160));
+      fireTouch(window, "touchmove", createTouch(260, 164));
+      expect(getMobilePanel()?.dataset.state).toBe("closed");
+    } finally {
+      setCompactSecondaryPanelSwipeOpening(false);
+    }
   });
 
   it("defers the horizontal-scroll-region probe until horizontal intent", () => {
