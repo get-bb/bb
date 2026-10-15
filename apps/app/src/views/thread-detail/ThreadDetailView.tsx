@@ -1437,7 +1437,15 @@ function ThreadDetailViewInternal(
   });
   useAppCommandHandler("file.quickOpen", () => {
     if (!isFocused) return false;
-    handleOpenNewTab();
+    if (
+      isSecondaryPanelOpen &&
+      pluginDetails.activePluginId === null &&
+      activeFixedSecondaryTab?.kind === "new-tab"
+    ) {
+      closeSecondaryPanel();
+    } else {
+      handleOpenNewTab();
+    }
     return true;
   });
   useEffect(() => {

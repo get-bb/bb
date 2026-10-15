@@ -1084,7 +1084,15 @@ function RootComposeSurface({
   });
   useAppCommandHandler("file.quickOpen", () => {
     if (!isFocusedPane) return false;
-    handleOpenNewTab();
+    if (
+      isSecondaryPanelOpen &&
+      pluginDetails.activePluginId === null &&
+      activeFixedSecondaryTab?.kind === "new-tab"
+    ) {
+      closeSecondaryPanel();
+    } else {
+      handleOpenNewTab();
+    }
     return true;
   });
   const handleToggleSecondaryPanel = useCallback(() => {
