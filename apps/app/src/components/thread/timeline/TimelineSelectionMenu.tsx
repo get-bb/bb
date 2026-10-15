@@ -2,6 +2,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent,
   type PointerEvent,
 } from "react";
@@ -11,7 +12,10 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
-import type { MessageProseSelection } from "./SelectableMessageProse.js";
+import {
+  firstClientRect,
+  type MessageProseSelection,
+} from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 
 const SELECTION_ACTION_BUTTON_CLASS =
@@ -32,6 +36,18 @@ export interface TimelineSelectionMenuProps {
   onAddToChat?: (text: string) => void;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onDismiss: () => void;
+}
+
+interface AnchorShift {
+  selection: MessageProseSelection;
+  x: number;
+  y: number;
+}
+
+function liveSelectionRect(): DOMRect | null {
+  const live = window.getSelection();
+  if (live === null || live.rangeCount === 0 || live.isCollapsed) return null;
+  return firstClientRect(live.getRangeAt(0));
 }
 
 function ActionButton({
@@ -110,31 +126,54 @@ export function TimelineSelectionMenu({
   pluginActions = [],
   onDismiss,
 }: TimelineSelectionMenuProps) {
-  const open = selection !== null;
   const portalScopeProps = usePortalScopeProps();
+  const [anchorShift, setAnchorShift] = useState<AnchorShift | null>(null);
+  const pointerInsideMenuRef = useRef(false);
 
   useEffect(() => {
-    if (!open || typeof window === "undefined") return;
-    const dismiss = () => onDismiss();
-    window.addEventListener("scroll", dismiss, true);
-    window.addEventListener("resize", dismiss);
-    return () => {
-      window.removeEventListener("scroll", dismiss, true);
-      window.removeEventListener("resize", dismiss);
+    if (selection === null) {
+      pointerInsideMenuRef.current = false;
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const followSelection = () => {
+      if (pointerInsideMenuRef.current) return;
+      const rect = liveSelectionRect();
+      if (rect === null || rect.bottom < 0 || rect.top > window.innerHeight) {
+        onDismiss();
+        return;
+      }
+      setAnchorShift({
+        selection,
+        x: rect.left - selection.rect.left,
+        y: rect.top - selection.rect.top,
+      });
     };
-  }, [open, onDismiss]);
+    window.addEventListener("scroll", followSelection, true);
+    window.addEventListener("resize", followSelection);
+    return () => {
+      window.removeEventListener("scroll", followSelection, true);
+      window.removeEventListener("resize", followSelection);
+    };
+  }, [selection, onDismiss]);
 
+  const shift =
+    anchorShift !== null && anchorShift.selection === selection
+      ? anchorShift
+      : null;
   const anchorSide = selection?.anchorSide ?? "top";
   const anchorLeft =
-    selection?.anchorPoint?.x ??
-    (selection === null ? 0 : selection.rect.left + selection.rect.width / 2);
+    (selection?.anchorPoint?.x ??
+      (selection === null
+        ? 0
+        : selection.rect.left + selection.rect.width / 2)) + (shift?.x ?? 0);
   const anchorTop =
-    selection?.anchorPoint?.y ??
-    (selection === null
-      ? 0
-      : anchorSide === "bottom"
-        ? selection.rect.bottom
-        : selection.rect.top);
+    (selection?.anchorPoint?.y ??
+      (selection === null
+        ? 0
+        : anchorSide === "bottom"
+          ? selection.rect.bottom
+          : selection.rect.top)) + (shift?.y ?? 0);
   const virtualAnchor = useMemo(
     () => ({
       getBoundingClientRect: () => new DOMRect(anchorLeft, anchorTop, 0, 0),
@@ -183,6 +222,12 @@ export function TimelineSelectionMenu({
           sideOffset={6}
           collisionPadding={8}
           className={SELECTION_MENU_CONTENT_CLASS}
+          onPointerEnter={() => {
+            pointerInsideMenuRef.current = true;
+          }}
+          onPointerLeave={() => {
+            pointerInsideMenuRef.current = false;
+          }}
           onEscapeKeyDown={() => onDismiss()}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}

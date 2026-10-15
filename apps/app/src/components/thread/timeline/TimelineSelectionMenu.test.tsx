@@ -50,7 +50,78 @@ function mockPointerCoarse() {
   }));
 }
 
+function mockLiveSelection(rect: DOMRect | null) {
+  vi.spyOn(window, "getSelection").mockReturnValue({
+    rangeCount: rect === null ? 0 : 1,
+    isCollapsed: rect === null,
+    getRangeAt: () => ({
+      getClientRects: () => ({ length: 1, item: () => rect }),
+      getBoundingClientRect: () => rect,
+    }),
+    removeAllRanges: () => {},
+  } as unknown as Selection);
+}
+
 describe("TimelineSelectionMenu", () => {
+  it("stays actionable while a scroll moves the selection", () => {
+    const onAddToChat = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <>
+        <div data-testid="scroller" />
+        <TimelineSelectionMenu
+          selection={makeSelection()}
+          onAddToChat={onAddToChat}
+          onDismiss={onDismiss}
+        />
+      </>,
+    );
+    mockLiveSelection(new DOMRect(10, 40, 100, 20));
+
+    fireEvent.scroll(screen.getByTestId("scroller"));
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+
+    expect(onAddToChat).toHaveBeenCalledWith("selected text");
+  });
+
+  it("dismisses once a scroll moves the selection out of view", () => {
+    const onDismiss = vi.fn();
+    render(
+      <>
+        <div data-testid="scroller" />
+        <TimelineSelectionMenu
+          selection={makeSelection()}
+          onAddToChat={vi.fn()}
+          onDismiss={onDismiss}
+        />
+      </>,
+    );
+    mockLiveSelection(new DOMRect(10, -40, 100, 20));
+
+    fireEvent.scroll(screen.getByTestId("scroller"));
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses on scroll once the selection is gone", () => {
+    const onDismiss = vi.fn();
+    render(
+      <>
+        <div data-testid="scroller" />
+        <TimelineSelectionMenu
+          selection={makeSelection()}
+          onAddToChat={vi.fn()}
+          onDismiss={onDismiss}
+        />
+      </>,
+    );
+    mockLiveSelection(null);
+
+    fireEvent.scroll(screen.getByTestId("scroller"));
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
   it("renders from a pointer release point without a physical anchor node", () => {
     const { container } = render(
       <TimelineSelectionMenu
