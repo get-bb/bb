@@ -1227,7 +1227,7 @@ Docs: `frontend-core-slots.md`, `frontend-components.md`.
 
 ## `PluginNavPanelRegistration.experimental_useBadge`
 
-**Added 2026-10-15 (SDK 0.6.52), replacing `experimental_sidebarAccessory`.**
+**Added 2026-10-15 (SDK 0.6.53), replacing `experimental_sidebarAccessory`.**
 One consumer: the Tasks plugin's open-task count.
 
 A nav panel hook returning `ExperimentalBadge`
@@ -1266,7 +1266,7 @@ Docs: `frontend-core-slots.md`.
 
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 
-**Restored 2026-10-15 (SDK 0.6.52) with `placement`.** It was removed in
+**Restored 2026-10-15 (SDK 0.6.53) with `placement`.** It was removed in
 #5229 (0.46.0); the names are unchanged so plugins built before 0.46, such as
 Compact Nav 0.1.x and Sidebar Sections, load again.
 
@@ -1314,7 +1314,7 @@ and `experimental_SidebarNavigationIcon`.
 
 ## `experimental_useSidebarNavigation`, `experimental_useSidebarNavigationSplit`, `experimental_SidebarNavigationIcon` (`@get-bb/plugin-sdk/app`)
 
-**Restored 2026-10-15 (SDK 0.6.52).**
+**Restored 2026-10-15 (SDK 0.6.53).**
 
 **What it does.** `experimental_useSidebarNavigation()` returns
 `{ items, activeItemId, isHomeActive, isShortcutModifierHeld, actions }` from
@@ -1354,7 +1354,7 @@ picker reads the same registrations.
 
 ## `app.slots.experimental_sidebarHeader` (`@get-bb/plugin-sdk/app`)
 
-**Restored 2026-10-15 (SDK 0.6.52).**
+**Restored 2026-10-15 (SDK 0.6.53).**
 
 **What it does.** Renders one plugin component in the sidebar header row,
 between the sidebar toggle (and the macOS window controls) and bb's back and

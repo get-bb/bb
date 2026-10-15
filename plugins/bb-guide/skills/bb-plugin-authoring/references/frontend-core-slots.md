@@ -159,7 +159,7 @@ target? })`. Inside the fixed-tab component,
   "3 open tasks" that BB adds to the destination's tooltip and accessible
   name; the drawn badge is hidden from assistive technology. `count` must be a
   positive integer, `text` and `label` non-empty; a hook that throws or returns
-  anything else is treated as a crashed slot and shows no badge. SDK 0.6.52
+  anything else is treated as a crashed slot and shows no badge. SDK 0.6.53
   replaced the component-based `experimental_sidebarAccessory`; a plugin that
   still passes it keeps loading, and BB ignores the field and logs a warning
   naming `experimental_useBadge`. Experimental: see `docs/api_to_audit.md`.

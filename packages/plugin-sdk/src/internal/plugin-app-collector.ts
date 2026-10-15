@@ -274,7 +274,7 @@ const RENAMED_NAV_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
 const RETIRED_NAV_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
   [
     "experimental_sidebarAccessory",
-    'is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.52',
+    'is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
   ],
 ]);
 

@@ -874,7 +874,7 @@ describe("reconcilePluginFrontends", () => {
       }),
     );
     expect(deps.warn).toHaveBeenCalledWith(
-      '[plugin:hello] slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.52',
+      '[plugin:hello] slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
     );
   });
 

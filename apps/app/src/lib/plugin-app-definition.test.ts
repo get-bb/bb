@@ -678,7 +678,7 @@ describe("collectPluginAppRegistrations", () => {
     ]);
   });
 
-  it("keeps loading a pre-0.6.52 nav panel that passes experimental_sidebarAccessory and warns", () => {
+  it("keeps loading a pre-0.6.53 nav panel that passes experimental_sidebarAccessory and warns", () => {
     const warned = vi.fn<(message: string) => void>();
     const definition = definePluginApp((app) => {
       app.slots.navPanel({
@@ -704,7 +704,7 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(warned.mock.calls).toEqual([
       [
-        'slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.52',
+        'slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
       ],
     ]);
   });
