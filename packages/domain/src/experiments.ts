@@ -29,6 +29,7 @@ export const defaultExperiments: Experiments = {
 
 export const earlyAdopterExperiments: Experiments = {
   changelogPreview: false,
+  compactExpiredCache: true,
   serverMove: false,
   performanceDiagnostics: false,
   timelinePush: true,

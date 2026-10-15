@@ -176,7 +176,8 @@ thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`timelinePush`; an experiment you set yourself keeps your value.
+`timelinePush` and `compactExpiredCache`; an experiment you set yourself keeps
+your value.
 
 Launcher settings
 

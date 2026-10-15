@@ -728,13 +728,14 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `timelinePush`) turn on, and the rest stay off. An experiment you
-set yourself keeps your value either way. `/system/config` and
-`sdk.system.config()` return the resolved values in `experiments`.
+(currently `timelinePush` and `compactExpiredCache`) turn on, and the rest stay
+off. An experiment you set yourself keeps your value either way.
+`/system/config` and `sdk.system.config()` return the resolved values in
+`experiments`.
 
 - `changelogPreview` shows the latest release notes as a dismissible card on
   Settings → Updates.
-- `compactExpiredCache` reports `compactionOfferAt` on a thread's context
+- `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
   compaction, and the context holds at least 100k tokens. After that time the
