@@ -203,7 +203,8 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
     id: "notifications",
     title: "Notifications",
     icon: "BellDot",
-    group: experimental_THREAD_ACTION_GROUPS.settings,
+    group: experimental_THREAD_ACTION_GROUPS.state,
+    order: 20,
     useData: useThreadNotificationsData,
     item: ({ thread, data }) => {
       if (thread.archivedAt !== null) return null;
@@ -226,9 +227,6 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
       const hint = resolved === null ? undefined : capHint(resolved.row);
       return {
         label: "Notifications",
-        ...(resolved === null
-          ? {}
-          : { detail: NOTIFICATION_LEVEL_LABELS[resolved.row.effective] }),
         icon:
           resolved === null ? "BellDot" : LEVEL_ICONS[resolved.row.effective],
         choices: {

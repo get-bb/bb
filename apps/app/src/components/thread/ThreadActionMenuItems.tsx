@@ -259,7 +259,7 @@ export function ThreadActionMenuRows({
   }
   return groups.map((group, index) => (
     <Fragment key={group[0]?.group ?? index}>
-      {index > 0 && !isDrawer ? (
+      {index > 0 ? (
         <ActionMenuSeparator surface={surface} />
       ) : null}
       {group.map((entry) => (

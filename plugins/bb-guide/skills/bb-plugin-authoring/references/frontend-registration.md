@@ -180,7 +180,8 @@ example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 `useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
 their static `group`, a separator between groups, then by `order`. Join one
-of bb's groups through `experimental_THREAD_ACTION_GROUPS` or name your own. `choices` renders as a submenu, a drawer step with Back, or
+of bb's groups through `experimental_THREAD_ACTION_GROUPS` (`open`, `state`,
+`organize`, `settings`, `lifecycle`) or name your own. `choices` renders as a submenu, a drawer step with Back, or
 a popover; the picked id reaches `run` as `value`. Set `detail` to show the
 current value on a muted line under the label, and `choices.hint` for a footnote below the
 choices.
@@ -190,7 +191,7 @@ app.slots.experimental_threadAction({
   id: "notifications",
   title: "Notifications",
   icon: "Notification",
-  group: experimental_THREAD_ACTION_GROUPS.settings,
+  group: experimental_THREAD_ACTION_GROUPS.state,
   useData: ({ threadIds }) => useNotificationLevels(threadIds),
   item: ({ thread, data, sdk }) => ({
     label: "Notifications",

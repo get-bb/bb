@@ -3733,11 +3733,13 @@ export interface PluginSdkApp {
   experimental_ThreadActionsContextMenu: ComponentType<PluginThreadActionsContextMenuProps>;
   /**
    * bb's thread menu groups, for a registration that joins one:
-   * `open` (split), `organize` (copy, read, pin, move, rename), `settings`,
-   * and `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
+   * `open` (split, copy link, new thread in environment), `state` (read,
+   * notifications, pin), `organize` (rename, move), `settings`, and
+   * `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
    */
   experimental_THREAD_ACTION_GROUPS: {
     readonly open: "1_open";
+    readonly state: "1_state";
     readonly organize: "2_organize";
     readonly settings: "3_settings";
     readonly lifecycle: "4_lifecycle";

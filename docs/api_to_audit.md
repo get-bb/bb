@@ -2223,8 +2223,10 @@ debounced (32 ms quiet, 100 ms max). `item` is a pure function of
 `{ thread, data, sdk, navigate }` returning a `PluginThreadAction` or null;
 throws drop the registration or that thread's item, and `run` errors are
 contained. Registrations sort by `group`, `order`, then registration order
-for every menu and the quick-action picker. Thread-list registers Move to
-section, and push-notifications registers Notifications. The SDK test fake
+for every menu and the quick-action picker. bb's groups, in menu order, are
+`open` (split, copy link), `state` (read, notifications, pin), `organize`
+(rename, move), `settings`, and `lifecycle` (archive, delete). Thread-list
+registers Move to section, and push-notifications registers Notifications. The SDK test fake
 throws when a menu `trigger` drops its props and ref.
 
 **Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`
