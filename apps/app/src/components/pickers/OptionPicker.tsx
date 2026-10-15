@@ -1,4 +1,4 @@
-import type { ComponentType, ReactElement } from "react";
+import type { ComponentType, ReactElement, ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -36,7 +36,7 @@ export interface PickerOption<T extends string> {
 
 interface OptionPickerProps<T extends string> {
   label: string;
-  description?: string;
+  notice?: ReactNode;
   value: T;
   options: readonly PickerOption<T>[];
   onChange: (value: T) => void;
@@ -60,7 +60,7 @@ interface OptionPickerProps<T extends string> {
 
 export function OptionPicker<T extends string>({
   label,
-  description,
+  notice,
   value,
   options,
   onChange,
@@ -150,11 +150,7 @@ export function OptionPicker<T extends string>({
         mobileTitle={label}
       >
         <DropdownMenuLabel>{label}</DropdownMenuLabel>
-        {description ? (
-          <p className="whitespace-normal px-2 pb-2 text-xs leading-snug text-muted-foreground">
-            {description}
-          </p>
-        ) : null}
+        {notice}
         {options.map((option) => {
           const OptionIcon = option.icon;
           return (

@@ -90,7 +90,16 @@ function CompactBeforeSendPicker({
   return (
     <OptionPicker<CompactBeforeSendChoice>
       label="Prompt cache expired"
-      description={`This thread sat idle longer than its prompt cache lasts, so your next message re-reads all ${tokensLabel} tokens without the cache discount. This choice applies to your next send.`}
+      notice={
+        <div className="mx-1 mb-1.5 flex items-start gap-2 rounded-md border border-warning/20 bg-warning/5 px-2.5 py-2 text-xs leading-snug text-warning-text">
+          <Icon
+            name="CircleArrowShrink"
+            className="mt-px size-3.5 shrink-0"
+            aria-hidden
+          />
+          <span>{`Your next message re-reads ${tokensLabel} tokens without the cache discount.`}</span>
+        </div>
+      }
       value={compactFirst ? "compact" : "keep"}
       align="end"
       onChange={(choice) => onCompactFirstChange(choice === "compact")}
@@ -98,12 +107,12 @@ function CompactBeforeSendPicker({
         {
           value: "compact",
           label: "Compact first",
-          description: `Summarize the history, then send your message. Later turns start from the shorter summary.`,
+          description: "Summarize the history, then send.",
         },
         {
           value: "keep",
           label: "Keep full history",
-          description: `Send with all ${tokensLabel} tokens. This send costs more; later sends are cached again.`,
+          description: `Send with all ${tokensLabel} tokens.`,
         },
       ]}
       trigger={
