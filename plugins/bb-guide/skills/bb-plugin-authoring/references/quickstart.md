@@ -58,8 +58,9 @@ the current engine values and the entries for its generated surfaces.
   marketplace `displayName`) with one short bracketed tag, such as
   `Account Pooler [Experimental]` or `ACP providers [New adapter]`. Plugin
   cards and details show the bracketed text as a tag beside the name: gray by
-  default, and colored for reserved tags (`[Experimental]`). Keep the tag to 24
-  characters or fewer and use brackets, not parentheses; longer or other
+  default, and colored for reserved tags (`[Experimental]`). Write the tag in
+  sentence case (`[New adapter]`, not `[New Adapter]`), keep it to 24
+  characters or fewer, and use brackets, not parentheses; longer or other
   suffixes stay part of the name. Older bb versions show the full name as text.
 - `bb.branding` (required) — declare `bb.branding.icon` as either the plugin's
   canonical BB icon name, such as `Zap`, or a plugin-relative compact SVG path
