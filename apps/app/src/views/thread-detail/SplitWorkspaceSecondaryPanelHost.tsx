@@ -46,6 +46,7 @@ import {
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
@@ -212,8 +213,7 @@ export function SplitWorkspaceSecondaryPanelHost({
               "flex h-7 items-center",
               MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
             ],
-            isSidebarFramed &&
-              "right-0 [&_button]:w-7 [&_[data-icon-root]]:translate-x-0.5",
+            isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
           )}
         >
           <AppCommandShortcutHint

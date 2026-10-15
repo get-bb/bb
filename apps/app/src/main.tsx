@@ -12,6 +12,7 @@ import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard
 import { installAppQueryClientBrowserEvents } from "./lib/query-client";
 import { appQueryClient } from "./lib/app-query-client";
 import {
+  applyAppFrameGeometry,
   applyMacosWindowChromeGeometry,
   getBbDesktopInfo,
 } from "./lib/bb-desktop";
@@ -28,6 +29,7 @@ registerProviderCliInstallQueryClient(appQueryClient);
 initializePreferredTheme();
 applyCachedAppThemeCss();
 initializeFavicon();
+applyAppFrameGeometry(document.documentElement);
 applyMacosWindowChromeGeometry(document.documentElement, getBbDesktopInfo());
 
 createRoot(document.getElementById("root")!, {

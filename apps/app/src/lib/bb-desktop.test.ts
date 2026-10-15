@@ -5,11 +5,15 @@ import {
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_SIZE_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
+  RAIL_CONTROL_SIZE_PX,
+  RAIL_PADDING_PX,
+  TITLE_BAR_CONTROL_SIZE_PX,
   type BbDesktopInfo,
 } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
   DEFAULT_WINDOW_FIND_TOP_OFFSET,
+  applyAppFrameGeometry,
   applyMacosWindowChromeGeometry,
   getMacosWindowChromeGeometry,
   resolveWindowFindTopOffset,
@@ -69,7 +73,7 @@ describe("desktop chrome geometry", () => {
         macosTrafficLightInset: inset,
         macosTrafficLightTopInset: topInset,
       });
-      const CONTROL_SIZE = 28;
+      const CONTROL_SIZE = TITLE_BAR_CONTROL_SIZE_PX;
       const TRAFFIC_LIGHT_CLEARANCE = 12;
       const COLLAPSED_TRIGGER_GAP = 8;
       const PAGE_HEADER_BASE_INSET = 16;
@@ -93,11 +97,28 @@ describe("desktop chrome geometry", () => {
   );
 
   it("puts the close button above the rail icons on the current desktop", () => {
-    const RAIL_PADDING = 11;
-    const RAIL_CONTROL_SIZE = 24;
-
     expect(MACOS_TRAFFIC_LIGHT_INSET_PX + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2).toBe(
-      RAIL_PADDING + RAIL_CONTROL_SIZE / 2,
+      RAIL_PADDING_PX + RAIL_CONTROL_SIZE_PX / 2,
+    );
+  });
+
+  it("writes the rail and title-bar control sizes on every platform", () => {
+    const properties = new Map<string, string>();
+    applyAppFrameGeometry({
+      style: {
+        setProperty: (name: string, value: string) =>
+          properties.set(name, value),
+      },
+    });
+
+    expect(properties.get("--bb-frame-rail-padding")).toBe(
+      `${RAIL_PADDING_PX}px`,
+    );
+    expect(properties.get("--bb-frame-rail-control-size")).toBe(
+      `${RAIL_CONTROL_SIZE_PX}px`,
+    );
+    expect(properties.get("--bb-title-bar-control-size")).toBe(
+      `${TITLE_BAR_CONTROL_SIZE_PX}px`,
     );
   });
 
@@ -115,20 +136,26 @@ describe("desktop chrome geometry", () => {
       macosTrafficLightInset: MACOS_TRAFFIC_LIGHT_INSET_PX,
       macosTrafficLightTopInset: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
     });
-    expect(properties.get("--bb-window-title-bar-height")).toBe("44px");
+    const titleBarHeight =
+      2 * (MACOS_TRAFFIC_LIGHT_TOP_INSET_PX + MACOS_TRAFFIC_LIGHT_SIZE_PX / 2);
+    expect(properties.get("--bb-window-title-bar-height")).toBe(
+      `${titleBarHeight}px`,
+    );
     const cardMask = decodeURIComponent(
       properties.get("--bb-window-card-mask") ?? "",
     );
-    expect(cardMask).toContain("<rect width='100%' height='44'/>");
+    expect(cardMask).toContain(`<rect width='100%' height='${titleBarHeight}'/>`);
     expect(cardMask).toContain(
-      "<rect y='44' width='100%' height='100%' rx='12'/>",
+      `<rect y='${titleBarHeight}' width='100%' height='100%' rx='12'/>`,
     );
     expect(
       decodeURIComponent(
         properties.get("--bb-window-card-mask-square-left") ?? "",
       ),
-    ).toContain("<rect y='44' width='12' height='12'/>");
-    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("88px");
+    ).toContain(`<rect y='${titleBarHeight}' width='12' height='12'/>`);
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe(
+      `${MACOS_TRAFFIC_LIGHT_INSET_PX + MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX + 12}px`,
+    );
 
     properties.clear();
     applyMacosWindowChromeGeometry(root, null);

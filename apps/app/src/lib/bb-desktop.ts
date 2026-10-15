@@ -2,6 +2,9 @@ import {
   MACOS_LEGACY_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX,
   MACOS_TRAFFIC_LIGHT_SIZE_PX,
+  RAIL_CONTROL_SIZE_PX,
+  RAIL_PADDING_PX,
+  TITLE_BAR_CONTROL_SIZE_PX,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
   type BbDesktopWindowState,
@@ -30,10 +33,12 @@ export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =
   "[transform:translateY(var(--bb-macos-chrome-control-y,calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-app-chrome-row-height)/2)))]";
 export const MACOS_TITLE_BAR_ROW_CLASS = "h-(--bb-window-title-bar-height)";
-export const MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS =
-  "w-7 -mr-(--bb-panel-chrome-padding) [&_[data-icon-root]]:translate-x-0.5";
+const MACOS_TITLE_BAR_CORNER_TOGGLE_ICON_CLASS =
+  "[&_[data-icon-root]]:translate-x-[calc(var(--bb-title-bar-control-size)/2_-_0.75rem)]";
+export const MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS = `w-(--bb-title-bar-control-size) -mr-(--bb-panel-chrome-padding) ${MACOS_TITLE_BAR_CORNER_TOGGLE_ICON_CLASS}`;
+export const MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS = `right-0 [&_button]:w-(--bb-title-bar-control-size) ${MACOS_TITLE_BAR_CORNER_TOGGLE_ICON_CLASS}`;
 export const MACOS_TITLE_BAR_CONTROL_SIZE_CLASS =
-  "[&_button]:h-7 [&_[data-tab-pill]]:h-7";
+  "[&_button]:h-(--bb-title-bar-control-size) [&_[data-tab-pill]]:h-(--bb-title-bar-control-size)";
 export const MACOS_TITLE_BAR_BAND_CLASS = `${MACOS_TITLE_BAR_ROW_CLASS} box-content pb-px`;
 export const MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS =
   "pl-[calc(var(--bb-window-title-bar-controls-end)_+_12px_-_var(--bb-sidebar-control-size)_-_2*var(--bb-sidebar-rail-padding)_-_1px_-_1rem)]";
@@ -71,7 +76,6 @@ export function shouldReserveMacosTrafficLights({
 
 const MACOS_TRAFFIC_LIGHT_CLEARANCE_PX = 12;
 const WINDOW_CARD_RADIUS_PX = 12;
-const MACOS_CHROME_CONTROL_SIZE_PX = 28;
 const COLLAPSED_SIDEBAR_TRIGGER_GAP_PX = 8;
 const TITLE_BAR_CONTROL_COUNT = 3;
 const TITLE_BAR_CONTROL_GAP_PX = 4;
@@ -102,11 +106,11 @@ export function getMacosWindowChromeGeometry(
     trafficLightReserve,
     titleBarControlsEnd:
       trafficLightReserve +
-      TITLE_BAR_CONTROL_COUNT * MACOS_CHROME_CONTROL_SIZE_PX +
+      TITLE_BAR_CONTROL_COUNT * TITLE_BAR_CONTROL_SIZE_PX +
       (TITLE_BAR_CONTROL_COUNT - 1) * TITLE_BAR_CONTROL_GAP_PX,
     collapsedTopLeftReserve:
       trafficLightReserve +
-      MACOS_CHROME_CONTROL_SIZE_PX +
+      TITLE_BAR_CONTROL_SIZE_PX +
       COLLAPSED_SIDEBAR_TRIGGER_GAP_PX -
       PAGE_HEADER_BASE_INSET_PX,
   };
@@ -125,6 +129,18 @@ export function getWindowCardMask(
 
 interface StyleTarget {
   style: Pick<CSSStyleDeclaration, "setProperty">;
+}
+
+export function applyAppFrameGeometry(root: StyleTarget): void {
+  root.style.setProperty("--bb-frame-rail-padding", `${RAIL_PADDING_PX}px`);
+  root.style.setProperty(
+    "--bb-frame-rail-control-size",
+    `${RAIL_CONTROL_SIZE_PX}px`,
+  );
+  root.style.setProperty(
+    "--bb-title-bar-control-size",
+    `${TITLE_BAR_CONTROL_SIZE_PX}px`,
+  );
 }
 
 export function applyMacosWindowChromeGeometry(
