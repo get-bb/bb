@@ -4018,7 +4018,7 @@ export function PromptBoxInternal({
                     !showCompactLayout && !suppressPluginComposerCustomizations
                   }
                 >
-                  {!showCompactLayout ? submitAccessory : null}
+                  {submitAccessory}
                   {!showCompactLayout || showCompactVoiceAction ? (
                     <>
                       {voice &&
