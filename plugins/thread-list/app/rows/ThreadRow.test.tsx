@@ -460,6 +460,33 @@ describe("ThreadRow", () => {
     await waitFor(() => expect(restore.disabled).toBe(false));
   });
 
+  it("names a choice row action with its current value", () => {
+    getDefaultStore().set(preferenceValueAtom("rowActions"), [
+      "push-notifications/notifications",
+    ]);
+    renderThreadRow({
+      threadActions: () => [
+        {
+          key: "push-notifications/notifications",
+          pluginId: "push-notifications",
+          group: "1_state",
+          action: {
+            label: "Notifications",
+            detail: "Muted",
+            icon: "Notification",
+            choices: {
+              items: [{ id: "muted", label: "Muted", selected: true }],
+            },
+            run: async () => undefined,
+          },
+        },
+      ],
+    });
+    expect(
+      screen.getByRole("button", { name: "Notifications, Muted" }),
+    ).not.toBeNull();
+  });
+
   it("shows the configured row actions in order and reserves their width", async () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
       "bb--core/pin",

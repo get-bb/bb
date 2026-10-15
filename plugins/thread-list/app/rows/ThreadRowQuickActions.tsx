@@ -85,7 +85,11 @@ function ThreadQuickActionChoices({
                 "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
                 className,
               )}
-              aria-label={action.label}
+              aria-label={
+                action.detail === undefined
+                  ? action.label
+                  : `${action.label}, ${action.detail}`
+              }
               data-thread-action={entry.key}
               disabled={action.disabled}
               onClick={(event) => {
