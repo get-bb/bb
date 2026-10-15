@@ -172,7 +172,7 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `timelinePush` sends an open thread's timeline updates over the live
 connection as row deltas instead of reloading the latest window after each
 update.
-`bb settings general earlyAdopter on` (Settings → Experiments → Early
+`bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `timelinePush`; an experiment you set yourself keeps your value.
 

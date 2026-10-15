@@ -1158,23 +1158,36 @@ export function ExperimentsSettingsSection({
   onExperimentChange,
 }: ExperimentsSettingsSectionProps) {
   return (
-    <>
+    <div className="space-y-6">
+      <section
+        data-settings-anchor={EARLY_ADOPTER_LABEL}
+        aria-label={EARLY_ADOPTER_LABEL}
+        className="flex scroll-mt-4 items-start gap-3 rounded-lg border border-border bg-accent px-4 py-3.5"
+      >
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background">
+          <Icon name="Beaker" className="size-4 text-foreground" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-foreground">
+            Become an early adopter
+          </h2>
+          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground">
+            Get the experiments marked Early adopter turned on as they ship. An
+            experiment you switch yourself keeps your choice.
+          </p>
+        </div>
+        <Switch
+          checked={earlyAdopter}
+          disabled={disabled}
+          onCheckedChange={onEarlyAdopterChange}
+          aria-label={EARLY_ADOPTER_LABEL}
+        />
+      </section>
       <SettingsSection
         title="Experiments"
         description="Early features that are off by default. Opt in to try them."
       >
         <div className="space-y-5">
-          <SettingsWithControl
-            label={EARLY_ADOPTER_LABEL}
-            description="Turn on the experiments marked Early adopter. An experiment you switch yourself keeps your choice."
-          >
-            <Switch
-              checked={earlyAdopter}
-              disabled={disabled}
-              onCheckedChange={onEarlyAdopterChange}
-              aria-label={EARLY_ADOPTER_LABEL}
-            />
-          </SettingsWithControl>
           {visibleExperimentKeys(performanceDiagnosticsAvailable).map(
             (experimentKey) => {
               const definition = EXPERIMENT_DEFINITIONS[experimentKey];
@@ -1203,7 +1216,7 @@ export function ExperimentsSettingsSection({
           )}
         </div>
       </SettingsSection>
-    </>
+    </div>
   );
 }
 
@@ -1265,9 +1278,7 @@ export function SettingsView() {
   } else if (activeSection === "providers") {
     content = (
       <ProvidersSettingsSection
-        disabled={
-          systemConfigQuery.data === undefined
-        }
+        disabled={systemConfigQuery.data === undefined}
         generalSettings={generalSettings}
         onGeneralSettingsChange={(next) =>
           updateGeneralSettingsMutation.mutateAsync(next)
@@ -1358,9 +1369,7 @@ export function SettingsView() {
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection
-        disabled={
-          systemConfigQuery.data === undefined
-        }
+        disabled={systemConfigQuery.data === undefined}
         earlyAdopter={generalSettings.earlyAdopter}
         onEarlyAdopterChange={(enabled) =>
           updateGeneralSettingsMutation.mutate({ earlyAdopter: enabled })
@@ -1418,9 +1427,7 @@ export function SettingsView() {
             })
           }
           desktopBrowserAvailable={desktopBrowserAvailable}
-          generalSettingsDisabled={
-            systemConfigQuery.data === undefined
-          }
+          generalSettingsDisabled={systemConfigQuery.data === undefined}
           managedBranchPrefix={generalSettings.managedBranchPrefix}
           onManagedBranchPrefixChange={async (prefix) => {
             await updateGeneralSettingsMutation.mutateAsync({
@@ -1457,9 +1464,7 @@ export function SettingsView() {
             })
           }
           enabled={generalSettings.showDiagnosticEvents}
-          disabled={
-            systemConfigQuery.data === undefined
-          }
+          disabled={systemConfigQuery.data === undefined}
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               showDiagnosticEvents: enabled,

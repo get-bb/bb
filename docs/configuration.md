@@ -221,7 +221,7 @@ for the command surface.
 | `providerOrder`                                                            | `[]`                                | Settings → Providers (move a provider up or down). JSON list of provider ids that lead the picker, such as `'["claude-code","codex"]'`; unlisted ids follow in plugin install order and unknown ids are ignored.                                                                                                                                                                                                                                                                                                                               |
 | `defaultProviderId`                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                                                                                                                                                                                                                                                                                           |
 | `telemetryEnabled`                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `earlyAdopter`                                                             | `false`                             | Settings → Experiments → Early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                               |
+| `earlyAdopter`                                                             | `false`                             | Settings → Experiments → Become an early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                     |
 | `machineServerUrl`, `defaultMachineAccess`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Older clients that omit `showGitChanges`, `keepHistoryAfterContextClear`,
@@ -725,12 +725,12 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 bb stores only the experiments you set; the others follow the shipped default.
 
-The `earlyAdopter` general setting (Settings → Experiments → Early adopter,
-`bb settings general earlyAdopter on`) switches the shipped default to the
-early adopter default: experiments marked Early adopter (currently
-`timelinePush`) turn on, and the rest stay off. An experiment you set yourself
-keeps your value either way. `/system/config` and `sdk.system.config()` return
-the resolved values in `experiments`.
+The `earlyAdopter` general setting (the Become an early adopter banner on
+Settings → Experiments, `bb settings general earlyAdopter on`) switches the
+shipped default to the early adopter default: experiments marked Early adopter
+(currently `timelinePush`) turn on, and the rest stay off. An experiment you
+set yourself keeps your value either way. `/system/config` and
+`sdk.system.config()` return the resolved values in `experiments`.
 
 - `changelogPreview` shows the latest release notes as a dismissible card on
   Settings → Updates.
