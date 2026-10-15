@@ -3735,7 +3735,7 @@ export interface PluginSdkApp {
   /**
    * bb's thread menu groups, for a registration that joins one:
    * `open` (split, copy link, new thread in environment), `state` (read,
-   * notifications, pin), `organize` (rename, move), `settings`, and
+   * pin, notifications), `organize` (rename, move), `settings`, and
    * `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
    */
   experimental_THREAD_ACTION_GROUPS: {
