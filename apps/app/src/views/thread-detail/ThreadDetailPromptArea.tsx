@@ -2244,10 +2244,7 @@ export function ThreadDetailPromptArea({
           />
         ) : null}
         {shouldHideComposer ? null : queuedMessagesPending ? (
-          <QueuedMessagesPendingCard
-            expanded={queueExpanded}
-            queuedMessageCount={queuedMessageCount}
-          />
+          <QueuedMessagesPendingCard queuedMessageCount={queuedMessageCount} />
         ) : (
           <LazyQueuedMessagesList
             attachedToComposer={true}
