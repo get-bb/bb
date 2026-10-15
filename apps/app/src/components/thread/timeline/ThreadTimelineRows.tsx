@@ -2337,6 +2337,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const dismissSelection = useCallback(() => {
     setActiveSelection(null);
   }, []);
+  const [selectionMenuLayer, setSelectionMenuLayer] =
+    useState<HTMLDivElement | null>(null);
   const handleSelectionAddToChat = useCallback(
     (
       text: string,
@@ -2471,32 +2473,40 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                       <TimelineWindowingMeasurementsContext.Provider
                         value={windowingMeasurements}
                       >
-                        <AutoHeightContainer
-                          snapRevision={heightSnapRevision}
-                          animateGrowth={!scopeActive}
-                        >
-                          <TimelineRowsList
-                            hasOlderTimelineRows={props.hasOlderTimelineRows}
-                            isLoadingOlderTimelineRows={
-                              props.isLoadingOlderTimelineRows
-                            }
-                            navigationTargetRowId={
-                              props.timelineNavigationTargetRowId
-                            }
-                            onLoadOlderRows={props.onLoadOlderRows}
-                            rows={rows}
-                            scopeActive={scopeActive}
-                            showAssistantMessageActions={true}
-                            compactActivityIntents={false}
-                            spacing="top-level"
-                            unreadDividerAutoScroll={
-                              props.unreadDividerAutoScroll ?? true
-                            }
-                            unreadDividerPlacement={
-                              props.unreadDividerPlacement ?? null
-                            }
-                          />
-                        </AutoHeightContainer>
+                        <div className="relative">
+                          <AutoHeightContainer
+                            snapRevision={heightSnapRevision}
+                            animateGrowth={!scopeActive}
+                          >
+                            <TimelineRowsList
+                              hasOlderTimelineRows={props.hasOlderTimelineRows}
+                              isLoadingOlderTimelineRows={
+                                props.isLoadingOlderTimelineRows
+                              }
+                              navigationTargetRowId={
+                                props.timelineNavigationTargetRowId
+                              }
+                              onLoadOlderRows={props.onLoadOlderRows}
+                              rows={rows}
+                              scopeActive={scopeActive}
+                              showAssistantMessageActions={true}
+                              compactActivityIntents={false}
+                              spacing="top-level"
+                              unreadDividerAutoScroll={
+                                props.unreadDividerAutoScroll ?? true
+                              }
+                              unreadDividerPlacement={
+                                props.unreadDividerPlacement ?? null
+                              }
+                            />
+                          </AutoHeightContainer>
+                          {hasSelectionActions ? (
+                            <div
+                              ref={setSelectionMenuLayer}
+                              className="pointer-events-none absolute inset-0 z-10 [contain:layout]"
+                            />
+                          ) : null}
+                        </div>
                       </TimelineWindowingMeasurementsContext.Provider>
                       {hasSelectionActions ? (
                         <TimelineSelectionMenu
@@ -2504,6 +2514,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                           onAddToChat={selectionAddToChatHandler}
                           pluginActions={selectionPluginActions}
                           onDismiss={dismissSelection}
+                          container={selectionMenuLayer}
                         />
                       ) : null}
                     </TimelineTurnStateContext.Provider>
