@@ -21,76 +21,146 @@ import { SidebarNavigationIcon } from "./SidebarNavigationModel";
 
 export type SidebarNavigationSurface = "rail" | "sidebar";
 
+type MenuSurface = "context" | "dropdown";
+
+function useDisablePlugin(itemId: string) {
+  const { actions } = useSidebarNavigation();
+  const [disablePending, setDisablePending] = useState(false);
+  return {
+    disablePending,
+    disable: () => {
+      setDisablePending(true);
+      actions
+        .disablePlugin(itemId)
+        .catch(() => {})
+        .finally(() => setDisablePending(false));
+    },
+  };
+}
+
+function SidebarNavigationItemMenuItems({
+  item,
+  surface,
+  menu,
+  canOpenInSplit,
+}: {
+  item: ExperimentalSidebarNavigationItem;
+  surface: SidebarNavigationSurface;
+  menu: MenuSurface;
+  canOpenInSplit: boolean;
+}) {
+  const { actions } = useSidebarNavigation();
+  const { disablePending, disable } = useDisablePlugin(item.id);
+  const Item = menu === "context" ? ContextMenuItem : DropdownMenuItem;
+  const Separator =
+    menu === "context" ? ContextMenuSeparator : DropdownMenuSeparator;
+  const isPluginItem = item.pluginId !== null;
+  return (
+    <>
+      {isPluginItem ? (
+        <>
+          {canOpenInSplit ? (
+            <Item
+              onSelect={() => actions.activate(item.id, { openInSplit: true })}
+            >
+              <Icon name="Columns2" aria-hidden="true" />
+              Open in split
+            </Item>
+          ) : null}
+          <Item onSelect={() => actions.openDetails(item.id)}>
+            <Icon name="Info" aria-hidden="true" />
+            View details
+          </Item>
+          <Separator />
+        </>
+      ) : null}
+      <Item onSelect={() => actions.setVisible(item.id, false)}>
+        <Icon name="EyeOff" aria-hidden="true" />
+        Hide from {surface}
+      </Item>
+      <Item onSelect={() => actions.openCustomize()}>
+        <Icon name="SlidersHorizontal" aria-hidden="true" />
+        Customize {surface}
+      </Item>
+      {isPluginItem ? (
+        <>
+          <Separator />
+          <Item disabled={disablePending} onSelect={disable}>
+            <Icon name="Unavailable" aria-hidden="true" />
+            Disable
+          </Item>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+export function sidebarNavigationItemMenuLabel(
+  item: ExperimentalSidebarNavigationItem,
+): string {
+  return item.pluginId === null
+    ? `${item.label} options`
+    : `${item.label} panel options`;
+}
+
 export function SidebarNavigationItemContextMenu({
   item,
   surface,
   canOpenInSplit,
+  onOpenChange,
   children,
 }: {
   item: ExperimentalSidebarNavigationItem;
   surface: SidebarNavigationSurface;
   canOpenInSplit: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
   children: ReactNode;
 }) {
-  const { actions } = useSidebarNavigation();
-  const [disablePending, setDisablePending] = useState(false);
-  const isPluginItem = item.pluginId !== null;
-
   return (
-    <ContextMenu>
+    <ContextMenu {...(onOpenChange ? { onOpenChange } : {})}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={
-          isPluginItem ? `${item.label} panel options` : `${item.label} options`
-        }
-      >
-        {isPluginItem ? (
-          <>
-            {canOpenInSplit ? (
-              <ContextMenuItem
-                onSelect={() =>
-                  actions.activate(item.id, { openInSplit: true })
-                }
-              >
-                <Icon name="Columns2" aria-hidden="true" />
-                Open in split
-              </ContextMenuItem>
-            ) : null}
-            <ContextMenuItem onSelect={() => actions.openDetails(item.id)}>
-              <Icon name="Info" aria-hidden="true" />
-              View details
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-          </>
-        ) : null}
-        <ContextMenuItem onSelect={() => actions.setVisible(item.id, false)}>
-          <Icon name="EyeOff" aria-hidden="true" />
-          Hide from {surface}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => actions.openCustomize()}>
-          <Icon name="SlidersHorizontal" aria-hidden="true" />
-          Customize {surface}
-        </ContextMenuItem>
-        {isPluginItem ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              disabled={disablePending}
-              onSelect={() => {
-                setDisablePending(true);
-                actions
-                  .disablePlugin(item.id)
-                  .catch(() => {})
-                  .finally(() => setDisablePending(false));
-              }}
-            >
-              <Icon name="Unavailable" aria-hidden="true" />
-              Disable
-            </ContextMenuItem>
-          </>
-        ) : null}
+      <ContextMenuContent aria-label={sidebarNavigationItemMenuLabel(item)}>
+        <SidebarNavigationItemMenuItems
+          item={item}
+          surface={surface}
+          menu="context"
+          canOpenInSplit={canOpenInSplit}
+        />
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+export function SidebarNavigationItemDropdownMenu({
+  item,
+  surface,
+  canOpenInSplit,
+  onOpenChange,
+  trigger,
+}: {
+  item: ExperimentalSidebarNavigationItem;
+  surface: SidebarNavigationSurface;
+  canOpenInSplit: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  trigger: ReactNode;
+}) {
+  return (
+    <DropdownMenu onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="right"
+        align="start"
+        sideOffset={4}
+        aria-label={sidebarNavigationItemMenuLabel(item)}
+      >
+        <SidebarNavigationItemMenuItems
+          item={item}
+          surface={surface}
+          menu="dropdown"
+          canOpenInSplit={canOpenInSplit}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

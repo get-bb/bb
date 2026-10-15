@@ -36,6 +36,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { getPluginPanelRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import {
   SidebarNavigationProviderMount,
@@ -74,7 +75,7 @@ const ALL_KEYS = [
   "garden/docs",
 ];
 
-function ListHarness() {
+function ListHarness({ splitEnabled }: { splitEnabled: boolean }) {
   const location = useLocation();
   const customize = useSidebarNavigationCustomize();
   return (
@@ -82,7 +83,7 @@ function ListHarness() {
       onNavigate={mocks.onNavigate}
       onNewChat={mocks.onNewChat}
       onOpenCustomize={customize.open}
-      splitEnabled={false}
+      splitEnabled={splitEnabled}
     >
       <SidebarNavigationRegion placement="list" customize={customize}>
         <SidebarNavigationProviderMount
@@ -96,9 +97,14 @@ function ListHarness() {
 
 function renderList(
   initialPath: string,
-  options: { visibleKeys?: string[]; isCompactViewport?: boolean } = {},
+  options: {
+    visibleKeys?: string[];
+    isCompactViewport?: boolean;
+    store?: ReturnType<typeof createStore>;
+    splitEnabled?: boolean;
+  } = {},
 ) {
-  const store = createStore();
+  const store = options.store ?? createStore();
   if (options.visibleKeys) {
     store.set(pluginNavPanelOrderAtom, ALL_KEYS);
     store.set(pluginNavVisiblePanelKeysAtom, options.visibleKeys);
@@ -111,7 +117,7 @@ function renderList(
         >
           <TooltipProvider>
             <SidebarProvider>
-              <ListHarness />
+              <ListHarness splitEnabled={options.splitEnabled ?? false} />
             </SidebarProvider>
           </TooltipProvider>
         </CompactViewportOverrideProvider>
@@ -124,10 +130,22 @@ function list(): HTMLElement {
   return screen.getByTestId("sidebar-navigation-list");
 }
 
-function rowLabels(): string[] {
-  return within(list())
+function rowButtons(container: HTMLElement): HTMLElement[] {
+  return within(container)
     .getAllByRole("button")
-    .map((button) => button.textContent ?? "");
+    .filter(
+      (button) => !button.getAttribute("aria-label")?.endsWith(" options"),
+    );
+}
+
+function rowLabels(): string[] {
+  return rowButtons(list()).map((button) => button.textContent ?? "");
+}
+
+function rowBadge(itemId: string): Element | null {
+  return list().querySelector(
+    `[data-sidebar-navigation-item="${itemId}"] [data-nav-rail-badge]`,
+  );
 }
 
 function registerDocs(useBadge?: () => ExperimentalBadge | null) {
@@ -197,9 +215,7 @@ describe("SidebarNavigationList", () => {
     const destinations = screen.getByTestId("sidebar-navigation-destinations");
     expect(destinations.className).toContain("overflow-y-auto");
     expect(
-      within(destinations)
-        .getAllByRole("button")
-        .map((button) => button.textContent),
+      rowButtons(destinations).map((button) => button.textContent),
     ).toEqual(["Plugins", "Skills", "Docs"]);
     for (const pinned of ["New thread", "More"]) {
       const button = within(list()).getByRole("button", { name: pinned });
@@ -222,21 +238,20 @@ describe("SidebarNavigationList", () => {
     registerDocsBadge({ count: 120, label: "120 open tasks" });
     renderList(THREAD_PATH);
 
-    const docs = within(list()).getByRole("button", {
-      name: "Docs, 120 open tasks",
-    });
     expect(
-      docs.querySelector('[data-nav-rail-badge="count"]')?.textContent,
-    ).toBe("99+");
+      within(list()).getByRole("button", { name: "Docs, 120 open tasks" }),
+    ).toBeDefined();
+    expect(rowBadge("garden/docs")?.textContent).toBe("99+");
   });
 
   it("draws a text badge in its tone at the end of the row", () => {
     registerDocsBadge({ text: "Hot 85%", tone: "critical", label: "CPU hot" });
     renderList(THREAD_PATH);
 
-    const mark = within(list())
-      .getByRole("button", { name: "Docs, CPU hot" })
-      .querySelector("[data-nav-rail-badge]");
+    expect(
+      within(list()).getByRole("button", { name: "Docs, CPU hot" }),
+    ).toBeDefined();
+    const mark = rowBadge("garden/docs");
     expect(mark?.getAttribute("data-nav-rail-badge")).toBe("text");
     expect(mark?.getAttribute("data-nav-badge-tone")).toBe("critical");
     expect(mark?.textContent).toBe("Hot 85%");
@@ -275,5 +290,85 @@ describe("SidebarNavigationList", () => {
       expect(screen.queryByTestId("sidebar-navigation-customize")).toBeNull(),
     );
     expect(document.activeElement).toBe(more);
+  });
+
+  it("hides More when nothing is hidden", () => {
+    renderList(THREAD_PATH, {
+      visibleKeys: [
+        "__bb__/search-threads",
+        "__bb__/extensions",
+        "__bb__/skills",
+        "garden/docs",
+      ],
+    });
+
+    expect(rowLabels()).not.toContain("More");
+  });
+
+  it("opens a row's options from its menu button and customizes from there", async () => {
+    renderList(THREAD_PATH);
+
+    fireEvent.keyDown(
+      within(list()).getByRole("button", { name: "Docs panel options" }),
+      { key: "Enter" },
+    );
+    const menu = await screen.findByRole("menu", {
+      name: "Docs panel options",
+    });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "View details",
+      "Hide from sidebar",
+      "Customize sidebar",
+      "Disable",
+    ]);
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Customize sidebar" }),
+    );
+
+    expect(
+      await screen.findByTestId("sidebar-navigation-customize"),
+    ).toBeDefined();
+  });
+
+  it("shows where a plugin panel sits when it is open in a split", () => {
+    const store = createStore();
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-thread",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-docs",
+            content: {
+              kind: "plugin-panel",
+              pluginId: "garden",
+              panelPath: "docs",
+              subPath: "",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-thread",
+            content: {
+              kind: "thread",
+              projectId: "proj_one",
+              threadId: "thr_one",
+            },
+          },
+        ],
+      },
+    });
+    renderList(THREAD_PATH, { store, splitEnabled: true });
+
+    expect(
+      screen.getByRole("img", { name: "Docs, open in split" }),
+    ).toBeDefined();
   });
 });

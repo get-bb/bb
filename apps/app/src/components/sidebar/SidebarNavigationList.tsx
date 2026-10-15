@@ -12,7 +12,17 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
+  SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+} from "@bb/shared-ui/sidebar-hover-actions";
+import {
+  PROJECT_LIST_ACTION_BUTTON_CLASS,
+  SIDEBAR_CONTROL_STATE_CLASS,
+} from "@bb/shared-ui/sidebar-row-classes";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import {
@@ -27,8 +37,11 @@ import {
 } from "./navigationBadges";
 import {
   SidebarNavigationItemContextMenu,
+  SidebarNavigationItemDropdownMenu,
+  sidebarNavigationItemMenuLabel,
   SidebarNavigationMoreMenu,
 } from "./SidebarNavigationMenus";
+import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { SidebarNavigationIcon } from "./SidebarNavigationModel";
 
 const MORE_MENU_SIDE_OFFSET = 4;
@@ -65,13 +78,22 @@ function NavigationListRow({
   const { activeItemId, actions, isShortcutModifierHeld } =
     useSidebarNavigation();
   const split = useSidebarNavigationSplit(item.id);
+  const [isDropdownOpen, setDropdownOpen] = useState(false);
+  const [isContextMenuOpen, setContextMenuOpen] = useState(false);
   const shortcut = isShortcutModifierHeld ? item.shortcut : null;
   const label = navigationBadgeAccessibleLabel(item.label, item.badge);
+  const hasMenu = item.action.kind !== "new-thread";
+  const showsOptions = hasMenu && shortcut === null;
+  const isActionsOpen = isDropdownOpen || isContextMenuOpen;
+  const canOpenInSplit = split.isAvailable && !isCompactViewport;
 
   const row = (
-    <div data-sidebar-navigation-item={item.id}>
+    <div
+      data-sidebar-navigation-item={item.id}
+      className={cn("relative", hasMenu && SIDEBAR_HOVER_ACTIONS_ROW_CLASS)}
+    >
       <ListRowButton
-        active={item.id === activeItemId && item.action.kind !== "new-thread"}
+        active={item.id === activeItemId && hasMenu}
         disabled={item.isDisabled}
         aria-busy={item.isLoading || undefined}
         aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}
@@ -83,6 +105,9 @@ function NavigationListRow({
               : undefined
         }
         className={cn(
+          showsOptions &&
+            (item.badge ? "pr-18 [@media(hover:none)]:pr-25" : "pr-7"),
+          isContextMenuOpen && "bg-sidebar-accent text-sidebar-foreground",
           item.isLoading &&
             "text-sidebar-foreground/55 [&_[data-icon-root]]:opacity-60",
         )}
@@ -94,21 +119,78 @@ function NavigationListRow({
         }
       >
         <SidebarNavigationIcon icon={item.icon} />
-        <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          {split.layout ? (
+            <SplitPaneMiniMap
+              slots={split.layout.panes}
+              label={`${item.label}, open in split`}
+            />
+          ) : null}
+        </span>
         {shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
-        ) : item.badge ? (
+        ) : item.badge && !showsOptions ? (
           <NavigationBadgeMark badge={item.badge} size="list" />
         ) : null}
       </ListRowButton>
+      {showsOptions && item.badge ? (
+        <span
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+            "pointer-events-none absolute top-1/2 right-1.5 flex -translate-y-1/2 [@media(hover:none)]:right-9",
+          )}
+        >
+          <NavigationBadgeMark badge={item.badge} size="list" />
+        </span>
+      ) : null}
+      {showsOptions ? (
+        <div
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
+            "absolute inset-y-0 right-0 flex items-center",
+          )}
+        >
+          <SidebarNavigationItemDropdownMenu
+            item={item}
+            surface="sidebar"
+            canOpenInSplit={canOpenInSplit}
+            onOpenChange={setDropdownOpen}
+            trigger={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={sidebarNavigationItemMenuLabel(item)}
+                className={cn(
+                  "m-1 size-5 rounded-md p-0 max-md:pointer-coarse:m-0 max-md:pointer-coarse:size-9",
+                  SIDEBAR_CONTROL_STATE_CLASS,
+                  isContextMenuOpen && "bg-state-active",
+                )}
+              >
+                <Icon
+                  name="MoreHorizontal"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
+            }
+          />
+        </div>
+      ) : null}
     </div>
   );
-  if (item.action.kind === "new-thread") return row;
+  if (!hasMenu) return row;
   return (
     <SidebarNavigationItemContextMenu
       item={item}
       surface="sidebar"
-      canOpenInSplit={split.isAvailable && !isCompactViewport}
+      canOpenInSplit={canOpenInSplit}
+      onOpenChange={setContextMenuOpen}
     >
       {row}
     </SidebarNavigationItemContextMenu>
@@ -172,35 +254,35 @@ export function SidebarNavigationList({
         className="relative shrink-0 space-y-0.5 px-2 py-2"
       >
         {newThread ? (
-          <div className="relative z-10">
-            <NavigationListRow
-              item={newThread}
-              isCompactViewport={isCompactViewport}
-            />
+          <NavigationListRow
+            item={newThread}
+            isCompactViewport={isCompactViewport}
+          />
+        ) : null}
+        {visible.length > 0 ? (
+          <div className="relative">
+            <div
+              ref={destinationsRef}
+              data-testid="sidebar-navigation-destinations"
+              className="max-h-[max(4rem,calc(70svh_-_4.5rem))] space-y-0.5 overflow-y-auto [scrollbar-width:thin]"
+            >
+              {visible.map((item) => (
+                <NavigationListRow
+                  key={item.id}
+                  item={item}
+                  isCompactViewport={isCompactViewport}
+                />
+              ))}
+            </div>
             {destinationsOverflow.above ? (
-              <OverflowFade placement="below" tone="sidebar" />
+              <OverflowFade placement="above" inset tone="sidebar" />
+            ) : null}
+            {destinationsOverflow.below ? (
+              <OverflowFade placement="below" inset tone="sidebar" />
             ) : null}
           </div>
         ) : null}
-        {visible.length > 0 ? (
-          <div
-            ref={destinationsRef}
-            data-testid="sidebar-navigation-destinations"
-            className="max-h-[max(4rem,calc(70svh_-_4.5rem))] space-y-0.5 overflow-y-auto [scrollbar-width:thin]"
-          >
-            {visible.map((item) => (
-              <NavigationListRow
-                key={item.id}
-                item={item}
-                isCompactViewport={isCompactViewport}
-              />
-            ))}
-          </div>
-        ) : null}
-        <div className="relative z-10">
-          {destinationsOverflow.below ? (
-            <OverflowFade placement="above" tone="sidebar" />
-          ) : null}
+        {hidden.length > 0 ? (
           <SidebarNavigationMoreMenu
             trigger={
               <ListRowButton
@@ -226,7 +308,7 @@ export function SidebarNavigationList({
             sideOffset={MORE_MENU_SIDE_OFFSET}
             testId="sidebar-navigation-more-menu"
           />
-        </div>
+        ) : null}
       </div>
       <div
         aria-hidden="true"

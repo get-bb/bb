@@ -319,6 +319,11 @@
       "types": "./src/components/ui/sidebar-row-classes.ts",
       "default": "./src/components/ui/sidebar-row-classes.ts"
     },
+    "./sidebar-hover-actions": {
+      "source": "./src/components/ui/sidebar-hover-actions.ts",
+      "types": "./src/components/ui/sidebar-hover-actions.ts",
+      "default": "./src/components/ui/sidebar-hover-actions.ts"
+    },
     "./sidebar-visibility-customize": {
       "source": "./src/components/ui/sidebar-visibility-customize.tsx",
       "types": "./src/components/ui/sidebar-visibility-customize.tsx",
