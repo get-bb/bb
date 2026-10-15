@@ -58,6 +58,7 @@ import {
   RAIL_NAVIGATION,
   type ResolvedSidebarNavigation,
 } from "./sidebarNavigationProvider";
+import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { NavRailNewThreadButton, NavRailSettingsButton } from "./AppNavRail";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
@@ -144,6 +145,7 @@ const ALL_KEYS = [
   "__bb__/extensions",
   "__bb__/skills",
   "garden/docs",
+  "garden/alerts",
 ];
 const DOCS_PATH = getPluginPanelRoutePath({ pluginId: "garden", path: "docs" });
 const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
@@ -323,6 +325,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetAllCrashedPluginSlotsForTest();
   vi.useRealTimers();
   resetPluginFrontendBootStateForTest();
   resetPluginSlotStoreForTest();
@@ -540,15 +543,87 @@ describe("AppNavRail", () => {
     ).toBe("2");
   });
 
-  it("shows no badge for an invalid rail badge value and keeps the destination usable", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    registerDocsBadge({ count: 0, label: "none" });
+  it.each([
+    { name: "a zero count", badge: { count: 0, label: "none" } },
+    {
+      name: "both count and text",
+      badge: { count: 2, text: "NEW", label: "two new" },
+    },
+    {
+      name: "text over eight characters",
+      badge: { text: "123456789", label: "too long" },
+    },
+    {
+      name: "an unknown tone",
+      badge: { count: 2, tone: "loud", label: "two" },
+    },
+  ])(
+    "shows no badge for $name and keeps the destination usable",
+    ({ badge }) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      registerDocsBadge(badge as ExperimentalBadge);
+
+      renderRail(THREAD_PATH);
+
+      expect(rail().querySelector("[data-nav-rail-badge]")).toBeNull();
+      fireEvent.click(railButton("Docs"));
+      expect(pathname()).toBe(DOCS_PATH);
+    },
+  );
+
+  it("draws a text badge as a dot in its tone on the rail and keeps the label in the name", () => {
+    registerDocsBadge({
+      text: "2 down",
+      tone: "critical",
+      label: "2 sites down",
+    });
 
     renderRail(THREAD_PATH);
 
-    expect(rail().querySelector("[data-nav-rail-badge]")).toBeNull();
-    fireEvent.click(railButton("Docs"));
-    expect(pathname()).toBe(DOCS_PATH);
+    const mark = railButton("Docs, 2 sites down").querySelector(
+      "[data-nav-rail-badge]",
+    );
+    expect(mark?.getAttribute("data-nav-rail-badge")).toBe("dot");
+    expect(mark?.getAttribute("data-nav-badge-tone")).toBe("critical");
+    expect(mark?.textContent).toBe("");
+  });
+
+  it("colors the More dot with the strongest tone hidden under it", () => {
+    setPluginSlotRegistrations(
+      "garden",
+      registrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "BookOpen",
+            path: "docs",
+            component: () => null,
+            experimental_useBadge: () => ({ count: 2, label: "2 drafts" }),
+          },
+          {
+            id: "alerts",
+            title: "Alerts",
+            icon: "Bell",
+            path: "alerts",
+            component: () => null,
+            experimental_useBadge: () => ({
+              tone: "warning",
+              label: "1 due today",
+            }),
+          },
+        ],
+      }),
+    );
+
+    renderRail(THREAD_PATH, { visibleKeys: ["__bb__/extensions"] });
+
+    const more = railButton("More, Docs: 2 drafts, Alerts: 1 due today");
+    expect(
+      more
+        .querySelector("[data-nav-rail-badge]")
+        ?.getAttribute("data-nav-badge-tone"),
+    ).toBe("warning");
   });
 
   it("keeps hidden destinations out of the rail", () => {

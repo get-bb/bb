@@ -16,6 +16,7 @@ import {
   hiddenNavigationBadgeLabels,
   NavigationBadgeMark,
   navigationBadgeAccessibleLabel,
+  strongestNavigationBadgeTone,
 } from "./navigationBadges";
 import {
   SidebarNavigationItemContextMenu,
@@ -90,7 +91,7 @@ function NavigationListRow({
         {shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
         ) : item.badge ? (
-          <NavigationBadgeMark count={item.badge.count} size="list" />
+          <NavigationBadgeMark badge={item.badge} size="list" />
         ) : null}
       </ListRowButton>
     </div>
@@ -118,6 +119,9 @@ export function SidebarNavigationList({
   const visible = destinations.filter((item) => item.isVisible);
   const hidden = destinations.filter((item) => !item.isVisible);
   const hiddenBadgeLabels = hiddenNavigationBadgeLabels(hidden);
+  const hiddenBadgeTone = strongestNavigationBadgeTone(
+    hidden.map((item) => item.badge),
+  );
 
   return (
     <>
@@ -149,8 +153,11 @@ export function SidebarNavigationList({
             >
               <Icon name="MoreHorizontal" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-left">More</span>
-              {hiddenBadgeLabels.length > 0 ? (
-                <NavigationBadgeMark count={undefined} className="mr-1.5" />
+              {hiddenBadgeTone !== null ? (
+                <NavigationBadgeMark
+                  badge={{ tone: hiddenBadgeTone }}
+                  className="mr-1.5"
+                />
               ) : null}
             </ListRowButton>
           }

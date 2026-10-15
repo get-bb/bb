@@ -863,18 +863,36 @@ export type PluginFixedTabDeclaration =
   | PluginFixedTabRegistration<JsonValue>;
 
 /**
- * A live value the host draws on a nav panel's navigation entry.
+ * How urgent an {@link ExperimentalBadge} is. bb picks the colors: `neutral`
+ * (the default) for counts and new items, `warning` for something due or
+ * degraded, and `critical` for something failing or waiting on the user.
+ *
+ * Experimental: see docs/api_to_audit.md.
+ */
+export type ExperimentalBadgeTone = "neutral" | "warning" | "critical";
+
+/**
+ * A live value the host draws on a nav panel's navigation entry. Set at most
+ * one of `count` and `text`; with neither, bb draws a dot.
  *
  * Experimental: see docs/api_to_audit.md.
  */
 export interface ExperimentalBadge {
   /**
-   * Positive integer drawn on the entry, shown as `9+` above 9 on the rail.
-   * Omit it to draw a dot for a status that is not a count.
+   * Positive integer drawn on the entry, shown as `9+` above 9 on the rail and
+   * `99+` above 99 in lists.
    */
   count?: number;
   /**
-   * Short text for the destination's tooltip and accessible name, such as
+   * A short visible value, at most 8 characters, such as "NEW", "73%", or
+   * "3/5". Lists draw it; the icon-only rail draws a dot and puts `label` in
+   * the tooltip.
+   */
+  text?: string;
+  /** Defaults to `neutral`. */
+  tone?: ExperimentalBadgeTone;
+  /**
+   * Text for the destination's tooltip and accessible name, such as
    * "3 open tasks". Required because the drawn badge is hidden from assistive
    * technology.
    */

@@ -214,6 +214,18 @@ describe("SidebarNavigationList", () => {
     ).toBe("99+");
   });
 
+  it("draws a text badge in its tone at the end of the row", () => {
+    registerDocsBadge({ text: "Hot 85%", tone: "critical", label: "CPU hot" });
+    renderList(THREAD_PATH);
+
+    const mark = within(list())
+      .getByRole("button", { name: "Docs, CPU hot" })
+      .querySelector("[data-nav-rail-badge]");
+    expect(mark?.getAttribute("data-nav-rail-badge")).toBe("text");
+    expect(mark?.getAttribute("data-nav-badge-tone")).toBe("critical");
+    expect(mark?.textContent).toBe("Hot 85%");
+  });
+
   it("marks More when a badged destination is hidden under it", () => {
     registerDocsBadge({ label: "Needs review" });
     renderList(THREAD_PATH, { visibleKeys: ["__bb__/extensions"] });

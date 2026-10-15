@@ -92,6 +92,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginNavPanelRegistration",
           "PluginNavPanelProps",
           "ExperimentalBadge",
+          "ExperimentalBadgeTone",
           "PluginFixedTabRegistration",
           "PluginFixedTabDeclaration",
           "ExperimentalPluginFixedTabReference",

@@ -20,6 +20,7 @@ import {
   hiddenNavigationBadgeLabels,
   NavigationBadgeMark,
   navigationBadgeAccessibleLabel,
+  strongestNavigationBadgeTone,
 } from "./navigationBadges";
 import { useSidebarHeaderControlAxisClass } from "./SidebarChrome";
 import {
@@ -101,7 +102,7 @@ function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
           <SidebarNavigationIcon icon={item.icon} className={RAIL_ICON_CLASS} />
           {item.badge ? (
             <NavigationBadgeMark
-              count={item.badge.count}
+              badge={item.badge}
               className={cn(
                 "pointer-events-none absolute",
                 item.badge.count === undefined
@@ -126,6 +127,9 @@ export function AppNavRail(_props: ExperimentalSidebarNavigationProps) {
   const visible = destinations.filter((item) => item.isVisible);
   const hidden = destinations.filter((item) => !item.isVisible);
   const hiddenBadgeLabels = hiddenNavigationBadgeLabels(hidden);
+  const hiddenBadgeTone = strongestNavigationBadgeTone(
+    hidden.map((item) => item.badge),
+  );
 
   return (
     <div
@@ -156,9 +160,9 @@ export function AppNavRail(_props: ExperimentalSidebarNavigationProps) {
               }
             >
               <Icon name="MoreHorizontal" aria-hidden="true" />
-              {hiddenBadgeLabels.length > 0 ? (
+              {hiddenBadgeTone !== null ? (
                 <NavigationBadgeMark
-                  count={undefined}
+                  badge={{ tone: hiddenBadgeTone }}
                   className="pointer-events-none absolute top-1 right-1"
                 />
               ) : null}

@@ -128,6 +128,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginFixedTabDeclaration`
 - `PluginNavPanelRegistration`
 - `ExperimentalBadge`
+- `ExperimentalBadgeTone`
 - `PluginPanelActionOpenOptions`
 - `PluginThreadPanelActionContext`
 - `PluginThreadPanelActionRegistration`

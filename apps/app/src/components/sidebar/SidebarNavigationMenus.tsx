@@ -131,7 +131,8 @@ export function SidebarNavigationMoreMenu({
               <>
                 <span className="sr-only">, {item.badge.label}</span>
                 <NavigationBadgeMark
-                  count={item.badge.count}
+                  badge={item.badge}
+                  size="list"
                   className="ml-auto"
                 />
               </>

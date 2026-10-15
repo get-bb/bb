@@ -1230,13 +1230,22 @@ Docs: `frontend-core-slots.md`, `frontend-components.md`.
 **Added 2026-10-15 (SDK 0.6.52), replacing `experimental_sidebarAccessory`.**
 One consumer: the Tasks plugin's open-task count.
 
-A nav panel hook returning `ExperimentalBadge` (`{ count?, label }`) or
-`null`. The sidebar navigation model runs it once per registered panel in the
-plugin's slot scope and crash boundary and hands the value to every
-navigation provider as `item.badge`. bb's Rail draws a count (capped at `9+`)
-or a dot on the icon; its Top list draws the count (capped at `99+`) or dot at
-the end of the row. Both add `label` to the accessible name and put a dot on
-More while a badged panel is hidden there. A plugin that still passes
+A nav panel hook returning `ExperimentalBadge`
+(`{ count?, text?, tone?, label }`) or `null`. `count` and `text` are
+exclusive; `text` is at most 8 characters; `tone` is `neutral` (the default),
+`warning`, or `critical`, and bb owns the colors. The sidebar navigation model
+runs the hook once per registered panel in the plugin's slot scope and crash
+boundary and hands the value to every navigation provider as `item.badge`.
+bb's Rail draws a count (capped at `9+`) or a dot on the icon, and does not
+draw `text`; its Top list and More menu draw the count
+(capped at `99+`), the text, or a dot. Both add `label` to the accessible name
+and put a dot on More, in the strongest hidden tone, while a badged panel is
+hidden there.
+
+The fields follow the 30 bb-community plugins that drew
+`experimental_sidebarAccessory` (October 2026): 12 drew one count, 8 several
+numbers or a fraction, 5 a short status word, 3 a percentage, and 18 used
+red, amber, or an accent color for state. A plugin that still passes
 `experimental_sidebarAccessory` keeps loading; the field is dropped with a
 warning. Remove that compatibility once released plugins have migrated.
 
@@ -1246,8 +1255,9 @@ Docs: `frontend-core-slots.md`.
 
 1. **Core parity.** Decide whether a core destination needs a badge and, if
    so, route it through the same `NavigationBadgeMark` and label path.
-2. **Tone.** Confirm one neutral treatment is enough, or add a host-owned
-   `tone` (such as attention) without plugin styling.
+2. **Tone and text.** Confirm three tones and an 8-character `text` cover
+   migrated plugins, including the six that drew several colored counts and
+   now draw one badge.
 3. **Hook lifetime.** The hook runs for every registered panel while the
    sidebar is mounted, including hidden ones. Confirm that cost is acceptable for
    plugins with expensive queries, or add visibility to the hook's inputs.

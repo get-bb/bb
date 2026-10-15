@@ -185,6 +185,8 @@ export function isSameSidebarNavigationItem(
     left.shortcut?.label === right.shortcut?.label &&
     left.shortcut?.ariaKeyShortcuts === right.shortcut?.ariaKeyShortcuts &&
     left.badge?.count === right.badge?.count &&
+    left.badge?.text === right.badge?.text &&
+    left.badge?.tone === right.badge?.tone &&
     left.badge?.label === right.badge?.label
   );
 }
