@@ -983,7 +983,7 @@ export function GeneralSettingsSection({
 
           <SettingsWithControl
             label="Summarize shell commands"
-            description="Title commands that read, list, or search files with a summary such as Searched for …. Turn off to see each full command and its output."
+            description="Show short summaries for commands that read, list, or search files. Turn off to show command text and let you expand each command to view its output."
           >
             <Switch
               checked={summarizeShellCommands}

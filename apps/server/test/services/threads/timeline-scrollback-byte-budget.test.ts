@@ -99,6 +99,7 @@ function buildPage(
         ? { kind: "latest", segmentLimit: 20 }
         : { kind: "older", beforeCursor: cursor, segmentLimit: 20 },
     responseByteBudget: RESPONSE_BYTE_BUDGET,
+    summarizeShellCommands: true,
   }).response;
 }
 
