@@ -137,6 +137,7 @@ describe("worktree host entry", () => {
       await git(sourcePath, "remote", "add", "origin", sourcePath);
       await git(sourcePath, "fetch", "origin");
       await git(sourcePath, "config", "branch.autoSetupMerge", "always");
+      await git(sourcePath, "config", "core.autocrlf", "true");
       const branchName = "bb/config-lock";
       if (existingBranch) {
         await git(
@@ -171,9 +172,12 @@ describe("worktree host entry", () => {
         });
         expect(result.status).toBe("created");
         if (result.status !== "created") throw new Error(result.message);
-        expect(await readFile(join(result.path, "README.md"), "utf8")).toBe(
-          "hello\n",
-        );
+        expect(
+          (await readFile(join(result.path, "README.md"), "utf8")).replace(
+            /\r\n/gu,
+            "\n",
+          ),
+        ).toBe("hello\n");
         expect(await git(result.path, "rev-parse", "HEAD")).toBe(
           await git(sourcePath, "rev-parse", "origin/main"),
         );
