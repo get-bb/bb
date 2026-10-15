@@ -416,6 +416,9 @@ function tryReadClientTurnRequestedRequestId(
   row: StoredEventRow,
   decode: StoredEventDecoder = parseStoredEvent,
 ): ClientTurnRequestId | null {
+  if (row.type !== "client/turn/requested") {
+    return null;
+  }
   const event = decode(row);
   if (event.type !== "client/turn/requested") {
     return null;
