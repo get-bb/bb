@@ -51,7 +51,7 @@ export const UNSET_THREAD_NOTIFICATIONS: ThreadNotificationInputs = {
 };
 
 export const NOTIFICATION_LEVEL_LABELS: Record<OwnNotificationLevel, string> = {
-  inherit: "Default",
+  inherit: "Same as default",
   all: "All activity",
   "input-only": "Needs input only",
   muted: "Muted",

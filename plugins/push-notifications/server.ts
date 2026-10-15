@@ -161,7 +161,7 @@ export function createPushNotificationsPlugin(
           "For child threads you haven't set. A thread's level also limits its child threads.",
         options: [...ownNotificationLevelSchema.options],
         experimental_optionLabels: {
-          inherit: "Same as default",
+          inherit: NOTIFICATION_LEVEL_LABELS.inherit,
           all: NOTIFICATION_LEVEL_LABELS.all,
           "input-only": NOTIFICATION_LEVEL_LABELS["input-only"],
           muted: NOTIFICATION_LEVEL_LABELS.muted,
