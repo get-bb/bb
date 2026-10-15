@@ -15,7 +15,12 @@ import { applyToCachedThreadListsAndSidebarNavigation } from "./query-cache";
 export type ThreadMetadataPatch = Partial<
   Pick<
     ThreadListEntry,
-    "parentThreadId" | "pinnedAt" | "pinSortKey" | "sectionId" | "title"
+    | "parentThreadId"
+    | "pinnedAt"
+    | "pinSortKey"
+    | "sectionId"
+    | "title"
+    | "visibility"
   >
 >;
 
@@ -99,10 +104,7 @@ function isFetchedQueryData(
   );
 }
 
-function holdsThreadData(
-  query: Query,
-  patches: ThreadPatches,
-): boolean {
+function holdsThreadData(query: Query, patches: ThreadPatches): boolean {
   return (
     matchQuery({ queryKey: threadsQueryKey() }, query) ||
     matchQuery({ queryKey: sidebarNavigationQueryKey(), exact: true }, query) ||

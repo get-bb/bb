@@ -117,8 +117,8 @@ export function updateThreadMutationOptions(
         transaction: context,
       });
     },
-    onSuccess: (thread) => {
-      applyThreadUpdateResult({ queryClient, thread });
+    onSuccess: (thread, request) => {
+      applyThreadUpdateResult({ queryClient, thread, request });
     },
     onSettled: (_data, _error, _variables, context) => {
       settleThreadPatchTransaction(context);
@@ -278,7 +278,7 @@ export function useRestoreThreadEnvironment() {
     mutationFn: ({ id }: ThreadMutationRequest): Promise<ThreadResponse> =>
       sdk.threads.restoreEnvironment({ threadId: id }),
     onSuccess: (thread) => {
-      applyThreadUpdateResult({ queryClient, thread });
+      settleThreadListMembershipMutation({ queryClient, threadId: thread.id });
     },
   });
 }

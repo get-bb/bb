@@ -106,7 +106,16 @@ function createOptimisticThreadMutationBatcher(
     if (fulfilledThreads.length === results.length) {
       applyThreadMetadataBatchResult({
         queryClient,
-        threads: fulfilledThreads,
+        updates: fulfilledThreads.map((thread, index) => {
+          const { args, operation } = batch[index]!;
+          return {
+            thread,
+            request: {
+              ...args,
+              ...(operation === "update" ? {} : { pinnedAt: thread.pinnedAt }),
+            },
+          };
+        }),
       });
     } else {
       rollbackThreadMetadataBatchTransaction({ queryClient, transaction });
