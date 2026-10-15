@@ -77,8 +77,7 @@ function withoutRemoved(scan: Scan, removal: Removal): Scan {
       ),
     largeFiles: scan.largeFiles.filter(
       (entry) =>
-        !removal.entries.has(entry.name) &&
-        !removal.largeFiles.has(entry.name),
+        !removal.entries.has(entry.name) && !removal.largeFiles.has(entry.name),
     ),
     developerStorage: developer && {
       ...developer,
@@ -96,6 +95,28 @@ const clearableArchived = (
   thread.archivedAt + ARCHIVE_UNDO_GRACE_MS <= Date.now() &&
   thread.pinnedAt === null &&
   !["starting", "active", "stopping"].includes(thread.status);
+const hostPath = (value: string) =>
+  value.replaceAll("\\", "/").replace(/\/$/, "");
+function entriesHoldingWorkspaces(
+  rootPath: string,
+  environments: Environment[],
+) {
+  const root = `${hostPath(rootPath)}/`;
+  const workspaces = new Map<string, string>();
+  for (const env of environments) {
+    if (
+      env.path === null ||
+      env.status === "destroyed" ||
+      env.lifecycle.teardown?.status === "removed"
+    )
+      continue;
+    const envPath = hostPath(env.path);
+    if (!envPath.startsWith(root)) continue;
+    const [name] = envPath.slice(root.length).split("/");
+    if (name && !workspaces.has(name)) workspaces.set(name, env.path);
+  }
+  return workspaces;
+}
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
@@ -218,6 +239,9 @@ export function createStorage(
     }
     return environments;
   }
+  async function workspaceEntries(hostId: string, rootPath: string) {
+    return entriesHoldingWorkspaces(rootPath, await readEnvironments(hostId));
+  }
   function leftoverEnvironments(
     environments: Environment[],
     threads: Thread[],
@@ -260,11 +284,17 @@ export function createStorage(
     scan: Scan,
     context: () => ReturnType<typeof readReportContext>,
   ): Promise<HostStorageReport> {
-    const [{ threads, projects }, allEnvironments] = await Promise.all([
-      context(),
-      readEnvironments(hostId),
-    ]);
+    const [{ threads, projects }, allEnvironments, machine] = await Promise.all(
+      [context(), readEnvironments(hostId), bb.sdk.hosts.get({ hostId })],
+    );
     const byId = new Map(threads.map((thread) => [thread.id, thread]));
+    const workspaces =
+      machine.threadStorageRootPath === null
+        ? new Map<string, string>()
+        : entriesHoldingWorkspaces(
+            machine.threadStorageRootPath,
+            allEnvironments,
+          );
     const environments = new Map(
       leftoverEnvironments(allEnvironments, threads).map((env) => [
         env.id,
@@ -296,7 +326,9 @@ export function createStorage(
       const thread = byId.get(entry.name);
       return thread ? [{ ...entry, thread }] : [];
     });
-    const orphans = scan.entries.filter((entry) => !byId.has(entry.name));
+    const orphans = scan.entries.filter(
+      (entry) => !byId.has(entry.name) && !workspaces.has(entry.name),
+    );
     const worktrees = scan.worktrees.flatMap((entry) => {
       const env = environments.get(entry.environmentId);
       return env && env.path === entry.path
@@ -322,8 +354,15 @@ export function createStorage(
     );
     const clearable = scan.largeFiles.filter((entry) => {
       const thread = byId.get(entry.name);
-      return thread !== undefined && clearableArchived(thread);
+      return (
+        thread !== undefined &&
+        clearableArchived(thread) &&
+        !workspaces.has(entry.name)
+      );
     });
+    const clearableOwned = owned.filter(
+      (entry) => clearableArchived(entry.thread) && !workspaces.has(entry.name),
+    );
     return {
       hostId,
       scannedAt: scan.scannedAt,
@@ -344,9 +383,8 @@ export function createStorage(
         archivedBytes: sum(hiddenArchived),
       },
       archivedFiles: {
-        threadCount: owned.filter((entry) => clearableArchived(entry.thread))
-          .length,
-        bytes: sum(owned.filter((entry) => clearableArchived(entry.thread))),
+        threadCount: clearableOwned.length,
+        bytes: sum(clearableOwned),
       },
       archivedLargeFiles: {
         threadCount: clearable.length,
@@ -390,16 +428,17 @@ export function createStorage(
         ? {
             ...scan.developerStorage,
             entries: scan.developerStorage.entries.map((entry) => {
-              const sourcePath = entry.sourcePath
-                ?.replaceAll("\\", "/")
-                .replace(/\/$/, "");
+              const sourcePath =
+                entry.sourcePath === null
+                  ? undefined
+                  : hostPath(entry.sourcePath);
               const environmentIds = new Set(
                 allEnvironments
                   .filter(
                     (env) =>
                       sourcePath !== undefined &&
-                      env.path?.replaceAll("\\", "/").replace(/\/$/, "") ===
-                        sourcePath,
+                      env.path !== null &&
+                      hostPath(env.path) === sourcePath,
                   )
                   .map((env) => env.id),
               );
@@ -683,9 +722,13 @@ export function createStorage(
     let bytes = 0;
     for (let offset = 0; offset < entries.length; offset += 100) {
       lifecycle.signal.throwIfAborted();
-      const current = await readThreads(bb, lifecycle.signal);
+      const [current, workspaces] = await Promise.all([
+        readThreads(bb, lifecycle.signal),
+        workspaceEntries(hostId, rootPath),
+      ]);
       const byId = new Map(current.map((thread) => [thread.id, thread]));
       const batch = entries.slice(offset, offset + 100).filter((entry) => {
+        if (workspaces.has(entry.name)) return false;
         const thread = byId.get(entry.name);
         return eligibility === "orphan"
           ? thread === undefined
@@ -760,13 +803,16 @@ export function createStorage(
       let bytes = 0;
       for (let offset = 0; offset < names.length; offset += 100) {
         lifecycle.signal.throwIfAborted();
-        const current = await readThreads(bb, lifecycle.signal);
+        const [current, workspaces] = await Promise.all([
+          readThreads(bb, lifecycle.signal),
+          workspaceEntries(hostId, rootPath),
+        ]);
         const eligible = new Set(
           current.filter(clearableArchived).map((thread) => thread.id),
         );
         const batch = names
           .slice(offset, offset + 100)
-          .filter((name) => eligible.has(name));
+          .filter((name) => eligible.has(name) && !workspaces.has(name));
         if (batch.length === 0) continue;
         const { removed } = await worker.call(
           "discardLargeFiles",
@@ -1061,10 +1107,7 @@ export function createStorage(
     void job.finally(() => jobs.delete(job));
     return job;
   }
-  async function removeMissingDevelopment(
-    hostId: string,
-    release: () => void,
-  ) {
+  async function removeMissingDevelopment(hostId: string, release: () => void) {
     let handedOff = false;
     try {
       await requireHost(hostId, true);
@@ -1177,6 +1220,15 @@ export function createStorage(
         if (["starting", "active", "stopping"].includes(current.status))
           throw new Error("Stop the thread before clearing its storage");
       }
+      const workspace = (await workspaceEntries(hostId, rootPath)).get(
+        threadId,
+      );
+      if (workspace !== undefined) {
+        if (archivedAt !== null) return { ok: true as const };
+        throw new Error(
+          `This thread’s storage contains the workspace ${workspace}, which an environment still uses`,
+        );
+      }
       await worker.call(
         "discard",
         { rootPath, names: [threadId], recreate: true },
@@ -1240,7 +1292,11 @@ export function createStorage(
           "DELETE FROM archive_cleanup WHERE thread_id = ? AND archived_at = ?",
         ).run(entry.thread_id, entry.archived_at);
       } catch (error) {
-        if (error instanceof Error && "status" in error && error.status === 404) {
+        if (
+          error instanceof Error &&
+          "status" in error &&
+          error.status === 404
+        ) {
           cancelArchivedStorage(entry.thread_id);
           continue;
         }
