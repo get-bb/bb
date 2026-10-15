@@ -97,7 +97,7 @@ function CompactBeforeSendPicker({
             className="mt-px size-3.5 shrink-0"
             aria-hidden
           />
-          <span>{`Your next message re-reads ${tokensLabel} tokens without the cache discount.`}</span>
+          <span>{`This thread sat idle past its prompt cache, so your next message re-processes all ${tokensLabel} tokens, which is slower and costs more.`}</span>
         </div>
       }
       value={compactFirst ? "compact" : "keep"}
