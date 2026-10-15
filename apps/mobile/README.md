@@ -293,6 +293,8 @@ cd apps/mobile && pnpm e2e:ios
 The flows drive the WebView shell. Maestro reads the page through the
 WKWebView accessibility tree, so assertions on page content target its text,
 not native test ids.
+The deterministic backend marks web onboarding complete before seeding threads,
+so Android and iOS shell flows start with the thread list available.
 `shell-launch.yaml` pairs a Direct server from first run and lands in the
 shell with the page rendered; the other shell flows assume it works.
 `shell-deep-link.yaml` opens a `bb://` scheme link and a web link for the
