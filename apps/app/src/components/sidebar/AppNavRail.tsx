@@ -128,9 +128,8 @@ export function AppNavRail(_props: ExperimentalSidebarNavigationProps) {
   const hiddenBadgeLabels = hiddenNavigationBadgeLabels(hidden);
 
   return (
-    <nav
+    <div
       data-testid="app-nav-rail"
-      aria-label="Primary navigation"
       className={cn(
         "flex min-h-0 flex-1 flex-col items-center pb-2",
         isFramed ? "pt-2.5" : "pt-1",
@@ -172,7 +171,7 @@ export function AppNavRail(_props: ExperimentalSidebarNavigationProps) {
           testId="nav-rail-more-menu"
         />
       </div>
-    </nav>
+    </div>
   );
 }
 

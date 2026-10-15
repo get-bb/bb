@@ -121,8 +121,7 @@ export function SidebarNavigationList({
 
   return (
     <>
-      <nav
-        aria-label="Primary navigation"
+      <div
         data-testid="sidebar-navigation-list"
         className="relative shrink-0 space-y-0.5 px-2 py-2"
       >
@@ -161,7 +160,7 @@ export function SidebarNavigationList({
           sideOffset={MORE_MENU_SIDE_OFFSET}
           testId="sidebar-navigation-more-menu"
         />
-      </nav>
+      </div>
       <div
         aria-hidden="true"
         className="mx-2 mb-2 shrink-0 border-t border-sidebar-border/25"

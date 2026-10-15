@@ -1310,7 +1310,9 @@ and `experimental_SidebarNavigationIcon`.
 `{ items, activeItemId, isHomeActive, isShortcutModifierHeld, actions }` from
 one model mounted above the sidebar. Items arrive in the user's saved order
 with `isVisible`, `isLoading`, `pluginId`, shortcut metadata, and `badge` (the
-panel's `experimental_useBadge` value). Item ids are the keys stored in
+panel's `experimental_useBadge` value). Plugins written before 0.46 that drew
+the removed `experimental_Accessory` item field show no counts until they read
+`badge`. Item ids are the keys stored in
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, and items keep
 their identity while unchanged. `actions` covers
 `activate(id, { openInSplit })`, `goHome()`, `setVisible`, `setOrder` (unknown

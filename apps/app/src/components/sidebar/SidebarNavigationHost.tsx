@@ -69,7 +69,7 @@ export interface SidebarNavigationCustomize {
   isCustomizing: boolean;
   setCustomizing: (isCustomizing: boolean) => void;
   open: () => void;
-  containerRef: RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLElement | null>;
   focusReturnRef: RefObject<HTMLElement | null>;
 }
 
@@ -77,7 +77,7 @@ export function useSidebarNavigationCustomize(
   onOpen?: () => void,
 ): SidebarNavigationCustomize {
   const [isCustomizing, setCustomizing] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const cancelPendingRef = useRef<(() => void) | null>(null);
   const onOpenRef = useRef(onOpen);
@@ -181,8 +181,9 @@ export function SidebarNavigationRegion({
       onOpenChange={customize.setCustomizing}
     >
       <PopoverAnchor asChild>
-        <div
+        <nav
           ref={customize.containerRef}
+          aria-label="Sidebar navigation"
           data-testid={
             isRail ? "sidebar-navigation-rail" : "sidebar-navigation-region"
           }
@@ -190,7 +191,7 @@ export function SidebarNavigationRegion({
           className={className}
         >
           {children}
-        </div>
+        </nav>
       </PopoverAnchor>
       <SidebarNavigationCustomizePopoverContent
         surface={isRail ? "rail" : "sidebar"}
