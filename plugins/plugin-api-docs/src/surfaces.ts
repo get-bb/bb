@@ -45,6 +45,39 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
       {
+        id: "sidebar-navigation",
+        title: "Sidebar navigation",
+        summary:
+          "Replace the sidebar's navigation, as a rail or as rows above the thread list. With this, a plugin can:",
+        bullets: [
+          "Arrange New thread, Search, Plugins, Skills, and plugin pages in any layout",
+          "Choose the rail or list placement, and get bb's layout around it",
+          "Keep the user's saved order, hidden items, badges, and split-view behavior",
+          "Add controls to the header row beside the sidebar toggle",
+        ],
+        apiSymbols: [
+          "ExperimentalSidebarNavigationRegistration",
+          "ExperimentalSidebarNavigationPlacement",
+          "ExperimentalSidebarNavigationProps",
+          "experimental_useSidebarNavigation",
+          "ExperimentalSidebarNavigationState",
+          "ExperimentalSidebarNavigationItem",
+          "ExperimentalSidebarNavigationAction",
+          "ExperimentalSidebarNavigationActions",
+          "ExperimentalSidebarNavigationIcon",
+          "experimental_SidebarNavigationIcon",
+          "ExperimentalSidebarNavigationIconProps",
+          "ExperimentalSidebarNavigationShortcut",
+          "ExperimentalSidebarNavigationActivationOptions",
+          "experimental_useSidebarNavigationSplit",
+          "ExperimentalSidebarNavigationSplit",
+          "ExperimentalSidebarNavigationSplitOptions",
+          "ExperimentalSidebarHeaderRegistration",
+          "ExperimentalSidebarHeaderProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "nav-panel",
         title: "Full-page panels",
         summary:
@@ -53,10 +86,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Build a whole page, such as a dashboard, a board, or an inbox",
           "Give the page a URL that can be shared and works with back and forward",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
+          "Show a live count or dot on its navigation entry",
         ],
         apiSymbols: [
           "PluginNavPanelRegistration",
           "PluginNavPanelProps",
+          "ExperimentalBadge",
           "PluginFixedTabRegistration",
           "PluginFixedTabDeclaration",
           "ExperimentalPluginFixedTabReference",

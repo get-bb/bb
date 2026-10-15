@@ -44,6 +44,7 @@ import {
 } from "./sidebarThreadShortcuts";
 import {
   useAppCommandHandler,
+  useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
   useIndexedAppCommandHandlers,
@@ -53,9 +54,22 @@ import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { LazySidebarFooterCustomize } from "./LazySidebarFooterCustomize";
 import {
-  NavRailNewThreadButton,
-  type NavRailCustomizeState,
-} from "./AppNavRail";
+  CHROME_ROW_HEIGHT_CLASS,
+  getBbDesktopInfo,
+  MACOS_WINDOW_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
+import { NavRailNewThreadButton, NavRailSettingsButton } from "./AppNavRail";
+import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
+import {
+  SidebarNavigationProviderMount,
+  SidebarNavigationRegion,
+  useSidebarNavigationCustomize,
+} from "./SidebarNavigationHost";
+import {
+  sidebarNavigationPlacement,
+  type ResolvedSidebarNavigation,
+} from "./sidebarNavigationProvider";
 
 import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
 
@@ -65,19 +79,23 @@ interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   isBodyHidden: boolean;
-  renderRail: (customize: NavRailCustomizeState) => ReactNode;
+  navigation: ResolvedSidebarNavigation;
+  settingsRoutePath: string;
+  isSettingsActive: boolean;
   alternateBody: ReactNode;
-  railFooter: ReactNode;
 }
 
 export function AppSidebar({
   onResizeMouseDown,
   isResizing,
   isBodyHidden,
-  renderRail,
+  navigation,
+  settingsRoutePath,
+  isSettingsActive,
   alternateBody,
-  railFooter,
 }: AppSidebarProps) {
+  const placement = sidebarNavigationPlacement(navigation);
+  const [desktopInfo] = useState(getBbDesktopInfo);
   const isFramed = useIsSidebarFramed();
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
@@ -87,7 +105,10 @@ export function AppSidebar({
   const isThreadListVisible =
     !isBodyHidden && (isCompactViewport ? openMobile : open);
   const [isFooterCustomizing, setFooterCustomizing] = useState(false);
-  const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
+  const navigationCustomize = useSidebarNavigationCustomize(() =>
+    setFooterCustomizing(false),
+  );
+  const setNavigationCustomizing = navigationCustomize.setCustomizing;
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
   >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
@@ -99,6 +120,7 @@ export function AppSidebar({
     THREAD_JUMP_APP_COMMAND_IDS,
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
+  const settingsShortcut = useAppCommandShortcut("settings.open");
   const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
 
   const handleNewChat = useCallback(() => {
@@ -175,7 +197,7 @@ export function AppSidebar({
     if (!isCompactViewport) return;
     if (!openMobile || isBodyHidden) setFooterCustomizing(false);
     if (!openMobile) setNavigationCustomizing(false);
-  }, [isBodyHidden, isCompactViewport, openMobile]);
+  }, [isBodyHidden, isCompactViewport, openMobile, setNavigationCustomizing]);
   const activateVisibleThreadShortcut = useCallback(
     (index: number) => (isBodyHidden ? false : activateThreadShortcut(index)),
     [activateThreadShortcut, isBodyHidden],
@@ -199,20 +221,45 @@ export function AppSidebar({
     hideThreadShortcuts();
   }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
+  const navigationRegion = (className: string) => (
+    <SidebarNavigationRegion
+      placement={placement}
+      customize={navigationCustomize}
+      className={className}
+    >
+      {placement === "rail" && !isFramed ? (
+        <div
+          aria-hidden="true"
+          className={cn(
+            CHROME_ROW_HEIGHT_CLASS,
+            "shrink-0",
+            shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
+          )}
+        />
+      ) : null}
+      <SidebarNavigationProviderMount resolved={navigation} />
+    </SidebarNavigationRegion>
+  );
+
   const body = (
     <>
       <SidebarTopReserveRow
         testId="app-sidebar-top-reserve-row"
         headerSlot={
-          <div
-            data-testid="nav-rail-header"
-            data-sidebar-header-slot=""
-            className="flex h-full min-w-0 flex-1 items-center"
-          >
-            <NavRailNewThreadButton />
-          </div>
+          placement === "rail" ? (
+            <div
+              data-testid="nav-rail-header"
+              data-sidebar-header-slot=""
+              className="flex h-full min-w-0 flex-1 items-center"
+            >
+              <NavRailNewThreadButton />
+            </div>
+          ) : (
+            <SidebarHeaderSlot />
+          )
         }
       />
+      {placement === "list" ? navigationRegion("shrink-0") : null}
       <SidebarContent>
         <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
           <PluginThreadList
@@ -259,14 +306,21 @@ export function AppSidebar({
         onNavigate={closeOnMobile}
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
+        onOpenCustomize={navigationCustomize.open}
         splitEnabled
       >
         <Sidebar ref={sidebarRef}>
           <div className="grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
-            {renderRail({
-              isOpen: isNavigationCustomizing,
-              onOpenChange: setNavigationCustomizing,
-            })}
+            {placement === "rail"
+              ? navigationRegion(
+                  cn(
+                    "relative z-10 flex shrink-0 flex-col",
+                    NAV_RAIL_WIDTH_CLASS,
+                    !isFramed &&
+                      "-mt-[env(safe-area-inset-top)] bg-surface-recessed pt-[env(safe-area-inset-top)]",
+                  ),
+                )
+              : null}
             <SidebarCollapsibleBody
               data-testid="nav-rail-sidebar-body"
               className={cn(
@@ -286,17 +340,22 @@ export function AppSidebar({
               </div>
               {alternateBody}
             </SidebarCollapsibleBody>
-            <div
-              className={cn(
-                "col-start-1 row-start-2 flex shrink-0 items-center justify-center",
-                NAV_RAIL_WIDTH_CLASS,
-                isFramed
-                  ? "h-(--bb-app-chrome-row-height)"
-                  : "bg-surface-recessed -mb-[env(safe-area-inset-bottom)] pt-2 pb-[calc(var(--bb-frame-footer-inset)_+_env(safe-area-inset-bottom))]",
-              )}
-            >
-              {railFooter}
-            </div>
+            {placement === "rail" ? (
+              <div
+                className={cn(
+                  "col-start-1 row-start-2 flex shrink-0 items-center justify-center",
+                  NAV_RAIL_WIDTH_CLASS,
+                  isFramed
+                    ? "h-(--bb-app-chrome-row-height)"
+                    : "bg-surface-recessed -mb-[env(safe-area-inset-bottom)] pt-2 pb-[calc(var(--bb-frame-footer-inset)_+_env(safe-area-inset-bottom))]",
+                )}
+              >
+                <NavRailSettingsButton
+                  isSettingsActive={isSettingsActive}
+                  settingsRoutePath={settingsRoutePath}
+                />
+              </div>
+            ) : null}
             <SidebarCollapsibleBody
               data-testid="sidebar-footer-body"
               contentInFlow
@@ -331,6 +390,23 @@ export function AppSidebar({
                     onDisclosureCommand={pluginSidebarFooter.handleCommand}
                     onNavigate={closeOnMobile}
                     builtInActions={[
+                      ...(placement === "list"
+                        ? [
+                            {
+                              id: "settings" as const,
+                              href: settingsRoutePath,
+                              ariaLabel: settingsShortcut
+                                ? `Settings (${settingsShortcut.label})`
+                                : "Settings",
+                              ariaKeyShortcuts:
+                                settingsShortcut?.ariaKeyshortcuts,
+                              onActivate: () => {
+                                closeOnMobile();
+                                void navigate(settingsRoutePath);
+                              },
+                            },
+                          ]
+                        : []),
                       {
                         id: "mobile",
                         href: "/settings/mobile",

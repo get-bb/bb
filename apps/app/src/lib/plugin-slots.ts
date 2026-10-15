@@ -4,6 +4,7 @@ import type {
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
   ExperimentalCodeFenceRendererRegistration,
+  ExperimentalSidebarHeaderRegistration,
   PluginDiffRendererRegistration,
   PluginEnvironmentProviderInputsRegistration,
   PluginMachineProviderInputsRegistration,
@@ -33,6 +34,7 @@ import {
   type CollectedExperimentalSidebarFooterItem,
   type CollectedManagedSidebarFooterItem,
   type CollectedSidebarFooterItem,
+  type CollectedSidebarNavigationRegistration,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 export interface PluginRegistrationSet {
@@ -47,6 +49,8 @@ export interface PluginRegistrationSet {
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems?: readonly CollectedExperimentalSidebarFooterItem[];
   threadLists?: readonly PluginThreadListRegistration[];
+  experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
+  experimentalSidebarHeaders?: readonly ExperimentalSidebarHeaderRegistration[];
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -89,6 +93,10 @@ export type PluginSidebarFooterItemSlot = CollectedSidebarFooterItem &
   PluginSlotBase;
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
+export interface ExperimentalSidebarNavigationSlot
+  extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
+export interface ExperimentalSidebarHeaderSlot
+  extends ExperimentalSidebarHeaderRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
@@ -130,6 +138,8 @@ export interface PluginSlotSnapshot {
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterItems: readonly PluginSidebarFooterItemSlot[];
   threadLists: readonly PluginThreadListSlot[];
+  experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
+  experimentalSidebarHeaders: readonly ExperimentalSidebarHeaderSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
@@ -158,6 +168,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   pendingInteractions: [],
   sidebarFooterItems: [],
   threadLists: [],
+  experimentalSidebarNavigations: [],
+  experimentalSidebarHeaders: [],
   threadHeaderActions: [],
   threadActions: [],
   browserToolbarActions: [],
@@ -193,6 +205,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "pendingInteractions",
   "sidebarFooterItems",
   "threadLists",
+  "experimentalSidebarNavigations",
+  "experimentalSidebarHeaders",
   "threadHeaderActions",
   "threadActions",
   "browserToolbarActions",
@@ -252,6 +266,8 @@ function flattenRegistrations(
     pendingInteractions: stamp(set.pendingInteractions),
     sidebarFooterItems: stamp<CollectedSidebarFooterItem>(sidebarFooterItems),
     threadLists: stamp(set.threadLists),
+    experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
+    experimentalSidebarHeaders: stamp(set.experimentalSidebarHeaders),
     threadHeaderActions: stamp(set.threadHeaderActions),
     threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),

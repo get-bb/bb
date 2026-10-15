@@ -23,6 +23,7 @@ export interface SidebarNavigationArrangement<Row extends ArrangeableRow> {
   visibleKeys: string[];
   setVisible(key: string, isVisible: boolean): void;
   moveAny(activeKey: string, overKey: string): void;
+  setOrder(keys: readonly string[]): void;
 }
 
 export function useSidebarNavigationArrangement<Row extends ArrangeableRow>(
@@ -122,10 +123,29 @@ export function useSidebarNavigationArrangement<Row extends ArrangeableRow>(
     [normalizedOrder, normalizedVisibleKeys, orderedKeys, persist, visibleKeys],
   );
 
+  const setOrder = useCallback(
+    (keys: readonly string[]) => {
+      const known = new Set(orderedKeys);
+      const requested = [...new Set(keys)].filter((key) => known.has(key));
+      const requestedSet = new Set(requested);
+      const nextOrder = reorderStoredOrder({
+        order: normalizedOrder,
+        visibleIds: orderedKeys,
+        nextVisibleIds: [
+          ...requested,
+          ...orderedKeys.filter((key) => !requestedSet.has(key)),
+        ],
+      });
+      if (nextOrder) persist(nextOrder, normalizedVisibleKeys ?? visibleKeys);
+    },
+    [normalizedOrder, normalizedVisibleKeys, orderedKeys, persist, visibleKeys],
+  );
+
   return {
     ordered,
     visibleKeys,
     setVisible,
     moveAny,
+    setOrder,
   };
 }

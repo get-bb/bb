@@ -1,67 +1,39 @@
-import {
-  forwardRef,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-  type RefObject,
-} from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { forwardRef, type ComponentProps, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import type {
+  ExperimentalSidebarNavigationItem,
+  ExperimentalSidebarNavigationProps,
+} from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@bb/shared-ui/context-menu";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import {
-  CHROME_ROW_HEIGHT_CLASS,
-  getBbDesktopInfo,
-  MACOS_WINDOW_DRAG_CLASS,
-  shouldUseMacosDesktopChrome,
-} from "@/lib/bb-desktop";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
-import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
-import { useSidebarHeaderControlAxisClass } from "./SidebarChrome";
-import { SidebarNavigationCustomize } from "./SidebarNavigationCustomize";
-import {
-  SidebarNavigationIcon,
   useSidebarNavigation,
   useSidebarNavigationSplit,
-} from "./SidebarNavigationModel";
+} from "@/lib/plugin-sidebar-navigation";
 import {
-  NEW_THREAD_NAVIGATION_ITEM_ID,
-  type SidebarNavigationItem,
-} from "./sidebarNavigationItems";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
-
-export interface NavRailCustomizeState {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-}
+  hiddenNavigationBadgeLabels,
+  NavigationBadgeMark,
+  navigationBadgeAccessibleLabel,
+} from "./navigationBadges";
+import { useSidebarHeaderControlAxisClass } from "./SidebarChrome";
+import {
+  SidebarNavigationItemContextMenu,
+  SidebarNavigationMoreMenu,
+} from "./SidebarNavigationMenus";
+import { SidebarNavigationIcon } from "./SidebarNavigationModel";
+import { NEW_THREAD_NAVIGATION_ITEM_ID } from "./sidebarNavigationItems";
 
 const RAIL_ICON_CLASS = "size-(--bb-sidebar-control-icon-size)";
 const RAIL_MENU_SIDE_OFFSET = 12;
 
 const RAIL_BUTTON_CLASS = cn(
-  "size-(--bb-sidebar-control-size) shrink-0 rounded-md p-0 text-muted-foreground ring-sidebar-ring",
+  "relative size-(--bb-sidebar-control-size) shrink-0 rounded-md p-0 text-muted-foreground ring-sidebar-ring",
   "hover:bg-state-hover hover:text-sidebar-foreground focus-visible:ring-2",
   "aria-[current=page]:bg-state-active aria-[current=page]:text-sidebar-foreground",
   "data-[state=open]:bg-state-active data-[state=open]:text-sidebar-foreground",
@@ -100,276 +72,107 @@ const RailButton = forwardRef<HTMLButtonElement, RailButtonProps>(
 );
 RailButton.displayName = "RailButton";
 
-function RailItem({
-  item,
-  onCustomize,
-  onMenuCloseAutoFocus,
-}: {
-  item: SidebarNavigationItem;
-  onCustomize: () => void;
-  onMenuCloseAutoFocus: (event: Event) => void;
-}) {
+function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
   const { activeItemId, actions } = useSidebarNavigation();
   const split = useSidebarNavigationSplit(item.id);
-  const [disablePending, setDisablePending] = useState(false);
-  const isPluginItem = item.pluginId !== null;
+  const label = navigationBadgeAccessibleLabel(item.label, item.badge);
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <span className="flex" data-nav-rail-item={item.id}>
-          <RailButton
-            label={
-              item.shortcut
-                ? `${item.label} (${item.shortcut.label})`
-                : item.label
-            }
-            active={item.id === activeItemId}
-            disabled={item.isDisabled}
-            aria-busy={item.isLoading || undefined}
-            aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}
-            className={cn(item.isLoading && "opacity-60")}
-            {...split.splitProps}
-            onClick={(event) =>
-              actions.activate(item.id, {
-                openInSplit: event.metaKey || event.ctrlKey,
-              })
-            }
-          >
-            <SidebarNavigationIcon
-              icon={item.icon}
-              className={RAIL_ICON_CLASS}
+    <SidebarNavigationItemContextMenu
+      item={item}
+      surface="rail"
+      canOpenInSplit={split.isAvailable}
+    >
+      <span className="flex" data-nav-rail-item={item.id}>
+        <RailButton
+          label={item.shortcut ? `${label} (${item.shortcut.label})` : label}
+          active={item.id === activeItemId}
+          disabled={item.isDisabled}
+          aria-busy={item.isLoading || undefined}
+          aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}
+          className={cn(item.isLoading && "opacity-60")}
+          {...split.splitProps}
+          onClick={(event) =>
+            actions.activate(item.id, {
+              openInSplit: event.metaKey || event.ctrlKey,
+            })
+          }
+        >
+          <SidebarNavigationIcon icon={item.icon} className={RAIL_ICON_CLASS} />
+          {item.badge ? (
+            <NavigationBadgeMark
+              count={item.badge.count}
+              className={cn(
+                "pointer-events-none absolute",
+                item.badge.count === undefined
+                  ? "top-1 right-1"
+                  : "-top-0.5 -right-0.5",
+              )}
             />
-          </RailButton>
-        </span>
-      </ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={
-          isPluginItem ? `${item.label} panel options` : `${item.label} options`
-        }
-        onCloseAutoFocus={onMenuCloseAutoFocus}
-      >
-        {isPluginItem ? (
-          <>
-            {split.isAvailable ? (
-              <ContextMenuItem
-                onSelect={() =>
-                  actions.activate(item.id, { openInSplit: true })
-                }
-              >
-                <Icon name="Columns2" aria-hidden="true" />
-                Open in split
-              </ContextMenuItem>
-            ) : null}
-            <ContextMenuItem onSelect={() => actions.openDetails(item.id)}>
-              <Icon name="Info" aria-hidden="true" />
-              View details
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-          </>
-        ) : null}
-        <ContextMenuItem onSelect={() => actions.setVisible(item.id, false)}>
-          <Icon name="EyeOff" aria-hidden="true" />
-          Hide from rail
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={onCustomize}>
-          <Icon name="SlidersHorizontal" aria-hidden="true" />
-          Customize rail
-        </ContextMenuItem>
-        {isPluginItem ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              disabled={disablePending}
-              onSelect={() => {
-                setDisablePending(true);
-                actions
-                  .disablePlugin(item.id)
-                  .catch(() => {})
-                  .finally(() => setDisablePending(false));
-              }}
-            >
-              <Icon name="Unavailable" aria-hidden="true" />
-              Disable
-            </ContextMenuItem>
-          </>
-        ) : null}
-      </ContextMenuContent>
-    </ContextMenu>
-  );
-}
-
-function RailMoreMenu({
-  buttonRef,
-  hidden,
-  onCustomize,
-  onMenuCloseAutoFocus,
-}: {
-  buttonRef: RefObject<HTMLButtonElement | null>;
-  hidden: readonly SidebarNavigationItem[];
-  onCustomize: () => void;
-  onMenuCloseAutoFocus: (event: Event) => void;
-}) {
-  const { actions } = useSidebarNavigation();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <RailButton ref={buttonRef} label="More">
-          <Icon name="MoreHorizontal" aria-hidden="true" />
+          ) : null}
         </RailButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="right"
-        align="start"
-        sideOffset={RAIL_MENU_SIDE_OFFSET}
-        data-testid="nav-rail-more-menu"
-        onCloseAutoFocus={onMenuCloseAutoFocus}
-      >
-        {hidden.map((item) => (
-          <DropdownMenuItem
-            key={item.id}
-            disabled={item.isDisabled || item.isLoading}
-            onSelect={() => actions.activate(item.id, { openInSplit: false })}
-          >
-            <SidebarNavigationIcon icon={item.icon} />
-            {item.label}
-          </DropdownMenuItem>
-        ))}
-        {hidden.length > 0 ? <DropdownMenuSeparator /> : null}
-        <DropdownMenuItem onSelect={onCustomize}>
-          <Icon name="SlidersHorizontal" aria-hidden="true" />
-          Customize rail
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </span>
+    </SidebarNavigationItemContextMenu>
   );
 }
 
-export function AppNavRail({
-  isAppMode,
-  customize,
-}: {
-  isAppMode: boolean;
-  customize: NavRailCustomizeState;
-}) {
-  const { items, activeItemId } = useSidebarNavigation();
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
-  const customizeAfterMenuCloseRef = useRef(false);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [desktopInfo] = useState(getBbDesktopInfo);
+export function AppNavRail(_props: ExperimentalSidebarNavigationProps) {
+  const { items, isHomeActive, actions } = useSidebarNavigation();
   const isFramed = useIsSidebarFramed();
-  const isCompactViewport = useIsCompactViewport();
-
-  const isHomeActive =
-    isAppMode &&
-    (activeItemId === null || activeItemId === NEW_THREAD_NAVIGATION_ITEM_ID);
-  const currentRoutePath = `${location.pathname}${location.search}${location.hash}`;
-  const homeRoutePathRef = useRef(
-    isHomeActive ? currentRoutePath : getRootComposeRoutePath(),
-  );
-  useEffect(() => {
-    if (isHomeActive) homeRoutePathRef.current = currentRoutePath;
-  }, [currentRoutePath, isHomeActive]);
 
   const destinations = items.filter(
     (item) => item.action.kind !== "new-thread",
   );
   const visible = destinations.filter((item) => item.isVisible);
   const hidden = destinations.filter((item) => !item.isVisible);
-
-  const requestCustomize = () => {
-    customizeAfterMenuCloseRef.current = true;
-  };
-  const handleMenuCloseAutoFocus = (event: Event) => {
-    if (!customizeAfterMenuCloseRef.current) return;
-    customizeAfterMenuCloseRef.current = false;
-    event.preventDefault();
-    customize.onOpenChange(true);
-  };
+  const hiddenBadgeLabels = hiddenNavigationBadgeLabels(hidden);
 
   return (
-    <div
+    <nav
       data-testid="app-nav-rail"
+      aria-label="Primary navigation"
       className={cn(
-        "relative z-10 flex shrink-0 flex-col",
-        NAV_RAIL_WIDTH_CLASS,
-        !isFramed &&
-          "-mt-[env(safe-area-inset-top)] bg-surface-recessed pt-[env(safe-area-inset-top)]",
+        "flex min-h-0 flex-1 flex-col items-center pb-2",
+        isFramed ? "pt-2.5" : "pt-1",
       )}
     >
-      {isFramed ? null : (
-        <div
-          aria-hidden="true"
-          className={cn(
-            CHROME_ROW_HEIGHT_CLASS,
-            "shrink-0",
-            shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
-          )}
-        />
-      )}
-      <nav
-        aria-label="Primary navigation"
-        className={cn(
-          "flex min-h-0 flex-1 flex-col items-center pb-2",
-          isFramed ? "pt-2.5" : "pt-1",
-        )}
-      >
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
-          <Popover
-            open={customize.isOpen}
-            onOpenChange={customize.onOpenChange}
-          >
-            <PopoverAnchor asChild>
-              <RailButton
-                label="Home"
-                active={isHomeActive}
-                onClick={() => {
-                  if (!isHomeActive) void navigate(homeRoutePathRef.current);
-                }}
-              >
-                <Icon name="Home" aria-hidden="true" />
-              </RailButton>
-            </PopoverAnchor>
-            {visible.map((item) => (
-              <RailItem
-                key={item.id}
-                item={item}
-                onCustomize={requestCustomize}
-                onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
-              />
-            ))}
-            <RailMoreMenu
-              buttonRef={moreButtonRef}
-              hidden={hidden}
-              onCustomize={
-                isCompactViewport
-                  ? () => customize.onOpenChange(true)
-                  : requestCustomize
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
+        <RailButton
+          label="Home"
+          active={isHomeActive}
+          onClick={() => actions.goHome()}
+        >
+          <Icon name="Home" aria-hidden="true" />
+        </RailButton>
+        {visible.map((item) => (
+          <RailItem key={item.id} item={item} />
+        ))}
+        <SidebarNavigationMoreMenu
+          trigger={
+            <RailButton
+              label={
+                hiddenBadgeLabels.length > 0
+                  ? `More, ${hiddenBadgeLabels.join(", ")}`
+                  : "More"
               }
-              onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
-            />
-            <PopoverContent
-              side="right"
-              align="start"
-              sideOffset={RAIL_MENU_SIDE_OFFSET}
-              aria-label="Customize rail"
-              mobileTitle="Customize rail"
-              data-testid="nav-rail-customize"
-              className="flex max-h-(--radix-popover-content-available-height) flex-col p-2 md:w-64"
-              onCloseAutoFocus={(event) => {
-                event.preventDefault();
-                moreButtonRef.current?.focus();
-              }}
             >
-              <SidebarNavigationCustomize
-                onClose={() => customize.onOpenChange(false)}
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-      </nav>
-    </div>
+              <Icon name="MoreHorizontal" aria-hidden="true" />
+              {hiddenBadgeLabels.length > 0 ? (
+                <NavigationBadgeMark
+                  count={undefined}
+                  className="pointer-events-none absolute top-1 right-1"
+                />
+              ) : null}
+            </RailButton>
+          }
+          hidden={hidden}
+          surface="rail"
+          side="right"
+          sideOffset={RAIL_MENU_SIDE_OFFSET}
+          testId="nav-rail-more-menu"
+        />
+      </div>
+    </nav>
   );
 }
 

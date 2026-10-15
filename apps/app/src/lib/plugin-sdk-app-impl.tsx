@@ -71,6 +71,11 @@ import {
 import { useCodeTheme } from "./plugin-code-theme";
 import { copyToClipboard } from "./clipboard";
 import { saveFile } from "./save-file";
+import {
+  useSidebarNavigation,
+  useSidebarNavigationSplit,
+} from "./plugin-sidebar-navigation";
+import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationModel";
 
 function useArchiveEnvironmentThreads(): (
   environmentId: string,
@@ -118,6 +123,9 @@ export const pluginSdkAppImplementation = {
   experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  experimental_useSidebarNavigation: useSidebarNavigation,
+  experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
+  experimental_SidebarNavigationIcon: SidebarNavigationIcon,
   useSidebarThreadDraft,
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatus,

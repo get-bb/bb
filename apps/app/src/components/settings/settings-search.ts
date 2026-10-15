@@ -15,6 +15,7 @@ export type SettingsSearchCondition =
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "sidebarHeaders"
   | "sourceCodeRenderers"
   | "threadLists";
 
@@ -134,6 +135,15 @@ export const SETTINGS_SEARCH_INDEX: Record<
       },
       { title: "Favicon color", keywords: ["icon", "tab"] },
       { title: "Fade inactive splits", keywords: ["dim", "panes", "focus"] },
+      {
+        title: "Navigation",
+        keywords: ["sidebar", "rail", "top list", "layout", "labels", "plugin"],
+      },
+      {
+        title: "Header",
+        keywords: ["sidebar", "toggle", "plugin"],
+        when: "sidebarHeaders",
+      },
       {
         title: "Sidebar",
         keywords: ["thread list", "plugin"],

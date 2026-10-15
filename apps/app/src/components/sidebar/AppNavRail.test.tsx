@@ -8,7 +8,8 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { useSyncExternalStore } from "react";
+import type { ExperimentalBadge } from "@get-bb/plugin-sdk";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import {
@@ -45,16 +46,20 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getThreadRoutePath,
-  isPluginsRoutePath,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
-import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import {
-  AppNavRail,
-  NavRailNewThreadButton,
-  NavRailSettingsButton,
-} from "./AppNavRail";
+  SidebarNavigationProviderMount,
+  SidebarNavigationRegion,
+  useSidebarNavigationCustomize,
+} from "./SidebarNavigationHost";
+import {
+  RAIL_NAVIGATION,
+  type ResolvedSidebarNavigation,
+} from "./sidebarNavigationProvider";
+import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
+import { NavRailNewThreadButton, NavRailSettingsButton } from "./AppNavRail";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 
@@ -77,23 +82,32 @@ vi.mock("@/views/useMobileRecentsThreadReveal", () => ({
   useMobileRecentsThreadReveal: () => {},
 }));
 
-vi.mock("@/components/sidebar/AppSidebar", () => ({
-  AppSidebar: ({
-    renderRail,
-    railFooter,
-  }: {
-    railFooter: ReactNode;
-    renderRail: (customize: {
-      isOpen: boolean;
-      onOpenChange: () => void;
-    }) => ReactNode;
-  }) => (
-    <>
-      {renderRail({ isOpen: false, onOpenChange: () => {} })}
-      {railFooter}
-    </>
-  ),
-}));
+vi.mock("@/components/sidebar/AppSidebar", async () => {
+  const { SidebarNavigationProviderMount } = await vi.importActual<
+    typeof import("./SidebarNavigationHost")
+  >("./SidebarNavigationHost");
+  const { NavRailSettingsButton } =
+    await vi.importActual<typeof import("./AppNavRail")>("./AppNavRail");
+  return {
+    AppSidebar: ({
+      navigation,
+      settingsRoutePath,
+      isSettingsActive,
+    }: {
+      navigation: ResolvedSidebarNavigation;
+      settingsRoutePath: string;
+      isSettingsActive: boolean;
+    }) => (
+      <>
+        <SidebarNavigationProviderMount resolved={navigation} />
+        <NavRailSettingsButton
+          isSettingsActive={isSettingsActive}
+          settingsRoutePath={settingsRoutePath}
+        />
+      </>
+    ),
+  };
+});
 
 vi.mock("@/components/settings/SettingsSidebar", () => ({
   SettingsSidebar: () => null,
@@ -138,12 +152,12 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
   const closeMobileSidebar = useCloseMobileSidebar();
   const location = useLocation();
   const isSettings = location.pathname.startsWith(SETTINGS_ROUTE_PATH);
-  const isAppMode = !isSettings && !isPluginsRoutePath(location.pathname);
-  const [isCustomizing, setCustomizing] = useState(false);
+  const customize = useSidebarNavigationCustomize();
   return (
     <SidebarNavigationModelProvider
       onNavigate={mocks.onNavigate}
       onNewChat={mocks.onNewChat}
+      onOpenCustomize={customize.open}
       splitEnabled={false}
     >
       {useLayout ? (
@@ -153,16 +167,18 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
             onResizeMouseDown={() => {}}
             isResizing={false}
             settingsRoutePath={SETTINGS_ROUTE_PATH}
+            backToAppRoutePath={isSettings ? "/" : null}
           />
           <SidebarTrigger />
           <SidebarUpdatesBadge onNavigate={closeMobileSidebar} />
         </>
       ) : (
         <>
-          <AppNavRail
-            isAppMode={isAppMode}
-            customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
-          />
+          <SidebarNavigationRegion placement="rail" customize={customize}>
+            <SidebarNavigationProviderMount
+              resolved={{ kind: "built-in", provider: RAIL_NAVIGATION }}
+            />
+          </SidebarNavigationRegion>
           <NavRailSettingsButton
             isSettingsActive={isSettings}
             settingsRoutePath={SETTINGS_ROUTE_PATH}
@@ -236,6 +252,44 @@ function currentRailLabels(): (string | null)[] {
     ),
     (button) => button.getAttribute("aria-label"),
   );
+}
+
+function railBadgeText(name: string): string | null | undefined {
+  return railButton(name).querySelector('[data-nav-rail-badge="count"]')
+    ?.textContent;
+}
+
+function registerDocsBadge(initial: ExperimentalBadge | null) {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  function useBadge() {
+    return useSyncExternalStore(subscribe, () => value);
+  }
+  setPluginSlotRegistrations(
+    "garden",
+    registrationSet({
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "BookOpen",
+          path: "docs",
+          component: () => null,
+          experimental_useBadge: useBadge,
+        },
+      ],
+    }),
+  );
+  return {
+    set(next: ExperimentalBadge | null) {
+      value = next;
+      for (const listener of listeners) listener();
+    },
+  };
 }
 
 function pathname(): string | null {
@@ -441,32 +495,60 @@ describe("AppNavRail", () => {
     expect(mocks.onNavigate).toHaveBeenCalledTimes(1);
   });
 
-  it("does not mount a plugin panel's sidebar accessory", () => {
-    const accessoryMounted = vi.fn();
-    setPluginSlotRegistrations(
-      "garden",
-      registrationSet({
-        navPanels: [
-          {
-            id: "docs",
-            title: "Docs",
-            icon: "BookOpen",
-            path: "docs",
-            component: () => null,
-            experimental_sidebarAccessory: () => {
-              accessoryMounted();
-              return <span>492/1</span>;
-            },
-          },
-        ],
-      }),
-    );
+  it("draws a plugin panel's rail badge and names it in the destination's label", () => {
+    const badge = registerDocsBadge({ count: 3, label: "3 open pages" });
 
     renderRail(THREAD_PATH);
 
-    expect(railButton("Docs")).toBeDefined();
-    expect(accessoryMounted).not.toHaveBeenCalled();
-    expect(rail().textContent).not.toContain("492/1");
+    expect(railButton("Docs, 3 open pages")).toBeDefined();
+    expect(railBadgeText("Docs, 3 open pages")).toBe("3");
+
+    act(() => badge.set({ count: 9, label: "9 open pages" }));
+    expect(railBadgeText("Docs, 9 open pages")).toBe("9");
+
+    act(() => badge.set({ count: 10, label: "10 open pages" }));
+    expect(railBadgeText("Docs, 10 open pages")).toBe("9+");
+
+    act(() => badge.set({ label: "Sync failed" }));
+    expect(
+      railButton("Docs, Sync failed").querySelector(
+        '[data-nav-rail-badge="dot"]',
+      ),
+    ).not.toBeNull();
+
+    act(() => badge.set(null));
+    expect(
+      railButton("Docs").querySelector("[data-nav-rail-badge]"),
+    ).toBeNull();
+  });
+
+  it("marks More and the More menu item for a badged destination hidden under More", async () => {
+    registerDocsBadge({ count: 2, label: "2 open pages" });
+
+    renderRail(THREAD_PATH, {
+      visibleKeys: ["__bb__/new-thread", "__bb__/extensions"],
+    });
+
+    const more = railButton("More, Docs: 2 open pages");
+    expect(more.querySelector('[data-nav-rail-badge="dot"]')).not.toBeNull();
+    fireEvent.keyDown(more, { key: "Enter" });
+    const item = await screen.findByRole("menuitem", {
+      name: "Docs, 2 open pages",
+    });
+    expect(
+      item.querySelector('[data-nav-rail-badge="count"]')?.textContent,
+    ).toBe("2");
+  });
+
+  it("shows no badge for an invalid rail badge value and keeps the destination usable", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    registerDocsBadge({ count: 0, label: "none" });
+
+    renderRail(THREAD_PATH);
+
+    expect(rail().querySelector("[data-nav-rail-badge]")).toBeNull();
+    fireEvent.click(railButton("Docs"));
+    expect(pathname()).toBe(DOCS_PATH);
   });
 
   it("keeps hidden destinations out of the rail", () => {
@@ -593,12 +675,13 @@ describe("AppNavRail", () => {
     expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
   });
 
-  it("opens the customize popover at the top of the rail and keeps it there while More moves", async () => {
+  it("opens the customize popover at the top of the navigation and keeps it there while More moves", async () => {
     renderRail(THREAD_PATH);
     let moreTop = 200;
-    vi.spyOn(railButton("Home"), "getBoundingClientRect").mockImplementation(
-      () => new DOMRect(12, 40, 28, 28),
-    );
+    vi.spyOn(
+      screen.getByTestId("sidebar-navigation-rail"),
+      "getBoundingClientRect",
+    ).mockImplementation(() => new DOMRect(12, 40, 52, 600));
     vi.spyOn(railButton("More"), "getBoundingClientRect").mockImplementation(
       () => new DOMRect(12, moreTop, 28, 28),
     );

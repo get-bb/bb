@@ -108,6 +108,7 @@ import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
+import { useSidebarNavigationPlacement } from "@/components/sidebar/sidebarNavigationProvider";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import {
   useAppCommandHandler,
@@ -180,15 +181,19 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 );
 
 interface SidebarStateBridgeProps {
-  framed: boolean;
+  usesDesktopChrome: boolean;
   children: ReactNode;
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
-function SidebarStateBridge({ framed, children }: SidebarStateBridgeProps) {
+function SidebarStateBridge({
+  usesDesktopChrome,
+  children,
+}: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
+  const hasRail = useSidebarNavigationPlacement() === "rail";
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
@@ -205,8 +210,10 @@ function SidebarStateBridge({ framed, children }: SidebarStateBridgeProps) {
   return (
     <SidebarProvider
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
-      collapsedRailWidth={NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH}
-      framed={framed}
+      collapsedRailWidth={
+        hasRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
+      }
+      framed={usesDesktopChrome && hasRail}
       data-testid="app-layout-root"
       open={open}
       onOpenChange={handleOpenChange}
@@ -822,7 +829,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <ProjectActionsProvider>
           <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
             <ThreadActionsProvider>
-              <SidebarStateBridge framed={usesDesktopChrome}>
+              <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
                 {backToAppRoutePath !== null && !isSidebarResizing ? (
                   <BackToAppCommandHandler routePath={backToAppRoutePath} />
                 ) : null}
@@ -840,6 +847,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   onResizeMouseDown={handleResizeMouseDown}
                   isResizing={isSidebarResizing}
                   settingsRoutePath={settingsRoutePath}
+                  backToAppRoutePath={backToAppRoutePath}
                 />
                 <SidebarInset>
                   <div

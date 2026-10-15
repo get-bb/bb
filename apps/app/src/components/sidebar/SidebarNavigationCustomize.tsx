@@ -1,14 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, type RefObject } from "react";
+import { PopoverContent } from "@bb/shared-ui/popover";
 import type { SidebarVisibilityItem } from "@bb/shared-ui/sidebar-visibility-customize";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
+import type { SidebarNavigationSurface } from "./SidebarNavigationMenus";
 import {
   SidebarNavigationIcon,
   useSidebarNavigationModel,
 } from "./SidebarNavigationModel";
 
+const CUSTOMIZE_SIDE_OFFSET = 12;
+
 export function SidebarNavigationCustomize({
+  title,
   onClose,
 }: {
+  title: string;
   onClose: (restoreFocus: boolean) => void;
 }) {
   const model = useSidebarNavigationModel();
@@ -32,7 +38,7 @@ export function SidebarNavigationCustomize({
       data-sidebar-navigation-customize-mode="true"
     >
       <SidebarVisibilityCustomize
-        title="Customize rail"
+        title={title}
         listLabel="Sidebar navigation"
         variant="compact"
         items={items}
@@ -42,5 +48,36 @@ export function SidebarNavigationCustomize({
         onVisibleChange={arrangement.setVisible}
       />
     </div>
+  );
+}
+
+export function SidebarNavigationCustomizePopoverContent({
+  surface,
+  testId,
+  focusReturnRef,
+  onClose,
+}: {
+  surface: SidebarNavigationSurface;
+  testId: string;
+  focusReturnRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+}) {
+  const title = `Customize ${surface}`;
+  return (
+    <PopoverContent
+      side="right"
+      align="start"
+      sideOffset={CUSTOMIZE_SIDE_OFFSET}
+      aria-label={title}
+      mobileTitle={title}
+      data-testid={testId}
+      className="flex max-h-(--radix-popover-content-available-height) flex-col p-2 md:w-64"
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        focusReturnRef.current?.focus();
+      }}
+    >
+      <SidebarNavigationCustomize title={title} onClose={onClose} />
+    </PopoverContent>
   );
 }

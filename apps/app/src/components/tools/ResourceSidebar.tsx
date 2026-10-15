@@ -13,10 +13,12 @@ import {
 
 export function ResourceSidebar({
   workspace,
+  backTo,
   isResizing,
   onResizeMouseDown,
 }: {
   workspace: ToolsSectionId;
+  backTo: string | null;
   isResizing: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
@@ -26,6 +28,8 @@ export function ResourceSidebar({
 
   return (
     <SectionSidebar
+      backTo={backTo}
+      title={workspace === "plugins" ? "Plugins" : "Skills"}
       isResizing={isResizing}
       onResizeMouseDown={onResizeMouseDown}
       testIdPrefix={workspace}

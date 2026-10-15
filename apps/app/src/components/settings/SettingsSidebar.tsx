@@ -53,6 +53,7 @@ import { usePluginSettingSearch } from "./usePluginSettingSearch";
 import { useSettingsSearchConditions } from "./useSettingsSearchConditions";
 
 interface SettingsSidebarProps {
+  backTo: string | null;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
 }
@@ -289,6 +290,7 @@ function SettingsSearchResults({
 }
 
 export function SettingsSidebarContent({
+  backTo,
   onResizeMouseDown,
   isResizing,
   navigation,
@@ -373,6 +375,8 @@ export function SettingsSidebarContent({
 
   return (
     <SectionSidebar
+      backTo={backTo}
+      title="Settings"
       isResizing={isResizing}
       onResizeMouseDown={onResizeMouseDown}
       testIdPrefix={testIdPrefix}
@@ -490,6 +494,7 @@ export function SettingsSidebarContent({
 }
 
 export function SettingsSidebar({
+  backTo,
   onResizeMouseDown,
   isResizing,
 }: SettingsSidebarProps) {
@@ -503,6 +508,7 @@ export function SettingsSidebar({
 
   return (
     <SettingsSidebarContent
+      backTo={backTo}
       isResizing={isResizing}
       navigation={navigation}
       onResizeMouseDown={onResizeMouseDown}

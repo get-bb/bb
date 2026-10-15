@@ -65,7 +65,7 @@ export default definePluginApp((app) => {
         layout: "flush",
       },
     ],
-    experimental_sidebarAccessory: OpenIssueCount,
+    experimental_useBadge: useOpenIssueBadge,
   });
   app.slots.threadPanelAction({
     id: "issue",
@@ -134,6 +134,12 @@ export default definePluginApp((app) => {
     title: "Inbox",
     description: "One flat list, newest thread on top.",
     component: InboxList,
+  });
+  app.slots.experimental_sidebarNavigation({
+    id: "compact",
+    title: "Compact navigation",
+    placement: "list",
+    component: CompactSidebarNavigation,
   });
 });
 ```
@@ -271,6 +277,12 @@ this plugin and tab. `world: "main"` runs beside page scripts (for example to
 read framework state on DOM nodes) and binds `bb` to `null`. Anything installed
 is lost when the document navigates; check again when `url` changes.
 
+### Sidebar navigation and header
+
+Drawing the sidebar navigation (`experimental_sidebarNavigation`) and adding
+controls beside the sidebar toggle (`experimental_sidebarHeader`) are covered
+in frontend-sidebar-navigation.md.
+
 ### Replacing the sidebar thread list
 
 `app.slots.experimental_threadList` is the one **exclusive** slot: only one
@@ -282,7 +294,7 @@ Sidebar**. The choice is per client. bb ships its own list as the bundled
 `thread-list` plugin; there is no separate built-in list.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
-the navigation rail, and the footer stay host-rendered —
+the navigation, and the footer stay host-rendered —
 other plugins live in two of those, so a replaced list must not remove them.
 Put your own controls at the top of your scroll area instead.
 

@@ -688,14 +688,17 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | Key                           | Value                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one |
-| `sidebar.pluginPanelOrder`    | Rail destination order                                                                                                                                 |
-| `sidebar.visiblePluginPanels` | Rail destinations shown, or `null` for every destination                                                                                               |
+| `sidebar.navigationProvider`  | `__automatic__` (default): the first installed navigation plugin, else `__bb__/rail`; `__bb__/rail`, `__bb__/top-list`, or a plugin key               |
+| `sidebar.headerProvider`      | Header plugin key, or `__builtin__` (default) for bb's controls only; shown with a list navigation                                                     |
+| `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                           |
+| `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
 | `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
 | `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
 | `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`)                                       |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
-Footer IDs are `builtin:mobile`, `builtin:report-bug`, and
+Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
+`builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and
 disabled-plugin IDs are retained, and new actions default to visible. The
 footer can also be edited from its More menu or Settings → Appearance → Sidebar
@@ -709,6 +712,17 @@ between the thread list, Plugins, Skills, and Settings; collapsing the sidebar
 leaves only the rail. On narrow windows and phones the rail sits inside the
 drawer. In the macOS desktop app, wide windows add a title bar with the window
 controls, Back and Forward, and the sidebar toggle.
+
+With `sidebar.navigationProvider` set to `__bb__/top-list` (Settings →
+Appearance → Navigation), there is no rail. New thread, the visible
+destinations, and More (hidden destinations and Customize sidebar) are labeled
+rows above the thread list, with plugin panel badges at the end of their row.
+Settings is a footer action, and the Settings, Plugins, and Skills lists start
+with a Back to app row. Collapsing hides the whole sidebar, and the macOS
+desktop app keeps the window controls over the sidebar instead of a separate
+title bar. A navigation plugin gets the rail or list layout its registration
+declares; legacy `__builtin__` and `navigation/navigation` read as
+`__automatic__`.
 
 The layout keys `sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
 `sidebar.chronologicalSort`, `sidebar.sortDirection`, the three section-order

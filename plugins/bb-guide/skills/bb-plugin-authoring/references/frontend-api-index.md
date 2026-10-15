@@ -46,6 +46,13 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_THREAD_ACTION_GROUPS`
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
+- `experimental_useSidebarNavigation` — the sidebar navigation items in the
+  user's saved order, the active item, Home state, and host actions to
+  activate, hide, reorder, and customize them
+- `experimental_useSidebarNavigationSplit` — drag-to-split support for one
+  navigation item
+- `experimental_SidebarNavigationIcon` — bb's artwork for a navigation item's
+  icon, including plugin branding
 - `useSidebarThreadDraft`
 - `useSidebarThreadDraftIds`
 - `useSidebarThreadRowStatus`
@@ -120,6 +127,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginFixedTabRegistration`
 - `PluginFixedTabDeclaration`
 - `PluginNavPanelRegistration`
+- `ExperimentalBadge`
 - `PluginPanelActionOpenOptions`
 - `PluginThreadPanelActionContext`
 - `PluginThreadPanelActionRegistration`
@@ -181,6 +189,21 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
+- `ExperimentalSidebarNavigationShortcut`
+- `ExperimentalSidebarNavigationAction`
+- `ExperimentalSidebarNavigationIcon`
+- `ExperimentalSidebarNavigationItem`
+- `ExperimentalSidebarNavigationActivationOptions`
+- `ExperimentalSidebarNavigationActions`
+- `ExperimentalSidebarNavigationState`
+- `ExperimentalSidebarNavigationSplit`
+- `ExperimentalSidebarNavigationSplitOptions`
+- `ExperimentalSidebarNavigationIconProps`
+- `ExperimentalSidebarNavigationPlacement`
+- `ExperimentalSidebarNavigationProps`
+- `ExperimentalSidebarNavigationRegistration`
+- `ExperimentalSidebarHeaderProps`
+- `ExperimentalSidebarHeaderRegistration`
 - `PluginFileOpenerRegistration`
 - `PluginSourceCodeRendererRegistration`
 - `PluginDiffRendererRegistration`

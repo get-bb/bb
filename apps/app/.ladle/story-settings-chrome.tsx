@@ -76,6 +76,7 @@ export function SettingsStoryChrome({
     >
       <Sidebar>
         <SettingsSidebarContent
+          backTo={null}
           isResizing={false}
           navigation={{
             activePluginId: null,

@@ -654,7 +654,7 @@ spec grows a field.
 ## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
 
 **Experimental preview (2026-10-09).** Published beside the original kit so
-the two can be compared. The built-in "ACP providers [New adapter]" plugin
+the two can be compared. The built-in "ACP providers (new adapter)" plugin
 (`plugins/provider-acp-next`, off by default and mutually exclusive with the
 original ACP plugin) re-exports its `experimental_acpProviderBridge`.
 
@@ -1225,39 +1225,143 @@ Docs: `frontend-core-slots.md`, `frontend-components.md`.
 5. Keep core and plugin destinations on the same resolver and verify the
    controller never learns Changes, file, task, or document target shapes.
 
-## `PluginNavPanelRegistration.experimental_sidebarAccessory`
+## `PluginNavPanelRegistration.experimental_useBadge`
 
-**Kept experimental (2026-08-22).** It has one consumer (the tasks plugin), and
-item 1 below would change the API shape.
+**Added 2026-10-15 (SDK 0.6.52), replacing `experimental_sidebarAccessory`.**
+One consumer: the Tasks plugin's open-task count.
 
-A no-props, presentational component for a live value beside a nav panel's
-navigation entry. The SDK accepts it, but no host surface mounts it, because
-the navigation rail is icon-only.
+A nav panel hook returning `ExperimentalBadge` (`{ count?, label }`) or
+`null`. The sidebar navigation model runs it once per registered panel in the
+plugin's slot scope and crash boundary and hands the value to every
+navigation provider as `item.badge`. bb's Rail draws a count (capped at `9+`)
+or a dot on the icon; its Top list draws the count (capped at `99+`) or dot at
+the end of the row. Both add `label` to the accessible name and put a dot on
+More while a badged panel is hidden there. A plugin that still passes
+`experimental_sidebarAccessory` keeps loading; the field is dropped with a
+warning. Remove that compatibility once released plugins have migrated.
 
 Docs: `frontend-core-slots.md`.
 
 **Audit before stabilizing.**
 
-1. **Component versus value.** Confirm real consumers need component-owned
-   live state, rather than a narrower string/number/badge value plus a separate
-   host update primitive. Installed plugins are trusted, but a component can
-   still render controls or markup that is inappropriate for row chrome.
-2. **Budget.** Revisit the 4rem by 1.25rem cap against counts, short statuses,
-   localization, browser zoom, and multiple plugin rows. Decide whether the
-   host should expose a fixed badge treatment instead of accepting plugin
-   styling.
-3. **Host surface.** No host surface mounts the component. Decide where a
-   live value belongs beside an icon-only rail destination (a badge, a
-   tooltip, or nowhere) before stabilizing, or remove the field.
-4. **Overflow and portals.** The wrapper clips ordinary descendants but cannot
-   constrain content portalled elsewhere in the document. Confirm the
-   presentational-only contract is sufficient, or enforce a non-component
-   value before stabilization.
-5. **Accessibility.** Accessory text is exposed beside the navigation button
-   without changing that button's stable accessible name. Confirm that reading
-   order and the focus-triggered accessory/options swap work for counts and
-   short statuses, and decide whether a dedicated label prop or host-rendered
-   status semantics are needed.
+1. **Core parity.** Decide whether a core destination needs a badge and, if
+   so, route it through the same `NavigationBadgeMark` and label path.
+2. **Tone.** Confirm one neutral treatment is enough, or add a host-owned
+   `tone` (such as attention) without plugin styling.
+3. **Hook lifetime.** The hook runs for every registered panel while the
+   sidebar is mounted, including hidden ones. Confirm that cost is acceptable for
+   plugins with expensive queries, or add visibility to the hook's inputs.
+4. **More summary.** The More button's accessible name lists every hidden
+   badge. Check that this stays usable with many badged hidden panels.
+
+## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
+
+**Restored 2026-10-15 (SDK 0.6.52) with `placement`.** It was removed in
+#5229 (0.46.0); the names are unchanged so plugins built before 0.46, such as
+Compact Nav 0.1.x and Sidebar Sections, load again.
+
+**What it does.** Draws the sidebar navigation: New thread, Search threads,
+Plugins, Skills, Automations, plugin panels, and More. Exclusive.
+`sidebar.navigationProvider` picks the provider: bb's `__bb__/rail` or
+`__bb__/top-list`, a plugin key, or `__automatic__` (the default: the first
+registered plugin provider, else Rail). Legacy `__builtin__` and
+`navigation/navigation` read as `__automatic__`.
+
+The registration declares `placement`, `rail` or `list` (the default). bb lays
+the sidebar out from the placement before the provider renders, and keeps the
+layout around it: for `rail`, a fixed-width column that stays when the sidebar
+collapses, New thread in the header, Settings at the bottom of the column, and
+the framed macOS title bar; for `list`, the area above the thread list, a
+Settings footer action, Back to app rows on the Settings, Plugins, and Skills
+lists, a collapse that hides the whole sidebar, and the header slot. The
+component receives `isCompactViewport`, `placement`, and the deprecated
+`experimental_Original`, which renders bb's provider for the same placement.
+
+Before plugin frontends settle, a pinned plugin provider, or the plugin
+Automatic last chose, reserves the placement it last had and draws nothing;
+Automatic with no remembered plugin draws Rail at once. Once frontends
+settle, a missing pinned provider falls back like Automatic. A crashing
+provider is replaced by bb's provider for its placement, with one toast.
+
+**Core callers on the same path.** bb's Rail and Top list are the two
+built-in providers. They mount through the same host component as plugin
+providers, receive the same props, and read and act only through
+`experimental_useSidebarNavigation()`, `experimental_useSidebarNavigationSplit()`,
+and `experimental_SidebarNavigationIcon`.
+
+**Audit before stabilizing.**
+
+1. **Placements.** Confirm two placements cover real providers, or whether a
+   rail provider needs a declared width.
+2. **Boundary.** Verify providers can express useful navigation without the
+   drawer, thread list, footer, resize handle, Settings, or shortcuts.
+3. **Arbitration.** Confirm Automatic preferring the first installed plugin
+   provider over Rail is right, including when several are installed.
+4. **Loading.** Confirm an empty region in the remembered placement beats
+   drawing bb's provider until the plugin registers.
+5. **Original.** Remove `experimental_Original` once released plugins stop
+   rendering it.
+
+## `experimental_useSidebarNavigation`, `experimental_useSidebarNavigationSplit`, `experimental_SidebarNavigationIcon` (`@get-bb/plugin-sdk/app`)
+
+**Restored 2026-10-15 (SDK 0.6.52).**
+
+**What it does.** `experimental_useSidebarNavigation()` returns
+`{ items, activeItemId, isHomeActive, isShortcutModifierHeld, actions }` from
+one model mounted above the sidebar. Items arrive in the user's saved order
+with `isVisible`, `isLoading`, `pluginId`, shortcut metadata, and `badge` (the
+panel's `experimental_useBadge` value). Item ids are the keys stored in
+`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, and items keep
+their identity while unchanged. `actions` covers
+`activate(id, { openInSplit })`, `goHome()`, `setVisible`, `setOrder` (unknown
+ids are dropped and omitted ids keep their relative order at the end),
+`openCustomize()` (bb's editor in a popover beside the navigation, after open
+menus close, returning focus to the opener), `openDetails`, and
+`disablePlugin`. Calls after the caller unmounts do nothing; outside the
+sidebar the hook returns no items and inert actions.
+`experimental_useSidebarNavigationSplit(id, options?)` mirrors
+`experimental_useSidebarThreadSplit` and accepts `activation: "distance"` and
+`onDragStart` for rows in menus. `experimental_SidebarNavigationIcon` renders
+bb's glyphs and panel icons with plugin branding as fallback.
+
+**Core callers on the same path.** bb's Rail, Top list, and the header New
+thread button use these hooks; the app's Settings → Appearance → Navigation
+picker reads the same registrations.
+
+**Audit before stabilizing.**
+
+1. **Semantic items.** Confirm the action and icon variants cover current
+   navigation without exposing routes or host elements.
+2. **Home.** Confirm `isHomeActive` and `goHome()` are the right Home contract
+   for rail providers, including after Settings closes the compact drawer.
+3. **Order semantics.** Confirm `setOrder`'s partial-order rule works for
+   drag-and-drop providers.
+4. **Accessibility.** Validate labels, badges in accessible names,
+   `aria-current`, shortcut metadata, and focus return from Customize in
+   third-party markup.
+
+## `app.slots.experimental_sidebarHeader` (`@get-bb/plugin-sdk/app`)
+
+**Restored 2026-10-15 (SDK 0.6.52).**
+
+**What it does.** Renders one plugin component in the sidebar header row,
+between the sidebar toggle (and the macOS window controls) and bb's back and
+forward buttons, while the active navigation uses the `list` placement; the
+rail puts New thread there instead. Exclusive and opt-in:
+`sidebar.headerProvider` defaults to `__builtin__` (bb's controls only), and
+the user picks a provider under Settings → Appearance → Header. The component
+receives `width`, `controlSize`, and `isCompactViewport`. The host clips
+content to the row, keeps the macOS drag region for non-interactive space, and
+removes the component with one toast on a crash.
+
+**Core callers on the same path.** None: bb draws nothing in that space. Keep
+it experimental until bb's own header content moves onto it or the slot is
+removed.
+
+**Audit before stabilizing.**
+
+1. **Core use.** Decide whether bb's header controls move onto the slot.
+2. **Rail.** Decide whether rail providers need a header slot of their own.
 
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 
@@ -1507,7 +1611,7 @@ resolves with that slot's `experimental_copyToClipboard` render option
 **Core callers.** The export is `copyToClipboard` from
 `apps/app/src/lib/clipboard.ts`. Core copies call it directly or through
 `copyToClipboardWithToast` and `useClipboardCopy`: `CopyButton`, the message
-action bar, file preview, terminal, and the Copy link thread action.
+action bar, file preview, terminal, and the Copy thread link thread action.
 
 Docs: `frontend-hooks-and-ui.md`.
 
@@ -2223,10 +2327,8 @@ debounced (32 ms quiet, 100 ms max). `item` is a pure function of
 `{ thread, data, sdk, navigate }` returning a `PluginThreadAction` or null;
 throws drop the registration or that thread's item, and `run` errors are
 contained. Registrations sort by `group`, `order`, then registration order
-for every menu and the quick-action picker. bb's groups, in menu order, are
-`open` (split, copy link), `state` (pin, read, notifications), `organize`
-(rename, move), `settings`, and `lifecycle` (archive, delete). Thread-list
-registers Move to section, and push-notifications registers Notifications. The SDK test fake
+for every menu and the quick-action picker. Thread-list registers Move to
+section, and push-notifications registers Notifications. The SDK test fake
 throws when a menu `trigger` drops its props and ref.
 
 **Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`

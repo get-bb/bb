@@ -57,6 +57,7 @@ function renderSidebar({
       <LocationProbe />
       <SidebarProvider>
         <SettingsSidebarContent
+          backTo={null}
           isResizing={false}
           navigation={{
             activePluginId,
@@ -210,6 +211,7 @@ describe("SettingsSidebarContent search", () => {
         <LocationProbe />
         <SidebarProvider>
           <SettingsSidebarContent
+            backTo={null}
             isResizing={false}
             navigation={{
               activePluginId: null,

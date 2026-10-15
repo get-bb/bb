@@ -738,10 +738,8 @@ async function reconcileCandidates(
             "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
           );
         }
-        collected = collectPluginAppRegistrations(definition, (reason) => {
-          deps.warn(
-            `[plugin:${pluginId}] composer customization rejected: ${reason}`,
-          );
+        collected = collectPluginAppRegistrations(definition, (message) => {
+          deps.warn(`[plugin:${pluginId}] ${message}`);
         });
       } catch (error) {
         const message = errorMessage(error);

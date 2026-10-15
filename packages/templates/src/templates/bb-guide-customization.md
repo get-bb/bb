@@ -278,8 +278,27 @@ it. On narrow windows and phones the rail sits inside the drawer: Home,
 Plugins, Skills, and Settings swap the list beside it and leave the drawer
 open, and a plugin page closes it.
 
+`sidebar.navigationProvider` picks what draws the navigation:
+`__bb__/rail` (the rail above), `__bb__/top-list` (labeled rows above the
+thread list), a navigation plugin as `<plugin-id>/<slot-id>`, or
+`__automatic__` (the default: the first installed navigation plugin, else the
+rail). Pick one in Settings → Appearance → Navigation, or:
+
+  bb settings ui set sidebar.navigationProvider __bb__/top-list
+  bb settings ui reset sidebar.navigationProvider
+
+The top list puts New thread, the visible destinations, and More above the
+thread list, moves Settings into the footer, and adds a Back to app row to the
+Settings, Plugins, and Skills lists. Collapsing hides the whole sidebar, and
+the macOS desktop app drops the separate title bar. A navigation plugin
+declares whether it draws a rail or a list, and gets the matching layout. The
+same order and visibility keys apply to every provider. With a list, a header
+plugin can add controls beside the sidebar toggle (`sidebar.headerProvider`,
+Settings → Appearance → Header; `__builtin__` shows only bb's controls).
+
 Footer actions: `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are
-string lists of `builtin:mobile`, `builtin:report-bug`, or
+string lists of `builtin:settings` (top list only), `builtin:mobile`,
+`builtin:report-bug`, or
 `plugin:<encoded pluginId>/<encoded registrationId>`. They survive plugin
 reloads and temporarily unavailable plugins; new items are visible by default.
 

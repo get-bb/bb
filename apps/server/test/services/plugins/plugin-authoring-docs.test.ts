@@ -38,6 +38,8 @@ import {
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
+  type ExperimentalSidebarNavigationProps,
+  type ExperimentalSidebarHeaderProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
@@ -273,6 +275,8 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
+  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
+  experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
@@ -419,6 +423,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "onChange",
   ],
   experimental_machineProviderInputs: ["value", "onChange"],
+  experimental_sidebarNavigation: [
+    "isCompactViewport",
+    "placement",
+    "experimental_Original",
+  ],
+  experimental_sidebarHeader: ["width", "controlSize", "isCompactViewport"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -441,7 +451,7 @@ const NAV_PANEL_REGISTRATION_FIELDS = [
   "path",
   "component",
   "fixedTabs",
-  "experimental_sidebarAccessory",
+  "experimental_useBadge",
   "headerContent",
 ] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
 

@@ -497,36 +497,43 @@ const RAIL_BUTTON_CLASS = "flex size-7 items-center justify-center rounded-md";
 
 function SidebarRail() {
   return (
-    <div
-      data-guide-fixture="sidebar-rail"
-      className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border-hairline py-3"
+    <RegionMark
+      id="sidebar-navigation"
+      label="The sidebar navigation, drawn by bb or one plugin"
+      className="flex shrink-0"
+      showChip={false}
     >
-      <span className={cn(RAIL_BUTTON_CLASS, "bg-sidebar-accent")}>
-        <MiniIcon icon="Home" className="text-foreground" />
-      </span>
-      <span className={RAIL_BUTTON_CLASS}>
-        <MiniIcon icon="Plug02" />
-      </span>
-      <span className={RAIL_BUTTON_CLASS}>
-        <MiniIcon icon="Zap" />
-      </span>
-      <Mark
-        id="nav-panel"
-        label="Plugin nav panels, in the navigation rail"
-        className="z-[2] flex size-7 items-center justify-center text-sidebar-foreground"
-        showChip={false}
+      <div
+        data-guide-fixture="sidebar-rail"
+        className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border-hairline py-3"
       >
-        <PluginGlyph />
-        <span className="sr-only">Your panel</span>
-      </Mark>
-      <span className={RAIL_BUTTON_CLASS}>
-        <MiniIcon icon="MoreHorizontal" />
-      </span>
-      <span className="flex-1" />
-      <span className={RAIL_BUTTON_CLASS}>
-        <MiniIcon icon="Settings" />
-      </span>
-    </div>
+        <span className={cn(RAIL_BUTTON_CLASS, "bg-sidebar-accent")}>
+          <MiniIcon icon="Home" className="text-foreground" />
+        </span>
+        <span className={RAIL_BUTTON_CLASS}>
+          <MiniIcon icon="Plug02" />
+        </span>
+        <span className={RAIL_BUTTON_CLASS}>
+          <MiniIcon icon="Zap" />
+        </span>
+        <Mark
+          id="nav-panel"
+          label="Plugin nav panels, in the navigation rail"
+          className="z-[2] flex size-7 items-center justify-center text-sidebar-foreground"
+          showChip={false}
+        >
+          <PluginGlyph />
+          <span className="sr-only">Your panel</span>
+        </Mark>
+        <span className={RAIL_BUTTON_CLASS}>
+          <MiniIcon icon="MoreHorizontal" />
+        </span>
+        <span className="flex-1" />
+        <span className={RAIL_BUTTON_CLASS}>
+          <MiniIcon icon="Settings" />
+        </span>
+      </div>
+    </RegionMark>
   );
 }
 
@@ -641,7 +648,9 @@ export type AppShellRightPanelTab =
   | "code-renderers";
 
 function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
-  const clipTo = mobile ? '[data-guide-fixture="right-panel-tab-strip"]' : undefined;
+  const clipTo = mobile
+    ? '[data-guide-fixture="right-panel-tab-strip"]'
+    : undefined;
   return (
     <>
       <MeasuredBadge
@@ -704,9 +713,15 @@ export function CommandPaletteWireframe({
       className={cn("relative pb-2 pt-4", mobile ? "px-6" : "px-7")}
     >
       <WindowFrame
-        className={mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined}
+        className={
+          mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined
+        }
       >
-        <div className={mobile ? "relative min-h-0 flex-1" : "relative min-h-[500px]"}>
+        <div
+          className={
+            mobile ? "relative min-h-0 flex-1" : "relative min-h-[500px]"
+          }
+        >
           <div
             data-guide-fixture="command-palette-thread"
             className={cn(
@@ -869,7 +884,10 @@ export function CommandPaletteWireframe({
                 )}
               >
                 {mobile ? (
-                  <span aria-hidden className="flex h-6 items-center justify-center">
+                  <span
+                    aria-hidden
+                    className="flex h-6 items-center justify-center"
+                  >
                     <span className="h-1 w-10 rounded-full bg-muted-foreground/20" />
                   </span>
                 ) : null}
@@ -967,6 +985,13 @@ export function AppShellWireframe({
       {scene === "desktop" || scene === "navigation" ? (
         <>
           <MeasuredBadge
+            id="sidebar-navigation"
+            label="The sidebar navigation, drawn by bb or one plugin"
+            anchor='[data-guide-region="sidebar-navigation"]'
+            at="start"
+            align="start"
+          />
+          <MeasuredBadge
             id="nav-panel"
             label="Plugin nav panels, in the navigation rail"
             anchor='[data-guide-region="nav-panel"]'
@@ -1004,10 +1029,7 @@ export function AppShellWireframe({
         </>
       ) : null}
       {scene === "desktop" || scene === "panel" ? (
-        <RightPanelTabLaneBadges
-          key={rightPanelTab}
-          mobile={mobile}
-        />
+        <RightPanelTabLaneBadges key={rightPanelTab} mobile={mobile} />
       ) : null}
       <AppShellWireframeBody
         scene={scene}
@@ -1032,7 +1054,9 @@ function AppShellWireframeBody({
   const contentScripts = useEngagement("content-scripts");
   const messageActionsSelected = expandedId === "message-actions";
   const messageActionRowVisible =
-    scene === "conversation" || assistantMessageHovered || messageActionsSelected;
+    scene === "conversation" ||
+    assistantMessageHovered ||
+    messageActionsSelected;
 
   if (scene === "navigation") {
     return (
@@ -1115,9 +1139,7 @@ function AppShellWireframeBody({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
-            {mobile ? (
-              <MiniIcon icon="PanelLeft" className="size-5" />
-            ) : null}
+            {mobile ? <MiniIcon icon="PanelLeft" className="size-5" /> : null}
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
@@ -1138,9 +1160,7 @@ function AppShellWireframeBody({
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
-            {mobile ? (
-              <MiniIcon icon="PanelRight" className="size-5" />
-            ) : null}
+            {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
 
           <div
@@ -1622,7 +1642,9 @@ export function RealComposerAnnotated({
           />
         </div>
         <WindowFrame
-          className={mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined}
+          className={
+            mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined
+          }
         >
           <div
             className={cn(
@@ -1693,7 +1715,6 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
           mobile ? "min-h-48 gap-7" : "h-36",
         )}
       >
-
         <div
           className={cn(
             "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
@@ -2101,37 +2122,41 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
             </span>
             {mobile ? null : (
               <>
-            <span
-              className={cn(
-                "flex items-start justify-between gap-3 py-1.5",
-                mobile && "flex-wrap",
-              )}
-            >
-              <span className="min-w-0">
-                <span className="block text-foreground">Retry attempts</span>
-                <span className="block pt-1 leading-relaxed">
-                  Maximum retries before stopping.
+                <span
+                  className={cn(
+                    "flex items-start justify-between gap-3 py-1.5",
+                    mobile && "flex-wrap",
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-foreground">
+                      Retry attempts
+                    </span>
+                    <span className="block pt-1 leading-relaxed">
+                      Maximum retries before stopping.
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className="flex h-6 w-32 shrink-0 items-center rounded-md border border-border bg-card px-2 text-xs text-foreground"
+                  >
+                    3
+                  </span>
                 </span>
-              </span>
-              <span
-                aria-hidden
-                className="flex h-6 w-32 shrink-0 items-center rounded-md border border-border bg-card px-2 text-xs text-foreground"
-              >
-                3
-              </span>
-            </span>
-            <span className="block py-1.5">
-              <span className="block text-foreground">Custom instructions</span>
-              <span className="block pt-1 leading-relaxed">
-                Added to every agent task on this host.
-              </span>
-              <span
-                aria-hidden
-                className="mt-2 block h-12 rounded-md border border-border bg-card px-2 py-1.5 text-subtle-foreground"
-              >
-                Keep answers concise and run focused tests.
-              </span>
-            </span>
+                <span className="block py-1.5">
+                  <span className="block text-foreground">
+                    Custom instructions
+                  </span>
+                  <span className="block pt-1 leading-relaxed">
+                    Added to every agent task on this host.
+                  </span>
+                  <span
+                    aria-hidden
+                    className="mt-2 block h-12 rounded-md border border-border bg-card px-2 py-1.5 text-subtle-foreground"
+                  >
+                    Keep answers concise and run focused tests.
+                  </span>
+                </span>
               </>
             )}
           </Mark>

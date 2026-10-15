@@ -1,9 +1,9 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-import {
-  AppNavRail,
-  NavRailSettingsButton,
-} from "@/components/sidebar/AppNavRail";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import {
+  sidebarNavigationPlacement,
+  useResolvedSidebarNavigation,
+} from "@/components/sidebar/sidebarNavigationProvider";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
 import { useSidebar } from "@/components/ui/sidebar.js";
@@ -16,6 +16,7 @@ interface AppLayoutSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   settingsRoutePath: string;
+  backToAppRoutePath: string | null;
 }
 
 export function AppLayoutSidebar({
@@ -23,40 +24,46 @@ export function AppLayoutSidebar({
   onResizeMouseDown,
   isResizing,
   settingsRoutePath,
+  backToAppRoutePath,
 }: AppLayoutSidebarProps) {
   useMobileRecentsThreadReveal();
+  const navigation = useResolvedSidebarNavigation();
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
   const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
-  const [lastVisibleMode, setLastVisibleMode] = useState(mode);
-  if (!holdCurrentMode && lastVisibleMode !== mode) {
-    setLastVisibleMode(mode);
+  const [lastVisible, setLastVisible] = useState({ mode, backToAppRoutePath });
+  if (
+    !holdCurrentMode &&
+    (lastVisible.mode !== mode ||
+      lastVisible.backToAppRoutePath !== backToAppRoutePath)
+  ) {
+    setLastVisible({ mode, backToAppRoutePath });
   }
-  const renderedMode = holdCurrentMode ? lastVisibleMode : mode;
+  const rendered = holdCurrentMode ? lastVisible : { mode, backToAppRoutePath };
+  const backTo =
+    sidebarNavigationPlacement(navigation) === "list"
+      ? rendered.backToAppRoutePath
+      : null;
 
   return (
     <AppSidebar
       onResizeMouseDown={onResizeMouseDown}
       isResizing={isResizing}
-      isBodyHidden={renderedMode !== "app"}
-      renderRail={(customize) => (
-        <AppNavRail isAppMode={mode === "app"} customize={customize} />
-      )}
-      railFooter={
-        <NavRailSettingsButton
-          isSettingsActive={mode === "settings"}
-          settingsRoutePath={settingsRoutePath}
-        />
-      }
+      isBodyHidden={rendered.mode !== "app"}
+      navigation={navigation}
+      settingsRoutePath={settingsRoutePath}
+      isSettingsActive={mode === "settings"}
       alternateBody={
-        renderedMode === "settings" ? (
+        rendered.mode === "settings" ? (
           <SettingsSidebar
+            backTo={backTo}
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
           />
-        ) : renderedMode === "plugins" || renderedMode === "skills" ? (
+        ) : rendered.mode === "plugins" || rendered.mode === "skills" ? (
           <ResourceSidebar
-            key={renderedMode}
-            workspace={renderedMode}
+            key={rendered.mode}
+            workspace={rendered.mode}
+            backTo={backTo}
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
           />

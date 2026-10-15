@@ -123,6 +123,31 @@ describe("ui preferences sync", () => {
     expect(store.get(collapsedSectionsAtom)).toEqual(["commits"]);
   });
 
+  it("starts from the last known value and remembers each value the server sends", () => {
+    const queryClient = new QueryClient();
+    const store = createStore();
+    startUiPreferencesSync({ queryClient, store });
+    const remembered: string[] = [];
+    const providerAtom = createSyncedPreferenceAtom(
+      "sidebar.navigationProvider",
+      {
+        read: () => "__bb__/top-list",
+        write: (value) => remembered.push(value),
+      },
+    );
+
+    expect(store.get(providerAtom)).toBe("__bb__/top-list");
+
+    reconcileUiPreferences(
+      serverResponse({
+        "sidebar.navigationProvider": { revision: 2, value: "__bb__/rail" },
+      }),
+    );
+
+    expect(store.get(providerAtom)).toBe("__bb__/rail");
+    expect(remembered).toEqual(["__bb__/rail"]);
+  });
+
   it("retains a local section order when the initial cache lacks its entry", () => {
     const { orderAtom, queryClient, store } = createHarness();
     const localOrder = ["threads", "projects", "pinned"];

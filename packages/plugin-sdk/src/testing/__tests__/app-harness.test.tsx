@@ -37,6 +37,9 @@ const {
   useRpc,
   useSdk,
   experimental_copyToClipboard,
+  experimental_useSidebarNavigation,
+  experimental_useSidebarNavigationSplit,
+  experimental_SidebarNavigationIcon: SidebarNavigationIcon,
 } = await import("../../app.js");
 
 function SdkProbe() {
@@ -685,9 +688,9 @@ describe("loadPluginApp", () => {
     expect(mounted.inspection.experimental_clipboardWrites).toEqual([
       { text: "plain", html: "<b>rich</b>" },
     ]);
-    await expect(
-      experimental_copyToClipboard({ text: "later" }),
-    ).resolves.toBe(false);
+    await expect(experimental_copyToClipboard({ text: "later" })).resolves.toBe(
+      false,
+    );
 
     const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
     await expect(
@@ -937,21 +940,19 @@ describe("loadPluginApp", () => {
             icon: "FileText",
             path: "panel",
             component: Panel,
-            experimental_sidebarAccessory: "nope" as never,
+            experimental_useBadge: "nope" as never,
           });
         }),
       ),
-    ).rejects.toThrow(
-      '"experimental_sidebarAccessory" must be a React component',
-    );
+    ).rejects.toThrow('"experimental_useBadge" must be a React hook');
     await expect(loadPluginApp({ default: { nope: true } })).rejects.toThrow(
       "not definePluginApp(...)",
     );
   });
 
-  it("captures a nav panel experimental sidebar accessory", async () => {
-    function SidebarAccessory() {
-      return <span>12</span>;
+  it("captures a nav panel experimental badge hook", async () => {
+    function useBadge() {
+      return { count: 12, label: "12 open tasks" };
     }
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
@@ -961,14 +962,12 @@ describe("loadPluginApp", () => {
           icon: "ListTodo",
           path: "tasks",
           component: Panel,
-          experimental_sidebarAccessory: SidebarAccessory,
+          experimental_useBadge: useBadge,
         });
       }),
     );
 
-    expect(captured.navPanels[0]?.experimental_sidebarAccessory).toBe(
-      SidebarAccessory,
-    );
+    expect(captured.navPanels[0]?.experimental_useBadge).toBe(useBadge);
   });
 
   it("validates and captures nav panel fixed tabs", async () => {
@@ -2215,5 +2214,156 @@ describe("thread actions menu fake", () => {
     fireEvent.click(slot.getByRole("button", { name: "Thread actions" }));
     fireEvent.click(slot.getByRole("menuitem", { name: "Pin" }));
     expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+function NavigationProbe({ id }: { id: string }) {
+  const { activeItemId, actions, items } = experimental_useSidebarNavigation();
+  const split = experimental_useSidebarNavigationSplit(id);
+  const item = items.find((candidate) => candidate.id === id);
+  if (!item) return null;
+  return (
+    <button
+      type="button"
+      aria-current={item.id === activeItemId ? "page" : undefined}
+      {...split.splitProps}
+      onClick={() => {
+        actions.activate(item.id, { openInSplit: true });
+        actions.setVisible(item.id, false);
+        actions.setOrder([item.id]);
+        actions.openCustomize();
+        actions.goHome();
+      }}
+    >
+      <SidebarNavigationIcon icon={item.icon} />
+      {item.badge ? `${item.label}, ${item.badge.label}` : item.label}
+    </button>
+  );
+}
+
+describe("sidebar navigation test runtime", () => {
+  it("reports configured items and records every action", () => {
+    const slot = renderSlot(
+      { component: NavigationProbe },
+      { id: "garden/docs" },
+      {
+        sidebarNavigation: {
+          activeItemId: "garden/docs",
+          items: [
+            {
+              id: "garden/docs",
+              label: "Docs",
+              icon: { kind: "plugin", pluginId: "garden", icon: "BookOpen" },
+              action: {
+                kind: "open-plugin-panel",
+                pluginId: "garden",
+                panelId: "docs",
+              },
+              isDisabled: false,
+              isVisible: true,
+              isLoading: false,
+              pluginId: "garden",
+              shortcut: null,
+              badge: { count: 2, label: "2 drafts" },
+            },
+          ],
+        },
+      },
+    );
+
+    const button = slot.getByRole("button", { name: "Docs, 2 drafts" });
+    expect(button.getAttribute("aria-current")).toBe("page");
+    expect(
+      button
+        .querySelector("[data-sidebar-navigation-icon]")
+        ?.getAttribute("data-sidebar-navigation-icon"),
+    ).toBe("garden/BookOpen");
+    fireEvent.pointerDown(button);
+    fireEvent.click(button);
+
+    expect(slot.inspection.sidebarNavigationCalls).toEqual([
+      { method: "beginSplitDrag", itemId: "garden/docs" },
+      { method: "activate", itemId: "garden/docs", openInSplit: true },
+      { method: "setVisible", itemId: "garden/docs", isVisible: false },
+      { method: "setOrder", itemIds: ["garden/docs"] },
+      { method: "openCustomize" },
+      { method: "goHome" },
+    ]);
+  });
+
+  it("captures sidebar navigation and header registrations, defaulting navigation to the list placement", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_sidebarNavigation({
+          id: "compact",
+          title: "Compact navigation",
+          description: "Groups the sidebar destinations.",
+          component: () => null,
+        });
+        builder.slots.experimental_sidebarNavigation({
+          id: "sections",
+          title: "Sections rail",
+          placement: "rail",
+          component: () => null,
+        });
+        builder.slots.experimental_sidebarHeader({
+          id: "icons",
+          title: "Header icons",
+          component: () => null,
+        });
+      }),
+    );
+
+    expect(captured.experimentalSidebarNavigations).toEqual([
+      {
+        id: "compact",
+        title: "Compact navigation",
+        description: "Groups the sidebar destinations.",
+        placement: "list",
+        component: expect.any(Function),
+      },
+      {
+        id: "sections",
+        title: "Sections rail",
+        placement: "rail",
+        component: expect.any(Function),
+      },
+    ]);
+    expect(captured.experimentalSidebarHeaders).toEqual([
+      { id: "icons", title: "Header icons", component: expect.any(Function) },
+    ]);
+  });
+
+  it("rejects an unknown navigation placement and duplicate ids", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarNavigation({
+            id: "compact",
+            title: "Compact",
+            placement: "top" as "list",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_sidebarNavigation: "placement" must be "rail" or "list"',
+    );
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarHeader({
+            id: "icons",
+            title: "One",
+            component: () => null,
+          });
+          builder.slots.experimental_sidebarHeader({
+            id: "icons",
+            title: "Two",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_sidebarHeader: duplicate id "icons"');
   });
 });
