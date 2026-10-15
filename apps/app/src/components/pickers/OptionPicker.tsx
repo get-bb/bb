@@ -36,6 +36,7 @@ export interface PickerOption<T extends string> {
 
 interface OptionPickerProps<T extends string> {
   label: string;
+  description?: string;
   value: T;
   options: readonly PickerOption<T>[];
   onChange: (value: T) => void;
@@ -59,6 +60,7 @@ interface OptionPickerProps<T extends string> {
 
 export function OptionPicker<T extends string>({
   label,
+  description,
   value,
   options,
   onChange,
@@ -148,6 +150,11 @@ export function OptionPicker<T extends string>({
         mobileTitle={label}
       >
         <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        {description ? (
+          <p className="whitespace-normal px-2 pb-2 text-xs leading-snug text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
         {options.map((option) => {
           const OptionIcon = option.icon;
           return (
