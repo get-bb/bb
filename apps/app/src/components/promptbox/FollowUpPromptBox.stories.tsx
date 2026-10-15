@@ -835,7 +835,7 @@ function CompactBeforeSendRow() {
       compactBeforeSend={{
         compactFirst,
         tokens: expiredCacheUsage.usedTokens,
-        onToggle: () => setCompactFirst((current) => !current),
+        onCompactFirstChange: setCompactFirst,
       }}
     />
   );

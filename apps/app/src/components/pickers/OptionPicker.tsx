@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactElement } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -54,6 +54,7 @@ interface OptionPickerProps<T extends string> {
   };
   disabled?: boolean;
   showChevronWhenDisabled?: boolean;
+  trigger?: ReactElement;
 }
 
 export function OptionPicker<T extends string>({
@@ -71,6 +72,7 @@ export function OptionPicker<T extends string>({
   displayOverride,
   disabled,
   showChevronWhenDisabled,
+  trigger: customTrigger,
 }: OptionPickerProps<T>) {
   const selectedOption = options.find((option) => option.value === value);
   const selectedTone = displayOverride ? "default" : selectedOption?.tone;
@@ -88,7 +90,7 @@ export function OptionPicker<T extends string>({
       ? `${label}: ${selectedLabel} - ${selectedDescription}`
       : `${label}: ${selectedLabel}`;
 
-  const trigger = (
+  const trigger = customTrigger ?? (
     <Button
       type="button"
       variant="ghost"

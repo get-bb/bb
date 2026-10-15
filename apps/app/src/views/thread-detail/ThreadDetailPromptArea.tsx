@@ -2429,8 +2429,8 @@ export function ThreadDetailPromptArea({
           : {
               compactFirst,
               tokens: compactBeforeSendTokens,
-              onToggle: () =>
-                setFullHistoryThreadId(compactFirst ? thread.id : null),
+              onCompactFirstChange: (next) =>
+                setFullHistoryThreadId(next ? null : thread.id),
             }
       }
       execution={bottomExecutionConfig}
