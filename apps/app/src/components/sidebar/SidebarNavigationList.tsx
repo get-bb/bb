@@ -1,4 +1,10 @@
-import { forwardRef, type ComponentProps } from "react";
+import {
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import type {
   ExperimentalSidebarNavigationItem,
   ExperimentalSidebarNavigationProps,
@@ -7,6 +13,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import {
   useSidebarNavigation,
@@ -108,6 +115,38 @@ function NavigationListRow({
   );
 }
 
+function useScrollOverflow(itemCount: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ above: false, below: false });
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
+    const update = () => {
+      const above = element.scrollTop > 1;
+      const below =
+        element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+      setOverflow((current) =>
+        current.above === above && current.below === below
+          ? current
+          : { above, below },
+      );
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    if (typeof ResizeObserver === "undefined") {
+      return () => element.removeEventListener("scroll", update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    for (const child of Array.from(element.children)) observer.observe(child);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [itemCount]);
+  return [ref, overflow] as const;
+}
+
 export function SidebarNavigationList({
   isCompactViewport,
 }: ExperimentalSidebarNavigationProps) {
@@ -122,6 +161,9 @@ export function SidebarNavigationList({
   const hiddenBadgeTone = strongestNavigationBadgeTone(
     hidden.map((item) => item.badge),
   );
+  const [destinationsRef, destinationsOverflow] = useScrollOverflow(
+    visible.length,
+  );
 
   return (
     <>
@@ -130,43 +172,61 @@ export function SidebarNavigationList({
         className="relative shrink-0 space-y-0.5 px-2 py-2"
       >
         {newThread ? (
-          <NavigationListRow
-            item={newThread}
-            isCompactViewport={isCompactViewport}
-          />
+          <div className="relative z-10">
+            <NavigationListRow
+              item={newThread}
+              isCompactViewport={isCompactViewport}
+            />
+            {destinationsOverflow.above ? (
+              <OverflowFade placement="below" tone="sidebar" />
+            ) : null}
+          </div>
         ) : null}
-        {visible.map((item) => (
-          <NavigationListRow
-            key={item.id}
-            item={item}
-            isCompactViewport={isCompactViewport}
+        {visible.length > 0 ? (
+          <div
+            ref={destinationsRef}
+            data-testid="sidebar-navigation-destinations"
+            className="max-h-[max(4rem,calc(40svh_-_4.5rem))] space-y-0.5 overflow-y-auto [scrollbar-width:thin]"
+          >
+            {visible.map((item) => (
+              <NavigationListRow
+                key={item.id}
+                item={item}
+                isCompactViewport={isCompactViewport}
+              />
+            ))}
+          </div>
+        ) : null}
+        <div className="relative z-10">
+          {destinationsOverflow.below ? (
+            <OverflowFade placement="above" tone="sidebar" />
+          ) : null}
+          <SidebarNavigationMoreMenu
+            trigger={
+              <ListRowButton
+                aria-label={
+                  hiddenBadgeLabels.length > 0
+                    ? `More, ${hiddenBadgeLabels.join(", ")}`
+                    : undefined
+                }
+              >
+                <Icon name="MoreHorizontal" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-left">More</span>
+                {hiddenBadgeTone !== null ? (
+                  <NavigationBadgeMark
+                    badge={{ tone: hiddenBadgeTone }}
+                    className="mr-1.5"
+                  />
+                ) : null}
+              </ListRowButton>
+            }
+            hidden={hidden}
+            surface="sidebar"
+            side="right"
+            sideOffset={MORE_MENU_SIDE_OFFSET}
+            testId="sidebar-navigation-more-menu"
           />
-        ))}
-        <SidebarNavigationMoreMenu
-          trigger={
-            <ListRowButton
-              aria-label={
-                hiddenBadgeLabels.length > 0
-                  ? `More, ${hiddenBadgeLabels.join(", ")}`
-                  : undefined
-              }
-            >
-              <Icon name="MoreHorizontal" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-left">More</span>
-              {hiddenBadgeTone !== null ? (
-                <NavigationBadgeMark
-                  badge={{ tone: hiddenBadgeTone }}
-                  className="mr-1.5"
-                />
-              ) : null}
-            </ListRowButton>
-          }
-          hidden={hidden}
-          surface="sidebar"
-          side="right"
-          sideOffset={MORE_MENU_SIDE_OFFSET}
-          testId="sidebar-navigation-more-menu"
-        />
+        </div>
       </div>
       <div
         aria-hidden="true"

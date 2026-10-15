@@ -191,6 +191,22 @@ describe("SidebarNavigationList", () => {
     ).toEqual(["Search threads", "Skills", "Customize sidebar"]);
   });
 
+  it("scrolls only the destinations, keeping New thread and More in view", () => {
+    renderList(THREAD_PATH);
+
+    const destinations = screen.getByTestId("sidebar-navigation-destinations");
+    expect(destinations.className).toContain("overflow-y-auto");
+    expect(
+      within(destinations)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Plugins", "Skills", "Docs"]);
+    for (const pinned of ["New thread", "More"]) {
+      const button = within(list()).getByRole("button", { name: pinned });
+      expect(destinations.contains(button)).toBe(false);
+    }
+  });
+
   it("marks the open plugin panel as the current page", () => {
     renderList(DOCS_PATH);
 
