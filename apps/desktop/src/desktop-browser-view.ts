@@ -179,6 +179,7 @@ interface BrowserViewEntry {
   threadId: string;
   generation: string;
   lastErrorText: string | null;
+  pendingNavigationUrl: string | null;
   faviconUrl: string | null;
   faviconUrls: string[];
   desiredBounds: BbDesktopBrowserViewBounds;
@@ -405,7 +406,7 @@ function buildBrowserState(
   entry: BrowserViewEntry,
 ): BbDesktopBrowserState {
   const webContents = entry.webContents;
-  const url = webContents.getURL();
+  const url = entry.pendingNavigationUrl ?? webContents.getURL();
   const rawTitle = webContents.getTitle();
   const title = rawTitle.length > 0 && rawTitle !== url ? rawTitle : null;
   return {
@@ -975,7 +976,10 @@ export function createDesktopBrowserViewManager(
       refresh();
     });
     webContents.on("did-start-loading", refresh);
-    webContents.on("did-stop-loading", refresh);
+    webContents.on("did-stop-loading", () => {
+      if (entry.lastErrorText === null) entry.pendingNavigationUrl = null;
+      refresh();
+    });
     let pageFaviconOrigin: string | null = null;
     let faviconCache = faviconCaches.get(entry.registry);
     if (faviconCache === undefined) {
@@ -984,6 +988,7 @@ export function createDesktopBrowserViewManager(
     }
     const originFavicons = faviconCache;
     webContents.on("did-navigate", () => {
+      entry.pendingNavigationUrl = null;
       const origin = faviconOrigin(webContents.getURL());
       if (origin === null || origin !== pageFaviconOrigin) {
         entry.faviconUrls =
@@ -998,11 +1003,19 @@ export function createDesktopBrowserViewManager(
       entry.lastErrorText = null;
       refresh();
     });
-    webContents.on("did-navigate-in-page", () => {
+    webContents.on("did-navigate-in-page", (_event, _url, isMainFrame) => {
+      if (isMainFrame) entry.pendingNavigationUrl = null;
       refresh();
     });
-    webContents.on("did-start-navigation", () => {
+    webContents.on("did-start-navigation", (event) => {
+      if (!event.isMainFrame) return;
+      entry.pendingNavigationUrl = event.url;
       entry.lastErrorText = null;
+      refresh();
+    });
+    webContents.on("did-redirect-navigation", (event) => {
+      if (!event.isMainFrame) return;
+      entry.pendingNavigationUrl = event.url;
       refresh();
     });
     webContents.on("page-favicon-updated", (_event, favicons) => {
@@ -1052,6 +1065,7 @@ export function createDesktopBrowserViewManager(
         if (!isMainFrame || errorCode === ERR_ABORTED) {
           return;
         }
+        entry.pendingNavigationUrl = validatedURL;
         entry.lastErrorText =
           errorDescription.length > 0
             ? errorDescription
@@ -1078,6 +1092,7 @@ export function createDesktopBrowserViewManager(
       threadId: args.threadId,
       generation: randomUUID(),
       lastErrorText: null,
+      pendingNavigationUrl: null,
       faviconUrl: null,
       faviconUrls: [],
       desiredBounds: args.desiredBounds,
