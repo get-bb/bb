@@ -322,23 +322,65 @@ describe("MarkdownPreview", () => {
     expect(code.querySelectorAll("span.sh__line")).toHaveLength(2);
   });
 
-  it("renders inline-code Markdown file paths as local file links", () => {
+  it.each([
+    ["README.md", "/workspace/README.md", null],
+    ["docs/guide.markdown:4", "/workspace/docs/guide.markdown", 4],
+    ["src/app.ts", "/workspace/src/app.ts", null],
+    ["src/app.ts:42", "/workspace/src/app.ts", 42],
+    ["src/app.ts:42:3", "/workspace/src/app.ts", 42],
+    ["package.json:12:3", "/workspace/package.json", 12],
+    ["scripts/run", "/workspace/scripts/run", null],
+    ["/workspace/scripts/run", "/workspace/scripts/run", null],
+    ["./scripts/run:7:2", "/workspace/scripts/run", 7],
+    ["Dockerfile:8", "/workspace/Dockerfile", 8],
+    [".gitignore", "/workspace/.gitignore", null],
+    ["/workspace/src/app.ts:9:2", "/workspace/src/app.ts", 9],
+    ["C:\\repo\\src\\app.ts:12:3", "C:\\repo\\src\\app.ts", 12],
+  ])(
+    "opens inline-code file reference %s at its line",
+    (reference, path, line) => {
+      render(
+        <MarkdownPreview
+          content={`Read \`${reference}\`.`}
+          linkRouting={workspaceLinkRouting}
+        />,
+      );
+
+      const link = screen.getByRole("link", { name: reference });
+      expect(link.getAttribute("href")).toBe(
+        `${path.startsWith("C:") ? "file:///C:/repo/src/app.ts" : `file://${path}`}${line === null ? "" : `#L${line}`}`,
+      );
+      fireEvent.click(link);
+      expect(
+        workspaceLinkRouting.localFile.onOpenLink,
+      ).toHaveBeenCalledExactlyOnceWith({
+        path,
+        lineRange:
+          line === null ? null : { startLineNumber: line, endLineNumber: line },
+        openTargetId: null,
+      });
+    },
+  );
+
+  it.each([
+    "orange",
+    "npm.test()",
+    "cat src/app.ts",
+    "https://example.com/app.ts:42",
+    "src/app.ts:0",
+    "src/app.ts:9007199254740992",
+    "../outside.ts:4",
+    "src/app.ts?raw",
+  ])("keeps non-file inline code %s literal", (reference) => {
     render(
       <MarkdownPreview
-        content="Read `README.md`, `docs/guide.markdown:4`, and `src/app.ts`."
+        content={`Read \`${reference}\`.`}
         linkRouting={workspaceLinkRouting}
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "README.md" }).getAttribute("href"),
-    ).toBe("file:///workspace/README.md");
-    expect(
-      screen
-        .getByRole("link", { name: "docs/guide.markdown:4" })
-        .getAttribute("href"),
-    ).toBe("file:///workspace/docs/guide.markdown#L4");
-    expect(screen.getByText("src/app.ts").tagName).toBe("CODE");
+    expect(screen.queryByRole("link", { name: reference })).toBeNull();
+    expect(screen.getByText(reference).tagName).toBe("CODE");
   });
 
   it("preserves inline commands ending in Markdown paths as code", () => {
@@ -431,11 +473,28 @@ describe("MarkdownPreview", () => {
     expect(screen.queryByText(/Open with/)).toBeNull();
   });
 
-  it("leaves inline-code Markdown paths as code without local file routing", () => {
-    render(<MarkdownPreview content="Read `README.md`." />);
+  it("leaves inline-code paths as code without local file routing", () => {
+    render(
+      <MarkdownPreview content="Read `README.md` and `src/app.ts:42:3`." />,
+    );
 
-    expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByText("README.md").tagName).toBe("CODE");
+    expect(screen.getByText("src/app.ts:42:3").tagName).toBe("CODE");
+  });
+
+  it("keeps file references inside fenced code literal", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={"```text\nsrc/app.ts:42:3\n```"}
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(requireElement(container, "pre code").textContent).toBe(
+      "src/app.ts:42:3",
+    );
   });
 
   it("renders sanitized HTML video and source URLs through local file routing", () => {
