@@ -10,7 +10,7 @@ import {
   type AgentRuntime,
   type AgentRuntimeSkillRoot,
 } from "@bb/agent-runtime";
-import { events } from "@bb/db";
+import { events, getAppSettings, setAppSettings } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   toolCallResponseSchema,
@@ -159,6 +159,10 @@ describe("echo-provider canary: plugin install → server command → runtime �
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
+    setAppSettings(harness.db, {
+      ...getAppSettings(harness.db),
+      showDiagnosticEvents: true,
+    });
     workspaceDir = await mkdtemp(join(tmpdir(), "bb-echo-canary-ws-"));
     bridgeDataDir = await mkdtemp(join(tmpdir(), "bb-echo-canary-bridge-"));
     recordDir = await mkdtemp(join(tmpdir(), "bb-echo-canary-record-"));

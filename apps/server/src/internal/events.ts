@@ -4,6 +4,7 @@ import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
+  getAppSettings,
   getThread,
   getLatestThreadSequence,
   listStoredTurnCompletedKeys,
@@ -341,6 +342,36 @@ function toStoredEvent(args: ToStoredEventArgs): AppendDaemonEventInput {
   };
 }
 
+function isTerminalUnhandledToolEvent(
+  event: HostDaemonEventEnvelope["event"],
+): boolean {
+  if (event.type !== "provider/unhandled") return false;
+  if (!event.rawType.includes("tool_call_update")) return false;
+  const params = event.rawEvent.params;
+  if (params === undefined || params === null || typeof params !== "object") {
+    return false;
+  }
+  const update = (params as { update?: unknown }).update;
+  if (update === null || typeof update !== "object") return false;
+  const status = (update as { status?: unknown }).status;
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
+function shouldPersistDaemonEvent(
+  event: HostDaemonEventEnvelope["event"],
+  persistProviderUnhandled: boolean,
+): boolean {
+  const providerDiagnostic = event.rawType.startsWith("acp/update:");
+  return (
+    event.type !== "provider/unhandled" ||
+    persistProviderUnhandled ||
+    !providerDiagnostic ||
+    event.rawType.includes("error") ||
+    event.rawEvent.method.includes("error") ||
+    isTerminalUnhandledToolEvent(event)
+  );
+}
+
 function notifyInsertedEventThreads(
   deps: NotifyInsertedEventThreadsDeps,
   args: NotifyInsertedEventThreadsArgs,
@@ -511,8 +542,9 @@ async function applyEventEffects(
           }
         }
         if (
-          event.status === "completed" &&
-          turnCompleted.nextStatus === "idle"
+          (event.status === "completed" &&
+            turnCompleted.nextStatus === "idle") ||
+          (event.status !== "completed" && turnCompleted.nextStatus === "error")
         ) {
           followUps.push({
             kind: "queued-message-dispatch",
@@ -1135,8 +1167,23 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       const postableEvents = labelledEntries.map((entry) => entry.envelope);
       let appendResult: AppendDaemonEventsResult;
       try {
+        const persistProviderUnhandled = getAppSettings(
+          deps.db,
+        ).showDiagnosticEvents;
         appendResult = deps.db.transaction(
-          (tx) => appendDaemonEventsInTransaction(tx, eventInputs),
+          (tx) =>
+            appendDaemonEventsInTransaction(tx, eventInputs, {
+              persistProviderUnhandled,
+              persistEvent: (input) => {
+                if (input.type !== "provider/unhandled") return true;
+                const index = eventInputs.indexOf(input);
+                const event =
+                  index === -1 ? undefined : postableEvents[index]?.event;
+                return event === undefined
+                  ? persistProviderUnhandled
+                  : shouldPersistDaemonEvent(event, persistProviderUnhandled);
+              },
+            }),
           { behavior: "immediate" },
         );
       } catch (error) {

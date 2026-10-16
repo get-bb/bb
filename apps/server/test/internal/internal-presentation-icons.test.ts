@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { events } from "@bb/db";
+import { events, getAppSettings, setAppSettings } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import {
   groupHostDaemonEvents,
@@ -26,6 +26,10 @@ const PROVIDER_ID = "widgets";
 
 async function setup() {
   const harness = await createTestAppHarness();
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    showDiagnosticEvents: true,
+  });
   harness.deps.providerRegistry.register({
     ...buildPluginProviderRegistration({
       iconHash: null,

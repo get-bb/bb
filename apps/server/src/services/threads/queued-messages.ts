@@ -146,6 +146,9 @@ export function createAutomaticQueuedMessageGroupEligibility(
       const waitingOn = parseStoredQueuedThreadMessageWaitingOn(member);
       switch (waitingOn?.kind) {
         case undefined:
+          return (
+            member.systemNotice === null || args.thread.status !== "active"
+          );
         case "plugin":
           return true;
         case "time":

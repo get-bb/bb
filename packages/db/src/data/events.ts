@@ -739,9 +739,15 @@ function parseDaemonThreadEvent(
   }
 }
 
+export interface AppendDaemonEventsOptions {
+  persistProviderUnhandled: boolean;
+  persistEvent?: (input: AppendDaemonEventInput) => boolean;
+}
+
 export function appendDaemonEventsInTransaction(
   db: DbTransaction,
   eventInputs: readonly AppendDaemonEventInput[],
+  options: AppendDaemonEventsOptions = { persistProviderUnhandled: true },
 ): AppendDaemonEventsResult {
   if (eventInputs.length === 0) {
     return {
@@ -774,6 +780,13 @@ export function appendDaemonEventsInTransaction(
   );
   const now = Date.now();
   for (const [index, input] of eventInputs.entries()) {
+    if (
+      input.type === "provider/unhandled" &&
+      !options.persistProviderUnhandled &&
+      (options.persistEvent === undefined || !options.persistEvent(input))
+    ) {
+      continue;
+    }
     if (input.type === "turn/diff/updated") continue;
     const turnStartDisposition = resolveDaemonTurnStartDisposition(
       input,

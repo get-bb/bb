@@ -321,6 +321,49 @@ function createContextWindowUsageData(
 }
 
 describe("events", () => {
+  it("can omit unhandled provider diagnostics without shifting stored sequences", () => {
+    const { db, thread } = setup();
+    const common = {
+      threadId: thread.id,
+      environmentId: null,
+      providerThreadId: "provider-diagnostics",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+    } as const;
+    const result = db.transaction((tx) =>
+      appendDaemonEventsInTransaction(
+        tx,
+        [
+          {
+            ...common,
+            type: "provider/unhandled",
+            data: JSON.stringify({
+              providerId: "codex",
+              rawType: "sdk/noise",
+              rawEvent: { jsonrpc: "2.0", method: "sdk/noise" },
+            }),
+          },
+          {
+            ...common,
+            type: "provider/warning",
+            data: JSON.stringify({
+              category: "config",
+              summary: "Keep this warning",
+            }),
+          },
+        ],
+        { persistProviderUnhandled: false },
+      ),
+    );
+
+    expect(result.acceptedEvents).toEqual([{ threadId: thread.id, sequence: 1 }]);
+    expect(result.insertedInputIndexes).toEqual([1]);
+    expect(listEvents(db, { threadId: thread.id })).toHaveLength(1);
+    db.$client.close();
+  });
+
   it("preserves reported cache counts through daemon append and stored event decoding", () => {
     const { db, thread } = setup();
     const scope = turnScope("turn-cache-test");

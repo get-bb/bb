@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { events } from "@bb/db";
+import { events, getAppSettings, setAppSettings } from "@bb/db";
 import { threadScope, turnScope, type ExtensionKind } from "@bb/domain";
 import {
   groupHostDaemonEvents,
@@ -74,6 +74,10 @@ function registerExtensionProvider(
 
 async function setup() {
   const harness = await createTestAppHarness();
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    showDiagnosticEvents: true,
+  });
   registerExtensionProvider(harness, {
     pluginId: PLUGIN_ID,
     providerId: PROVIDER_ID,

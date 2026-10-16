@@ -909,9 +909,9 @@ describe("startup queue waits", () => {
     });
   });
 
-  it("parks a parent system notice with its taxonomy while a turn starts", async () => {
+  it("parks a parent system notice without steering an active turn", async () => {
     await withTestHarness(async (harness) => {
-      const { sessionId, thread } = seedProviderThreadFixture({
+      const { thread } = seedProviderThreadFixture({
         harness,
         status: "active",
         value: 62,
@@ -937,7 +937,7 @@ describe("startup queue waits", () => {
       const parked = listQueuedThreadMessages(harness.db, thread.id)[0]!;
       expect(JSON.parse(parked.content)).toEqual(input);
       expect(JSON.parse(parked.waitingOn!)).toEqual({
-        kind: "turn-starting",
+        kind: "thread-busy",
       });
       expect(JSON.parse(parked.systemNotice!)).toEqual({
         kind: "child-completed",
@@ -948,66 +948,9 @@ describe("startup queue waits", () => {
         },
       });
 
-      const response = await harness.app.request("/internal/session/events", {
-        method: "POST",
-        headers: internalAuthHeaders(harness),
-        body: JSON.stringify({
-          sessionId,
-          eventGroups: groupHostDaemonEvents([
-            {
-              threadId: thread.id,
-              event: {
-                type: "turn/started",
-                threadId: thread.id,
-                providerThreadId: "provider-send-dispatch-62",
-                scope: turnScope("turn-system-notice-ready"),
-              },
-            },
-          ]),
-        }),
-      });
-      expect(response.status).toBe(200);
-
-      await vi.waitFor(() => {
-        expect(
-          listQueuedThreadCommands(harness, "turn.submit", thread.id),
-        ).toHaveLength(1);
-      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
-      ).toEqual([
-        expect.objectContaining({
-          input,
-          target: {
-            mode: "auto",
-            expectedTurnId: "turn-system-notice-ready",
-          },
-        }),
-      ]);
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
-
-      vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
-      await expect(
-        queueParentSystemMessage(harness.deps, {
-          input,
-          parentThreadId: thread.id,
-          systemMessageKind: "child-completed",
-          systemMessageSubject: {
-            kind: "thread",
-            threadId: "child-2",
-            threadName: "Other child",
-          },
-        }),
-      ).resolves.toBe(true);
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", thread.id),
-      ).toHaveLength(2);
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", thread.id)[1],
-      ).toMatchObject({
-        target: { mode: "auto", expectedTurnId: "turn-system-notice-ready" },
-      });
+      ).toEqual([]);
     });
   });
 
