@@ -235,7 +235,7 @@ export const BB_APP_INSTALL_KIND_ENV = defineEnvVar<AppInstallKind>({
 
 export const BB_APP_SOURCE_ORIGIN_ENV = defineEnvVar<AppSourceOrigin>({
   description:
-    "Internal marker the bb-app launcher hands its server child for source checkouts: official when the origin remote is github.com/get-bb/bb, fork for any other origin, none without one.",
+    "Internal marker the bb-app launcher hands its server child for source checkouts: official when the origin remote is github.com/get-bb/bb or github.com/ymichael/bb, fork for any other origin, none without one.",
   name: APP_SOURCE_ORIGIN_ENV_NAME,
   parse: parseAppSourceOriginEnvValue,
 });
