@@ -480,7 +480,7 @@ export function registerSettingsCommands(
 
   settings
     .command("general <key> <value>")
-    .description("Set a Settings → General preference")
+    .description("Set a general preference, including terminalPredictiveEcho")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (key: string, value: string, opts: JsonOptions) => {

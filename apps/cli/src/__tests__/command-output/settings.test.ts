@@ -43,6 +43,25 @@ describe("bb settings commands", () => {
     ]);
   });
 
+  it("enables predictive terminal echo through the general settings command", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+      })),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "general", "terminalPredictiveEcho", "true"],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, terminalPredictiveEcho: true },
+    });
+  });
+
   it("sets and resets a plugin shortcut while preserving other overrides", async () => {
     const other = { command: "plugin:other/open", shortcut: null };
     const put = vi.fn(async ({ json }) => json);

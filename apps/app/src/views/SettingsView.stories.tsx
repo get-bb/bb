@@ -26,6 +26,7 @@ import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesS
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
+import { TerminalSettingsSection } from "@/components/settings/TerminalSettingsSection";
 import {
   SettingsStoryChrome,
   type SettingsStoryRoute,
@@ -377,6 +378,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return <AppearanceSettingsStory />;
     case "keyboard":
       return <KeyboardSettingsSection />;
+    case "terminal":
+      return <TerminalSettingsSection />;
     case "files":
       return <FilePreferencesStory />;
     case "projects":

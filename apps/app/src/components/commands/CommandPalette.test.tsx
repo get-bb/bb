@@ -1942,7 +1942,7 @@ describe("CommandPalette", () => {
 
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
-    fireEvent.change(searchField(), { target: { value: "terminal" } });
+    fireEvent.change(searchField(), { target: { value: "open terminal" } });
 
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
     expect(selectedOption()?.textContent).toContain("Open terminal");

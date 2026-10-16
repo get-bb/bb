@@ -89,6 +89,11 @@ list of known keys. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset. Most appear in Settings →
 General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
 `machineGitCredentialsEnabled`) are covered in `bb guide machines`.
+- `terminalPredictiveEcho` (default false; Settings → Terminal) predicts only
+  single printable keys after the first real echo at 30 ms RTT or higher.
+  Control keys, escape-heavy echo (such as syntax-highlighting shells), and
+  the alternate screen stop prediction until echo is confirmed again. Turn it
+  off before entering secrets if a program can disable echo without output.
 
 - `showDiagnosticEvents` (default false) shows provider environment resolution
   and unhandled provider events in the timeline. Warnings, errors, and model

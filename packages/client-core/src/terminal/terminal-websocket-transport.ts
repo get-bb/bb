@@ -60,6 +60,7 @@ export interface TerminalWebSocketTransportOptions {
   onInputOverflow?: (maxBytes: number) => void;
   onInvalidMessage?: () => void;
   onMessage: (message: TerminalServerMessage) => void;
+  onRoundTrip?: (rttMs: number) => void;
   onSequenceGap?: (expectedSeq: number, receivedSeq: number) => void;
   reconnectDelaysMs?: readonly number[];
   shouldReconnect: () => boolean;
@@ -80,6 +81,8 @@ export class TerminalWebSocketTransport {
   private disposed = false;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastPongAt = 0;
+  private pingSentAt: number | null = null;
+  lastRoundTripMs: number | null = null;
   private lastResize: { cols: number; rows: number } | null = null;
   private nextOutputSeq = 0;
   private pendingOutputAckNextSeq: number | null = null;
@@ -122,6 +125,7 @@ export class TerminalWebSocketTransport {
     this.clearReconnectTimeout();
     this.clearDrainTimeout();
     this.stopHeartbeat();
+    this.pingSentAt = null;
     const socket = this.socket;
     this.socket = null;
     if (socket !== null) {
@@ -186,6 +190,20 @@ export class TerminalWebSocketTransport {
     });
   }
 
+  measureRoundTrip(): void {
+    const socket = this.socket;
+    if (
+      socket === null ||
+      socket.readyState !== SOCKET_OPEN ||
+      this.pingSentAt !== null
+    )
+      return;
+    const sentAt = this.now();
+    if (this.trySend(socket, JSON.stringify({ type: "ping" }))) {
+      this.pingSentAt = sentAt;
+    }
+  }
+
   setVisible(visible: boolean): void {
     if (this.visible === visible) {
       return;
@@ -242,6 +260,8 @@ export class TerminalWebSocketTransport {
       return;
     }
     this.lastPongAt = this.now();
+    this.pingSentAt = null;
+    this.lastRoundTripMs = null;
     this.startHeartbeat(socket);
     if (this.lastResize !== null) {
       this.trySend(
@@ -277,6 +297,11 @@ export class TerminalWebSocketTransport {
     const message = parsed.data;
     if (message.type === "pong") {
       this.lastPongAt = this.now();
+      if (this.pingSentAt !== null) {
+        this.lastRoundTripMs = this.lastPongAt - this.pingSentAt;
+        this.pingSentAt = null;
+        this.options.onRoundTrip?.(this.lastRoundTripMs);
+      }
     }
     if (message.type === "attached") {
       this.reconnectAttempt = 0;
@@ -322,6 +347,8 @@ export class TerminalWebSocketTransport {
     }
     this.socket = null;
     this.stopHeartbeat();
+    this.pingSentAt = null;
+    this.lastRoundTripMs = null;
     this.clearDrainTimeout();
     if (
       this.disposed ||
@@ -442,7 +469,7 @@ export class TerminalWebSocketTransport {
         socket.close(4000, "heartbeat-timeout");
         return;
       }
-      this.trySend(socket, JSON.stringify({ type: "ping" }));
+      this.measureRoundTrip();
     }, this.heartbeatIntervalMs);
   }
 

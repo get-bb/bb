@@ -43,6 +43,7 @@ export * from "./timeline/deferred-content.js";
 export * from "./diff/renderable-patch.js";
 
 export * from "./terminal/terminal-websocket-transport.js";
+export * from "./terminal/terminal-local-echo.js";
 export * from "./terminal/terminal-websocket-path.js";
 
 export * from "./file-preview.js";

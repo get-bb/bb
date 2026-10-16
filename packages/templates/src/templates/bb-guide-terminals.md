@@ -39,6 +39,15 @@ quotes each argument for its own shell. `send --enter` presses Enter (a carriage
 return), which every one of those shells accepts. The terminal's exit code is
 the command's own exit code on every shell.
 
+Predictive echo is off by default. Turn it on with
+`bb settings general terminalPredictiveEcho true`. At 30 ms RTT or higher,
+the first single printable key in each epoch waits for the shell's real echo.
+Only later single printable keys appear early, dim and underlined. Control keys,
+escape-heavy echo (such as syntax-highlighting shells), and the alternate
+screen stop prediction until echo is confirmed again. A program that disables
+echo silently without writing a prompt cannot be detected; turn the setting
+off before entering secrets.
+
 All other operations need only the terminal ID. They also accept the scope
 flags above and ignore them, so a command built for `list` or `create` still
 runs:
