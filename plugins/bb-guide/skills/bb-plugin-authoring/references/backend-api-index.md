@@ -170,6 +170,7 @@ Read the installed declarations for exact current signatures.
 - `PluginDiffRendererProps`
 - `PluginDiffRendererRegistration`
 - `PluginEvents`
+- `PluginFileOpenerOpenArgs`
 - `PluginFileOpenerProps`
 - `PluginFileOpenerRegistration`
 - `PluginFileOpenerSource`

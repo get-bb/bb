@@ -148,7 +148,20 @@ interface CreateFileOpenerTabForRequestArgs {
   viewer?: FileOpenerOverride;
 }
 
-export function createFileOpenerTabForRequest({
+export interface FileOpenerOpenForRequest {
+  tab: PluginPanelFixedPanelTab;
+  handleOpen: (() => Promise<boolean>) | null;
+}
+
+export const FILE_OPENER_HANDLE_OPEN_TIMEOUT_MS = 3000;
+
+export function createFileOpenerTabForRequest(
+  args: CreateFileOpenerTabForRequestArgs,
+): PluginPanelFixedPanelTab | null {
+  return createFileOpenerOpenForRequest(args)?.tab ?? null;
+}
+
+export function createFileOpenerOpenForRequest({
   fileOpeners,
   preference,
   projectHostId,
@@ -157,7 +170,7 @@ export function createFileOpenerTabForRequest({
   resolvedEnvironmentId,
   threadId,
   viewer,
-}: CreateFileOpenerTabForRequestArgs): PluginPanelFixedPanelTab | null {
+}: CreateFileOpenerTabForRequestArgs): FileOpenerOpenForRequest | null {
   const owner = ownerRequestForOpenRequest({
     projectId,
     request,
@@ -185,9 +198,43 @@ export function createFileOpenerTabForRequest({
     path: routedFile.path,
     ...(viewer !== undefined ? { override: viewer } : {}),
   });
-  return resolved.kind === "plugin"
-    ? buildFileOpenerPanelTab(resolved.registration, routedFile, owner)
-    : null;
+  if (resolved.kind !== "plugin") return null;
+  const handler = resolved.registration.experimental_handleOpen;
+  return {
+    tab: buildFileOpenerPanelTab(resolved.registration, routedFile, owner),
+    handleOpen:
+      handler === undefined || viewer !== undefined
+        ? null
+        : () =>
+            callFileOpenerHandleOpen(() =>
+              handler({
+                path: routedFile.path,
+                source: routedFile.source,
+                lineRange: owner.tab.lineRange ?? null,
+              }),
+            ),
+  };
+}
+
+export async function callFileOpenerHandleOpen(
+  handler: () => boolean | Promise<boolean>,
+  timeoutMs: number = FILE_OPENER_HANDLE_OPEN_TIMEOUT_MS,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    const handled = await Promise.race([
+      Promise.resolve().then(handler),
+      timeout,
+    ]);
+    return handled === true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function ownerRequestForOpenRequest({

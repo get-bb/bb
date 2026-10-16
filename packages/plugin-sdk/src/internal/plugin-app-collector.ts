@@ -44,6 +44,7 @@ import {
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
   requireEnvironmentProviderId,
+  requireFunction,
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
@@ -935,6 +936,15 @@ export function collectPluginAppRegistrations(
           title: requireNonEmptyString(kind, "title", registration.title),
           extensions,
           component: requireComponent(kind, registration.component),
+          ...(registration.experimental_handleOpen === undefined
+            ? {}
+            : {
+                experimental_handleOpen: requireFunction(
+                  kind,
+                  "experimental_handleOpen",
+                  registration.experimental_handleOpen,
+                ),
+              }),
         });
       },
       experimental_sourceCodeRenderer(registration) {

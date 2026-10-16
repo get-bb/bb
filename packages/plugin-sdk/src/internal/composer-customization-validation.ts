@@ -160,7 +160,11 @@ export function requireComponent<T>(kind: string, value: unknown): T {
   return value as T;
 }
 
-function requireFunction<T>(kind: string, field: string, value: unknown): T {
+export function requireFunction<T>(
+  kind: string,
+  field: string,
+  value: unknown,
+): T {
   if (typeof value !== "function") {
     throw new Error(`${kind}: "${field}" must be a function`);
   }
