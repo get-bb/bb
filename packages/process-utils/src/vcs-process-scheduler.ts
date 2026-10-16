@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { availableParallelism } from "node:os";
 
 export type VcsProcessPriority = "interactive" | "status" | "background";
 
@@ -22,8 +23,14 @@ type Waiter = {
 };
 
 const ranks = { interactive: 0, status: 1, background: 2 };
+
+export function localProcessCapacities(parallelism: number): number[] {
+  const total = Math.min(6, Math.max(4, parallelism - 2));
+  return [total, total - 1, total - 2];
+}
+
 const capacities: Record<Pool, readonly number[]> = {
-  local: [6, 5, 4],
+  local: localProcessCapacities(availableParallelism()),
   network: [4, 3, 2],
 };
 const githubCapacity = 2;
@@ -132,7 +139,7 @@ class VcsProcessScheduler {
       (a, b) => this.rank(a) - this.rank(b) || a.queuedAt - b.queuedAt,
     );
     const blocked = new Set<Pool>();
-    for (let index = 0; index < this.queue.length;) {
+    for (let index = 0; index < this.queue.length; ) {
       const waiter = this.queue[index]!;
       if (
         blocked.has(waiter.pool) ||

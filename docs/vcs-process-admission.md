@@ -11,8 +11,9 @@ hold slots that local reads need. Network work is `gh` plus the git
 subcommands `fetch`, `pull`, `push`, `clone`, `ls-remote`, `submodule update`,
 and `remote update`, classified from the command's arguments.
 
-The local pool has six slots: background work can occupy four, status work
-five, and interactive work six. The network pool has four slots, at most two of
+The local pool scales with the CPU: it has `availableParallelism() - 2` slots,
+clamped between four and six, so eight or more cores give six. Background work
+can occupy two fewer slots and status work one fewer. The network pool has four slots, at most two of
 them `gh`: background work can occupy two, status work three, and interactive
 work four. Git pipelines reserve two local slots. An old waiter gains one
 priority level every 15 seconds; effective priority and arrival order determine

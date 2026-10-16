@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
   isNetworkGitCommand,
+  localProcessCapacities,
   runVcsProcess,
   withVcsProcessPriority,
 } from "../src/vcs-process-scheduler.js";
@@ -16,6 +17,11 @@ function deferred() {
 function flush() {
   return new Promise<void>((resolve) => setImmediate(resolve));
 }
+
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:os")>()),
+  availableParallelism: () => 16,
+}));
 
 afterEach(() => vi.useRealTimers());
 
@@ -366,6 +372,20 @@ it("runs nested admission inside the outer permit instead of deadlocking at capa
   }
   expect(queued).toHaveBeenCalledOnce();
 });
+
+it.each([
+  [1, [4, 3, 2]],
+  [4, [4, 3, 2]],
+  [6, [4, 3, 2]],
+  [7, [5, 4, 3]],
+  [8, [6, 5, 4]],
+  [64, [6, 5, 4]],
+])(
+  "scales local capacity to %i available cores as %j",
+  (parallelism, expected) => {
+    expect(localProcessCapacities(parallelism)).toEqual(expected);
+  },
+);
 
 it.each([0, 1.5, 5, NaN, Infinity])(
   "rejects invalid slot counts (%s) without occupying capacity",

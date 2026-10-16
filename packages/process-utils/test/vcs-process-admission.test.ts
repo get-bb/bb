@@ -1,10 +1,12 @@
 import { mkdtemp, writeFile, readdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { execPortableFile } from "../src/exec-portable-file.js";
+import { localProcessCapacities } from "../src/vcs-process-scheduler.js";
 
-it("admits only four background git children while a foreground status can still start", async () => {
+it("admits only the background share of git children while a foreground status can still start", async () => {
+  const background = localProcessCapacities(availableParallelism())[2]!;
   const directory = await mkdtemp(path.join(tmpdir(), "bb-vcs-admission-"));
   const script = path.join(directory, "hold.cjs");
   const finished = path.join(directory, "release");
@@ -34,7 +36,7 @@ it("admits only four background git children while a foreground status can still
             name.startsWith("started-"),
           ).length,
       )
-      .toBeGreaterThanOrEqual(4);
+      .toBeGreaterThanOrEqual(background);
     const foreground = await execPortableFile("git", ["--version"], {
       cwd: directory,
       env: process.env,
@@ -46,7 +48,7 @@ it("admits only four background git children while a foreground status can still
     expect(
       (await readdir(directory)).filter((name) => name.startsWith("started-"))
         .length,
-    ).toBe(4);
+    ).toBe(background);
   } finally {
     await writeFile(finished, "");
     await Promise.allSettled(tasks);

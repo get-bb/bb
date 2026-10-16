@@ -3110,8 +3110,10 @@ inside an admitted operation run under the outer permit without queueing again.
 that start multiple git children. Queue cancellation prevents spawning; callers
 own cancellation of running children. Execution timeouts begin after admission.
 
-The runtime keeps two disjoint pools. The local pool admits at most six local
-git children: background work can fill four slots and status work five. The
+The runtime keeps two disjoint pools. The local pool admits
+`clamp(os.availableParallelism() - 2, 4, 6)` local git children, computed once
+per runtime: background work can fill two fewer slots and status work one
+fewer, so eight or more cores give six, five, and four. The
 network pool admits at most four network git or `gh` children, with at most two
 `gh`: background work can fill two slots and status work three. Waiters gain one
 priority level every 15 seconds. FIFO applies within effective priority in each
@@ -3132,7 +3134,8 @@ background priority.
 
 Before stabilization, audit cancellation and permit release on all supported
 platforms, mixed plugin bundles sharing the singleton, aging under sustained
-load, whether fixed capacities need host policy, whether argument
+load, whether the CPU-scaled local capacity needs a host override and reflects
+container CPU quotas on supported hosts, whether argument
 classification should cover more network commands (for example `git lfs`), and
 whether work that escapes an admitted operation's async context should regain
 admission. Verify that every caller holds permits until its last admitted child
