@@ -16,6 +16,7 @@ import {
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
+import { useCloseWhenAnchorDetaches } from "./overlay-anchor.js";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
 
 const ResponsivePopoverContext =
@@ -68,6 +69,11 @@ const PopoverTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Trigger>
 >(({ asChild, children, className, ...props }, ref) => {
   const { isCompactViewport, open, onOpenChange } = useResponsivePopover();
+  const anchorRef = useCloseWhenAnchorDetaches(
+    ref,
+    open && !isCompactViewport,
+    onOpenChange,
+  );
 
   if (isCompactViewport) {
     return (
@@ -87,7 +93,7 @@ const PopoverTrigger = React.forwardRef<
 
   return (
     <PopoverPrimitive.Trigger
-      ref={ref}
+      ref={anchorRef}
       asChild={asChild}
       className={getOverlayTriggerClassName(className)}
       onMouseDown={(event) => {
@@ -209,14 +215,19 @@ const PopoverAnchor = React.forwardRef<
   React.ComponentRef<typeof PopoverPrimitive.Anchor>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Anchor>
 >(({ children, ...props }, ref) => {
-  const { isCompactViewport } = useResponsivePopover();
+  const { isCompactViewport, open, onOpenChange } = useResponsivePopover();
+  const anchorRef = useCloseWhenAnchorDetaches(
+    ref,
+    open && !isCompactViewport,
+    onOpenChange,
+  );
 
   if (isCompactViewport) {
     return <>{children}</>;
   }
 
   return (
-    <PopoverPrimitive.Anchor ref={ref} {...props}>
+    <PopoverPrimitive.Anchor ref={anchorRef} {...props}>
       {children}
     </PopoverPrimitive.Anchor>
   );
