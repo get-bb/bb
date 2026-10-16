@@ -289,6 +289,13 @@ export const BB_PERF_DIAGNOSTICS_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_SKIP_ONBOARDING_ENV = defineEnvVar<boolean>({
+  description:
+    "Mark first-run setup as completed at server startup so the setup screen is skipped. Settings can still replay it.",
+  name: "BB_SKIP_ONBOARDING",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   description:
     "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs, tagged with app version, install kind, and OS and Node versions). Set to false to opt out.",

@@ -31,6 +31,7 @@ import {
   BB_CLI_LAUNCHER_ENV,
   BB_TELEMETRY_ENV,
   BB_PERF_DIAGNOSTICS_ENV,
+  BB_SKIP_ONBOARDING_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
@@ -67,6 +68,7 @@ export interface ServerConfig
   BB_CLI_LAUNCHER?: string;
   BB_TELEMETRY: boolean;
   BB_PERF_DIAGNOSTICS: boolean;
+  BB_SKIP_ONBOARDING: boolean;
   featureFlags: FeatureFlags;
 }
 
@@ -164,6 +166,12 @@ export function loadServerConfig(
     BB_PERF_DIAGNOSTICS: readEnvVarWithDefault({
       context: loader.context,
       definition: BB_PERF_DIAGNOSTICS_ENV,
+      env: loader.env,
+      defaultValue: false,
+    }),
+    BB_SKIP_ONBOARDING: readEnvVarWithDefault({
+      context: loader.context,
+      definition: BB_SKIP_ONBOARDING_ENV,
       env: loader.env,
       defaultValue: false,
     }),
