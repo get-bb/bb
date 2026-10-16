@@ -8,7 +8,7 @@ export function SidebarHeaderSetting() {
     <ReplacementProviderSetting
       label="Sidebar header"
       triggerAriaLabel="Sidebar header"
-      description="Choose what appears beside the sidebar toggle. Shown with a list navigation such as Top list; the rail puts New thread there."
+      description="Adds a plugin's controls next to the sidebar toggle. Not shown when Navigation is Rail."
       builtInDescription="Only the sidebar toggle and the back and forward buttons."
       allowAutomatic={false}
       preferenceAtom={sidebarHeaderProviderAtom}
