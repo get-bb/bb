@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useSetupGuideRequest } from "./setup-guide-request";
 
 const OnboardingFlow = lazy(() =>
   import("./OnboardingFlow").then((module) => ({
@@ -32,6 +33,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const updateSettings = useUpdateGeneralSettings();
   const [firstRunClosed, setFirstRunClosed] = useState(false);
   const [seenBefore] = useState(readOnboardingSeen);
+  const [requestedStep, setRequestedStep] = useSetupGuideRequest();
 
   const settings = configQuery.data?.generalSettings;
   const completedAt = settings?.onboardingCompletedAt;
@@ -50,7 +52,25 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   }
 
   const firstRun = settings.onboardingCompletedAt === null && !firstRunClosed;
-  if (!firstRun) return children;
+  if (!firstRun) {
+    if (requestedStep === null) return children;
+    return (
+      <>
+        {children}
+        <TooltipProvider delayDuration={300} disableHoverableContent>
+          <div className="fixed inset-0 z-50 flex h-dvh w-full flex-col bg-background">
+            <Suspense fallback={null}>
+              <OnboardingFlow
+                initialStep={requestedStep}
+                entry="replay"
+                onClose={() => setRequestedStep(null)}
+              />
+            </Suspense>
+          </div>
+        </TooltipProvider>
+      </>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={300} disableHoverableContent>

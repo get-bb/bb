@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -43,7 +44,10 @@ vi.mock("@get-bb/plugin-sdk/provider-bridge", async (importOriginal) => ({
   experimental_resolveExecutablePath: () => Promise.resolve("/test/claude"),
 }));
 
-import { getClaudeProviderUsage } from "./provider-maintenance.js";
+import {
+  getClaudeProviderHealth,
+  getClaudeProviderUsage,
+} from "./provider-maintenance.js";
 
 const originalPlatform = process.platform;
 
@@ -60,6 +64,10 @@ afterAll(() => {
     value: originalPlatform,
   });
   vi.unstubAllGlobals();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 beforeEach(() => {
@@ -84,6 +92,22 @@ beforeEach(() => {
 });
 
 describe("Claude Code credential loading", () => {
+  it.each([
+    ["test-oauth-token", "ready"],
+    ["", "unauthenticated"],
+  ])("reports %s token authentication as %s without saved credentials", async (token, status) => {
+    state.keychain = "";
+    state.file = "";
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", token);
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result).toMatchObject({
+      supported: true,
+      health: { status, accountEmail: null },
+    });
+  });
+
   it("loads a hex-encoded Keychain credential", async () => {
     const result = await getClaudeProviderUsage();
 

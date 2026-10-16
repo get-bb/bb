@@ -381,6 +381,9 @@ export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
     return healthResult("not_installed");
   }
   const version = await readCliVersion(command);
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) {
+    return healthResult("ready", { installedVersion: version });
+  }
   try {
     const [credentials, email] = await Promise.all([
       readCredentials(),

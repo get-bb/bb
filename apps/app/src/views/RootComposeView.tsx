@@ -12,7 +12,11 @@ import { useRootComposePlacement } from "@/lib/root-compose-selection";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useSystemProviders } from "@/hooks/queries/system-queries";
+import {
+  useSystemProviderStates,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
+import { useOpenSetupGuide } from "@/components/onboarding/setup-guide-request";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -33,6 +37,7 @@ import {
   ProviderCliBanner,
   providerCliBlockedReason,
 } from "@/components/promptbox/banner/ProviderCliBanner";
+import { resolveComposerSignInState } from "@/components/promptbox/composer-sign-in-state";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -695,6 +700,47 @@ function RootComposeSurface({
     });
   }, [selectedProviderCliIssue, rootProjectHostId, startInstall]);
 
+  const rootPanelEnvironmentQuery = useEnvironment(rootPanelEnvironmentId, {
+    enabled: rootPanelEnvironmentId !== null,
+    staleTime: 5_000,
+  });
+  const rootPanelEnvironment = rootPanelEnvironmentQuery.data;
+  const providerStateHostId =
+    rootPanelEnvironmentId !== null
+      ? (rootPanelEnvironment?.hostId ?? null)
+      : rootProjectHostId;
+  const providerStates = useSystemProviderStates({
+    enabled: rootPanelEnvironmentId !== null || rootProjectHostId !== null,
+    ...(rootPanelEnvironmentId !== null
+      ? { environmentId: rootPanelEnvironmentId }
+      : rootProjectHostId !== null
+        ? { hostId: rootProjectHostId }
+        : {}),
+  }).data?.providers;
+  const openSetupGuide = useOpenSetupGuide();
+  const composerSignInState = useMemo(
+    () =>
+      blockingProviderCliStatus === null
+        ? resolveComposerSignInState(
+            providerStates?.find(
+              (state) => state.providerId === selectedProviderId,
+            ),
+            providerStateHostId !== null &&
+              providerStateHostId === primaryHostId
+              ? () => openSetupGuide("agent")
+              : null,
+          )
+        : null,
+    [
+      blockingProviderCliStatus,
+      openSetupGuide,
+      primaryHostId,
+      providerStates,
+      providerStateHostId,
+      selectedProviderId,
+    ],
+  );
+
   useFixedPanelTabsStorageMaintenance();
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
@@ -739,11 +785,6 @@ function RootComposeSurface({
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
   );
-  const rootPanelEnvironmentQuery = useEnvironment(rootPanelEnvironmentId, {
-    enabled: rootPanelEnvironmentId !== null,
-    staleTime: 5_000,
-  });
-  const rootPanelEnvironment = rootPanelEnvironmentQuery.data;
   const rootPanelHostPathTerminalTarget =
     useMemo<RootComposeTerminalTarget | null>(() => {
       if (rootPanelEnvironmentId !== null) {
@@ -1427,9 +1468,7 @@ function RootComposeSurface({
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
   const promptBanner = useMemo(() => {
-    if (blockingProviderCliStatus === null) {
-      return null;
-    }
+    if (blockingProviderCliStatus === null) return null;
     return (
       <ProviderCliBanner
         displayName={blockingProviderCliStatus.displayName}
@@ -1486,9 +1525,11 @@ function RootComposeSurface({
     mentionMenuPlacement: isCompactViewport ? "top" : "bottom",
     banner: promptBanner,
     blockedReason:
-      blockingProviderCliStatus === null
-        ? undefined
-        : providerCliBlockedReason(blockingProviderCliStatus),
+      blockingProviderCliStatus !== null
+        ? providerCliBlockedReason(blockingProviderCliStatus)
+        : composerSignInState?.placeholder,
+    placeholder: composerSignInState?.placeholder,
+    blockedAction: composerSignInState?.blockedAction,
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,

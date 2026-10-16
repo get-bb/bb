@@ -203,6 +203,7 @@ interface NewThreadComposerPromptOptions {
   banner?: ReactNode;
   header?: ReactNode;
   blockedReason?: string;
+  blockedAction?: NewThreadPromptBoxProps["blockedAction"];
   resolveMentionLink?: PromptMentionLinkResolver;
   pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
@@ -1984,6 +1985,7 @@ export function NewThreadComposer({
           isSubmitting={isSubmitting}
           disabled={disabledReason !== null}
           disabledReason={disabledReason ?? undefined}
+          blockedAction={options.blockedAction}
           placeholder={options.placeholder}
           mentionMenuPlacement={options.mentionMenuPlacement}
           autoFocus={options.autoFocus}

@@ -319,7 +319,13 @@ function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
   );
 }
 
+export interface ComposerBlockedAction {
+  label: string;
+  onAction: () => void;
+}
+
 export interface PromptBoxSubmissionConfig {
+  blockedAction?: ComposerBlockedAction;
   isSubmitting?: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -1305,6 +1311,7 @@ export function PromptBoxInternal({
 }: PromptBoxInternalProps) {
   const focusComposerShortcut = useAppCommandShortcut("composer.focus");
   const {
+    blockedAction,
     isSubmitting = false,
     disabled: submitDisabled = false,
     disabledReason: submitDisabledReason,
@@ -4078,7 +4085,20 @@ export function PromptBoxInternal({
                     data-promptbox-submit-group=""
                     className="flex shrink-0 flex-row items-center"
                   >
-                    {showStop ? (
+                    {blockedAction !== undefined ? (
+                      <Button
+                        data-promptbox-submit-action=""
+                        data-promptbox-blocked-action=""
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={blockedAction.onAction}
+                        className="ml-1 h-8 px-3"
+                      >
+                        {blockedAction.label}
+                      </Button>
+                    ) : showStop ? (
                       <Button
                         data-promptbox-submit-action=""
                         type="button"
