@@ -1045,13 +1045,20 @@ function MarkdownTable({ children }: MarkdownTableProps) {
       >
         <div
           data-clipboard-ignore
-          className="mb-1 flex justify-end gap-3 text-xs text-muted-foreground"
+          role="group"
+          aria-label="Copy table"
+          className="mb-1.5 flex w-fit items-center overflow-hidden rounded-md border border-border bg-surface-recessed text-xs text-muted-foreground"
         >
+          <span aria-hidden="true" className="flex items-center gap-1.5 px-2">
+            <Icon name="Copy" className="size-3" />
+            Copy
+          </span>
           {(["Markdown", "CSV"] as const).map((format) => (
             <button
               key={format}
               type="button"
-              className="cursor-pointer hover:text-foreground"
+              aria-label={`Copy as ${format}`}
+              className="cursor-pointer border-l border-border px-2 py-1 transition-colors hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none"
               onClick={() => {
                 if (!tableRef.current) return;
                 void copyToClipboardWithToast(
@@ -1062,7 +1069,7 @@ function MarkdownTable({ children }: MarkdownTableProps) {
                 );
               }}
             >
-              Copy as {format}
+              {format}
             </button>
           ))}
         </div>
