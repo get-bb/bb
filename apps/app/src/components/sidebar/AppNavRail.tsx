@@ -311,11 +311,11 @@ export function AppNavRail({
       <nav
         aria-label="Primary navigation"
         className={cn(
-          "flex min-h-0 flex-1 flex-col items-center gap-1 pb-2",
-          isFramed && "pt-2.5",
+          "flex min-h-0 flex-1 flex-col items-center pb-2",
+          isFramed ? "pt-2.5" : "pt-1",
         )}
       >
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto py-0.5 [scrollbar-width:none]">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
           <Popover
             open={customize.isOpen}
             onOpenChange={customize.onOpenChange}
