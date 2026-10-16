@@ -1,3 +1,4 @@
+import { coreFeatureUsedPropertiesSchema } from "../feature-telemetry.js";
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import {
@@ -219,6 +220,12 @@ const onboardingStepTelemetryPropertiesSchema = z
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
+      name: z.literal("feature_used"),
+      properties: coreFeatureUsedPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("onboarding_agent_state"),
       properties: z
         .object({
@@ -290,6 +297,24 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           last_step: onboardingStepTelemetrySchema,
         })
         .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("automation_created"),
+      properties: z
+        .object({
+          trigger: z.enum(["schedule", "once"]),
+          mode: z.enum(["agent", "script"]),
+          origin: z.enum(["human", "app", "agent"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("split_view_opened"),
+      properties: z.object({ panes: z.number().int().min(2).max(8) }).strict(),
     })
     .strict(),
 ]);

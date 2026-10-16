@@ -5,7 +5,10 @@ import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
-import type { RecordTelemetryEventRequest } from "@bb/server-contract";
+import type {
+  FeatureUsedProperties,
+  RecordTelemetryEventRequest,
+} from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
@@ -14,6 +17,7 @@ const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
 export type TelemetryEvent =
+  | { name: "feature_used"; properties: FeatureUsedProperties }
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
   | {

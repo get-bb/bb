@@ -1,3 +1,4 @@
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { defineSplit } from "@/lib/define-split";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -188,6 +189,15 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     (invocation) => {
       const target = invocationTarget(invocation);
       prepareOpen(target);
+      recordTelemetryEvent({
+        name: "feature_used",
+        properties: {
+          feature: "search",
+          feature_scope: "core",
+          interaction: "opened",
+          trigger: "unknown",
+        },
+      });
       setSearchingThreads(true);
       setOpen(true);
       return true;
