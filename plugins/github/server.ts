@@ -357,6 +357,7 @@ function run(
 ): Promise<{ stdout: string; stderr: string }> {
   return runVcsProcess(
     file === "git" ? "git" : "gh",
+    args,
     () =>
       new Promise((resolve, reject) => {
         execFile(

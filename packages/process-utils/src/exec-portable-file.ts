@@ -33,6 +33,7 @@ export async function execPortableFile(
   if (executable === "git" || executable === "gh") {
     return runVcsProcess(
       executable,
+      args,
       () => execPortableFileUnbounded(command, args, options),
       {
         priority: options.priority,

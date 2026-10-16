@@ -133,7 +133,7 @@ export function runGit(
     );
   }
 
-  return runVcsProcess("git", () => runGitAdmitted(args, options), {
+  return runVcsProcess("git", args, () => runGitAdmitted(args, options), {
     signal: options.signal,
     priority: "background",
   }).catch((error: unknown) => {

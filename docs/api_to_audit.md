@@ -3097,25 +3097,31 @@ and Windows hosts.
 
 ## Shared VCS process admission (`@get-bb/plugin-sdk/host`)
 
-`experimental_runVcsProcess(command, operation, options)` admits a `git` or
-`gh` operation to the runtime's shared queue before invoking it. It holds the
-permit until the returned promise settles; callers must await child close and
-termination cleanup. Calls nested inside an admitted operation run under the
-outer permit without queueing again.
+`experimental_runVcsProcess(command, args, operation, options)` admits a `git`
+or `gh` operation to the runtime's shared queue before invoking it. `args` are
+the command's arguments; they classify git network subcommands (`fetch`,
+`pull`, `push`, `clone`, `ls-remote`, `submodule update`, `remote update`).
+Arguments without a network subcommand, including an empty list for pipelines,
+admit to the local pool. The call holds the permit until the returned promise
+settles; callers must await child close and termination cleanup. Calls nested
+inside an admitted operation run under the outer permit without queueing again.
 `ExperimentalVcsProcessOptions` accepts `priority` (`interactive`, `status`,
 `background`), an optional cancellation signal, and `slots` for pipelines
 that start multiple git children. Queue cancellation prevents spawning; callers
 own cancellation of running children. Execution timeouts begin after admission.
 
-The runtime admits at most six children, at most two `gh` children, and reserves
-two slots from background work and one from status work. Waiters gain one
-priority level every 15 seconds. FIFO applies within effective priority: when
-the first waiter that is not held back by the GitHub lane needs more slots than
-are free, later waiters wait behind it, so pipelines are not starved by
-single-slot work. A blocked GitHub waiter does not block eligible git work. The budget is shared
-across module copies in one Node runtime, including bundled plugins. Separate
-host daemons and server processes own separate budgets; arbitrary commands run
-by agents or terminals are outside this queue.
+The runtime keeps two disjoint pools. The local pool admits at most six local
+git children: background work can fill four slots and status work five. The
+network pool admits at most four network git or `gh` children, with at most two
+`gh`: background work can fill two slots and status work three. Waiters gain one
+priority level every 15 seconds. FIFO applies within effective priority in each
+pool: when the first waiter that is not held back by the GitHub lane needs more
+slots than its pool has free, later waiters in that pool wait behind it, so
+pipelines are not starved by single-slot work. A blocked GitHub waiter does not
+block eligible network git work, and neither pool blocks the other. The budget
+is shared across module copies in one Node runtime, including bundled plugins.
+Separate host daemons and server processes own separate budgets; arbitrary
+commands run by agents or terminals are outside this queue.
 
 Core buffered git/gh reads, streaming status/diff reads, blob reads, shell
 pipelines, watcher setup, environment provisioning, and the GitHub plugin use
@@ -3126,7 +3132,8 @@ background priority.
 
 Before stabilization, audit cancellation and permit release on all supported
 platforms, mixed plugin bundles sharing the singleton, aging under sustained
-load, whether fixed capacities need host policy, and whether work that escapes
-an admitted operation's async context should regain admission. Verify that
-every caller holds permits until its last admitted child exits, including
-pipelines.
+load, whether fixed capacities need host policy, whether argument
+classification should cover more network commands (for example `git lfs`), and
+whether work that escapes an admitted operation's async context should regain
+admission. Verify that every caller holds permits until its last admitted child
+exits, including pipelines.

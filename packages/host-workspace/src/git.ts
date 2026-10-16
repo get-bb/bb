@@ -381,6 +381,7 @@ export async function runGitWithNullRecordLimit(
   try {
     return await runVcsProcess(
       "git",
+      args,
       () =>
         runGitWithNullRecordLimitAdmitted(
           args,
@@ -622,6 +623,7 @@ export async function runShellPipeline(
         : "/bin/sh";
     const result = await runVcsProcess(
       "git",
+      [],
       () =>
         execPortableFile(
           shell,
@@ -1513,8 +1515,9 @@ export async function readGitBlob(
   }
 
   try {
-    const result = await runVcsProcess("git", () =>
-      execFileAsync("git", ["cat-file", "blob", target], {
+    const blobArgs = ["cat-file", "blob", target];
+    const result = await runVcsProcess("git", blobArgs, () =>
+      execFileAsync("git", blobArgs, {
         cwd,
         encoding: "buffer",
         env: resolveGitProcessEnv({

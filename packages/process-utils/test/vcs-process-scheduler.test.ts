@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  isNetworkGitCommand,
   runVcsProcess,
   withVcsProcessPriority,
 } from "../src/vcs-process-scheduler.js";
@@ -18,47 +19,53 @@ function flush() {
 
 afterEach(() => vi.useRealTimers());
 
-it("bounds git and gh together, reserves foreground capacity, and skips a saturated gh lane", async () => {
-  const release = deferred();
-  const started: string[] = [];
-  const hold = (
+type Priority = "background" | "status" | "interactive";
+
+function holdAll(release: Promise<void>, started: string[]) {
+  return (
     command: "git" | "gh",
+    args: string[],
     label: string,
-    priority: "background" | "status" | "interactive",
+    priority: Priority,
   ) =>
     runVcsProcess(
       command,
+      args,
       async () => {
         started.push(label);
-        await release.promise;
+        await release;
       },
       { priority },
     );
+}
+
+it("bounds local git, reserves foreground capacity, and keeps gh out of the local pool", async () => {
+  const release = deferred();
+  const started: string[] = [];
+  const hold = holdAll(release.promise, started);
   const tasks = [
-    hold("gh", "gh1", "background"),
-    hold("gh", "gh2", "background"),
-    hold("gh", "gh3", "background"),
+    hold("gh", ["api"], "gh1", "background"),
+    hold("gh", ["api"], "gh2", "background"),
+    hold("gh", ["api"], "gh3", "background"),
     ...Array.from({ length: 10 }, (_, i) =>
-      hold("git", `git${i}`, "background"),
+      hold("git", ["status"], `git${i}`, "background"),
     ),
   ];
   try {
     await Promise.resolve();
-    expect(started).toEqual(["gh1", "gh2", "git0", "git1"]);
+    expect(started).toEqual(["gh1", "gh2", "git0", "git1", "git2", "git3"]);
     tasks.push(
-      hold("git", "status1", "status"),
-      hold("git", "status2", "status"),
+      hold("git", ["status"], "status1", "status"),
+      hold("git", ["status"], "status2", "status"),
     );
     await Promise.resolve();
-    expect(started).toHaveLength(5);
-    expect(started.at(-1)).toBe("status1");
+    expect(started.slice(6)).toEqual(["status1"]);
     tasks.push(
-      hold("git", "interactive", "interactive"),
-      hold("git", "overflow", "interactive"),
+      hold("git", ["diff"], "interactive", "interactive"),
+      hold("git", ["diff"], "overflow", "interactive"),
     );
     await Promise.resolve();
-    expect(started).toHaveLength(6);
-    expect(started.at(-1)).toBe("interactive");
+    expect(started.slice(6)).toEqual(["status1", "interactive"]);
   } finally {
     release.resolve();
     await Promise.all(tasks);
@@ -66,10 +73,81 @@ it("bounds git and gh together, reserves foreground capacity, and skips a satura
   expect(started).toHaveLength(17);
 });
 
+it("keeps network git in its own pool so slow fetches cannot fill local background capacity", async () => {
+  const release = deferred();
+  const started: string[] = [];
+  const hold = holdAll(release.promise, started);
+  const tasks = [
+    ...Array.from({ length: 4 }, (_, i) =>
+      hold("git", ["fetch", "--all", "--prune"], `fetch${i}`, "background"),
+    ),
+    ...Array.from({ length: 4 }, (_, i) =>
+      hold("git", ["status"], `status${i}`, "background"),
+    ),
+  ];
+  try {
+    await Promise.resolve();
+    expect(started).toEqual([
+      "fetch0",
+      "fetch1",
+      "status0",
+      "status1",
+      "status2",
+      "status3",
+    ]);
+    tasks.push(hold("git", ["push"], "push", "interactive"));
+    await Promise.resolve();
+    expect(started.at(-1)).toBe("push");
+  } finally {
+    release.resolve();
+    await Promise.all(tasks);
+  }
+  expect(started).toHaveLength(9);
+});
+
+it("skips a saturated gh lane without blocking network git behind it", async () => {
+  const release = deferred();
+  const started: string[] = [];
+  const hold = holdAll(release.promise, started);
+  const tasks = [
+    hold("gh", ["pr", "view"], "gh1", "interactive"),
+    hold("gh", ["pr", "view"], "gh2", "interactive"),
+    hold("gh", ["pr", "view"], "gh3", "interactive"),
+    hold("git", ["fetch"], "fetch", "interactive"),
+  ];
+  try {
+    await Promise.resolve();
+    expect(started).toEqual(["gh1", "gh2", "fetch"]);
+  } finally {
+    release.resolve();
+    await Promise.all(tasks);
+  }
+  expect(started).toHaveLength(4);
+});
+
+it.each([
+  [["fetch", "--all", "--prune", "--quiet"], true],
+  [["-C", "/repo", "push", "origin", "HEAD"], true],
+  [["-c", "core.askPass=", "pull"], true],
+  [["--git-dir", "/repo/.git", "ls-remote"], true],
+  [["clone", "--progress", "https://example.com/r.git", "r"], true],
+  [["submodule", "--quiet", "update", "--init"], true],
+  [["remote", "update"], true],
+  [["remote", "get-url", "origin"], false],
+  [["--no-optional-locks", "status", "--porcelain=v1"], false],
+  [["-C", "fetch", "status"], false],
+  [["log", "fetch"], false],
+  [[], false],
+])("classifies git %j as network work: %s", (args, network) => {
+  expect(isNetworkGitCommand(args)).toBe(network);
+});
+
 it("prioritizes queued foreground work, keeps FIFO within a tier, and isolates concurrent priority contexts", async () => {
   const release = deferred();
   const holders = Array.from({ length: 6 }, () =>
-    runVcsProcess("git", () => release.promise, { priority: "interactive" }),
+    runVcsProcess("git", ["status"], () => release.promise, {
+      priority: "interactive",
+    }),
   );
   const order: string[] = [];
   const enqueue = (
@@ -78,7 +156,7 @@ it("prioritizes queued foreground work, keeps FIFO within a tier, and isolates c
   ) =>
     withVcsProcessPriority(priority, async () => {
       await Promise.resolve();
-      await runVcsProcess("git", async () => {
+      await runVcsProcess("git", ["status"], async () => {
         order.push(label);
       });
     });
@@ -105,11 +183,13 @@ it("prioritizes queued foreground work, keeps FIFO within a tier, and isolates c
 it("cancels queued work without executing it and releases permits after synchronous and asynchronous failures", async () => {
   const release = deferred();
   const holders = Array.from({ length: 6 }, () =>
-    runVcsProcess("git", () => release.promise, { priority: "interactive" }),
+    runVcsProcess("git", ["status"], () => release.promise, {
+      priority: "interactive",
+    }),
   );
   const controller = new AbortController();
   const operation = vi.fn(async () => undefined);
-  const canceled = runVcsProcess("git", operation, {
+  const canceled = runVcsProcess("git", ["status"], operation, {
     signal: controller.signal,
   });
   const rejected = expect(canceled).rejects.toMatchObject({
@@ -119,18 +199,18 @@ it("cancels queued work without executing it and releases permits after synchron
   controller.abort();
   await rejected;
   await expect(
-    runVcsProcess("git", operation, { signal: controller.signal }),
+    runVcsProcess("git", ["status"], operation, { signal: controller.signal }),
   ).rejects.toMatchObject({ name: "AbortError" });
   expect(operation).not.toHaveBeenCalled();
   release.resolve();
   await Promise.all(holders);
   await expect(
-    runVcsProcess("gh", () => {
+    runVcsProcess("gh", ["api"], () => {
       throw new Error("spawn failed");
     }),
   ).rejects.toThrow("spawn failed");
   await expect(
-    runVcsProcess("gh", async () => {
+    runVcsProcess("gh", ["api"], async () => {
       throw new Error("exit failed");
     }),
   ).rejects.toThrow("exit failed");
@@ -139,6 +219,7 @@ it("cancels queued work without executing it and releases permits after synchron
   const tasks = Array.from({ length: 6 }, () =>
     runVcsProcess(
       "git",
+      ["status"],
       async () => {
         active++;
         await next.promise;
@@ -159,11 +240,14 @@ it("promotes an old background waiter into reserved capacity under sustained sta
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   const release = deferred();
   const holders = Array.from({ length: 5 }, () =>
-    runVcsProcess("git", () => release.promise, { priority: "status" }),
+    runVcsProcess("git", ["status"], () => release.promise, {
+      priority: "status",
+    }),
   );
   const started: string[] = [];
   const old = runVcsProcess(
     "git",
+    ["status"],
     async () => {
       started.push("old");
     },
@@ -187,6 +271,7 @@ it("accounts for both children of a git pipeline", async () => {
   const tasks = Array.from({ length: 8 }, () =>
     runVcsProcess(
       "git",
+      ["status"],
       async () => {
         started++;
         await release.promise;
@@ -208,7 +293,7 @@ it("holds freed capacity for an older pipeline instead of admitting newer single
     const release = deferred();
     return {
       release,
-      task: runVcsProcess("git", () => release.promise, {
+      task: runVcsProcess("git", ["status"], () => release.promise, {
         priority: "interactive",
       }),
     };
@@ -217,6 +302,7 @@ it("holds freed capacity for an older pipeline instead of admitting newer single
   const pipelineRelease = deferred();
   const pipeline = runVcsProcess(
     "git",
+    ["status"],
     async () => {
       started.push("pipeline");
       await pipelineRelease.promise;
@@ -225,6 +311,7 @@ it("holds freed capacity for an older pipeline instead of admitting newer single
   );
   const later = runVcsProcess(
     "git",
+    ["status"],
     async () => {
       started.push("later");
     },
@@ -255,8 +342,9 @@ it("runs nested admission inside the outer permit instead of deadlocking at capa
   const tasks = Array.from({ length: 6 }, () =>
     runVcsProcess(
       "git",
+      ["status"],
       async () => {
-        await runVcsProcess("gh", async () => {
+        await runVcsProcess("gh", ["api"], async () => {
           inner++;
         });
         await release.promise;
@@ -265,7 +353,9 @@ it("runs nested admission inside the outer permit instead of deadlocking at capa
     ),
   );
   const queued = vi.fn(async () => undefined);
-  const outside = runVcsProcess("git", queued, { priority: "interactive" });
+  const outside = runVcsProcess("git", ["status"], queued, {
+    priority: "interactive",
+  });
   try {
     await flush();
     expect(inner).toBe(6);
@@ -281,14 +371,14 @@ it.each([0, 1.5, 5, NaN, Infinity])(
   "rejects invalid slot counts (%s) without occupying capacity",
   async (slots) => {
     await expect(
-      runVcsProcess("git", async () => undefined, { slots }),
+      runVcsProcess("git", ["status"], async () => undefined, { slots }),
     ).rejects.toThrow("Invalid VCS process slot count");
   },
 );
 
 it("rejects gh requests larger than the GitHub budget instead of waiting forever", async () => {
   await expect(
-    runVcsProcess("gh", async () => undefined, { slots: 3 }),
+    runVcsProcess("gh", ["api"], async () => undefined, { slots: 3 }),
   ).rejects.toThrow("Invalid VCS process slot count");
 });
 
@@ -299,10 +389,12 @@ it("shares admission across separately loaded module copies", async () => {
   );
   const release = deferred();
   const holders = Array.from({ length: 6 }, () =>
-    runVcsProcess("git", () => release.promise, { priority: "interactive" }),
+    runVcsProcess("git", ["status"], () => release.promise, {
+      priority: "interactive",
+    }),
   );
   const operation = vi.fn(async () => undefined);
-  const queued = copy.runVcsProcess("git", operation);
+  const queued = copy.runVcsProcess("git", ["status"], operation);
   try {
     await Promise.resolve();
     expect(operation).not.toHaveBeenCalled();

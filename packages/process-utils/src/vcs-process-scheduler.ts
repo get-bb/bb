@@ -9,8 +9,10 @@ export interface VcsProcessOptions {
 }
 
 type Command = "git" | "gh";
+type Pool = "local" | "network";
 type Waiter = {
   command: Command;
+  pool: Pool;
   priority: VcsProcessPriority;
   slots: number;
   queuedAt: number;
@@ -20,23 +22,63 @@ type Waiter = {
 };
 
 const ranks = { interactive: 0, status: 1, background: 2 };
-const capacities = [6, 5, 4];
+const capacities: Record<Pool, readonly number[]> = {
+  local: [6, 5, 4],
+  network: [4, 3, 2],
+};
+const githubCapacity = 2;
 const agingMs = 15_000;
+const networkGitSubcommands = new Set([
+  "fetch",
+  "pull",
+  "push",
+  "clone",
+  "ls-remote",
+]);
+const gitGlobalOptionsWithValue = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+]);
+
+export function isNetworkGitCommand(args: readonly string[]): boolean {
+  let index = 0;
+  while (index < args.length && args[index]!.startsWith("-")) {
+    index += gitGlobalOptionsWithValue.has(args[index]!) ? 2 : 1;
+  }
+  const subcommand = args[index];
+  if (subcommand === undefined) return false;
+  if (networkGitSubcommands.has(subcommand)) return true;
+  const action = args.slice(index + 1).find((arg) => !arg.startsWith("-"));
+  return (
+    (subcommand === "submodule" || subcommand === "remote") &&
+    action === "update"
+  );
+}
 
 class VcsProcessScheduler {
   readonly priority = new AsyncLocalStorage<VcsProcessPriority>();
   readonly admitted = new AsyncLocalStorage<true>();
-  private active = 0;
+  private readonly active: Record<Pool, number> = { local: 0, network: 0 };
   private githubActive = 0;
   private readonly queue: Waiter[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
 
-  acquire(command: Command, options: VcsProcessOptions): Promise<() => void> {
+  acquire(
+    command: Command,
+    args: readonly string[],
+    options: VcsProcessOptions,
+  ): Promise<() => void> {
+    const pool: Pool =
+      command === "gh" || isNetworkGitCommand(args) ? "network" : "local";
     const slots = options.slots ?? 1;
     if (
       !Number.isInteger(slots) ||
       slots < 1 ||
-      slots > (command === "gh" ? 2 : 4)
+      slots > capacities[pool][ranks.background]!
     ) {
       return Promise.reject(new Error("Invalid VCS process slot count"));
     }
@@ -46,6 +88,7 @@ class VcsProcessScheduler {
     return new Promise((grant, reject) => {
       const waiter: Waiter = {
         command,
+        pool,
         priority: options.priority ?? this.priority.getStore() ?? "status",
         slots,
         queuedAt: performance.now(),
@@ -88,22 +131,34 @@ class VcsProcessScheduler {
     this.queue.sort(
       (a, b) => this.rank(a) - this.rank(b) || a.queuedAt - b.queuedAt,
     );
+    const blocked = new Set<Pool>();
     for (let index = 0; index < this.queue.length;) {
       const waiter = this.queue[index]!;
-      if (waiter.command === "gh" && this.githubActive + waiter.slots > 2) {
+      if (
+        blocked.has(waiter.pool) ||
+        (waiter.command === "gh" &&
+          this.githubActive + waiter.slots > githubCapacity)
+      ) {
         index += 1;
         continue;
       }
-      if (this.active + waiter.slots > capacities[this.rank(waiter)]!) break;
+      if (
+        this.active[waiter.pool] + waiter.slots >
+        capacities[waiter.pool][this.rank(waiter)]!
+      ) {
+        blocked.add(waiter.pool);
+        index += 1;
+        continue;
+      }
       this.queue.splice(index, 1);
       waiter.signal?.removeEventListener("abort", waiter.onAbort);
-      this.active += waiter.slots;
+      this.active[waiter.pool] += waiter.slots;
       if (waiter.command === "gh") this.githubActive += waiter.slots;
       let released = false;
       waiter.grant(() => {
         if (released) return;
         released = true;
-        this.active -= waiter.slots;
+        this.active[waiter.pool] -= waiter.slots;
         if (waiter.command === "gh") this.githubActive -= waiter.slots;
         this.drain();
       });
@@ -135,6 +190,7 @@ export function withVcsProcessPriority<T>(
 
 export async function runVcsProcess<T>(
   command: Command,
+  args: readonly string[],
   operation: () => Promise<T>,
   options: VcsProcessOptions = {},
 ): Promise<T> {
@@ -142,7 +198,7 @@ export async function runVcsProcess<T>(
     options.signal?.throwIfAborted();
     return operation();
   }
-  const release = await scheduler.acquire(command, options);
+  const release = await scheduler.acquire(command, args, options);
   try {
     options.signal?.throwIfAborted();
     return await scheduler.admitted.run(true, operation);

@@ -27,7 +27,7 @@ it.each([
       release = resolve;
     });
     const holders = Array.from({ length: 6 }, () =>
-      runVcsProcess("git", () => gate, { priority: "interactive" }),
+      runVcsProcess("git", ["status"], () => gate, { priority: "interactive" }),
     );
     const controller = new AbortController();
     try {
