@@ -3094,3 +3094,34 @@ directories, linked worktrees, and submodules. Core callers: the setup guide
 Stabilize after deciding whether depth, recency window, and limit should be
 caller options, and after exercising slow or network-mounted home directories
 and Windows hosts.
+
+## Shared VCS process admission (`@get-bb/plugin-sdk/host`)
+
+`experimental_runVcsProcess(command, operation, options)` admits a `git` or
+`gh` operation to the runtime's shared queue before invoking it. It holds the
+permit until the returned promise settles; callers must await child close and
+termination cleanup. Do not nest admission around an already admitted runner.
+`ExperimentalVcsProcessOptions` accepts `priority` (`interactive`, `status`,
+`background`), an optional cancellation signal, and `slots` for pipelines
+that start multiple git children. Queue cancellation prevents spawning; callers
+own cancellation of running children. Execution timeouts begin after admission.
+
+The runtime admits at most six children, at most two `gh` children, and reserves
+two slots from background work and one from status work. Waiters gain one
+priority level every 15 seconds. FIFO applies within effective priority; a
+blocked GitHub waiter does not block eligible git work. The budget is shared
+across module copies in one Node runtime, including bundled plugins. Separate
+host daemons and server processes own separate budgets; arbitrary commands run
+by agents or terminals are outside this queue.
+
+Core buffered git/gh reads, streaming status/diff reads, blob reads, shell
+pipelines, watcher setup, environment provisioning, and the GitHub plugin use
+this path. The CLI and SDK's workspace reads and mutations reach the same host
+handlers. Host commands give explicit user mutations and diff panels interactive
+priority, status reads status priority, and PR polling/watcher setup/provisioning
+background priority.
+
+Before stabilization, audit cancellation and permit release on all supported
+platforms, mixed plugin bundles sharing the singleton, aging under sustained
+load, and whether fixed capacities need host policy. Verify that every caller
+holds permits until its last admitted child exits, including pipelines.

@@ -10,6 +10,7 @@ import type {
 } from "@bb/domain";
 import {
   execPortableFile,
+  runVcsProcess,
   spawnManagedProcess,
   pathExists,
   sanitizeInheritedChildProcessEnv,
@@ -377,6 +378,31 @@ export async function runGitWithNullRecordLimit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
 
+  try {
+    return await runVcsProcess(
+      "git",
+      () =>
+        runGitWithNullRecordLimitAdmitted(
+          args,
+          options,
+          recordFormat,
+          maxRecords,
+        ),
+      { signal: options.signal },
+    );
+  } catch (error) {
+    if (options.signal?.aborted)
+      throw createGitCommandCancelledError(args, error);
+    throw error;
+  }
+}
+
+function runGitWithNullRecordLimitAdmitted(
+  args: string[],
+  options: RunGitOptions,
+  recordFormat: GitNullRecordFormat,
+  maxRecords: number,
+): Promise<GitNullRecordLimitResult> {
   return new Promise((resolve, reject) => {
     const managed = spawnManagedProcess({
       command: "git",
@@ -594,10 +620,15 @@ export async function runShellPipeline(
             )
           ).stdout.trim()
         : "/bin/sh";
-    const result = await execPortableFile(
-      shell,
-      ["-c", script, "sh", ...positionalArgs],
-      processOptions,
+    const result = await runVcsProcess(
+      "git",
+      () =>
+        execPortableFile(
+          shell,
+          ["-c", script, "sh", ...positionalArgs],
+          processOptions,
+        ),
+      { signal: options.signal, slots: 2 },
     );
     return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
   } catch (error) {
@@ -1308,6 +1339,7 @@ async function fetchRemoteBranchesNonInteractively(
 ): Promise<FetchRemoteBranchesResult> {
   try {
     await execPortableFile("git", ["fetch", "--all", "--prune", "--quiet"], {
+      priority: "background",
       cwd,
       timeout: options.timeoutMs,
       maxBuffer: DEFAULT_BUFFER_BYTES,
@@ -1481,15 +1513,17 @@ export async function readGitBlob(
   }
 
   try {
-    const result = await execFileAsync("git", ["cat-file", "blob", target], {
-      cwd,
-      encoding: "buffer",
-      env: resolveGitProcessEnv({
-        env: undefined,
-        shellPath: options.shellPath,
+    const result = await runVcsProcess("git", () =>
+      execFileAsync("git", ["cat-file", "blob", target], {
+        cwd,
+        encoding: "buffer",
+        env: resolveGitProcessEnv({
+          env: undefined,
+          shellPath: options.shellPath,
+        }),
+        maxBuffer: maxBytes,
       }),
-      maxBuffer: maxBytes,
-    });
+    );
     const contents = Buffer.from(result.stdout);
     return { contents, sizeBytes: size };
   } catch (error) {
