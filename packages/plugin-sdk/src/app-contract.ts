@@ -2356,6 +2356,32 @@ export interface PluginFileOpenerRegistration {
   /** Lowercase alphanumeric extensions without the dot; single underscores or hyphens may separate segments. */
   extensions: readonly string[];
   component: ComponentType<PluginFileOpenerProps>;
+  /**
+   * Called before BB opens a file tab that resolves to this opener. Resolve
+   * `true` when the plugin showed the file elsewhere (for example in its own
+   * panel tab); BB then opens no file tab. Resolve `false`, throw, or take
+   * longer than 3 seconds to get the normal tab with `component`. Not called
+   * when the user chose this opener for one open from "Open with", when a
+   * New Tab's file search opens the file in place, or when
+   * BB restores an existing tab. Older hosts ignore it, so keep `component`
+   * as the fallback.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_handleOpen?: (
+    args: PluginFileOpenerOpenArgs,
+  ) => boolean | Promise<boolean>;
+}
+
+/** Arguments passed to `PluginFileOpenerRegistration.experimental_handleOpen`. */
+export interface PluginFileOpenerOpenArgs {
+  path: string;
+  source: PluginFileOpenerSource;
+  /** One-based, inclusive lines requested by this open, or null when untargeted. */
+  lineRange: {
+    startLineNumber: number;
+    endLineNumber: number;
+  } | null;
 }
 
 /**
