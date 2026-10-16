@@ -293,3 +293,10 @@ projectId, experimental_hostId? }` (nullable fields). The optional host ID
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
+  Optional `experimental_handleOpen({ path, source, lineRange })` runs before
+  BB opens a tab for this opener. Return (or resolve) `true` when the plugin
+  showed the file elsewhere, such as its own panel tab; BB then opens no file
+  tab. `false`, a throw, or no answer within 3 seconds opens the normal tab.
+  It is skipped for one-off "Open with …" choices and for files picked from a
+  New Tab's search. Older hosts ignore it, so
+  `component` stays the fallback.

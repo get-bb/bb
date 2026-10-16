@@ -2671,6 +2671,29 @@ Docs: `frontend-core-slots.md`.
    reload restoration and cross-client range updates under the existing tab
    policy.
 
+## `PluginFileOpenerRegistration.experimental_handleOpen` (`@get-bb/plugin-sdk/app`)
+
+Lets a file opener claim an open without a file tab. Before BB opens a tab
+that resolves to the opener through default resolution or the Settings → Files
+pin, it calls `experimental_handleOpen({ path, source, lineRange })`. `true`
+means the plugin showed the file itself (for example by focusing its own
+panel tab) and BB opens no tab. `false`, a throw, or no answer within 3 seconds
+opens the normal opener tab. One-off "Open with" choices and New Tab file
+search (which fills the tab in place) skip the handler.
+Core's file-open path (`useThreadFileTabs.openResolvedTab`) is the only caller,
+so links, the file tree and `bb thread open` share it.
+
+Docs: `frontend-core-slots.md`.
+
+**Audit before stabilizing.**
+
+1. Decide whether the timeout and the async tab insert should be visible
+   (pending state) or configurable.
+2. Verify behaviour with several openers that claim the same extension and
+   with plugins that reload while a handler is pending.
+3. Confirm whether restored tabs and cross-client tab sync should ever call
+   the handler.
+
 ## `bb.experimental_serverAccess.recheck`
 
 Sends a payload-less system `config-changed` notification to connected

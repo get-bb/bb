@@ -29,7 +29,7 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import { allowBrowserViewRecreation } from "./browserViewVisibilityCoordinator";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
-  createFileOpenerTabForRequest,
+  createFileOpenerOpenForRequest,
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
 } from "@/components/plugin/file-opener-tabs";
@@ -455,7 +455,7 @@ export function useThreadFileTabs({
       behavior: OpenResolvedTabBehavior,
       viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
-      const openerTab = createFileOpenerTabForRequest({
+      const openerOpen = createFileOpenerOpenForRequest({
         fileOpeners,
         preference: fileOpenerPreference,
         projectHostId,
@@ -466,7 +466,7 @@ export function useThreadFileTabs({
         ...(viewer !== undefined ? { viewer } : {}),
       });
       const tab =
-        openerTab ??
+        openerOpen?.tab ??
         createTabForOpenRequest({
           projectId,
           request,
@@ -489,12 +489,22 @@ export function useThreadFileTabs({
         recordRecentItem({ source: "thread-storage", path: request.tab.path });
       }
 
-      updateFixedPanelTabsState((state) => {
-        if (behavior === "replace-new-tab") {
-          return replaceNewTabWithSecondaryPanelTabInState({ state, tab });
-        }
-        return openSecondaryPanelTabInState({ state, tab });
-      });
+      const insertTab = () =>
+        updateFixedPanelTabsState((state) => {
+          if (behavior === "replace-new-tab") {
+            return replaceNewTabWithSecondaryPanelTabInState({ state, tab });
+          }
+          return openSecondaryPanelTabInState({ state, tab });
+        });
+      const handleOpen =
+        behavior === "open" ? (openerOpen?.handleOpen ?? null) : null;
+      if (handleOpen === null) {
+        insertTab();
+      } else {
+        void handleOpen().then((handled) => {
+          if (!handled) insertTab();
+        });
+      }
       return tab;
     },
     [
