@@ -90,7 +90,9 @@ operations and `localhost` refer to the browser host. Transfer files explicitly.
 Stop cancels running and queued work and releases desktop control. Cancellation
 and timeout stop the session too; open a new session to resume. Close disposes
 owned Chrome and desktop tabs the session opened while preserving a `--tab` tab.
-Close sessions after use. Five-minute idle and thirty-minute absolute expiry
+Close sessions after use. When `close` or `stop` fails, the session still
+accepts no more commands, but its browser may still be running; run `close`
+again to retry cleanup. Five-minute idle and thirty-minute absolute expiry
 apply. Timeouts default to 30 seconds, maximum 120 seconds: pass either
 `--timeout-ms <1000-120000>` or `--timeout <duration>`, where a duration carries
 a unit (`90s`, `2m`, `1500ms`) and a bare number is read as seconds (1-120) or
