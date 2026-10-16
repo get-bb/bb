@@ -294,7 +294,7 @@ the macOS desktop app drops the separate title bar. A navigation plugin
 declares whether it draws a rail or a list, and gets the matching layout. The
 same order and visibility keys apply to every provider. With a list, a header
 plugin can add controls beside the sidebar toggle (`sidebar.headerProvider`,
-Settings → Appearance → Header; `__builtin__` shows only bb's controls).
+Settings → Appearance → Sidebar header; `__builtin__` shows only bb's controls).
 
 Footer actions: `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are
 string lists of `builtin:settings` (top list only), `builtin:mobile`,

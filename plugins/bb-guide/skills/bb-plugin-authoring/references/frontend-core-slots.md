@@ -264,7 +264,7 @@ onChange }` — the control the New Thread environment picker renders beside
   — renders controls in the sidebar header row between the sidebar toggle and
   bb's back and forward buttons while the navigation uses the `list`
   placement. Registration: `{ id, title, description?, component }`.
-  Exclusive; the user picks at most one under Settings → Appearance → Header,
+  Exclusive; the user picks at most one under Settings → Appearance → Sidebar header,
   and the default is bb's controls only. Content is clipped to the row.
   Experimental: see `docs/api_to_audit.md`.
 - `experimental_threadList`, `experimental_threadHeaderAction`,

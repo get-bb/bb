@@ -88,7 +88,7 @@ split drags are recorded in `inspection.sidebarNavigationCalls`.
 sidebar toggle (and the macOS window controls) and bb's back and forward
 buttons while the active navigation uses the `list` placement; the rail puts
 New thread there. It is exclusive and opt-in: the user picks at most one
-under Settings → Appearance → Header. Registration:
+under Settings → Appearance → Sidebar header. Registration:
 `{ id, title, description?, component }`. The component receives `width`
 (px available, updated on resize), `controlSize` (bb's header button size,
 also `--bb-sidebar-control-size`; use `--bb-sidebar-control-icon-size` for

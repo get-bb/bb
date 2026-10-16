@@ -1361,10 +1361,10 @@ between the sidebar toggle (and the macOS window controls) and bb's back and
 forward buttons, while the active navigation uses the `list` placement; the
 rail puts New thread there instead. Exclusive and opt-in:
 `sidebar.headerProvider` defaults to `__builtin__` (bb's controls only), and
-the user picks a provider under Settings → Appearance → Header. The component
-receives `width`, `controlSize`, and `isCompactViewport`. The host clips
-content to the row, keeps the macOS drag region for non-interactive space, and
-removes the component with one toast on a crash.
+the user picks a provider under Settings → Appearance → Sidebar header. The
+component receives `width`, `controlSize`, and `isCompactViewport`. The host
+clips content to the row, keeps the macOS drag region for non-interactive
+space, and removes the component with one toast on a crash.
 
 **Core callers on the same path.** None: bb draws nothing in that space. Keep
 it experimental until bb's own header content moves onto it or the slot is

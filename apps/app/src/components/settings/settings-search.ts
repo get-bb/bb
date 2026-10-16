@@ -140,8 +140,8 @@ export const SETTINGS_SEARCH_INDEX: Record<
         keywords: ["sidebar", "rail", "top list", "layout", "labels", "plugin"],
       },
       {
-        title: "Header",
-        keywords: ["sidebar", "toggle", "plugin"],
+        title: "Sidebar header",
+        keywords: ["toggle", "plugin"],
         when: "sidebarHeaders",
       },
       {
