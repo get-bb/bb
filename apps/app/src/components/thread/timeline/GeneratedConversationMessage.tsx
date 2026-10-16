@@ -259,6 +259,10 @@ function systemMessageTitleSegments(
             verbSegment("result"),
           ]
         : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
+    case "environment-directory-updated":
+      return subject !== null && subject.kind === "directory"
+        ? [verbSegment("Continued in"), subjectSegment(subject.path, null)]
+        : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
     case "unlabeled":
       return SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
   }
@@ -347,6 +351,8 @@ function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
       return "ListTodo";
     case "tool-result-delivered":
       return "Toolbox";
+    case "environment-directory-updated":
+      return "FolderOpen";
     case "unlabeled":
       return "Info";
   }
@@ -484,7 +490,8 @@ function systemMessageIsTitleOnly(
   }
   return (
     systemMessageKind === "ownership-assigned" ||
-    systemMessageKind === "ownership-removed"
+    systemMessageKind === "ownership-removed" ||
+    systemMessageKind === "environment-directory-updated"
   );
 }
 

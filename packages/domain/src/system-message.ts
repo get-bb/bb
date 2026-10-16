@@ -22,6 +22,7 @@ const systemMessageKindValues = [
   "child-interrupted",
   "child-outcome-batch",
   "tool-result-delivered",
+  "environment-directory-updated",
   "unlabeled",
 ] as const;
 export const systemMessageKindSchema = z.enum(systemMessageKindValues);
@@ -65,6 +66,10 @@ export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("tool-call"),
     toolName: z.string(),
     suppress: z.boolean(),
+  }),
+  z.object({
+    kind: z.literal("directory"),
+    path: z.string(),
   }),
 ]);
 export type SystemMessageSubject = z.infer<typeof systemMessageSubjectSchema>;
