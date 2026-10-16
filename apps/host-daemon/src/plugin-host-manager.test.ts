@@ -447,6 +447,30 @@ describe("PluginHostManager", () => {
         initial.output,
       );
     });
+
+    it("abandons a handler that ignores cancellation without killing other calls", async () => {
+      const { manager, command, cancel, waitForStart, onWorkerExit } =
+        await fixture();
+      const initial = await manager.call(callCommand());
+      const running = manager.call(command("a", "first", 6500));
+      await waitForStart("a");
+      const hung = manager
+        .call({
+          ...command("hung", "first"),
+          input: { id: "hung", hang: true },
+        })
+        .catch((error: unknown) => error);
+      await waitForStart("hung");
+      cancel("hung");
+      await expect(hung).resolves.toMatchObject({ name: "AbortError" });
+      await expect(running).resolves.toMatchObject({
+        output: { before: "first", after: "first" },
+      });
+      expect(onWorkerExit).not.toHaveBeenCalled();
+      expect((await manager.call(callCommand())).output).toEqual(
+        initial.output,
+      );
+    });
   });
 
   it.each(["type", "true", "changed"])(

@@ -395,6 +395,44 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
+  it.skipIf(process.platform === "win32")(
+    "settles a cancelled create promptly when Git's children are still running",
+    async () => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      const hookPidPath = join(root, "hook.pid");
+      const hookPath = join(sourcePath, ".git", "hooks", "post-checkout");
+      await writeFile(
+        hookPath,
+        `#!/bin/sh\necho $$ > "${hookPidPath}"\nexec sleep 30\n`,
+        { mode: 0o755 },
+      );
+      const harness = createHarness(dataDir);
+      const controller = new AbortController();
+      const created = harness
+        .experimental_call(
+          "create",
+          createInput({
+            operationId: "cancelled-create",
+            sourcePath,
+            pathKey: "cancelled",
+            branchName: "bb/cancelled",
+          }),
+          { signal: controller.signal },
+        )
+        .catch((error: unknown) => error);
+      await expect
+        .poll(() => existsSync(hookPidPath), { timeout: 10_000 })
+        .toBe(true);
+      const hookPid = Number((await readFile(hookPidPath, "utf8")).trim());
+      const abortedAt = performance.now();
+      controller.abort();
+      expect(await created).toBeInstanceOf(Error);
+      expect(performance.now() - abortedAt).toBeLessThan(3_000);
+      await expect.poll(() => isPidAlive(hookPid)).toBe(false);
+      await harness.experimental_dispose();
+    },
+  );
+
   it("creates a worktree on a named base under the path-key directory", async () => {
     const { sourcePath, dataDir } = await createSourceRepository();
     await git(sourcePath, "branch", "release");
