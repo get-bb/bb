@@ -101,7 +101,7 @@ export function toDevLaunchProcessEnv(args: {
     baseEnv: args.baseEnv,
     config: args.config,
   });
-  env.BB_SKIP_ONBOARDING = "1";
+  env.BB_SKIP_ONBOARDING ??= "1";
   if (args.cloud === "staging") {
     env.BB_DEV_CONNECT_BASE_URL = STAGING_CLOUD_URL;
   }

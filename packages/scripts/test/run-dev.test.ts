@@ -278,6 +278,24 @@ describe("run-dev", () => {
     ).toBe(`http://bb.localhost:${config.ports.cloudPort}`);
   });
 
+  it.each(["vite", "worktree"] as const)(
+    "preserves an explicit onboarding override in %s mode",
+    (mode) => {
+      const config = resolveDevInstanceConfig({
+        homeDir: "/Users/tester",
+        repoRoot: "/Users/tester/src/bb",
+      });
+      const env = toDevLaunchProcessEnv({
+        baseEnv: { BB_SKIP_ONBOARDING: "0" },
+        cloud: "local",
+        config,
+        mode,
+      });
+
+      expect(env.BB_SKIP_ONBOARDING).toBe("0");
+    },
+  );
+
   it("uses production serving with checkout-specific dev selectors", () => {
     const config = resolveDevInstanceConfig({
       homeDir: "/Users/tester",
