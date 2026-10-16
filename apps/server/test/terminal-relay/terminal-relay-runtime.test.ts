@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { connect, Socket } from "node:net";
 import { once } from "node:events";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import {
   createTerminalRelayRuntime,
@@ -37,8 +37,12 @@ afterEach(async () => {
   }
 });
 
-async function setup(onMessage: (message: TerminalRelayToMainMessage) => void) {
+async function setup(
+  onMessage: (message: TerminalRelayToMainMessage) => void,
+  getBrowserBufferedAmount?: (socket: WebSocket) => number,
+) {
   const runtime = createTerminalRelayRuntime({
+    getBrowserBufferedAmount,
     logger: testLogger,
     send: onMessage,
   });
@@ -196,6 +200,209 @@ describe("terminal relay socket runtime", () => {
     runtime.handleMainMessage({ type: "shutdown" });
     const [code] = await closed;
     expect(code).toBe(1012);
+  });
+
+  it("applies browser backpressure limits in the relay", async () => {
+    let runtime: TerminalRelayRuntime;
+    let backpressured = false;
+    let socketId = "";
+    const setupResult = await setup(
+      (event) => {
+        if (event.type === "attach-requested") socketId = event.socketId;
+      },
+      () => (backpressured ? 2 * 1024 * 1024 : 0),
+    );
+    runtime = setupResult.runtime;
+    runtime.handleMainMessage({
+      type: "terminal-state",
+      terminalId: session.id,
+      state: {
+        daemonSessionId: "daemon-1",
+        hostId: "host-1",
+        session,
+        status: "running",
+      },
+    });
+    const browser = await open(`ws://127.0.0.1:${setupResult.port}/browser`);
+    runtime.handleMainMessage({
+      type: "attach-decision",
+      socketId,
+      decision: "hold",
+      session,
+    });
+    await message(browser);
+    backpressured = true;
+    const closed = once(browser, "close");
+    const dataBase64 = Buffer.alloc(64 * 1024, "a").toString("base64");
+    for (let seq = 0; seq < 400; seq++)
+      runtime.handleMainMessage({
+        type: "daemon-message",
+        daemonSessionId: "daemon-1",
+        message: {
+          type: "terminal.output",
+          terminalId: session.id,
+          chunk: { seq, dataBase64 },
+        },
+      });
+    const [code, reason] = await closed;
+    expect(code).toBe(1013);
+    expect(String(reason)).toBe("terminal-backpressure");
+  }, 20_000);
+
+  it("queues browser input during a daemon data-socket gap and bounds the queue", async () => {
+    let runtime: TerminalRelayRuntime;
+    let socketId = "";
+    const messages: TerminalRelayToMainMessage[] = [];
+    const setupResult = await setup((event) => {
+      messages.push(event);
+      if (event.type === "attach-requested") socketId = event.socketId;
+    });
+    runtime = setupResult.runtime;
+    runtime.handleMainMessage({
+      type: "terminal-state",
+      terminalId: session.id,
+      state: {
+        daemonSessionId: "daemon-1",
+        hostId: "host-1",
+        session,
+        status: "running",
+      },
+    });
+    const browser = await open(`ws://127.0.0.1:${setupResult.port}/browser`);
+    runtime.handleMainMessage({
+      type: "attach-decision",
+      socketId,
+      decision: "running",
+      session,
+    });
+    await message(browser);
+    runtime.handleMainMessage({
+      type: "browser-message",
+      socketId,
+      terminalId: session.id,
+      message: { type: "input", dataBase64: "YQ==" },
+    });
+    await open(`ws://127.0.0.1:${setupResult.port}/daemon`);
+    await vi.waitFor(() => {
+      expect(messages).toContainEqual(
+        expect.objectContaining({
+          type: "browser-input",
+          terminalId: session.id,
+          dataBase64: "YQ==",
+        }),
+      );
+    });
+    runtime.handleMainMessage({ type: "move-fence", pending: true });
+    const dataBase64 = Buffer.alloc(12 * 1024, "a").toString("base64");
+    const error = message(browser);
+    for (let index = 0; index < 6; index++)
+      runtime.handleMainMessage({
+        type: "browser-message",
+        socketId,
+        terminalId: session.id,
+        message: { type: "input", dataBase64 },
+      });
+    await expect(error).resolves.toMatchObject({
+      type: "error",
+      code: "terminal_data_channel_reconnecting",
+    });
+  });
+
+  it("tells the browser to retry when queued input expires before the daemon reconnects", async () => {
+    let runtime: TerminalRelayRuntime;
+    let socketId = "";
+    const messages: TerminalRelayToMainMessage[] = [];
+    const setupResult = await setup((event) => {
+      messages.push(event);
+      if (event.type === "attach-requested") socketId = event.socketId;
+    });
+    runtime = setupResult.runtime;
+    runtime.handleMainMessage({
+      type: "terminal-state",
+      terminalId: session.id,
+      state: {
+        daemonSessionId: "daemon-1",
+        hostId: "host-1",
+        session,
+        status: "running",
+      },
+    });
+    const browser = await open(`ws://127.0.0.1:${setupResult.port}/browser`);
+    runtime.handleMainMessage({
+      type: "attach-decision",
+      socketId,
+      decision: "running",
+      session,
+    });
+    await message(browser);
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout"],
+      shouldAdvanceTime: true,
+    });
+    try {
+      runtime.handleMainMessage({
+        type: "browser-message",
+        socketId,
+        terminalId: session.id,
+        message: { type: "input", dataBase64: "YQ==" },
+      });
+      const error = message(browser);
+      vi.advanceTimersByTime(10_000);
+      await expect(error).resolves.toMatchObject({
+        type: "error",
+        code: "terminal_data_channel_reconnecting",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await open(`ws://127.0.0.1:${setupResult.port}/daemon`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(messages).not.toContainEqual(
+      expect.objectContaining({ type: "browser-input" }),
+    );
+  });
+
+  it("closes a failed daemon session socket with restart code", async () => {
+    let runtime: TerminalRelayRuntime;
+    const setupResult = await setup((event) => {
+      if (event.type === "attach-requested")
+        runtime.handleMainMessage({
+          type: "attach-decision",
+          socketId: event.socketId,
+          decision: "running",
+          session,
+        });
+    });
+    runtime = setupResult.runtime;
+    const daemon = await open(`ws://127.0.0.1:${setupResult.port}/daemon`);
+    const closed = once(daemon, "close");
+    runtime.handleMainMessage({
+      type: "fail-daemon-session",
+      daemonSessionId: "daemon-1",
+      reason: "daemon-disconnect",
+    });
+    const [code] = await closed;
+    expect(code).toBe(1012);
+  });
+
+  it("logs malformed main socket messages without throwing", async () => {
+    let socketId = "";
+    const messages: TerminalRelayToMainMessage[] = [];
+    const { runtime, port } = await setup((event) => {
+      messages.push(event);
+      if (event.type === "attach-requested") socketId = event.socketId;
+    });
+    const browser = await open(`ws://127.0.0.1:${port}/browser`);
+    expect(socketId).not.toBe("");
+    const handleMainMessage = runtime.handleMainMessage as (message: unknown) => void;
+    expect(() =>
+      handleMainMessage({
+        type: "send-socket-message",
+        socketId,
+        message: { type: "nope" },
+      }),
+    ).not.toThrow();
+    browser.terminate();
   });
 
   it("delivers a frame appended to the upgrade request through a copied non-empty head", async () => {

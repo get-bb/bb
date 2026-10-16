@@ -60,9 +60,6 @@ export class TerminalDataConnection {
     this.websocket = websocket;
     websocket.onopen = () => {
       this.flushOutput(true);
-      for (const exit of this.pendingExits.values()) {
-        if (!this.sendMessage(exit)) break;
-      }
     };
     websocket.onmessage = (event) => {
       let decoded: unknown;
@@ -84,7 +81,16 @@ export class TerminalDataConnection {
         );
         return;
       }
-      void Promise.resolve(this.options.onMessage(parsed.data)).catch(
+      if (parsed.data.type === "terminal.exited.ack") {
+        this.pendingExits.delete(parsed.data.terminalId);
+        return;
+      }
+      void Promise.resolve(this.options.onMessage(parsed.data)).then(
+        () => {
+          if (parsed.data.type !== "terminal.attach") return;
+          const exit = this.pendingExits.get(parsed.data.terminalId);
+          if (exit) this.sendMessage(exit);
+        },
         (error: unknown) => {
           this.options.logger.warn(
             { ...runtimeErrorLogFields(error) },
@@ -118,13 +124,10 @@ export class TerminalDataConnection {
 
   sendMessage(message: HostDaemonTerminalDataDaemonMessage): boolean {
     const parsed = hostDaemonTerminalDataDaemonMessageSchema.parse(message);
+    if (parsed.type === "terminal.exited" && this.sessionId !== null)
+      this.pendingExits.set(parsed.terminalId, parsed);
     const websocket = this.websocket;
-    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
-      if (parsed.type === "terminal.exited" && this.sessionId !== null) {
-        this.pendingExits.set(parsed.terminalId, parsed);
-      }
-      return false;
-    }
+    if (!websocket || websocket.readyState !== OPEN_READY_STATE) return false;
     const payload = JSON.stringify(parsed);
     if (
       parsed.type === "terminal.output" &&
@@ -169,8 +172,6 @@ export class TerminalDataConnection {
       this.reconnectSocket(websocket, "send-failed");
       return false;
     }
-    if (parsed.type === "terminal.exited")
-      this.pendingExits.delete(parsed.terminalId);
     return true;
   }
 

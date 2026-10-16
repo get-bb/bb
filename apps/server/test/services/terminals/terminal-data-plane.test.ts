@@ -33,6 +33,7 @@ function setup() {
     onBrowserResize: vi.fn(),
     onTerminalExited: vi.fn(),
     onAttachError: vi.fn(),
+    onCatchUpError: vi.fn(),
     onReplay: vi.fn(),
     onDaemonSendFailed: vi.fn(),
   };
@@ -117,6 +118,7 @@ describe("InProcessTerminalDataPlane", () => {
     send("daemon-1", 5);
     plane.requestCatchUp({
       daemonSessionId: "daemon-1",
+      force: false,
       terminalId: session.id,
     });
     send("daemon-1", 6);

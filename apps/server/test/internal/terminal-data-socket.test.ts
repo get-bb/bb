@@ -122,12 +122,13 @@ describe("daemon terminal data socket", () => {
       environmentId: null,
       threadId: null,
     });
+    const browser = await connect(`/ws/terminals/${terminal.id}?sinceSeq=0`, {
+      origin: server.baseUrl,
+    });
+    expect(await nextMessage(browser)).toMatchObject({ type: "attached" });
     const data = await connect(path, {
       headers,
       protocols: buildHostDaemonWebSocketProtocols(),
-    });
-    const browser = await connect(`/ws/terminals/${terminal.id}?sinceSeq=0`, {
-      origin: server.baseUrl,
     });
     const attach = hostDaemonTerminalDataServerMessageSchema.parse(
       await nextMessage(data),
@@ -139,7 +140,6 @@ describe("daemon terminal data socket", () => {
     });
     if (attach.type !== "terminal.attach")
       throw new Error("Missing terminal attach");
-    const attached = nextMessage(browser);
     data.send(
       JSON.stringify({
         type: "terminal.replay",
@@ -150,7 +150,6 @@ describe("daemon terminal data socket", () => {
         nextSeq: 0,
       }),
     );
-    expect(await attached).toMatchObject({ type: "attached" });
     const output = nextMessage(browser);
     data.send(
       JSON.stringify({
@@ -186,6 +185,99 @@ describe("daemon terminal data socket", () => {
       type: "terminal.attach",
       terminalId: terminal.id,
       sinceSeq: 1,
+    });
+  });
+
+  it("marks a running row exited when catch-up attach reports terminal_not_found", async () => {
+    server = await startTestServer();
+    const { host, session } = seedHostSession(server.deps);
+    const headers = Object.fromEntries(
+      new Headers(internalAuthHeaders(server, { hostId: host.id })),
+    );
+    const terminal = createTerminalSession(server.db, {
+      cols: 80,
+      rows: 24,
+      daemonSessionId: session.id,
+      hostId: host.id,
+      initialCwd: "/tmp",
+      status: "running",
+      title: "Missing terminal",
+      environmentId: null,
+      threadId: null,
+    });
+    const data = await connect(
+      `/internal/ws/terminals?sessionId=${session.id}`,
+      { headers, protocols: buildHostDaemonWebSocketProtocols() },
+    );
+    const attach = hostDaemonTerminalDataServerMessageSchema.parse(
+      await nextMessage(data),
+    );
+    expect(attach).toMatchObject({
+      type: "terminal.attach",
+      terminalId: terminal.id,
+    });
+    if (attach.type !== "terminal.attach")
+      throw new Error("Missing terminal attach");
+    data.send(
+      JSON.stringify({
+        type: "terminal.error",
+        terminalId: terminal.id,
+        requestId: attach.requestId,
+        code: "terminal_not_found",
+        message: "Terminal session is not open",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(
+        getTerminalSession(server!.db, {
+          kind: "terminal",
+          terminalId: terminal.id,
+        }),
+      ).toMatchObject({ status: "exited", closeReason: "daemon-disconnect" });
+    });
+  });
+
+  it("acks terminal exits after the row is persisted", async () => {
+    server = await startTestServer();
+    const { host, session } = seedHostSession(server.deps);
+    const headers = Object.fromEntries(
+      new Headers(internalAuthHeaders(server, { hostId: host.id })),
+    );
+    const terminal = createTerminalSession(server.db, {
+      cols: 80,
+      rows: 24,
+      daemonSessionId: session.id,
+      hostId: host.id,
+      initialCwd: "/tmp",
+      status: "running",
+      title: "Exited terminal",
+      environmentId: null,
+      threadId: null,
+    });
+    const data = await connect(
+      `/internal/ws/terminals?sessionId=${session.id}`,
+      { headers, protocols: buildHostDaemonWebSocketProtocols() },
+    );
+    await nextMessage(data);
+    data.send(
+      JSON.stringify({
+        type: "terminal.exited",
+        terminalId: terminal.id,
+        exitCode: 0,
+        closeReason: "process-exit",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(
+        getTerminalSession(server!.db, {
+          kind: "terminal",
+          terminalId: terminal.id,
+        }),
+      ).toMatchObject({ status: "exited", exitCode: 0 });
+    });
+    expect(await nextMessage(data)).toEqual({
+      type: "terminal.exited.ack",
+      terminalId: terminal.id,
     });
   });
 

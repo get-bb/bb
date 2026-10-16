@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Socket } from "node:net";
-import { installSafeProcessDiagnostics } from "@bb/process-utils";
+import { installSafeProcessDiagnostics } from "@bb/process-utils/diagnostics";
 import { mainToTerminalRelayMessageSchema } from "./terminal-relay-ipc.js";
 import {
   createTerminalRelayRuntime,
@@ -44,23 +44,27 @@ const runtime = createTerminalRelayRuntime({
   },
 });
 process.on("message", (raw: unknown, handle) => {
-  const parsed = mainToTerminalRelayMessageSchema.safeParse(raw);
-  if (!parsed.success) {
-    logger.warn({ error: parsed.error }, "Invalid main-to-relay message");
-    if (handle instanceof Socket) handle.destroy();
-    return;
+  try {
+    const parsed = mainToTerminalRelayMessageSchema.safeParse(raw);
+    if (!parsed.success) {
+      logger.warn({ error: parsed.error }, "Invalid main-to-relay message");
+      if (handle instanceof Socket) handle.destroy();
+      return;
+    }
+    if (
+      parsed.data.type === "accept-browser" ||
+      parsed.data.type === "accept-daemon-data"
+    ) {
+      if (handle instanceof Socket) runtime.acceptSocket(parsed.data, handle);
+      else logger.warn({}, "Terminal upgrade omitted socket handle");
+      return;
+    }
+    runtime.handleMainMessage(parsed.data);
+    if (parsed.data.type === "shutdown")
+      setTimeout(() => process.exit(0), 500).unref();
+  } catch (error) {
+    logger.warn({ error }, "Terminal relay main message handler failed");
   }
-  if (
-    parsed.data.type === "accept-browser" ||
-    parsed.data.type === "accept-daemon-data"
-  ) {
-    if (handle instanceof Socket) runtime.acceptSocket(parsed.data, handle);
-    else logger.warn({}, "Terminal upgrade omitted socket handle");
-    return;
-  }
-  runtime.handleMainMessage(parsed.data);
-  if (parsed.data.type === "shutdown")
-    setTimeout(() => process.exit(0), 500).unref();
 });
 process.on("disconnect", () => {
   runtime.dispose();

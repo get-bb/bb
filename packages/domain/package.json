@@ -88,6 +88,11 @@
       "source": "./src/prompt-attachment-limits.ts",
       "types": "./src/prompt-attachment-limits.ts",
       "default": "./src/prompt-attachment-limits.ts"
+    },
+    "./terminal": {
+      "source": "./src/terminal.ts",
+      "types": "./src/terminal.ts",
+      "default": "./src/terminal.ts"
     }
   },
   "types": "./src/index.ts",

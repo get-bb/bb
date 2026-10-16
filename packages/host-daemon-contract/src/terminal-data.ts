@@ -11,6 +11,13 @@ import {
   hostDaemonTerminalResizeMessageSchema,
 } from "./session.js";
 
+export const hostDaemonTerminalExitedAckMessageSchema = z
+  .object({
+    type: z.literal("terminal.exited.ack"),
+    terminalId: z.string().min(1),
+  })
+  .strict();
+
 export const HOST_DAEMON_TERMINAL_DATA_PATH = "/internal/ws/terminals";
 
 export const hostDaemonTerminalDataServerMessageSchema = z.discriminatedUnion(
@@ -21,6 +28,7 @@ export const hostDaemonTerminalDataServerMessageSchema = z.discriminatedUnion(
     hostDaemonTerminalResizeMessageSchema,
     hostDaemonTerminalAckMessageSchema,
     hostDaemonTerminalFlowControlMessageSchema,
+    hostDaemonTerminalExitedAckMessageSchema,
   ],
 );
 export type HostDaemonTerminalDataServerMessage = z.infer<

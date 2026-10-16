@@ -1366,6 +1366,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       );
       this.dataPlane.requestCatchUp({
         daemonSessionId: args.daemonSessionId,
+        force: true,
         terminalId: reconnected.id,
       });
     }
@@ -1524,6 +1525,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
     for (const session of sessions) {
       this.dataPlane.requestCatchUp({
         daemonSessionId,
+        force: true,
         terminalId: session.id,
       });
     }
@@ -1991,6 +1993,35 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
     );
   }
 
+  onCatchUpError(args: {
+    code: string;
+    daemonSessionId: string;
+    message: string;
+    requestId: string;
+    terminalId: string;
+  }): void {
+    this.onAttachError(args);
+    if (args.code !== "terminal_not_found") return;
+    const exited = updateTerminalSession(this.options.db, {
+      scope: {
+        daemonSessionId: args.daemonSessionId,
+        kind: "daemon",
+        terminalId: args.terminalId,
+      },
+      update: {
+        closeReason: "daemon-disconnect",
+        exitCode: null,
+        kind: "exit",
+      },
+    });
+    if (!exited) return;
+    this.notifyExitedTerminalSession({
+      session: exited,
+      code: "terminal_exited",
+      message: "Terminal session exited on the host",
+    });
+  }
+
   onReplay(args: {
     daemonSessionId: string;
     message: TerminalReplayMessage;
@@ -2026,6 +2057,10 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       exited,
     );
     this.notifyTerminalSessionChanged(exited);
+    this.sendDaemonDataMessage(args.daemonSessionId, {
+      type: "terminal.exited.ack",
+      terminalId: exited.id,
+    });
     this.rejectPendingAttachesForTerminal({
       terminalId: exited.id,
       code: "terminal_exited",

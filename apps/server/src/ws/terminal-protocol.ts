@@ -4,13 +4,34 @@ import {
 } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
+import type { TerminalDataPlaneSocket } from "../services/terminals/terminal-data-plane.js";
 import { parseSocketMessage } from "./decode-payload.js";
 
 type TerminalProtocolDeps = Pick<AppDeps, "terminalSessions">;
 
 interface TerminalSocket {
+  readonly raw?: { readonly bufferedAmount?: number };
   close(code?: number, reason?: string): void;
   send(data: string): void;
+}
+
+const terminalDataPlaneSockets = new WeakMap<
+  TerminalSocket,
+  TerminalDataPlaneSocket
+>();
+
+function toDataPlaneSocket(socket: TerminalSocket): TerminalDataPlaneSocket {
+  const existing = terminalDataPlaneSockets.get(socket);
+  if (existing) return existing;
+  const wrapped: TerminalDataPlaneSocket = {
+    get bufferedAmount() {
+      return socket.raw?.bufferedAmount ?? 0;
+    },
+    close: (code, reason) => socket.close(code, reason),
+    send: (data) => socket.send(data),
+  };
+  terminalDataPlaneSockets.set(socket, wrapped);
+  return wrapped;
 }
 
 interface TerminalSocketOpenArgs {
@@ -74,10 +95,11 @@ export function onTerminalSocketOpen(
   deps: TerminalProtocolDeps,
   args: TerminalSocketOpenArgs,
 ): void {
+  const socket = toDataPlaneSocket(args.socket);
   try {
     deps.terminalSessions.attachBrowserTerminal({
       outputAcks: args.outputAcks,
-      socket: args.socket,
+      socket,
       sinceSeq: args.sinceSeq,
       terminalId: args.terminalId,
     });
@@ -99,10 +121,11 @@ export function onTerminalSocketMessage(
     return;
   }
 
+  const socket = toDataPlaneSocket(args.socket);
   try {
     deps.terminalSessions.handleBrowserTerminalMessage({
       message,
-      socket: args.socket,
+      socket,
       terminalId: args.terminalId,
     });
   } catch (error) {
@@ -115,7 +138,7 @@ export function onTerminalSocketClose(
   args: TerminalSocketCloseArgs,
 ): void {
   deps.terminalSessions.detachBrowserTerminal({
-    socket: args.socket,
+    socket: toDataPlaneSocket(args.socket),
     terminalId: args.terminalId,
   });
 }

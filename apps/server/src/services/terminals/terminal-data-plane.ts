@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { HostDaemonTerminalDataDaemonMessage } from "@bb/host-daemon-contract";
+import type { HostDaemonTerminalDataDaemonMessage } from "@bb/host-daemon-contract/terminal-data";
 import type {
   TerminalClientMessage,
   TerminalSession,
 } from "@bb/server-contract";
-import { ApiError } from "../../errors.js";
 import { TerminalClientRegistry } from "./terminal-client-registry.js";
 import type { TerminalDataPlaneHost } from "./terminal-data-plane-host.js";
 import { TerminalOutputFlowControl } from "./terminal-output-flow-control.js";
@@ -14,8 +13,8 @@ import {
 } from "./pending-rpc-registry.js";
 
 export type TerminalDataPlaneSocket = {
+  readonly bufferedAmount: number;
   close(code?: number, reason?: string): void;
-  raw?: { bufferedAmount: number };
   send(data: string): void;
 };
 
@@ -27,6 +26,11 @@ export type TerminalDataPlaneTerminalState = {
 };
 
 export type TerminalDaemonDataMessage = HostDaemonTerminalDataDaemonMessage;
+export type TerminalCatchUpRequest = {
+  daemonSessionId: string;
+  force: boolean;
+  terminalId: string;
+};
 type Replay = Extract<TerminalDaemonDataMessage, { type: "terminal.replay" }>;
 interface PendingKey extends PendingRpcKey {
   daemonSessionId: string;
@@ -39,6 +43,23 @@ interface PendingAttach extends PendingKey {
 
 const BROWSER_TERMINAL_REPLAY_MAX_BYTES = 512 * 1024;
 const TERMINAL_ATTACH_CANCELLED = new Error("Terminal attach cancelled");
+
+class TerminalDataPlaneError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function terminalDataPlaneError(code: string, message: string): TerminalDataPlaneError {
+  return new TerminalDataPlaneError(code, message);
+}
+
+function errorCode(error: Error, fallback: string): string {
+  return error instanceof TerminalDataPlaneError ? error.code : fallback;
+}
 
 function rpcKey(
   daemonSessionId: string,
@@ -81,7 +102,7 @@ export interface TerminalDataPlane {
     sinceSeq: number,
     outputAcks?: boolean,
   ): void;
-  requestCatchUp(args: { daemonSessionId: string; terminalId: string }): void;
+  requestCatchUp(args: TerminalCatchUpRequest): void;
   failPendingForDaemonSession(
     daemonSessionId: string,
     reason: "daemon-disconnect",
@@ -92,7 +113,6 @@ export interface TerminalDataPlane {
     message: string,
   ): void;
   forgetTerminal(terminalId: string): void;
-  hasClients(terminalId: string): boolean;
   sendSocketMessage(
     socket: TerminalDataPlaneSocket,
     message:
@@ -138,24 +158,28 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
         );
         this.sendError(
           pending.socket,
-          error instanceof ApiError
-            ? error.body.code
-            : "terminal_attach_failed",
-          error instanceof ApiError ? error.body.message : error.message,
+          errorCode(error, "terminal_attach_failed"),
+          error.message,
         );
       },
       onSettle: (pending, replay) => this.completeAttach(pending, replay),
       timeoutMs: attachTimeoutMs,
       timeoutError: () =>
-        new ApiError(
-          504,
+        terminalDataPlaneError(
           "terminal_attach_timeout",
           "Timed out attaching terminal session",
         ),
     });
     this.pendingCatchUps = new PendingRpcRegistry({
-      onFail: (pending) => {
+      onFail: (pending, error) => {
         this.catchingUp.delete(pending.terminalId);
+        this.host.onCatchUpError({
+          daemonSessionId: pending.daemonSessionId,
+          terminalId: pending.terminalId,
+          requestId: pending.requestId,
+          code: errorCode(error, "terminal_catch_up_failed"),
+          message: error.message,
+        });
       },
       onSettle: (pending, replay) => {
         this.catchingUp.delete(pending.terminalId);
@@ -164,8 +188,7 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
       },
       timeoutMs: attachTimeoutMs,
       timeoutError: () =>
-        new ApiError(
-          504,
+        terminalDataPlaneError(
           "terminal_catch_up_timeout",
           "Timed out replaying terminal output after the host reconnected",
         ),
@@ -334,14 +357,14 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
         if (
           this.pendingAttaches.fail(
             key,
-            new ApiError(502, message.code, message.message),
+            terminalDataPlaneError(message.code, message.message),
           )
         )
           return;
         if (
           this.pendingCatchUps.fail(
             key,
-            new ApiError(502, message.code, message.message),
+            terminalDataPlaneError(message.code, message.message),
           )
         )
           return;
@@ -389,16 +412,13 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
       });
   }
 
-  requestCatchUp(args: { daemonSessionId: string; terminalId: string }): void {
-    const sinceSeq = this.nextSeqByTerminal.get(args.terminalId);
-    if (
-      sinceSeq === undefined ||
-      !this.clients.hasTerminalClients(args.terminalId)
-    )
-      return;
+  requestCatchUp(args: TerminalCatchUpRequest): void {
+    const sinceSeq = this.nextSeqByTerminal.get(args.terminalId) ?? 0;
+    if (!args.force && !this.clients.hasTerminalClients(args.terminalId)) return;
     const requestId = randomUUID();
     const pending: PendingKey = {
-      ...args,
+      daemonSessionId: args.daemonSessionId,
+      terminalId: args.terminalId,
       requestId,
       rpcKey: rpcKey(args.daemonSessionId, args.terminalId, requestId),
     };
@@ -415,7 +435,7 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
     ) {
       this.pendingCatchUps.fail(
         pending.rpcKey,
-        new ApiError(502, "host_disconnected", "Host is not connected"),
+        terminalDataPlaneError("host_disconnected", "Host is not connected"),
       );
     }
   }
@@ -426,11 +446,11 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
   ): void {
     this.pendingAttaches.failAllMatching(
       (pending) => pending.daemonSessionId === daemonSessionId,
-      new ApiError(502, "host_disconnected", "Host is not connected"),
+      terminalDataPlaneError("host_disconnected", "Host is not connected"),
     );
     this.pendingCatchUps.failAllMatching(
       (pending) => pending.daemonSessionId === daemonSessionId,
-      new ApiError(502, "host_disconnected", "Host is not connected"),
+      terminalDataPlaneError("host_disconnected", "Host is not connected"),
     );
   }
 
@@ -441,7 +461,7 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
   ): void {
     this.pendingAttaches.failAllMatching(
       (pending) => pending.terminalId === terminalId,
-      new ApiError(409, code, message),
+      terminalDataPlaneError(code, message),
     );
   }
 
@@ -450,9 +470,6 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
     this.flow.forgetTerminal(terminalId);
   }
 
-  hasClients(terminalId: string): boolean {
-    return this.clients.hasTerminalClients(terminalId);
-  }
 
   sendSocketMessage(
     socket: TerminalDataPlaneSocket,

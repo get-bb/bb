@@ -9,6 +9,7 @@ function createFixture() {
   let readyState = 0;
   let bufferedAmount = 0;
   let urlProvider: (() => Promise<string>) | undefined;
+  const onMessage = vi.fn();
   const socket: ReconnectingWebSocketLike = {
     get readyState() {
       return readyState;
@@ -40,7 +41,7 @@ function createFixture() {
     createWebSocket,
     hostKey: "host-key",
     logger,
-    onMessage: vi.fn(),
+    onMessage,
     serverHeaders: {},
     urlProvider: async (sessionId) =>
       `ws://localhost:3334/internal/ws/terminals?sessionId=${sessionId}`,
@@ -49,9 +50,13 @@ function createFixture() {
   return {
     connection,
     socket,
+    onMessage,
     url: () => urlProvider?.(),
     setBufferedAmount: (bytes: number) => {
       bufferedAmount = bytes;
+    },
+    message: (data: unknown) => {
+      socket.onmessage?.({ data: JSON.stringify(data) });
     },
     open: () => {
       readyState = 1;
@@ -94,7 +99,7 @@ describe("TerminalDataConnection", () => {
     fixture.connection.close();
   });
 
-  it("replays a pending exit after reconnect without replaying lost output", async () => {
+  it("replays a pending exit after catch-up answers without replaying lost output", async () => {
     const fixture = createFixture();
     expect(new URL((await fixture.url()) ?? "").pathname).toBe(
       "/internal/ws/terminals",
@@ -115,8 +120,31 @@ describe("TerminalDataConnection", () => {
     expect(fixture.connection.sendMessage(output)).toBe(false);
     expect(fixture.connection.sendMessage(exited)).toBe(false);
     fixture.open();
-    expect(fixture.socket.send).toHaveBeenCalledTimes(1);
+    expect(fixture.socket.send).not.toHaveBeenCalled();
+    fixture.message({
+      type: "terminal.attach",
+      terminalId: "term-1",
+      requestId: "catch-up-1",
+      sinceSeq: 1,
+      tailBytes: 1024,
+    });
+    await vi.waitFor(() => {
+      expect(fixture.onMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "terminal.attach", terminalId: "term-1" }),
+      );
+    });
     expect(fixture.socket.send).toHaveBeenCalledWith(JSON.stringify(exited));
+    fixture.message({ type: "terminal.exited.ack", terminalId: "term-1" });
+    fixture.disconnect();
+    fixture.open();
+    fixture.message({
+      type: "terminal.attach",
+      terminalId: "term-1",
+      requestId: "catch-up-2",
+      sinceSeq: 1,
+      tailBytes: 1024,
+    });
+    expect(fixture.socket.send).toHaveBeenCalledTimes(1);
     fixture.connection.close();
   });
   it("reconnects when a data send fails", () => {

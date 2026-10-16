@@ -59,9 +59,12 @@ describe("TerminalClientRegistry", () => {
   it("queues terminal output while a browser socket is above high water", () => {
     vi.useFakeTimers();
     const hub = new TerminalClientRegistry();
+    let bufferedAmount = 2 * 1024 * 1024;
     const socket = {
       ...createMockHubSocket(),
-      raw: { bufferedAmount: 2 * 1024 * 1024 },
+      get bufferedAmount() {
+        return bufferedAmount;
+      },
     };
     hub.registerTerminalClient("term-1", socket);
 
@@ -75,7 +78,7 @@ describe("TerminalClientRegistry", () => {
     });
     expect(socket.messages).toEqual([]);
 
-    socket.raw.bufferedAmount = 0;
+    bufferedAmount = 0;
     vi.advanceTimersByTime(10);
     expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
       {
@@ -100,6 +103,7 @@ describe("TerminalClientRegistry", () => {
       send() {
         throw new Error("socket send failed");
       },
+      bufferedAmount: 0,
     };
     hub.registerTerminalClient("term-1", failing);
     hub.registerTerminalClient("term-1", healthy);
@@ -133,7 +137,7 @@ describe("TerminalClientRegistry", () => {
     const hub = new TerminalClientRegistry();
     const socket = {
       ...createMockHubSocket(),
-      raw: { bufferedAmount: 2 * 1024 * 1024 },
+      bufferedAmount: 2 * 1024 * 1024,
     };
     hub.registerTerminalClient("term-1", socket);
     const dataBase64 = Buffer.alloc(64 * 1024).toString("base64");

@@ -55,6 +55,7 @@ interface FakeDaemonSocket {
 }
 
 interface FakeBrowserSocket {
+  bufferedAmount: number;
   close(code?: number, reason?: string): void;
   send(data: string): void;
   sentMessages: string[];
@@ -233,6 +234,7 @@ function createFakeBrowserSocket(): FakeBrowserSocket {
     sentMessages.push(data);
   };
   return {
+    bufferedAmount: 0,
     close: vi.fn(closeSocket),
     send: vi.fn(sendSocketMessage),
     sentMessages,
@@ -1242,7 +1244,7 @@ describe("public terminal routes", () => {
         closeReason: "process-exit",
       },
     });
-    const retryMessage = await waitForDaemonMessage(fixture.socket, 1);
+    const retryMessage = await waitForDaemonMessage(fixture.socket, 2);
     if (retryMessage.type !== "terminal.attach") {
       throw new Error(
         `Expected terminal.attach, received ${retryMessage.type}`,

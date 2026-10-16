@@ -1,9 +1,10 @@
-import type { HostDaemonTerminalDataServerMessage } from "@bb/host-daemon-contract";
+import type { HostDaemonTerminalDataServerMessage } from "@bb/host-daemon-contract/terminal-data";
 import {
   terminalServerMessageSchema,
   type TerminalSession,
 } from "@bb/server-contract";
 import type {
+  TerminalCatchUpRequest,
   TerminalDataPlane,
   TerminalDataPlaneSocket,
   TerminalDaemonDataMessage,
@@ -13,13 +14,15 @@ import type { TerminalRelaySupervisor } from "../../terminal-relay/terminal-rela
 
 export class RelayTerminalDataPlane implements TerminalDataPlane {
   private readonly ids = new WeakMap<TerminalDataPlaneSocket, string>();
-  private clients = 0;
   private readonly daemonSessions = new Set<string>();
 
   constructor(private readonly relay: TerminalRelaySupervisor) {}
 
   socketForId(socketId: string): TerminalDataPlaneSocket {
     const socket: TerminalDataPlaneSocket = {
+      get bufferedAmount() {
+        return 0;
+      },
       send: (data) => {
         const message: unknown = JSON.parse(data);
         this.relay.send({
@@ -42,12 +45,7 @@ export class RelayTerminalDataPlane implements TerminalDataPlane {
     return id;
   }
 
-  updateClients(count: number): void {
-    this.clients = count;
-  }
-  hasClients(_terminalId: string): boolean {
-    return this.clients > 0;
-  }
+  updateClients(_count: number): void {}
   daemonOpened(sessionId: string): void {
     this.daemonSessions.add(sessionId);
   }
@@ -56,7 +54,6 @@ export class RelayTerminalDataPlane implements TerminalDataPlane {
   }
   reset(): void {
     this.daemonSessions.clear();
-    this.clients = 0;
   }
   sendDaemonDataMessage(
     daemonSessionId: string,
@@ -139,7 +136,7 @@ export class RelayTerminalDataPlane implements TerminalDataPlane {
   broadcastExited(terminalId: string, session: TerminalSession): void {
     this.relay.send({ type: "exited", terminalId, session });
   }
-  requestCatchUp(args: { daemonSessionId: string; terminalId: string }): void {
+  requestCatchUp(args: TerminalCatchUpRequest): void {
     this.relay.send({ type: "request-catch-up", ...args });
   }
   failPendingForDaemonSession(

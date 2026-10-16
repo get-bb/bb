@@ -140,6 +140,10 @@ describe("terminal relay IPC boundary", () => {
           path === "drizzle-orm" ||
           path.startsWith("drizzle-orm/") ||
           path === "@bb/logger" ||
+          path === "@bb/process-utils" ||
+          path === "@bb/domain" ||
+          path === "@bb/host-daemon-contract" ||
+          path.includes("provider-bridge-protocol") ||
           path.startsWith("pino"),
       ),
     ).toEqual([]);
@@ -148,6 +152,8 @@ describe("terminal relay IPC boundary", () => {
         (path) =>
           path.endsWith("/src/server.ts") ||
           path.endsWith("/src/start-server.ts") ||
+          path.endsWith("/process-utils/src/spawn.ts") ||
+          path.endsWith("/process-utils/src/performance-diagnostics.ts") ||
           path.includes("/packages/db/"),
       ),
     ).toEqual([]);

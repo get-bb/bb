@@ -147,10 +147,7 @@ export class TerminalClientRegistry {
 
   private sendOrQueueTerminalPayload(socket: HubSocket, payload: string): void {
     const existingQueue = this.terminalSocketSendQueues.get(socket);
-    if (
-      !existingQueue &&
-      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
-    ) {
+    if (!existingQueue && socket.bufferedAmount <= TERMINAL_SOCKET_HIGH_WATER_BYTES) {
       try {
         socket.send(payload);
         return;
@@ -198,7 +195,7 @@ export class TerminalClientRegistry {
     }
     while (
       queue.payloads.length > 0 &&
-      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
+      socket.bufferedAmount <= TERMINAL_SOCKET_HIGH_WATER_BYTES
     ) {
       const payload = queue.payloads[0];
       if (payload === undefined) {

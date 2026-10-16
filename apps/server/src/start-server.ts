@@ -282,6 +282,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
               case "attach-error":
                 terminalSessions.onAttachError({ ...message });
                 return;
+              case "catch-up-error":
+                terminalSessions.onCatchUpError({ ...message });
+                return;
               case "replay":
                 terminalSessions.onReplay({
                   daemonSessionId: message.daemonSessionId,

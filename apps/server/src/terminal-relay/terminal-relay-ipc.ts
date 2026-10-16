@@ -5,11 +5,11 @@ import {
   terminalRowsSchema,
   terminalSessionCloseReasonSchema,
   terminalSessionStatusSchema,
-} from "@bb/domain";
+} from "@bb/domain/terminal";
 import {
   hostDaemonTerminalDataDaemonMessageSchema,
   hostDaemonTerminalDataServerMessageSchema,
-} from "@bb/host-daemon-contract";
+} from "@bb/host-daemon-contract/terminal-data";
 import {
   terminalOutputChunkSchema,
   terminalClientMessageSchema,
@@ -79,6 +79,16 @@ export const terminalRelayToMainMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("attach-error"),
+      terminalId: id,
+      daemonSessionId: id,
+      requestId: id,
+      code: z.string(),
+      message: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("catch-up-error"),
       terminalId: id,
       daemonSessionId: id,
       requestId: id,
@@ -191,6 +201,7 @@ export const mainToTerminalRelayMessageSchema = z.discriminatedUnion("type", [
       type: z.literal("request-catch-up"),
       terminalId: id,
       daemonSessionId: id,
+      force: z.boolean(),
     })
     .strict(),
   z
