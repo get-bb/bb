@@ -45,6 +45,8 @@ import {
   useRehypeKatex,
   type RehypeKatex,
 } from "./markdown-katex-loader.js";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { tableToCsv, tableToMarkdown } from "@/lib/markdown-clipboard";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
@@ -795,7 +797,10 @@ function MarkdownCodeBlock({
 
   return (
     <div className="my-2 overflow-hidden rounded-md border border-border bg-surface-recessed">
-      <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
+      <div
+        data-clipboard-ignore
+        className="flex items-center justify-between pl-3 pr-1.5 pt-1.5"
+      >
         <span className="font-mono text-xs uppercase text-muted-foreground">
           {language ?? ""}
         </span>
@@ -1020,6 +1025,7 @@ function MarkdownBlockquote({ children }: MarkdownBlockquoteProps) {
 }
 
 function MarkdownTable({ children }: MarkdownTableProps) {
+  const tableRef = useRef<HTMLTableElement>(null);
   const breakoutRef = useMarkdownTableContentWidthVariable();
 
   return (
@@ -1031,14 +1037,38 @@ function MarkdownTable({ children }: MarkdownTableProps) {
         marginInline: `calc((100% - ${MARKDOWN_TABLE_BREAKOUT_WIDTH}) / 2)`,
       }}
     >
-      {}
       <div
         className="w-max max-w-full overflow-x-auto"
         style={{
           minWidth: `min(var(${MARKDOWN_CONTENT_WIDTH_VARIABLE}, 100%), 100%)`,
         }}
       >
-        <table className="border border-border">{children}</table>
+        <div
+          data-clipboard-ignore
+          className="mb-1 flex justify-end gap-3 text-xs text-muted-foreground"
+        >
+          {(["Markdown", "CSV"] as const).map((format) => (
+            <button
+              key={format}
+              type="button"
+              className="cursor-pointer hover:text-foreground"
+              onClick={() => {
+                if (!tableRef.current) return;
+                void copyToClipboardWithToast(
+                  format === "CSV"
+                    ? tableToCsv(tableRef.current)
+                    : tableToMarkdown(tableRef.current),
+                  { successMessage: `Copied as ${format}` },
+                );
+              }}
+            >
+              Copy as {format}
+            </button>
+          ))}
+        </div>
+        <table ref={tableRef} className="border border-border">
+          {children}
+        </table>
       </div>
     </div>
   );
