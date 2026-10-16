@@ -96,10 +96,18 @@ import {
   onTerminalSocketOpen,
 } from "./ws/terminal-protocol.js";
 import {
+  onTerminalDataSocketOpen,
+  onTerminalDataSocketMessage,
+  onTerminalDataSocketClose,
+} from "./ws/terminal-data-protocol.js";
+import {
   createBbAppArtifactService,
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_TERMINAL_DATA_PATH,
+} from "@bb/host-daemon-contract";
 import {
   createPluginCatalogService,
   type PluginCatalogService,
@@ -727,7 +735,10 @@ export function createApp(
     if (normalizedPath === "/internal/hosts/enroll") {
       return next();
     }
-    if (normalizedPath === "/internal/ws") {
+    if (
+      normalizedPath === "/internal/ws" ||
+      normalizedPath === HOST_DAEMON_TERMINAL_DATA_PATH
+    ) {
       return next();
     }
     if (normalizedPath === INTERNAL_SERVER_MOVE_PENDING_PATH) {
@@ -1028,6 +1039,32 @@ export function createApp(
             serverMove,
           ),
         onClose: () => onDaemonSocketClose(deps, websocketContext.sessionId),
+      };
+    }),
+  );
+
+  app.get(
+    HOST_DAEMON_TERMINAL_DATA_PATH,
+    upgradeWebSocket(async (context) => {
+      const websocketContext = await validateDaemonWebSocket(deps, {
+        authorizationHeader: context.req.header("authorization"),
+        protocolHeader: context.req.header("sec-websocket-protocol"),
+        sessionId: context.req.query("sessionId") ?? null,
+      });
+      return {
+        onOpen: (_event, socket) =>
+          onTerminalDataSocketOpen(deps, { ...websocketContext, socket }),
+        onMessage: (event, socket) =>
+          onTerminalDataSocketMessage(deps, {
+            raw: event.data,
+            sessionId: websocketContext.sessionId,
+            socket,
+          }),
+        onClose: (_event, socket) =>
+          onTerminalDataSocketClose(deps, {
+            sessionId: websocketContext.sessionId,
+            socket,
+          }),
       };
     }),
   );

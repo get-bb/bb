@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HostDaemonServerWsMessage } from "@bb/host-daemon-contract";
+import type { HostDaemonTerminalDataServerMessage } from "@bb/host-daemon-contract";
 import type { TerminalSession } from "@bb/server-contract";
 import { InProcessTerminalDataPlane } from "../../../src/services/terminals/terminal-data-plane.js";
 import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
@@ -23,8 +23,11 @@ const session: TerminalSession = {
 
 function setup() {
   const host = {
-    sendDaemonSessionMessage: vi.fn(
-      (_daemonSessionId: string, _message: HostDaemonServerWsMessage) => true,
+    sendDaemonDataMessage: vi.fn(
+      (
+        _daemonSessionId: string,
+        _message: HostDaemonTerminalDataServerMessage,
+      ) => true,
     ),
     onBrowserInput: vi.fn(),
     onBrowserResize: vi.fn(),
@@ -57,7 +60,7 @@ describe("InProcessTerminalDataPlane", () => {
       sinceSeq: 4,
       outputAcks: false,
     });
-    const attach = host.sendDaemonSessionMessage.mock.calls[0]?.[1];
+    const attach = host.sendDaemonDataMessage.mock.calls[0]?.[1];
     expect(attach).toMatchObject({
       type: "terminal.attach",
       terminalId: session.id,
@@ -117,7 +120,7 @@ describe("InProcessTerminalDataPlane", () => {
       terminalId: session.id,
     });
     send("daemon-1", 6);
-    const attach = host.sendDaemonSessionMessage.mock.calls[0]?.[1];
+    const attach = host.sendDaemonDataMessage.mock.calls[0]?.[1];
     if (!attach || attach.type !== "terminal.attach")
       throw new Error("Missing catch-up request");
     plane.handleDaemonDataMessage({
@@ -162,7 +165,7 @@ describe("InProcessTerminalDataPlane", () => {
       sinceSeq: 0,
       outputAcks: false,
     });
-    for (const call of host.sendDaemonSessionMessage.mock.calls) {
+    for (const call of host.sendDaemonDataMessage.mock.calls) {
       const attach = call[1];
       if (attach.type !== "terminal.attach")
         throw new Error("Missing attach request");

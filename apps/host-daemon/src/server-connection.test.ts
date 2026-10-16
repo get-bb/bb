@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import type { HostDaemonSessionOpenResponse } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
@@ -598,100 +597,6 @@ describe("ServerConnection", () => {
         }),
         "Server heartbeat acknowledgements stopped; reconnecting",
       );
-    } finally {
-      await connection.shutdown();
-    }
-  });
-
-  it("queues output above high water and flushes it before lifecycle messages", async () => {
-    vi.useFakeTimers();
-    const { connection, webSocket } = createConnectionFixture();
-    try {
-      await connection.start();
-      const socket = webSocket.sockets[0];
-      if (!socket) {
-        throw new Error("Expected test socket");
-      }
-      webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
-      const output = {
-        type: "terminal.output" as const,
-        terminalId: "term-1",
-        chunk: {
-          seq: 0,
-          dataBase64: Buffer.from("hello").toString("base64"),
-        },
-      };
-      const exited = {
-        type: "terminal.exited" as const,
-        terminalId: "term-1",
-        exitCode: 0,
-        closeReason: "user" as const,
-      };
-
-      expect(connection.sendMessage(output)).toBe(true);
-      expect(socket.send).not.toHaveBeenCalled();
-
-      expect(connection.sendMessage(exited)).toBe(true);
-      expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify(output));
-      expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify(exited));
-    } finally {
-      await connection.shutdown();
-    }
-  });
-
-  it("delivers a terminal exit that happened while disconnected once the socket reopens", async () => {
-    const { connection, webSocket } = createConnectionFixture({
-      sessionIds: ["first", "second"],
-    });
-    try {
-      await connection.start();
-      const socket = webSocket.sockets[0];
-      if (!socket) {
-        throw new Error("Expected test socket");
-      }
-      const exited = {
-        type: "terminal.exited" as const,
-        terminalId: "term-1",
-        exitCode: 0,
-        closeReason: "process-exit" as const,
-      };
-
-      socket.reconnect();
-      expect(connection.sendMessage(exited)).toBe(false);
-      expect(socket.send).not.toHaveBeenCalled();
-
-      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
-      await vi.waitFor(() =>
-        expect(socket.send).toHaveBeenCalledWith(JSON.stringify(exited)),
-      );
-    } finally {
-      await connection.shutdown();
-    }
-  });
-
-  it("closes the connection when a terminal websocket send throws", async () => {
-    const { connection, webSocket } = createConnectionFixture();
-    try {
-      await connection.start();
-      const socket = webSocket.sockets[0];
-      if (!socket) {
-        throw new Error("Expected test socket");
-      }
-      vi.mocked(socket.send).mockImplementation(() => {
-        throw new Error("send failed");
-      });
-
-      expect(
-        connection.sendMessage({
-          type: "terminal.output",
-          terminalId: "term-1",
-          chunk: {
-            seq: 0,
-            dataBase64: Buffer.from("hello").toString("base64"),
-          },
-        }),
-      ).toBe(false);
-      expect(socket.close).toHaveBeenCalledWith(1013, "send-failed");
     } finally {
       await connection.shutdown();
     }

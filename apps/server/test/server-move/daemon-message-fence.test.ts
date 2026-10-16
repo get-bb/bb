@@ -23,10 +23,7 @@ const SNAPSHOT_FENCE_CLASSIFICATION: Record<
   "plugin-host.worker-exited": "fenced",
   "server_move.progress": "unfenced",
   "terminal.error": "unfenced",
-  "terminal.exited": "fenced",
   "terminal.opened": "fenced",
-  "terminal.output": "unfenced",
-  "terminal.replay": "unfenced",
 };
 
 interface MessageSchemaNode {

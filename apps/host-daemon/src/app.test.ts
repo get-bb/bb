@@ -207,7 +207,7 @@ function createFetchRecorder(
 }
 
 function createOpeningWebSocket(
-  onCreate?: (socket: ReconnectingWebSocketLike) => void,
+  onCreate?: (socket: ReconnectingWebSocketLike, path: string) => void,
 ): CreateReconnectingWebSocket {
   return (urlProvider) => {
     let readyState = 0;
@@ -226,7 +226,8 @@ function createOpeningWebSocket(
       reconnect: vi.fn(),
     };
     const openSocket = async () => {
-      await urlProvider();
+      const url = await urlProvider();
+      onCreate?.(socket, new URL(url).pathname);
       queueMicrotask(() => {
         readyState = 1;
         socket.onopen?.({ type: "open" });
@@ -237,7 +238,6 @@ function createOpeningWebSocket(
       socket.onclose?.({ code: 1000, reason: "test-reconnect" });
       void openSocket();
     });
-    onCreate?.(socket);
     void openSocket();
     return socket;
   };
@@ -431,8 +431,8 @@ describe("createHostDaemonApp", () => {
         ],
       },
       {
-        createWebSocket: createOpeningWebSocket((created) => {
-          socket = created;
+        createWebSocket: createOpeningWebSocket((created, path) => {
+          if (path === "/internal/ws") socket = created;
         }),
       },
     );
@@ -476,8 +476,8 @@ describe("createHostDaemonApp", () => {
     const { app, dataDir } = await createAppFixture(
       {},
       {
-        createWebSocket: createOpeningWebSocket((created) => {
-          socket = created;
+        createWebSocket: createOpeningWebSocket((created, path) => {
+          if (path === "/internal/ws") socket = created;
         }),
         exitProcess,
       },
@@ -495,6 +495,54 @@ describe("createHostDaemonApp", () => {
       JSON.stringify({ type: "machine.shutdown-ack" }),
     );
     expect(exitProcess).toHaveBeenCalledWith(0);
+  });
+
+  it("reconnects terminal data without closing the control socket", async () => {
+    const sockets = new Map<string, ReconnectingWebSocketLike>();
+    const { app } = await createAppFixture(
+      {},
+      {
+        createWebSocket: createOpeningWebSocket((socket, path) => {
+          sockets.set(path, socket);
+        }),
+      },
+    );
+    try {
+      await app.daemon.start();
+      await vi.waitFor(() =>
+        expect(sockets.has("/internal/ws/terminals")).toBe(true),
+      );
+      const control = sockets.get("/internal/ws");
+      const data = sockets.get("/internal/ws/terminals");
+      if (!control || !data)
+        throw new Error("Expected control and data sockets");
+      data.onmessage?.({
+        data: JSON.stringify({
+          type: "terminal.attach",
+          requestId: "attach-1",
+          terminalId: "missing-terminal",
+          sinceSeq: 0,
+          tailBytes: 1024,
+        }),
+      });
+      await vi.waitFor(() =>
+        expect(data.send).toHaveBeenCalledWith(
+          JSON.stringify({
+            type: "terminal.error",
+            requestId: "attach-1",
+            terminalId: "missing-terminal",
+            code: "terminal_not_found",
+            message: "Terminal session is not open",
+          }),
+        ),
+      );
+      data.reconnect?.();
+      await vi.waitFor(() => expect(data.readyState).toBe(1));
+      expect(control.readyState).toBe(1);
+      expect(control.close).not.toHaveBeenCalled();
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
   });
 
   it("closes the machine authentication proxy during daemon shutdown", async () => {

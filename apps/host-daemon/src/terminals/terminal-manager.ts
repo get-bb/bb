@@ -6,7 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import { spawn as spawnPty } from "node-pty";
 import type { TerminalSessionCloseReason } from "@bb/domain";
-import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
+  HostDaemonTerminalDataServerMessage,
+} from "@bb/host-daemon-contract";
 import { HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS } from "@bb/host-daemon-contract/protocol";
 import {
   killProcessGroup,
@@ -89,7 +93,7 @@ type TerminalOpenMessage = Extract<
   { type: "terminal.open" }
 >;
 type TerminalAttachMessage = Extract<
-  HostDaemonServerTerminalMessage,
+  HostDaemonTerminalDataServerMessage,
   { type: "terminal.attach" }
 >;
 
@@ -103,12 +107,13 @@ export interface TerminalManagerOptions {
   resolveShell?: ResolveTerminalShell;
   runtimeManager: RuntimeManager;
   sendMessage: (message: HostDaemonDaemonWsMessage) => boolean;
+  sendDataMessage: (message: HostDaemonTerminalDataDaemonMessage) => boolean;
 }
 
 interface ScrollbackEntry {
   byteLength: number;
   chunk: Extract<
-    HostDaemonDaemonWsMessage,
+    HostDaemonTerminalDataDaemonMessage,
     { type: "terminal.output" }
   >["chunk"];
 }
@@ -166,6 +171,7 @@ interface PrimaryDeviceAttributesQueryResult {
 }
 
 interface SendTerminalErrorArgs {
+  channel: "control" | "data";
   code: string;
   message: string;
   requestId: string;
@@ -533,46 +539,50 @@ export class TerminalManager {
     }
   }
 
-  async handleMessage(message: HostDaemonServerTerminalMessage): Promise<void> {
-    await this.runTerminalOperation({
-      operation: () => this.handleSerializedMessage(message),
-      terminalId: message.terminalId,
-    });
-  }
-
-  private async handleSerializedMessage(
+  async handleControlMessage(
     message: HostDaemonServerTerminalMessage,
   ): Promise<void> {
-    switch (message.type) {
-      case "terminal.open":
-        await this.openTerminal(message);
-        return;
-      case "terminal.attach":
-        this.attachTerminal(message);
-        return;
-      case "terminal.input":
-        this.writeTerminalInput(message.terminalId, message.dataBase64);
-        return;
-      case "terminal.resize":
-        this.resizeTerminal({
-          cols: message.cols,
-          rows: message.rows,
-          terminalId: message.terminalId,
-        });
-        return;
-      case "terminal.close":
+    await this.runTerminalOperation({
+      operation: () => {
+        if (message.type === "terminal.open") return this.openTerminal(message);
         this.closeTerminal({
           reason: message.reason,
           terminalId: message.terminalId,
         });
-        return;
-      case "terminal.flow-control":
-        this.setOutputFlowControl(message.terminalId, message.enabled);
-        return;
-      case "terminal.ack":
-        this.acknowledgeOutput(message.terminalId, message.nextSeq);
-        return;
-    }
+      },
+      terminalId: message.terminalId,
+    });
+  }
+
+  async handleDataMessage(
+    message: HostDaemonTerminalDataServerMessage,
+  ): Promise<void> {
+    await this.runTerminalOperation({
+      operation: () => {
+        switch (message.type) {
+          case "terminal.attach":
+            this.attachTerminal(message);
+            return;
+          case "terminal.input":
+            this.writeTerminalInput(message.terminalId, message.dataBase64);
+            return;
+          case "terminal.resize":
+            this.resizeTerminal({
+              cols: message.cols,
+              rows: message.rows,
+              terminalId: message.terminalId,
+            });
+            return;
+          case "terminal.flow-control":
+            this.setOutputFlowControl(message.terminalId, message.enabled);
+            return;
+          case "terminal.ack":
+            this.acknowledgeOutput(message.terminalId, message.nextSeq);
+            return;
+        }
+      },
+      terminalId: message.terminalId,
+    });
   }
 
   async shutdownAll(
@@ -595,6 +605,7 @@ export class TerminalManager {
   private async openTerminal(message: TerminalOpenMessage): Promise<void> {
     if (this.sessions.has(message.terminalId)) {
       this.sendTerminalError({
+        channel: "control",
         code: "terminal_exists",
         message: "Terminal session is already open",
         requestId: message.requestId,
@@ -687,6 +698,7 @@ export class TerminalManager {
           ? error.code
           : "terminal_open_failed";
       this.sendTerminalError({
+        channel: "control",
         code,
         message: error instanceof Error ? error.message : String(error),
         requestId: message.requestId,
@@ -743,6 +755,7 @@ export class TerminalManager {
     }
 
     this.sendTerminalError({
+      channel: "data",
       code: "terminal_not_found",
       message: "Terminal session is not open",
       requestId: message.requestId,
@@ -765,7 +778,7 @@ export class TerminalManager {
       }
     }
     const chunks = replayEntries.map((entry) => entry.chunk);
-    this.options.sendMessage({
+    this.options.sendDataMessage({
       type: "terminal.replay",
       requestId: args.message.requestId,
       terminalId: args.message.terminalId,
@@ -799,7 +812,7 @@ export class TerminalManager {
   private closeTerminal(args: CloseTerminalArgs): void {
     const session = this.sessions.get(args.terminalId);
     if (!session) {
-      this.options.sendMessage({
+      this.options.sendDataMessage({
         type: "terminal.exited",
         terminalId: args.terminalId,
         exitCode: null,
@@ -978,7 +991,7 @@ export class TerminalManager {
       session.scrollbackBytes += entry.byteLength;
       this.pruneScrollback(session);
       this.recordUnacknowledgedOutput(session, entry);
-      this.options.sendMessage({
+      this.options.sendDataMessage({
         type: "terminal.output",
         terminalId: session.terminalId,
         chunk,
@@ -1057,7 +1070,10 @@ export class TerminalManager {
     }, PAUSED_PROCESS_EXIT_POLL_MS);
   }
 
-  private resumeOutput(session: TerminalSession, flow: TerminalOutputFlow): void {
+  private resumeOutput(
+    session: TerminalSession,
+    flow: TerminalOutputFlow,
+  ): void {
     if (flow.pausedExitPoll === null) {
       return;
     }
@@ -1127,7 +1143,7 @@ export class TerminalManager {
         "Failed to dispose terminal PTY",
       );
     }
-    this.options.sendMessage({
+    this.options.sendDataMessage({
       type: "terminal.exited",
       terminalId: args.session.terminalId,
       exitCode: args.exitCode,
@@ -1186,7 +1202,11 @@ export class TerminalManager {
   }
 
   private sendTerminalError(args: SendTerminalErrorArgs): void {
-    this.options.sendMessage({
+    const send =
+      args.channel === "control"
+        ? this.options.sendMessage
+        : this.options.sendDataMessage;
+    send({
       type: "terminal.error",
       requestId: args.requestId,
       terminalId: args.terminalId,

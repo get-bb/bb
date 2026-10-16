@@ -1,9 +1,9 @@
-import type { HostDaemonServerWsMessage } from "@bb/host-daemon-contract";
+import type { HostDaemonTerminalDataServerMessage } from "@bb/host-daemon-contract";
 
 const DEFAULT_OUTPUT_ACK_STALL_MS = 3_000;
 
 export type TerminalOutputFlowDaemonMessage = Extract<
-  HostDaemonServerWsMessage,
+  HostDaemonTerminalDataServerMessage,
   { type: "terminal.ack" | "terminal.flow-control" }
 >;
 
@@ -79,11 +79,7 @@ export class TerminalOutputFlowControl {
   acknowledge(terminalId: string, client: object, nextSeq: number): void {
     const flow = this.flows.get(terminalId);
     const flowClient = flow?.clients.get(client);
-    if (
-      !flow ||
-      !flowClient ||
-      nextSeq <= flowClient.acknowledgedNextSeq
-    ) {
+    if (!flow || !flowClient || nextSeq <= flowClient.acknowledgedNextSeq) {
       return;
     }
     flowClient.acknowledgedNextSeq = nextSeq;
@@ -124,10 +120,7 @@ export class TerminalOutputFlowControl {
         flowClient.lastProgressAt = now;
       }
     }
-    if (
-      flow.enabledDaemonSessionId === null &&
-      hasGoverningClient(flow)
-    ) {
+    if (flow.enabledDaemonSessionId === null && hasGoverningClient(flow)) {
       flow.enabledDaemonSessionId = daemonSessionId;
       flow.sentAckNextSeq = flow.receivedNextSeq;
       this.options.sendDaemonMessage(daemonSessionId, {

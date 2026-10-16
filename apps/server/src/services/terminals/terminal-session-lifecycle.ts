@@ -15,6 +15,8 @@ import type { TerminalSessionCloseReason } from "@bb/domain";
 import type {
   HostDaemonDaemonWsMessage,
   HostDaemonServerWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
+  HostDaemonTerminalDataServerMessage,
 } from "@bb/host-daemon-contract";
 import { HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS } from "@bb/host-daemon-contract/protocol";
 import type {
@@ -85,11 +87,11 @@ type TerminalOpenedMessage = Extract<
   { type: "terminal.opened" }
 >;
 type TerminalReplayMessage = Extract<
-  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
   { type: "terminal.replay" }
 >;
 type TerminalOutputMessage = Extract<
-  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
   { type: "terminal.output" }
 >;
 type TerminalApiErrorStatus = ConstructorParameters<typeof ApiError>[0];
@@ -1088,7 +1090,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       );
     }
 
-    const sent = this.options.hub.sendDaemonSessionMessage(
+    const sent = this.options.hub.sendDaemonDataMessage(
       current.daemonSessionId,
       {
         type: "terminal.input",
@@ -1097,9 +1099,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       },
     );
     if (!sent) {
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
+      this.onDaemonSendFailed(current.daemonSessionId);
       throw new ApiError(502, "host_disconnected", "Host is not connected");
     }
     if (args.payload.dataBase64.length > 0)
@@ -1141,7 +1141,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       );
     }
 
-    const sent = this.options.hub.sendDaemonSessionMessage(
+    const sent = this.options.hub.sendDaemonDataMessage(
       current.daemonSessionId,
       {
         type: "terminal.resize",
@@ -1151,9 +1151,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       },
     );
     if (!sent) {
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
+      this.onDaemonSendFailed(current.daemonSessionId);
       throw new ApiError(502, "host_disconnected", "Host is not connected");
     }
     return toTerminalSession(session);
@@ -1255,21 +1253,16 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       rpcKey: pendingReplayKey,
       terminalId: args.session.id,
     }).promise;
-    const sent = this.options.hub.sendDaemonSessionMessage(
-      args.daemonSessionId,
-      {
-        type: "terminal.attach",
-        requestId,
-        terminalId: args.session.id,
-        sinceSeq: args.query.sinceSeq ?? 0,
-        tailBytes: args.query.tailBytes ?? TERMINAL_SCROLLBACK_MAX_BYTES,
-      },
-    );
+    const sent = this.options.hub.sendDaemonDataMessage(args.daemonSessionId, {
+      type: "terminal.attach",
+      requestId,
+      terminalId: args.session.id,
+      sinceSeq: args.query.sinceSeq ?? 0,
+      tailBytes: args.query.tailBytes ?? TERMINAL_SCROLLBACK_MAX_BYTES,
+    });
     if (!sent) {
       this.pendingOutputReads.cancel(pendingReplayKey);
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: args.daemonSessionId,
-      });
+      this.onDaemonSendFailed(args.daemonSessionId);
       throw new ApiError(502, "host_disconnected", "Host is not connected");
     }
 
@@ -1477,15 +1470,42 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
         );
         return;
       case "terminal.error":
-      case "terminal.exited":
-      case "terminal.output":
-      case "terminal.replay":
-        this.dataPlane.handleDaemonDataMessage({
+        this.onAttachError({
+          code: args.message.code,
           daemonSessionId: args.sessionId,
-          message: args.message,
+          message: args.message.message,
+          requestId: args.message.requestId,
+          terminalId: args.message.terminalId,
         });
         return;
     }
+  }
+
+  handleDaemonDataMessage(args: {
+    sessionId: string;
+    message: HostDaemonTerminalDataDaemonMessage;
+  }): void {
+    this.dataPlane.handleDaemonDataMessage({
+      daemonSessionId: args.sessionId,
+      message: args.message,
+    });
+  }
+
+  onDaemonDataSocketOpened(daemonSessionId: string): void {
+    const sessions = listTerminalSessions(this.options.db, {
+      scope: { kind: "daemon", daemonSessionId, statuses: ["running"] },
+      visible: false,
+    });
+    for (const session of sessions) {
+      this.dataPlane.requestCatchUp({
+        daemonSessionId,
+        terminalId: session.id,
+      });
+    }
+  }
+
+  onDaemonDataSocketClosed(sessionId: string): void {
+    this.dataPlane.failPendingForDaemonSession(sessionId, "daemon-disconnect");
   }
 
   handleDaemonSessionClosed(args: HandleDaemonSessionClosedArgs): void {
@@ -1614,7 +1634,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       this.notifyTerminalSessionChanged(markedInput);
       this.dataPlane.broadcastSessionUpdated(markedInput.id, session);
     }
-    const sent = this.sendDaemonSessionMessage(current.daemonSessionId, {
+    const sent = this.sendDaemonDataMessage(current.daemonSessionId, {
       type: "terminal.input",
       terminalId: current.id,
       dataBase64: args.dataBase64,
@@ -1625,9 +1645,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
         code: "host_disconnected",
         message: "Host is not connected",
       });
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
+      this.onDaemonSendFailed(current.daemonSessionId);
     } else if (args.dataBase64.length > 0) {
       emitPluginTerminalInput(toTerminalSession(markedInput ?? current));
     }
@@ -1655,7 +1673,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
         this.dataPlane.broadcastSessionUpdated(resized.id, session);
       }
     }
-    const sent = this.sendDaemonSessionMessage(current.daemonSessionId, {
+    const sent = this.sendDaemonDataMessage(current.daemonSessionId, {
       type: "terminal.resize",
       terminalId: current.id,
       cols: args.cols,
@@ -1667,9 +1685,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
         code: "host_disconnected",
         message: "Host is not connected",
       });
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
+      this.onDaemonSendFailed(current.daemonSessionId);
     }
   }
 
@@ -1864,15 +1880,17 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
     });
   }
 
-  sendDaemonSessionMessage(
+  sendDaemonDataMessage(
     daemonSessionId: string,
-    message: HostDaemonServerWsMessage,
+    message: HostDaemonTerminalDataServerMessage,
   ): boolean {
-    return this.options.hub.sendDaemonSessionMessage(daemonSessionId, message);
+    return this.options.hub.sendDaemonDataMessage(daemonSessionId, message);
   }
 
   onDaemonSendFailed(daemonSessionId: string): void {
-    this.disconnectDaemonSessionTerminals({ daemonSessionId });
+    if (!this.options.hub.hasDaemonSession(daemonSessionId)) {
+      this.disconnectDaemonSessionTerminals({ daemonSessionId });
+    }
   }
 
   onAttachError(args: {

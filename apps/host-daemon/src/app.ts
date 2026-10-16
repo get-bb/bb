@@ -17,7 +17,10 @@ import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
-import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
+} from "@bb/host-daemon-contract";
 import {
   RuntimeManager,
   type RuntimeManagerReapIdleProviderSessionsArgs,
@@ -27,6 +30,7 @@ import {
 import { WatchManager } from "./watch-manager.js";
 import { ConnectTunnelClient } from "./connect-tunnel/index.js";
 import { TerminalManager } from "./terminals/terminal-manager.js";
+import { TerminalDataConnection } from "./terminal-data-connection.js";
 import {
   createServerClient,
   ServerResponseError,
@@ -430,6 +434,9 @@ export async function createHostDaemonApp(
   });
 
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
+  let sendTerminalDataMessage = (
+    _message: HostDaemonTerminalDataDaemonMessage,
+  ) => false;
   function logHostWatchError(fields: Record<string, string>): void {
     options.logger.warn(
       fields,
@@ -691,6 +698,7 @@ export async function createHostDaemonApp(
     logger: options.logger,
     runtimeManager,
     sendMessage: (message) => sendServerMessage(message),
+    sendDataMessage: (message) => sendTerminalDataMessage(message),
   });
   const pluginHostManager = new PluginHostManager({
     dataDir: options.dataDir,
@@ -843,8 +851,10 @@ export async function createHostDaemonApp(
         ports: message.ports,
       });
     },
-    onTerminalMessage: (message) => terminalManager.handleMessage(message),
+    onTerminalMessage: (message) =>
+      terminalManager.handleControlMessage(message),
     onSessionOpened: async (session) => {
+      terminalDataConnection.connect(session.sessionId);
       sessionState.value = session.sessionId;
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
       await pluginHostManager.reconcileGenerations(
@@ -880,12 +890,24 @@ export async function createHostDaemonApp(
       sessionState.value = session?.sessionId ?? null;
       desktopBrowserBroker.setConnected(session !== null);
       if (session === null) {
+        terminalDataConnection.close();
         terminalManager.releaseOutputFlowControl();
         clearInteractiveInterruptRetry();
         interactiveInterruptRetryDelayMs = INTERACTIVE_INTERRUPT_RETRY_DELAY_MS;
       }
     },
   });
+  const terminalDataConnection = new TerminalDataConnection({
+    createWebSocket: options.createWebSocket,
+    hostKey: options.hostKey,
+    logger: options.logger,
+    onMessage: (message) => terminalManager.handleDataMessage(message),
+    serverHeaders: options.serverHeaders ?? {},
+    urlProvider: async (sessionId) =>
+      connection.buildTerminalDataWebSocketUrl(sessionId),
+  });
+  sendTerminalDataMessage = (message) =>
+    terminalDataConnection.sendMessage(message);
   sendServerMessage = (message) => connection.sendMessage(message);
   handleServerSessionInvalidated = (args) =>
     connection.handleSessionInvalidated(args);
@@ -943,6 +965,7 @@ export async function createHostDaemonApp(
       await eventSink.flush();
       await eventSink.dispose();
       await connection.shutdown();
+      terminalDataConnection.close();
       machineEnvironment.replace([]);
     },
     onStart: async () => {

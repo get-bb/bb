@@ -3,6 +3,7 @@ export * from "./local-state.js";
 export * from "./local.js";
 export * from "./server-move.js";
 export * from "./session.js";
+export * from "./terminal-data.js";
 
 export { typedRoutes } from "@bb/hono-typed-routes";
 

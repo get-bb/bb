@@ -1,14 +1,14 @@
 import type { TerminalSessionCloseReason } from "@bb/domain";
 import type {
-  HostDaemonServerWsMessage,
-  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataServerMessage,
+  HostDaemonTerminalDataDaemonMessage,
 } from "@bb/host-daemon-contract";
 import type { TerminalDataPlaneSocket } from "./terminal-data-plane.js";
 
 export interface TerminalDataPlaneHost {
-  sendDaemonSessionMessage(
+  sendDaemonDataMessage(
     daemonSessionId: string,
-    message: HostDaemonServerWsMessage,
+    message: HostDaemonTerminalDataServerMessage,
   ): boolean;
   onBrowserInput(args: {
     dataBase64: string;
@@ -36,7 +36,10 @@ export interface TerminalDataPlaneHost {
   }): void;
   onReplay(args: {
     daemonSessionId: string;
-    message: Extract<HostDaemonDaemonWsMessage, { type: "terminal.replay" }>;
+    message: Extract<
+      HostDaemonTerminalDataDaemonMessage,
+      { type: "terminal.replay" }
+    >;
   }): void;
   onDaemonSendFailed(daemonSessionId: string): void;
 }

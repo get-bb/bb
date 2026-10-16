@@ -35,6 +35,8 @@ import {
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
+  hostDaemonTerminalDataDaemonMessageSchema,
+  hostDaemonTerminalDataServerMessageSchema,
   threadStopCommandSchema,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
@@ -1256,7 +1258,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(241);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(242);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -3762,7 +3764,7 @@ describe("host-daemon session schemas", () => {
       }).success,
     ).toBe(true);
     expect(
-      hostDaemonServerWsMessageSchema.safeParse({
+      hostDaemonTerminalDataServerMessageSchema.safeParse({
         type: "terminal.resize",
         terminalId: "term_123",
         cols: TERMINAL_COLS_MAX + 1,
@@ -3793,7 +3795,7 @@ describe("host-daemon session schemas", () => {
     );
 
     expect(
-      hostDaemonServerWsMessageSchema.safeParse({
+      hostDaemonTerminalDataServerMessageSchema.safeParse({
         type: "terminal.attach",
         requestId: "request-1",
         terminalId: "term_123",
@@ -3802,7 +3804,7 @@ describe("host-daemon session schemas", () => {
       }).success,
     ).toBe(true);
     expect(
-      hostDaemonServerWsMessageSchema.safeParse({
+      hostDaemonTerminalDataServerMessageSchema.safeParse({
         type: "terminal.attach",
         requestId: "request-1",
         terminalId: "term_123",
@@ -3810,7 +3812,7 @@ describe("host-daemon session schemas", () => {
       }).success,
     ).toBe(false);
     expect(
-      hostDaemonServerWsMessageSchema.safeParse({
+      hostDaemonTerminalDataServerMessageSchema.safeParse({
         type: "terminal.input",
         terminalId: "term_123",
         dataBase64: maxPayload,
@@ -3823,7 +3825,7 @@ describe("host-daemon session schemas", () => {
       }).success,
     ).toBe(true);
     expect(
-      hostDaemonDaemonWsMessageSchema.safeParse({
+      hostDaemonTerminalDataDaemonMessageSchema.safeParse({
         type: "terminal.replay",
         requestId: "request-1",
         terminalId: "term_123",
@@ -3838,7 +3840,7 @@ describe("host-daemon session schemas", () => {
       }).success,
     ).toBe(false);
     expect(
-      hostDaemonServerWsMessageSchema.safeParse({
+      hostDaemonTerminalDataServerMessageSchema.safeParse({
         type: "terminal.input",
         terminalId: "term_123",
         dataBase64: "not base64!",
@@ -3850,6 +3852,20 @@ describe("host-daemon session schemas", () => {
         dataBase64: oversizedEncodedPayload,
       }).success,
     ).toBe(false);
+  });
+
+  it("separates terminal output from daemon control messages", () => {
+    const output = {
+      type: "terminal.output",
+      terminalId: "term_123",
+      chunk: { seq: 0, dataBase64: "YQ==" },
+    };
+    expect(hostDaemonDaemonWsMessageSchema.safeParse(output).success).toBe(
+      false,
+    );
+    expect(hostDaemonTerminalDataDaemonMessageSchema.parse(output)).toEqual(
+      output,
+    );
   });
 });
 

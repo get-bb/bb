@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
-import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
+} from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import {
   createDeferredPromise,
@@ -26,6 +29,9 @@ import {
 } from "./terminal-manager.js";
 
 const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
+type TerminalTestMessage =
+  | HostDaemonDaemonWsMessage
+  | HostDaemonTerminalDataDaemonMessage;
 
 interface ResizeCall {
   cols: number;
@@ -40,18 +46,20 @@ interface SpawnedTerminal {
 interface TerminalManagerHarness {
   adapter: FakeTerminalPtyAdapter;
   manager: TerminalManager;
-  messages: HostDaemonDaemonWsMessage[];
+  messages: TerminalTestMessage[];
+  controlMessages: HostDaemonDaemonWsMessage[];
+  dataMessages: HostDaemonTerminalDataDaemonMessage[];
   runtime: AgentRuntime;
   runtimeManager: RuntimeManager;
   workspace: HostWorkspace;
 }
 
 interface WaitForOutputArgs {
-  messages: HostDaemonDaemonWsMessage[];
+  messages: TerminalTestMessage[];
   text: string;
 }
 
-type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
+type TerminalMessageObserver = (message: TerminalTestMessage) => void;
 
 interface CreateHarnessOptions {
   closeGracePeriodMs?: number;
@@ -72,7 +80,7 @@ interface AttachTerminalArgs {
 }
 
 type TerminalOutputChunk = Extract<
-  HostDaemonDaemonWsMessage,
+  HostDaemonTerminalDataDaemonMessage,
   { type: "terminal.output" }
 >["chunk"];
 
@@ -312,7 +320,9 @@ function createHarnessWithOptions(
   args: CreateHarnessOptions,
 ): TerminalManagerHarness {
   const adapter = new FakeTerminalPtyAdapter();
-  const messages: HostDaemonDaemonWsMessage[] = [];
+  const messages: TerminalTestMessage[] = [];
+  const controlMessages: HostDaemonDaemonWsMessage[] = [];
+  const dataMessages: HostDaemonTerminalDataDaemonMessage[] = [];
   const runtime = createFakeRuntime();
   const workspace = createFakeWorkspace("/tmp/terminal-workspace");
   const runtimeManager = new RuntimeManager({
@@ -332,6 +342,13 @@ function createHarnessWithOptions(
     resolveShell: args.resolveShell,
     runtimeManager,
     sendMessage: (message) => {
+      controlMessages.push(message);
+      messages.push(message);
+      args.onSendMessage(message);
+      return true;
+    },
+    sendDataMessage: (message) => {
+      dataMessages.push(message);
       messages.push(message);
       args.onSendMessage(message);
       return true;
@@ -339,7 +356,9 @@ function createHarnessWithOptions(
   });
 
   return {
+    controlMessages,
     adapter,
+    dataMessages,
     manager,
     messages,
     runtime,
@@ -348,7 +367,7 @@ function createHarnessWithOptions(
   };
 }
 
-function collectTerminalOutput(messages: HostDaemonDaemonWsMessage[]): string {
+function collectTerminalOutput(messages: TerminalTestMessage[]): string {
   return messages
     .flatMap((message) =>
       message.type === "terminal.output"
@@ -378,7 +397,7 @@ async function openTerminal(
   harness: TerminalManagerHarness,
   contributedEnv: import("@bb/host-daemon-contract").HostDaemonContributedEnvEntry[] = [],
 ): Promise<FakeTerminalPty> {
-  await harness.manager.handleMessage({
+  await harness.manager.handleControlMessage({
     type: "terminal.open",
     contributedEnv,
     requestId: "open-1",
@@ -407,7 +426,7 @@ async function openTerminalWithId(
   terminalId: string,
 ): Promise<FakeTerminalPty> {
   const spawnedBefore = harness.adapter.spawned.length;
-  await harness.manager.handleMessage({
+  await harness.manager.handleControlMessage({
     type: "terminal.open",
     contributedEnv: [],
     requestId: `open-${terminalId}`,
@@ -435,7 +454,7 @@ async function attachTerminal(
   harness: TerminalManagerHarness,
   args: AttachTerminalArgs,
 ): Promise<void> {
-  await harness.manager.handleMessage({
+  await harness.manager.handleDataMessage({
     type: "terminal.attach",
     requestId: args.requestId,
     terminalId: args.terminalId,
@@ -444,9 +463,7 @@ async function attachTerminal(
   });
 }
 
-function terminalNotFoundError(
-  args: AttachTerminalArgs,
-): HostDaemonDaemonWsMessage {
+function terminalNotFoundError(args: AttachTerminalArgs): TerminalTestMessage {
   return {
     type: "terminal.error",
     requestId: args.requestId,
@@ -531,7 +548,7 @@ describe("TerminalManager", () => {
   it("opens a command PTY through the resolved shell", async () => {
     const harness = createHarness();
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-command",
@@ -565,7 +582,7 @@ describe("TerminalManager", () => {
     ).toBe(true);
 
     const wideCommand = "调".repeat(100);
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-wide-command",
@@ -599,7 +616,7 @@ describe("TerminalManager", () => {
     const cwd = await makeTempDir("bb-terminal-host-path-");
     const harness = createHarness();
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-host-path",
@@ -633,7 +650,7 @@ describe("TerminalManager", () => {
     const harness = createHarness();
     const expectedCwd = os.homedir();
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-host-home",
@@ -671,7 +688,7 @@ describe("TerminalManager", () => {
       },
     });
 
-    const openPromise = harness.manager.handleMessage({
+    const openPromise = harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-1",
@@ -690,7 +707,7 @@ describe("TerminalManager", () => {
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
-    const closePromise = harness.manager.handleMessage({
+    const closePromise = harness.manager.handleControlMessage({
       type: "terminal.close",
       terminalId: "term-1",
       reason: "user",
@@ -734,7 +751,7 @@ describe("TerminalManager", () => {
       },
     });
 
-    const openPromise = harness.manager.handleMessage({
+    const openPromise = harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-1",
@@ -797,7 +814,7 @@ describe("TerminalManager", () => {
       },
     });
 
-    const firstOpenPromise = harness.manager.handleMessage({
+    const firstOpenPromise = harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-1",
@@ -816,7 +833,7 @@ describe("TerminalManager", () => {
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
-    const secondOpenPromise = harness.manager.handleMessage({
+    const secondOpenPromise = harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-2",
@@ -878,7 +895,7 @@ describe("TerminalManager", () => {
       workspacePath: "/tmp/terminal-workspace",
     });
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-stale",
@@ -1029,7 +1046,7 @@ describe("TerminalManager", () => {
 
     pty.emitData("hello");
     pty.emitData("\n");
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.attach",
       requestId: "attach-1",
       terminalId: "term-1",
@@ -1062,6 +1079,13 @@ describe("TerminalManager", () => {
       replayStartSeq: 0,
       nextSeq: 1,
     });
+    expect(harness.dataMessages.map((message) => message.type)).toEqual([
+      "terminal.output",
+      "terminal.replay",
+    ]);
+    expect(harness.controlMessages.map((message) => message.type)).toEqual([
+      "terminal.opened",
+    ]);
   });
 
   it("flushes the first output after an idle period without the batch delay", async () => {
@@ -1099,7 +1123,7 @@ describe("TerminalManager", () => {
   it("pauses the PTY a window ahead of acknowledged output and resumes on acknowledgement", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.flow-control",
       terminalId: "term-1",
       enabled: true,
@@ -1113,13 +1137,13 @@ describe("TerminalManager", () => {
     pty.emitData(chunk);
     expect(pty.paused).toBe(true);
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.ack",
       terminalId: "term-1",
       nextSeq: 8,
     });
     expect(pty.paused).toBe(true);
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.ack",
       terminalId: "term-1",
       nextSeq: 9,
@@ -1130,7 +1154,7 @@ describe("TerminalManager", () => {
   it("resumes a paused PTY whose process exited so node-pty can drain it", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.flow-control",
       terminalId: "term-1",
       enabled: true,
@@ -1150,7 +1174,7 @@ describe("TerminalManager", () => {
   it("stops pacing every PTY when the server connection is released", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.flow-control",
       terminalId: "term-1",
       enabled: true,
@@ -1175,12 +1199,12 @@ describe("TerminalManager", () => {
 
     pty.emitData("build failed\n");
     pty.emitExit(1);
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.input",
       terminalId: "term-1",
       dataBase64: Buffer.from("pwd\n", "utf8").toString("base64"),
     });
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.resize",
       terminalId: "term-1",
       cols: 120,
@@ -1364,7 +1388,7 @@ describe("TerminalManager", () => {
     const pty = await openTerminal(harness);
 
     pty.emitData("before\u001b[0cbetween\u001b[cafter");
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.attach",
       requestId: "attach-da1",
       terminalId: "term-1",
@@ -1398,7 +1422,7 @@ describe("TerminalManager", () => {
     for (const chunk of ["\u001b", "[", "0", "c", "\u001b[", "c"]) {
       pty.emitData(chunk);
     }
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.attach",
       requestId: "attach-split-da1",
       terminalId: "term-1",
@@ -1455,7 +1479,7 @@ describe("TerminalManager", () => {
     const pty = await openTerminal(harness);
 
     pty.emitData(`${"a".repeat(64 * 1024)}tail`);
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.attach",
       requestId: "attach-tail",
       terminalId: "term-1",
@@ -1482,18 +1506,18 @@ describe("TerminalManager", () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.input",
       terminalId: "term-1",
       dataBase64: Buffer.from("pwd\n", "utf8").toString("base64"),
     });
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.resize",
       terminalId: "term-1",
       cols: 120,
       rows: 40,
     });
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.resize",
       terminalId: "term-1",
       cols: 120,
@@ -1509,7 +1533,7 @@ describe("TerminalManager", () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.close",
       terminalId: "term-1",
       reason: "user",
@@ -1528,6 +1552,11 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
+    expect(
+      harness.dataMessages.filter(
+        (message) => message.type === "terminal.exited",
+      ),
+    ).toHaveLength(1);
     await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
     expect(harness.runtimeManager.get("env-1")).toBeUndefined();
     expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
@@ -1536,7 +1565,7 @@ describe("TerminalManager", () => {
   it("acknowledges closing a terminal that is already gone", async () => {
     const harness = createHarness();
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.close",
       terminalId: "term-missing",
       reason: "user",
@@ -1561,7 +1590,7 @@ describe("TerminalManager", () => {
     });
     const pty = await openTerminal(harness);
 
-    await harness.manager.handleMessage({
+    await harness.manager.handleControlMessage({
       type: "terminal.close",
       terminalId: "term-1",
       reason: "user",
@@ -1618,12 +1647,12 @@ describe("TerminalManager", () => {
     oldPty.emitStaleData("stale-output\n");
     oldPty.emitStaleExit(7);
     newPty.emitData("current-output\n");
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.input",
       terminalId: "term-1",
       dataBase64: Buffer.from("pwd\n", "utf8").toString("base64"),
     });
-    await harness.manager.handleMessage({
+    await harness.manager.handleDataMessage({
       type: "terminal.attach",
       requestId: "attach-replacement",
       terminalId: "term-1",
@@ -1659,7 +1688,7 @@ describe("TerminalManager", () => {
     const targetPath = await makeTempDir("bb-terminal-manager-target-");
     const expectedWorkspacePath = await fs.realpath(workspacePath);
     const expectedTargetPath = await fs.realpath(targetPath);
-    const messages: HostDaemonDaemonWsMessage[] = [];
+    const messages: TerminalTestMessage[] = [];
     const runtimeManager = new RuntimeManager({
       createRuntime: () => createFakeRuntime(),
       provisionWorkspace: async () => createFakeWorkspace(workspacePath),
@@ -1677,9 +1706,13 @@ describe("TerminalManager", () => {
         messages.push(message);
         return true;
       },
+      sendDataMessage: (message) => {
+        messages.push(message);
+        return true;
+      },
     });
 
-    await manager.handleMessage({
+    await manager.handleControlMessage({
       type: "terminal.open",
       contributedEnv: [],
       requestId: "open-real",
@@ -1696,7 +1729,7 @@ describe("TerminalManager", () => {
       rows: 30,
       start: DEFAULT_TERMINAL_START,
     });
-    await manager.handleMessage({
+    await manager.handleDataMessage({
       type: "terminal.input",
       terminalId: "term-real",
       dataBase64: Buffer.from(

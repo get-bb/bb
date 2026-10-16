@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
+import type { HostDaemonTerminalDataDaemonMessage } from "@bb/host-daemon-contract";
 import type {
   TerminalClientMessage,
   TerminalSession,
@@ -26,16 +26,7 @@ export type TerminalDataPlaneTerminalState = {
   status: TerminalSession["status"];
 };
 
-export type TerminalDaemonDataMessage = Extract<
-  HostDaemonDaemonWsMessage,
-  {
-    type:
-      | "terminal.output"
-      | "terminal.replay"
-      | "terminal.error"
-      | "terminal.exited";
-  }
->;
+export type TerminalDaemonDataMessage = HostDaemonTerminalDataDaemonMessage;
 type Replay = Extract<TerminalDaemonDataMessage, { type: "terminal.replay" }>;
 interface PendingKey extends PendingRpcKey {
   daemonSessionId: string;
@@ -135,7 +126,7 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
   ) {
     this.flow = new TerminalOutputFlowControl({
       sendDaemonMessage: (daemonSessionId, message) => {
-        this.host.sendDaemonSessionMessage(daemonSessionId, message);
+        this.host.sendDaemonDataMessage(daemonSessionId, message);
       },
     });
     this.pendingAttaches = new PendingRpcRegistry({
@@ -210,7 +201,7 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
     };
     void this.pendingAttaches.claim(pending).promise.catch(() => undefined);
     if (
-      !this.host.sendDaemonSessionMessage(state.daemonSessionId, {
+      !this.host.sendDaemonDataMessage(state.daemonSessionId, {
         type: "terminal.attach",
         requestId,
         terminalId: args.terminalId,
@@ -414,7 +405,7 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
     this.catchingUp.add(args.terminalId);
     void this.pendingCatchUps.claim(pending).promise.catch(() => undefined);
     if (
-      !this.host.sendDaemonSessionMessage(args.daemonSessionId, {
+      !this.host.sendDaemonDataMessage(args.daemonSessionId, {
         type: "terminal.attach",
         requestId,
         terminalId: args.terminalId,
@@ -433,6 +424,10 @@ export class InProcessTerminalDataPlane implements TerminalDataPlane {
     daemonSessionId: string,
     _reason: "daemon-disconnect",
   ): void {
+    this.pendingAttaches.failAllMatching(
+      (pending) => pending.daemonSessionId === daemonSessionId,
+      new ApiError(502, "host_disconnected", "Host is not connected"),
+    );
     this.pendingCatchUps.failAllMatching(
       (pending) => pending.daemonSessionId === daemonSessionId,
       new ApiError(502, "host_disconnected", "Host is not connected"),

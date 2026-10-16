@@ -18,6 +18,7 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   HostDaemonOnlineRpcResponseMessage,
   HostDaemonServerWsMessage,
+  HostDaemonTerminalDataServerMessage,
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import {
@@ -234,6 +235,7 @@ export class NotificationHub implements DbNotifier {
       socket: HubSocket;
     }
   >();
+  private readonly daemonDataSockets = new Map<string, HubSocket>();
   private readonly daemonSessionLocalApiPortsBySessionId = new Map<
     string,
     number | null
@@ -395,6 +397,8 @@ export class NotificationHub implements DbNotifier {
     if (!entry) {
       return;
     }
+    this.daemonDataSockets.get(sessionId)?.close(1000, "daemon-disconnect");
+    this.daemonDataSockets.delete(sessionId);
     this.daemonSessions.delete(sessionId);
     this.daemonSessionLocalApiPortsBySessionId.delete(sessionId);
     this.daemonSessionPlatformsBySessionId.delete(sessionId);
@@ -438,6 +442,10 @@ export class NotificationHub implements DbNotifier {
   hasDaemonForHost(hostId: string): boolean {
     const sessionId = this.daemonSessionIdsByHost.get(hostId);
     return sessionId !== undefined && this.daemonSessions.has(sessionId);
+  }
+
+  hasDaemonSession(sessionId: string): boolean {
+    return this.daemonSessions.has(sessionId);
   }
 
   getDaemonSessionIdForHost(hostId: string): string | null {
@@ -1015,6 +1023,27 @@ export class NotificationHub implements DbNotifier {
     for (const listener of this.changedMessageListeners) {
       listener(message);
     }
+  }
+
+  registerDaemonDataSocket(sessionId: string, socket: HubSocket): void {
+    this.daemonDataSockets.get(sessionId)?.close(1012, "replaced");
+    this.daemonDataSockets.set(sessionId, socket);
+  }
+
+  unregisterDaemonDataSocket(sessionId: string, socket: HubSocket): boolean {
+    if (this.daemonDataSockets.get(sessionId) !== socket) return false;
+    this.daemonDataSockets.delete(sessionId);
+    return true;
+  }
+
+  sendDaemonDataMessage(
+    sessionId: string,
+    message: HostDaemonTerminalDataServerMessage,
+  ): boolean {
+    const socket = this.daemonDataSockets.get(sessionId);
+    if (!socket) return false;
+    socket.send(JSON.stringify(message));
+    return true;
   }
 
   sendDaemonMessage(
