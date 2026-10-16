@@ -1,12 +1,38 @@
 import { join } from "node:path";
 import { Socket } from "node:net";
-import { createLogger } from "@bb/logger";
 import { installSafeProcessDiagnostics } from "@bb/process-utils";
 import { mainToTerminalRelayMessageSchema } from "./terminal-relay-ipc.js";
-import { createTerminalRelayRuntime } from "./terminal-relay-runtime.js";
+import {
+  createTerminalRelayRuntime,
+  type TerminalRelayLogger,
+} from "./terminal-relay-runtime.js";
+
+function formatLogDetail(value: unknown): string {
+  if (value instanceof Error) return value.stack ?? value.message;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+const logger: TerminalRelayLogger = {
+  warn: (details, message) => {
+    process.send?.({
+      type: "log",
+      message,
+      details: Object.fromEntries(
+        Object.entries(details).map(([key, value]) => [
+          key,
+          formatLogDetail(value),
+        ]),
+      ),
+    });
+  },
+};
 
 const dataDir = process.env.BB_DATA_DIR;
-const logger = createLogger({ component: "terminal-relay", dataDir });
 installSafeProcessDiagnostics({
   logsDir: join(dataDir ?? "", "logs"),
   processName: "terminal-relay",

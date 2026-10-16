@@ -240,6 +240,13 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           });
         },
         onMessage: (message: TerminalRelayToMainMessage) => {
+          if (message.type === "log") {
+            logger.warn(
+              { ...message.details, source: "terminal-relay" },
+              message.message,
+            );
+            return;
+          }
           if (!relayPlane) return;
           try {
             switch (message.type) {

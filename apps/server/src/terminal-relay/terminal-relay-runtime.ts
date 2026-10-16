@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
-import type { Logger } from "@bb/logger";
 import { hostDaemonTerminalDataDaemonMessageSchema } from "@bb/host-daemon-contract";
 import {
   terminalClientMessageSchema,
@@ -20,8 +19,11 @@ import type {
   TerminalRelayToMainMessage,
 } from "./terminal-relay-ipc.js";
 
+export type TerminalRelayLogger = {
+  warn(details: Record<string, unknown>, message: string): void;
+};
 export type TerminalRelayRuntimeOptions = {
-  logger: Pick<Logger, "warn">;
+  logger: TerminalRelayLogger;
   send(message: TerminalRelayToMainMessage): void;
 };
 export interface TerminalRelayRuntime {

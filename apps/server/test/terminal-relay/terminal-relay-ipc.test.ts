@@ -113,7 +113,7 @@ describe("terminal relay IPC boundary", () => {
     ).toBe(false);
   });
 
-  it("keeps database, ORM, and the Hono app out of the relay entry graph", async () => {
+  it("keeps database, ORM, logger workers, and the Hono app out of the relay entry graph", async () => {
     const graph = await build({
       entryPoints: [
         fileURLToPath(
@@ -138,7 +138,9 @@ describe("terminal relay IPC boundary", () => {
           path === "@bb/db" ||
           path.startsWith("@bb/db/") ||
           path === "drizzle-orm" ||
-          path.startsWith("drizzle-orm/"),
+          path.startsWith("drizzle-orm/") ||
+          path === "@bb/logger" ||
+          path.startsWith("pino"),
       ),
     ).toEqual([]);
     expect(

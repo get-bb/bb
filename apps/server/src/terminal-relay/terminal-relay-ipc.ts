@@ -110,6 +110,13 @@ export const terminalRelayToMainMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("daemon-send-failed"), sessionId: id }).strict(),
   z
     .object({
+      type: z.literal("log"),
+      message: z.string(),
+      details: z.record(z.string(), z.string()),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("metrics"),
       rssBytes: z.number().int(),
       clients: z.number().int(),
