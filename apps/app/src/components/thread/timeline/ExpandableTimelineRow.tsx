@@ -210,6 +210,7 @@ function ExpandableTimelineRowComponent({
 
   return (
     <ExpandablePanel
+      animate={manualExpansionOverride !== null || forceExpanded}
       intentHandlers={intentHandlers}
       isExpanded={isExpanded}
       onToggle={expandable ? handleToggle : undefined}
