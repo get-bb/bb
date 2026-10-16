@@ -44,6 +44,7 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
+import { InProcessTerminalDataPlane } from "../../src/services/terminals/terminal-data-plane.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
@@ -254,6 +255,8 @@ export async function createTestAppHarness(
     config,
     db,
     hub,
+    dataPlane: (host, timeoutMs) =>
+      new InProcessTerminalDataPlane(host, timeoutMs),
     logger,
     openTimeoutMs: terminalOpenTimeoutMs,
   });
