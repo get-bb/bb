@@ -20,6 +20,7 @@ export function ReplacementProviderSetting({
   triggerAriaLabel,
   builtInDescription,
   allowAutomatic = true,
+  disabled = false,
   bundledProvider,
   preferenceAtom,
   slots,
@@ -29,6 +30,7 @@ export function ReplacementProviderSetting({
   triggerAriaLabel: string;
   builtInDescription?: string;
   allowAutomatic?: boolean;
+  disabled?: boolean;
   bundledProvider?: string;
   preferenceAtom: WritableAtom<string, [string], void>;
   slots: readonly ReplacementProviderSlot[];
@@ -86,6 +88,7 @@ export function ReplacementProviderSetting({
       triggerAriaLabel={triggerAriaLabel}
       options={options}
       selected={selected}
+      disabled={disabled}
       onSelect={setPreference}
     />
   );
