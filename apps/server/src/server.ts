@@ -20,6 +20,7 @@ import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { Hono } from "hono";
+import { z } from "zod";
 import { terminalWebSocketQuerySchema } from "@bb/server-contract";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
@@ -946,6 +947,18 @@ export function createApp(
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
+  if (process.env.NODE_ENV === "test") {
+    internalApi.post("/test/stall", (context) => {
+      const ms = z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(10_000)
+        .parse(context.req.query("ms"));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      return context.json({ stalledMs: ms });
+    });
+  }
   app.route("/internal", internalApi);
 
   const assertBrowserWebSocketAllowed = (

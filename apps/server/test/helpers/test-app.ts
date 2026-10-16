@@ -46,6 +46,7 @@ import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-a
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { InProcessTerminalDataPlane } from "../../src/services/terminals/terminal-data-plane.js";
+import type { HostDaemonTerminalDataServerMessage } from "@bb/host-daemon-contract";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import {
   installUpgradeDispatcher,
@@ -102,6 +103,13 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
   cliCommandService?: CliCommandService;
   terminalAttachTimeoutMs?: number;
+  terminalDataPlane?: NonNullable<
+    ConstructorParameters<typeof TerminalSessionLifecycle>[0]["dataPlane"]
+  >;
+  sendRelayDaemonDataMessage?: (
+    daemonSessionId: string,
+    message: HostDaemonTerminalDataServerMessage,
+  ) => boolean;
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
   nativeRootsClock?: () => number;
@@ -169,6 +177,8 @@ export async function createTestAppHarness(
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
+    terminalDataPlane,
+    sendRelayDaemonDataMessage,
     nativeRootsClock,
     seedFirstPartyProviders = true,
     ...configOverrides
@@ -260,8 +270,10 @@ export async function createTestAppHarness(
     config,
     db,
     hub,
-    dataPlane: (host, timeoutMs) =>
-      new InProcessTerminalDataPlane(host, timeoutMs),
+    dataPlane:
+      terminalDataPlane ??
+      ((host, timeoutMs) => new InProcessTerminalDataPlane(host, timeoutMs)),
+    ...(sendRelayDaemonDataMessage ? { sendRelayDaemonDataMessage } : {}),
     logger,
     openTimeoutMs: terminalOpenTimeoutMs,
   });
@@ -405,6 +417,7 @@ export async function startTestServer(
   options: {
     dispatcher?: boolean;
     onTerminalUpgrade?: UpgradeDispatcherOptions["onTerminalUpgrade"];
+    transferredSockets?: boolean;
   } = {},
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
@@ -465,7 +478,12 @@ export async function startTestServer(
       await closeWebSockets();
       restoreDispatcher?.();
       terminalWss?.close();
-      await closeServer;
+      if (options.transferredSockets) {
+        if ("closeAllConnections" in server) server.closeAllConnections();
+        server.unref();
+      } else {
+        await closeServer;
+      }
       await harness.cleanup();
     },
   };

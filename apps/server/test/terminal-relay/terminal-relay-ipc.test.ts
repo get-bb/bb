@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import {
   mainToTerminalRelayMessageSchema,
@@ -109,5 +111,43 @@ describe("terminal relay IPC boundary", () => {
       terminalRelayToMainMessageSchema.safeParse({ type: "terminal.output" })
         .success,
     ).toBe(false);
+  });
+
+  it("keeps database, ORM, and the Hono app out of the relay entry graph", async () => {
+    const graph = await build({
+      entryPoints: [
+        fileURLToPath(
+          new URL(
+            "../../src/terminal-relay/terminal-relay-main.ts",
+            import.meta.url,
+          ),
+        ),
+      ],
+      bundle: true,
+      platform: "node",
+      packages: "external",
+      write: false,
+      metafile: true,
+    });
+    const imports = Object.values(graph.metafile.inputs).flatMap((input) =>
+      input.imports.map((dependency) => dependency.path),
+    );
+    expect(
+      imports.filter(
+        (path) =>
+          path === "@bb/db" ||
+          path.startsWith("@bb/db/") ||
+          path === "drizzle-orm" ||
+          path.startsWith("drizzle-orm/"),
+      ),
+    ).toEqual([]);
+    expect(
+      Object.keys(graph.metafile.inputs).filter(
+        (path) =>
+          path.endsWith("/src/server.ts") ||
+          path.endsWith("/src/start-server.ts") ||
+          path.includes("/packages/db/"),
+      ),
+    ).toEqual([]);
   });
 });

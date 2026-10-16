@@ -1,0 +1,19 @@
+# Terminal relay
+
+The server owns terminal sessions, authorization, database writes, and REST commands. A forked relay owns browser terminal WebSockets, daemon terminal data WebSockets, output replay, flow control, and input forwarding. The daemon keeps its control socket at `/internal/ws` and connects a separate data socket at `/internal/ws/terminals`. Main validates each upgrade before passing the paused socket and copied upgrade head to the relay. The relay has no database connection.
+
+Browser terminal WebSocket clients must wait for the `101 Switching Protocols` response before sending frames. Main pauses the upgrade socket and copies the HTTP upgrade `head` to the relay, but bytes sent before `101` can sit in Node's socket buffer after the HTTP upgrade listener is removed. The shipped browser transport waits for `101`, so no terminal data relies on pre-101 bytes.
+
+The IPC boundary uses validated `mainToTerminalRelayMessageSchema` and `terminalRelayToMainMessageSchema` messages. Main sends socket grants, terminal-state snapshots, attach decisions, daemon data messages, and shutdown. The relay returns attach requests, input/resize notifications for main's database updates, daemon socket lifecycle, exit notifications, and RSS/client-count metrics. It sends terminal input and output directly between its sockets without waiting for main. After a crash, the supervisor restarts the relay with exponential backoff (250 ms to 10 s), re-sends running terminal state, and clients reconnect with `sinceSeq` for replay. Upgrades receive 503 while the relay is unavailable.
+
+`BB_TERMINAL_RELAY=off` selects the in-process path for diagnosis. The default is the relay. Restart the server after changing this variable. The split daemon socket requires the matching host daemon protocol version on both sides.
+
+## Measuring memory and latency
+
+Run `node scripts/terminal-relay-rss.mjs` from a checkout with a free, isolated dev instance. It starts `pnpm dev`, finds only the relay child in that dev process group, samples RSS once per second for 60 seconds with no terminals, then again with four attached terminals running `yes`. It prints min, median, and max RSS in MiB for each phase. Use `--host <id>` when the dev instance has more than one host, `--seconds <n>` for a shorter diagnostic, and `--log <path>` for startup output. The script refuses the live port 38886 and an already responding server; it stops only the process group it started and closes its terminals.
+
+For an echo measurement, create a terminal running `cat` on the isolated dev server, find that server's listening PID, and run `node scripts/terminal-echo-probe.mjs --server <url> --terminal <id> --keys 200 --interval-ms 50 --stall-pid <main-pid> --stall-ms 1000 --stall-every-ms 3000`. Repeat with `BB_TERMINAL_RELAY=off` after restarting the same isolated dev instance. The probe's inspector stall requires a disposable dev server, not a live instance.
+
+## Windows checks
+
+Node can transfer TCP sockets over child-process IPC on Windows. Main pauses the socket before `child.send` and never reads from it after transfer. The relay uses the preserved upgrade head, including bytes arriving with the handshake. The fork inherits `execPath`, `execArgv`, and the Electron `ELECTRON_RUN_AS_NODE` environment where applicable; it is not detached. On a Windows machine, open a terminal, type and resize, kill the relay process in Task Manager, and confirm the browser reconnects and receives replay without restarting the server. The RSS sampler uses Unix `ps` and process groups; use Task Manager to inspect Windows RSS instead.
