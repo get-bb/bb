@@ -25,6 +25,7 @@ const agingMs = 15_000;
 
 class VcsProcessScheduler {
   readonly priority = new AsyncLocalStorage<VcsProcessPriority>();
+  readonly admitted = new AsyncLocalStorage<true>();
   private active = 0;
   private githubActive = 0;
   private readonly queue: Waiter[] = [];
@@ -89,13 +90,11 @@ class VcsProcessScheduler {
     );
     for (let index = 0; index < this.queue.length;) {
       const waiter = this.queue[index]!;
-      if (
-        this.active + waiter.slots > capacities[this.rank(waiter)]! ||
-        (waiter.command === "gh" && this.githubActive + waiter.slots > 2)
-      ) {
+      if (waiter.command === "gh" && this.githubActive + waiter.slots > 2) {
         index += 1;
         continue;
       }
+      if (this.active + waiter.slots > capacities[this.rank(waiter)]!) break;
       this.queue.splice(index, 1);
       waiter.signal?.removeEventListener("abort", waiter.onAbort);
       this.active += waiter.slots;
@@ -139,10 +138,14 @@ export async function runVcsProcess<T>(
   operation: () => Promise<T>,
   options: VcsProcessOptions = {},
 ): Promise<T> {
+  if (scheduler.admitted.getStore()) {
+    options.signal?.throwIfAborted();
+    return operation();
+  }
   const release = await scheduler.acquire(command, options);
   try {
     options.signal?.throwIfAborted();
-    return await operation();
+    return await scheduler.admitted.run(true, operation);
   } finally {
     release();
   }

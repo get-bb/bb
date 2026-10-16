@@ -9,8 +9,10 @@ these budgets.
 The limits are six admitted process slots in total and two GitHub slots.
 Background work can occupy four slots, status work five, and interactive work
 six. Git pipelines reserve two slots. An old waiter gains one priority level
-every 15 seconds; effective priority and arrival order determine admission.
-A saturated GitHub lane does not block eligible git work. Running commands
+every 15 seconds; effective priority and arrival order determine admission,
+and newer work waits behind an older pipeline until two slots are free. A
+saturated GitHub lane does not block eligible git work. A git or gh call made
+inside an admitted operation runs under that operation's permit. Running commands
 finish normally; priority applies before spawning. Execution timeouts start
 when admitted, and permits remain held through termination cleanup.
 

@@ -12,6 +12,10 @@ function deferred() {
   return { promise, resolve };
 }
 
+function flush() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 afterEach(() => vi.useRealTimers());
 
 it("bounds git and gh together, reserves foreground capacity, and skips a saturated gh lane", async () => {
@@ -197,6 +201,80 @@ it("accounts for both children of a git pipeline", async () => {
     release.resolve();
     await Promise.all(tasks);
   }
+});
+
+it("holds freed capacity for an older pipeline instead of admitting newer single-slot work", async () => {
+  const holders = Array.from({ length: 6 }, () => {
+    const release = deferred();
+    return {
+      release,
+      task: runVcsProcess("git", () => release.promise, {
+        priority: "interactive",
+      }),
+    };
+  });
+  const started: string[] = [];
+  const pipelineRelease = deferred();
+  const pipeline = runVcsProcess(
+    "git",
+    async () => {
+      started.push("pipeline");
+      await pipelineRelease.promise;
+    },
+    { priority: "interactive", slots: 2 },
+  );
+  const later = runVcsProcess(
+    "git",
+    async () => {
+      started.push("later");
+    },
+    { priority: "interactive" },
+  );
+  try {
+    holders[0]!.release.resolve();
+    await flush();
+    expect(started).toEqual([]);
+    holders[1]!.release.resolve();
+    await flush();
+    expect(started).toEqual(["pipeline"]);
+  } finally {
+    for (const holder of holders) holder.release.resolve();
+    pipelineRelease.resolve();
+    await Promise.all([
+      ...holders.map((holder) => holder.task),
+      pipeline,
+      later,
+    ]);
+  }
+  expect(started).toEqual(["pipeline", "later"]);
+});
+
+it("runs nested admission inside the outer permit instead of deadlocking at capacity", async () => {
+  const release = deferred();
+  let inner = 0;
+  const tasks = Array.from({ length: 6 }, () =>
+    runVcsProcess(
+      "git",
+      async () => {
+        await runVcsProcess("gh", async () => {
+          inner++;
+        });
+        await release.promise;
+      },
+      { priority: "interactive" },
+    ),
+  );
+  const queued = vi.fn(async () => undefined);
+  const outside = runVcsProcess("git", queued, { priority: "interactive" });
+  try {
+    await flush();
+    expect(inner).toBe(6);
+    expect(queued).not.toHaveBeenCalled();
+  } finally {
+    release.resolve();
+    await Promise.all([...tasks, outside]);
+  }
+  expect(queued).toHaveBeenCalledOnce();
 });
 
 it.each([0, 1.5, 5, NaN, Infinity])(

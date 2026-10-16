@@ -3100,7 +3100,8 @@ and Windows hosts.
 `experimental_runVcsProcess(command, operation, options)` admits a `git` or
 `gh` operation to the runtime's shared queue before invoking it. It holds the
 permit until the returned promise settles; callers must await child close and
-termination cleanup. Do not nest admission around an already admitted runner.
+termination cleanup. Calls nested inside an admitted operation run under the
+outer permit without queueing again.
 `ExperimentalVcsProcessOptions` accepts `priority` (`interactive`, `status`,
 `background`), an optional cancellation signal, and `slots` for pipelines
 that start multiple git children. Queue cancellation prevents spawning; callers
@@ -3108,8 +3109,10 @@ own cancellation of running children. Execution timeouts begin after admission.
 
 The runtime admits at most six children, at most two `gh` children, and reserves
 two slots from background work and one from status work. Waiters gain one
-priority level every 15 seconds. FIFO applies within effective priority; a
-blocked GitHub waiter does not block eligible git work. The budget is shared
+priority level every 15 seconds. FIFO applies within effective priority: when
+the first waiter that is not held back by the GitHub lane needs more slots than
+are free, later waiters wait behind it, so pipelines are not starved by
+single-slot work. A blocked GitHub waiter does not block eligible git work. The budget is shared
 across module copies in one Node runtime, including bundled plugins. Separate
 host daemons and server processes own separate budgets; arbitrary commands run
 by agents or terminals are outside this queue.
@@ -3123,5 +3126,7 @@ background priority.
 
 Before stabilization, audit cancellation and permit release on all supported
 platforms, mixed plugin bundles sharing the singleton, aging under sustained
-load, and whether fixed capacities need host policy. Verify that every caller
-holds permits until its last admitted child exits, including pipelines.
+load, whether fixed capacities need host policy, and whether work that escapes
+an admitted operation's async context should regain admission. Verify that
+every caller holds permits until its last admitted child exits, including
+pipelines.
