@@ -135,6 +135,8 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     return () => undefined;
   }
 
+  setTabLeased(): void {}
+
   setAutomationControlled(): void {}
 
   session(): never {

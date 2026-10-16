@@ -30,12 +30,25 @@ in the desktop app attaches the existing view when that window still owns it,
 including after its connection generation changes. While the desktop or host is
 reconnecting, the panel retries for about a minute, then offers Try again.
 
-Switching servers retains each server's native pages in the desktop process.
-Inactive pages and their popups are hidden, media is paused, and automation
-leases are revoked. Returning to the same server origin reattaches its pages
-with their history and unsaved state. Native tab lookup, page events, and broker
-snapshots stay scoped to the active server. Closing the window or quitting the
-desktop app still releases its pages across all servers.
+The desktop keeps at most four hidden user browser pages resident across
+windows and servers, and evicts the renderer of any page hidden or unused for
+five minutes. A sweep runs every 30 seconds while hidden user pages exist; the
+least recently hidden or used pages are evicted first. Visible pages, agent-created
+tabs, downloads (including paused ones), control leases, attached debuggers,
+in-flight evaluations and captures, and pages with open popups are never
+evicted. An evicted (cold) tab keeps its identity in native tab lists and broker
+snapshots. Showing it, navigating it, evaluating, capturing, or leasing it
+restores its navigation history in the same browser session; in-page
+JavaScript state is lost. Hiding, moving, stopping, focusing, searching, or
+closing a cold tab does not restore it. CDP targets cover only resident pages,
+so a cold tab leaves the target list until it is restored.
+
+Switching servers hides each server's native pages and popups, pauses media,
+and revokes automation leases. Returning to the same server origin reattaches
+resident pages with their unsaved state; cold pages restore from history when
+shown. Native tab lookup, page events, and broker snapshots stay scoped to the
+active server. Closing the window or quitting the desktop app still releases
+its pages across all servers.
 
 After a window closes or the app relaunches, the panel reopens the saved URL in
 the current window on the same host once the host confirms the old window is

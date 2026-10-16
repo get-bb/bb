@@ -10,6 +10,7 @@ import {
   dialog,
   systemPreferences,
   type BrowserWindowConstructorOptions,
+  type NavigationEntry,
   type Session,
   type WebContents,
   type WebPreferences,
@@ -61,6 +62,10 @@ import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
 } from "./desktop-browser-policy.js";
+
+const HIDDEN_PAGE_LIMIT = 4;
+const HIDDEN_PAGE_IDLE_MS = 5 * 60_000;
+const HIDDEN_PAGE_SWEEP_MS = 30_000;
 
 const POPUP_RATE_WINDOW_MS = 10_000;
 const POPUP_RATE_MAX_IN_WINDOW = 3;
@@ -191,6 +196,22 @@ interface BrowserViewEntry {
   suppressNextFocusNotification: boolean;
   visible: boolean;
   activeFindRequestId: number | null;
+  agentOwned: boolean;
+  idleSince: number;
+  pendingOperations: number;
+  restoration: Promise<void> | null;
+}
+
+interface ColdBrowserTab {
+  hostWindow: DesktopBrowserHostWindow;
+  threadId: string;
+  generation: string;
+  desiredBounds: BbDesktopBrowserViewBounds;
+  state: BbDesktopBrowserState;
+  faviconUrl: string | null;
+  faviconUrls: string[];
+  history: NavigationEntry[];
+  historyIndex: number;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
@@ -297,6 +318,7 @@ export interface DesktopBrowserViewManager {
   }): Array<{ tabId: string; webContents: WebContents }>;
   subscribeAutomationTabs(listener: () => void): () => void;
   setAutomationControlled(webContents: WebContents, controlled: boolean): void;
+  setTabLeased(ref: NativeTabRef, leased: boolean): void;
   session(): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
@@ -473,7 +495,141 @@ export function createDesktopBrowserViewManager(
   const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
   const automationControlled = new WeakSet<WebContents>();
+  const leasedPages = new WeakSet<WebContents>();
+  const downloadingPages = new WeakMap<WebContents, number>();
+  const coldTabs = new WeakMap<
+    Map<string, BrowserViewEntry>,
+    Map<string, ColdBrowserTab>
+  >();
+  let sweepTimer: ReturnType<typeof setInterval> | null = null;
   const pendingHostFocusReturns = new WeakSet<DesktopBrowserHostWindow>();
+
+  function coldTabsFor(
+    registry: Map<string, BrowserViewEntry>,
+  ): Map<string, ColdBrowserTab> {
+    let tabs = coldTabs.get(registry);
+    if (tabs === undefined) {
+      tabs = new Map();
+      coldTabs.set(registry, tabs);
+    }
+    return tabs;
+  }
+
+  function setEntryVisible(entry: BrowserViewEntry, visible: boolean): void {
+    if (entry.visible && !visible) entry.idleSince = Date.now();
+    entry.visible = visible;
+    if (!visible) scheduleSweep();
+  }
+
+  function scheduleSweep(): void {
+    if (sweepTimer !== null) return;
+    sweepTimer = setInterval(() => {
+      evictIdleEntries();
+      const hasHiddenUserPage = [
+        ...new Set([entries, ...serverEntries.values()]),
+      ].some((registry) =>
+        [...registry.values()].some(
+          (entry) => !entry.visible && !entry.agentOwned,
+        ),
+      );
+      if (!hasHiddenUserPage && sweepTimer !== null) {
+        clearInterval(sweepTimer);
+        sweepTimer = null;
+      }
+    }, HIDDEN_PAGE_SWEEP_MS);
+    sweepTimer.unref();
+  }
+
+  function isEvictable(entry: BrowserViewEntry): boolean {
+    const webContents = entry.webContents;
+    return (
+      !entry.visible &&
+      !entry.agentOwned &&
+      entry.pendingOperations === 0 &&
+      entry.popupWindows.size === 0 &&
+      !webContents.isDestroyed() &&
+      !automationControlled.has(webContents) &&
+      !leasedPages.has(webContents) &&
+      !downloadingPages.has(webContents) &&
+      !webContents.debugger.isAttached() &&
+      webContents.navigationHistory.length() > 0
+    );
+  }
+
+  function evictEntry(key: string, entry: BrowserViewEntry): void {
+    const tabId = key.slice(key.indexOf(":") + 1);
+    coldTabsFor(entry.registry).set(key, {
+      hostWindow: entry.hostWindow,
+      threadId: entry.threadId,
+      generation: entry.generation,
+      desiredBounds: entry.desiredBounds,
+      state: { ...buildBrowserState(tabId, entry), isLoading: false },
+      faviconUrl: entry.faviconUrl,
+      faviconUrls: entry.faviconUrls,
+      history: entry.webContents.navigationHistory.getAllEntries(),
+      historyIndex: entry.webContents.navigationHistory.getActiveIndex(),
+    });
+    destroyEntry(entry.hostWindow, key, entry);
+  }
+
+  function evictIdleEntries(): void {
+    const now = Date.now();
+    const candidates = [...new Set([entries, ...serverEntries.values()])]
+      .flatMap((registry) => [...registry])
+      .filter(([, entry]) => isEvictable(entry))
+      .sort(([, a], [, b]) => b.idleSince - a.idleSince);
+    candidates.forEach(([key, entry], index) => {
+      if (
+        index < HIDDEN_PAGE_LIMIT &&
+        now - entry.idleSince < HIDDEN_PAGE_IDLE_MS
+      )
+        return;
+      evictEntry(key, entry);
+    });
+  }
+
+  function warmEntry(key: string): BrowserViewEntry | undefined {
+    const live = entries.get(key);
+    if (live !== undefined) return live;
+    const cold = coldTabsFor(entries).get(key);
+    if (cold === undefined) return undefined;
+    coldTabsFor(entries).delete(key);
+    const entry = createEntry({
+      desiredBounds: cold.desiredBounds,
+      hostWindow: cold.hostWindow,
+      tabId: cold.state.tabId,
+      threadId: cold.threadId,
+      backgroundThrottling: true,
+    });
+    entry.generation = cold.generation;
+    entry.faviconUrl = cold.faviconUrl;
+    entry.faviconUrls = cold.faviconUrls;
+    applyEntryDesiredBounds(entry, cold.hostWindow);
+    applyEntryVisibility(entry, cold.hostWindow);
+    entry.restoration = entry.webContents.navigationHistory
+      .restore({ entries: cold.history, index: cold.historyIndex })
+      .catch(() => {})
+      .finally(() => {
+        entry.restoration = null;
+      });
+    scheduleSweep();
+    notifyAutomationTabs();
+    return entry;
+  }
+
+  async function withPageOperation<T>(
+    entry: BrowserViewEntry,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    entry.pendingOperations += 1;
+    try {
+      if (entry.restoration !== null) await entry.restoration;
+      return await operation();
+    } finally {
+      entry.pendingOperations -= 1;
+      entry.idleSince = Date.now();
+    }
+  }
 
   function notifyAutomationTabs(): void {
     for (const listener of automationTabListeners) {
@@ -624,6 +780,14 @@ export function createDesktopBrowserViewManager(
       return hardenedSession;
     }
     const browserSession = session.fromPartition(partition);
+    browserSession.on("will-download", (_event, item, contents) => {
+      downloadingPages.set(contents, (downloadingPages.get(contents) ?? 0) + 1);
+      item.once("done", () => {
+        const remaining = (downloadingPages.get(contents) ?? 1) - 1;
+        if (remaining > 0) downloadingPages.set(contents, remaining);
+        else downloadingPages.delete(contents);
+      });
+    });
     const microphoneGrants = new WeakMap<WebContents, string>();
     browserSession.setPermissionRequestHandler(
       (wc, permission, callback, details) => {
@@ -1104,6 +1268,10 @@ export function createDesktopBrowserViewManager(
       suppressNextFocusNotification: false,
       visible: false,
       activeFindRequestId: null,
+      agentOwned: false,
+      idleSince: Date.now(),
+      pendingOperations: 0,
+      restoration: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
@@ -1161,8 +1329,22 @@ export function createDesktopBrowserViewManager(
     fn(entry);
   }
 
+  function requireColdTab(ref: NativeTabRef): ColdBrowserTab | undefined {
+    const cold = coldTabsFor(entries).get(
+      `${ref.hostWebContentsId}:${ref.tabId}`,
+    );
+    if (
+      cold !== undefined &&
+      (cold.threadId !== ref.threadId || cold.generation !== ref.generation)
+    ) {
+      throw new Error("Native browser tab is unavailable or has been replaced");
+    }
+    return cold;
+  }
+
   function requireNativeEntry(ref: NativeTabRef): BrowserViewEntry {
-    const entry = entries.get(`${ref.hostWebContentsId}:${ref.tabId}`);
+    requireColdTab(ref);
+    const entry = warmEntry(`${ref.hostWebContentsId}:${ref.tabId}`);
     if (
       entry === undefined ||
       entry.threadId !== ref.threadId ||
@@ -1250,9 +1432,10 @@ export function createDesktopBrowserViewManager(
     }: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
     focusOnShow: boolean,
   ): void {
+    if (request.visible) warmEntry(browserViewKey(hostWindow, request.tabId));
     withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
       const wasVisible = entry.visible;
-      entry.visible = request.visible;
+      setEntryVisible(entry, request.visible);
       applyEntryVisibility(entry, hostWindow);
       scheduleEntryRendererRecovery(entry, hostWindow, request.tabId);
       if (
@@ -1277,7 +1460,7 @@ export function createDesktopBrowserViewManager(
       }
       resizingHostIds.clear();
       for (const entry of entries.values()) {
-        entry.visible = false;
+        setEntryVisible(entry, false);
         setDesktopBrowserServerActive(entry.webContents, false);
         applyEntryVisibility(entry, entry.hostWindow);
         if (!entry.hostWindow.isDestroyed())
@@ -1325,13 +1508,14 @@ export function createDesktopBrowserViewManager(
         throw new Error("Desktop window is unavailable");
       }
       const key = browserViewKey(request.hostWindow, request.tabId);
-      if (entries.has(key))
+      if (entries.has(key) || coldTabsFor(entries).has(key))
         throw new Error("Native browser tab already exists");
       const entry = createEntry({
         ...request,
         desiredBounds: { x: 0, y: 0, ...request.viewport },
         backgroundThrottling: false,
       });
+      entry.agentOwned = true;
       applyEntryDesiredBounds(entry, request.hostWindow);
       applyEntryVisibility(entry, request.hostWindow);
       loadBrowserUrl(entry, request.url);
@@ -1351,9 +1535,27 @@ export function createDesktopBrowserViewManager(
           tabs.push(nativeTab(key.slice(prefix.length), entry));
         }
       }
+      for (const [key, cold] of coldTabsFor(entries)) {
+        if (
+          key.startsWith(prefix) &&
+          (threadId === null || cold.threadId === threadId)
+        ) {
+          tabs.push({
+            ...cold.state,
+            threadId: cold.threadId,
+            generation: cold.generation,
+            presentation: "hidden",
+          });
+        }
+      }
       return tabs;
     },
     closeTab(ref) {
+      if (requireColdTab(ref) !== undefined) {
+        coldTabsFor(entries).delete(`${ref.hostWebContentsId}:${ref.tabId}`);
+        notifyAutomationTabs();
+        return;
+      }
       const entry = requireNativeEntry(ref);
       destroyEntry(
         entry.hostWindow,
@@ -1375,7 +1577,9 @@ export function createDesktopBrowserViewManager(
       ) {
         throw new Error("Invalid browser capture dimensions or quality");
       }
-      const image = await captureDesktopBrowserPage(entry.webContents);
+      const image = await withPageOperation(entry, () =>
+        captureDesktopBrowserPage(entry.webContents),
+      );
       requireNativeEntry(request);
       if (image.isEmpty()) throw new Error("Native browser capture is empty");
       const size = image.getSize();
@@ -1423,9 +1627,22 @@ export function createDesktopBrowserViewManager(
       if (controlled) automationControlled.add(webContents);
       else automationControlled.delete(webContents);
     },
+    setTabLeased(ref, leased) {
+      if (!leased && requireColdTab(ref) !== undefined) return;
+      const entry = requireNativeEntry(ref);
+      if (leased) leasedPages.add(entry.webContents);
+      else leasedPages.delete(entry.webContents);
+    },
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
-      const existing = entries.get(key) ?? null;
+      const cold = coldTabsFor(entries).get(key);
+      if (cold !== undefined && cold.threadId !== request.threadId) return;
+      if (cold !== undefined && !request.visible) {
+        cold.desiredBounds = request.bounds;
+        send(hostWindow, BB_DESKTOP_BROWSER_STATE_CHANNEL, cold.state);
+        return;
+      }
+      const existing = warmEntry(key) ?? null;
       if (existing === null && request.existingOnly === true) return;
       if (existing !== null && existing.threadId !== request.threadId) {
         return;
@@ -1441,7 +1658,7 @@ export function createDesktopBrowserViewManager(
           backgroundThrottling: true,
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
-      entry.visible = request.visible;
+      setEntryVisible(entry, request.visible);
       applyEntryVisibility(entry, hostWindow);
       if (
         request.visible &&
@@ -1458,13 +1675,14 @@ export function createDesktopBrowserViewManager(
       pushState(hostWindow, request.tabId, entry);
     },
     detach({ hostWindow, tabId }) {
+      coldTabsFor(entries).delete(browserViewKey(hostWindow, tabId));
       destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
     },
     focus({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, focusEntryWithoutNotifying);
     },
     async evaluate({ hostWindow, request }) {
-      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      const entry = warmEntry(browserViewKey(hostWindow, request.tabId));
       if (!entry || entry.webContents.isDestroyed()) {
         return { ok: false, error: "Browser tab is not available" };
       }
@@ -1473,13 +1691,14 @@ export function createDesktopBrowserViewManager(
       }
       const source = browserPageEvaluationSource(request);
       try {
-        const result: unknown =
+        const result: unknown = await withPageOperation(entry, () =>
           request.world === "main"
-            ? await entry.webContents.executeJavaScript(source)
-            : await entry.webContents.executeJavaScriptInIsolatedWorld(
+            ? entry.webContents.executeJavaScript(source)
+            : entry.webContents.executeJavaScriptInIsolatedWorld(
                 BB_DESKTOP_BROWSER_PAGE_WORLD_ID,
                 [{ code: source }],
-              );
+              ),
+        );
         const parsed = bbDesktopBrowserEvaluateResultSchema.safeParse(result);
         return parsed.success
           ? parsed.data
@@ -1492,6 +1711,7 @@ export function createDesktopBrowserViewManager(
       }
     },
     navigate({ hostWindow, request }) {
+      warmEntry(browserViewKey(hostWindow, request.tabId));
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         resetEntryRendererRecovery(entry);
         applyEntryVisibility(entry, hostWindow);
@@ -1529,6 +1749,10 @@ export function createDesktopBrowserViewManager(
       });
     },
     setBounds({ hostWindow, request }) {
+      const cold = coldTabsFor(entries).get(
+        browserViewKey(hostWindow, request.tabId),
+      );
+      if (cold !== undefined) cold.desiredBounds = request.bounds;
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       });
@@ -1595,7 +1819,7 @@ export function createDesktopBrowserViewManager(
         if (!key.startsWith(prefix) || entry.webContents.isDestroyed()) {
           continue;
         }
-        entry.visible = false;
+        setEntryVisible(entry, false);
         applyEntryVisibility(entry, hostWindow);
       }
     },
@@ -1603,6 +1827,9 @@ export function createDesktopBrowserViewManager(
       resizingHostIds.delete(hostWebContentsId);
       const prefix = `${hostWebContentsId}:`;
       for (const registry of new Set([entries, ...serverEntries.values()])) {
+        for (const key of [...coldTabsFor(registry).keys()]) {
+          if (key.startsWith(prefix)) coldTabsFor(registry).delete(key);
+        }
         for (const [key, entry] of [...registry]) {
           if (!key.startsWith(prefix)) continue;
           disposeEntry(key, entry);
@@ -1610,6 +1837,8 @@ export function createDesktopBrowserViewManager(
       }
     },
     destroyAll() {
+      if (sweepTimer !== null) clearInterval(sweepTimer);
+      sweepTimer = null;
       resizingHostIds.clear();
       for (const popupWindow of [...popupWindows]) {
         if (!popupWindow.isDestroyed()) {
@@ -1620,6 +1849,7 @@ export function createDesktopBrowserViewManager(
       for (const registry of new Set([entries, ...serverEntries.values()])) {
         for (const [key, entry] of [...registry]) disposeEntry(key, entry);
         faviconCaches.delete(registry);
+        coldTabs.delete(registry);
       }
       serverEntries.clear();
     },
