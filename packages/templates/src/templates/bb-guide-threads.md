@@ -166,7 +166,10 @@ Editing a sent message:
   incomplete turns; grouped multi-message requests are not editable. The
   original conversation remains unchanged until the provider prepares the
   replacement history. If the thread is running,
-  submission stops the current turn and waits for it to settle. It then
+  submission stops the current turn and waits for it to settle. Provider-owned
+  background commands, agents, and workflows are stopped before replacing the
+  session, and retained task cards keep their terminal status. Durable runs
+  managed by the Workflows plugin continue independently. It then
   replaces the selected turn and every later turn while retaining workspace
   changes. Unsent queued messages remain in the queue and dispatch after the
   replacement turn when their waits clear. An already-sending queued message

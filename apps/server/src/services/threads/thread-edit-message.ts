@@ -11,7 +11,7 @@ import {
   hasRootStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
-  listActiveBackgroundTaskCountsByThreadIds,
+  listOpenBackgroundTaskItemRowsForThread,
   listThreadEventSuffixBackgroundSettlementRows,
   type AppendStoredThreadEventArgs,
   type DbQueryConnection,
@@ -55,7 +55,10 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "./thread-send.js";
-import { requestThreadStopForCurrentState } from "./thread-lifecycle.js";
+import {
+  requestThreadStopForCurrentState,
+  stopThreadForCurrentState,
+} from "./thread-lifecycle.js";
 import { getLeadingAgentOnlyInput } from "./deferred-first-turn-context.js";
 
 type ThreadRewindPrepareCommand = Extract<
@@ -342,17 +345,6 @@ function resolveEditableTurn(
   if (thread.archivedAt !== null || thread.deletedAt !== null) {
     conflict("The thread is not writable");
   }
-  const backgroundActivity = listActiveBackgroundTaskCountsByThreadIds(db, {
-    threadIds: [thread.id],
-  })[0];
-  if (
-    backgroundActivity &&
-    (backgroundActivity.activeBackgroundAgentCount > 0 ||
-      backgroundActivity.activeBackgroundCommandCount > 0 ||
-      backgroundActivity.activeWorkflowCount > 0)
-  ) {
-    conflict("Wait for background work to finish before editing the message");
-  }
 
   if (requestSequence !== undefined) {
     const requestRow = db
@@ -526,10 +518,25 @@ export async function editThreadMessage(
     initialThread,
     args.payload.expectedRequestSequence,
   );
-  const editableThread = await stopThreadBeforeMessageEdit(deps, {
+  let editableThread = await stopThreadBeforeMessageEdit(deps, {
     environment: args.environment,
     threadId: initialThread.id,
   });
+  if (
+    listOpenBackgroundTaskItemRowsForThread(deps.db, {
+      threadId: initialThread.id,
+    }).length > 0
+  ) {
+    await ensureHostSessionReadyForWork(deps, {
+      hostId: args.environment.hostId,
+    });
+    await stopThreadForCurrentState(deps, editableThread, args.environment, {
+      requireStopped: true,
+    });
+    const stoppedThread = getThread(deps.db, initialThread.id);
+    if (!stoppedThread) conflict("Thread not found");
+    editableThread = stoppedThread;
+  }
   const target = resolveEditableTurn(
     deps.db,
     editableThread,

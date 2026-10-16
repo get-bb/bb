@@ -6,6 +6,7 @@ import {
   getThread,
   listActiveBackgroundTaskCountsByThreadIds,
   listEvents,
+  listOpenBackgroundTaskItemRowsForThread,
   listQueuedThreadMessages,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
@@ -1159,6 +1160,165 @@ describe("editThreadMessage", () => {
           threadIds: [thread.id],
         }),
       ).toEqual([]);
+    });
+  });
+
+  it.each(["local_bash", "local_agent", "local_subagent", "local_workflow"])(
+    "stops %s before replacing the session and retains its terminal card",
+    async (taskType) => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedEditableThread(harness);
+        const item = {
+          id: "background-retained",
+          type: "backgroundTask",
+          taskType,
+          description: "Running work",
+          status: "pending",
+          taskStatus: "running",
+          skipTranscript: false,
+          foreground: false,
+        };
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          sequence: 12,
+          type: "item/started",
+          scope: threadScope(),
+          providerThreadId: "provider-original",
+          itemId: item.id,
+          itemKind: "backgroundTask",
+          data: { providerThreadId: "provider-original", item },
+        });
+        seedTurn(harness, {
+          threadId: thread.id,
+          requestSequence: 13,
+          turnId: "turn-edit",
+          text: "Edit this",
+          providerThreadId: "provider-original",
+          providerCheckpointId: "checkpoint-edit",
+        });
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          sequence: 18,
+          type: "item/started",
+          scope: threadScope(),
+          providerThreadId: "provider-original",
+          itemId: "background-removed",
+          itemKind: "backgroundTask",
+          data: {
+            providerThreadId: "provider-original",
+            item: { ...item, id: "background-removed" },
+          },
+        });
+        const editing = editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-background",
+            expectedRequestSequence: 13,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+          },
+        });
+        const stop = await waitForQueuedCommand(
+          harness,
+          (queued) => queued.command.type === "thread.stop",
+        );
+        expect(stop.command).toMatchObject({ intent: "release" });
+        expect(
+          listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
+        ).toHaveLength(0);
+        await reportQueuedCommandSuccess(harness, stop, {
+          providerCheckpointId: null,
+        });
+        const rewind = await waitForQueuedCommand(
+          harness,
+          (queued) => queued.command.type === "thread.rewind.prepare",
+        );
+        await reportQueuedCommandSuccess(harness, rewind, {
+          providerThreadId: "replacement-session",
+        });
+        const result = await editing;
+        const rows = listEvents(harness.db, { threadId: thread.id });
+        expect(
+          rows.find((row) => row.sequence === result.requestSequence)?.type,
+        ).toBe("client/turn/requested");
+        expect(
+          rows.filter((row) => row.itemId === "background-removed"),
+        ).toHaveLength(0);
+        expect(
+          rows
+            .filter((row) => row.itemId === item.id)
+            .map((row) => ({ type: row.type, data: JSON.parse(row.data) })),
+        ).toMatchObject([
+          { type: "item/started" },
+          {
+            type: "item/backgroundTask/completed",
+            data: { item: { taskStatus: "stopped", status: "interrupted" } },
+          },
+        ]);
+        expect(
+          listOpenBackgroundTaskItemRowsForThread(harness.db, {
+            threadId: thread.id,
+          }),
+        ).toEqual([]);
+      });
+    },
+  );
+
+  it("preserves history when stopping background work fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness);
+      const item = {
+        id: "background-task",
+        type: "backgroundTask",
+        taskType: "local_bash",
+        description: "Background command",
+        status: "pending",
+        taskStatus: "running",
+        skipTranscript: false,
+        foreground: false,
+      };
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        sequence: 12,
+        type: "item/started",
+        scope: threadScope(),
+        providerThreadId: "provider-original",
+        itemId: item.id,
+        itemKind: "backgroundTask",
+        data: { providerThreadId: "provider-original", item },
+      });
+      seedTurn(harness, {
+        threadId: thread.id,
+        requestSequence: 13,
+        turnId: "turn-edit",
+        text: "Edit this",
+        providerThreadId: "provider-original",
+        providerCheckpointId: "checkpoint-edit",
+      });
+      const before = listEvents(harness.db, { threadId: thread.id });
+      const editing = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-task-outcome",
+          expectedRequestSequence: 13,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rejected = expect(editing).rejects.toThrow("Cannot stop provider");
+      const stop = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.stop",
+      );
+      await reportQueuedCommandError(harness, stop, {
+        errorCode: "provider_error",
+        errorMessage: "Cannot stop provider",
+      });
+      await rejected;
+      expect(listEvents(harness.db, { threadId: thread.id })).toEqual(before);
+      expect(
+        listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
+      ).toHaveLength(0);
     });
   });
 
