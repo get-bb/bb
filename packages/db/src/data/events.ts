@@ -9,6 +9,7 @@ import {
   and,
   desc,
   eq,
+  exists,
   gt,
   gte,
   inArray,
@@ -339,6 +340,74 @@ export function deleteThreadEventSuffixInTransaction(
     markThreadPruningWork(db, [args.threadId]);
   }
   return { deletedEventCount: result.changes };
+}
+
+export function listThreadEventSuffixBackgroundSettlementRows(
+  db: DbQueryConnection,
+  args: DeleteThreadEventSuffixArgs,
+): StoredEventRow[] {
+  const settlementTypes = [
+    "item/backgroundTask/completed",
+    "item/delegation/completed",
+  ] satisfies ThreadEventType[];
+  const startedType = "item/started" satisfies ThreadEventType;
+  const prefix = alias(events, "suffix_settlement_prefix");
+  const laterSettlement = alias(events, "suffix_settlement_later");
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.type, settlementTypes),
+        gte(events.sequence, args.cutoffSequence),
+        lte(events.sequence, args.oldMaxSequence),
+        isNotNull(events.itemId),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(prefix)
+            .where(
+              and(
+                eq(prefix.threadId, events.threadId),
+                eq(prefix.itemId, events.itemId),
+                eq(prefix.type, startedType),
+                lt(prefix.sequence, args.cutoffSequence),
+              ),
+            ),
+        ),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(prefix)
+            .where(
+              and(
+                eq(prefix.threadId, events.threadId),
+                eq(prefix.itemId, events.itemId),
+                inArray(prefix.type, settlementTypes),
+                lt(prefix.sequence, args.cutoffSequence),
+              ),
+            ),
+        ),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(laterSettlement)
+            .where(
+              and(
+                eq(laterSettlement.threadId, events.threadId),
+                eq(laterSettlement.itemId, events.itemId),
+                inArray(laterSettlement.type, settlementTypes),
+                gt(laterSettlement.sequence, events.sequence),
+                lte(laterSettlement.sequence, args.oldMaxSequence),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
 }
 
 export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
