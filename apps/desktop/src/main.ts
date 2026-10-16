@@ -1,3 +1,4 @@
+import { createDesktopLogger } from "./desktop-logger.js";
 import { spawn } from "node:child_process";
 import { attachServerUpdateControl } from "./server-update-control.js";
 import { registerServerChoiceIpc } from "./server-choice-ipc.js";
@@ -198,7 +199,6 @@ import {
   createDesktopAutoUpdateService,
   createElectronAutoUpdaterAdapter,
   shouldEnableDesktopAutoUpdate,
-  type DesktopAutoUpdateLogger,
   type DesktopAutoUpdateService,
 } from "./desktop-auto-update.js";
 import { mergeDesktopUpdateInfo } from "./desktop-update-info.js";
@@ -554,7 +554,7 @@ function getCurrentDesktopInfo(): BbDesktopInfo | null {
   }
   return {
     ...info,
-    serverDaemonLogsAvailable: shouldEnableServerDaemonLogsMenu(),
+    serverDaemonLogsAvailable: true,
   };
 }
 
@@ -654,17 +654,7 @@ function sendDesktopWindowStateChanged(
   );
 }
 
-const desktopLogger: DesktopAutoUpdateLogger = {
-  error(message) {
-    process.stderr.write(`${message}\n`);
-  },
-  info(message) {
-    process.stderr.write(`${message}\n`);
-  },
-  warn(message) {
-    process.stderr.write(`${message}\n`);
-  },
-};
+const desktopLogger = createDesktopLogger({ logDir: formatLogDirectory() });
 
 function resolveDataDirFromEnv(args: ResolveDataDirFromEnvArgs): string {
   const rawDataDir = args.env.BB_DATA_DIR?.trim();
@@ -705,13 +695,6 @@ function createDesktopPathContext(): DesktopPathContext {
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
   };
-}
-
-function shouldEnableServerDaemonLogsMenu(): boolean {
-  return (
-    (process.platform === "darwin" || process.platform === "win32") &&
-    currentRuntime?.ownership === "spawned"
-  );
 }
 
 const pendingCloseWindowRequests = new Map<number, NodeJS.Timeout>();
@@ -932,7 +915,6 @@ function refreshApplicationMenu(): void {
     onServerMenuWillShow() {
       connectServerSync?.onListRequested();
     },
-    serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
   });
 }
 
@@ -944,9 +926,6 @@ function setCurrentRuntime(runtime: DesktopRuntime | null): void {
     connectServerSync?.onRuntimeReady();
   }
   refreshApplicationMenu();
-  if (runtime?.ownership !== "spawned") {
-    closeServerDaemonLogsWindow();
-  }
   sendDesktopInfoChanged();
 }
 
@@ -1076,7 +1055,7 @@ async function refreshSystemConfig(
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Could not refresh system config: ${message}\n`);
+    desktopLogger.warn(`Could not refresh system config: ${message}`);
   }
 }
 
@@ -2095,26 +2074,7 @@ function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
   });
 }
 
-function closeServerDaemonLogsWindow(): void {
-  logViewerTailer?.stop();
-  logViewerTailer = null;
-  logViewerLineBuffer?.stop();
-  logViewerLineBuffer = null;
-
-  const browserWindow = logViewerWindow;
-  logViewerWindow = null;
-  if (browserWindow !== null && !browserWindow.isDestroyed()) {
-    browserWindow.close();
-  }
-}
-
 async function handleOpenLogsFolder(): Promise<LogViewerOpenLogsFolderResult> {
-  if (!shouldEnableServerDaemonLogsMenu()) {
-    throw new Error(
-      "Server and daemon logs are only available for owned runtimes",
-    );
-  }
-
   const logDir = formatLogDirectory();
   const errorMessage = await shell.openPath(logDir);
   if (errorMessage.length > 0) {
@@ -2145,7 +2105,7 @@ async function loadLogViewerWindow(
     minHeight: 520,
     minWidth: 840,
     show: false,
-    title: "bb - Server & Daemon Logs",
+    title: "bb - Local Logs",
     titleBarStyle: "default",
     webPreferences: {
       contextIsolation: true,
@@ -2206,7 +2166,7 @@ async function loadLogViewerWindow(
 }
 
 async function openServerDaemonLogs(): Promise<void> {
-  if (!shouldEnableServerDaemonLogsMenu() || logViewerPreloadPath === null) {
+  if (logViewerPreloadPath === null) {
     return;
   }
 
@@ -2258,6 +2218,7 @@ async function loadLoadingView(): Promise<void> {
 }
 
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
+  desktopLogger.error(`[desktop] ${args.title}: ${args.details}`);
   await loadActionView({
     ...args,
     details:
@@ -3374,7 +3335,6 @@ async function runDesktopApp(): Promise<void> {
 void runDesktopApp().catch((error) => {
   const message =
     error instanceof Error ? (error.stack ?? error.message) : String(error);
-  process.stderr.write(`${message}\n`);
   void loadStartupError({
     details: message,
     logs: "",

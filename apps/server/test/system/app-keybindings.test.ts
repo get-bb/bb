@@ -51,6 +51,20 @@ function commandPair(left: string, right: string): string {
 }
 
 describe("app keybindings", () => {
+  it.each(DEFAULT_KEYBINDING_CLIENTS)(
+    "offers local logs only to desktop clients: $name",
+    (client) => {
+      const binding = DEFAULT_APP_KEYBINDINGS.find(
+        (binding) => binding.command === "logs.openServerDaemon",
+      );
+      expect(binding).toBeDefined();
+      if (binding)
+        expect(isAppKeybindingAvailableForClient(binding, client)).toBe(
+          client.isDesktop,
+        );
+    },
+  );
+
   it("persists plugin bindings even before the plugin is loaded", async () => {
     await withTestHarness(async (harness) => {
       const overrides = [

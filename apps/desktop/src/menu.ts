@@ -10,7 +10,7 @@ import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 import { builtinServerName } from "./server-target.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
 
-const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
+const SERVER_DAEMON_LOGS_MENU_LABEL = "Local Logs";
 const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
 const REOPEN_CLOSED_TAB_MENU_LABEL = "Reopen Closed Tab";
 const NEW_THREAD_MENU_LABEL = "New Thread";
@@ -70,7 +70,6 @@ export interface InstallApplicationMenuArgs {
   signInToConnect(): void;
   addServer(): void;
   onServerMenuWillShow?: () => void;
-  serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
   connectServersSkipReason: ConnectServerSyncSkipReason | null;
 }
@@ -81,7 +80,6 @@ function createServerDaemonLogsMenuItems(
   return [
     { type: "separator" },
     {
-      enabled: args.serverDaemonLogsMenuEnabled,
       label: SERVER_DAEMON_LOGS_MENU_LABEL,
       click() {
         args.openServerDaemonLogs();
