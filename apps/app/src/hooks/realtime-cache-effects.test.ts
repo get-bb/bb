@@ -1,3 +1,4 @@
+import { CORE_TAG_SCOPE, runTaggedRead, taggedQueryMeta } from "@bb/query-tags";
 import { machineEnvironmentQueryKey } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
@@ -165,6 +166,55 @@ function createRealtimeEffectsTestContext(
     terminalKey,
   };
 }
+
+describe("core tag realtime refresh", () => {
+  it.each([true, false])(
+    "refreshes tagged data across visibility changes (visible: %s)",
+    async (visible) => {
+      const client = createAppQueryClient();
+      const visibility = createFakeVisibility();
+      const effects = createRealtimeCacheEffects({
+        queryClient: client,
+        visibility,
+      });
+      let value = 1;
+      const observer = new QueryObserver(client, {
+        queryKey: ["tagged"],
+        staleTime: Infinity,
+        meta: taggedQueryMeta<number>({
+          scope: CORE_TAG_SCOPE,
+          tagsOf: () => ["preferences"],
+        }),
+        queryFn: ({ queryKey }) =>
+          runTaggedRead(client, queryKey, async () => value),
+      });
+      const stop = observer.subscribe(() => {});
+      try {
+        await vi.waitFor(() =>
+          expect(observer.getCurrentResult().data).toBe(1),
+        );
+        visibility.setVisible(visible);
+        value = 2;
+        effects.handleChanged({
+          type: "changed",
+          entity: "tags",
+          tags: ["preferences"],
+        });
+        if (!visible) {
+          expect(observer.getCurrentResult().data).toBe(1);
+          visibility.setVisible(true);
+        }
+        await vi.waitFor(() =>
+          expect(observer.getCurrentResult().data).toBe(2),
+        );
+      } finally {
+        stop();
+        effects.dispose();
+        client.clear();
+      }
+    },
+  );
+});
 
 describe("createRealtimeCacheEffects", () => {
   it.each(

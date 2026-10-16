@@ -162,6 +162,9 @@ importers:
       '@bb/mobile-bridge':
         specifier: workspace:*
         version: link:../../packages/mobile-bridge
+      '@bb/query-tags':
+        specifier: workspace:*
+        version: link:../../packages/query-tags
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -2014,6 +2017,9 @@ importers:
 
   packages/hono-typed-routes:
     dependencies:
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../domain
       hono:
         specifier: ^4.7.0
         version: 4.11.9
@@ -2634,6 +2640,30 @@ importers:
       vitest:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  packages/query-tags:
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@tanstack/react-query':
+        specifier: ^5.62.0
+        version: 5.90.20(react@19.2.4)
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@24.12.4)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
   packages/scripts:
     dependencies:
