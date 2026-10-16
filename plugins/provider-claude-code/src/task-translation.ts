@@ -42,6 +42,7 @@ interface ClaudeTrackedTask {
   error: string | undefined;
   outputFile: string | undefined;
   terminal: boolean;
+  materialized: boolean;
 }
 
 export type ClaudeTaskMap = Map<string, ClaudeTrackedTask>;
@@ -249,6 +250,18 @@ function buildClaudeTaskCloseDelta(task: ClaudeTrackedTask): ThreadDelta {
   };
 }
 
+function buildClaudeTaskOpenDeltas(task: ClaudeTrackedTask): ThreadDelta[] {
+  return [
+    { kind: "turn.open" },
+    {
+      kind: "item.open",
+      key: taskKey(task),
+      item: buildClaudeTaskShape(task),
+      presentation: claudeTaskPresentation(task),
+    },
+  ];
+}
+
 function isMaterializedTaskType(taskType: string): boolean {
   return (
     taskType === LOCAL_WORKFLOW_TASK_TYPE ||
@@ -299,17 +312,12 @@ export function translateClaudeTaskMessage(
       error: undefined,
       outputFile: undefined,
       terminal: false,
+      materialized: !(
+        taskType === LOCAL_BASH_TASK_TYPE && message.is_backgrounded === false
+      ),
     };
     args.tasks.set(message.task_id, task);
-    return [
-      { kind: "turn.open" },
-      {
-        kind: "item.open",
-        key: taskKey(task),
-        item: buildClaudeTaskShape(task),
-        presentation: claudeTaskPresentation(task),
-      },
-    ];
+    return task.materialized ? buildClaudeTaskOpenDeltas(task) : [];
   }
 
   const progress = claudeTaskProgressMessageSchema.safeParse(args.event);
@@ -323,7 +331,7 @@ export function translateClaudeTaskMessage(
       foldWorkflowProgressRecords(task, message.workflow_progress);
     }
     task.usage = toBackgroundTaskUsage(message.usage);
-    return [buildClaudeTaskProgressDelta(task, false)];
+    return task.materialized ? [buildClaudeTaskProgressDelta(task, false)] : [];
   }
 
   const updated = claudeTaskUpdatedMessageSchema.safeParse(args.event);
@@ -344,6 +352,13 @@ export function translateClaudeTaskMessage(
     }
     if (patch.error !== undefined) {
       task.error = patch.error;
+    }
+    if (!task.materialized) {
+      if (patch.is_backgrounded !== true) {
+        return [];
+      }
+      task.materialized = true;
+      return buildClaudeTaskOpenDeltas(task);
     }
     return [buildClaudeTaskProgressDelta(task, statusChanged)];
   }
@@ -366,7 +381,7 @@ export function translateClaudeTaskMessage(
       task.usage = toBackgroundTaskUsage(message.usage);
     }
     task.terminal = true;
-    return [buildClaudeTaskCloseDelta(task)];
+    return task.materialized ? [buildClaudeTaskCloseDelta(task)] : [];
   }
 
   return null;
@@ -384,7 +399,9 @@ export function buildInterruptedClaudeTaskDeltas(args: {
       task.taskStatus = "stopped";
     }
     task.terminal = true;
-    deltas.push(buildClaudeTaskCloseDelta(task));
+    if (task.materialized) {
+      deltas.push(buildClaudeTaskCloseDelta(task));
+    }
   }
   return deltas;
 }

@@ -574,6 +574,136 @@ describe("claude-code background task translation", () => {
     });
   });
 
+  it("keeps a foreground shell command out of background tasks", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-1" };
+
+    harness.translate(
+      spawningToolUseMessage({
+        toolUseId: "toolu_bash_fg",
+        toolName: "Bash",
+        input: { command: "pnpm test", timeout: 400000 },
+      }),
+      context,
+    );
+    const lifecycle = [
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "bfg1",
+        tool_use_id: "toolu_bash_fg",
+        description: "Run tests",
+        task_type: "local_bash",
+        is_backgrounded: false,
+        uuid: "u-1",
+        session_id: "s-1",
+      },
+      {
+        type: "system",
+        subtype: "task_updated",
+        task_id: "bfg1",
+        patch: { status: "completed" },
+        uuid: "u-2",
+        session_id: "s-1",
+      },
+      {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "bfg1",
+        tool_use_id: "toolu_bash_fg",
+        status: "completed",
+        output_file: "",
+        summary: "Run tests completed",
+        uuid: "u-3",
+        session_id: "s-1",
+      },
+    ];
+    const events = lifecycle.flatMap((message) =>
+      harness.translate(message, context),
+    );
+
+    expect(events).toEqual([]);
+    expect(harness.itemId("task:bfg1", "bb-thread-1")).toBe("");
+  });
+
+  it("materializes a foreground shell command once it moves to the background", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-1" };
+
+    harness.translate(
+      spawningToolUseMessage({
+        toolUseId: "toolu_bash_moved",
+        toolName: "Bash",
+        input: { command: "pnpm build" },
+      }),
+      context,
+    );
+    const started = harness.translate(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "bmoved",
+        tool_use_id: "toolu_bash_moved",
+        description: "Build",
+        task_type: "local_bash",
+        is_backgrounded: false,
+        uuid: "u-1",
+        session_id: "s-1",
+      },
+      context,
+    );
+    expect(collectTaskEvents(started)).toEqual([]);
+
+    const backgrounded = harness.translate(
+      {
+        type: "system",
+        subtype: "task_updated",
+        task_id: "bmoved",
+        patch: { is_backgrounded: true },
+        uuid: "u-2",
+        session_id: "s-1",
+      },
+      context,
+    );
+    const backgroundedTask = collectTaskEvents(backgrounded);
+    expect(backgroundedTask.map((event) => event.type)).toEqual([
+      "item/started",
+    ]);
+    expect(backgroundTaskItem(backgroundedTask[0]!)).toMatchObject({
+      id: harness.itemId("task:bmoved", "bb-thread-1"),
+      taskType: "local_bash",
+      description: "Build",
+      status: "pending",
+      taskStatus: "running",
+      parentToolCallId: harness.itemId("toolu_bash_moved", "bb-thread-1"),
+    });
+
+    const notified = collectTaskEvents(
+      harness.translate(
+        {
+          type: "system",
+          subtype: "task_notification",
+          task_id: "bmoved",
+          tool_use_id: "toolu_bash_moved",
+          status: "completed",
+          output_file: "/tmp/tasks/bmoved.output",
+          summary: 'Background command "Build" completed (exit code 0)',
+          uuid: "u-3",
+          session_id: "s-1",
+        },
+        context,
+      ),
+    );
+    expect(notified.map((event) => event.type)).toEqual([
+      "item/backgroundTask/completed",
+    ]);
+    expect(backgroundTaskItem(notified[0]!)).toMatchObject({
+      id: harness.itemId("task:bmoved", "bb-thread-1"),
+      status: "completed",
+      outputFile: "/tmp/tasks/bmoved.output",
+    });
+  });
+
   it("ignores tasks spawned by an unforwarded child (workflow agent)", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
