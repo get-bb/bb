@@ -144,6 +144,7 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
             threadId={threadId}
             environmentId={null}
             onUpdate={noop}
+            onOpenInNewTab={null}
           />
         )}
         isConversationCollapsed={false}

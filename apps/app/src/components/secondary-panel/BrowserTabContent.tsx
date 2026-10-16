@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type RefObject,
   type ReactNode,
 } from "react";
@@ -56,7 +57,11 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import { isMacKeyboardPlatform } from "@bb/domain";
+import {
+  browserPlatform,
+  type AppShortcutPresentation,
+} from "@/lib/app-keybindings";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserToolbarActions";
 
@@ -74,6 +79,7 @@ interface BrowserTabContentProps {
   environmentId: string | null;
   threadId: string;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
+  onOpenInNewTab: ((url: string) => void) | null;
 }
 
 export interface BrowserAddressFocusRequest {
@@ -90,6 +96,7 @@ interface BrowserChromeProps {
   onAddressChange: (value: string) => void;
   onAddressFocus: () => void;
   onAddressBlur: () => void;
+  onAddressKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onBack: () => void;
   onForward: () => void;
@@ -189,6 +196,7 @@ function BrowserChrome({
   onAddressChange,
   onAddressFocus,
   onAddressBlur,
+  onAddressKeyDown,
   onSubmit,
   onBack,
   onForward,
@@ -287,6 +295,7 @@ function BrowserChrome({
                 onAddressFocus();
               }}
               onBlur={onAddressBlur}
+              onKeyDown={onAddressKeyDown}
               placeholder="Enter a URL"
               aria-label={
                 locationShortcut
@@ -411,6 +420,7 @@ export function BrowserTabContent({
   environmentId,
   threadId,
   onUpdate,
+  onOpenInNewTab,
 }: BrowserTabContentProps) {
   const locationShortcut = useAppCommandShortcut("browser.focusLocation");
   const reloadShortcut = useAppCommandShortcut("browser.reload");
@@ -777,6 +787,33 @@ export function BrowserTabContent({
     [addressDraft, navigateToInput],
   );
 
+  const handleAddressKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (
+        onOpenInNewTab === null ||
+        event.key !== "Enter" ||
+        event.nativeEvent.isComposing ||
+        event.shiftKey ||
+        event.ctrlKey
+      ) {
+        return;
+      }
+      const isMac = isMacKeyboardPlatform(browserPlatform());
+      const opensNewTab = isMac
+        ? event.metaKey && !event.altKey
+        : event.altKey && !event.metaKey;
+      if (!opensNewTab) return;
+      event.preventDefault();
+      const url = resolveBrowserAddressInput(addressDraft);
+      if (url === null) return;
+      setAddressDraft(currentUrl);
+      setIsEditing(false);
+      addressInputRef.current?.blur();
+      onOpenInNewTab(url);
+    },
+    [addressDraft, currentUrl, onOpenInNewTab],
+  );
+
   const handleAddressFocus = useCallback(() => {
     setAddressDraft(currentUrl);
     setIsEditing(true);
@@ -907,6 +944,7 @@ export function BrowserTabContent({
         onAddressChange={setAddressDraft}
         onAddressFocus={handleAddressFocus}
         onAddressBlur={() => setIsEditing(false)}
+        onAddressKeyDown={handleAddressKeyDown}
         onSubmit={handleAddressSubmit}
         onBack={() => {
           desktopBrowser.goBack(tabId);

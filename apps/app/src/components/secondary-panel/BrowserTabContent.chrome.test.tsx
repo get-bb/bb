@@ -94,6 +94,7 @@ function renderBrowserChrome(
     canHandleBrowserCommands?: boolean;
     canShowNativeBrowserView?: boolean;
     onNativeFocus?: () => void;
+    onOpenInNewTab?: (url: string) => void;
   } = {},
 ) {
   window.bbDesktop = createBbDesktopApi(desktopInfo, harness.api);
@@ -109,6 +110,7 @@ function renderBrowserChrome(
       environmentId={null}
       threadId="thread-1"
       onUpdate={() => {}}
+      onOpenInNewTab={options.onOpenInNewTab ?? null}
     />,
   );
 }
@@ -188,6 +190,46 @@ describe("BrowserTabContent persistent navigation", () => {
       await waitFor(() =>
         expect(harness.focus).toHaveBeenCalledWith("browser:test"),
       );
+    },
+  );
+
+  it.each([
+    { platform: "MacIntel", modifiers: { metaKey: true }, opensNewTab: true },
+    { platform: "MacIntel", modifiers: { ctrlKey: true }, opensNewTab: false },
+    { platform: "Win32", modifiers: { altKey: true }, opensNewTab: true },
+    {
+      platform: "Linux x86_64",
+      modifiers: { altKey: true },
+      opensNewTab: true,
+    },
+    { platform: "Win32", modifiers: { ctrlKey: true }, opensNewTab: false },
+  ])(
+    "handles modified Enter in the address bar on $platform with $modifiers",
+    ({ platform, modifiers, opensNewTab }) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+      const harness = createBrowserChromeHarness();
+      const navigate = vi.spyOn(harness.api, "navigate");
+      const onOpenInNewTab = vi.fn();
+      renderBrowserChrome(harness, "https://example.com/docs", {
+        canHandleBrowserCommands: true,
+        canShowNativeBrowserView: true,
+        onOpenInNewTab,
+      });
+      const address = screen.getByRole<HTMLInputElement>("textbox", {
+        name: /Address and search bar/,
+      });
+      act(() => address.focus());
+      fireEvent.change(address, { target: { value: "google.com" } });
+      fireEvent.keyDown(address, { key: "Enter", ...modifiers });
+
+      if (!opensNewTab) {
+        expect(onOpenInNewTab).not.toHaveBeenCalled();
+        return;
+      }
+      expect(onOpenInNewTab).toHaveBeenCalledWith("https://google.com");
+      expect(navigate).not.toHaveBeenCalled();
+      expect(document.activeElement).not.toBe(address);
+      expect(address.value).toBe("https://example.com/docs");
     },
   );
 
