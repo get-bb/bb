@@ -19,6 +19,7 @@ export const CORE_TAG_SCOPE = "core";
 export interface TaggedQueryRegistration<Data> {
   scope: string;
   tagsOf(data: Data): readonly string[];
+  onInvalidate?(data: Data | undefined, tags: readonly string[] | null): void;
 }
 
 export interface TaggedMutationOutcome<Result> {
@@ -36,6 +37,8 @@ export function taggedQueryMeta<Data>(
   registrations.set(meta, {
     scope: registration.scope,
     tagsOf: (data) => registration.tagsOf(data as Data),
+    onInvalidate: (data, tags) =>
+      registration.onInvalidate?.(data as Data | undefined, tags),
   });
   return meta;
 }
@@ -59,11 +62,11 @@ export async function runTaggedRead<Data>(
     reads.set(query, pending);
     try {
       const result = await read();
-      if (
-        pending.restart ||
-        registration?.tagsOf(result).some((tag) => pending.tags.has(tag))
-      )
-        continue;
+      const overlap = registration
+        ?.tagsOf(result)
+        .some((tag) => pending.tags.has(tag));
+      if (overlap) registration?.onInvalidate?.(result, [...pending.tags]);
+      if (pending.restart || overlap) continue;
       return result;
     } catch (error) {
       if (pending.restart) continue;
@@ -93,6 +96,7 @@ export async function invalidateTags(
         registration
           .tagsOf(query.state.data)
           .some((tag) => tags.includes(tag)));
+    if (matches) registration.onInvalidate?.(query.state.data, tags);
     if (pending !== undefined) {
       if (matches) pending.restart = true;
       else for (const tag of tags ?? []) pending.tags.add(tag);
@@ -167,57 +171,101 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   const keys = new Map<string, number>();
   let readingKeys = new Set<string>();
   let missingOnly = false;
+  let refreshAll = false;
+  const dirtyKeys = new Set<string>();
+  const collectSubscribedKeys = () =>
+    new Promise<string[]>((resolve) => {
+      queueMicrotask(() => resolve([...keys.keys()]));
+    });
   const observer = new QueryObserver<KeyedData<Value>>(client, {
     queryKey,
-    staleTime: Infinity,
-    retry: false,
     meta: taggedQueryMeta({
       scope,
       tagsOf: (data: KeyedData<Value>) => [
         ...data.tags,
         ...Object.values(data.keyTags).flat(),
       ],
+      onInvalidate: (data, tags) => {
+        if (
+          tags === null ||
+          data === undefined ||
+          data.tags.some((tag) => tags.includes(tag))
+        ) {
+          refreshAll = true;
+        } else {
+          for (const [key, ownTags] of Object.entries(data.keyTags))
+            if (ownTags.some((tag) => tags.includes(tag))) dirtyKeys.add(key);
+        }
+      },
     }),
-    queryFn: () =>
-      runTaggedRead(client, queryKey, async () => {
-        await Promise.resolve();
-        const cached = client.getQueryData<KeyedData<Value>>(queryKey);
-        const invalidated =
-          client.getQueryState(queryKey)?.isInvalidated ?? false;
-        const previous = invalidated ? undefined : cached;
-        const requested = [...keys.keys()].filter(
+    queryFn: () => {
+      let previous = client.getQueryData<KeyedData<Value>>(queryKey);
+      let refresh = !missingOnly && dirtyKeys.size === 0;
+      missingOnly = false;
+      const refreshedKeys = new Set<string>();
+      let refreshedAll = false;
+      return runTaggedRead(client, queryKey, async () => {
+        const subscribed = await collectSubscribedKeys();
+        const all = refreshAll || refresh;
+        refresh = false;
+        const dirty = new Set(dirtyKeys);
+        for (const key of dirty) refreshedKeys.add(key);
+        refreshedAll ||= all;
+        dirtyKeys.clear();
+        refreshAll = false;
+        const requested = subscribed.filter(
           (key) =>
-            !missingOnly ||
-            invalidated ||
+            all ||
+            dirty.has(key) ||
             !Object.hasOwn(previous?.result ?? {}, key),
         );
-        missingOnly = false;
         readingKeys = new Set(requested);
-        const results = await Promise.all(
-          Array.from(
-            { length: Math.ceil(requested.length / 200) },
-            async (_, i) => {
-              const batch = requested.slice(i * 200, (i + 1) * 200);
-              const response = await read(batch);
-              for (const key of batch)
-                if (!Object.hasOwn(response.result, key))
-                  throw new Error(`Keyed read omitted key ${key}`);
-              return response;
-            },
-          ),
-        );
-        return {
-          result: Object.fromEntries([
-            ...Object.entries(previous?.result ?? {}),
-            ...results.flatMap((response) => Object.entries(response.result)),
-          ]),
-          tags: [...(previous?.tags ?? []), ...results.flatMap((r) => r.tags)],
-          keyTags: Object.fromEntries([
-            ...Object.entries(previous?.keyTags ?? {}),
-            ...results.flatMap((response) => Object.entries(response.keyTags)),
-          ]),
-        };
-      }),
+        try {
+          const results = await Promise.all(
+            Array.from(
+              { length: Math.ceil(requested.length / 200) },
+              async (_, i) => {
+                const batch = requested.slice(i * 200, (i + 1) * 200);
+                const response = await read(batch);
+                for (const key of batch)
+                  if (!Object.hasOwn(response.result, key))
+                    throw new Error(`Keyed read omitted key ${key}`);
+                return response;
+              },
+            ),
+          );
+          const retained = (key: string) =>
+            !all && !dirty.has(key) && !readingKeys.has(key);
+          previous = {
+            result: Object.fromEntries([
+              ...Object.entries(previous?.result ?? {}).filter(([key]) =>
+                retained(key),
+              ),
+              ...results.flatMap((response) => Object.entries(response.result)),
+            ]),
+            tags: [
+              ...new Set([
+                ...(all ? [] : (previous?.tags ?? [])),
+                ...results.flatMap((r) => r.tags),
+              ]),
+            ],
+            keyTags: Object.fromEntries([
+              ...Object.entries(previous?.keyTags ?? {}).filter(([key]) =>
+                retained(key),
+              ),
+              ...results.flatMap((response) =>
+                Object.entries(response.keyTags),
+              ),
+            ]),
+          };
+          return previous;
+        } catch (error) {
+          for (const key of refreshedKeys) dirtyKeys.add(key);
+          refreshAll ||= refreshedAll;
+          throw error;
+        }
+      });
+    },
   });
   const listeners = new Set<() => void>();
   let stop: (() => void) | undefined;
@@ -229,20 +277,13 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
         if (!keys.has(key)) added = true;
         keys.set(key, (keys.get(key) ?? 0) + 1);
       }
+      const cached = client.getQueryData<KeyedData<Value>>(queryKey);
       const missing = requested.filter(
-        (key) =>
-          !Object.hasOwn(observer.getCurrentResult().data?.result ?? {}, key),
+        (key) => !Object.hasOwn(cached?.result ?? {}, key),
       );
-      if (!stop && observer.getCurrentResult().data === undefined)
-        missingOnly = true;
+      if (!stop) missingOnly = cached === undefined;
       listeners.add(listener);
       if (!stop) {
-        restartTaggedRead(observer.getCurrentQuery());
-        void client.invalidateQueries({
-          queryKey,
-          exact: true,
-          refetchType: "none",
-        });
         stop = observer.subscribe(() => {
           for (const notify of listeners) notify();
         });

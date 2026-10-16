@@ -251,7 +251,7 @@ it("shares one keyed observer, batches consumers, and retains data through refre
   await owner.observer.refetch();
   expect(owner.observer.getCurrentResult().data?.result).toEqual({
     a: 2,
-    b: 2,
+    b: 1,
   });
   expect(owner.observer.getCurrentResult().error).toBeNull();
 });
@@ -289,4 +289,180 @@ it("re-reads after a dormant read completes without a subscription to changes", 
   await vi.waitFor(() =>
     expect(owner.observer.getCurrentResult().data?.result.a).toBe(2),
   );
+});
+
+it("refreshes only keys matched by key tags and all keys matched by response tags", async () => {
+  const client = setup();
+  const requested: string[][] = [];
+  let value = 1;
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["precise"],
+    scope: CORE_TAG_SCOPE,
+    read: async (keys) => {
+      requested.push([...keys]);
+      return {
+        result: Object.fromEntries(keys.map((key) => [key, value])),
+        tags: ["board"],
+        keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+      };
+    },
+  });
+  disposers.push(owner.subscribe(["a", "b"], () => {}));
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 1,
+      b: 1,
+    }),
+  );
+  requested.length = 0;
+  value = 2;
+  await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  expect(requested).toEqual([["a"]]);
+  expect(owner.observer.getCurrentResult().data).toEqual({
+    result: { a: 2, b: 1 },
+    tags: ["board"],
+    keyTags: { a: ["item:a"], b: ["item:b"] },
+  });
+  requested.length = 0;
+  value = 3;
+  await invalidateTags(client, CORE_TAG_SCOPE, ["board"]);
+  expect(requested).toEqual([["a", "b"]]);
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 3,
+    b: 3,
+  });
+});
+
+it.each([false, true])(
+  "preserves completed rows through partial invalidations and recovery (failure=%s)",
+  async (failure) => {
+    const client = setup();
+    let value = 1;
+    const response = (keys: readonly string[], current: number) => ({
+      result: Object.fromEntries(keys.map((key) => [key, current])),
+      tags: [],
+      keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+    });
+    const read = vi.fn(async (keys: readonly string[]) =>
+      response(keys, value),
+    );
+    const owner = createTaggedKeyedQueryOwner({
+      client,
+      queryKey: ["partial"],
+      scope: CORE_TAG_SCOPE,
+      read,
+    });
+    disposers.push(owner.subscribe(["a", "b"], () => {}));
+    await vi.waitFor(() =>
+      expect(owner.observer.getCurrentResult().data?.result).toEqual({
+        a: 1,
+        b: 1,
+      }),
+    );
+    const gate = deferred<ReturnType<typeof response>>();
+    read.mockImplementationOnce(() => gate.promise);
+    const first = invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    value = 3;
+    if (failure) read.mockRejectedValueOnce(new Error("offline"));
+    const second = invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
+    gate.resolve(response(["a"], 2));
+    await Promise.all([first, second]);
+    if (failure) {
+      expect(owner.observer.getCurrentResult().data?.result).toEqual({
+        a: 1,
+        b: 1,
+      });
+      expect(owner.observer.getCurrentResult().error?.message).toBe("offline");
+      await owner.observer.refetch();
+    }
+    expect(read.mock.calls.map(([keys]) => keys)).toEqual([
+      ["a", "b"],
+      ["a"],
+      ["b"],
+      ...(failure ? [["a", "b"]] : []),
+    ]);
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: failure ? 3 : 2,
+      b: 3,
+    });
+  },
+);
+
+it("inherits retry and mount freshness defaults from the query client", async () => {
+  const client = setup();
+  client.setDefaultOptions({
+    queries: {
+      retry: 1,
+      retryDelay: 0,
+      staleTime: Infinity,
+      refetchOnMount: false,
+    },
+  });
+  const read = vi.fn(async () => ({
+    result: { a: 1 },
+    tags: [],
+    keyTags: { a: ["item:a"] },
+  }));
+  read.mockRejectedValueOnce(new Error("transient"));
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["defaults"],
+    scope: CORE_TAG_SCOPE,
+    read,
+  });
+  const stop = owner.subscribe(["a"], () => {});
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({ a: 1 }),
+  );
+  expect(read).toHaveBeenCalledTimes(2);
+  stop();
+  await Promise.resolve();
+  disposers.push(owner.subscribe(["a"], () => {}));
+  await Promise.resolve();
+  expect(owner.observer.getCurrentResult().isFetching).toBe(false);
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it("loads new subscribers without rereading other rows during a keyed invalidation", async () => {
+  const client = setup();
+  let value = 1;
+  const response = (keys: readonly string[], current: number) => ({
+    result: Object.fromEntries(keys.map((key) => [key, current])),
+    tags: [],
+    keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+  });
+  const read = vi.fn(async (keys: readonly string[]) => response(keys, value));
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["membership"],
+    scope: CORE_TAG_SCOPE,
+    read,
+  });
+  disposers.push(owner.subscribe(["a", "b"], () => {}));
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 1,
+      b: 1,
+    }),
+  );
+  const gate = deferred<ReturnType<typeof response>>();
+  read.mockImplementationOnce(() => gate.promise);
+  const invalidation = invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  disposers.push(owner.subscribe(["c"], () => {}));
+  value = 3;
+  gate.resolve(response(["a"], 2));
+  await invalidation;
+  expect(read.mock.calls.map(([keys]) => keys)).toEqual([
+    ["a", "b"],
+    ["a"],
+    ["c"],
+  ]);
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 2,
+    b: 1,
+    c: 3,
+  });
 });
