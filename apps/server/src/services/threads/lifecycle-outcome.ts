@@ -1,6 +1,7 @@
 import {
   applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
+  getThread,
   type ApplyThreadLifecycleEventArgs,
   type ApplyThreadLifecycleEventOutcome,
   type DbConnection,
@@ -13,6 +14,7 @@ import {
   emitPluginTurnFailed,
 } from "../plugins/plugin-thread-events.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import { recordAppliedWorkLifecycle } from "../system/turn-telemetry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
 /**
@@ -68,7 +70,15 @@ export function applyLoggedThreadLifecycleEvent(
   deps: ApplyLoggedThreadLifecycleEventDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
+  const previousStatus = getThread(deps.db, args.threadId)?.status ?? null;
   const outcome = applyThreadLifecycleEvent(deps.db, args);
+  if (outcome.applied && previousStatus !== null)
+    recordAppliedWorkLifecycle(
+      deps.db,
+      args.threadId,
+      args.event,
+      previousStatus,
+    );
   if (outcome.applied) {
     deps.hub.notifyThread(
       args.threadId,
@@ -86,7 +96,15 @@ export function applyLoggedThreadLifecycleEventInTransaction(
   deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
+  const previousStatus = getThread(deps.db, args.threadId)?.status ?? null;
   const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
+  if (outcome.applied && previousStatus !== null)
+    recordAppliedWorkLifecycle(
+      deps.db,
+      args.threadId,
+      args.event,
+      previousStatus,
+    );
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
   emitPluginThreadLifecycleOutcome(outcome);
   announceTurnFailed(args, outcome);
