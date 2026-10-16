@@ -57,6 +57,7 @@ import {
   getBbDesktopInfo,
   shouldReserveMacosTrafficLights,
 } from "@/lib/bb-desktop";
+import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { sdk } from "@/lib/sdk";
@@ -80,6 +81,7 @@ import {
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  hasRecentImportableRepo,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
@@ -483,7 +485,11 @@ function AgentStepContainer({
       {...chrome}
       step="agent"
       title="Connect a coding agent"
-      description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
+      description={`bb runs the agents you already use. You need one that is installed and signed in on ${
+        isLocalDaemonHost(hostId)
+          ? "this computer"
+          : (hostName ?? "this machine")
+      }.`}
       footerNote={
         agentBlocked ? "Threads can't start until one agent is ready." : null
       }
@@ -513,6 +519,7 @@ function ProjectsStepContainer({
   chrome,
   entry,
   hostId,
+  hostName,
   projectIdsAtOpen,
   onBack,
   onContinue,
@@ -521,6 +528,7 @@ function ProjectsStepContainer({
   chrome: StepChrome;
   entry: OnboardingEntry;
   hostId: string | null;
+  hostName: string | null;
   projectIdsAtOpen: ReadonlySet<string> | null;
   onBack: () => void;
   onContinue: () => void;
@@ -622,12 +630,22 @@ function ProjectsStepContainer({
   };
 
   const scanning = hostId === null || reposQuery.isPending || rescanning;
+  const machineLabel = hostName ?? "this computer";
   return (
     <OnboardingLayout
       {...chrome}
       step="projects"
       title="Add your projects"
-      description="Git repos on this computer that you've worked in over the last 30 days."
+      description={
+        discovered === undefined ||
+        discovered.every((repo) => repo.projectId !== null)
+          ? `Repos you've worked in recently on ${machineLabel}.`
+          : `Repos you've worked in recently on ${machineLabel}. ${
+              hasRecentImportableRepo(discovered, now)
+                ? "We picked this week's."
+                : "We picked the most recent one."
+            }`
+      }
       primaryLabel={
         scanning || selectedPaths.size === 0
           ? "Continue"
@@ -650,7 +668,7 @@ function ProjectsStepContainer({
             : reposQuery.isError
               ? {
                   kind: "error",
-                  message: "bb couldn't scan this computer for git repos.",
+                  message: `bb couldn't scan ${machineLabel} for git repos.`,
                 }
               : { kind: "results", truncated: reposQuery.data.truncated }
         }
@@ -795,13 +813,13 @@ function PluginsStepContainer({
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined) return null;
-    return ONBOARDING_PLUGINS.flatMap(({ entryId }) => {
+    return ONBOARDING_PLUGINS.flatMap(({ entryId, description }) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
           candidate.entryId === entryId,
       );
-      return entry === undefined ? [] : [entry];
+      return entry === undefined ? [] : [{ ...entry, description }];
     });
   }, [catalogQuery.data?.entries]);
 
@@ -809,8 +827,8 @@ function PluginsStepContainer({
     <OnboardingLayout
       {...chrome}
       step="plugins"
-      title="Make bb yours"
-      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
+      title="Give your agents more to work with"
+      description="Optional, and off until you turn them on. You can change them anytime in Plugins."
       primaryLabel="Continue"
       secondaryLabel="Skip"
       onPrimary={onContinue}
@@ -841,6 +859,13 @@ function PluginsStepContainer({
   );
 }
 
+function detectMobilePlatform(): "ios" | "android" | null {
+  const userAgent = navigator.userAgent;
+  if (/iPhone|iPad|iPod/u.test(userAgent)) return "ios";
+  if (/Android/u.test(userAgent)) return "android";
+  return null;
+}
+
 function DevicesStepContainer({
   chrome,
   hostId,
@@ -858,6 +883,7 @@ function DevicesStepContainer({
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
   const [addMachineOpen, setAddMachineOpen] = useState(false);
+  const [mobilePlatform] = useState(detectMobilePlatform);
   const location = useLocation();
   const [initialPathname] = useState(location.pathname);
   const navigatedAway = location.pathname !== initialPathname;
@@ -872,9 +898,9 @@ function DevicesStepContainer({
     <OnboardingLayout
       {...chrome}
       step="devices"
-      title="Use bb from anywhere"
-      description="All optional. Everything here also lives in Settings → Machines."
-      primaryLabel="Start using bb"
+      title="Check on agents away from your desk"
+      description="Optional. Also in Settings → Machines."
+      primaryLabel="Start your first thread"
       onPrimary={onFinish}
       onBack={onBack}
     >
@@ -884,6 +910,8 @@ function DevicesStepContainer({
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
+        mobilePlatform={mobilePlatform}
+        showMobileApp={!isInsideNativeShell()}
         onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={() => setAddMachineOpen(true)}
@@ -1046,6 +1074,7 @@ export function OnboardingFlow({
           chrome={chrome}
           entry={entry}
           hostId={hostId}
+          hostName={primaryHost?.name ?? null}
           projectIdsAtOpen={projectIdsAtOpen}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
