@@ -1179,6 +1179,7 @@ export class PluginHostManager {
           );
           worker.pending.delete(callId);
           clearTimeout(pending.deadlineTimer);
+          sendToWorker(worker.child, { type: "abandon", callId });
           pending.reject(pending.cancellationError ?? error);
           return;
         }
