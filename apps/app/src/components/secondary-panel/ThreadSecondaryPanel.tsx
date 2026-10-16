@@ -139,6 +139,16 @@ const scopedFilePreviewScrollPositions = new Map<
   FilePreviewScrollPositions
 >();
 
+function getScopedFilePreviewScrollPositions(
+  panelStateId: string,
+): FilePreviewScrollPositions {
+  const existing = scopedFilePreviewScrollPositions.get(panelStateId);
+  if (existing !== undefined) return existing;
+  const positions: FilePreviewScrollPositions = new Map();
+  scopedFilePreviewScrollPositions.set(panelStateId, positions);
+  return positions;
+}
+
 export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
 ): string {
@@ -298,14 +308,10 @@ function ThreadSecondaryPanelContent({
   const [instanceScrollPositions] = useState<FilePreviewScrollPositions>(
     () => new Map(),
   );
-  const filePreviewScrollPositions = useMemo(() => {
-    if (splitPanelStateId === undefined) return instanceScrollPositions;
-    const existing = scopedFilePreviewScrollPositions.get(splitPanelStateId);
-    if (existing !== undefined) return existing;
-    const positions: FilePreviewScrollPositions = new Map();
-    scopedFilePreviewScrollPositions.set(splitPanelStateId, positions);
-    return positions;
-  }, [instanceScrollPositions, splitPanelStateId]);
+  const filePreviewScrollPositions =
+    splitPanelStateId === undefined
+      ? instanceScrollPositions
+      : getScopedFilePreviewScrollPositions(splitPanelStateId);
   useLayoutEffect(() => {
     const openTabIds = new Set(tabs.map((tab) => tab.tab.id));
     for (const tabId of filePreviewScrollPositions.keys()) {
