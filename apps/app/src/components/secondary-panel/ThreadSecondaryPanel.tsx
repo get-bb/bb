@@ -1155,7 +1155,7 @@ function ThreadSecondaryPanelContent({
           hostLayout === null &&
             !isConversationCollapsed &&
             (isPanelInFrame
-              ? "before:border-l before:border-border"
+              ? "border-l border-border"
               : "border-l border-border-seam"),
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
