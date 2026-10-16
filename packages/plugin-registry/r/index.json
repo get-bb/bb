@@ -134,6 +134,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "inline-confirmation",
+      "type": "registry:ui"
+    },
+    {
       "name": "inline-rename",
       "type": "registry:ui"
     },
@@ -302,6 +306,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "sidebar-nudge",
+      "type": "registry:ui"
+    },
+    {
       "name": "sidebar-row-classes",
       "type": "registry:ui"
     },
@@ -319,6 +327,10 @@
     },
     {
       "name": "sortable-motion",
+      "type": "registry:ui"
+    },
+    {
+      "name": "suggestion-card",
       "type": "registry:ui"
     },
     {
