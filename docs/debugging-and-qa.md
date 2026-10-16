@@ -679,6 +679,31 @@ response headers are sent returns retryable `409 file_changed`; a change after
 streaming starts aborts the body. Revision routes ignore Range and keep the
 daemon's 25 MB non-image limit.
 
+Working-tree, host, thread-storage, leased-preview, and uploaded-attachment
+responses share `services/files/file-stream-response.ts`. It owns ranges,
+conditional requests, HEAD, bounded streaming, backpressure, and cancellation.
+The local reader opens a file handle only when bytes are needed and closes it
+on completion, cancellation, or failure. The daemon reader uses the existing
+chunk RPC and passes cancellation through to pending calls. Both readers
+validate file consistency; failures before headers return an error and failures
+after streaming begins terminate the body.
+
+Routes explicitly choose content type, cache policy, and security headers.
+Daemon files retain weak revision ETags and their sandbox/nosniff policy;
+HTML remains `no-store`. Attachments retain their immutable private cache policy
+and strong ETags. Weak validators never authorize `If-Range`; attachment ranges
+can use an exact strong ETag or Last-Modified match. Git revision reads remain
+on the separate whole-file path described above.
+
+Uploaded attachments use `GET /api/v1/projects/:id/attachments/content?path=<stored-path>`.
+This route streams single byte ranges from disk, including open-ended and suffix
+ranges, with `206`, `Accept-Ranges: bytes`, and `Content-Range`. Unsatisfiable
+ranges return `416`; malformed or multipart ranges fall back to the full `200`
+response. `If-None-Match` takes precedence over ranges. `If-Range` must match the
+strong ETag or Last-Modified value exactly; otherwise the full file is returned.
+HEAD returns full-file headers without reading the body. To check partial reads,
+use `curl -D - -H 'Range: bytes=0-1023' '<attachment-url>' -o /tmp/attachment-part`.
+
 ## Prepared Worktree Restarts
 
 `pnpm start` and `pnpm start:worktree` always run Turbo-backed preparation

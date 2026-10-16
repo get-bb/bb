@@ -44,7 +44,7 @@ import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
   copyProjectAttachments,
-  readAttachment,
+  createAttachmentContentResponse,
   storeAttachment,
 } from "../services/projects/attachments.js";
 import {
@@ -68,7 +68,6 @@ import {
   readProjectSkill,
   writeProjectSkill,
 } from "../services/skills/skill-listing.js";
-import { requestMatchesEntityTag } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   buildCommandListResponse,
@@ -107,7 +106,6 @@ import {
 } from "../services/projects/project-workspace.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
-const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
   project: ProjectResponseProjectFields,
@@ -975,28 +973,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.attachmentContent, async (context, query) => {
     requirePublicProject(deps.db, context.req.param("id"));
-    const attachment = await readAttachment(
-      deps.config.dataDir,
-      context.req.param("id"),
-      query.path,
-    );
-    const headers = new Headers({
-      "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
-      "content-type": attachment.mimeType ?? "application/octet-stream",
-      etag: attachment.etag,
-    });
-    if (
-      requestMatchesEntityTag(
-        context.req.header("if-none-match"),
-        attachment.etag,
-      )
-    ) {
-      return new Response(null, { status: 304, headers });
-    }
-    headers.set("content-length", String(attachment.content.byteLength));
-    return new Response(new Uint8Array(attachment.content), {
-      status: 200,
-      headers,
+    return createAttachmentContentResponse({
+      dataDir: deps.config.dataDir,
+      projectId: context.req.param("id"),
+      path: query.path,
+      request: context.req.raw,
     });
   });
 }

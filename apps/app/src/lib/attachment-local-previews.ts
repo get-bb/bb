@@ -1,3 +1,5 @@
+import { isVideoAttachment } from "./video-attachments";
+
 const MAX_LOCAL_PREVIEWS = 24;
 
 const localPreviewUrlsByPath = new Map<string, string>();
@@ -9,7 +11,11 @@ function canCreateObjectUrls(): boolean {
 }
 
 export function registerLocalAttachmentPreview(path: string, file: Blob): void {
-  if (!canCreateObjectUrls() || !file.type.startsWith("image/")) {
+  if (
+    !canCreateObjectUrls() ||
+    (!file.type.startsWith("image/") &&
+      !isVideoAttachment({ path, mimeType: file.type }))
+  ) {
     return;
   }
   const previous = localPreviewUrlsByPath.get(path);

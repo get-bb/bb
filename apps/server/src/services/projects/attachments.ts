@@ -1,5 +1,7 @@
 // oxlint-disable-next-line no-restricted-imports
 import { renameSync } from "node:fs";
+import { createFileStreamResponse } from "../files/file-stream-response.js";
+import { createLocalFileSource } from "../files/local-file-source.js";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   getProjectAttachment,
@@ -325,24 +327,57 @@ interface StoredAttachmentContent {
   mimeType?: string;
 }
 
+async function statAttachment(
+  dataDir: string,
+  projectId: string,
+  relativePath: string,
+) {
+  const dir = projectAttachmentDir(dataDir, projectId);
+  const path = resolveAttachmentPath(dir, relativePath);
+  const fileStat = await stat(path).catch(() => null);
+  if (!fileStat || !fileStat.isFile()) {
+    throw new ApiError(404, "invalid_request", "Attachment not found");
+  }
+  return {
+    path,
+    source: createLocalFileSource(path, fileStat),
+    mimeType: mimeTypes.lookup(path) || undefined,
+  };
+}
+
 export async function readAttachment(
   dataDir: string,
   projectId: string,
   relativePath: string,
 ): Promise<StoredAttachmentContent> {
-  const dir = projectAttachmentDir(dataDir, projectId);
-  const resolved = resolveAttachmentPath(dir, relativePath);
-
-  const fileStat = await stat(resolved).catch(() => null);
-  if (!fileStat || !fileStat.isFile()) {
-    throw new ApiError(404, "invalid_request", "Attachment not found");
-  }
-
+  const attachment = await statAttachment(dataDir, projectId, relativePath);
   return {
-    content: await readFile(resolved),
-    etag: `"${fileStat.size.toString(16)}-${Math.floor(fileStat.mtimeMs).toString(16)}"`,
-    mimeType: mimeTypes.lookup(resolved) || undefined,
+    content: await readFile(attachment.path),
+    etag: attachment.source.entityTag,
+    mimeType: attachment.mimeType,
   };
+}
+
+export async function createAttachmentContentResponse({
+  dataDir,
+  projectId,
+  path,
+  request,
+}: {
+  dataDir: string;
+  projectId: string;
+  path: string;
+  request: Request;
+}): Promise<Response> {
+  const attachment = await statAttachment(dataDir, projectId, path);
+  return createFileStreamResponse({
+    source: attachment.source,
+    request,
+    headers: new Headers({
+      "cache-control": "private, immutable, max-age=31536000",
+      "content-type": attachment.mimeType ?? "application/octet-stream",
+    }),
+  });
 }
 
 export async function copyProjectAttachments(
