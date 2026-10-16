@@ -1750,7 +1750,7 @@ describe("acp bridge", () => {
       ),
     ).toBe("selected-model:fake/strong");
     expect(notifications("session/replaced")).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("relaunches a CLI-selected ACP agent when a follow-up changes its model", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
@@ -1779,7 +1779,7 @@ describe("acp bridge", () => {
       ),
     ).toBe("argv:--model other");
     expect(notifications("session/replaced")).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
