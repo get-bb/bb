@@ -1,6 +1,8 @@
+import { realpath as resolveSymlinksPreservingDrive } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import type {
   DirectoryEntry,
   HostDaemonOnlineRpcResult,
@@ -132,6 +134,7 @@ export async function listHostPaths(
 }
 
 const DIRECTORY_BROWSE_SKIP_NAMES = new Set(["node_modules"]);
+const resolveBrowsedDirectory = promisify(resolveSymlinksPreservingDrive);
 
 function compareDirectoryEntries(a: DirectoryEntry, b: DirectoryEntry): number {
   if (a.kind !== b.kind) {
@@ -155,7 +158,7 @@ export async function browseHostDirectory(
       `Path "${requestedPath}" is not a directory`,
     );
   }
-  const directory = await fs.realpath(requestedPath);
+  const directory = await resolveBrowsedDirectory(requestedPath);
 
   const dirents = await fs.readdir(directory, { withFileTypes: true });
   const entries: DirectoryEntry[] = [];
