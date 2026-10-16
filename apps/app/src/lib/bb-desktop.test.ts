@@ -73,7 +73,6 @@ describe("desktop chrome geometry", () => {
 
     expect(properties.get("--bb-macos-traffic-light-center-y")).toBe("28px");
     expect(properties.get("--bb-window-title-bar-height")).toBe("56px");
-    expect(properties.get("--bb-window-footer-row-height")).toBe("38px");
     expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("92px");
     expect(
       decodeURIComponent(properties.get("--bb-window-card-mask") ?? ""),

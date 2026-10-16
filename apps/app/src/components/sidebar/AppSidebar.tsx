@@ -288,11 +288,11 @@ export function AppSidebar({
             </SidebarCollapsibleBody>
             <div
               className={cn(
-                "col-start-1 row-start-2 flex shrink-0 items-center justify-center pt-2",
+                "col-start-1 row-start-2 flex shrink-0 items-center justify-center",
                 NAV_RAIL_WIDTH_CLASS,
                 isFramed
-                  ? "box-content h-(--bb-window-footer-row-height) border-b border-transparent"
-                  : "bg-surface-recessed -mb-[env(safe-area-inset-bottom)] pb-[calc(var(--bb-frame-footer-inset)_+_env(safe-area-inset-bottom))]",
+                  ? "h-(--bb-app-chrome-row-height)"
+                  : "bg-surface-recessed -mb-[env(safe-area-inset-bottom)] pt-2 pb-[calc(var(--bb-frame-footer-inset)_+_env(safe-area-inset-bottom))]",
               )}
             >
               {railFooter}
@@ -311,7 +311,7 @@ export function AppSidebar({
                 className={cn(
                   "w-full justify-center pl-(--bb-frame-footer-inset) pointer-fine:pl-[calc(var(--bb-frame-footer-inset)_+_(2rem_-_var(--bb-title-bar-control-size))/2)] pointer-fine:[&_[data-sidebar=menu-button]]:size-(--bb-title-bar-control-size) [&_[data-sidebar=menu-button]]:ring-inset pointer-fine:[&_[data-sidebar=menu]]:gap-0.5",
                   isFramed
-                    ? "box-content h-(--bb-window-footer-row-height) pb-0"
+                    ? "-mb-px h-(--bb-app-chrome-row-height) py-0"
                     : "pb-(--bb-frame-footer-inset)",
                 )}
               >

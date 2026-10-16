@@ -130,7 +130,6 @@ export function applyAppFrameGeometry(
     Object.assign(properties, {
       "--bb-macos-traffic-light-center-y": `${centerY}px`,
       "--bb-window-title-bar-height": `${titleBarHeight}px`,
-      "--bb-window-footer-row-height": `${2 * (centerY - WINDOW_FRAME_LIP_PX - CARD_BORDER_PX)}px`,
       "--bb-window-card-mask": getWindowCardMask(titleBarHeight, false),
       "--bb-window-card-mask-square-left": getWindowCardMask(
         titleBarHeight,
