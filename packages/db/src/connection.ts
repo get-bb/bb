@@ -47,6 +47,15 @@ const compiledQueries = new WeakMap<
   Map<(db: DbQueryConnection) => unknown, unknown>
 >();
 
+type CommitContext = { pending: Array<() => void> | undefined };
+const commitContexts = new WeakMap<DbQueryConnection, CommitContext>();
+
+export function afterCommit(db: DbQueryConnection, callback: () => void): void {
+  const pending = commitContexts.get(db)?.pending;
+  if (pending) pending.push(callback);
+  else callback();
+}
+
 export function prepareCachedQuery<TQuery>(
   db: DbQueryConnection,
   build: (db: DbQueryConnection) => TQuery,
@@ -292,11 +301,46 @@ export function createConnection(
   const queries = new Map<(db: DbQueryConnection) => unknown, unknown>();
   compiledQueries.set(db, queries);
   const originalTransaction = db.transaction.bind(db);
+  const commitContext: CommitContext = { pending: undefined };
+  commitContexts.set(db, commitContext);
+  function prepareTransaction(tx: DbTransaction): void {
+    compiledQueries.set(tx, queries);
+    commitContexts.set(tx, commitContext);
+    const nestedTransaction = tx.transaction.bind(tx);
+    tx.transaction = (work) =>
+      transactionCallbacks(() =>
+        nestedTransaction((nested) => {
+          prepareTransaction(nested);
+          return work(nested);
+        }),
+      );
+  }
+  function transactionCallbacks<T>(work: () => T): T {
+    const parent = commitContext.pending;
+    const callbacks: Array<() => void> = [];
+    let result: T;
+    try {
+      commitContext.pending = callbacks;
+      result = work();
+    } finally {
+      commitContext.pending = parent;
+    }
+    if (parent) parent.push(...callbacks);
+    else
+      for (const callback of callbacks) {
+        try {
+          callback();
+        } catch {}
+      }
+    return result;
+  }
   db.transaction = (work, config) =>
-    originalTransaction((tx) => {
-      compiledQueries.set(tx, queries);
-      return work(tx);
-    }, config);
+    transactionCallbacks(() =>
+      originalTransaction((tx) => {
+        prepareTransaction(tx);
+        return work(tx);
+      }, config),
+    );
   const originalClose = sqlite.close.bind(sqlite);
   sqlite.close = () => {
     const result = originalClose();
