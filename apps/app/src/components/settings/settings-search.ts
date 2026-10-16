@@ -145,8 +145,8 @@ export const SETTINGS_SEARCH_INDEX: Record<
         when: "sidebarHeaders",
       },
       {
-        title: "Sidebar",
-        keywords: ["thread list", "plugin"],
+        title: "Sidebar thread list",
+        keywords: ["threads", "plugin"],
         when: "threadLists",
       },
       {

@@ -9,9 +9,9 @@ export function SidebarThreadListSetting() {
   const { threadLists } = usePluginSlots();
   return (
     <ReplacementProviderSetting
-      label="Sidebar"
+      label="Sidebar thread list"
       triggerAriaLabel="Sidebar thread list"
-      description="Choose the plugin that renders your sidebar thread list."
+      description="Which plugin draws your threads in the sidebar."
       bundledProvider={BUNDLED_THREAD_LIST_PROVIDER}
       preferenceAtom={threadListProviderAtom}
       slots={threadLists}
