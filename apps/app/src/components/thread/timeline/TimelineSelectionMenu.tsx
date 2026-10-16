@@ -57,6 +57,20 @@ function liveSelectionRange(): Range | null {
   return live.getRangeAt(0);
 }
 
+function findClippingAncestor(element: HTMLElement): HTMLElement | undefined {
+  for (
+    let ancestor = element.parentElement;
+    ancestor !== null;
+    ancestor = ancestor.parentElement
+  ) {
+    const style = getComputedStyle(ancestor);
+    if (style.overflowX !== "visible" || style.overflowY !== "visible") {
+      return ancestor;
+    }
+  }
+  return undefined;
+}
+
 function createSelectionAnchor(
   selection: MessageProseSelection,
 ): SelectionAnchorElement {
@@ -196,6 +210,10 @@ export function TimelineSelectionMenu({
   );
   const virtualAnchorRef = useRef(virtualAnchor);
   virtualAnchorRef.current = virtualAnchor;
+  const collisionBoundary = useMemo(
+    () => (container ? findClippingAncestor(container) : undefined),
+    [container],
+  );
 
   if (!selection) return null;
 
@@ -235,6 +253,7 @@ export function TimelineSelectionMenu({
           align="center"
           sideOffset={6}
           collisionPadding={8}
+          collisionBoundary={collisionBoundary}
           className={SELECTION_MENU_CONTENT_CLASS}
           onPointerEnter={() => virtualAnchorRef.current.hold()}
           onPointerLeave={() => virtualAnchorRef.current.release()}
