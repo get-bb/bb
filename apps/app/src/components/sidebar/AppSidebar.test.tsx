@@ -80,7 +80,7 @@ function Harness() {
   );
 }
 
-function renderSidebar(preference: string) {
+function renderSidebar(preference: string, framed = false) {
   const store = createStore();
   store.set(sidebarNavigationProviderAtom, preference);
   render(
@@ -88,7 +88,7 @@ function renderSidebar(preference: string) {
       <MemoryRouter initialEntries={["/"]}>
         <CompactViewportOverrideProvider isCompactViewport={false}>
           <TooltipProvider>
-            <SidebarProvider>
+            <SidebarProvider framed={framed}>
               <Harness />
             </SidebarProvider>
           </TooltipProvider>
@@ -141,6 +141,17 @@ afterEach(() => {
 });
 
 describe("AppSidebar", () => {
+  it("uses only the small top inset when framed navigation has no header controls", () => {
+    renderSidebar("navigation/top-list", true);
+
+    expect(
+      screen
+        .getByTestId("app-sidebar-top-reserve-row")
+        .classList.contains("h-2"),
+    ).toBe(true);
+    expect(screen.queryByTestId("sidebar-header-slot")).toBeNull();
+  });
+
   it("keeps the footer after the navigation in one column for list navigation, so docking plugins can inset it", () => {
     renderSidebar("navigation/top-list");
 

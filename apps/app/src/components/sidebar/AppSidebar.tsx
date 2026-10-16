@@ -326,7 +326,12 @@ export function AppSidebar({
     <>
       <SidebarTopReserveRow
         testId="app-sidebar-top-reserve-row"
-        headerSlot={<SidebarNavigationHeader resolved={navigation} />}
+        headerSlot={
+          navigation.kind === "plugin" &&
+          navigation.slot.headerComponent !== undefined ? (
+            <SidebarNavigationHeader resolved={navigation} />
+          ) : undefined
+        }
       />
       {placement === "list" ? navigationRegion("shrink-0") : null}
       <SidebarContent>
