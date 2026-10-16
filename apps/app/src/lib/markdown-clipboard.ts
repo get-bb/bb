@@ -1,5 +1,3 @@
-import { expandRangeToMath, mathMarkdown } from "./markdown-clipboard-math";
-
 const omittedElements =
   "button, script, style, input, textarea, select, audio, video, canvas, embed, iframe, object, meta, link, [data-clipboard-ignore]";
 const blockTags = new Set([
@@ -10,6 +8,50 @@ const blockTags = new Set([
   "HEADER",
   "FOOTER",
 ]);
+
+const mathElements = ".katex-display, .katex, .katex-error";
+
+function mathRoot(node: Node): Element | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  return (
+    element?.closest(".katex-display") ??
+    element?.closest(".katex, .katex-error") ??
+    null
+  );
+}
+
+function expandRangeToMath(range: Range): Range {
+  const expanded = range.cloneRange();
+  const start = mathRoot(range.startContainer);
+  const end = mathRoot(range.endContainer);
+  if (start) expanded.setStartBefore(start);
+  if (end) expanded.setEndAfter(end);
+  return expanded;
+}
+
+function mathMarkdown(element: Element): string | null {
+  if (!element.matches(mathElements)) return null;
+  const tex =
+    (
+      element.querySelector('annotation[encoding="application/x-tex"]') ??
+      element
+    ).textContent?.trim() ?? "";
+  return element.matches(".katex-display")
+    ? `\n\n$$\n${tex}\n$$\n\n`
+    : `$$${tex}$$`;
+}
+
+function replaceMathWithMathMl(container: Element): void {
+  for (const element of container.querySelectorAll(".katex-display, .katex")) {
+    if (element.parentElement?.closest(".katex-display, .katex")) continue;
+    const math = element.querySelector("math")?.cloneNode(true);
+    if (!(math instanceof Element)) continue;
+    math.querySelectorAll("annotation").forEach((annotation) => {
+      annotation.remove();
+    });
+    element.replaceWith(math);
+  }
+}
 
 function safeUrl(value: string): string {
   return /^(?:javascript|vbscript|data):/i.test(
@@ -190,10 +232,12 @@ export function selectionClipboard(
     pre && end && pre.contains(end)
       ? range.toString()
       : childrenMarkdown(container).trim();
+  replaceMathWithMathMl(container);
   container
     .querySelectorAll(omittedElements)
     .forEach((element) => element.remove());
   for (const element of container.querySelectorAll("*")) {
+    if (element.closest("math")) continue;
     for (const attribute of Array.from(element.attributes)) {
       if (
         !["href", "src", "alt", "start", "colspan", "rowspan"].includes(

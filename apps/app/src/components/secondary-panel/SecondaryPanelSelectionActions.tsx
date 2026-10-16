@@ -213,6 +213,36 @@ export function SecondaryPanelSelectionActions({
     };
   }, [isEnabled, reportSelection]);
 
+  useEffect(() => {
+    if (!markdown) return;
+    const handleCopy = (event: ClipboardEvent) => {
+      const node = nodeRef.current;
+      const selection = window.getSelection();
+      if (
+        event.defaultPrevented ||
+        event.clipboardData === null ||
+        node === null ||
+        selection === null ||
+        selection.isCollapsed ||
+        selection.rangeCount !== 1
+      )
+        return;
+      const range = selection.getRangeAt(0);
+      if (
+        !node.contains(range.startContainer) ||
+        !node.contains(range.endContainer)
+      )
+        return;
+      const payload = selectionClipboard(range, node);
+      if (!payload.text) return;
+      event.clipboardData.setData("text/plain", payload.text);
+      event.clipboardData.setData("text/html", payload.html);
+      event.preventDefault();
+    };
+    document.addEventListener("copy", handleCopy);
+    return () => document.removeEventListener("copy", handleCopy);
+  }, [markdown]);
+
   const handleAddToChat = useCallback(
     (text: string) => {
       onSelectionAddToChat?.(text);
@@ -221,22 +251,20 @@ export function SecondaryPanelSelectionActions({
     [onSelectionAddToChat],
   );
 
-  if (!isEnabled) {
-    return <>{children}</>;
-  }
-
   return (
     <>
       <div ref={nodeRef} className="contents">
         {children}
       </div>
-      <TimelineSelectionMenu
-        selection={selection}
-        onAddToChat={
-          onSelectionAddToChat === undefined ? undefined : handleAddToChat
-        }
-        onDismiss={dismissSelection}
-      />
+      {isEnabled ? (
+        <TimelineSelectionMenu
+          selection={selection}
+          onAddToChat={
+            onSelectionAddToChat === undefined ? undefined : handleAddToChat
+          }
+          onDismiss={dismissSelection}
+        />
+      ) : null}
     </>
   );
 }

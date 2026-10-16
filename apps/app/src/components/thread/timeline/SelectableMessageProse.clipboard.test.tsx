@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { SelectableMessageProse } from "./SelectableMessageProse";
@@ -178,4 +178,32 @@ it("copies selected tables as Markdown with links, emphasis, code and escaped pi
   );
   expect(data.get("text/html")).toContain("<table>");
   expect(data.get("text/html")).not.toContain("Copy as");
+});
+
+it("copies rendered math as TeX text and MathML without KaTeX's duplicate layout", async () => {
+  const { container } = render(
+    <SelectableMessageProse>
+      <MarkdownPreview
+        content={
+          "Energy $$E = mc^2$$ is **big**.\n\n$$\n\\alpha_1 < \\beta\n$$"
+        }
+      />
+    </SelectableMessageProse>,
+  );
+  await waitFor(() => {
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+  });
+  const text = container.querySelector(".katex-html")!.firstChild!;
+  const range = document.createRange();
+  range.setStart(text, 0);
+  range.setEndAfter(container.querySelector(".katex-display")!);
+  const { data } = copyRange(range);
+  expect(data.get("text/plain")).toBe(
+    "$$E = mc^2$$ is **big**.\n\n$$\n\\alpha_1 < \\beta\n$$",
+  );
+  const html = document.createElement("div");
+  html.innerHTML = data.get("text/html")!;
+  expect(html.querySelectorAll("math")).toHaveLength(2);
+  expect(html.querySelector('math[display="block"]')).not.toBeNull();
+  expect(html.textContent).toBe("E=mc2 is big.\nα1<β");
 });

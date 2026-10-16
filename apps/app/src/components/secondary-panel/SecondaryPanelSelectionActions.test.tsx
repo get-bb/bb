@@ -85,3 +85,25 @@ it.each([
     expect(onSelectionAddToChat).toHaveBeenCalledWith(expected);
   },
 );
+
+it("copies a Markdown preview selection as Markdown with raw TeX", async () => {
+  const { container } = render(
+    <SecondaryPanelSelectionActions markdown>
+      <MarkdownPreview content={content} />
+    </SecondaryPanelSelectionActions>,
+  );
+  await waitFor(() => {
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+  });
+  const range = document.createRange();
+  range.selectNodeContents(container.firstElementChild!);
+  window.getSelection()!.addRange(range);
+  const data = new Map<string, string>();
+  fireEvent.copy(document, {
+    clipboardData: {
+      setData: (type: string, value: string) => data.set(type, value),
+    },
+  });
+  expect(data.get("text/plain")).toBe(content);
+  expect(data.get("text/html")).toContain("<math");
+});
