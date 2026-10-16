@@ -105,15 +105,7 @@ import {
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { getBrowserUrlHost } from "@/lib/browser-url";
-import {
-  getBbDesktopInfo,
-  isDesktopBrowserAvailable,
-  MACOS_CHROME_CONTROL_AXIS_CLASS,
-  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
-  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
-  shouldUseMacosDesktopChrome,
-} from "@/lib/bb-desktop";
-import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
+import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
@@ -129,8 +121,8 @@ import {
 import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
-  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
+  useRootComposePinnedPanelToggleBoxClassName,
 } from "./RootComposeSecondaryContent";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import {
@@ -1381,23 +1373,16 @@ function RootComposeSurface({
     },
     [openWorkspaceFile],
   );
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const isSidebarFramed = useIsSidebarFramed();
+  const pinnedPanelToggleBoxClassName =
+    useRootComposePinnedPanelToggleBoxClassName();
   const showPinnedToggle =
     (paneContext?.secondaryPanelHost ?? null) === null &&
     (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
     <div
       className={cn(
-        "fixed z-40 mr-(--bb-window-frame-lip)",
-        ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
-        usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
-        usesDesktopChrome && [
-          "flex h-7 items-center",
-          MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
-        ],
-        isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
+        "z-40",
+        pinnedPanelToggleBoxClassName,
         isSecondaryPanelOpen && "pointer-events-none invisible",
       )}
     >

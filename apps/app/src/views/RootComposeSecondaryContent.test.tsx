@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import type { ComponentProps, ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -10,8 +16,8 @@ import {
   type PaneContextValue,
 } from "./thread-detail/PaneContext";
 import {
-  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
+  useRootComposePinnedPanelToggleBoxClassName,
 } from "./RootComposeSecondaryContent";
 import { panelGroupState } from "@/test/react-resizable-panels-stub";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -285,10 +291,11 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(cutout.parentElement).toBe(strip);
     expect(cutout.className).toContain("[app-region:no-drag]");
     expect(cutout.className).toContain("[-webkit-app-region:no-drag]");
-    for (const positionClass of ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS.split(
-      " ",
-    )) {
-      expect(cutout.className).toContain(positionClass);
+    const toggleBoxClassName = renderHook(() =>
+      useRootComposePinnedPanelToggleBoxClassName(),
+    ).result.current;
+    for (const boxClass of toggleBoxClassName.split(" ")) {
+      expect(cutout.className).toContain(boxClass);
     }
   });
 

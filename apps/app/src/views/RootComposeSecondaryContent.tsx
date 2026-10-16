@@ -12,16 +12,35 @@ import {
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { RootComposeCompactHome } from "./RootComposeCompactHome";
 import { useOptionalPaneContext } from "./thread-detail/PaneContext";
 
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
-export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
+const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
+
+export function useRootComposePinnedPanelToggleBoxClassName(): string {
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isSidebarFramed = useIsSidebarFramed();
+  return cn(
+    "fixed mr-(--bb-window-frame-lip)",
+    ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
+    usesDesktopChrome && [
+      MACOS_CHROME_CONTROL_AXIS_CLASS,
+      "flex h-7 items-center",
+      MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+    ],
+    isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
+  );
+}
 
 type RootSecondaryPanelProps = Omit<
   ComponentProps<typeof LazyThreadSecondaryPanel>,
@@ -77,6 +96,8 @@ export function RootComposeSecondaryContent({
   const composerHost = usePluginComposerHost();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const pinnedPanelToggleBoxClassName =
+    useRootComposePinnedPanelToggleBoxClassName();
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
@@ -97,11 +118,9 @@ export function RootComposeSecondaryContent({
             <div
               data-testid="root-compose-drag-strip-toggle-cutout"
               className={cn(
-                "absolute",
-                ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+                pinnedPanelToggleBoxClassName,
                 MACOS_APP_REGION_NO_DRAG_CLASS,
-                MACOS_CHROME_CONTROL_AXIS_CLASS,
               )}
             />
           ) : null}
