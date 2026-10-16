@@ -7,6 +7,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SidebarContent,
   useCloseMobileSidebar,
+  useIsSidebarFramed,
 } from "@/components/ui/sidebar.js";
 import {
   SidebarResizeHandle,
@@ -110,6 +111,7 @@ export function SectionSidebar({
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   testIdPrefix: string;
 }) {
+  const isFramed = useIsSidebarFramed();
   return (
     <div
       data-testid={`${testIdPrefix}-sidebar-body`}
@@ -129,7 +131,13 @@ export function SectionSidebar({
         }
       />
       <SidebarContent>
-        <div className="min-w-0 px-2 pb-2.5 max-md:pointer-coarse:pb-1.5">
+        <div
+          className={cn(
+            "min-w-0 px-2 pb-2.5 max-md:pointer-coarse:pb-1.5",
+            isFramed &&
+              "pb-[max(0px,calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-window-frame-lip)_-_1px_-_var(--bb-sidebar-row-height)/2))]",
+          )}
+        >
           {children}
         </div>
       </SidebarContent>
