@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import { z } from "zod";
 import type {
   ComposerCustomization,
@@ -31,7 +32,7 @@ import type {
   PluginThreadHeaderActionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
-  ExperimentalSidebarHeaderRegistration,
+  ExperimentalSidebarHeaderProps,
   ExperimentalSidebarNavigationPlacement,
   ExperimentalSidebarNavigationRegistration,
   PluginThreadListRegistration,
@@ -377,7 +378,6 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
-  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -508,7 +508,6 @@ export function collectPluginAppRegistrations(
     experimentalSidebarFooterItems: [],
     threadLists: [],
     experimentalSidebarNavigations: [],
-    experimentalSidebarHeaders: [],
     threadHeaderActions: [],
     threadActions: [],
     browserToolbarActions: [],
@@ -609,9 +608,24 @@ export function collectPluginAppRegistrations(
     });
   }
 
+  const legacySidebarHeaders: ComponentType<ExperimentalSidebarHeaderProps>[] =
+    [];
+  const legacySlotAliases = {
+    experimental_sidebarHeader(registration: LegacySidebarHeaderRegistration) {
+      legacySidebarHeaders.push(
+        collectTitledComponent(
+          "slots.experimental_sidebarHeader",
+          seenIds.sidebarHeader,
+          registration,
+        ).component,
+      );
+    },
+  };
+
   definition.setup({
     commands: { register: registerCommand },
     slots: {
+      ...legacySlotAliases,
       homepageSection(registration) {
         const kind = "slots.homepageSection";
         const id = requireSlotId(kind, registration?.id);
@@ -830,19 +844,20 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(`${kind}: "placement" must be "rail" or "list"`);
         }
+        const headerComponent = registration.headerComponent;
+        if (
+          headerComponent !== undefined &&
+          typeof headerComponent !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "headerComponent" must be a React component function`,
+          );
+        }
         collected.experimentalSidebarNavigations.push({
           ...collectedRegistration,
           placement: placement ?? "list",
+          ...(headerComponent !== undefined ? { headerComponent } : {}),
         });
-      },
-      experimental_sidebarHeader(registration) {
-        collected.experimentalSidebarHeaders.push(
-          collectTitledComponent(
-            "slots.experimental_sidebarHeader",
-            seenIds.sidebarHeader,
-            registration,
-          ),
-        );
       },
       experimental_threadHeaderAction(registration) {
         const kind = "slots.experimental_threadHeaderAction";
@@ -1114,5 +1129,43 @@ export function collectPluginAppRegistrations(
     },
   });
 
+  attachLegacySidebarHeaders(
+    collected.experimentalSidebarNavigations,
+    legacySidebarHeaders,
+    onWarning,
+  );
   return collected;
+}
+
+interface LegacySidebarHeaderRegistration {
+  id: string;
+  title: string;
+  description?: string;
+  component: ComponentType<ExperimentalSidebarHeaderProps>;
+}
+
+function attachLegacySidebarHeaders(
+  navigations: CollectedSidebarNavigationRegistration[],
+  headers: readonly ComponentType<ExperimentalSidebarHeaderProps>[],
+  onWarning: (message: string) => void,
+): void {
+  const [header, ...extraHeaders] = headers;
+  if (header === undefined) return;
+  const kind = "slots.experimental_sidebarHeader";
+  if (extraHeaders.length > 0) {
+    onWarning(
+      `${kind}: only the first header is used; pass "headerComponent" to each experimental_sidebarNavigation instead`,
+    );
+  }
+  let attached = false;
+  navigations.forEach((navigation, index) => {
+    if (navigation.headerComponent !== undefined) return;
+    navigations[index] = { ...navigation, headerComponent: header };
+    attached = true;
+  });
+  if (!attached) {
+    onWarning(
+      `${kind}: ignored because the plugin registers no navigation without a "headerComponent"`,
+    );
+  }
 }

@@ -204,7 +204,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarNavigationProps`
 - `ExperimentalSidebarNavigationRegistration`
 - `ExperimentalSidebarHeaderProps`
-- `ExperimentalSidebarHeaderRegistration`
 - `PluginFileOpenerRegistration`
 - `PluginSourceCodeRendererRegistration`
 - `PluginDiffRendererRegistration`

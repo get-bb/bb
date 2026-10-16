@@ -391,9 +391,9 @@ export interface ExperimentalSidebarNavigationProps {
 }
 
 /**
- * Props passed to an `experimental_sidebarHeader` component, rendered in the
- * sidebar's header row between the sidebar toggle (and the macOS window
- * controls) and bb's back and forward buttons.
+ * Props passed to a navigation's `headerComponent`, rendered in the sidebar's
+ * header row between the sidebar toggle (and the macOS window controls) and
+ * bb's back and forward buttons.
  */
 export interface ExperimentalSidebarHeaderProps {
   /**
@@ -2042,10 +2042,11 @@ export interface PluginThreadListRegistration {
 
 /**
  * Draw the sidebar's navigation: New thread, Plugins, Skills, Automations,
- * plugin panels, and More. Exclusive: bb ships two providers of its own, Rail
- * (`__bb__/rail`, the default) and Top list (`__bb__/top-list`). By default
- * the first registered plugin provider is active, falling back to Rail; the
- * user can pin one provider under Settings → Appearance → Navigation. A
+ * plugin panels, and More, plus optional controls in the sidebar header.
+ * Exclusive: bb ships two providers of its own, Rail (`__bb__/rail`, the
+ * default) and Top list (`__bb__/top-list`). By default the first registered
+ * plugin provider is active, falling back to Rail; the user can pin one
+ * provider under Settings → Appearance → Navigation. A
  * pinned provider that is disabled or removed falls back the same way, and a
  * crashing provider is replaced by bb's provider for the same placement.
  *
@@ -2053,14 +2054,15 @@ export interface PluginThreadListRegistration {
  * sidebar before the plugin loads:
  *
  * - `rail`: a fixed-width column on the sidebar's left edge that stays when
- *   the sidebar collapses. bb draws New thread in the sidebar header and
- *   Settings at the bottom of the column; draw Home with
- *   `actions.goHome()`. On macOS, wide windows frame the sidebar and page
- *   below a title bar.
- * - `list` (the default): the area above the thread list. Draw New thread
- *   yourself. Settings is a footer action, the Settings, Plugins, and Skills
- *   lists start with a Back to app row, collapsing hides the whole sidebar,
- *   and the sidebar header can hold an `experimental_sidebarHeader`.
+ *   the sidebar collapses. bb draws Settings at the bottom of the column;
+ *   draw Home with `actions.goHome()`. On macOS, wide windows frame the
+ *   sidebar and page below a title bar.
+ * - `list` (the default): the area above the thread list. Settings is a
+ *   footer action, the Settings, Plugins, and Skills lists start with a Back
+ *   to app row, and collapsing hides the whole sidebar.
+ *
+ * Draw New thread yourself, in `component` or `headerComponent`. bb's Rail
+ * puts it in its header; Top list draws it as a row.
  */
 export interface ExperimentalSidebarNavigationRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2071,26 +2073,15 @@ export interface ExperimentalSidebarNavigationRegistration {
   description?: string;
   placement?: ExperimentalSidebarNavigationPlacement;
   component: ComponentType<ExperimentalSidebarNavigationProps>;
-}
-
-/**
- * Render a component in the sidebar's header row, between the sidebar toggle
- * and bb's back and forward buttons. Mounted only while the active navigation
- * uses the `list` placement, because the rail puts New thread there.
- * Exclusive: the user picks at most one header under Settings → Appearance,
- * and by default the header shows only bb's own controls. Content is clipped
- * to the row, so it cannot move the thread list or bb's controls. On macOS
- * the empty space keeps dragging the window; buttons, links, and inputs do
- * not.
- */
-export interface ExperimentalSidebarHeaderRegistration {
-  /** Unique within the plugin; letters, digits, `-`, `_`. */
-  id: string;
-  /** Label shown in Settings → Appearance and capability details. */
-  title: string;
-  /** Optional one-line description shown with the provider choice. */
-  description?: string;
-  component: ComponentType<ExperimentalSidebarHeaderProps>;
+  /**
+   * Rendered in the sidebar's header row while this navigation is active,
+   * between the sidebar toggle and bb's back and forward buttons. Content is
+   * clipped to the row, so it cannot move the thread list or bb's controls.
+   * On macOS the empty space keeps dragging the window; buttons, links, and
+   * inputs do not. A crashing header is replaced by the header of bb's
+   * provider for the same placement.
+   */
+  headerComponent?: ComponentType<ExperimentalSidebarHeaderProps>;
 }
 
 /**
@@ -2577,20 +2568,12 @@ export interface PluginAppSlots {
    */
   experimental_threadList(registration: PluginThreadListRegistration): void;
   /**
-   * Draw the sidebar navigation (see
+   * Draw the sidebar navigation and its header controls (see
    * {@link ExperimentalSidebarNavigationRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
   experimental_sidebarNavigation(
     registration: ExperimentalSidebarNavigationRegistration,
-  ): void;
-  /**
-   * Render a component in the sidebar header row (see
-   * {@link ExperimentalSidebarHeaderRegistration}). Experimental: see
-   * docs/api_to_audit.md.
-   */
-  experimental_sidebarHeader(
-    registration: ExperimentalSidebarHeaderRegistration,
   ): void;
   /**
    * Render a component in the thread header's action row (see

@@ -82,18 +82,17 @@ function NavigationListRow({
   const [isContextMenuOpen, setContextMenuOpen] = useState(false);
   const shortcut = isShortcutModifierHeld ? item.shortcut : null;
   const label = navigationBadgeAccessibleLabel(item.label, item.badge);
-  const hasMenu = item.action.kind !== "new-thread";
-  const showsOptions = hasMenu && shortcut === null;
+  const showsOptions = shortcut === null;
   const isActionsOpen = isDropdownOpen || isContextMenuOpen;
   const canOpenInSplit = split.isAvailable && !isCompactViewport;
 
   const row = (
     <div
       data-sidebar-navigation-item={item.id}
-      className={cn("relative", hasMenu && SIDEBAR_HOVER_ACTIONS_ROW_CLASS)}
+      className={cn("relative", SIDEBAR_HOVER_ACTIONS_ROW_CLASS)}
     >
       <ListRowButton
-        active={item.id === activeItemId && hasMenu}
+        active={item.id === activeItemId && item.action.kind !== "new-thread"}
         disabled={item.isDisabled}
         aria-busy={item.isLoading || undefined}
         aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}
@@ -184,7 +183,6 @@ function NavigationListRow({
       ) : null}
     </div>
   );
-  if (!hasMenu) return row;
   return (
     <SidebarNavigationItemContextMenu
       item={item}
@@ -233,12 +231,8 @@ export function SidebarNavigationList({
   isCompactViewport,
 }: ExperimentalSidebarNavigationProps) {
   const { items } = useSidebarNavigation();
-  const newThread = items.find((item) => item.action.kind === "new-thread");
-  const destinations = items.filter(
-    (item) => item.action.kind !== "new-thread",
-  );
-  const visible = destinations.filter((item) => item.isVisible);
-  const hidden = destinations.filter((item) => !item.isVisible);
+  const visible = items.filter((item) => item.isVisible);
+  const hidden = items.filter((item) => !item.isVisible);
   const hiddenBadgeLabels = hiddenNavigationBadgeLabels(hidden);
   const hiddenBadgeTone = strongestNavigationBadgeTone(
     hidden.map((item) => item.badge),
@@ -253,12 +247,6 @@ export function SidebarNavigationList({
         data-testid="sidebar-navigation-list"
         className="relative shrink-0 space-y-0.5 px-2 py-2"
       >
-        {newThread ? (
-          <NavigationListRow
-            item={newThread}
-            isCompactViewport={isCompactViewport}
-          />
-        ) : null}
         {visible.length > 0 ? (
           <div className="relative">
             <div

@@ -1,4 +1,5 @@
 import { useMemo, type RefObject } from "react";
+import type { ExperimentalSidebarNavigationPlacement } from "@get-bb/plugin-sdk";
 import { PopoverContent } from "@bb/shared-ui/popover";
 import type { SidebarVisibilityItem } from "@bb/shared-ui/sidebar-visibility-customize";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
@@ -11,23 +12,27 @@ const CUSTOMIZE_SIDE_OFFSET = 12;
 
 export function SidebarNavigationCustomize({
   title,
+  placement,
   onClose,
 }: {
   title: string;
+  placement: ExperimentalSidebarNavigationPlacement;
   onClose: (restoreFocus: boolean) => void;
 }) {
   const model = useSidebarNavigationModel();
   const items = useMemo<SidebarVisibilityItem[]>(
     () =>
       model.state.items
-        .filter((item) => item.action.kind !== "new-thread")
+        .filter(
+          (item) => placement === "list" || item.action.kind !== "new-thread",
+        )
         .map((item) => ({
           id: item.id,
           title: item.label,
           icon: <SidebarNavigationIcon icon={item.icon} />,
           ...(item.isDisabled ? { disabled: true } : {}),
         })),
-    [model.state.items],
+    [model.state.items, placement],
   );
   const { arrangement } = model;
   return (
@@ -52,10 +57,12 @@ export function SidebarNavigationCustomize({
 
 export function SidebarNavigationCustomizePopoverContent({
   testId,
+  placement,
   focusReturnRef,
   onClose,
 }: {
   testId: string;
+  placement: ExperimentalSidebarNavigationPlacement;
   focusReturnRef: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
@@ -74,7 +81,11 @@ export function SidebarNavigationCustomizePopoverContent({
         focusReturnRef.current?.focus();
       }}
     >
-      <SidebarNavigationCustomize title={title} onClose={onClose} />
+      <SidebarNavigationCustomize
+        title={title}
+        placement={placement}
+        onClose={onClose}
+      />
     </PopoverContent>
   );
 }

@@ -45,7 +45,7 @@ export function SidebarNavigationProviderSetting() {
   return (
     <ChoiceDropdownSetting
       label="Navigation"
-      description="What draws Plugins, Skills, plugin pages, and More in the sidebar."
+      description="What draws New thread, Plugins, Skills, and plugin pages in the sidebar."
       triggerAriaLabel="Sidebar navigation"
       options={options}
       selected={selected}

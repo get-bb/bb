@@ -39,6 +39,7 @@ import {
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
   type ExperimentalSidebarNavigationProps,
+  type ExperimentalSidebarNavigationRegistration,
   type ExperimentalSidebarHeaderProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
@@ -249,9 +250,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -276,7 +275,6 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
-  experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
@@ -428,7 +426,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "placement",
     "experimental_Original",
   ],
-  experimental_sidebarHeader: ["width", "controlSize", "isCompactViewport"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -443,6 +440,39 @@ const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
   ? true
   : never = true;
 void _assertAllSlotPropFieldsListed;
+
+const SIDEBAR_NAVIGATION_REGISTRATION_FIELDS = [
+  "id",
+  "title",
+  "description",
+  "placement",
+  "component",
+  "headerComponent",
+] as const satisfies readonly (keyof ExperimentalSidebarNavigationRegistration)[];
+
+type MissingSidebarNavigationRegistrationField = Exclude<
+  keyof ExperimentalSidebarNavigationRegistration,
+  (typeof SIDEBAR_NAVIGATION_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllSidebarNavigationRegistrationFieldsListed: MissingSidebarNavigationRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllSidebarNavigationRegistrationFieldsListed;
+
+const SIDEBAR_HEADER_PROP_FIELDS = [
+  "width",
+  "controlSize",
+  "isCompactViewport",
+] as const satisfies readonly (keyof ExperimentalSidebarHeaderProps)[];
+
+type MissingSidebarHeaderPropField = Exclude<
+  keyof ExperimentalSidebarHeaderProps,
+  (typeof SIDEBAR_HEADER_PROP_FIELDS)[number]
+>;
+const _assertAllSidebarHeaderPropFieldsListed: MissingSidebarHeaderPropField extends never
+  ? true
+  : never = true;
+void _assertAllSidebarHeaderPropFieldsListed;
 
 const NAV_PANEL_REGISTRATION_FIELDS = [
   "id",
@@ -696,6 +726,18 @@ describe("bb-plugin-authoring skill", () => {
           `${event} payload field "${field}" is not documented in the skill`,
         ).toContain(field);
       }
+    }
+  });
+
+  it("documents every sidebar navigation registration field and header prop", () => {
+    for (const field of [
+      ...SIDEBAR_NAVIGATION_REGISTRATION_FIELDS,
+      ...SIDEBAR_HEADER_PROP_FIELDS,
+    ]) {
+      expect(
+        skill,
+        `sidebar navigation field "${field}" is not documented in the skill`,
+      ).toContain(field);
     }
   });
 

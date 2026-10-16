@@ -59,8 +59,8 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { NavRailNewThreadButton, NavRailSettingsButton } from "./AppNavRail";
-import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
+import { NavRailSettingsButton } from "./AppNavRail";
+import { SidebarNavigationHeader } from "./SidebarNavigationHeader";
 import {
   SidebarNavigationProviderMount,
   SidebarNavigationRegion,
@@ -315,19 +315,7 @@ export function AppSidebar({
     <>
       <SidebarTopReserveRow
         testId="app-sidebar-top-reserve-row"
-        headerSlot={
-          placement === "rail" ? (
-            <div
-              data-testid="nav-rail-header"
-              data-sidebar-header-slot=""
-              className="flex h-full min-w-0 flex-1 items-center"
-            >
-              <NavRailNewThreadButton />
-            </div>
-          ) : (
-            <SidebarHeaderSlot />
-          )
-        }
+        headerSlot={<SidebarNavigationHeader resolved={navigation} />}
       />
       {placement === "list" ? navigationRegion("shrink-0") : null}
       <SidebarContent>

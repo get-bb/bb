@@ -56,7 +56,6 @@ import { ProvidersSettingsSection } from "@/components/settings/ProvidersSetting
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SidebarNavigationProviderSetting } from "@/components/settings/SidebarNavigationProviderSetting";
-import { SidebarHeaderSetting } from "@/components/settings/SidebarHeaderSetting";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
@@ -849,7 +848,6 @@ export function AppearanceSettingsSection({
       <SettingsSection title="Interface">
         <div className="space-y-5">
           <SidebarNavigationProviderSetting />
-          <SidebarHeaderSetting />
           <SidebarThreadListSetting />
           <CodeRendererSettings />
           <SidebarFooterSettings />

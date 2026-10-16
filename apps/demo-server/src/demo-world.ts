@@ -182,7 +182,6 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.navigationProvider": uiPreferenceEntry(
       "sidebar.navigationProvider",
     ),
-    "sidebar.headerProvider": uiPreferenceEntry("sidebar.headerProvider"),
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
     ),

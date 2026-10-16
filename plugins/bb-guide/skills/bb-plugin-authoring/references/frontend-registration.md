@@ -279,9 +279,9 @@ is lost when the document navigates; check again when `url` changes.
 
 ### Sidebar navigation and header
 
-Drawing the sidebar navigation (`experimental_sidebarNavigation`) and adding
-controls beside the sidebar toggle (`experimental_sidebarHeader`) are covered
-in frontend-sidebar-navigation.md.
+Drawing the sidebar navigation (`experimental_sidebarNavigation`) and its
+controls beside the sidebar toggle (`headerComponent`) are covered in
+frontend-sidebar-navigation.md.
 
 ### Replacing the sidebar thread list
 

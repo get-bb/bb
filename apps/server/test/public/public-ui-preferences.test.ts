@@ -62,24 +62,49 @@ describe("public ui preferences", () => {
     },
   );
 
+  it("ignores stored rows for the retired sidebar header preference", async () => {
+    await withTestHarness(async (harness) => {
+      const key = "sidebar.headerProvider";
+      overwriteStoredUiPreference(harness.deps.db, {
+        key,
+        valueJson: JSON.stringify("garden/icons"),
+      });
+      harness.deps.db.$client
+        .prepare(
+          "INSERT INTO ui_preference_defaults (key, value_json) VALUES (?, ?)",
+        )
+        .run(key, JSON.stringify("garden/icons"));
+      const listed = await listPreferences(harness);
+      expect(listed.status).toBe(200);
+      const body = (await readJson(listed)) as {
+        preferences: Record<string, unknown>;
+      };
+      expect(Object.keys(body.preferences).sort()).toEqual(
+        [...UI_PREFERENCE_KEYS].sort(),
+      );
+      expect(body.preferences).not.toHaveProperty([key]);
+      expect(
+        (
+          await putPreference(harness, key, {
+            expectedRevision: 1,
+            value: "garden/icons",
+          })
+        ).status,
+      ).toBe(404);
+    });
+  });
+
   it("reads sidebar provider rows stored before the rail and resolves the removed built-in to Automatic", async () => {
     await withTestHarness(async (harness) => {
       overwriteStoredUiPreference(harness.deps.db, {
         key: "sidebar.navigationProvider",
         valueJson: JSON.stringify("navigation/navigation"),
       });
-      overwriteStoredUiPreference(harness.deps.db, {
-        key: "sidebar.headerProvider",
-        valueJson: JSON.stringify("garden/icons"),
-      });
       const body = (await readJson(await listPreferences(harness))) as {
         preferences: Record<string, { value: unknown }>;
       };
       expect(body.preferences["sidebar.navigationProvider"]?.value).toBe(
         "__automatic__",
-      );
-      expect(body.preferences["sidebar.headerProvider"]?.value).toBe(
-        "garden/icons",
       );
     });
   });

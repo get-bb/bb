@@ -256,17 +256,13 @@ onChange }` — the control the New Thread environment picker renders beside
   and disclosures share one surface.
 - `experimental_sidebarNavigation` → `{ isCompactViewport, placement,
   experimental_Original }` — draws the sidebar navigation. Registration:
-  `{ id, title, description?, placement?, component }`, where `placement` is
-  `"rail"` or `"list"` (the default). Read items and host actions with
-  `experimental_useSidebarNavigation()`. Exclusive; see
+  `{ id, title, description?, placement?, component, headerComponent? }`,
+  where `placement` is `"rail"` or `"list"` (the default). The optional
+  `headerComponent` receives `{ width, controlSize, isCompactViewport }` and
+  renders in the sidebar header row beside the sidebar toggle while that
+  navigation is active. Read items and host actions
+  with `experimental_useSidebarNavigation()`. Exclusive; see
   frontend-sidebar-navigation.md. Experimental: see `docs/api_to_audit.md`.
-- `experimental_sidebarHeader` → `{ width, controlSize, isCompactViewport }`
-  — renders controls in the sidebar header row between the sidebar toggle and
-  bb's back and forward buttons while the navigation uses the `list`
-  placement. Registration: `{ id, title, description?, component }`.
-  Exclusive; the user picks at most one under Settings → Appearance → Sidebar header,
-  and the default is bb's controls only. Content is clipped to the row.
-  Experimental: see `docs/api_to_audit.md`.
 - `experimental_threadList`, `experimental_threadHeaderAction`,
   `experimental_threadAction`, and `experimental_browserToolbarAction` are
   covered in frontend-registration.md.

@@ -1271,7 +1271,8 @@ Docs: `frontend-core-slots.md`.
 Compact Nav 0.1.x and Sidebar Sections, load again.
 
 **What it does.** Draws the sidebar navigation: New thread, Search threads,
-Plugins, Skills, Automations, plugin panels, and More. Exclusive.
+Plugins, Skills, Automations, plugin panels, and More, plus optional controls
+in the sidebar header. Exclusive.
 `sidebar.navigationProvider` picks the provider: bb's `__bb__/rail` or
 `__bb__/top-list`, a plugin key, or `__automatic__` (the default: the first
 registered plugin provider, else Rail). Legacy `__builtin__` and
@@ -1280,12 +1281,23 @@ registered plugin provider, else Rail). Legacy `__builtin__` and
 The registration declares `placement`, `rail` or `list` (the default). bb lays
 the sidebar out from the placement before the provider renders, and keeps the
 layout around it: for `rail`, a fixed-width column that stays when the sidebar
-collapses, New thread in the header, Settings at the bottom of the column, and
-the framed macOS title bar; for `list`, the area above the thread list, a
-Settings footer action, Back to app rows on the Settings, Plugins, and Skills
-lists, a collapse that hides the whole sidebar, and the header slot. The
-component receives `isCompactViewport`, `placement`, and the deprecated
-`experimental_Original`, which renders bb's provider for the same placement.
+collapses, Settings at the bottom of the column, and the framed macOS title
+bar; for `list`, the area above the thread list, a Settings footer action,
+Back to app rows on the Settings, Plugins, and Skills lists, and a collapse
+that hides the whole sidebar. The component receives `isCompactViewport`,
+`placement`, and the deprecated `experimental_Original`, which renders bb's
+provider for the same placement.
+
+The optional `headerComponent` renders in the sidebar header row, between the
+sidebar toggle (and the macOS window controls) and bb's back and forward
+buttons, while the navigation is active. It receives `width`, `controlSize`,
+and `isCompactViewport`. The host clips it to the row, keeps the macOS drag
+region for non-interactive space, and on a crash draws the header of bb's
+provider for the same placement, with one toast. It replaces the separate
+`experimental_sidebarHeader` slot and its `sidebar.headerProvider` setting,
+which let users pair a header with a navigation it did not belong to. That
+slot remains as an untyped runtime alias: a plugin's header joins each of its
+navigations that has no `headerComponent`.
 
 Before plugin frontends settle, a pinned plugin provider, or the plugin
 Automatic last chose, reserves the placement it last had and draws nothing;
@@ -1297,7 +1309,9 @@ provider is replaced by bb's provider for its placement, with one toast.
 built-in providers. They mount through the same host component as plugin
 providers, receive the same props, and read and act only through
 `experimental_useSidebarNavigation()`, `experimental_useSidebarNavigationSplit()`,
-and `experimental_SidebarNavigationIcon`.
+and `experimental_SidebarNavigationIcon`. Rail's header is its New thread
+button, resolved with the provider like a plugin's `headerComponent`; it does
+not read the size props.
 
 **Audit before stabilizing.**
 
@@ -1311,6 +1325,8 @@ and `experimental_SidebarNavigationIcon`.
    drawing bb's provider until the plugin registers.
 5. **Original.** Remove `experimental_Original` once released plugins stop
    rendering it.
+6. **Header alias.** Remove the `experimental_sidebarHeader` alias once
+   released plugins pass `headerComponent`.
 
 ## `experimental_useSidebarNavigation`, `experimental_useSidebarNavigationSplit`, `experimental_SidebarNavigationIcon` (`@get-bb/plugin-sdk/app`)
 
@@ -1351,29 +1367,6 @@ picker reads the same registrations.
 4. **Accessibility.** Validate labels, badges in accessible names,
    `aria-current`, shortcut metadata, and focus return from Customize in
    third-party markup.
-
-## `app.slots.experimental_sidebarHeader` (`@get-bb/plugin-sdk/app`)
-
-**Restored 2026-10-15 (SDK 0.6.53).**
-
-**What it does.** Renders one plugin component in the sidebar header row,
-between the sidebar toggle (and the macOS window controls) and bb's back and
-forward buttons, while the active navigation uses the `list` placement; the
-rail puts New thread there instead. Exclusive and opt-in:
-`sidebar.headerProvider` defaults to `__builtin__` (bb's controls only), and
-the user picks a provider under Settings → Appearance → Sidebar header. The
-component receives `width`, `controlSize`, and `isCompactViewport`. The host
-clips content to the row, keeps the macOS drag region for non-interactive
-space, and removes the component with one toast on a crash.
-
-**Core callers on the same path.** None: bb draws nothing in that space. Keep
-it experimental until bb's own header content moves onto it or the slot is
-removed.
-
-**Audit before stabilizing.**
-
-1. **Core use.** Decide whether bb's header controls move onto the slot.
-2. **Rail.** Decide whether rail providers need a header slot of their own.
 
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 

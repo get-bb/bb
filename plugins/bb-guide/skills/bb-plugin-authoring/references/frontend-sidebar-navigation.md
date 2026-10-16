@@ -13,13 +13,16 @@ Declare where you draw with `placement`, because bb lays out the sidebar
 before your bundle loads:
 
 - `rail` — a fixed-width column on the sidebar's left edge that stays when
-  the sidebar collapses. bb draws New thread in the header and Settings at
-  the bottom of the column; draw Home with `actions.goHome()` and
-  `isHomeActive`.
-- `list` (the default) — the area above the thread list. Draw New thread
-  yourself. bb adds Settings to the footer and a Back to app row to the
-  Settings, Plugins, and Skills lists, and a collapse hides the whole
-  sidebar. Draw a divider below your rows if your layout wants one.
+  the sidebar collapses. bb draws Settings at the bottom of the column; draw
+  Home with `actions.goHome()` and `isHomeActive`.
+- `list` (the default) — the area above the thread list. bb adds Settings to
+  the footer and a Back to app row to the Settings, Plugins, and Skills
+  lists, and a collapse hides the whole sidebar. Draw a divider below your
+  rows if your layout wants one.
+
+Draw New thread yourself, in your component or in a `headerComponent`. bb's
+Rail puts it in its header and leaves it out of Customize; Top list draws it
+as a row that the user can reorder and hide like any other.
 
 The component receives `isCompactViewport`, `placement`, and the deprecated
 `experimental_Original`, which renders bb's provider for your placement.
@@ -84,20 +87,29 @@ split drags are recorded in `inspection.sidebarNavigationCalls`.
 
 ## Controls beside the sidebar toggle
 
-`app.slots.experimental_sidebarHeader` renders a component between the
-sidebar toggle (and the macOS window controls) and bb's back and forward
-buttons while the active navigation uses the `list` placement; the rail puts
-New thread there. It is exclusive and opt-in: the user picks at most one
-under Settings → Appearance → Sidebar header. Registration:
-`{ id, title, description?, component }`. The component receives `width`
-(px available, updated on resize), `controlSize` (bb's header button size,
-also `--bb-sidebar-control-size`; use `--bb-sidebar-control-icon-size` for
-glyphs), and `isCompactViewport`. Content is clipped to the row; on macOS
-empty space drags the window, while buttons, links, and inputs do not. A
-crash removes it.
+A navigation can also pass `headerComponent`, rendered between the sidebar
+toggle (and the macOS window controls) and bb's back and forward buttons
+while that navigation is active. The header belongs to the navigation, so
+switching providers swaps both together; bb's Rail uses its header for New
+thread. The component receives `width` (px available, updated on resize),
+`controlSize` (bb's header button size, also `--bb-sidebar-control-size`;
+use `--bb-sidebar-control-icon-size` for glyphs), and `isCompactViewport`.
+Content is clipped to the row; on macOS empty space drags the window, while
+buttons, links, and inputs do not. A crash replaces it with the header of
+bb's provider for your placement. Plugins built before `headerComponent`
+that call `experimental_sidebarHeader` still load: their header joins their
+navigation.
 
-To turn your navigation or header on when your plugin is installed, set
-`sidebar.navigationProvider` or `sidebar.headerProvider` to
-`<plugin-id>/<slot-id>` from `bb.onInstall` (see backend-ui-lifecycle.md);
-later choices in Settings → Appearance stick. Users do the same with
-`bb settings ui set`.
+```tsx
+app.slots.experimental_sidebarNavigation({
+  id: "icons",
+  title: "Icon strip",
+  component: IconRows,
+  headerComponent: NewThreadHeader,
+});
+```
+
+To turn your navigation on when your plugin is installed, set
+`sidebar.navigationProvider` to `<plugin-id>/<slot-id>` from `bb.onInstall`
+(see backend-ui-lifecycle.md); later choices in Settings → Appearance stick.
+Users do the same with `bb settings ui set`.

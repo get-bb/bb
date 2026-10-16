@@ -72,7 +72,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_useSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplitOptions",
-          "ExperimentalSidebarHeaderRegistration",
           "ExperimentalSidebarHeaderProps",
         ],
         experimental: true,

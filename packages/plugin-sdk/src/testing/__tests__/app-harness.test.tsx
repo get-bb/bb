@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
+  PluginAppSlots,
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
@@ -2217,6 +2218,18 @@ describe("thread actions menu fake", () => {
   });
 });
 
+interface LegacySidebarSlots {
+  experimental_sidebarHeader(registration: {
+    id: string;
+    title: string;
+    component: () => null;
+  }): void;
+}
+
+function legacySlots(slots: PluginAppSlots): LegacySidebarSlots {
+  return slots as unknown as LegacySidebarSlots;
+}
+
 function NavigationProbe({ id }: { id: string }) {
   const { activeItemId, actions, items } = experimental_useSidebarNavigation();
   const split = experimental_useSidebarNavigationSplit(id);
@@ -2291,7 +2304,7 @@ describe("sidebar navigation test runtime", () => {
     ]);
   });
 
-  it("captures sidebar navigation and header registrations, defaulting navigation to the list placement", async () => {
+  it("captures sidebar navigation registrations, defaulting to the list placement", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
         builder.slots.experimental_sidebarNavigation({
@@ -2299,16 +2312,12 @@ describe("sidebar navigation test runtime", () => {
           title: "Compact navigation",
           description: "Groups the sidebar destinations.",
           component: () => null,
+          headerComponent: () => null,
         });
         builder.slots.experimental_sidebarNavigation({
           id: "sections",
           title: "Sections rail",
           placement: "rail",
-          component: () => null,
-        });
-        builder.slots.experimental_sidebarHeader({
-          id: "icons",
-          title: "Header icons",
           component: () => null,
         });
       }),
@@ -2321,6 +2330,7 @@ describe("sidebar navigation test runtime", () => {
         description: "Groups the sidebar destinations.",
         placement: "list",
         component: expect.any(Function),
+        headerComponent: expect.any(Function),
       },
       {
         id: "sections",
@@ -2329,12 +2339,65 @@ describe("sidebar navigation test runtime", () => {
         component: expect.any(Function),
       },
     ]);
-    expect(captured.experimentalSidebarHeaders).toEqual([
-      { id: "icons", title: "Header icons", component: expect.any(Function) },
+  });
+
+  it("joins a legacy experimental_sidebarHeader to the plugin's navigation", async () => {
+    const LegacyHeader = () => null;
+    const OwnHeader = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        legacySlots(builder.slots).experimental_sidebarHeader({
+          id: "icons",
+          title: "Header icons",
+          component: LegacyHeader,
+        });
+        builder.slots.experimental_sidebarNavigation({
+          id: "compact",
+          title: "Compact navigation",
+          component: () => null,
+        });
+        builder.slots.experimental_sidebarNavigation({
+          id: "sections",
+          title: "Sections",
+          component: () => null,
+          headerComponent: OwnHeader,
+        });
+      }),
+    );
+
+    expect(
+      captured.experimentalSidebarNavigations.map((navigation) => [
+        navigation.id,
+        navigation.headerComponent,
+      ]),
+    ).toEqual([
+      ["compact", LegacyHeader],
+      ["sections", OwnHeader],
     ]);
   });
 
-  it("rejects an unknown navigation placement and duplicate ids", async () => {
+  it("warns when a legacy experimental_sidebarHeader has no list navigation to join", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const captured = await loadPluginApp(
+        definePluginApp((builder) => {
+          legacySlots(builder.slots).experimental_sidebarHeader({
+            id: "icons",
+            title: "Header icons",
+            component: () => null,
+          });
+        }),
+      );
+      expect(captured.experimentalSidebarNavigations).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("slots.experimental_sidebarHeader: ignored"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("rejects an unknown placement, a non-component header, and duplicate ids", async () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
@@ -2352,12 +2415,26 @@ describe("sidebar navigation test runtime", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.experimental_sidebarHeader({
+          builder.slots.experimental_sidebarNavigation({
+            id: "sections",
+            title: "Sections",
+            component: () => null,
+            headerComponent: "header" as unknown as () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_sidebarNavigation: "headerComponent" must be a React component function',
+    );
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          legacySlots(builder.slots).experimental_sidebarHeader({
             id: "icons",
             title: "One",
             component: () => null,
           });
-          builder.slots.experimental_sidebarHeader({
+          legacySlots(builder.slots).experimental_sidebarHeader({
             id: "icons",
             title: "Two",
             component: () => null,

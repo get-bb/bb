@@ -30,9 +30,6 @@ function registerReplacementPlugin() {
     "inkwell",
     makePluginRegistrationSet({
       threadLists: [{ id: "inbox", title: "Inbox", component: () => null }],
-      experimentalSidebarHeaders: [
-        { id: "header", title: "Inkwell header", component: () => null },
-      ],
       sourceCodeRenderers: [
         { id: "source", title: "Inkwell source", component: () => null },
       ],

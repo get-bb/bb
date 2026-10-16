@@ -268,7 +268,7 @@ A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
 destinations and Customize navigation; Settings is at the bottom. New thread sits in
-the sidebar header and cannot be hidden. The list beside the rail swaps between
+the sidebar header and cannot be hidden from the rail. The list beside the rail swaps between
 the thread list, Plugins, Skills, and Settings, and collapsing the sidebar
 hides that list and leaves the rail. Rail order and visibility are
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`. In the macOS
@@ -287,14 +287,14 @@ rail). Pick one in Settings → Appearance → Navigation, or:
   bb settings ui set sidebar.navigationProvider __bb__/top-list
   bb settings ui reset sidebar.navigationProvider
 
-The top list puts New thread, the visible destinations, and More above the
-thread list, moves Settings into the footer, and adds a Back to app row to the
-Settings, Plugins, and Skills lists. Collapsing hides the whole sidebar, and
+The top list puts the visible destinations, New thread among them, and More
+above the thread list, moves Settings into the footer, and adds a Back to app
+row to the Settings, Plugins, and Skills lists. New thread can be reordered
+and hidden like any other row there. Collapsing hides the whole sidebar, and
 the macOS desktop app drops the separate title bar. A navigation plugin
-declares whether it draws a rail or a list, and gets the matching layout. The
-same order and visibility keys apply to every provider. With a list, a header
-plugin can add controls beside the sidebar toggle (`sidebar.headerProvider`,
-Settings → Appearance → Sidebar header; `__builtin__` shows only bb's controls).
+declares whether it draws a rail or a list, and gets the matching layout; a
+list navigation can also bring its own controls beside the sidebar toggle.
+The same order and visibility keys apply to every provider.
 
 Footer actions: `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are
 string lists of `builtin:settings` (top list only), `builtin:mobile`,

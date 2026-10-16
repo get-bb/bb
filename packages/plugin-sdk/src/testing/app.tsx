@@ -27,7 +27,6 @@ import {
   type ComposerSubmitOptions,
   type ComposerView,
   type ExperimentalAppOverlayRegistration,
-  type ExperimentalSidebarHeaderRegistration,
   type ExperimentalSidebarNavigationActions,
   type ExperimentalSidebarNavigationIconProps,
   type ExperimentalSidebarNavigationItem,
@@ -1569,7 +1568,6 @@ export interface CapturedPluginApp {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
-  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];

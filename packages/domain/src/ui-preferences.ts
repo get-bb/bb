@@ -47,7 +47,6 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
-  "sidebar.headerProvider",
   "sidebar.threadListProvider",
   "infoPanel.collapsedSections",
 ] as const;
@@ -141,13 +140,6 @@ export const uiPreferenceDefinitions = {
     ),
     "__automatic__",
     "Provider that draws the sidebar navigation: __bb__/rail (icon rail on the sidebar's left edge), __bb__/top-list (labeled rows above the thread list), a plugin key, or __automatic__ for the first installed navigation plugin, falling back to __bb__/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
-  ),
-  "sidebar.headerProvider": defineUiPreference(
-    uiPreferenceStringSchema.transform((value) =>
-      value === "__automatic__" ? "__builtin__" : value,
-    ),
-    "__builtin__",
-    "Plugin that renders controls beside the sidebar toggle while the navigation uses the list placement, or __builtin__ for bb's own header only.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>

@@ -1,9 +1,17 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { flushSync } from "react-dom";
+import type { ExperimentalSidebarHeaderProps } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { appToast } from "@/components/ui/app-toast";
 import { useSidebar } from "@/components/ui/sidebar";
-import { useSidebarHeaderReplacement } from "./sidebarHeaderProvider";
+import type { ExperimentalSidebarNavigationSlot } from "@/lib/plugin-slots";
+import { NavRailNewThreadButton } from "./AppNavRail";
+import {
+  builtInNavigationForPlacement,
+  RAIL_NAVIGATION_PROVIDER,
+  type BuiltInNavigationProvider,
+  type ResolvedSidebarNavigation,
+} from "./sidebarNavigationProvider";
 
 const SIDEBAR_HEADER_SLOT_KIND = "sidebarHeader";
 const DEFAULT_CONTROL_SIZE = 28;
@@ -15,19 +23,62 @@ function readControlSize(element: HTMLElement): number {
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_CONTROL_SIZE;
 }
 
-export function SidebarHeaderSlot() {
-  const replacement = useSidebarHeaderReplacement();
+export function SidebarNavigationHeader({
+  resolved,
+}: {
+  resolved: ResolvedSidebarNavigation;
+}) {
+  switch (resolved.kind) {
+    case "built-in":
+      return <BuiltInNavigationHeader provider={resolved.provider} />;
+    case "loading":
+      return (
+        <BuiltInNavigationHeader
+          provider={builtInNavigationForPlacement(resolved.placement)}
+        />
+      );
+    case "plugin": {
+      const header = resolved.slot.headerComponent;
+      if (header === undefined) return null;
+      return <PluginNavigationHeader slot={resolved.slot} header={header} />;
+    }
+  }
+}
+
+function BuiltInNavigationHeader({
+  provider,
+}: {
+  provider: BuiltInNavigationProvider;
+}) {
+  if (provider.key !== RAIL_NAVIGATION_PROVIDER) return null;
+  return (
+    <div
+      data-testid="nav-rail-header"
+      data-sidebar-header-slot=""
+      className="flex h-full min-w-0 flex-1 items-center"
+    >
+      <NavRailNewThreadButton />
+    </div>
+  );
+}
+
+function PluginNavigationHeader({
+  slot,
+  header: Header,
+}: {
+  slot: ExperimentalSidebarNavigationSlot;
+  header: ComponentType<ExperimentalSidebarHeaderProps>;
+}) {
   const { isCompactViewport } = useSidebar();
   const slotRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({
     width: 0,
     controlSize: DEFAULT_CONTROL_SIZE,
   });
-  const isActive = replacement.kind === "plugin";
 
   useLayoutEffect(() => {
     const element = slotRef.current;
-    if (!isActive || element === null) return;
+    if (element === null) return;
     const measure = (width: number) => {
       if (element.hidden) return;
       const controlSize = readControlSize(element);
@@ -44,10 +95,8 @@ export function SidebarHeaderSlot() {
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [isActive, isCompactViewport]);
+  }, [isCompactViewport]);
 
-  if (replacement.kind === "owner") return null;
-  const title = replacement.registration.title;
   return (
     <div
       ref={slotRef}
@@ -56,17 +105,21 @@ export function SidebarHeaderSlot() {
       className="flex h-full min-w-0 flex-1 items-center overflow-hidden"
     >
       <PluginReplacementSlot
-        replacement={replacement}
-        original={null}
+        replacement={{ kind: "plugin", registration: slot }}
+        original={
+          <BuiltInNavigationHeader
+            provider={builtInNavigationForPlacement(slot.placement)}
+          />
+        }
         slotKind={SIDEBAR_HEADER_SLOT_KIND}
         onCrash={(pluginId) => {
           appToast.error("Sidebar header plugin crashed", {
-            description: `${title} (${pluginId}) stopped working, so bb removed it from the sidebar header.`,
+            description: `${slot.title} (${pluginId}) stopped working, so bb drew its own sidebar header instead.`,
           });
         }}
       >
-        {(slot) => (
-          <slot.component
+        {() => (
+          <Header
             width={size.width}
             controlSize={size.controlSize}
             isCompactViewport={isCompactViewport}

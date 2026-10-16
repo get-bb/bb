@@ -8,17 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalSidebarHeaderProps } from "@get-bb/plugin-sdk";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
-import {
-  resetPluginSlotStoreForTest,
-  setPluginSlotRegistrations,
-} from "@/lib/plugin-slots";
+import type { ExperimentalSidebarNavigationSlot } from "@/lib/plugin-slots";
 import {
   getNotifications,
   resetNotificationStore,
 } from "@/lib/notifications/notification-store";
-import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
-import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
-import { sidebarHeaderProviderAtom } from "./sidebarHeaderProvider";
+import { SidebarNavigationHeader } from "./SidebarNavigationHeader";
 
 function HeaderFixture({ width, controlSize }: ExperimentalSidebarHeaderProps) {
   const [crash, setCrash] = useState(false);
@@ -35,26 +30,26 @@ function HeaderFixture({ width, controlSize }: ExperimentalSidebarHeaderProps) {
   );
 }
 
-function registerHeader() {
-  setPluginSlotRegistrations(
-    "garden",
-    registrationSet({
-      experimentalSidebarHeaders: [
-        { id: "icons", title: "Garden icons", component: HeaderFixture },
-      ],
-    }),
-  );
+function navigationSlot(
+  headerComponent?: ExperimentalSidebarNavigationSlot["headerComponent"],
+): ExperimentalSidebarNavigationSlot {
+  return {
+    id: "icons",
+    title: "Garden icons",
+    placement: "list",
+    component: () => null,
+    ...(headerComponent ? { headerComponent } : {}),
+    pluginId: "garden",
+    generation: 1,
+  };
 }
 
-function renderSlot({ preference }: { preference?: string }) {
-  const store = createStore();
-  if (preference !== undefined)
-    store.set(sidebarHeaderProviderAtom, preference);
+function renderHeader(slot: ExperimentalSidebarNavigationSlot) {
   return render(
-    <Provider store={store}>
+    <Provider store={createStore()}>
       <MemoryRouter>
         <SidebarProvider>
-          <SidebarHeaderSlot />
+          <SidebarNavigationHeader resolved={{ kind: "plugin", slot }} />
         </SidebarProvider>
       </MemoryRouter>
     </Provider>,
@@ -68,33 +63,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
   cleanup();
   resetAllCrashedPluginSlotsForTest();
-  resetPluginSlotStoreForTest();
   resetNotificationStore();
   window.localStorage.clear();
   vi.restoreAllMocks();
 });
 
-describe("SidebarHeaderSlot", () => {
-  it("leaves the header to bb until the user picks a provider", () => {
-    registerHeader();
-    renderSlot({});
+describe("SidebarNavigationHeader", () => {
+  it("leaves the header to bb when the navigation has no header", () => {
+    renderHeader(navigationSlot());
 
-    expect(screen.queryByTestId("header-fixture")).toBeNull();
     expect(screen.queryByTestId("sidebar-header-slot")).toBeNull();
   });
 
-  it("mounts the picked provider after bb's toggle with the control size", () => {
-    registerHeader();
-    renderSlot({ preference: "garden/icons" });
+  it("mounts the navigation's header with the control size", () => {
+    renderHeader(navigationSlot(HeaderFixture));
 
     expect(screen.getByTestId("header-fixture")).toBeDefined();
     expect(screen.getByTestId("header-size").textContent).toBe("0/28");
-  });
-
-  it("renders nothing for a picked provider that is not installed", () => {
-    renderSlot({ preference: "garden/icons" });
-
-    expect(screen.queryByTestId("sidebar-header-slot")).toBeNull();
   });
 
   it("renders a new width in the same frame the slot resizes", () => {
@@ -109,8 +94,7 @@ describe("SidebarHeaderSlot", () => {
         disconnect() {}
       },
     );
-    registerHeader();
-    renderSlot({ preference: "garden/icons" });
+    renderHeader(navigationSlot(HeaderFixture));
 
     for (const callback of resizeCallbacks) {
       callback(
@@ -125,8 +109,7 @@ describe("SidebarHeaderSlot", () => {
   it("drops a crashing provider and reports it once", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
-    registerHeader();
-    renderSlot({ preference: "garden/icons" });
+    renderHeader(navigationSlot(HeaderFixture));
 
     fireEvent.click(screen.getByRole("button", { name: "Crash header" }));
 
@@ -135,7 +118,7 @@ describe("SidebarHeaderSlot", () => {
       expect.objectContaining({
         title: "Sidebar header plugin crashed",
         description:
-          "Garden icons (garden) stopped working, so bb removed it from the sidebar header.",
+          "Garden icons (garden) stopped working, so bb drew its own sidebar header instead.",
       }),
     ]);
   });

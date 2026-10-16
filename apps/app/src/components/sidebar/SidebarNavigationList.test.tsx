@@ -191,12 +191,12 @@ afterEach(() => {
 });
 
 describe("SidebarNavigationList", () => {
-  it("labels each destination in a row, with New thread first and hidden destinations behind More", async () => {
+  it("labels each visible destination in a row and puts hidden ones, New thread included, behind More", async () => {
     renderList(THREAD_PATH, {
       visibleKeys: ["__bb__/extensions", "garden/docs"],
     });
 
-    expect(rowLabels()).toEqual(["New thread", "Plugins", "Docs", "More"]);
+    expect(rowLabels()).toEqual(["Plugins", "Docs", "More"]);
 
     fireEvent.keyDown(within(list()).getByRole("button", { name: "More" }), {
       key: "Enter",
@@ -206,21 +206,45 @@ describe("SidebarNavigationList", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["Search threads", "Skills", "Customize navigation"]);
+    ).toEqual([
+      "New thread",
+      "Search threads",
+      "Skills",
+      "Customize navigation",
+    ]);
   });
 
-  it("scrolls only the destinations, keeping New thread and More in view", () => {
+  it("scrolls the destinations, New thread among them, keeping More in view", () => {
     renderList(THREAD_PATH);
 
     const destinations = screen.getByTestId("sidebar-navigation-destinations");
     expect(destinations.className).toContain("overflow-y-auto");
     expect(
       rowButtons(destinations).map((button) => button.textContent),
-    ).toEqual(["Plugins", "Skills", "Docs"]);
-    for (const pinned of ["New thread", "More"]) {
-      const button = within(list()).getByRole("button", { name: pinned });
-      expect(destinations.contains(button)).toBe(false);
-    }
+    ).toEqual(["New thread", "Plugins", "Skills", "Docs"]);
+    const more = within(list()).getByRole("button", { name: "More" });
+    expect(destinations.contains(more)).toBe(false);
+  });
+
+  it("hides New thread from Customize like any other row", async () => {
+    const store = createStore();
+    renderList(THREAD_PATH, { store });
+
+    fireEvent.keyDown(within(list()).getByRole("button", { name: "More" }), {
+      key: "Enter",
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Customize navigation" }),
+    );
+    const editor = await screen.findByTestId("sidebar-navigation-customize");
+    fireEvent.click(
+      within(editor).getByRole("checkbox", { name: /New thread/u }),
+    );
+
+    expect(rowLabels()).toEqual(["Plugins", "Skills", "Docs", "More"]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).not.toContain(
+      "__bb__/new-thread",
+    );
   });
 
   it("marks the open plugin panel as the current page", () => {
@@ -294,12 +318,7 @@ describe("SidebarNavigationList", () => {
 
   it("hides More when nothing is hidden", () => {
     renderList(THREAD_PATH, {
-      visibleKeys: [
-        "__bb__/search-threads",
-        "__bb__/extensions",
-        "__bb__/skills",
-        "garden/docs",
-      ],
+      visibleKeys: ALL_KEYS,
     });
 
     expect(rowLabels()).not.toContain("More");
