@@ -174,6 +174,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "overlay-anchor",
+      "type": "registry:ui"
+    },
+    {
       "name": "overlay-trigger",
       "type": "registry:ui"
     },

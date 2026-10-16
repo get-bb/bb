@@ -50,6 +50,10 @@ export function useCloseWhenAnchorDetaches<T extends Element>(
       subtree: true,
     });
 
+    if (typeof IntersectionObserver !== "function") {
+      return () => mutationObserver.disconnect();
+    }
+
     let wasVisible = false;
     const intersectionObserver = new IntersectionObserver((entries) => {
       const entry = entries.at(-1);
