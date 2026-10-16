@@ -73,3 +73,64 @@ describe("composer popup registration", () => {
     ]);
   });
 });
+
+describe("composer footer item registration", () => {
+  it("keeps valid footer items and rejects malformed or duplicate ones", () => {
+    const component = () => null;
+    const onRejected = vi.fn();
+    const registration = collectComposerCustomization(
+      {
+        id: "footer",
+        experimental_footerEnd: [
+          { id: "usage", component },
+          { id: "usage", component },
+          { id: "broken", component: "invalid" },
+          { id: "bad id!", component },
+        ],
+      },
+      new Set(),
+      onRejected,
+    );
+    expect(registration?.experimental_footerEnd).toEqual([
+      { id: "usage", component },
+    ]);
+    expect(onRejected).toHaveBeenCalledTimes(3);
+    expect(onRejected.mock.calls.flat()).toEqual([
+      expect.stringContaining('duplicate id "usage"'),
+      expect.stringContaining("must be a React component function"),
+      expect.anything(),
+    ]);
+  });
+
+  it("keeps start and end items separate", () => {
+    const component = () => null;
+    const registration = collectComposerCustomization(
+      {
+        id: "footer",
+        experimental_footerStart: [{ id: "usage", component }],
+        experimental_footerEnd: [{ id: "usage", component }],
+      },
+      new Set(),
+      vi.fn(),
+    );
+    expect(registration?.experimental_footerStart).toEqual([
+      { id: "usage", component },
+    ]);
+    expect(registration?.experimental_footerEnd).toEqual([
+      { id: "usage", component },
+    ]);
+  });
+
+  it("rejects a non-array footer item list", () => {
+    const onRejected = vi.fn();
+    const registration = collectComposerCustomization(
+      { id: "footer", experimental_footerStart: "nope" },
+      new Set(),
+      onRejected,
+    );
+    expect(registration?.experimental_footerStart).toBeUndefined();
+    expect(onRejected).toHaveBeenCalledWith(
+      expect.stringContaining("experimental_footerStart: must be an array"),
+    );
+  });
+});

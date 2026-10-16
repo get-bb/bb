@@ -1,5 +1,6 @@
 import type {
   ComposerCustomization,
+  ComposerFooterItem,
   PluginComposerScope,
   PluginComposerThreadRowStatus,
 } from "@get-bb/plugin-sdk";
@@ -250,6 +251,8 @@ function parseRegions(
   | "sendMenu"
   | "richText"
   | "experimental_popups"
+  | "experimental_footerStart"
+  | "experimental_footerEnd"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -277,6 +280,23 @@ function parseRegions(
       component: requireComponent(entryKind, entry?.component),
     };
   });
+  const parseFooter = (
+    field: "experimental_footerStart" | "experimental_footerEnd",
+  ) =>
+    parseContributionArray<ComposerFooterItem>(
+      `${kind}.${field}`,
+      registration[field],
+      onRejected,
+      (entryKind, value) => {
+        const entry = value as Record<string, unknown> | null;
+        return {
+          id: requireSlotId(entryKind, entry?.id),
+          component: requireComponent(entryKind, entry?.component),
+        };
+      },
+    );
+  const footerStart = parseFooter("experimental_footerStart");
+  const footerEnd = parseFooter("experimental_footerEnd");
   const plusMenu = parseContributionArray<ComposerMenuItem>(
     `${kind}.plusMenu`,
     registration.plusMenu,
@@ -360,6 +380,10 @@ function parseRegions(
   return {
     ...(actions !== undefined ? { actions } : {}),
     ...(banners !== undefined ? { banners } : {}),
+    ...(footerStart !== undefined
+      ? { experimental_footerStart: footerStart }
+      : {}),
+    ...(footerEnd !== undefined ? { experimental_footerEnd: footerEnd } : {}),
     ...(plusMenu !== undefined ? { plusMenu } : {}),
     ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),

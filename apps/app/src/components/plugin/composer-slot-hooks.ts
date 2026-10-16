@@ -6,6 +6,8 @@ import {
   resolveComposerBanners,
   resolveComposerDraftObservers,
   resolveComposerEditorEffects,
+  resolveComposerFooterEnd,
+  resolveComposerFooterStart,
   resolveComposerPlusMenuItems,
   resolveComposerSendMenuItems,
 } from "@/lib/plugin-slot-resolvers";
@@ -63,6 +65,17 @@ export function useResolvedComposerActions(scopeKind: ComposerScopeKind) {
 
 export function useResolvedComposerBanners(scopeKind: ComposerScopeKind) {
   return useResolvedComposerSlot(scopeKind, resolveComposerBanners, emptyList);
+}
+
+export function useResolvedComposerFooterItems(
+  scopeKind: ComposerScopeKind,
+  side: "start" | "end",
+) {
+  return useResolvedComposerSlot(
+    scopeKind,
+    side === "start" ? resolveComposerFooterStart : resolveComposerFooterEnd,
+    emptyList,
+  );
 }
 
 export function useResolvedComposerPlusMenuItems(scopeKind: ComposerScopeKind) {
