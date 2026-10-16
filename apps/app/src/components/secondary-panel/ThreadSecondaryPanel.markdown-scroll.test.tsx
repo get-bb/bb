@@ -45,7 +45,13 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
 
 const noop = () => {};
 
-function Harness() {
+function Harness({
+  panelStateId,
+  browserOnly = false,
+}: {
+  panelStateId?: string;
+  browserOnly?: boolean;
+}) {
   const documents = ["reading.md", "short.md"].map((path) =>
     createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env_scroll",
@@ -64,7 +70,9 @@ function Harness() {
   const [activeId, setActiveId] = useState(documents[0].id);
   const [closed, setClosed] = useState(false);
   const tabs: SecondaryPanelRenderableTab[] = documents
-    .filter((document) => !closed || document.path !== "reading.md")
+    .filter(
+      (document) => !browserOnly && (!closed || document.path !== "reading.md"),
+    )
     .map((document) => ({
       tab: document,
       label: document.path,
@@ -121,6 +129,7 @@ function Harness() {
       </button>
       <PanelGroup direction="horizontal">
         <ThreadSecondaryPanel
+          splitPanelStateId={panelStateId}
           activeTab={tabs.find((tab) => tab.tab.id === activeId)?.tab ?? null}
           canUseGitUi={false}
           fixedTabs={[]}
@@ -144,12 +153,12 @@ function Harness() {
   );
 }
 
-function renderHarness() {
+function renderHarness(props: Parameters<typeof Harness>[0] = {}) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
-  const content = () => (
+  const content = (nextProps = props) => (
     <Wrapper>
       <TooltipProvider>
-        <Harness />
+        <Harness {...nextProps} />
       </TooltipProvider>
     </Wrapper>
   );
@@ -196,6 +205,36 @@ afterEach(() => {
 });
 
 describe("Markdown reading position in open secondary-panel tabs", () => {
+  it.each(["different tabs", "shared tab ids", "panel remount"])(
+    "restores the originating thread after %s",
+    (transition) => {
+      const panelStateId = `reading-origin-${transition}`;
+      const harness = renderHarness({ panelStateId });
+      scrollTo(640);
+      if (transition === "panel remount") {
+        harness.unmount();
+        renderHarness({ panelStateId });
+      } else {
+        harness.rerender(
+          harness.content({
+            panelStateId: `reading-other-${transition}`,
+            browserOnly: transition === "different tabs",
+          }),
+        );
+        if (transition === "shared tab ids") {
+          expect(scrollContainer().scrollTop).toBe(0);
+          scrollTo(160);
+        } else {
+          expect(
+            document.querySelector("[data-file-preview-scroll-container]"),
+          ).toBeNull();
+        }
+        harness.rerender(harness.content());
+      }
+      expect(scrollContainer().scrollTop).toBe(640);
+    },
+  );
+
   it.each(["tab", "hyperlink"])(
     "retains position after leaving through a %s",
     (navigation) => {
@@ -238,11 +277,14 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
     expect(scrollContainer().scrollTop).toBe(780);
   });
 
-  it("forgets a closed document even when reopening uses the same tab id", () => {
-    renderHarness();
-    scrollTo(780);
-    fireEvent.click(screen.getByRole("button", { name: "Close document" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reopen document" }));
-    expect(scrollContainer().scrollTop).toBe(0);
-  });
+  it.each([undefined, "reading-close"])(
+    "forgets a closed document even when reopening uses the same tab id (%s)",
+    (panelStateId) => {
+      renderHarness({ panelStateId });
+      scrollTo(780);
+      fireEvent.click(screen.getByRole("button", { name: "Close document" }));
+      fireEvent.click(screen.getByRole("button", { name: "Reopen document" }));
+      expect(scrollContainer().scrollTop).toBe(0);
+    },
+  );
 });
