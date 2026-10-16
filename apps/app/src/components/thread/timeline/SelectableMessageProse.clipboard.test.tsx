@@ -160,11 +160,13 @@ it("retains the number when copying a later ordered list item", () => {
   expect(copyRange(range).data.get("text/plain")).toBe("4. Four");
 });
 
-it("copies selected tables without their copy actions", () => {
+it("copies selected tables as Markdown with links, emphasis, code and escaped pipes", () => {
   const { container } = render(
     <SelectableMessageProse>
       <MarkdownPreview
-        content={"| Name | Value |\n| --- | --- |\n| Alpha | a,b |"}
+        content={
+          '| Name | Value |\n| --- | --- |\n| [Link](https://example.com) | a,b |\n| **Bold** | say "hi" |\n| a\\|b | `code` |'
+        }
       />
     </SelectableMessageProse>,
   );
@@ -172,7 +174,7 @@ it("copies selected tables without their copy actions", () => {
   range.selectNodeContents(container.firstElementChild!);
   const { data } = copyRange(range);
   expect(data.get("text/plain")).toBe(
-    "| Name | Value |\n| --- | --- |\n| Alpha | a,b |",
+    '| Name | Value |\n| --- | --- |\n| [Link](https://example.com) | a,b |\n| **Bold** | say "hi" |\n| a\\|b | `code` |',
   );
   expect(data.get("text/html")).toContain("<table>");
   expect(data.get("text/html")).not.toContain("Copy as");

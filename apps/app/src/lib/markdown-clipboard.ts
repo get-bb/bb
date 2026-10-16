@@ -57,7 +57,7 @@ function tableRows(table: Element): Element[][] {
   );
 }
 
-export function tableToMarkdown(table: Element): string {
+function tableToMarkdown(table: Element): string {
   const rows = tableRows(table);
   const width = Math.max(0, ...rows.map((row) => row.length));
   if (width === 0) return "";
@@ -79,22 +79,6 @@ export function tableToMarkdown(table: Element): string {
     `| ${Array.from({ length: width }, () => "---").join(" | ")} |`,
   );
   return lines.join("\n");
-}
-
-export function tableToCsv(table: Element): string {
-  return tableRows(table)
-    .map((row) =>
-      row
-        .map((cell) => {
-          const copy = cell.cloneNode(true);
-          if (!(copy instanceof Element)) return "";
-          copy.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
-          const text = copy.textContent ?? "";
-          return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-        })
-        .join(","),
-    )
-    .join("\r\n");
 }
 
 function nodeMarkdown(node: Node): string {

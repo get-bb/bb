@@ -45,8 +45,6 @@ import {
   useRehypeKatex,
   type RehypeKatex,
 } from "./markdown-katex-loader.js";
-import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { tableToCsv, tableToMarkdown } from "@/lib/markdown-clipboard";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
@@ -1025,7 +1023,6 @@ function MarkdownBlockquote({ children }: MarkdownBlockquoteProps) {
 }
 
 function MarkdownTable({ children }: MarkdownTableProps) {
-  const tableRef = useRef<HTMLTableElement>(null);
   const breakoutRef = useMarkdownTableContentWidthVariable();
 
   return (
@@ -1043,39 +1040,7 @@ function MarkdownTable({ children }: MarkdownTableProps) {
           minWidth: `min(var(${MARKDOWN_CONTENT_WIDTH_VARIABLE}, 100%), 100%)`,
         }}
       >
-        <div
-          data-clipboard-ignore
-          role="group"
-          aria-label="Copy table"
-          className="mb-1.5 flex w-fit items-center overflow-hidden rounded-md border border-border bg-surface-recessed text-xs text-muted-foreground"
-        >
-          <span aria-hidden="true" className="flex items-center gap-1.5 px-2">
-            <Icon name="Copy" className="size-3" />
-            Copy
-          </span>
-          {(["Markdown", "CSV"] as const).map((format) => (
-            <button
-              key={format}
-              type="button"
-              aria-label={`Copy as ${format}`}
-              className="cursor-pointer border-l border-border px-2 py-1 transition-colors hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none"
-              onClick={() => {
-                if (!tableRef.current) return;
-                void copyToClipboardWithToast(
-                  format === "CSV"
-                    ? tableToCsv(tableRef.current)
-                    : tableToMarkdown(tableRef.current),
-                  { successMessage: `Copied as ${format}` },
-                );
-              }}
-            >
-              {format}
-            </button>
-          ))}
-        </div>
-        <table ref={tableRef} className="border border-border">
-          {children}
-        </table>
+        <table className="border border-border">{children}</table>
       </div>
     </div>
   );
