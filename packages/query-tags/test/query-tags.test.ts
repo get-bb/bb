@@ -2,6 +2,7 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CORE_TAG_SCOPE,
+  createTaggedKeyedQueryOwner,
   invalidateTags,
   runTaggedMutation,
   runTaggedRead,
@@ -186,4 +187,106 @@ describe("tagged reads and mutations", () => {
     }));
     expect(invalidate).not.toHaveBeenCalled();
   });
+});
+
+it("refreshes untagged reads on scoped invalidate-all", async () => {
+  const client = setup();
+  let value = 1;
+  const read = observe(client, "untagged", async () => ({ value, tags: [] }));
+  const other = observe(
+    client,
+    "other",
+    async () => ({ value, tags: [] }),
+    "other",
+  );
+  await vi.waitFor(() => expect(read.value()).toBe(1));
+  value = 2;
+  await invalidateTags(client, CORE_TAG_SCOPE, null);
+  expect(read.value()).toBe(2);
+  expect(other.value()).toBe(1);
+});
+
+it("shares one keyed observer, batches consumers, and retains data through refresh errors until retry succeeds", async () => {
+  const client = setup();
+  let value = 1;
+  let failure = false;
+  const requested: string[][] = [];
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["keyed"],
+    scope: CORE_TAG_SCOPE,
+    read: async (keys) => {
+      requested.push([...keys]);
+      if (failure) throw new Error("offline");
+      return {
+        result: Object.fromEntries(keys.map((key) => [key, value])),
+        tags: [],
+        keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+      };
+    },
+  });
+  disposers.push(
+    owner.subscribe(["a"], () => {}),
+    owner.subscribe(["a", "b"], () => {}),
+  );
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 1,
+      b: 1,
+    }),
+  );
+  expect(client.getQueryCache().getAll()[0]?.getObserversCount()).toBe(1);
+  expect(requested.every((keys) => new Set(keys).size === keys.length)).toBe(
+    true,
+  );
+  failure = true;
+  await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 1,
+    b: 1,
+  });
+  expect(owner.observer.getCurrentResult().error?.message).toBe("offline");
+  failure = false;
+  value = 2;
+  await owner.observer.refetch();
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 2,
+    b: 2,
+  });
+  expect(owner.observer.getCurrentResult().error).toBeNull();
+});
+
+it("re-reads after a dormant read completes without a subscription to changes", async () => {
+  const client = setup();
+  const gate = deferred<void>();
+  let value = 1;
+  let first = true;
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["dormant"],
+    scope: CORE_TAG_SCOPE,
+    read: async () => {
+      const captured = value;
+      if (first) {
+        first = false;
+        await gate.promise;
+      }
+      return { result: { a: captured }, tags: ["item:a"], keyTags: {} };
+    },
+  });
+  const stop = owner.subscribe(["a"], () => {});
+  await vi.waitFor(() => expect(first).toBe(false));
+  stop();
+  await Promise.resolve();
+  gate.resolve();
+  await vi.waitFor(() =>
+    expect(
+      client.getQueryData<{ result: { a: number } }>(["dormant"])?.result.a,
+    ).toBe(1),
+  );
+  value = 2;
+  disposers.push(owner.subscribe(["a"], () => {}));
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result.a).toBe(2),
+  );
 });

@@ -18,7 +18,8 @@
     "lint": "oxlint src test"
   },
   "peerDependencies": {
-    "@tanstack/react-query": "^5.62.0"
+    "@tanstack/react-query": "^5.62.0",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
