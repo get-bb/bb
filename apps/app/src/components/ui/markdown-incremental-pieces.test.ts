@@ -25,6 +25,7 @@ import {
   type MarkdownPieceCache,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces";
+import { remarkInlineDollarMath } from "./markdown-inline-dollar-math";
 import { normalizeMathFences } from "./markdown-math-fences";
 import {
   buildMessageDirectiveRegistry,
@@ -52,6 +53,7 @@ const config: MarkdownPieceRenderConfig = {
   remarkPlugins: [
     remarkGfm,
     [remarkMath, { singleDollarTextMath: false }],
+    remarkInlineDollarMath,
     remarkThreadMentions,
     remarkDirective,
   ],
