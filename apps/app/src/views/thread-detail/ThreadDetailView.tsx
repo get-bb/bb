@@ -958,10 +958,7 @@ function ThreadDetailViewInternal(
     !sendMessage.isPending &&
     !createQueuedMessage.isPending &&
     !editMessage.isPending &&
-    !(timelineLoading && timelineRows.length === 0) &&
-    activeWorkflows.length === 0 &&
-    thread.activeBackgroundAgentCount === 0 &&
-    activeBackgroundCommands.length === 0;
+    !(timelineLoading && timelineRows.length === 0);
   const sentMessageEditEntryRef = useRef({ canEditSentMessages, thread });
   sentMessageEditEntryRef.current = { canEditSentMessages, thread };
   const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
