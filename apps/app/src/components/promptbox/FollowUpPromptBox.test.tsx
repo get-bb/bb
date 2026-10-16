@@ -911,6 +911,33 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
+  it.each([true, false])(
+    "toggles the environment/access footer (%s) without removing execution or submit",
+    (showContextFooter) => {
+      const props = createFollowUpPromptBoxProps({ kind: "ready" });
+      props.environmentSummary = <span>Local environment</span>;
+      const { container } = render(
+        <FollowUpPromptBox
+          {...props}
+          showContextFooter={showContextFooter}
+          permissionReadOnly
+        />,
+      );
+      expect(
+        container.querySelector("[data-follow-up-composer-footer]") !== null,
+      ).toBe(showContextFooter);
+      expect(screen.queryByText("Local environment") !== null).toBe(
+        showContextFooter,
+      );
+      expect(mocks.executionControls).toHaveBeenCalledWith(
+        expect.objectContaining({ disabled: false }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+      expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+      expect(props.permission.onChange).not.toHaveBeenCalled();
+    },
+  );
+
   it("can lock permission without disabling execution controls", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 

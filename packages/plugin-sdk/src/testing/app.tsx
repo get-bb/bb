@@ -691,6 +691,8 @@ function TestThreadChat({
   className,
   leadingContent,
   messageActions,
+  experimental_selectionActions = [],
+  experimental_showContextFooter = true,
 }: ThreadChatProps) {
   return (
     <div
@@ -700,6 +702,10 @@ function TestThreadChat({
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-permission-policy={permissionPolicy}
+      data-context-footer={experimental_showContextFooter}
+      data-selection-actions={experimental_selectionActions
+        .map((action) => action.id)
+        .join(" ")}
       data-message-actions={(messageActions ?? [])
         .map((action) => action.id)
         .join(" ")}
@@ -709,6 +715,29 @@ function TestThreadChat({
         <div data-testid="bb-thread-chat-leading-content">{leadingContent}</div>
       )}
       ThreadChat stub ({threadId})
+      {experimental_selectionActions.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          data-testid={`bb-thread-chat-selection-${action.id}`}
+          onClick={() =>
+            void action.run({
+              message: {
+                id: "test-message",
+                threadId,
+                role: action.roles?.[0] ?? "assistant",
+                text: "test message text",
+                sourceSeqEnd: 1,
+                experimental_messageSeq: 1,
+              },
+              selectedText: "test",
+              selectionContext: { text: "test message text", start: 0, end: 4 },
+            })
+          }
+        >
+          {action.title}
+        </button>
+      ))}
       {(messageActions ?? []).map((action) => (
         <button
           key={action.id}
@@ -1173,7 +1202,9 @@ function TestDiff({
   );
 }
 
-type TestClipboard = (content: ExperimentalClipboardContent) => Promise<boolean>;
+type TestClipboard = (
+  content: ExperimentalClipboardContent,
+) => Promise<boolean>;
 
 let activeClipboard: TestClipboard | null = null;
 

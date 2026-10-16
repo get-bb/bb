@@ -2976,3 +2976,26 @@ directories, linked worktrees, and submodules. Core callers: the setup guide
 Stabilize after deciding whether depth, recency window, and limit should be
 caller options, and after exercising slow or network-mounted home directories
 and Windows hosts.
+
+## `ThreadChatProps.experimental_selectionActions` and `experimental_showContextFooter`
+
+Per-instance actions extend the native text-selection tooltip with captured plain text and the
+surrounding `ThreadChatMessageReference` (including thread identity). `selectionContext` captures
+the rendered text block and UTF-16 start/end offsets so repeated words retain their selected context;
+it is null when the DOM range cannot be captured. They are not global message
+slots and do not appear on ordinary timelines unless their owner explicitly passes them.
+`ExperimentalThreadChatSelectionAction` retains per-role filtering and contained callback failures.
+
+`experimental_showContextFooter` defaults to true. False omits the environment/access row while
+retaining native model, attachments, voice, draft and send/queue/stop controls. This is presentation
+only: inherited permission snapshots, server/host permission limits and approval banners remain
+unchanged. Timeline-only variants have no footer.
+
+Core callers: `PluginThreadChat` forwards into `EmbeddedThreadChat` / `FollowUpPromptBox`; native
+and embedded timelines share `ThreadTimelineRows`, `SelectableMessageProse` and
+`TimelineSelectionMenu`, including the existing consumer action error boundary. Stabilize after
+cross-surface selection/role/unmount tests, permission parity checks, accessible touch/keyboard
+activation and real-app checks with independently scoped consumers. LingQ's hidden tutor is the
+initial consumer; ordinary threads keep default behavior. The CLI's existing thread send/queue
+and permission inspection commands operate on the same thread; these component presentation
+options do not change thread settings or create another dispatch path.

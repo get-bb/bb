@@ -889,6 +889,153 @@ describe("ThreadTimelineRows actions", () => {
     },
   );
 
+  it.each(["user", "assistant"] as const)(
+    "runs an instance selection action with the selected %s text and message identity",
+    async (role) => {
+      const run = vi.fn();
+      const addToChat = vi.fn();
+      const text = "Czy rozumiesz słowo piękny?";
+      renderWithRouter(
+        <ThreadTimelineRows
+          threadId="thr_tutor"
+          timelineRows={[
+            conversationRow({
+              id: "polish",
+              threadId: "thr_tutor",
+              role,
+              text,
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          includePluginMessageActions={false}
+          consumerSelectionActions={[
+            {
+              id: "translate",
+              label: "Translate",
+              pluginId: null,
+              icon: "Languages",
+              run,
+            },
+          ]}
+          onSelectionAddToChat={addToChat}
+          workspaceRootPath={undefined}
+        />,
+      );
+      const node = screen.getByText(text).firstChild!;
+      const range = document.createRange();
+      range.setStart(node, text.indexOf("piękny"));
+      range.setEnd(node, text.indexOf("piękny") + "piękny".length);
+      const rect = new DOMRect(10, 30, 100, 20);
+      Object.defineProperties(range, {
+        getBoundingClientRect: { value: () => rect },
+        getClientRects: { value: () => ({ length: 1, item: () => rect }) },
+      });
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      fireEvent(document, new Event("selectionchange"));
+      expect(
+        await screen.findByRole("button", { name: "Add to chat" }),
+      ).toBeTruthy();
+      fireEvent.click(await screen.findByRole("button", { name: "Translate" }));
+      expect(run).toHaveBeenCalledExactlyOnceWith({
+        message: expect.objectContaining({
+          id: "polish",
+          threadId: "thr_tutor",
+          text,
+          role,
+        }),
+        selectedText: "piękny",
+        selectionContext: {
+          text,
+          start: text.indexOf("piękny"),
+          end: text.indexOf("piękny") + 6,
+        },
+      });
+      expect(addToChat).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps Translate scoped to its instance while ordinary chat keeps Add to chat", async () => {
+    const run = vi.fn();
+    const tutorAdd = vi.fn();
+    const ordinaryAdd = vi.fn();
+    const timeline = (tutor: boolean) => (
+      <ThreadTimelineRows
+        threadId={tutor ? "thr_tutor" : "thr_ordinary"}
+        timelineRows={[
+          conversationRow({
+            id: tutor ? "tutor" : "ordinary",
+            role: "assistant",
+            text: tutor ? "Tutor answer." : "Ordinary answer.",
+          }),
+        ]}
+        consumerSelectionActions={
+          tutor
+            ? [
+                {
+                  id: "translate",
+                  label: "Translate",
+                  pluginId: null,
+                  icon: null,
+                  run,
+                },
+              ]
+            : undefined
+        }
+        includePluginMessageActions={false}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={tutor ? tutorAdd : ordinaryAdd}
+        workspaceRootPath={undefined}
+      />
+    );
+    renderWithRouter(
+      <>
+        {timeline(true)}
+        {timeline(false)}
+      </>,
+    );
+    mockWindowSelection({
+      node: screen.getByText("Tutor answer.").firstChild!,
+      text: "Tutor",
+    });
+    fireEvent(document, new Event("selectionchange"));
+    await screen.findByRole("button", { name: "Translate" });
+    mockWindowSelection({
+      node: screen.getByText("Ordinary answer.").firstChild!,
+      text: "Ordinary",
+    });
+    fireEvent(document, new Event("selectionchange"));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Translate" })).toBeNull(),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Add to chat" }));
+    expect(ordinaryAdd).toHaveBeenCalledExactlyOnceWith("Ordinary");
+    expect(tutorAdd).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("preserves browser copy behavior for ordinary user text", () => {
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_ordinary"
+        timelineRows={[
+          conversationRow({ role: "user", text: "Ordinary user text." }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    const node = screen.getByText("Ordinary user text.");
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const setData = vi.fn();
+    expect(fireEvent.copy(node, { clipboardData: { setData } })).toBe(true);
+    expect(setData).not.toHaveBeenCalled();
+    window.getSelection()!.removeAllRanges();
+  });
+
   it("does not let the previously selected row clear a new row selection", async () => {
     const onSelectionAddToChat = vi.fn();
     const frameCallbacks: FrameRequestCallback[] = [];

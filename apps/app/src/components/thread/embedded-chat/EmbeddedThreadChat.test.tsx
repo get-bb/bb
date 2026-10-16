@@ -196,7 +196,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     setServiceTier: vi.fn(),
     reasoningLevel: "medium",
     setReasoningLevel: vi.fn(),
-    permissionMode: "auto",
+    permissionMode: "full",
     setPermissionMode: vi.fn(),
     activeModel: { model: "gpt-5" },
     modelOptions: [],
@@ -347,8 +347,10 @@ function buildEmbeddedChat({
   threadId = "thr_child",
   surfaceTone = "background",
   pluginComposerBottomScope,
+  showContextFooter,
 }: {
   threadId?: string;
+  showContextFooter?: boolean;
   surfaceTone?: "background" | "sidebar";
   pluginComposerBottomScope?: PluginComposerHost["scope"];
 } = {}) {
@@ -374,6 +376,7 @@ function buildEmbeddedChat({
         executionResetKey: "thr_parent",
         permissionPolicy: "snapshot",
         environmentSummary: null,
+        showContextFooter,
         ...(pluginComposerBottomScope ? { pluginComposerBottomScope } : {}),
       }}
     />
@@ -486,48 +489,55 @@ describe("EmbeddedThreadChat", () => {
     expect(mocks.injectedTimelineProps.at(-1)).toBeUndefined();
   });
 
-  it("queues the submitted draft itself while the thread runtime is active", async () => {
-    mocks.threadRuntimeDisplayStatus = "active";
-    renderEmbeddedChat();
-    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
-      target: { value: "Queue me" },
-    });
-    fireEvent.click(screen.getByText("Send"));
-    await vi.waitFor(() => {
-      expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledTimes(1);
-    });
-    expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "thr_child",
-        input: [{ type: "text", text: "Queue me", mentions: [] }],
-        model: "gpt-5",
-        permissionMode: "auto",
-      }),
-    );
-    expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
-    expect(
-      screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
-    ).toBe("");
-  });
+  it.each([true, false])(
+    "queues with inherited permissions regardless of footer visibility (%s)",
+    async (showContextFooter) => {
+      mocks.threadRuntimeDisplayStatus = "active";
+      renderEmbeddedChat({ showContextFooter });
+      fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+        target: { value: "Queue me" },
+      });
+      fireEvent.click(screen.getByText("Send"));
+      await vi.waitFor(() => {
+        expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledTimes(1);
+      });
+      expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "thr_child",
+          input: [{ type: "text", text: "Queue me", mentions: [] }],
+          model: "gpt-5",
+          permissionMode: "auto",
+        }),
+      );
+      expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
+      expect(
+        screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
+      ).toBe("");
+    },
+  );
 
-  it("sends directly when the thread runtime is idle", async () => {
-    mocks.threadRuntimeDisplayStatus = "idle";
-    renderEmbeddedChat();
-    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
-      target: { value: "Send me" },
-    });
-    fireEvent.click(screen.getByText("Send"));
-    await vi.waitFor(() => {
-      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1);
-    });
-    expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "thr_child",
-        mode: "queue-if-active",
-        input: [{ type: "text", text: "Send me", mentions: [] }],
-      }),
-    );
-  });
+  it.each([true, false])(
+    "sends with inherited permissions regardless of footer visibility (%s)",
+    async (showContextFooter) => {
+      mocks.threadRuntimeDisplayStatus = "idle";
+      renderEmbeddedChat({ showContextFooter });
+      fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+        target: { value: "Send me" },
+      });
+      fireEvent.click(screen.getByText("Send"));
+      await vi.waitFor(() => {
+        expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1);
+      });
+      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "thr_child",
+          mode: "queue-if-active",
+          permissionMode: "auto",
+          input: [{ type: "text", text: "Send me", mentions: [] }],
+        }),
+      );
+    },
+  );
 
   it("steers a queued row once provisioning is ready", async () => {
     mocks.threadRuntimeDisplayStatus = "provisioning";

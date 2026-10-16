@@ -1,4 +1,7 @@
-import type { ThreadChatMessageReference } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalThreadChatSelectionAction,
+  ThreadChatMessageReference,
+} from "@get-bb/plugin-sdk";
 import type { PromptInput } from "@bb/domain";
 import type {
   MarkdownPreviewLocalFileLink,
@@ -62,6 +65,12 @@ export interface ThreadTimelineConsumerMessageAction {
   roles?: readonly ("user" | "assistant")[];
   run(message: ThreadChatMessageReference): void | Promise<void>;
 }
+
+export type ThreadTimelineConsumerSelectionAction = Omit<
+  ThreadTimelineConsumerMessageAction,
+  "run"
+> &
+  Pick<ExperimentalThreadChatSelectionAction, "run">;
 
 export type ThreadTimelineUnreadDividerPlacement =
   | {

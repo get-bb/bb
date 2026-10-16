@@ -83,6 +83,7 @@ import { markStreamTrace } from "@/lib/stream-trace";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   onCopyLink?: () => void;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
@@ -161,6 +162,7 @@ interface UserConversationMessageProps {
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
   onAddToChat?: ThreadTimelineAddToChatHandler;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   onCopyLink?: () => void;
   onEdit?: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -343,6 +345,7 @@ function UserConversationMessage({
   mentions,
   mobileActionDisplay,
   onAddToChat,
+  onSelectProse,
   onCopyLink,
   onEdit,
   onOpenLink,
@@ -445,6 +448,15 @@ function UserConversationMessage({
   const mutePrefixLength = computeMutedPrefixLength(initiator, text);
   const messageText = text.trim();
   const requestLabel = turnRequestLabel(turnRequest);
+  const body = (
+    <CollapsibleMessageText
+      mentions={mentions}
+      resolveMentionLink={resolveMentionLink}
+      linkRouting={linkRouting}
+      text={text}
+      mutePrefixLength={mutePrefixLength || undefined}
+    />
+  );
 
   return (
     <div className="w-full" data-message-column="">
@@ -460,13 +472,13 @@ function UserConversationMessage({
         <div className="flex w-fit max-w-full flex-col items-end">
           <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
             {messageText ? (
-              <CollapsibleMessageText
-                mentions={mentions}
-                resolveMentionLink={resolveMentionLink}
-                linkRouting={linkRouting}
-                text={text}
-                mutePrefixLength={mutePrefixLength || undefined}
-              />
+              onSelectProse === undefined ? (
+                body
+              ) : (
+                <SelectableMessageProse onSelect={onSelectProse}>
+                  {body}
+                </SelectableMessageProse>
+              )
             ) : (
               <p className="text-muted-foreground">Sent attachments</p>
             )}
@@ -718,6 +730,7 @@ export function ConversationMessageContent(
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}
+        onSelectProse={props.onSelectProse}
         onCopyLink={props.onCopyLink}
         onEdit={props.onEdit}
         onOpenLink={props.onOpenLink}

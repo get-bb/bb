@@ -155,6 +155,62 @@ describe("PluginThreadChat", () => {
     );
   });
 
+  it.each(["full", "compact", "timeline"] as const)(
+    "scopes selection actions and footer presentation to one %s instance",
+    async (variant) => {
+      const { wrapper: Wrapper } = createQueryClientTestHarness();
+      const ThreadChat = pluginSdkAppImplementation.ThreadChat;
+      const run = vi.fn();
+      const { rerender } = render(
+        <Wrapper>
+          <MemoryRouter>
+            <ThreadChat
+              threadId="thr_demo"
+              variant={variant}
+              experimental_showContextFooter={false}
+              experimental_selectionActions={[
+                { id: "translate", title: "Translate", icon: "Languages", run },
+              ]}
+            />
+          </MemoryRouter>
+        </Wrapper>,
+      );
+      const calls =
+        variant === "timeline"
+          ? mocks.timelinePanelProps
+          : mocks.embeddedChatProps;
+      await waitFor(() =>
+        expect(calls.at(-1)?.consumerSelectionActions).toEqual([
+          expect.objectContaining({ id: "translate", label: "Translate", run }),
+        ]),
+      );
+      if (variant !== "timeline")
+        expect(calls.at(-1)?.composer).toEqual(
+          expect.objectContaining({
+            showContextFooter: false,
+            permissionPolicy: "snapshot",
+          }),
+        );
+      rerender(
+        <Wrapper>
+          <MemoryRouter>
+            <ThreadChat threadId="thr_demo" variant={variant} />
+          </MemoryRouter>
+        </Wrapper>,
+      );
+      await waitFor(() =>
+        expect(calls.at(-1)?.consumerSelectionActions).toBeUndefined(),
+      );
+      if (variant !== "timeline")
+        expect(calls.at(-1)?.composer).toEqual(
+          expect.objectContaining({
+            showContextFooter: true,
+            permissionPolicy: "snapshot",
+          }),
+        );
+    },
+  );
+
   it("hands the permission picker to the user only when asked", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const ThreadChat = pluginSdkAppImplementation.ThreadChat;

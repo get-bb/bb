@@ -15,6 +15,7 @@ export interface SelectionAnchor {
 
 export interface MessageProseSelection {
   text: string;
+  selectionContext?: { text: string; start: number; end: number } | null;
   rect: DOMRect;
   anchorPoint?: SelectionAnchorPoint;
   anchorSide?: SelectionAnchorSide;
@@ -191,6 +192,34 @@ export function selectionAnchorFromPointerRelease(
   };
 }
 
+function captureSelectionContext(node: HTMLElement, range: Range) {
+  if (
+    !range.startContainer ||
+    !range.endContainer ||
+    !node.contains(range.startContainer) ||
+    !node.contains(range.endContainer)
+  )
+    return null;
+  const ancestor = range.commonAncestorContainer;
+  const element =
+    ancestor instanceof Element ? ancestor : ancestor.parentElement;
+  const block = element?.closest(
+    "p, li, td, th, pre, blockquote, h1, h2, h3, h4, h5, h6",
+  );
+  const root = block && node.contains(block) ? block : node;
+  const before = document.createRange();
+  before.selectNodeContents(root);
+  before.setEnd(range.startContainer, range.startOffset);
+  const selected = range.toString();
+  const start =
+    before.toString().length + selected.length - selected.trimStart().length;
+  return {
+    text: root.textContent ?? "",
+    start,
+    end: start + selected.trim().length,
+  };
+}
+
 function readSelectionWithinNode(
   node: HTMLElement | null,
   anchor: SelectionAnchor | null,
@@ -207,11 +236,14 @@ function readSelectionWithinNode(
     commonAncestorContainer: range.commonAncestorContainer,
   });
   if (accepted) {
-    return toMessageProseSelection({
+    const result = toMessageProseSelection({
       anchor,
       rect: facts.firstClientRect(),
       text: facts.selectionText(),
     });
+    return result === null
+      ? null
+      : { ...result, selectionContext: captureSelectionContext(node, range) };
   }
 
   if (selection.isCollapsed) return null;

@@ -54,6 +54,7 @@ import {
   ThreadTimelineSurface,
   type ThreadTimelineAddToChatHandler,
   type ThreadTimelineConsumerMessageAction,
+  type ThreadTimelineConsumerSelectionAction,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineSurfaceProps,
@@ -124,6 +125,7 @@ interface EmbeddedThreadChatComposerProps {
   executionEnvironmentHostId?: string;
   permissionPolicy: "editable" | "snapshot";
   environmentSummary: ReactNode;
+  showContextFooter?: boolean;
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   composerIdentity?: string;
   focusRequestKey?: number;
@@ -137,6 +139,7 @@ interface EmbeddedThreadChatSharedProps {
   resolveMentionLink: PromptMentionLinkResolver;
   leadingContent?: ReactNode;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  consumerSelectionActions?: readonly ThreadTimelineConsumerSelectionAction[];
   includePluginMessageActions?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -208,6 +211,7 @@ function EmbeddedThreadChatWithComposer({
   resolveMentionLink,
   leadingContent,
   consumerMessageActions,
+  consumerSelectionActions,
   includePluginMessageActions,
   onOpenLink,
   onOpenLocalFileLink,
@@ -1250,6 +1254,7 @@ function EmbeddedThreadChatWithComposer({
           pluginComposerScope={bottomPluginComposerHost?.scope ?? null}
           textEffects={bottomComposerTextEffects}
           environmentSummary={composer.environmentSummary}
+          showContextFooter={composer.showContextFooter}
           contextWindowUsage={null}
           execution={bottomExecutionConfig}
           permission={bottomPermissionConfig}
@@ -1274,6 +1279,7 @@ function EmbeddedThreadChatWithComposer({
       isTurnSubmitting={isTurnSubmitting}
       leadingContent={leadingContent}
       consumerMessageActions={consumerMessageActions}
+      consumerSelectionActions={consumerSelectionActions}
       includePluginMessageActions={includePluginMessageActions}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}

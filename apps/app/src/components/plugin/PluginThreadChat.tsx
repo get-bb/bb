@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   ThreadChatMessageAction,
+  ExperimentalThreadChatSelectionAction,
   ThreadChatProps,
 } from "@get-bb/plugin-sdk";
 import {
@@ -17,6 +18,7 @@ import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import {
   ThreadTimelinePanelContent,
   type ThreadTimelineConsumerMessageAction,
+  type ThreadTimelineConsumerSelectionAction,
 } from "@/components/thread/timeline";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginContext } from "@/components/plugin/plugin-context";
@@ -50,6 +52,8 @@ export function PluginThreadChat({
   className,
   leadingContent,
   messageActions,
+  experimental_selectionActions,
+  experimental_showContextFooter = true,
 }: ThreadChatProps) {
   const containerClassName = cn(
     layout === "contained" ? "flex h-full min-h-0 flex-col" : "flex flex-col",
@@ -65,6 +69,8 @@ export function PluginThreadChat({
         permissionPolicy={permissionPolicy}
         leadingContent={leadingContent}
         messageActions={messageActions}
+        selectionActions={experimental_selectionActions}
+        showContextFooter={experimental_showContextFooter}
       />
     </div>
   );
@@ -78,6 +84,10 @@ interface PluginThreadChatBodyProps {
   permissionPolicy: "inherit" | "editable";
   leadingContent: ReactNode;
   messageActions: readonly ThreadChatMessageAction[] | undefined;
+  selectionActions:
+    | readonly ExperimentalThreadChatSelectionAction[]
+    | undefined;
+  showContextFooter: boolean;
 }
 
 function PluginThreadChatBody({
@@ -88,6 +98,8 @@ function PluginThreadChatBody({
   permissionPolicy,
   leadingContent,
   messageActions,
+  selectionActions,
+  showContextFooter,
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
@@ -157,6 +169,21 @@ function PluginThreadChatBody({
             run: action.run,
           })),
     [messageActions, pluginId],
+  );
+
+  const consumerSelectionActions = useMemo<
+    readonly ThreadTimelineConsumerSelectionAction[] | undefined
+  >(
+    () =>
+      selectionActions?.map((action) => ({
+        id: action.id,
+        pluginId: action.icon !== undefined ? null : pluginId,
+        icon: action.icon ?? null,
+        label: action.title,
+        ...(action.roles !== undefined ? { roles: action.roles } : {}),
+        run: action.run,
+      })),
+    [selectionActions, pluginId],
   );
 
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
@@ -255,7 +282,10 @@ function PluginThreadChatBody({
   }
   if (thread === undefined) {
     return (
-      <ThreadChatLoadingBody leadingContent={leadingContent} variant={variant} />
+      <ThreadChatLoadingBody
+        leadingContent={leadingContent}
+        variant={variant}
+      />
     );
   }
 
@@ -264,6 +294,7 @@ function PluginThreadChatBody({
       <ThreadTimelinePanelContent
         leadingContent={leadingContent}
         consumerMessageActions={consumerMessageActions}
+        consumerSelectionActions={consumerSelectionActions}
         includePluginMessageActions={false}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -301,6 +332,7 @@ function PluginThreadChatBody({
         resolveMentionLink={resolveMentionLink}
         leadingContent={leadingContent}
         consumerMessageActions={consumerMessageActions}
+        consumerSelectionActions={consumerSelectionActions}
         includePluginMessageActions={false}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -318,6 +350,7 @@ function PluginThreadChatBody({
           permissionPolicy:
             permissionPolicy === "editable" ? "editable" : "snapshot",
           environmentSummary,
+          showContextFooter,
           pluginComposerBottomScope: { kind: "thread", threadId },
           composerIdentity: `plugin-thread-chat:${threadId}`,
           focusRequestKey: focusRequest,

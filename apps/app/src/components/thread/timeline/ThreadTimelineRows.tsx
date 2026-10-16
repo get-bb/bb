@@ -63,6 +63,7 @@ import type {
   ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineConsumerMessageAction,
+  ThreadTimelineConsumerSelectionAction,
   ThreadTimelinePluginMessageAction,
   ThreadTimelineUnreadDividerPlacement,
   UserAttachmentImageSrcResolver,
@@ -172,6 +173,7 @@ export interface ThreadTimelineRowsProps {
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  consumerSelectionActions?: readonly ThreadTimelineConsumerSelectionAction[];
   includePluginMessageActions?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -203,6 +205,7 @@ interface TimelineRendererStaticContextValue {
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
   pluginMessageActions: readonly PluginMessageActionSlot[];
   consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
+  hasConsumerSelectionActions: boolean;
   reportProseSelection:
     | ((
         rowId: string,
@@ -876,6 +879,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     onSelectionAddToChat,
     pluginMessageActions,
     consumerMessageActions,
+    hasConsumerSelectionActions,
     reportProseSelection,
     onOpenLink,
     onOpenLocalFileLink,
@@ -942,6 +946,17 @@ const ConversationRowContent = memo(function ConversationRowContent({
             },
           );
         };
+  const onSelectProse =
+    reportProseSelection === undefined
+      ? undefined
+      : (selection: MessageProseSelection | null) =>
+          reportProseSelection(
+            row.id,
+            selection === null
+              ? null
+              : { ...selection, sourceSeqEnd: row.sourceSeqEnd },
+            messageReference,
+          );
   if (row.role === "user") {
     const senderThreadMetadata =
       row.senderThreadId === null
@@ -1002,6 +1017,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
         role="user"
+        onSelectProse={hasConsumerSelectionActions ? onSelectProse : undefined}
         onTitleAction={onTitleAction}
         senderThreadId={row.senderThreadId}
         senderThreadProjectId={senderThreadMetadata?.projectId}
@@ -1024,17 +1040,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
     onForkMessage === undefined
       ? undefined
       : () => onForkMessage({ sourceSeqEnd: row.sourceSeqEnd });
-  const onSelectProse =
-    reportProseSelection === undefined
-      ? undefined
-      : (selection: MessageProseSelection | null) =>
-          reportProseSelection(
-            row.id,
-            selection === null
-              ? null
-              : { ...selection, sourceSeqEnd: row.sourceSeqEnd },
-            messageReference,
-          );
   return (
     <ConversationMessageContent
       attachments={row.attachments}
@@ -2307,7 +2312,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     props.includePluginMessageActions !== false &&
     messageActionSlots.length > 0;
   const hasSelectionActions =
-    onSelectionAddToChat !== undefined || hasPluginSelectionActions;
+    onSelectionAddToChat !== undefined ||
+    hasPluginSelectionActions ||
+    (props.consumerSelectionActions?.length ?? 0) > 0;
   const [activeSelection, setActiveSelection] = useState<{
     rowId: string;
     selection: MessageProseSelection;
@@ -2363,8 +2370,21 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     if (activeSelection === null) {
       return [];
     }
-    return (
-      buildRowPluginMessageActions({
+    const { message, selection } = activeSelection;
+    return [
+      ...buildRowConsumerMessageActions({
+        actions: (props.consumerSelectionActions ?? []).map((action) => ({
+          ...action,
+          run: (message) =>
+            action.run({
+              message,
+              selectedText: selection.text,
+              selectionContext: selection.selectionContext ?? null,
+            }),
+        })),
+        message,
+      }),
+      ...(buildRowPluginMessageActions({
         slots:
           props.includePluginMessageActions === false
             ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
@@ -2374,10 +2394,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         selectedText: activeSelection.selection.text,
         openThreadPanel: onOpenPluginPanel,
         composerHost,
-      }) ?? []
-    );
+      }) ?? []),
+    ];
   }, [
     activeSelection,
+    props.consumerSelectionActions,
     composerHost,
     messageActionSlots,
     props.includePluginMessageActions,
@@ -2400,6 +2421,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
           : messageActionSlots,
       consumerMessageActions:
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
+      hasConsumerSelectionActions:
+        (props.consumerSelectionActions?.length ?? 0) > 0,
       reportProseSelection,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
@@ -2423,6 +2446,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       messageActionSlots,
       props.includePluginMessageActions,
       props.consumerMessageActions,
+      props.consumerSelectionActions,
       reportProseSelection,
       timelineThreadId,
       props.onOpenLink,

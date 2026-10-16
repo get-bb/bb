@@ -3074,6 +3074,20 @@ export interface ThreadChatMessageAction {
   run(message: ThreadChatMessageReference): void | Promise<void>;
 }
 
+/** A native text-selection tooltip action scoped to one ThreadChat instance. */
+export interface ExperimentalThreadChatSelectionAction extends Omit<
+  ThreadChatMessageAction,
+  "run"
+> {
+  /** Receives the captured plain text and the surrounding message, including thread identity. */
+  run(context: {
+    message: ThreadChatMessageReference;
+    selectedText: string;
+    /** Captured rendered text block and UTF-16 selection offsets; null if it cannot be captured. */
+    selectionContext: { text: string; start: number; end: number } | null;
+  }): void | Promise<void>;
+}
+
 /**
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
@@ -3115,6 +3129,14 @@ export interface ThreadChatProps {
    * {@link ThreadChatMessageAction}).
    */
   messageActions?: readonly ThreadChatMessageAction[];
+  /** Actions in this instance's native text-selection tooltip; never registered globally. */
+  experimental_selectionActions?: readonly ExperimentalThreadChatSelectionAction[];
+  /**
+   * Show the environment/access footer (default true). Presentation only: permissionPolicy,
+   * dispatch permissions and pending approval enforcement remain unchanged. Model, attachments,
+   * microphone, draft and send/queue/stop controls remain native. Ignored for timeline variants.
+   */
+  experimental_showContextFooter?: boolean;
 }
 
 // ---------------------------------------------------------------------------

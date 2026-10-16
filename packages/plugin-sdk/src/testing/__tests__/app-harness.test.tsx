@@ -685,9 +685,9 @@ describe("loadPluginApp", () => {
     expect(mounted.inspection.experimental_clipboardWrites).toEqual([
       { text: "plain", html: "<b>rich</b>" },
     ]);
-    await expect(
-      experimental_copyToClipboard({ text: "later" }),
-    ).resolves.toBe(false);
+    await expect(experimental_copyToClipboard({ text: "later" })).resolves.toBe(
+      false,
+    );
 
     const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
     await expect(
@@ -1501,6 +1501,36 @@ describe("loadPluginApp", () => {
     expect(messageActionRuns[0]).toMatchObject({
       threadId: "thr_main",
       selectedText: "answer",
+    });
+  });
+
+  it("records instance selection actions/footer and delivers selected text with its message", () => {
+    const run = vi.fn();
+    const slot = renderSlot(
+      {
+        component: () => (
+          <ThreadChat
+            threadId="thr_tutor"
+            experimental_showContextFooter={false}
+            experimental_selectionActions={[
+              { id: "translate", title: "Translate", run },
+            ]}
+          />
+        ),
+      },
+      {},
+    );
+    expect(
+      slot.getByTestId("bb-thread-chat").getAttribute("data-context-footer"),
+    ).toBe("false");
+    fireEvent.click(slot.getByTestId("bb-thread-chat-selection-translate"));
+    expect(run).toHaveBeenCalledExactlyOnceWith({
+      message: expect.objectContaining({
+        threadId: "thr_tutor",
+        text: "test message text",
+      }),
+      selectedText: "test",
+      selectionContext: { text: "test message text", start: 0, end: 4 },
     });
   });
 
