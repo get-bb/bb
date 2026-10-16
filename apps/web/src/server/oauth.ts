@@ -307,9 +307,14 @@ function parseClientMetadataDocument(
   ) {
     return { ok: false, message: "client metadata has no redirect_uris" };
   }
+  const supportedAuthMethods = document.token_endpoint_auth_methods_supported;
   if (
     document.token_endpoint_auth_method !== undefined &&
-    document.token_endpoint_auth_method !== "none"
+    document.token_endpoint_auth_method !== "none" &&
+    !(
+      Array.isArray(supportedAuthMethods) &&
+      supportedAuthMethods.includes("none")
+    )
   ) {
     return {
       ok: false,

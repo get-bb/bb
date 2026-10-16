@@ -380,11 +380,35 @@ describe("client metadata documents", () => {
       "a confidential auth method",
       { token_endpoint_auth_method: "client_secret_basic" },
     ],
+    [
+      "auth methods without none",
+      {
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["private_key_jwt"],
+      },
+    ],
     ["an empty client_name", { client_name: "   " }],
     ["empty redirect_uris", { redirect_uris: [] }],
     ["non-string redirect_uris", { redirect_uris: [REDIRECT_URI, 7] }],
   ])("rejects %s", async (_label, over) => {
     expect((await load(documentFetch(over))).ok).toBe(false);
+  });
+
+  it("accepts a client that lists none among its auth methods", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      client: {
+        clientId: CLIENT_ID,
+        clientName: "Claude",
+        redirectUris: [REDIRECT_URI, "http://127.0.0.1/cb"],
+      },
+    });
   });
 
   it("rejects a non-JSON content type", async () => {
