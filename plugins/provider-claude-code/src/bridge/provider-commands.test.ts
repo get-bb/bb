@@ -2,6 +2,23 @@ import { describe, expect, it } from "vitest";
 import { toProviderCommandsState } from "./provider-commands.js";
 
 describe("toProviderCommandsState", () => {
+  it("leaves out the skills bb injected through its own plugins", () => {
+    const state = toProviderCommandsState(
+      [
+        "bb-global-skills:bb-cli",
+        "bb-global-skills-1a2b3c4d:secrets",
+        "frontend-design:frontend-design",
+        "simplify",
+      ].map((name) => ({ name, description: "", argumentHint: "" })),
+      new Set(),
+    );
+
+    expect(state.commands.map((command) => command.name)).toEqual([
+      "frontend-design:frontend-design",
+      "simplify",
+    ]);
+  });
+
   it("bounds descriptions, hints, and the payload size", () => {
     const state = toProviderCommandsState(
       Array.from({ length: 600 }, (_, index) => ({

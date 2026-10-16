@@ -2,6 +2,7 @@ import type {
   SDKSystemMessage,
   SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
+import { isClaudeSkillPluginName } from "./skill-plugins.js";
 
 export const PROVIDER_COMMANDS_STATE_KIND = "bb/provider-commands";
 
@@ -35,6 +36,11 @@ export function commandExclusionsFromInit(
   ]);
 }
 
+function isInjectedSkill(name: string): boolean {
+  const separator = name.indexOf(":");
+  return separator > 0 && isClaudeSkillPluginName(name.slice(0, separator));
+}
+
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength
     ? value
@@ -53,6 +59,7 @@ export function toProviderCommandsState(
     if (
       name === "" ||
       name.startsWith("__") ||
+      isInjectedSkill(name) ||
       exclusions.has(name) ||
       seen.has(name)
     ) {

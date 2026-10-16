@@ -1,5 +1,9 @@
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type Options,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
 import { translateMissingClaudeCliCatalogError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
@@ -9,24 +13,36 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
   return {
     cwd: process.cwd(),
     env,
-    maxTurns: 0,
     persistSession: false,
     settingSources: ["user", "project", "local"],
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
   };
 }
 
+async function* promptWithoutMessages(
+  signal: AbortSignal,
+): AsyncGenerator<SDKUserMessage> {
+  if (signal.aborted) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
 async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
+  const promptEnd = new AbortController();
   let session: ReturnType<typeof query>;
   try {
     session = query({
-      prompt: ".",
+      prompt: promptWithoutMessages(promptEnd.signal),
       options: buildModelProbeOptions(env),
     });
   } catch (error) {
+    promptEnd.abort();
     throw translateMissingClaudeCliCatalogError(error);
   }
 
@@ -39,6 +55,7 @@ async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   } catch (error) {
     throw translateMissingClaudeCliCatalogError(error);
   } finally {
+    promptEnd.abort();
     session.close();
   }
 }

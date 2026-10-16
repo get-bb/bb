@@ -1021,6 +1021,8 @@ describe("bridge", () => {
       );
       queries[0].emit({
         ...init,
+        cwd: "/tmp/worktree/elsewhere",
+        skills: [],
         uuid: "00000000-0000-4000-8000-000000000002",
       });
       await vi.waitFor(() =>
@@ -3270,12 +3272,20 @@ describe("bridge", () => {
       "sonnet",
     ]);
     expect(queryMock).toHaveBeenCalledWith({
-      prompt: ".",
+      prompt: expect.anything(),
       options: expect.objectContaining({
-        maxTurns: 0,
         pathToClaudeCodeExecutable: executablePath,
         persistSession: false,
       }),
+    });
+    const probePrompt: AsyncIterable<SDKUserMessage> | undefined =
+      queryMock.mock.calls.at(-1)?.[0]?.prompt;
+    if (probePrompt === undefined) {
+      throw new Error("Expected the model probe prompt");
+    }
+    await expect(probePrompt[Symbol.asyncIterator]().next()).resolves.toEqual({
+      done: true,
+      value: undefined,
     });
     const probeOptions = queryMock.mock.calls.at(-1)?.[0]?.options;
     expect(probeOptions).not.toHaveProperty("allowDangerouslySkipPermissions");

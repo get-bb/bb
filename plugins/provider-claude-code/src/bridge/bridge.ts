@@ -234,6 +234,7 @@ interface ClaudeSessionRestart {
 
 interface ThreadSession {
   commandExclusions: ClaudeCommandExclusions | null;
+  commandLaunchCwd: string | null;
   commandListGeneration: number;
   contextUsageCollector: ClaudeContextUsageCollector;
   session: SdkSession;
@@ -1094,6 +1095,7 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
   );
   const threadSession: ThreadSession = {
     commandExclusions: null,
+    commandLaunchCwd: null,
     commandListGeneration: 0,
     contextUsageCollector: new ClaudeContextUsageCollector(),
     session,
@@ -1553,7 +1555,10 @@ function createOnSdkMessage(
       message,
     });
     if (message.type === "system" && message.subtype === "init") {
-      threadSession.commandExclusions = commandExclusionsFromInit(message);
+      threadSession.commandLaunchCwd ??= message.cwd;
+      if (message.cwd === threadSession.commandLaunchCwd) {
+        threadSession.commandExclusions = commandExclusionsFromInit(message);
+      }
       refreshProviderCommands(threadSession);
     } else if (
       message.type === "system" &&
