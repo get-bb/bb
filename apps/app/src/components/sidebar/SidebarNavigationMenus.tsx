@@ -80,7 +80,7 @@ function SidebarNavigationItemMenuItems({
       </Item>
       <Item onSelect={() => actions.openCustomize()}>
         <Icon name="SlidersHorizontal" aria-hidden="true" />
-        Customize {surface}
+        Customize navigation
       </Item>
       {isPluginItem ? (
         <>
@@ -212,7 +212,7 @@ export function SidebarNavigationMoreMenu({
         {hidden.length > 0 ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem onSelect={() => actions.openCustomize()}>
           <Icon name="SlidersHorizontal" aria-hidden="true" />
-          Customize {surface}
+          Customize navigation
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -706,7 +706,7 @@ footer.
 
 A vertical rail on the left edge of the sidebar holds Home (the last thread),
 the visible destinations (Plugins, Skills, plugin panels), More (hidden
-destinations and Customize rail), and Settings at the bottom. New thread sits
+destinations and Customize navigation), and Settings at the bottom. New thread sits
 in the sidebar header and cannot be hidden. The list beside the rail swaps
 between the thread list, Plugins, Skills, and Settings; collapsing the sidebar
 leaves only the rail. On narrow windows and phones the rail sits inside the
@@ -715,7 +715,7 @@ controls, Back and Forward, and the sidebar toggle.
 
 With `sidebar.navigationProvider` set to `__bb__/top-list` (Settings →
 Appearance → Navigation), there is no rail. New thread, the visible
-destinations, and More (hidden destinations and Customize sidebar) are labeled
+destinations, and More (hidden destinations and Customize navigation) are labeled
 rows above the thread list, with plugin panel badges at the end of their row.
 Settings is a footer action, and the Settings, Plugins, and Skills lists start
 with a Back to app row. Collapsing hides the whole sidebar, and the macOS

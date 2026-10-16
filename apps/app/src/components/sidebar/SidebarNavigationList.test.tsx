@@ -206,7 +206,7 @@ describe("SidebarNavigationList", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["Search threads", "Skills", "Customize sidebar"]);
+    ).toEqual(["Search threads", "Skills", "Customize navigation"]);
   });
 
   it("scrolls only the destinations, keeping New thread and More in view", () => {
@@ -273,7 +273,7 @@ describe("SidebarNavigationList", () => {
 
     fireEvent.keyDown(more, { key: "Enter" });
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize sidebar" }),
+      await screen.findByRole("menuitem", { name: "Customize navigation" }),
     );
 
     const editor = await screen.findByTestId("sidebar-navigation-customize");
@@ -322,11 +322,11 @@ describe("SidebarNavigationList", () => {
     ).toEqual([
       "View details",
       "Hide from sidebar",
-      "Customize sidebar",
+      "Customize navigation",
       "Disable",
     ]);
     fireEvent.click(
-      within(menu).getByRole("menuitem", { name: "Customize sidebar" }),
+      within(menu).getByRole("menuitem", { name: "Customize navigation" }),
     );
 
     expect(

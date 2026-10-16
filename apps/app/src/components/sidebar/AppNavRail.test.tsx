@@ -650,7 +650,7 @@ describe("AppNavRail", () => {
 
     fireEvent.click(railButton("More"));
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize rail" }),
+      await screen.findByRole("menuitem", { name: "Customize navigation" }),
     );
 
     const editor = await screen.findByTestId("nav-rail-customize");
@@ -682,7 +682,7 @@ describe("AppNavRail", () => {
       if (isCompactViewport) fireEvent.click(railButton("More"));
       else fireEvent.keyDown(railButton("More"), { key: "Enter" });
       fireEvent.click(
-        await screen.findByRole("menuitem", { name: "Customize rail" }),
+        await screen.findByRole("menuitem", { name: "Customize navigation" }),
       );
 
       const editor = await screen.findByTestId("nav-rail-customize");
@@ -711,7 +711,7 @@ describe("AppNavRail", () => {
 
     fireEvent.keyDown(railButton("More"), { key: "Enter" });
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize rail" }),
+      await screen.findByRole("menuitem", { name: "Customize navigation" }),
     );
 
     const editor = await screen.findByTestId("nav-rail-customize");
@@ -763,7 +763,7 @@ describe("AppNavRail", () => {
 
     fireEvent.keyDown(railButton("More"), { key: "Enter" });
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize rail" }),
+      await screen.findByRole("menuitem", { name: "Customize navigation" }),
     );
     const editor = await screen.findByTestId("nav-rail-customize");
     const wrapper = editor.closest<HTMLElement>(
@@ -821,12 +821,12 @@ describe("AppNavRail", () => {
     expect(mocks.onNewChat).toHaveBeenCalledTimes(1);
   });
 
-  it("offers no New thread row in Customize rail", async () => {
+  it("offers no New thread row in Customize navigation", async () => {
     renderRail(THREAD_PATH);
 
     fireEvent.keyDown(railButton("More"), { key: "Enter" });
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize rail" }),
+      await screen.findByRole("menuitem", { name: "Customize navigation" }),
     );
 
     const editor = await screen.findByTestId("nav-rail-customize");

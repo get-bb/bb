@@ -194,7 +194,6 @@ export function SidebarNavigationRegion({
         </nav>
       </PopoverAnchor>
       <SidebarNavigationCustomizePopoverContent
-        surface={isRail ? "rail" : "sidebar"}
         testId={isRail ? "nav-rail-customize" : "sidebar-navigation-customize"}
         focusReturnRef={customize.focusReturnRef}
         onClose={() => customize.setCustomizing(false)}

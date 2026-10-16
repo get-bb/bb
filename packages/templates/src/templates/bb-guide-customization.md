@@ -267,7 +267,7 @@ layout with `bb thread-list prefs` (see `bb guide plugins`).
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
-destinations and Customize rail; Settings is at the bottom. New thread sits in
+destinations and Customize navigation; Settings is at the bottom. New thread sits in
 the sidebar header and cannot be hidden. The list beside the rail swaps between
 the thread list, Plugins, Skills, and Settings, and collapsing the sidebar
 hides that list and leaves the rail. Rail order and visibility are

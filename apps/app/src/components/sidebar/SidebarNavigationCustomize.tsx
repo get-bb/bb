@@ -2,7 +2,6 @@ import { useMemo, type RefObject } from "react";
 import { PopoverContent } from "@bb/shared-ui/popover";
 import type { SidebarVisibilityItem } from "@bb/shared-ui/sidebar-visibility-customize";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
-import type { SidebarNavigationSurface } from "./SidebarNavigationMenus";
 import {
   SidebarNavigationIcon,
   useSidebarNavigationModel,
@@ -52,17 +51,15 @@ export function SidebarNavigationCustomize({
 }
 
 export function SidebarNavigationCustomizePopoverContent({
-  surface,
   testId,
   focusReturnRef,
   onClose,
 }: {
-  surface: SidebarNavigationSurface;
   testId: string;
   focusReturnRef: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
-  const title = `Customize ${surface}`;
+  const title = "Customize navigation";
   return (
     <PopoverContent
       side="right"
