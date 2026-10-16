@@ -203,6 +203,19 @@ export function SecondaryPanelFilePreview({
   return (
     <FilePreviewSurface
       path={activePath}
+      download={
+        filePreview &&
+        state.kind !== "loading" &&
+        state.kind !== "not-found" &&
+        state.kind !== "error"
+          ? {
+              url: filePreview.url,
+              fileName:
+                (filePreview.name ?? activePath).split(/[\\/]/).at(-1) ??
+                activePath,
+            }
+          : null
+      }
       copyPath={copyPath}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}

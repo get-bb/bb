@@ -1099,6 +1099,105 @@ describe("FilePreview", () => {
     ).toBe("/api/v1/threads/thread-1/thread-storage/files/reports/huge.html");
   });
 
+  it.each([
+    {
+      name: "README.md",
+      kind: "text",
+      content: "# Original\r\n",
+      mimeType: "text/markdown",
+    },
+    {
+      name: "package.json",
+      kind: "text",
+      content: '{"name":"original"}',
+      mimeType: "application/json",
+    },
+    {
+      name: "report.html",
+      kind: "text",
+      content: "<h1>Original</h1>",
+      mimeType: "text/html",
+    },
+    {
+      name: "data.csv",
+      kind: "text",
+      content: "name,value\nAda,1",
+      mimeType: "text/csv",
+    },
+    { name: "empty.txt", kind: "text", content: "", mimeType: "text/plain" },
+    { name: "image.png", kind: "image", mimeType: "image/png" },
+    { name: "video.mp4", kind: "video", mimeType: "video/mp4" },
+  ] as const)(
+    "downloads original $name from both header layouts",
+    async (file) => {
+      const path = `reports/${file.name}`;
+      const url = `/api/v1/threads/thread-1/worktree/files/${path}?ref=HEAD`;
+      const downloads: Array<{ href: string | null; name: string }> = [];
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(function (this: HTMLAnchorElement) {
+          downloads.push({
+            href: this.getAttribute("href"),
+            name: this.download,
+          });
+        });
+      try {
+        for (const compact of [false, true]) {
+          const view = render(
+            <CompactViewportOverrideProvider isCompactViewport={compact}>
+              <SecondaryPanelFilePreview
+                activePath={path}
+                filePreview={{ ...file, path, url }}
+                htmlPreviewUrl={file.name.endsWith(".html") ? url : null}
+                isLoading={false}
+              />
+            </CompactViewportOverrideProvider>,
+          );
+          if (compact) {
+            fireEvent.click(
+              screen.getByRole("button", { name: "File actions" }),
+            );
+            fireEvent.click(
+              await screen.findByRole("menuitem", { name: "Download" }),
+            );
+          } else {
+            fireEvent.click(screen.getByRole("button", { name: "Download" }));
+          }
+          expect(downloads.at(-1)).toEqual({ href: url, name: file.name });
+          view.unmount();
+        }
+        expect(downloads).toHaveLength(2);
+      } finally {
+        click.mockRestore();
+      }
+    },
+  );
+
+  it("hides Download when the loaded file no longer matches the active preview", () => {
+    const preview = (activePath: string, error?: Error) => (
+      <SecondaryPanelFilePreview
+        activePath={activePath}
+        error={error}
+        filePreview={{
+          kind: "text",
+          content: "old",
+          path: "old.txt",
+          mimeType: "text/plain",
+          url: "/files/old.txt",
+        }}
+        isLoading={false}
+      />
+    );
+    const view = render(preview("old.txt"));
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    view.rerender(preview("new.txt"));
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    view.rerender(
+      preview("old.txt", new HttpError({ status: 404, message: "Not found" })),
+    );
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
   it("links Download to the file's raw URL under its basename", () => {
     render(
       <SecondaryPanelFilePreview

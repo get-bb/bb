@@ -109,7 +109,13 @@ export type FilePreviewState =
       textPreviewKind: TextFilePreviewKind | null;
     };
 
+interface FilePreviewDownload {
+  url: string;
+  fileName: string;
+}
+
 interface FilePreviewProps {
+  download?: FilePreviewDownload | null;
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
@@ -141,6 +147,7 @@ interface HtmlFilePreviewBodyProps {
 }
 
 interface FilePreviewHeaderProps {
+  download: FilePreviewDownload | null;
   previewIcon: ReactNode;
   path: string;
   copyPath: string | null;
@@ -448,6 +455,7 @@ export function getCsvTruncationNote(
 }
 
 export function FilePreview({
+  download = null,
   state,
   path,
   copyPath = null,
@@ -542,6 +550,7 @@ export function FilePreview({
     >
       {headerMode === "file" ? (
         <FilePreviewHeader
+          download={download}
           previewIcon={
             <FilePreviewIcon
               key={path}
@@ -656,6 +665,7 @@ function FilePreviewBody({
 }
 
 function FilePreviewHeader({
+  download,
   previewIcon,
   path,
   copyPath,
@@ -719,6 +729,23 @@ function FilePreviewHeader({
                   <TooltipContent side="bottom">
                     {isRefreshing ? "Refreshing file" : "Refresh file"}
                   </TooltipContent>
+                </Tooltip>
+              ) : null}
+              {download !== null ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
+                      onClick={() => void saveFile(download)}
+                      aria-label="Download"
+                    >
+                      <Icon name="Download" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Download</TooltipContent>
                 </Tooltip>
               ) : null}
               {rawContents === null ? null : (
@@ -876,6 +903,11 @@ function FilePreviewHeader({
                       }}
                     >
                       <Icon name="Copy" aria-hidden /> {copyFileContentsLabel}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {download !== null ? (
+                    <DropdownMenuItem onSelect={() => void saveFile(download)}>
+                      <Icon name="Download" aria-hidden /> Download
                     </DropdownMenuItem>
                   ) : null}
                   {onRefresh ? (
