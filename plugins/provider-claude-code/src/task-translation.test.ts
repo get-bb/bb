@@ -309,6 +309,71 @@ describe("claude-code background task translation", () => {
     ).toBe(true);
   });
 
+  it("marks a foreground subagent until it moves to the background", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-1" };
+
+    harness.translate(
+      spawningToolUseMessage({
+        toolUseId: "toolu_agent_fg",
+        toolName: "Agent",
+        input: {
+          description: "Find the dialog",
+          prompt: "Find the dialog",
+          subagent_type: "Explore",
+          run_in_background: false,
+        },
+      }),
+      context,
+    );
+    const started = collectTaskEvents(
+      harness.translate(
+        {
+          type: "system",
+          subtype: "task_started",
+          task_id: "agent-fg",
+          tool_use_id: "toolu_agent_fg",
+          description: "Find the dialog",
+          subagent_type: "Explore",
+          is_backgrounded: false,
+          task_type: "local_agent",
+          uuid: "u-1",
+          session_id: "s-1",
+        },
+        context,
+      ),
+    );
+    expect(started.map((event) => event.type)).toEqual(["item/started"]);
+    expect(backgroundTaskItem(started[0]!)).toMatchObject({
+      id: harness.itemId("task:agent-fg", "bb-thread-1"),
+      taskType: "local_agent",
+      status: "pending",
+      foreground: true,
+    });
+
+    const moved = collectTaskEvents(
+      harness.translate(
+        {
+          type: "system",
+          subtype: "task_updated",
+          task_id: "agent-fg",
+          patch: { is_backgrounded: true },
+          uuid: "u-2",
+          session_id: "s-1",
+        },
+        context,
+      ),
+    );
+    expect(moved.map((event) => event.type)).toEqual([
+      "item/backgroundTask/progress",
+    ]);
+    expect(backgroundTaskItem(moved[0]!)).toMatchObject({
+      id: harness.itemId("task:agent-fg", "bb-thread-1"),
+      status: "pending",
+      foreground: false,
+    });
+  });
+
   it("ignores progress for unknown task ids (daemon restarted mid-run)", () => {
     const harness = createClaudeDeltaHarness();
     const events = harness.translate(
@@ -675,6 +740,7 @@ describe("claude-code background task translation", () => {
       description: "Build",
       status: "pending",
       taskStatus: "running",
+      foreground: false,
       parentToolCallId: harness.itemId("toolu_bash_moved", "bb-thread-1"),
     });
 

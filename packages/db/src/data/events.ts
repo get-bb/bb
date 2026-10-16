@@ -2395,6 +2395,10 @@ export function listActiveBackgroundTaskCountsByThreadIds(
         json_extract(active_event.data, '$.item.skipTranscript'),
         0
       ) = 0
+      AND COALESCE(
+        json_extract(active_event.data, '$.item.foreground'),
+        0
+      ) = 0
     GROUP BY active_event.thread_id
     ORDER BY active_event.thread_id
   `);

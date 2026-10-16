@@ -64,6 +64,7 @@ export const deltaBackgroundTaskShapeSchema = z.object({
   status: threadEventItemStatusSchema,
   taskStatus: backgroundTaskStatusSchema,
   skipTranscript: z.boolean(),
+  foreground: z.boolean().optional(),
   workflowName: z.string().optional(),
   workflow: workflowProgressSnapshotSchema.optional(),
   usage: backgroundTaskUsageSchema.optional(),

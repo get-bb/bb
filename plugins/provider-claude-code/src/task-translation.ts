@@ -35,6 +35,7 @@ interface ClaudeTrackedTask {
   description: string;
   taskStatus: BackgroundTaskStatus;
   skipTranscript: boolean;
+  foreground: boolean;
   phasesByIndex: Map<number, WorkflowPhaseSnapshot>;
   agentsByIndex: Map<number, WorkflowAgentSnapshot>;
   usage: BackgroundTaskUsage | undefined;
@@ -198,6 +199,7 @@ function buildClaudeTaskShape(
     status: backgroundTaskItemStatus(task.taskStatus),
     taskStatus: task.taskStatus,
     skipTranscript: task.skipTranscript,
+    foreground: task.foreground,
     ...(task.workflowName !== undefined
       ? { workflowName: task.workflowName }
       : {}),
@@ -295,6 +297,7 @@ export function translateClaudeTaskMessage(
     if (args.turnStartSuppressed) {
       return [];
     }
+    const foreground = message.is_backgrounded === false;
     const task: ClaudeTrackedTask = {
       taskId: message.task_id,
       providerItemKey: buildClaudeTaskItemKey(message.task_id, generation),
@@ -305,6 +308,7 @@ export function translateClaudeTaskMessage(
       description: message.description,
       taskStatus: "running",
       skipTranscript: message.skip_transcript ?? false,
+      foreground,
       phasesByIndex: new Map(),
       agentsByIndex: new Map(),
       usage: undefined,
@@ -312,9 +316,7 @@ export function translateClaudeTaskMessage(
       error: undefined,
       outputFile: undefined,
       terminal: false,
-      materialized: !(
-        taskType === LOCAL_BASH_TASK_TYPE && message.is_backgrounded === false
-      ),
+      materialized: !(taskType === LOCAL_BASH_TASK_TYPE && foreground),
     };
     args.tasks.set(message.task_id, task);
     return task.materialized ? buildClaudeTaskOpenDeltas(task) : [];
@@ -353,14 +355,21 @@ export function translateClaudeTaskMessage(
     if (patch.error !== undefined) {
       task.error = patch.error;
     }
+    const movedToBackground =
+      patch.is_backgrounded === true && task.foreground;
+    if (movedToBackground) {
+      task.foreground = false;
+    }
     if (!task.materialized) {
-      if (patch.is_backgrounded !== true) {
+      if (!movedToBackground) {
         return [];
       }
       task.materialized = true;
       return buildClaudeTaskOpenDeltas(task);
     }
-    return [buildClaudeTaskProgressDelta(task, statusChanged)];
+    return [
+      buildClaudeTaskProgressDelta(task, statusChanged || movedToBackground),
+    ];
   }
 
   const notification = claudeTaskNotificationMessageSchema.safeParse(

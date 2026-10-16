@@ -49,6 +49,7 @@ function backgroundTaskData(status: string, taskStatus: string) {
       status,
       taskStatus,
       skipTranscript: false,
+      foreground: false,
       workflowName: "fixture-mini",
       usage: { totalTokens: 100, toolUses: 2, durationMs: 1500 },
     },

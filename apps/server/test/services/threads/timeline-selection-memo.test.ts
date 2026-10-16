@@ -192,6 +192,7 @@ function workflowTask(id: string, completed: boolean) {
     description: "workflow",
     id,
     skipTranscript: false,
+    foreground: false,
     status: completed ? "completed" : "pending",
     taskStatus: completed ? "completed" : "running",
     taskType: LOCAL_WORKFLOW_TASK_TYPE,

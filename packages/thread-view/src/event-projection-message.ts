@@ -478,6 +478,7 @@ export interface EventProjectionWorkflowMessage
   >;
   taskStatus: BackgroundTaskStatus;
   skipTranscript: boolean;
+  foreground: boolean;
   workflow: WorkflowProgressSnapshot | null;
   usage: BackgroundTaskUsage | null;
   summary: string | null;

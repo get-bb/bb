@@ -1280,6 +1280,7 @@ describe("public thread data routes", () => {
           status,
           taskStatus,
           skipTranscript: false,
+          foreground: false,
           workflowName: "fixture-mini",
           ...(status === "completed" ? { summary: "done" } : {}),
         },
@@ -1505,6 +1506,7 @@ describe("public thread data routes", () => {
           status: "pending" as const,
           taskStatus: "running" as const,
           skipTranscript: false,
+          foreground: false,
           ...(args.taskType === "local_workflow"
             ? { workflowName: "fixture-mini" }
             : {}),

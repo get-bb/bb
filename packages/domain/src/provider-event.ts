@@ -371,6 +371,7 @@ export const threadEventBackgroundTaskItemSchema = z.object({
   status: threadEventItemStatusSchema,
   taskStatus: backgroundTaskStatusSchema,
   skipTranscript: z.boolean(),
+  foreground: z.boolean(),
   workflowName: z.string().optional(),
   workflow: workflowProgressSnapshotSchema.optional(),
   usage: backgroundTaskUsageSchema.optional(),

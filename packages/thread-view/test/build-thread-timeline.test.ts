@@ -496,6 +496,7 @@ function backgroundTaskStartedEvent({
     status: "pending",
     taskStatus: "running",
     skipTranscript: false,
+    foreground: false,
     parentToolCallId,
   };
   return {
