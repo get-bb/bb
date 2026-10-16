@@ -166,6 +166,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  confirmDesktopQuit: boolean;
+  onConfirmDesktopQuitChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   keepHistoryAfterContextClear: boolean;
@@ -867,6 +869,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  confirmDesktopQuit,
+  onConfirmDesktopQuitChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   keepHistoryAfterContextClear,
@@ -957,6 +961,33 @@ export function GeneralSettingsSection({
                     />
                   </DropdownMenuItem>
                 ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Ask before quitting"
+            description="Quitting the desktop app stops its bundled server and agents."
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={generalSettingsDisabled}>
+                  {confirmDesktopQuit
+                    ? "When agents are running (default)"
+                    : "Never"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onSelect={() => onConfirmDesktopQuitChange(true)}
+                >
+                  When agents are running (default)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onConfirmDesktopQuitChange(false)}
+                >
+                  Never
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </SettingsWithControl>
@@ -1424,6 +1455,12 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          confirmDesktopQuit={generalSettings.confirmDesktopQuit}
+          onConfirmDesktopQuitChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              confirmDesktopQuit: enabled,
+            })
+          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

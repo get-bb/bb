@@ -153,6 +153,9 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   public bounds: WindowBounds;
   public normalBounds: WindowBounds | null = null;
   private readonly listeners = new Map<string, Array<() => void>>();
+  private readonly closeListeners: Array<
+    (event: { preventDefault(): void }) => void
+  > = [];
   private readonly closedListeners: Array<() => void> = [];
   private readyToShowListener: (() => void) | null = null;
 
@@ -181,7 +184,14 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   }
 
   emitClosed(): void {
-    this.emit("close");
+    let prevented = false;
+    const event = {
+      preventDefault() {
+        prevented = true;
+      },
+    };
+    for (const listener of this.closeListeners) listener(event);
+    if (prevented) return;
     this.destroyed = true;
     for (const listener of this.closedListeners) {
       listener();
@@ -229,8 +239,11 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   }
 
   on(
+    eventName: "close",
+    listener: (event: { preventDefault(): void }) => void,
+  ): void;
+  on(
     eventName:
-      | "close"
       | "closed"
       | "enter-full-screen"
       | "leave-full-screen"
@@ -239,12 +252,21 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
       | "maximize"
       | "unmaximize",
     listener: () => void,
+  ): void;
+  on(
+    eventName: string,
+    listener: (event: { preventDefault(): void }) => void,
   ): void {
+    if (eventName === "close") {
+      this.closeListeners.push(listener);
+      return;
+    }
+    const run = () => listener({ preventDefault() {} });
     const listeners = this.listeners.get(eventName) ?? [];
-    listeners.push(listener);
+    listeners.push(run);
     this.listeners.set(eventName, listeners);
     if (eventName === "closed") {
-      this.closedListeners.push(listener);
+      this.closedListeners.push(run);
     }
   }
 
@@ -311,6 +333,7 @@ async function createFactoryHarness(
     },
     openExternalUrl() {},
     onWindowCreated() {},
+    shouldCloseWindow: () => true,
     preloadPath: "/tmp/preload.cjs",
     userDataPath: tempDir.path,
     ...overrides,
@@ -323,6 +346,24 @@ async function createFactoryHarness(
 }
 
 describe("desktop window factory", () => {
+  it("keeps saving a window's state after its close is held", async () => {
+    const { factory, createdWindows, userDataPath } =
+      await createFactoryHarness({ shouldCloseWindow: () => false });
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const window = createdWindows[0]!;
+    window.emitClosed();
+    expect(window.isDestroyed()).toBe(false);
+    window.bounds = { x: 100, y: 100, width: 1100, height: 750 };
+    window.emit("resize");
+    await expect
+      .poll(
+        async () =>
+          (await readPersistedWindowStateFile({ userDataPath })).windows[0]
+            ?.bounds,
+      )
+      .toEqual(window.bounds);
+  });
+
   it("starts every saved page before any finishes and returns saved order", async () => {
     const original = await createFactoryHarness();
     for (const stateKey of ["primary", "window-second", "window-third"]) {

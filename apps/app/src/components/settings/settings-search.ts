@@ -50,6 +50,10 @@ export const SETTINGS_SEARCH_INDEX: Record<
         keywords: ["enter", "steer", "queue", "follow-up"],
       },
       {
+        title: "Ask before quitting",
+        keywords: ["quit", "agents", "confirmation", "desktop"],
+      },
+      {
         title: "Thread archive confirmation",
         keywords: ["confirm", "child threads"],
       },

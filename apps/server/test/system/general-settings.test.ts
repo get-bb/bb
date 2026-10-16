@@ -4,7 +4,11 @@ import { appSettingsSchema, defaultAppSettings } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
+import {
+  seedHostSession,
+  seedPrimaryHost,
+  seedThreadFixture,
+} from "../helpers/seed.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 describe("general settings", () => {
@@ -283,7 +287,11 @@ it("preserves telemetry opt-out when older clients update other settings", async
   });
 });
 
-it.each(["confirmThreadArchive", "summarizeShellCommands"] as const)(
+it.each([
+  "confirmThreadArchive",
+  "confirmDesktopQuit",
+  "summarizeShellCommands",
+] as const)(
   "persists %s opt-out and preserves it for older clients",
   async (key) => {
     await withTestHarness(async (harness) => {
@@ -315,3 +323,37 @@ it.each(["confirmThreadArchive", "summarizeShellCommands"] as const)(
     });
   },
 );
+
+it("reports working agents and the saved quit preference in quit status", async () => {
+  await withTestHarness(async (harness) => {
+    const status = () => harness.app.request("/api/v1/system/quit-status");
+    expect(await readJson(await status())).toEqual({
+      confirmDesktopQuit: true,
+      runningAgentCount: 0,
+    });
+    seedThreadFixture(harness, { thread: { status: "active" } });
+    seedThreadFixture(harness, { thread: { status: "starting" } });
+    seedThreadFixture(harness, { thread: { status: "idle" } });
+    const { generalSettings } = systemConfigResponseSchema.parse(
+      await readJson(await harness.app.request("/api/v1/system/config")),
+    );
+    const before = getAppSettings(harness.db);
+    const response = await harness.app.request("/api/v1/settings/general", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...appSettingsSchema.strip().parse(generalSettings),
+        confirmDesktopQuit: false,
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(getAppSettings(harness.db)).toEqual({
+      ...before,
+      confirmDesktopQuit: false,
+    });
+    expect(await readJson(await status())).toEqual({
+      confirmDesktopQuit: false,
+      runningAgentCount: 2,
+    });
+  });
+});
