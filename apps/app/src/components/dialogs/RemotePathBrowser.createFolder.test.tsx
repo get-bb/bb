@@ -37,6 +37,7 @@ function listing(path: string, entries: string[]): HostDirectoryListing {
       name,
       path: `${path}/${name}`,
     })),
+    roots: ["/"],
   };
 }
 

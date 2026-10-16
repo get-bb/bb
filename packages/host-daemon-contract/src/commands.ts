@@ -690,6 +690,7 @@ const directoryListingSchema = z.object({
   directory: z.string(),
   parent: z.string().nullable(),
   entries: z.array(directoryEntrySchema),
+  roots: z.array(z.string()),
 });
 
 const hostCommandSourceSchema = z.enum(["skill", "command"]);

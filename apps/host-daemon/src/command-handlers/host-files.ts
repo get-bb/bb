@@ -25,6 +25,7 @@ import {
   readRootRelativeFileForTransport,
   type ReadFileContentForTransportResult,
 } from "./file-read.js";
+import { listFilesystemRoots } from "./filesystem-roots.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 const SAFE_GIT_REF_REGEX = /^[A-Za-z0-9_./~^@-]+$/;
@@ -188,6 +189,7 @@ export async function browseHostDirectory(
     directory,
     parent: parent === directory ? null : parent,
     entries,
+    roots: await listFilesystemRoots(),
   };
 }
 
