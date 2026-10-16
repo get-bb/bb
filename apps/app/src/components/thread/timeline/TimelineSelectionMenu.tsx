@@ -13,6 +13,7 @@ import { usePortalScopeProps } from "@/lib/portal-scope";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   firstClientRect,
+  readSelectedMessageMarkdown,
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
@@ -224,7 +225,9 @@ export function TimelineSelectionMenu({
             icon: "MessageSquarePlus" as const,
             label: "Add to chat",
             onSelect: (currentSelection: MessageProseSelection) =>
-              onAddToChat(currentSelection.text),
+              onAddToChat(
+                readSelectedMessageMarkdown() ?? currentSelection.text,
+              ),
           },
         ]
       : []),

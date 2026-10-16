@@ -516,6 +516,23 @@ function handleSharedKeyUp(): void {
   scheduleSharedReport();
 }
 
+export function readSelectedMessageMarkdown(): string | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1)
+    return null;
+  const range = selection.getRangeAt(0);
+  const instance =
+    findInstanceContaining(range.startContainer) ??
+    findInstanceContaining(range.endContainer);
+  if (!instance) return null;
+  const node = instance.node;
+  const clipped =
+    node.contains(range.startContainer) && node.contains(range.endContainer)
+      ? range
+      : clippedRangeForWhitespaceBoundarySpill(node, range);
+  return clipped === null ? null : selectionClipboard(clipped, node).text;
+}
+
 function handleSharedCopy(event: ClipboardEvent): void {
   if (event.defaultPrevented) return;
   const selection = window.getSelection();
