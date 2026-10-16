@@ -1,3 +1,4 @@
+import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import type { ComposerAttachment } from "@get-bb/plugin-sdk";
@@ -1256,10 +1257,9 @@ function RootComposeSurface({
               ...shared,
               label: browserLabel.length > 0 ? browserLabel : "Browser",
               leadingVisual: (
-                <Icon
-                  name="Globe"
+                <BrowserTabIcon
+                  tabId={tab.id}
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
                 />
               ),
               statusLabel: null,

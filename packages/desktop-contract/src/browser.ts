@@ -174,6 +174,15 @@ export const bbDesktopBrowserStateSchema = z
     tabId: z.string().min(1),
     url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
     title: z.string().max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+    faviconUrl: z
+      .string()
+      .max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH)
+      .nullable()
+      .optional(),
+    faviconUrls: z
+      .array(z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH))
+      .max(8)
+      .optional(),
     isLoading: z.boolean(),
     canGoBack: z.boolean(),
     canGoForward: z.boolean(),

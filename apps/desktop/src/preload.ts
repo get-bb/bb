@@ -39,6 +39,7 @@ import {
   type BbDesktopBrowserFocusHandler,
   type BbDesktopBrowserSnapshotHandler,
   type BbDesktopBrowserStateHandler,
+  type BbDesktopBrowserState,
   type BbDesktopBrowserUnsubscribe,
   type BbDesktopBrowserViewBounds,
   type BbDesktopCloseWindowRequestHandler,
@@ -206,6 +207,15 @@ async function invokeInstallUpdate(): Promise<void> {
 }
 
 const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
+const browserStates = new Map<string, BbDesktopBrowserState>();
+browserStateListeners.add((state) => {
+  browserStates.delete(state.tabId);
+  browserStates.set(state.tabId, state);
+  if (browserStates.size > 100) {
+    const oldest = browserStates.keys().next().value;
+    if (oldest !== undefined) browserStates.delete(oldest);
+  }
+});
 const browserControlListeners = new Set<
   (state: BbDesktopBrowserControlState) => void
 >();
@@ -353,7 +363,9 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     );
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
-    return addListener(browserStateListeners, listener);
+    const unsubscribe = addListener(browserStateListeners, listener);
+    for (const state of browserStates.values()) listener(state);
+    return unsubscribe;
   },
   onOpenTab(listener): BbDesktopBrowserUnsubscribe {
     return addListener(browserOpenTabListeners, listener);

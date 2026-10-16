@@ -399,6 +399,53 @@ describe("desktop preload browser API", () => {
     ]);
   });
 
+  it("replays the latest validated tab state after listeners remount and bounds retained tabs", () => {
+    const state: BbDesktopBrowserState = {
+      tabId: "browser:0",
+      url: "https://example.com",
+      title: null,
+      faviconUrl: "https://example.com/icon.png",
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      errorText: null,
+    };
+    const first = vi.fn();
+    const unsubscribe = api.browser.onState(first);
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
+      payload: state,
+    });
+    unsubscribe();
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
+      payload: { ...state, faviconUrl: null },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
+      payload: { ...state, extra: true },
+    });
+    const restored = vi.fn();
+    const stop = api.browser.onState(restored);
+    expect(restored).toHaveBeenCalledExactlyOnceWith({
+      ...state,
+      faviconUrl: null,
+    });
+    expect(first).toHaveBeenCalledExactlyOnceWith(state);
+    stop();
+    for (let index = 1; index <= 100; index++) {
+      emitIpcPayload({
+        channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
+        payload: { ...state, tabId: `browser:${index}` },
+      });
+    }
+    const retained: BbDesktopBrowserState[] = [];
+    api.browser.onState((value) => retained.push(value))();
+    expect(retained).toHaveLength(100);
+    expect(retained.some((value) => value.tabId === "browser:0")).toBe(false);
+    expect(retained.at(-1)?.tabId).toBe("browser:100");
+  });
+
   it("validates browser event payloads before notifying renderer listeners", () => {
     const states: BbDesktopBrowserState[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];

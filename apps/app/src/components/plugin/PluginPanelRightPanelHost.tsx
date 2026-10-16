@@ -1,3 +1,4 @@
+import { BrowserTabIcon } from "../secondary-panel/BrowserTabIcon";
 import {
   getPanelTabHistoryKey,
   forgetClosedPanelTab,
@@ -904,7 +905,7 @@ export function PluginPanelRightPanelHost({
               {
                 ...shared,
                 label: label || "Browser",
-                leadingVisual: <Icon name="Globe" className="size-3.5" />,
+                leadingVisual: <BrowserTabIcon tabId={tab.id} />,
                 statusLabel: null,
                 onClose: () => closeTab(tab.id),
               },

@@ -53,6 +53,21 @@ with `bb browser instances --host <hostId> --json` or
 `sdk.experimental_desktopBrowsers.listInstances`. Recovery uses the existing
 native snapshot and browser APIs; no daemon wire fields change.
 
+Browser tab favicons retain their candidates across same-origin navigation. The
+native desktop manager caches candidates for the 40 most recently used HTTP(S)
+origins per connected server; returning to an origin or reopening its tab can
+reuse those candidates. Same-origin candidate updates retain earlier candidates as fallbacks, and empty
+updates leave the known icon intact. Crossing to an uncached origin clears the
+previous icon. The cache is in memory and ends with the desktop process.
+
+The preload browser `onState` subscription immediately replays the latest
+validated state for up to 100 recently updated tabs before forwarding live
+updates. This lets remounted tab headers recover without waiting for a new
+favicon event. Renderer image-size measurements are also bounded and reused
+so remounts retain the appropriate Retina candidate. Image bytes still load
+through the renderer's browser cache; authenticated icon fetching through the
+embedded browser session is not implemented by this cache.
+
 ## Log Fields
 
 - `Slow DB query` is logged when a prepared statement, `exec` batch, or
