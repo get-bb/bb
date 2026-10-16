@@ -144,7 +144,11 @@ export const githubRpcContract = defineRpcContract({
       })
       .strict(),
   },
-  refresh: { input: z.null(), output: syncResultSchema },
+  refresh: {
+    experimental_usage: "action",
+    input: z.null(),
+    output: syncResultSchema,
+  },
   listItems: {
     input: z
       .object({
@@ -170,12 +174,14 @@ export const githubRpcContract = defineRpcContract({
     output: z.object({ labels: z.array(z.string().min(1)) }).strict(),
   },
   setIssueState: {
+    experimental_usage: "action",
     input: itemInputSchema
       .extend({ state: z.enum(["open", "closed"]) })
       .strict(),
     output: okResultSchema,
   },
   setAssignees: {
+    experimental_usage: "action",
     input: itemInputSchema
       .extend({ assignees: z.array(z.string().min(1)) })
       .strict(),
@@ -184,6 +190,7 @@ export const githubRpcContract = defineRpcContract({
       .strict(),
   },
   setLabels: {
+    experimental_usage: "action",
     input: itemInputSchema.extend({ labels: z.array(z.string()) }).strict(),
     output: z
       .object({ ok: z.literal(true), labels: z.array(z.string().min(1)) })
@@ -216,6 +223,7 @@ export const githubRpcContract = defineRpcContract({
     output: z.object({ pull: pullSchema }).strict(),
   },
   commentPull: {
+    experimental_usage: "action",
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
     output: okResultSchema,
   },
@@ -235,10 +243,12 @@ export const githubRpcContract = defineRpcContract({
       .strict(),
   },
   commentIssue: {
+    experimental_usage: "action",
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
     output: okResultSchema,
   },
   createIssue: {
+    experimental_usage: "action",
     input: z
       .object({
         repo: repoNameSchema,
@@ -251,10 +261,12 @@ export const githubRpcContract = defineRpcContract({
       .strict(),
   },
   startWork: {
+    experimental_usage: "action",
     input: itemInputSchema,
     output: z.object({ threadId: z.string().min(1) }).strict(),
   },
   startReview: {
+    experimental_usage: "action",
     input: itemInputSchema,
     output: z.object({ threadId: z.string().min(1) }).strict(),
   },

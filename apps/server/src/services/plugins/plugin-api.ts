@@ -1,3 +1,4 @@
+import { telemetryTriggerSchema } from "@bb/server-contract";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -191,6 +192,7 @@ export interface PluginWebSocketRouteRecord {
 }
 
 export interface PluginRpcHandler {
+  usage?: "action" | "query" | null;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -343,17 +345,13 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(
-  sdk: BbSdk,
-  pluginId: string,
-  rpcCallerSdk: BbSdk,
-): PluginBbSdk {
+function wrapSdkForPlugin(pluginId: string, sdk: BbSdk): PluginBbSdk {
   return {
     ...sdk,
     plugins: {
       ...sdk.plugins,
       callRpc(args) {
-        return rpcCallerSdk.plugins.callRpc(args);
+        return sdk.plugins.callRpc(args);
       },
     },
     threads: {
@@ -478,6 +476,10 @@ function createStagedRegistrations<
 const PLUGIN_HOST_CALL_MAX_TIMEOUT_MS = 30 * 60_000;
 
 export function createPluginApi(options: {
+  withFeatureUse?: <T>(
+    trigger: import("@bb/server-contract").TelemetryTrigger,
+    run: () => T,
+  ) => T;
   pluginId: string;
   logger: ServerLogger;
   db: DbConnection;
@@ -1323,6 +1325,11 @@ export function createPluginApi(options: {
   };
 
   const api: BbPluginApi = {
+    experimental_withFeatureUse(value, run) {
+      const parsed = telemetryTriggerSchema.safeParse(value?.trigger);
+      if (!parsed.success || !options.withFeatureUse) return run();
+      return options.withFeatureUse(parsed.data, run);
+    },
     pluginId,
     log,
     settings,
@@ -1355,7 +1362,6 @@ export function createPluginApi(options: {
         );
       }
       wrappedSdk ??= wrapSdkForPlugin(
-        sdk,
         pluginId,
         createPluginRpcCallerSdk({
           baseUrl: loopbackBaseUrl,

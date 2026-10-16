@@ -127,6 +127,7 @@ export type BbAiOverview = z.infer<typeof overviewSchema>;
 export const bbAiRpcContract = defineRpcContract({
   overview: { input: z.null(), output: overviewSchema },
   setEnabled: {
+    experimental_usage: "action",
     experimental_description:
       "Turn bb cloud on or off. While off, bb cloud reports not ready and sends nothing to getbb.app.",
     input: z.object({ enabled: z.boolean() }).strict(),

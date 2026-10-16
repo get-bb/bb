@@ -1,3 +1,4 @@
+import { recordPluginPanelOpen } from "@/lib/plugin-usage";
 import { useMemo, type ReactNode } from "react";
 import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
@@ -70,6 +71,7 @@ export function createPanelActionOpenPanel({
       title: options?.title ?? action.title,
       paramsJson,
     });
+    recordPluginPanelOpen(action.pluginId);
     return true;
   };
 }

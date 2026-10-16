@@ -1,3 +1,4 @@
+import { pluginInvocationTrigger } from "./plugin-feature-telemetry.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
   createNodeBbSdk,
@@ -63,6 +64,7 @@ export function createPluginRpcCallerSdk(args: {
     fetch: (input, init) => {
       const headers = new Headers(init?.headers);
       headers.set(PLUGIN_RPC_CALLER_HEADER, args.token);
+      headers.set("x-bb-plugin-trigger", pluginInvocationTrigger());
       return timeoutFetch(input, { ...init, headers });
     },
   });

@@ -310,6 +310,8 @@ the mapping; PostHog does not receive it. Opt-out prevents future capture and
 backfill, but does not erase prior events. Forked/recreated threads get fresh
 identities; copying a whole database can copy analytics identities as well.
 
+Plugin capability usage passes through shared CLI, agent-tool, classified RPC action and explicit panel-open boundaries. Plugin RPC contracts may set `experimental_usage: "action"` or `"query"`; unclassified methods are excluded rather than guessed from names. `bb.experimental_withFeatureUse({ trigger }, run)` covers actual background work outside those boundaries, including scheduled automations. Polling, load, registration and restored panels do not count. Nested plugin RPC and core SDK calls are attributed to the outer plugin invocation. The server derives `builtin`, `public_catalog`, `private_marketplace`, `local` or `unknown` from installed provenance, including development overrides; the new event contains no plugin identifiers, names or URLs.
+
 ## AI services
 
 Thread titles (and the branch names built from them), commit messages, and

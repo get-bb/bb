@@ -155,6 +155,7 @@ const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
 );
 
 const BB_PLUGIN_API_KEYS = [
+  "experimental_withFeatureUse",
   "pluginId",
   "log",
   "settings",

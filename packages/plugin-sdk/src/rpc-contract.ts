@@ -70,6 +70,7 @@ export interface PluginRpcMethodContract<
   OutputSchema extends StandardSchemaV1 = StandardSchemaV1,
 > {
   readonly experimental_description?: string;
+  readonly experimental_usage?: "action" | "query";
   readonly input: InputSchema;
   readonly output: OutputSchema;
 }

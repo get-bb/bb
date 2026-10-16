@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import {
   cp,
   mkdtemp,
@@ -16,6 +17,7 @@ import {
   createEnvironment,
   createProject,
   getInstalledPlugin,
+  installedPlugins,
   noopNotifier,
   upsertHost,
   upsertInstalledPlugin,
@@ -859,6 +861,158 @@ describe("plugin service", () => {
     expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
     await tracked.stop();
+  });
+
+  it("counts plugin actions once and classifies installed provenance without exporting identifiers", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-private-work",
+      serverSource: `export default function plugin(bb) {
+        const schema = { "~standard": { version: 1, vendor: "fixture", validate: (value) =>
+          value === null ? { value } : { issues: [{ message: "Expected null" }] } } };
+        bb.cli.register({ name: "private-work", summary: "Work", run() {
+          bb.experimental_withFeatureUse({ trigger: "schedule" }, () => undefined);
+          return { exitCode: 0, stdout: "done" };
+        }});
+        bb.rpc.register({
+          read: { input: schema, output: schema },
+          act: { experimental_usage: "action", input: schema, output: schema }
+        }, { read: () => null, act: () => { bb.experimental_withFeatureUse({ trigger: "schedule" }, () => undefined); return null; } });
+      }`,
+    });
+    try {
+      const installed = await tracked.installPath(rootDir);
+      expect(installed.status, installed.statusDetail ?? undefined).toBe("running");
+      captured.length = 0;
+      const read = tracked.getRpcHandler("private-work", "read");
+      const act = tracked.getRpcHandler("private-work", "act");
+      if (read.outcome !== "found" || act.outcome !== "found")
+        throw new Error("RPC fixture not loaded");
+      await tracked.invokeRpcHandler("private-work", "read", read.value, null, {
+        kind: "client",
+      });
+      expect(captured).toEqual([]);
+      await tracked.runCliCommand("private-work", [], {});
+      await tracked.invokeRpcHandler("private-work", "act", act.value, null, {
+        kind: "client",
+      });
+      await tracked.invokeRpcHandler("private-work", "act", act.value, null, {
+        kind: "plugin",
+        pluginId: "private-caller",
+      });
+      expect(captured).toHaveLength(2);
+      expect(captured[0]).toEqual({
+        name: "feature_used",
+        properties: {
+          feature: "plugin",
+          feature_scope: "plugin",
+          interaction: "invoked",
+          trigger: "unknown",
+          plugin_source: "local",
+        },
+      });
+      const marketplace = {
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        manifestJson: "{}",
+        statsJson: null,
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: null,
+        lastAttemptedRefreshAt: null,
+        lastError: null,
+      };
+      upsertPluginMarketplace(db, {
+        ...marketplace,
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: "https://getbb.app/marketplace/v2/marketplace.json",
+      });
+      upsertPluginMarketplace(db, {
+        ...marketplace,
+        name: "private-team",
+        sourceKind: "git",
+        manifestUrl: "https://github.com/private-team/marketplace.git",
+      });
+      const sources = [
+        {
+          sourceKind: "builtin",
+          provenance: "builtin",
+          catalogMarketplaceName: null,
+          expected: "builtin",
+        },
+        {
+          sourceKind: "git",
+          provenance: "catalog",
+          catalogMarketplaceName: "bb-community",
+          expected: "public_catalog",
+        },
+        {
+          sourceKind: "git",
+          provenance: "catalog",
+          catalogMarketplaceName: "private-team",
+          expected: "private_marketplace",
+        },
+        {
+          sourceKind: "path",
+          provenance: "catalog",
+          catalogMarketplaceName: "bb-community",
+          expected: "local",
+        },
+        {
+          sourceKind: "git",
+          provenance: "direct",
+          catalogMarketplaceName: null,
+          expected: "unknown",
+        },
+      ] as const;
+      for (const { expected, ...source } of sources) {
+        db.update(installedPlugins)
+          .set(source)
+          .where(eq(installedPlugins.id, "private-work"))
+          .run();
+        captured.length = 0;
+        expect(tracked.recordPanelOpen("private-work")).toBe(true);
+        expect(captured).toEqual([
+          {
+            name: "feature_used",
+            properties: {
+              feature: "plugin",
+              feature_scope: "plugin",
+              interaction: "opened",
+              trigger: "unknown",
+              plugin_source: expected,
+            },
+          },
+        ]);
+        expect(JSON.stringify(captured)).not.toMatch(
+          /private-work|private-team|github|marketplace.json/,
+        );
+      }
+      upsertPluginMarketplace(db, {
+        ...marketplace,
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: "https://private.example/marketplace.json",
+      });
+      db.update(installedPlugins)
+        .set({
+          sourceKind: "git",
+          provenance: "catalog",
+          catalogMarketplaceName: "bb-community",
+        })
+        .where(eq(installedPlugins.id, "private-work"))
+        .run();
+      captured.length = 0;
+      tracked.recordPanelOpen("private-work");
+      expect(captured[0]).toMatchObject({
+        properties: { plugin_source: "unknown" },
+      });
+    } finally {
+      await tracked.stop();
+    }
   });
 
   it("does not report plugin_installed during boot-time reconcile", async () => {

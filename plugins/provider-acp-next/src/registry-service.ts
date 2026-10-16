@@ -72,8 +72,16 @@ export const acpRegistryRpcContract = defineRpcContract({
     input: z.object({ refresh: z.boolean() }).strict(),
     output: registryViewSchema,
   },
-  addRegistryAgent: { input: agentIdInputSchema, output: registryViewSchema },
-  removeAgent: { input: agentIdInputSchema, output: registryViewSchema },
+  addRegistryAgent: {
+    experimental_usage: "action",
+    input: agentIdInputSchema,
+    output: registryViewSchema,
+  },
+  removeAgent: {
+    experimental_usage: "action",
+    input: agentIdInputSchema,
+    output: registryViewSchema,
+  },
 });
 
 const cachedRegistrySchema = z.object({

@@ -1,8 +1,10 @@
+import { withTelemetryTrigger } from "./telemetry.js";
 import {
   publicApiRoutes as routes,
   featureUsedPropertiesSchema,
   type CoreFeature,
   type FeatureUsedProperties,
+  type TelemetryTrigger,
 } from "@bb/server-contract";
 import type { Context, Next } from "hono";
 import { resolveRequestAppSurface } from "../../request-context.js";
@@ -122,6 +124,24 @@ register("settings", [
   routes.projects.deleteMachineEnvironmentVariable,
 ]);
 
+for (const route of [
+  "POST /plugins/install",
+  "POST /plugin-catalog/install",
+  "POST /plugins/:id/update",
+  "POST /plugins/:id/enable",
+  "POST /plugins/:id/disable",
+  "DELETE /plugins/:id",
+  "PUT /plugins/:id/settings",
+  "POST /plugins/reload",
+  "PUT /plugins/safe-mode",
+  "POST /plugins/cache/prune",
+  "POST /marketplaces",
+  "DELETE /marketplaces/:name",
+]) {
+  const [method, path] = route.split(" ");
+  registry.set(`${method} /api/v1${path}`, "plugin_management");
+}
+
 export function captureFeatureUsed(
   telemetry: TelemetryService,
   properties: FeatureUsedProperties,
@@ -133,10 +153,20 @@ export function captureFeatureUsed(
   } catch {}
 }
 
-export function coreFeatureTelemetry(getTelemetry: () => TelemetryService) {
+export function coreFeatureTelemetry(
+  getTelemetry: () => TelemetryService,
+  pluginTrigger: (context: Context) => TelemetryTrigger | null = () => null,
+) {
   return async (context: Context, next: Next): Promise<void> => {
-    await next();
-    if (context.res.status < 200 || context.res.status >= 300) return;
+    const trigger = pluginTrigger(context);
+    if (trigger === null) await next();
+    else await withTelemetryTrigger(trigger, next);
+    if (
+      context.res.status < 200 ||
+      context.res.status >= 300 ||
+      trigger !== null
+    )
+      return;
     const feature = registry.get(
       `${context.req.method} ${context.req.routePath}`,
     );

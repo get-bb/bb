@@ -1,4 +1,5 @@
 import { subscribeComposerSubmitted } from "./composer-submissions";
+import { appSurfaceRequestInit } from "./app-surface";
 import {
   useCallback,
   useContext,
@@ -164,11 +165,11 @@ export async function callPluginRpc(
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
-    {
+    appSurfaceRequestInit({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: serializedInput,
-    },
+    }),
   );
   const body = (await response.json().catch(() => null)) as {
     ok?: unknown;

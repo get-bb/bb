@@ -1,3 +1,5 @@
+import { capturePluginUse, withPluginUse } from "./plugin-feature-telemetry.js";
+import { currentTelemetryTrigger } from "../system/telemetry.js";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -412,6 +414,7 @@ export interface PluginService {
     options?: { rotate?: boolean },
   ): Promise<string | undefined>;
   listCliContributions(): PluginCliContribution[];
+  recordPanelOpen(id: string): boolean;
   runCliCommand(
     id: string,
     argv: string[],
@@ -2149,9 +2152,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "input",
           throwRpcBoundaryError,
         );
-        const result = await handler.handler(parsedInput, {
-          experimental_caller: caller,
-        });
+        const result = await withPluginUse(
+          deps,
+          id,
+          currentTelemetryTrigger(),
+          () =>
+            handler.handler(parsedInput, {
+              experimental_caller: caller,
+            }),
+          handler.usage === "action" && caller.kind === "client",
+        );
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
           result,
@@ -2188,6 +2198,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return cliContributions();
     },
 
+    recordPanelOpen(id) {
+      if (!loaded.has(id)) return false;
+      capturePluginUse(deps, id, "opened", currentTelemetryTrigger());
+      return true;
+    },
+
     async runCliCommand(id, argv, ctx) {
       const fail = (stderr: string) =>
         enforcePluginCliOutputLimit(
@@ -2211,7 +2227,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         id,
         `cli ${registration.name}`,
         async () => {
-          const result = await registration.run(argv, ctx);
+          const result = await withPluginUse(deps, id, "unknown", () =>
+            registration.run(argv, ctx),
+          );
           if (typeof result?.exitCode !== "number") {
             throw new Error(
               "cli run() must return { exitCode: number, stdout?, stderr? }",
@@ -2440,7 +2458,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         pluginId,
         `tool ${record.name}`,
         async () => {
-          const result = await record.execute(parsed.value, ctx);
+          const result = await withPluginUse(deps, pluginId, "agent", () =>
+            record.execute(parsed.value, ctx),
+          );
           return normalizeAgentToolResult(record.name, result);
         },
       );

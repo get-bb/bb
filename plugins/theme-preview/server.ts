@@ -37,6 +37,7 @@ const catalogSchema = z
 export const rpcContract = defineRpcContract({
   themeCatalog: { input: z.object({}).strict(), output: catalogSchema },
   setTheme: {
+    experimental_usage: "action",
     input: z.object({ themeId: z.string().min(1) }).strict(),
     output: catalogSchema,
   },

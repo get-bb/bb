@@ -11,10 +11,12 @@ const STORAGE_PREFIX = "annotation:";
 
 export const agentAnnotationsRpcContract = defineRpcContract({
   update: {
+    experimental_usage: "action",
     input: annotationUpdateSchema,
     output: z.object({ id: z.string() }).strict(),
   },
   save: {
+    experimental_usage: "action",
     input: annotationRecordSchema,
     output: z.object({ id: z.string() }).strict(),
   },

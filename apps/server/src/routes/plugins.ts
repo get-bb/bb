@@ -450,6 +450,15 @@ export function registerPluginRoutes(
     });
   });
 
+  app.post("/plugins/:id/usage", (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem)
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    if (!plugins.recordPanelOpen(context.req.param("id")))
+      return context.json({ ok: false }, 404);
+    return context.json({ ok: true });
+  });
+
   app.get("/plugins/rpc", (context) => {
     const query = pluginRpcDiscoveryQuerySchema.safeParse(context.req.query());
     if (!query.success)

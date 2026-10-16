@@ -1,3 +1,4 @@
+import { telemetryTriggerSchema } from "@bb/server-contract";
 import { coreFeatureTelemetry } from "./services/system/feature-telemetry.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
@@ -865,7 +866,19 @@ export function createApp(
   const publicApi = new Hono();
   publicApi.use(
     "*",
-    coreFeatureTelemetry(() => deps.telemetry),
+    coreFeatureTelemetry(
+      () => deps.telemetry,
+      (context) => {
+        const caller = pluginService.resolveRpcCaller(
+          context.req.header("x-bb-plugin-caller"),
+        );
+        return caller.ok && caller.caller.kind === "plugin"
+          ? (telemetryTriggerSchema.safeParse(
+              context.req.header("x-bb-plugin-trigger"),
+            ).data ?? "unknown")
+          : null;
+      },
+    ),
   );
   publicApi.use("*", async (context, next) => {
     if (PLUGIN_WIRE_HTTP_PATH.test(context.req.path)) {

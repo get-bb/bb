@@ -300,6 +300,7 @@ type ExpectedHostsKey =
   | "update";
 
 type ExpectedPluginsKey =
+  | "experimental_recordPanelOpen"
   | "experimental_discoverRpc"
   | "experimental_getSafeMode"
   | "experimental_setSafeMode"

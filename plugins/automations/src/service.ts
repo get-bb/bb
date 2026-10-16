@@ -67,7 +67,10 @@ import {
   projectPathForHost,
 } from "./working-directory.js";
 
-type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+type ServiceApi = Pick<
+  BbPluginApi,
+  "realtime" | "log" | "experimental_withFeatureUse"
+> & {
   sdk: {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;

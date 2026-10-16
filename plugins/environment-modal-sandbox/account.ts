@@ -40,24 +40,46 @@ const definitionSchema = z.object({
 });
 export const modalRpcContract = defineRpcContract({
   "machine.inspect": { input: machineInput, output: machineOutput },
-  "image.build": { input: z.object({}).strict(), output: buildOutput },
-  "sandbox.run": { input: z.object({}).strict(), output: runOutput },
-  "sandbox.exec": { input: execInput, output: execOutput },
-  "sandbox.stop": { input: sandboxInput, output: sandboxInput },
+  "image.build": {
+    experimental_usage: "action",
+    input: z.object({}).strict(),
+    output: buildOutput,
+  },
+  "sandbox.run": {
+    experimental_usage: "action",
+    input: z.object({}).strict(),
+    output: runOutput,
+  },
+  "sandbox.exec": {
+    experimental_usage: "action",
+    input: execInput,
+    output: execOutput,
+  },
+  "sandbox.stop": {
+    experimental_usage: "action",
+    input: sandboxInput,
+    output: sandboxInput,
+  },
   "image.definition": {
     input: z.object({}).strict(),
     output: definitionSchema,
   },
   "image.set": {
+    experimental_usage: "action",
     input: z.object({ dockerfile: dockerfileSchema }).strict(),
     output: definitionSchema,
   },
-  "image.reset": { input: z.object({}).strict(), output: definitionSchema },
+  "image.reset": {
+    experimental_usage: "action",
+    input: z.object({}).strict(),
+    output: definitionSchema,
+  },
   "launch.options": {
     input: z.object({}).strict(),
     output: modalLaunchOptionsSchema,
   },
   "launch.options.set": {
+    experimental_usage: "action",
     input: modalLaunchOptionsSchema,
     output: modalLaunchOptionsSchema,
   },

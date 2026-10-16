@@ -2063,7 +2063,9 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
+    | "getPluginMetadata"
+    | "updatePluginMetadata"
+    | "experimental_listPluginMetadata"
   > & {
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
@@ -2087,6 +2089,13 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Wrap one background work invocation; core resolves anonymous provenance, trigger context, nested calls and opt-out. Excludes timers, polling and startup. */
+  experimental_withFeatureUse<T>(
+    options: {
+      trigger: "person" | "agent" | "schedule" | "system" | "unknown";
+    },
+    run: () => T,
+  ): T;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

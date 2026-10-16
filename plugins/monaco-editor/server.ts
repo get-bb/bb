@@ -58,6 +58,7 @@ export const rpcContract = defineRpcContract({
     }),
   },
   write: {
+    experimental_usage: "action",
     input: fileSchema.extend({
       content: z.string(),
       expectedSha256: z.string().nullable(),

@@ -1703,9 +1703,16 @@ function readRpcMethodContract(
   const description = rpcDescriptionSchema.parse(
     Reflect.get(value, "experimental_description"),
   );
-  return description === null
-    ? { input, output }
-    : { input, output, experimental_description: description };
+  const usage = z
+    .enum(["action", "query"])
+    .optional()
+    .parse(Reflect.get(value, "experimental_usage"));
+  return {
+    input,
+    output,
+    ...(description === null ? {} : { experimental_description: description }),
+    ...(usage === undefined ? {} : { experimental_usage: usage }),
+  };
 }
 
 export function readRpcPublicationOptions(value: unknown) {
@@ -2870,6 +2877,7 @@ export function normalizeWebSocketRouteRegistration(
 }
 
 type RpcRegistrationRecord = {
+  usage: "action" | "query" | null;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -2928,6 +2936,7 @@ export function normalizeRpcRegistration(
       name,
       {
         publication: publishRpcMethod(name, methodContract, publicationOptions),
+        usage: methodContract.experimental_usage ?? null,
         inputSchema: methodContract.input,
         outputSchema: methodContract.output,
         handler,
