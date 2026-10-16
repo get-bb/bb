@@ -175,6 +175,7 @@ export class PiRpcSession {
   >();
   private deliveredRunActive = false;
   private isCompacting = false;
+  private readonly backgroundNotificationWaiters = new Set<() => void>();
   private manualCompactionCompletionCount = 0;
   private lastCompactionEndDelivery: Promise<void> = Promise.resolve();
   private deliveryChain: Promise<void> = Promise.resolve();
@@ -453,6 +454,18 @@ export class PiRpcSession {
     });
   }
 
+  async notifyBackgroundTask(text: string): Promise<void> {
+    await this.ready.promise;
+    while (this.isCompacting && !this.closed) {
+      await new Promise<void>((resolve) =>
+        this.backgroundNotificationWaiters.add(resolve),
+      );
+    }
+    await this.deliveryChain;
+    if (this.closed) return;
+    await this.channelRequest({ method: "background-task-completion", text });
+  }
+
   async compact(): Promise<void> {
     const child = this.requireChild();
     if (this.isProcessing) {
@@ -473,6 +486,7 @@ export class PiRpcSession {
     } finally {
       this.isProcessing = false;
       this.isCompacting = false;
+      this.releaseBackgroundNotificationWaiters();
     }
     await this.lastCompactionEndDelivery;
   }
@@ -483,6 +497,7 @@ export class PiRpcSession {
       "Pi session closed before input was consumed",
     );
     this.closed = true;
+    this.releaseBackgroundNotificationWaiters();
     if (!child || child.exited) {
       return this.lastKnownLeafId ?? undefined;
     }
@@ -501,6 +516,7 @@ export class PiRpcSession {
 
   kill(): void {
     this.closed = true;
+    this.releaseBackgroundNotificationWaiters();
     this.child?.kill();
   }
 
@@ -690,6 +706,8 @@ export class PiRpcSession {
       const delivery = this.deliverInOrder(async () => {
         await this.refreshContextUsage().catch(() => undefined);
         this.onEvent(event);
+        if (event.type === "compaction_end")
+          this.releaseBackgroundNotificationWaiters();
       });
       if (event.type === "compaction_end" && event.reason === "manual") {
         this.manualCompactionCompletionCount += 1;
@@ -1053,12 +1071,20 @@ export class PiRpcSession {
     }
     this.isProcessing = false;
     this.isCompacting = false;
+    this.releaseBackgroundNotificationWaiters();
     if (!wasClosed) {
       this.onDone(new PiRpcChildExitedError(info));
     }
   }
 
+  private releaseBackgroundNotificationWaiters(): void {
+    for (const resolve of this.backgroundNotificationWaiters) resolve();
+    this.backgroundNotificationWaiters.clear();
+  }
+
   private trackProcessingState(event: PiRpcEvent): void {
+    if (event.type === "compaction_start") this.isCompacting = true;
+    if (event.type === "compaction_end") this.isCompacting = false;
     if (
       event.type === "agent_start" ||
       (event.type === "compaction_start" && event.reason === "manual")
