@@ -141,6 +141,29 @@ describe("BrowserTabContent persistent navigation", () => {
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
   });
 
+  it("selects the whole address on the first click and places the caret on later clicks", () => {
+    const harness = createBrowserChromeHarness();
+    renderBrowserChrome(harness, "https://example.com/docs");
+    const address = screen.getByRole<HTMLInputElement>("textbox", {
+      name: /Address and search bar/,
+    });
+    const clickAt = (caret: number) => {
+      fireEvent.mouseDown(address);
+      act(() => address.focus());
+      address.setSelectionRange(caret, caret);
+      fireEvent.mouseUp(address);
+    };
+
+    clickAt(8);
+    expect([address.selectionStart, address.selectionEnd]).toEqual([
+      0,
+      "https://example.com/docs".length,
+    ]);
+
+    clickAt(8);
+    expect([address.selectionStart, address.selectionEnd]).toEqual([8, 8]);
+  });
+
   it.each(["", "https://example.com/docs"])(
     "moves focus from the address bar to the page after submitting from %s",
     async (initialUrl) => {

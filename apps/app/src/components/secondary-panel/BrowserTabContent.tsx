@@ -201,6 +201,7 @@ function BrowserChrome({
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
   const addressValue = isEditing ? addressDraft : currentUrl;
+  const selectAddressOnMouseUpRef = useRef(false);
   return (
     <div
       role="region"
@@ -269,7 +270,22 @@ function BrowserChrome({
               type="text"
               value={addressValue}
               onChange={(event) => onAddressChange(event.target.value)}
-              onFocus={onAddressFocus}
+              onMouseDown={(event) => {
+                selectAddressOnMouseUpRef.current =
+                  document.activeElement !== event.currentTarget;
+              }}
+              onMouseUp={(event) => {
+                if (!selectAddressOnMouseUpRef.current) return;
+                selectAddressOnMouseUpRef.current = false;
+                const input = event.currentTarget;
+                if (input.selectionStart !== input.selectionEnd) return;
+                event.preventDefault();
+                input.select();
+              }}
+              onFocus={(event) => {
+                event.currentTarget.select();
+                onAddressFocus();
+              }}
               onBlur={onAddressBlur}
               placeholder="Enter a URL"
               aria-label={
