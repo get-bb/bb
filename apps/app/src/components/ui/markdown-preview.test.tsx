@@ -353,7 +353,8 @@ describe("MarkdownPreview", () => {
     ["src/app.ts:42", "/workspace/src/app.ts", 42],
     ["src/app.ts:42:3", "/workspace/src/app.ts", 42],
     ["package.json:12:3", "/workspace/package.json", 12],
-    ["scripts/run", "/workspace/scripts/run", null],
+    ["./scripts/run", "/workspace/scripts/run", null],
+    ["scripts/run:7", "/workspace/scripts/run", 7],
     ["/workspace/scripts/run", "/workspace/scripts/run", null],
     ["./scripts/run:7:2", "/workspace/scripts/run", 7],
     ["Dockerfile:8", "/workspace/Dockerfile", 8],
@@ -387,6 +388,10 @@ describe("MarkdownPreview", () => {
   );
 
   it.each([
+    "origin/main",
+    "...[origin/main]",
+    "feature/my-branch",
+    "scripts/run",
     "orange",
     "npm.test()",
     "cat src/app.ts",

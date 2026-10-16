@@ -582,7 +582,7 @@ function resolveInlineCodeFileHref({
     return null;
   }
 
-  return /[/\\]/u.test(codeText) ||
+  return /^(?:[/\\]|\.{1,2}[/\\]|[a-zA-Z]:[/\\]|file:\/\/)/u.test(codeText) ||
     /\.[\p{L}\p{N}_-]+$/u.test(target.link.path) ||
     target.link.lineRange !== null
     ? target.href
