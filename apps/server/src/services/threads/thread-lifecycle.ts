@@ -24,6 +24,7 @@ import {
   getHost,
   getLatestThreadInterruptedReason,
   getThread,
+  hasStoredTerminalClientTurnRequestEvent,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -686,31 +687,12 @@ function hasTerminalClientTurnRequestEvent(
   deps: ThreadCommandResultSettlementDeps,
   command: ThreadFailureCommand,
 ): boolean {
-  if (command.type !== "turn.submit") {
-    return false;
-  }
-
   return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, command.threadId),
-          or(
-            and(
-              eq(events.type, "turn/input/accepted"),
-              sql`json_extract(${events.data}, '$.clientRequestId') = ${command.requestId}`,
-            ),
-            and(
-              eq(events.type, "client/turn/rejected"),
-              sql`json_extract(${events.data}, '$.requestId') = ${command.requestId}`,
-            ),
-          ),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
+    command.type === "turn.submit" &&
+    hasStoredTerminalClientTurnRequestEvent(deps.db, {
+      requestId: command.requestId,
+      threadId: command.threadId,
+    })
   );
 }
 

@@ -2218,13 +2218,14 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     return [];
   }
 
-  const stateTypes = [
-    "item/backgroundTask/progress",
-    "item/backgroundTask/completed",
-    "item/delegation/progress",
-    "item/delegation/completed",
-  ] satisfies ThreadEventType[];
-  const latest = alias(events, "latest_background_task_state");
+  const itemIds = sql.join(
+    [...args.itemIds].map((itemId) => sql`${itemId}`),
+    sql`, `,
+  );
+  const beforeSequence =
+    args.beforeSequence === undefined
+      ? sql``
+      : sql`AND sequence < ${args.beforeSequence}`;
 
   return db
     .select(storedEventRowFields)
@@ -2232,23 +2233,28 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     .where(
       and(
         eq(events.threadId, args.threadId),
-        inArray(
-          events.sequence,
-          db
-            .select({ sequence: max(latest.sequence) })
-            .from(latest)
-            .where(
-              and(
-                eq(latest.threadId, args.threadId),
-                args.beforeSequence === undefined
-                  ? undefined
-                  : lt(latest.sequence, args.beforeSequence),
-                inArray(latest.itemId, [...args.itemIds]),
-                inArray(latest.type, stateTypes),
-              ),
-            )
-            .groupBy(latest.itemId),
-        ),
+        sql`${events.sequence} IN (
+          SELECT MAX(state.sequence)
+          FROM (
+            SELECT item_id, sequence
+            FROM ${events} INDEXED BY events_background_task_thread_type_item_sequence_idx
+            WHERE thread_id = ${args.threadId}
+              AND item_kind = 'backgroundTask'
+              AND type IN ('item/backgroundTask/progress', 'item/backgroundTask/completed')
+              AND item_id IN (${itemIds})
+              ${beforeSequence}
+            UNION ALL
+            SELECT item_id, sequence
+            FROM ${events} INDEXED BY events_delegating_item_lookup_idx
+            WHERE thread_id = ${args.threadId}
+              AND item_kind IN ('toolCall', 'delegation')
+              AND item_kind = 'delegation'
+              AND type IN ('item/delegation/progress', 'item/delegation/completed')
+              AND item_id IN (${itemIds})
+              ${beforeSequence}
+          ) AS state
+          GROUP BY state.item_id
+        )`,
       ),
     )
     .orderBy(events.sequence)
@@ -2284,6 +2290,7 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
     .where(
       and(
         eq(completed.threadId, args.threadId),
+        sql`${completed.itemKind} = 'backgroundTask'`,
         eq(completed.type, completedType),
         isNotNull(completed.itemId),
       ),
@@ -2522,6 +2529,40 @@ export function hasStoredTurnStarted(
     .get();
 
   return row !== undefined;
+}
+
+export interface HasStoredTerminalClientTurnRequestEventArgs {
+  requestId: ClientTurnRequestId;
+  threadId: string;
+}
+
+export function hasStoredTerminalClientTurnRequestEvent(
+  db: DbQueryConnection,
+  args: HasStoredTerminalClientTurnRequestEventArgs,
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          inArray(events.type, ["turn/input/accepted", "client/turn/rejected"]),
+          or(
+            and(
+              eq(events.type, "turn/input/accepted"),
+              sql`json_extract(${events.data}, '$.clientRequestId') = ${args.requestId}`,
+            ),
+            and(
+              eq(events.type, "client/turn/rejected"),
+              sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
+            ),
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 export function hasRootStoredTurnStarted(
@@ -4175,7 +4216,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
     .where(
       and(
         eq(environments.hostId, args.hostId),
-        eq(events.itemKind, "backgroundTask"),
+        sql`${events.itemKind} = 'backgroundTask'`,
         inArray(events.type, [startedType, progressType]),
         isNotNull(events.itemId),
         notExists(
@@ -4185,6 +4226,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
             .where(
               and(
                 eq(settled.threadId, events.threadId),
+                sql`${settled.itemKind} = 'backgroundTask'`,
                 eq(settled.itemId, events.itemId),
                 eq(settled.type, completedType),
               ),
@@ -4219,18 +4261,20 @@ export function listOpenBackgroundTaskItemRowsForThread(
 
   const rows = db
     .select({
-      data: events.data,
-      environmentId: threads.environmentId,
-      itemId: events.itemId,
-      providerThreadId: events.providerThreadId,
-      threadId: events.threadId,
+      data: sql<string>`${events.data}`,
+      environmentId: sql<string | null>`${threads.environmentId}`,
+      itemId: sql<string | null>`${events.itemId}`,
+      providerThreadId: sql<string | null>`${events.providerThreadId}`,
+      threadId: sql<string>`${events.threadId}`,
     })
-    .from(events)
+    .from(
+      sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
+    )
     .innerJoin(threads, eq(events.threadId, threads.id))
     .where(
       and(
         eq(events.threadId, args.threadId),
-        eq(events.itemKind, "backgroundTask"),
+        sql`${events.itemKind} = 'backgroundTask'`,
         inArray(events.type, [startedType, progressType]),
         isNotNull(events.itemId),
         notExists(
@@ -4240,6 +4284,7 @@ export function listOpenBackgroundTaskItemRowsForThread(
             .where(
               and(
                 eq(settled.threadId, events.threadId),
+                sql`${settled.itemKind} = 'backgroundTask'`,
                 eq(settled.itemId, events.itemId),
                 eq(settled.type, completedType),
               ),
