@@ -750,6 +750,20 @@ export type HostDaemonServerWsMessage = z.infer<
   typeof hostDaemonServerWsMessageSchema
 >;
 
+export const hostDaemonTerminalDataServerMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    hostDaemonTerminalAttachMessageSchema,
+    hostDaemonTerminalInputMessageSchema,
+    hostDaemonTerminalResizeMessageSchema,
+    hostDaemonTerminalFlowControlMessageSchema,
+    hostDaemonTerminalAckMessageSchema,
+  ],
+);
+export type HostDaemonTerminalDataServerMessage = z.infer<
+  typeof hostDaemonTerminalDataServerMessageSchema
+>;
+
 const hostDaemonHeartbeatMessageSchema = z
   .object({
     type: z.literal("heartbeat"),
@@ -901,6 +915,18 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
 ]);
 export type HostDaemonDaemonWsMessage = z.infer<
   typeof hostDaemonDaemonWsMessageSchema
+>;
+
+export const hostDaemonTerminalDataDaemonMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    hostDaemonTerminalOutputMessageSchema,
+    hostDaemonTerminalReplayMessageSchema,
+    hostDaemonTerminalErrorMessageSchema,
+  ],
+);
+export type HostDaemonTerminalDataDaemonMessage = z.infer<
+  typeof hostDaemonTerminalDataDaemonMessageSchema
 >;
 
 export const hostDaemonToolCallRequestSchema = toolCallRequestSchema

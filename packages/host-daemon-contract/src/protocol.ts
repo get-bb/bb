@@ -1,4 +1,4 @@
-export const HOST_DAEMON_PROTOCOL_VERSION = 251 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 252 as const;
 
 export const HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION = 247 as const;
 
@@ -8,7 +8,6 @@ export const HOST_DAEMON_ENVIRONMENT_CLEANUP_INSPECTION_PROTOCOL_VERSION =
   249 as const;
 
 export const HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS: readonly number[] = [
-  250,
   HOST_DAEMON_PROTOCOL_VERSION,
 ];
 
@@ -38,6 +37,8 @@ export function hostDaemonSupportsEnvironmentCleanupInspection(
     HOST_DAEMON_ENVIRONMENT_CLEANUP_INSPECTION_PROTOCOL_VERSION
   );
 }
+
+export const HOST_DAEMON_TERMINAL_DATA_PATH = "/internal/ws/terminals";
 
 export const HOST_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;
 

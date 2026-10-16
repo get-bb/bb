@@ -436,7 +436,7 @@ describe("createHostDaemonApp", () => {
       },
       {
         createWebSocket: createOpeningWebSocket((created) => {
-          socket = created;
+          socket ??= created;
         }),
       },
     );
@@ -481,7 +481,7 @@ describe("createHostDaemonApp", () => {
       {},
       {
         createWebSocket: createOpeningWebSocket((created) => {
-          socket = created;
+          socket ??= created;
         }),
         exitProcess,
       },

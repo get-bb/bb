@@ -97,15 +97,17 @@ import {
 } from "./ws/daemon-protocol.js";
 import { roundDurationMs } from "@bb/process-utils";
 import {
-  onTerminalSocketClose,
-  onTerminalSocketMessage,
-  onTerminalSocketOpen,
-} from "./ws/terminal-protocol.js";
+  installTerminalUpgradeDispatcher,
+  terminalUpgradeGrantSlot,
+} from "./ws/terminal-upgrade-dispatcher.js";
 import {
   createBbAppArtifactService,
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_TERMINAL_DATA_PATH,
+} from "@bb/host-daemon-contract";
 import {
   createPluginCatalogService,
   type PluginCatalogService,
@@ -752,7 +754,10 @@ export function createApp(
     if (normalizedPath === "/internal/hosts/enroll") {
       return next();
     }
-    if (normalizedPath === "/internal/ws") {
+    if (
+      normalizedPath === "/internal/ws" ||
+      normalizedPath === HOST_DAEMON_TERMINAL_DATA_PATH
+    ) {
       return next();
     }
     if (normalizedPath === INTERNAL_SERVER_MOVE_PENDING_PATH) {
@@ -989,44 +994,58 @@ export function createApp(
     }),
   );
 
-  app.get(
-    "/ws/terminals/:terminalId",
-    upgradeWebSocket((context) => {
-      assertBrowserWebSocketAllowed(context);
-      const terminalId = context.req.param("terminalId");
-      const query = terminalWebSocketQuerySchema.safeParse({
-        outputAcks: context.req.query("outputAcks"),
-        sinceSeq: context.req.query("sinceSeq"),
-      });
-      if (!query.success) {
-        throw new ApiError(
-          400,
-          "invalid_terminal_socket_query",
-          "Terminal websocket sinceSeq must be a non-negative integer and outputAcks must be 0 or 1",
-        );
-      }
-      return {
-        onOpen: (_event, socket) =>
-          onTerminalSocketOpen(deps, {
-            outputAcks: query.data.outputAcks,
-            socket,
-            sinceSeq: query.data.sinceSeq,
-            terminalId,
-          }),
-        onMessage: (event, socket) =>
-          onTerminalSocketMessage(deps, {
-            raw: event.data,
-            socket,
-            terminalId,
-          }),
-        onClose: (_event, socket) =>
-          onTerminalSocketClose(deps, {
-            socket,
-            terminalId,
-          }),
-      };
-    }),
-  );
+  app.get("/ws/terminals/:terminalId", (context) => {
+    const slot = terminalUpgradeGrantSlot(context.env);
+    if (slot === null) {
+      throw new ApiError(
+        400,
+        "websocket_upgrade_required",
+        "Terminal sockets require a WebSocket upgrade",
+      );
+    }
+    assertBrowserWebSocketAllowed(context);
+    const terminalId = context.req.param("terminalId");
+    const query = terminalWebSocketQuerySchema.safeParse({
+      outputAcks: context.req.query("outputAcks"),
+      sinceSeq: context.req.query("sinceSeq"),
+    });
+    if (!query.success) {
+      throw new ApiError(
+        400,
+        "invalid_terminal_socket_query",
+        "Terminal websocket sinceSeq must be a non-negative integer and outputAcks must be 0 or 1",
+      );
+    }
+    slot.grant = {
+      kind: "browser",
+      outputAcks: query.data.outputAcks,
+      sinceSeq: query.data.sinceSeq,
+      terminal: deps.terminalSessions.relayTerminal(terminalId),
+      terminalId,
+    };
+    return context.body(null, 204);
+  });
+
+  app.get(HOST_DAEMON_TERMINAL_DATA_PATH, async (context) => {
+    const slot = terminalUpgradeGrantSlot(context.env);
+    if (slot === null) {
+      throw new ApiError(
+        400,
+        "websocket_upgrade_required",
+        "Terminal data sockets require a WebSocket upgrade",
+      );
+    }
+    const websocketContext = await validateDaemonWebSocket(deps, {
+      authorizationHeader: context.req.header("authorization"),
+      protocolHeader: context.req.header("sec-websocket-protocol"),
+      sessionId: context.req.query("sessionId") ?? null,
+    });
+    slot.grant = {
+      kind: "daemon",
+      daemonSessionId: websocketContext.sessionId,
+    };
+    return context.body(null, 204);
+  });
 
   app.get(
     "/internal/ws",
@@ -1073,7 +1092,14 @@ export function createApp(
         reason: WEB_SOCKET_SHUTDOWN_REASON,
         server: wss,
       }),
-    injectWebSocket,
+    injectWebSocket: (server) => {
+      injectWebSocket(server);
+      installTerminalUpgradeDispatcher(server, {
+        app,
+        logger: deps.logger,
+        upgrade: (upgrade) => deps.terminalSessions.relay.upgrade(upgrade),
+      });
+    },
     pluginService,
     pluginCatalogService,
     serverMove,

@@ -49,6 +49,7 @@ import {
   createTelemetryService,
 } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
+import { startTerminalRelayProcess } from "./services/terminals/terminal-relay-transport.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerLogger, ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
@@ -207,11 +208,21 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_SERVER_LAUNCH_ID !== undefined) {
     runtimeConfig.launchId = serverConfig.BB_SERVER_LAUNCH_ID;
   }
+  const terminalRelay = startTerminalRelayProcess({
+    entryUrl: new URL(
+      import.meta.url.endsWith(".ts")
+        ? "./terminal-relay-process.ts"
+        : "./terminal-relay-process.js",
+      import.meta.url,
+    ),
+    logger,
+  });
   const terminalSessions = new TerminalSessionLifecycle({
     config: runtimeConfig,
     db,
     hub,
     logger,
+    relay: terminalRelay,
   });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config: runtimeConfig,
@@ -511,6 +522,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         });
       });
       await tunnelIngress.closeAll();
+      terminalRelay.close();
       await closeWebSockets();
       await closeServer;
     })();

@@ -635,14 +635,16 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("queues output above high water and flushes it before lifecycle messages", async () => {
+  it("queues output on the terminal data socket above high water and flushes it before lifecycle messages", async () => {
     vi.useFakeTimers();
     const { connection, webSocket } = createConnectionFixture();
     try {
       await connection.start();
-      const socket = webSocket.sockets[0];
-      if (!socket) {
-        throw new Error("Expected test socket");
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const socket = webSocket.sockets[1];
+      if (!controlSocket || !socket) {
+        throw new Error("Expected control and terminal data sockets");
       }
       webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
       const output = {
@@ -664,8 +666,11 @@ describe("ServerConnection", () => {
       expect(socket.send).not.toHaveBeenCalled();
 
       expect(connection.sendMessage(exited)).toBe(true);
-      expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify(output));
-      expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify(exited));
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify(output));
+      expect(controlSocket.send).toHaveBeenCalledWith(JSON.stringify(exited));
+      expect(vi.mocked(socket.send).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(controlSocket.send).mock.invocationCallOrder.at(-1) ?? 0,
+      );
     } finally {
       await connection.shutdown();
     }
@@ -701,13 +706,14 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("closes the connection when a terminal websocket send throws", async () => {
+  it("reconnects the terminal data socket when a send on it throws", async () => {
     const { connection, webSocket } = createConnectionFixture();
     try {
       await connection.start();
-      const socket = webSocket.sockets[0];
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const socket = webSocket.sockets[1];
       if (!socket) {
-        throw new Error("Expected test socket");
+        throw new Error("Expected terminal data socket");
       }
       vi.mocked(socket.send).mockImplementation(() => {
         throw new Error("send failed");
@@ -723,7 +729,52 @@ describe("ServerConnection", () => {
           },
         }),
       ).toBe(false);
-      expect(socket.close).toHaveBeenCalledWith(1013, "send-failed");
+      expect(socket.reconnect).toHaveBeenCalledWith(1013, "send-failed");
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("answers each terminal attach on the socket that asked for it", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const dataSocket = webSocket.sockets[1];
+      if (!controlSocket || !dataSocket) {
+        throw new Error("Expected control and terminal data sockets");
+      }
+      const attach = (requestId: string) => ({
+        type: "terminal.attach" as const,
+        requestId,
+        terminalId: "term-1",
+        sinceSeq: 0,
+        tailBytes: 1024,
+      });
+      const replay = (requestId: string) => ({
+        type: "terminal.replay" as const,
+        requestId,
+        terminalId: "term-1",
+        chunks: [],
+        replayStartSeq: 0,
+        nextSeq: 0,
+      });
+
+      dataSocket.onmessage?.({ data: JSON.stringify(attach("from-relay")) });
+      controlSocket.onmessage?.({ data: JSON.stringify(attach("from-main")) });
+      expect(connection.sendMessage(replay("from-relay"))).toBe(true);
+      expect(connection.sendMessage(replay("from-main"))).toBe(true);
+
+      expect(dataSocket.send).toHaveBeenCalledWith(
+        JSON.stringify(replay("from-relay")),
+      );
+      expect(controlSocket.send).toHaveBeenCalledWith(
+        JSON.stringify(replay("from-main")),
+      );
+      expect(dataSocket.send).not.toHaveBeenCalledWith(
+        JSON.stringify(replay("from-main")),
+      );
     } finally {
       await connection.shutdown();
     }
