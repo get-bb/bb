@@ -33,6 +33,9 @@ patchedDependencies:
   expo-modules-jsi@57.0.4:
     hash: raucdrgf3mznkb7qkl7fkzjw5u
     path: patches/expo-modules-jsi@57.0.4.patch
+  mermaid@11.15.0:
+    hash: azn7m6vm5duxopmv73vhtxokh4
+    path: patches/mermaid@11.15.0.patch
   oniguruma-to-es@4.3.4:
     hash: f5db5z5xon23qqwgpdyyzpga5u
     path: patches/oniguruma-to-es@4.3.4.patch
@@ -314,7 +317,7 @@ importers:
         version: 0.16.47
       mermaid:
         specifier: ^11.15.0
-        version: 11.15.0
+        version: 11.15.0(patch_hash=azn7m6vm5duxopmv73vhtxokh4)
       micromark-extension-directive:
         specifier: ^4.0.0
         version: 4.0.0
@@ -27491,7 +27494,7 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  mermaid@11.15.0:
+  mermaid@11.15.0(patch_hash=azn7m6vm5duxopmv73vhtxokh4):
     dependencies:
       '@braintree/sanitize-url': 7.1.2
       '@iconify/utils': 3.1.3
