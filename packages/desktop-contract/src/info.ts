@@ -74,8 +74,10 @@ export interface BbDesktopApi extends BbDesktopInfo {
   focusWindow?(): void;
   getWindowState?(): Promise<BbDesktopWindowState>;
   installUpdate(): Promise<void>;
+  macosTrafficLightGap?: number;
   macosTrafficLightInset?: number;
   macosTrafficLightTopInset?: number;
+  macosWindowCornerRadius?: number;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
   onWindowStateChange?(
     listener: BbDesktopWindowStateChangeHandler,

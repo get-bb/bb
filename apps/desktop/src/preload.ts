@@ -1,5 +1,6 @@
 import {
   bbDesktopServerChoicesSchema,
+  getMacosWindowChromeMetrics,
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   type BbDesktopServerChoice,
@@ -408,6 +409,10 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
 };
 
+const macosWindowChromeMetrics = getMacosWindowChromeMetrics(
+  Number.parseInt(process.getSystemVersion(), 10),
+);
+
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
   async getServerChoices() {
@@ -430,8 +435,10 @@ const bbDesktopApi: BbDesktopApi = {
   get pendingVersion() {
     return currentInfo.pendingVersion;
   },
+  macosTrafficLightGap: macosWindowChromeMetrics.trafficLightGap,
   macosTrafficLightInset: MACOS_TRAFFIC_LIGHT_INSET_PX,
   macosTrafficLightTopInset: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
+  macosWindowCornerRadius: macosWindowChromeMetrics.windowCornerRadius,
   platform: resolveBbDesktopPlatform(process.platform),
   get serverDaemonLogsAvailable() {
     return currentInfo.serverDaemonLogsAvailable;

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppCommandId } from "@bb/domain";
 import type {
   BbDesktopApi,
@@ -147,10 +147,11 @@ interface EmitIpcPayloadArgs {
   payload: unknown;
 }
 
-async function loadPreload(): Promise<BbDesktopApi> {
+async function loadPreload(systemVersion = "26.5.0"): Promise<BbDesktopApi> {
   electronMock.reset();
   vi.resetModules();
   process.env.BB_DESKTOP_VERSION = "0.0.0-test";
+  process.getSystemVersion = () => systemVersion;
   await import("../src/preload.js");
   const api = electronMock.exposedApi;
   expect(electronMock.exposedName).toBe("bbDesktop");
@@ -160,6 +161,24 @@ async function loadPreload(): Promise<BbDesktopApi> {
   }
   return api;
 }
+
+afterEach(() => {
+  Reflect.deleteProperty(process, "getSystemVersion");
+});
+
+describe("macOS window chrome metrics", () => {
+  it("reports the traffic-light gap and window corner radius for the running macOS", async () => {
+    const tahoe = await loadPreload("26.5.0");
+    expect([tahoe.macosTrafficLightGap, tahoe.macosWindowCornerRadius]).toEqual(
+      [9, 16],
+    );
+    const sequoia = await loadPreload("15.7.9");
+    expect([
+      sequoia.macosTrafficLightGap,
+      sequoia.macosWindowCornerRadius,
+    ]).toEqual([6, 12]);
+  });
+});
 
 function emitIpcPayload(args: EmitIpcPayloadArgs): void {
   const listener = electronMock.listeners.get(args.channel);

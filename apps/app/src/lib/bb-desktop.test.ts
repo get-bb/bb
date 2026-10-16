@@ -82,6 +82,22 @@ describe("desktop chrome geometry", () => {
     );
   });
 
+  it("fits the light cluster and card corners to the window the shell reports", () => {
+    const properties = applyGeometry({
+      ...macosDesktopApi,
+      macosTrafficLightGap: 6,
+      macosTrafficLightInset: 17,
+      macosTrafficLightTopInset: 15,
+      macosWindowCornerRadius: 12,
+    });
+
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("83px");
+    expect(properties.get("--bb-frame-card-radius")).toBe("4px");
+    expect(
+      decodeURIComponent(properties.get("--bb-window-card-mask") ?? ""),
+    ).toContain("<rect y='44' width='100%' height='100%' rx='4'/>");
+  });
+
   it("assumes the current light position when the shell reports none", () => {
     const properties = applyGeometry(macosDesktopApi);
 

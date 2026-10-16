@@ -9,11 +9,29 @@ export const WINDOW_CARD_RADIUS_PX =
 export const SIDEBAR_FOOTER_CARD_GAP_PX = 8;
 export const TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX = 5;
 export const MACOS_TRAFFIC_LIGHT_SIZE_PX = 14;
-const MACOS_TRAFFIC_LIGHT_MAX_GAP_PX = 9;
+export const MACOS_TRAFFIC_LIGHT_GAP_PX = 9;
 const MACOS_TRAFFIC_LIGHT_COUNT = 3;
-export const MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX =
-  MACOS_TRAFFIC_LIGHT_COUNT * MACOS_TRAFFIC_LIGHT_SIZE_PX +
-  (MACOS_TRAFFIC_LIGHT_COUNT - 1) * MACOS_TRAFFIC_LIGHT_MAX_GAP_PX;
+const MACOS_PRE_26_TRAFFIC_LIGHT_GAP_PX = 6;
+const MACOS_PRE_26_WINDOW_CORNER_RADIUS_PX = 12;
+
+export function getMacosWindowChromeMetrics(macosMajorVersion: number) {
+  return macosMajorVersion >= 26
+    ? {
+        trafficLightGap: MACOS_TRAFFIC_LIGHT_GAP_PX,
+        windowCornerRadius: MACOS_WINDOW_CORNER_RADIUS_PX,
+      }
+    : {
+        trafficLightGap: MACOS_PRE_26_TRAFFIC_LIGHT_GAP_PX,
+        windowCornerRadius: MACOS_PRE_26_WINDOW_CORNER_RADIUS_PX,
+      };
+}
+
+export function getMacosTrafficLightClusterWidth(gap: number): number {
+  return (
+    MACOS_TRAFFIC_LIGHT_COUNT * MACOS_TRAFFIC_LIGHT_SIZE_PX +
+    (MACOS_TRAFFIC_LIGHT_COUNT - 1) * gap
+  );
+}
 export const RAIL_PADDING_PX =
   MACOS_TRAFFIC_LIGHT_INSET_PX +
   MACOS_TRAFFIC_LIGHT_SIZE_PX / 2 -
