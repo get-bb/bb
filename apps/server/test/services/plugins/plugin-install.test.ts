@@ -466,6 +466,102 @@ describe("plugin install flows", () => {
   });
 
   describe.skipIf(!hasGit)("git sources", { timeout: 30_000 }, () => {
+    it("moves a direct path plugin to Git without losing settings, secrets, schedules, or enabled state", async () => {
+      const repoDir = join(workDir, "repo-path-to-git");
+      await writePluginFixture(repoDir, { name: "bb-plugin-path-to-git" });
+      await writeFile(
+        join(repoDir, "server.ts"),
+        `export default function plugin(bb: any) {
+          bb.settings.define({
+            floor: { type: "string", label: "Floor", default: "60" },
+            token: { type: "string", label: "Token", secret: true },
+          });
+          bb.background.schedule("sweep", "0 * * * *", async () => {});
+        }`,
+      );
+      await service.install(repoDir, { kind: "root" });
+      await service.updateSettings("path-to-git", {
+        floor: "1",
+        token: "s3cret",
+      });
+      expect(await service.setEnabled("path-to-git", false)).toMatchObject({
+        enabled: false,
+        status: "disabled",
+      });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+
+      const source = `git:${repoDir}@main`;
+      const moved = await service.install(source, { kind: "root" });
+
+      expect(moved).toMatchObject({
+        id: "path-to-git",
+        source,
+        enabled: false,
+        status: "disabled",
+      });
+      expect(getInstalledPluginRegistration(db, "path-to-git")).toMatchObject({
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRequestedRef: "main",
+        gitResolvedCommit: commit,
+        enabled: false,
+      });
+      expect(await service.setEnabled("path-to-git", true)).toMatchObject({
+        enabled: true,
+        status: "running",
+      });
+      expect((await service.getSettings("path-to-git"))?.values).toEqual({
+        floor: "1",
+        token: { set: true },
+      });
+      expect(
+        db.$client
+          .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+          .all("path-to-git"),
+      ).toEqual([{ name: "sweep" }]);
+    });
+
+    it("restores a direct path plugin when its Git replacement fails to start", async () => {
+      const pathDir = join(workDir, "path-source");
+      await writePluginFixture(pathDir, { name: "bb-plugin-git-rollback" });
+      await writeFile(
+        join(pathDir, "server.ts"),
+        `export default function plugin(bb: any) {
+          bb.settings.define({ token: { type: "string", label: "Token", secret: true } });
+        }`,
+      );
+      await service.install(pathDir, { kind: "root" });
+      await service.updateSettings("git-rollback", { token: "s3cret" });
+
+      const repoDir = join(workDir, "git-source");
+      await writePluginFixture(repoDir, { name: "bb-plugin-git-rollback" });
+      await writeFile(
+        join(repoDir, "server.ts"),
+        `export default function plugin() { throw new Error("boom at startup"); }`,
+      );
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+
+      await expect(
+        service.install(`git:${repoDir}@main`, { kind: "root" }),
+      ).rejects.toThrowError(
+        /failed to start from git:.*boom at startup.*was kept/u,
+      );
+
+      expect(getInstalledPluginRegistration(db, "git-rollback")).toMatchObject({
+        sourceKind: "path",
+        sourcePath: pathDir,
+        rootDir: pathDir,
+      });
+      expect(
+        service.list().find((plugin) => plugin.id === "git-rollback"),
+      ).toMatchObject({ source: `path:${pathDir}`, status: "running" });
+      expect((await service.getSettings("git-rollback"))?.values).toEqual({
+        token: { set: true },
+      });
+    });
+
     it("installs and tracks the default branch when the ref is omitted", async () => {
       const repoDir = join(workDir, "repo-default-branch");
       await writePluginFixture(repoDir, { name: "bb-plugin-default-branch" });

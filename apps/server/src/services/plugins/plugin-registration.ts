@@ -255,7 +255,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
   }
 
-  function pathSourceMoveFrom(
+  function sourceMoveFrom(
     existing: InstalledPluginRow | undefined,
     identity: InstallRegistrationIdentity,
   ): InstalledPluginRow | undefined {
@@ -264,8 +264,10 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       existing.provenance !== "direct" ||
       existing.sourceKind !== "path" ||
       identity.provenance.kind !== "direct" ||
-      identity.sourceIntent.kind !== "path" ||
-      existing.sourcePath === identity.sourceIntent.canonicalPath
+      (identity.sourceIntent.kind !== "path" &&
+        identity.sourceIntent.kind !== "git") ||
+      (identity.sourceIntent.kind === "path" &&
+        existing.sourcePath === identity.sourceIntent.canonicalPath)
     ) {
       return undefined;
     }
@@ -299,13 +301,14 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     pluginId: string,
   ): void {
     if (existing === undefined) return;
+    const movedFrom = sourceMoveFrom(existing, identity);
     if (
       !rowMatchesInstallSource(
         existing,
         identity.provenance,
         identity.sourceIntent,
       ) &&
-      pathSourceMoveFrom(existing, identity) === undefined
+      movedFrom === undefined
     ) {
       throw new Error(
         `plugin id "${pluginId}" is already installed from ${existing.source}; remove it first`,
@@ -314,7 +317,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     if (
       identity.provenance.kind === "catalog" ||
       identity.sourceIntent.kind === "npm" ||
-      identity.sourceIntent.kind === "git"
+      (identity.sourceIntent.kind === "git" && movedFrom === undefined)
     ) {
       throw new Error(
         `plugin "${pluginId}" is already installed; use \`bb plugin update ${pluginId}\` or remove it before reinstalling`,
@@ -365,7 +368,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       const existing = getInstalledPlugin(deps.db, manifest.id);
       isFreshInstall = existing === undefined;
       assertInstallRegistrationAvailable(existing, args, manifest.id);
-      const movedFrom = pathSourceMoveFrom(existing, args);
+      const movedFrom = sourceMoveFrom(existing, args);
       await disposeOne(manifest.id);
       try {
         await args.beforePersist?.();

@@ -280,8 +280,10 @@ plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
 (the default branch), Git branches, and Git semver ranges track compatible
 updates. Change a pinned git:/npm: source with `bb plugin remove` (which
 deletes settings, secrets, and schedules) and a fresh install. Edit a local
-path plugin in place and `bb plugin reload <id>`, or move it with
-`bb plugin install path:<new dir>`; both keep its configuration.
+path plugin in place and `bb plugin reload <id>`. Move a direct path plugin to
+another path or a direct Git source with `bb plugin install path:<new dir>` or
+`bb plugin install git:<url>[@<ref|semver-range>]`; both keep its settings,
+secrets, schedules, and enabled state. A failed move restores the old source.
 
 Managed git:/npm: installs refuse engines.bb and engines.bbPluginSdk
 mismatches, manifest and artifact identity mismatches, and ids reserved by

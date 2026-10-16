@@ -1031,7 +1031,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. A catalog entry from a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. Installing a direct path or Git source with the same id as a direct path plugin moves it without deleting settings, secrets, or schedules. A catalog entry from a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option(
       "--subdirectory <path>",
@@ -1112,6 +1112,9 @@ export function registerPluginCommands(
                 }
               }
             } catch {}
+          }
+          if (intent.kind === "source" && intent.source.startsWith("git:")) {
+            summary = `${summary}\nIf this resolves to a directly installed local path plugin, BB moves it to Git and keeps its settings, secrets, schedules, and enabled state.`;
           }
           if (opts.subdirectory !== undefined) {
             summary = `${summary} (subdirectory ${opts.subdirectory})`;
@@ -1377,7 +1380,7 @@ export function registerPluginCommands(
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates (remove deletes the plugin's settings, secrets, and schedules). A local path plugin updates with \`bb plugin reload\`; move it with \`bb plugin install path:<new directory>\`.`,
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates (remove deletes the plugin's settings, secrets, and schedules). A local path plugin updates with \`bb plugin reload\`; move it with \`bb plugin install path:<new directory>\` or \`bb plugin install git:<url>[@<ref|semver-range>]\`.`,
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(
@@ -2045,7 +2048,7 @@ export function registerPluginCommands(
     .command("remove <id>")
     .alias("uninstall")
     .description(
-      "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory, install the new path instead",
+      "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory or a Git-managed source, install the new path or Git source instead",
     )
     .option("--json", "Output JSON")
     .addOption(new Option("--yes").hideHelp())
