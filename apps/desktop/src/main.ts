@@ -571,6 +571,7 @@ function zoomWebContents(
   if (!target) {
     return;
   }
+  if (desktopWindowFactory?.zoom(target.id, command)) return;
   target.setZoomFactor(nextZoomFactor(target.getZoomFactor(), command));
 }
 

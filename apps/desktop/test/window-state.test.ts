@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -54,6 +54,7 @@ describe("window state helpers", () => {
         x: 100,
         y: 100,
       },
+      zoomFactor: 1,
       isFullScreen: false,
       isMaximized: true,
     };
@@ -74,6 +75,7 @@ describe("window state helpers", () => {
         x: 10_000,
         y: 10_000,
       },
+      zoomFactor: 1,
       isFullScreen: false,
       isMaximized: true,
     };
@@ -97,12 +99,29 @@ describe("window state helpers", () => {
             x: 1_435,
             y: 895,
           },
+          zoomFactor: 1,
           isFullScreen: false,
           isMaximized: false,
         },
       }),
     ).toEqual(DEFAULT_WINDOW_STATE);
   });
+
+  it.each([undefined, -1, 100, "large"])(
+    "reads legacy geometry and defaults invalid zoom %s",
+    async (zoomFactor) => {
+      const tempDir = await createTempDir();
+      await writeFile(
+        join(tempDir.path, "window-state.json"),
+        JSON.stringify({
+          windows: [{ ...DEFAULT_WINDOW_STATE, stateKey: "main", zoomFactor }],
+        }),
+      );
+      expect(
+        await readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
+      ).toEqual([{ ...DEFAULT_WINDOW_STATE, stateKey: "main" }]);
+    },
+  );
 
   it("persists and reads multiple window states across restart", async () => {
     const tempDir = await createTempDir();
@@ -114,6 +133,7 @@ describe("window state helpers", () => {
           x: 40,
           y: 60,
         },
+        zoomFactor: 1,
         isFullScreen: false,
         isMaximized: true,
         stateKey: "main",
@@ -125,6 +145,7 @@ describe("window state helpers", () => {
           x: 240,
           y: 160,
         },
+        zoomFactor: 1,
         isFullScreen: false,
         isMaximized: false,
         stateKey: "window-2",

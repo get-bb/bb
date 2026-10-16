@@ -84,6 +84,17 @@ writes the corresponding Darwin kernel minimum, 22.0.0, into both JSON and YAML
 update feeds. Run it before publishing release artifacts so older Macs reject
 incompatible updates.
 
+## Window state
+
+Window position, normal size, maximized/fullscreen state, and zoom are saved in
+`window-state.json` in Electron's user-data directory. Geometry changes save after
+500 ms of inactivity, and closing a window flushes immediately. A crash can lose
+changes still within that debounce interval. Writes replace the file atomically.
+Closing one of several windows removes it from the next launch; closing the final
+window keeps its state for Dock reopening and the next launch. Quitting with
+multiple windows open restores those windows individually. Zoom commands save
+immediately and the chosen zoom survives reloads and server switches.
+
 ## Validation
 
 The built-in browser allows file downloads using Electron's native save dialog.

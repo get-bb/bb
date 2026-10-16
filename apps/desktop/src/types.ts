@@ -22,6 +22,7 @@ export interface WindowBounds {
 }
 
 export interface PersistedWindowState {
+  zoomFactor: number;
   bounds: WindowBounds;
   isFullScreen: boolean;
   isMaximized: boolean;
@@ -43,6 +44,7 @@ export interface DisplayWorkArea {
 }
 
 export const DEFAULT_WINDOW_STATE: PersistedWindowState = {
+  zoomFactor: 1,
   bounds: {
     height: DEFAULT_WINDOW_HEIGHT,
     width: DEFAULT_WINDOW_WIDTH,

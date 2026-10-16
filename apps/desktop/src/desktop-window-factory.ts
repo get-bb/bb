@@ -1,3 +1,5 @@
+import { nextZoomFactor } from "./desktop-zoom.js";
+import type { BbDesktopZoomCommand } from "@bb/desktop-contract";
 import type { BrowserWindowConstructorOptions, Event } from "electron";
 import {
   MIN_WINDOW_HEIGHT,
@@ -5,14 +7,14 @@ import {
   PRIMARY_WINDOW_STATE_KEY,
   type DisplayWorkArea,
   type WindowBounds,
+  type PersistedWindowStateEntry,
   type WindowStateKey,
 } from "./types.js";
 import {
-  persistBrowserWindowStates,
+  createPersistedWindowStateEntry,
+  writePersistedWindowStateEntries,
   readPersistedWindowStateEntries,
-  removePersistedWindowState,
   restoreBrowserWindowState,
-  type PersistBrowserWindowStateSnapshot,
   type StatefulBrowserWindow,
 } from "./window-state.js";
 import { resolveDesktopExternalUrl } from "./desktop-external-url.js";
@@ -66,9 +68,10 @@ export interface DesktopWindowWebContents extends DesktopContextMenuWebContents 
   ): void;
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void;
-  setZoomFactor(factor: number): void;
   getZoomFactor(): number;
+  setZoomFactor(factor: number): void;
   ipc: { on(channel: string, listener: () => void): void };
+  on(eventName: "dom-ready", listener: () => void): void;
 }
 
 export interface DesktopBrowserWindow extends StatefulBrowserWindow {
@@ -78,7 +81,15 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   loadURL(url: string): Promise<void>;
   maximize(): void;
   on(
-    eventName: "close" | "closed" | "enter-full-screen" | "leave-full-screen",
+    eventName:
+      | "close"
+      | "closed"
+      | "enter-full-screen"
+      | "leave-full-screen"
+      | "move"
+      | "resize"
+      | "maximize"
+      | "unmaximize",
     listener: () => void,
   ): void;
   once(eventName: "ready-to-show", listener: () => void): void;
@@ -133,6 +144,7 @@ export interface DesktopWindowFactory {
   loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void>;
   openDevTools(): void;
   persistOpenWindows(): Promise<void>;
+  zoom(webContentsId: number, command: BbDesktopZoomCommand): boolean;
   restoreSavedWindows(
     args: RestoreDesktopWindowsArgs,
   ): Promise<DesktopBrowserWindow[]>;
@@ -219,7 +231,6 @@ function createWindowOptions(
 }
 
 async function loadUrlIntoWindow(args: LoadUrlIntoWindowArgs): Promise<void> {
-  args.browserWindow.webContents.setZoomFactor(1);
   try {
     await args.browserWindow.loadURL(args.url);
   } catch (error) {
@@ -236,6 +247,47 @@ export function createDesktopWindowFactory(
 ): DesktopWindowFactory {
   const activeWindows = new Map<WindowStateKey, DesktopBrowserWindow>();
   const pendingStateKeys = new Set<WindowStateKey>();
+  const zoomFactors = new Map<number, number>();
+  let pendingWrite = Promise.resolve();
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearSaveTimer(): void {
+    if (saveTimer !== null) clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+
+  function snapshotWindows(): PersistedWindowStateEntry[] {
+    return [...activeWindows]
+      .filter(([, window]) => !window.isDestroyed())
+      .map(([stateKey, browserWindow]) =>
+        createPersistedWindowStateEntry({ browserWindow, stateKey }),
+      );
+  }
+
+  function writeEntries(entries: PersistedWindowStateEntry[]): Promise<void> {
+    pendingWrite = pendingWrite
+      .catch((error) =>
+        console.error("Could not save desktop window state", error),
+      )
+      .then(() =>
+        writePersistedWindowStateEntries({
+          entries,
+          userDataPath: args.userDataPath,
+        }),
+      );
+    return pendingWrite;
+  }
+
+  function scheduleSave(): void {
+    if (args.isQuitting()) return;
+    clearSaveTimer();
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      void persistOpenWindows().catch((error) =>
+        console.error("Could not save desktop window state", error),
+      );
+    }, 500);
+  }
 
   async function createWindow(
     createArgs: CreateDesktopWindowArgs,
@@ -249,6 +301,7 @@ export function createDesktopWindowFactory(
     pendingStateKeys.add(stateKey);
 
     try {
+      await pendingWrite.catch(() => {});
       const restoredState = await restoreBrowserWindowState({
         displayWorkAreas: args.displayWorkAreas,
         stateKey,
@@ -287,6 +340,7 @@ export function createDesktopWindowFactory(
       browserWindow.webContents.session.setSpellCheckerEnabled(true);
 
       activeWindows.set(stateKey, browserWindow);
+      const webContentsId = browserWindow.webContents.id;
 
       if (restoredState.isMaximized) {
         browserWindow.maximize();
@@ -298,14 +352,49 @@ export function createDesktopWindowFactory(
       browserWindow.once("ready-to-show", () => {
         browserWindow.show();
       });
+      let closing = false;
+      const saveOnChange = () => {
+        if (!closing) scheduleSave();
+      };
+      for (const event of [
+        "move",
+        "resize",
+        "maximize",
+        "unmaximize",
+        "enter-full-screen",
+        "leave-full-screen",
+      ] as const) {
+        browserWindow.on(event, saveOnChange);
+      }
+      browserWindow.on("close", () => {
+        closing = true;
+        if (args.isQuitting()) return;
+        clearSaveTimer();
+        const entries = snapshotWindows().filter(
+          (entry) => entry.stateKey !== stateKey,
+        );
+        if (entries.length === 0) {
+          entries.push(
+            createPersistedWindowStateEntry({
+              browserWindow,
+              stateKey: PRIMARY_WINDOW_STATE_KEY,
+            }),
+          );
+        }
+        void writeEntries(entries).catch((error) =>
+          console.error("Could not save desktop window state", error),
+        );
+      });
       browserWindow.on("closed", () => {
         activeWindows.delete(stateKey);
-        if (!args.isQuitting()) {
-          void removePersistedWindowState({
-            stateKey,
-            userDataPath: args.userDataPath,
-          });
-        }
+        zoomFactors.delete(webContentsId);
+      });
+      zoomFactors.set(webContentsId, restoredState.zoomFactor);
+      browserWindow.webContents.setZoomFactor(restoredState.zoomFactor);
+      browserWindow.webContents.on("dom-ready", () => {
+        browserWindow.webContents.setZoomFactor(
+          zoomFactors.get(webContentsId) ?? restoredState.zoomFactor,
+        );
       });
       browserWindow.webContents.setWindowOpenHandler((details) => {
         const url = resolveDesktopExternalUrl(details.url);
@@ -386,15 +475,10 @@ export function createDesktopWindowFactory(
   }
 
   async function persistOpenWindows(): Promise<void> {
-    const snapshots: PersistBrowserWindowStateSnapshot[] = [];
-    for (const [stateKey, browserWindow] of activeWindows.entries()) {
-      snapshots.push({ browserWindow, stateKey });
-    }
-
-    await persistBrowserWindowStates({
-      snapshots,
-      userDataPath: args.userDataPath,
-    });
+    clearSaveTimer();
+    const entries = snapshotWindows();
+    if (entries.length > 0) await writeEntries(entries);
+    else await pendingWrite;
   }
 
   return {
@@ -406,6 +490,22 @@ export function createDesktopWindowFactory(
     loadUrl,
     openDevTools,
     persistOpenWindows,
+    zoom(webContentsId, command) {
+      const window = [...activeWindows.values()].find(
+        (window) => window.webContents.id === webContentsId,
+      );
+      if (!window) return false;
+      const factor = nextZoomFactor(
+        window.webContents.getZoomFactor(),
+        command,
+      );
+      zoomFactors.set(webContentsId, factor);
+      window.webContents.setZoomFactor(factor);
+      void persistOpenWindows().catch((error) =>
+        console.error("Could not save desktop window state", error),
+      );
+      return true;
+    },
     restoreSavedWindows,
   };
 }

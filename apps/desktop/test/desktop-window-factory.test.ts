@@ -71,6 +71,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public readonly replacedMisspellings: string[] = [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
   public readonly zoomFactors: number[] = [];
+  public readonly domReadyListeners: Array<() => void> = [];
   public readonly themeColorListeners: Array<
     (event: Event, color: string | null) => void
   > = [];
@@ -93,6 +94,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     }
   }
 
+  on(eventName: "dom-ready", listener: () => void): void;
   on(...args: Parameters<DesktopContextMenuWebContents["on"]>): void;
   on(
     eventName: "did-change-theme-color",
@@ -100,12 +102,15 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   ): void;
   on(
     ...args:
+      | ["dom-ready", () => void]
       | Parameters<DesktopContextMenuWebContents["on"]>
       | ["did-change-theme-color", (event: Event, color: string | null) => void]
   ): void {
     const [eventName, listener] = args;
     if (eventName === "context-menu") {
       this.contextMenuListeners.push(listener);
+    } else if (eventName === "dom-ready") {
+      this.domReadyListeners.push(listener);
     } else {
       this.themeColorListeners.push(listener);
     }
@@ -119,12 +124,13 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     this.windowOpenHandler = handler;
   }
 
-  setZoomFactor(factor: number): void {
-    this.zoomFactors.push(factor);
-  }
-
   getZoomFactor(): number {
     return this.zoomFactor;
+  }
+
+  setZoomFactor(factor: number): void {
+    this.zoomFactor = factor;
+    this.zoomFactors.push(factor);
   }
 }
 
@@ -140,7 +146,9 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   public minimized = false;
   public shown = false;
   private destroyed = false;
-  private readonly bounds: WindowBounds;
+  public bounds: WindowBounds;
+  public normalBounds: WindowBounds | null = null;
+  private readonly listeners = new Map<string, Array<() => void>>();
   private readonly closedListeners: Array<() => void> = [];
   private readyToShowListener: (() => void) | null = null;
 
@@ -164,7 +172,12 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   private static nextWindowId = 1;
   private static nextWebContentsId = 1;
 
+  emit(event: string): void {
+    for (const listener of this.listeners.get(event) ?? []) listener();
+  }
+
   emitClosed(): void {
+    this.emit("close");
     this.destroyed = true;
     for (const listener of this.closedListeners) {
       listener();
@@ -176,6 +189,10 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   }
 
   focus(): void {}
+
+  getNormalBounds(): WindowBounds {
+    return this.normalBounds ?? this.bounds;
+  }
 
   getBounds(): WindowBounds {
     return this.bounds;
@@ -199,6 +216,8 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   async loadURL(url: string): Promise<void> {
     this.loadedUrls.push(url);
+    this.webContents.setZoomFactor(1);
+    for (const listener of this.webContents.domReadyListeners) listener();
   }
 
   maximize(): void {
@@ -206,9 +225,20 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   }
 
   on(
-    eventName: "close" | "closed" | "enter-full-screen" | "leave-full-screen",
+    eventName:
+      | "close"
+      | "closed"
+      | "enter-full-screen"
+      | "leave-full-screen"
+      | "move"
+      | "resize"
+      | "maximize"
+      | "unmaximize",
     listener: () => void,
   ): void {
+    const listeners = this.listeners.get(eventName) ?? [];
+    listeners.push(listener);
+    this.listeners.set(eventName, listeners);
     if (eventName === "closed") {
       this.closedListeners.push(listener);
     }
@@ -280,7 +310,11 @@ async function createFactoryHarness(
     userDataPath: tempDir.path,
     ...overrides,
   });
-  return { createdWindows, factory, userDataPath: tempDir.path };
+  return {
+    createdWindows,
+    factory,
+    userDataPath: overrides.userDataPath ?? tempDir.path,
+  };
 }
 
 describe("desktop window factory", () => {
@@ -312,6 +346,119 @@ describe("desktop window factory", () => {
     expect(
       window.webContents.ipcListeners.has(BB_DESKTOP_ZOOM_CHANGED_CHANNEL),
     ).toBe(false);
+  });
+
+  it("restores the last closed window on Dock reopen and after quitting without windows", async () => {
+    const { factory, createdWindows, userDataPath } =
+      await createFactoryHarness();
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const window = createdWindows[0]!;
+    const bounds = { x: 140, y: 120, width: 1000, height: 700 };
+    window.bounds = bounds;
+    window.emitClosed();
+    await factory.persistOpenWindows();
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    expect(createdWindows[1]?.getBounds()).toEqual(bounds);
+    expect(
+      await readPersistedWindowStateEntries({ userDataPath }),
+    ).toHaveLength(1);
+  });
+
+  it("saves move and resize events without quitting, including simultaneous windows", async () => {
+    const { factory, createdWindows, userDataPath } =
+      await createFactoryHarness();
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const first = createdWindows[0]!;
+    const second = createdWindows[1]!;
+    first.bounds = { x: 150, y: 100, width: 1000, height: 700 };
+    second.bounds = { x: 250, y: 150, width: 1100, height: 750 };
+    first.emit("move");
+    second.emit("resize");
+    await expect
+      .poll(async () =>
+        (await readPersistedWindowStateEntries({ userDataPath })).map(
+          (entry) => entry.bounds,
+        ),
+      )
+      .toEqual([first.bounds, second.bounds]);
+    first.emitClosed();
+    await factory.persistOpenWindows();
+    expect(
+      (await readPersistedWindowStateEntries({ userDataPath })).map(
+        (entry) => entry.stateKey,
+      ),
+    ).toEqual(["window-fallback"]);
+    second.emitClosed();
+    await factory.persistOpenWindows();
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    expect(createdWindows[2]?.getBounds()).toEqual(second.bounds);
+  });
+
+  it.each(["maximize", "enter-full-screen"])(
+    "saves normal bounds during %s so restoring and unmaximizing preserves size",
+    async (event) => {
+      const { factory, createdWindows } = await createFactoryHarness();
+      await factory.createWindow({ initialUrl: null, stateKey: null });
+      const window = createdWindows[0]!;
+      window.normalBounds = { x: 130, y: 90, width: 1000, height: 700 };
+      window.bounds = { x: 0, y: 0, width: 1440, height: 900 };
+      window.maximized = event === "maximize";
+      window.fullScreen = event === "enter-full-screen";
+      await factory.persistOpenWindows();
+      window.emitClosed();
+      await factory.createWindow({ initialUrl: null, stateKey: null });
+      expect(createdWindows[1]?.getBounds()).toEqual(window.normalBounds);
+      expect(createdWindows[1]?.isMaximized()).toBe(window.maximized);
+      expect(createdWindows[1]?.isFullScreen()).toBe(window.fullScreen);
+    },
+  );
+
+  it("retains zoom through server navigation, close and a fresh factory", async () => {
+    const { factory, createdWindows, userDataPath } =
+      await createFactoryHarness();
+    await factory.createWindow({
+      initialUrl: "https://one.example",
+      stateKey: null,
+    });
+    for (let step = 0; step < 4; step++)
+      factory.zoom(createdWindows[0]!.webContents.id, "in");
+    await expect
+      .poll(
+        async () =>
+          (await readPersistedWindowStateEntries({ userDataPath }))[0]
+            ?.zoomFactor,
+      )
+      .toBe(1.4);
+    await factory.loadUrl({ url: "https://two.example" });
+    expect(createdWindows[0]!.webContents.getZoomFactor()).toBe(1.4);
+    createdWindows[0]!.emitClosed();
+    await factory.persistOpenWindows();
+    const restarted = await createFactoryHarness({ userDataPath });
+    await restarted.factory.restoreSavedWindows({
+      initialUrl: "https://one.example",
+    });
+    expect(restarted.createdWindows[0]!.webContents.getZoomFactor()).toBe(1.4);
+  });
+
+  it("freezes saved geometry during quit teardown", async () => {
+    let quitting = false;
+    const { factory, createdWindows, userDataPath } =
+      await createFactoryHarness({ isQuitting: () => quitting });
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const window = createdWindows[0]!;
+    const bounds = { x: 120, y: 100, width: 1100, height: 750 };
+    window.bounds = bounds;
+    window.emit("resize");
+    quitting = true;
+    await factory.persistOpenWindows();
+    window.bounds = { x: 0, y: 0, width: 500, height: 600 };
+    window.emit("unmaximize");
+    window.emitClosed();
+    await factory.persistOpenWindows();
+    expect(
+      (await readPersistedWindowStateEntries({ userDataPath }))[0]?.bounds,
+    ).toEqual(bounds);
   });
 
   it.each([true, false])(
@@ -384,8 +531,8 @@ describe("desktop window factory", () => {
     });
     expect(createdWindows[0]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(createdWindows[1]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
-    expect(createdWindows[0]?.webContents.zoomFactors).toEqual([1]);
-    expect(createdWindows[1]?.webContents.zoomFactors).toEqual([1]);
+    expect(createdWindows[0]?.webContents.getZoomFactor()).toBe(1);
+    expect(createdWindows[1]?.webContents.getZoomFactor()).toBe(1);
 
     await factory.persistOpenWindows();
     await expect(
@@ -401,6 +548,7 @@ describe("desktop window factory", () => {
         isFullScreen: false,
         isMaximized: false,
         stateKey: "main",
+        zoomFactor: 1,
       },
       {
         bounds: {
@@ -412,6 +560,7 @@ describe("desktop window factory", () => {
         isFullScreen: false,
         isMaximized: false,
         stateKey: "window-second",
+        zoomFactor: 1,
       },
     ]);
   });
