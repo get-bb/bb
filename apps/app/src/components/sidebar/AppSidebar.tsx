@@ -241,6 +241,76 @@ export function AppSidebar({
     </SidebarNavigationRegion>
   );
 
+  const footer = (
+    <SidebarFooter
+      className={cn(
+        "w-full justify-center pl-(--bb-frame-footer-inset) pointer-fine:pl-[calc(var(--bb-frame-footer-inset)_+_(2rem_-_var(--bb-title-bar-control-size))/2)] pointer-fine:[&_[data-sidebar=menu-button]]:size-(--bb-title-bar-control-size) [&_[data-sidebar=menu-button]]:ring-inset pointer-fine:[&_[data-sidebar=menu]]:gap-0.5",
+        isFramed
+          ? cn(
+              "h-(--bb-app-chrome-row-height) py-0",
+              placement === "rail" && "-mb-px",
+            )
+          : "pb-(--bb-frame-footer-inset)",
+      )}
+    >
+      <SidebarMenu
+        className={cn(
+          "flex-row items-center gap-1",
+          isFooterCustomizing && "hidden",
+        )}
+      >
+        <PluginSidebarFooterItems
+          onCustomize={() => {
+            pluginSidebarFooter.dismiss();
+            setNavigationCustomizing(false);
+            setFooterCustomizing(true);
+          }}
+          activeDisclosureKey={pluginSidebarFooter.activeKey}
+          onDisclosureCommand={pluginSidebarFooter.handleCommand}
+          onNavigate={closeOnMobile}
+          builtInActions={[
+            ...(placement === "list"
+              ? [
+                  {
+                    id: "settings" as const,
+                    href: settingsRoutePath,
+                    ariaLabel: settingsShortcut
+                      ? `Settings (${settingsShortcut.label})`
+                      : "Settings",
+                    ariaKeyShortcuts: settingsShortcut?.ariaKeyshortcuts,
+                    onActivate: () => {
+                      closeOnMobile();
+                      void navigate(settingsRoutePath);
+                    },
+                  },
+                ]
+              : []),
+            {
+              id: "mobile",
+              href: "/settings/mobile",
+              onActivate: () => {
+                closeOnMobile();
+                void navigate("/settings/mobile");
+              },
+            },
+            {
+              id: "report-bug",
+              onActivate: () => {
+                closeOnMobile();
+                openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
+              },
+            },
+          ]}
+        />
+        <SidebarPluginAttentionGlyph
+          className={SIDEBAR_FOOTER_ACTION_CLASS}
+          onNavigate={closeOnMobile}
+        />
+        <SidebarUpdatesBadge onNavigate={closeOnMobile} />
+      </SidebarMenu>
+    </SidebarFooter>
+  );
+
   const body = (
     <>
       <SidebarTopReserveRow
@@ -292,6 +362,7 @@ export function AppSidebar({
           />
         )}
       </div>
+      {placement === "list" ? footer : null}
       <SidebarResizeHandle
         testId="app-sidebar-resize-handle"
         isResizing={isResizing}
@@ -325,9 +396,10 @@ export function AppSidebar({
               data-testid="nav-rail-sidebar-body"
               className={cn(
                 "col-start-2 row-start-1",
-                isBodyHidden && "row-span-2",
+                (isBodyHidden || placement === "list") && "row-span-2",
                 isFramed &&
                   !isBodyHidden &&
+                  placement === "rail" &&
                   "rounded-bl-none border-b-0 [clip-path:inset(0_-6px_0_0_round_var(--bb-frame-card-radius)_0_0_0)]",
               )}
             >
@@ -356,82 +428,20 @@ export function AppSidebar({
                 />
               </div>
             ) : null}
-            <SidebarCollapsibleBody
-              data-testid="sidebar-footer-body"
-              contentInFlow
-              hidden={isBodyHidden}
-              className={cn(
-                "col-start-2 row-start-2",
-                isFramed &&
-                  "rounded-tl-none border-t-0 [clip-path:inset(0_-6px_0_0_round_0_0_0_var(--bb-frame-card-radius))]",
-              )}
-            >
-              <SidebarFooter
+            {placement === "rail" ? (
+              <SidebarCollapsibleBody
+                data-testid="sidebar-footer-body"
+                contentInFlow
+                hidden={isBodyHidden}
                 className={cn(
-                  "w-full justify-center pl-(--bb-frame-footer-inset) pointer-fine:pl-[calc(var(--bb-frame-footer-inset)_+_(2rem_-_var(--bb-title-bar-control-size))/2)] pointer-fine:[&_[data-sidebar=menu-button]]:size-(--bb-title-bar-control-size) [&_[data-sidebar=menu-button]]:ring-inset pointer-fine:[&_[data-sidebar=menu]]:gap-0.5",
-                  isFramed
-                    ? "-mb-px h-(--bb-app-chrome-row-height) py-0"
-                    : "pb-(--bb-frame-footer-inset)",
+                  "col-start-2 row-start-2",
+                  isFramed &&
+                    "rounded-tl-none border-t-0 [clip-path:inset(0_-6px_0_0_round_0_0_0_var(--bb-frame-card-radius))]",
                 )}
               >
-                <SidebarMenu
-                  className={cn(
-                    "flex-row items-center gap-1",
-                    isFooterCustomizing && "hidden",
-                  )}
-                >
-                  <PluginSidebarFooterItems
-                    onCustomize={() => {
-                      pluginSidebarFooter.dismiss();
-                      setNavigationCustomizing(false);
-                      setFooterCustomizing(true);
-                    }}
-                    activeDisclosureKey={pluginSidebarFooter.activeKey}
-                    onDisclosureCommand={pluginSidebarFooter.handleCommand}
-                    onNavigate={closeOnMobile}
-                    builtInActions={[
-                      ...(placement === "list"
-                        ? [
-                            {
-                              id: "settings" as const,
-                              href: settingsRoutePath,
-                              ariaLabel: settingsShortcut
-                                ? `Settings (${settingsShortcut.label})`
-                                : "Settings",
-                              ariaKeyShortcuts:
-                                settingsShortcut?.ariaKeyshortcuts,
-                              onActivate: () => {
-                                closeOnMobile();
-                                void navigate(settingsRoutePath);
-                              },
-                            },
-                          ]
-                        : []),
-                      {
-                        id: "mobile",
-                        href: "/settings/mobile",
-                        onActivate: () => {
-                          closeOnMobile();
-                          void navigate("/settings/mobile");
-                        },
-                      },
-                      {
-                        id: "report-bug",
-                        onActivate: () => {
-                          closeOnMobile();
-                          openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
-                        },
-                      },
-                    ]}
-                  />
-                  <SidebarPluginAttentionGlyph
-                    className={SIDEBAR_FOOTER_ACTION_CLASS}
-                    onNavigate={closeOnMobile}
-                  />
-                  <SidebarUpdatesBadge onNavigate={closeOnMobile} />
-                </SidebarMenu>
-              </SidebarFooter>
-            </SidebarCollapsibleBody>
+                {footer}
+              </SidebarCollapsibleBody>
+            ) : null}
           </div>
         </Sidebar>
       </SidebarNavigationModelProvider>
