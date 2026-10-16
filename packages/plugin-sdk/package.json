@@ -127,6 +127,18 @@
       "types": "./bundled-types/bb-plugin-sdk-testing-host.d.ts",
       "import": "./dist/testing/host.js",
       "default": "./dist/testing/host.js"
+    },
+    "./internal/rpc-tags": {
+      "source": "./src/internal/rpc-tags.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-tags.d.ts",
+      "import": "./dist/internal/rpc-tags.js",
+      "default": "./dist/internal/rpc-tags.js"
+    },
+    "./internal/rpc-query-host": {
+      "source": "./src/internal/rpc-query-host.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-query-host.d.ts",
+      "import": "./dist/internal/rpc-query-host.js",
+      "default": "./dist/internal/rpc-query-host.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
@@ -166,7 +178,9 @@
     "rollup-plugin-dts": "^6.4.1",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@bb/query-tags": "workspace:*",
+    "@tanstack/react-query": "^5.62.0"
   },
   "peerDependencies": {
     "@testing-library/react": "^16.3.2",
@@ -176,7 +190,8 @@
     "cron-parser": "^5.5.0",
     "hono": "^4.11.9",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@tanstack/react-query": "^5.62.0"
   },
   "peerDependenciesMeta": {
     "@testing-library/react": {
@@ -201,6 +216,9 @@
       "optional": true
     },
     "react-dom": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
       "optional": true
     }
   }

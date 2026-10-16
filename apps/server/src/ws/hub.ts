@@ -58,7 +58,7 @@ export type ServerChangedMessage =
       ChangedMessage,
       { entity: "thread" | "project" | "environment" | "host" }
     > & { id: string })
-  | Extract<ChangedMessage, { entity: "system" | "tags" }>;
+  | Extract<ChangedMessage, { entity: "system" | "tags" | "plugin" }>;
 
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
 
@@ -131,6 +131,8 @@ function subscriptionKeysForMessage(message: ServerChangedMessage): string[] {
         subscriptionKey({ kind: "host-list" }),
         subscriptionKey({ kind: "host-detail", hostId: message.id }),
       ];
+    case "plugin":
+      return [subscriptionKey({ kind: "plugin", pluginId: message.pluginId })];
     case "tags":
       return [];
     case "system":
@@ -298,6 +300,15 @@ export class NotificationHub implements DbNotifier {
   >();
 
   private readonly pendingTags = new Set<string>();
+
+  notifyPluginChanged(pluginId: string, tags: readonly string[] | null): void {
+    this.notifyClients({
+      type: "changed",
+      entity: "plugin",
+      pluginId,
+      tags: tags === null ? null : [...tags],
+    });
+  }
 
   notifyTags(tags: readonly string[]): void {
     if (tags.length === 0) return;

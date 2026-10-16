@@ -92,7 +92,7 @@ describe("client websocket protocol", () => {
     expect(socket.messages).toHaveLength(0);
   });
 
-  it("rejects subscribe messages for unknown targets", () => {
+  it("ignores unknown targets without disconnecting the client", () => {
     const hub = new NotificationHub();
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
@@ -107,7 +107,7 @@ describe("client websocket protocol", () => {
       }),
     );
 
-    expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
+    expect(socket.closed).toEqual([]);
     expect(socket.messages).toHaveLength(0);
   });
 
@@ -212,4 +212,35 @@ describe("client websocket protocol", () => {
     expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
     expect(deps.watchInterests.subscribe).not.toHaveBeenCalled();
   });
+});
+
+it("routes batched plugin subscriptions and invalidate-all to the subscribed sockets", () => {
+  const hub = new NotificationHub();
+  const socket = createMockHubSocket();
+  const idle = createMockHubSocket();
+  onClientSocketOpen(hub, socket);
+  onClientSocketOpen(hub, idle);
+  onClientSocketMessage(
+    createProtocolDeps(hub),
+    socket,
+    JSON.stringify({
+      type: "subscribe",
+      targets: [
+        { kind: "future-target" },
+        { kind: "plugin", pluginId: "push-notifications" },
+      ],
+    }),
+  );
+  hub.notifyPluginChanged("other", null);
+  hub.notifyPluginChanged("push-notifications", null);
+  expect(socket.closed).toEqual([]);
+  expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+    {
+      type: "changed",
+      entity: "plugin",
+      pluginId: "push-notifications",
+      tags: null,
+    },
+  ]);
+  expect(idle.messages).toEqual([]);
 });

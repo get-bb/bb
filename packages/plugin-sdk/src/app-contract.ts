@@ -34,6 +34,8 @@ import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
   PluginRpcContract,
+  PluginRpcMethodContract,
+  StandardSchemaV1InferInput,
   PluginRpcResult,
 } from "./rpc-contract.js";
 
@@ -3938,12 +3940,86 @@ export interface BbNavigate {
 // plugin-breaking change.
 // ---------------------------------------------------------------------------
 
+export interface ExperimentalRpcQueryState<T> {
+  data: T | undefined;
+  error: Error | null;
+  isLoading: boolean;
+  isFetching: boolean;
+  refetch(): Promise<void>;
+}
+
+export interface ExperimentalRpcKeyedQueryState<
+  T,
+  Selection = Record<string, T>,
+> extends ExperimentalRpcQueryState<Selection> {}
+
+export interface ExperimentalRpcQueryOptions<
+  Contract extends PluginRpcContract,
+  Method extends keyof Contract & string,
+> {
+  pluginId?: string;
+  method: Method;
+  input: StandardSchemaV1InferInput<Contract[Method]["input"]>;
+  enabled?: boolean;
+}
+
+export interface ExperimentalRpcMutationOptions<
+  Contract extends PluginRpcContract,
+  Method extends keyof Contract & string,
+> {
+  pluginId?: string;
+  method: Method;
+}
+
+/**
+ * One mutation hook's state. `mutate` calls the RPC, invalidates the
+ * response's `invalidated` tags on this client immediately, and resolves after
+ * the active reads they matched have re-read. `error` holds the last failure
+ * until the next `mutate` or `reset`.
+ */
+export interface ExperimentalRpcMutationState<
+  Method extends PluginRpcMethodContract,
+> {
+  mutate(...args: PluginRpcCallArgs<Method>): Promise<PluginRpcResult<Method>>;
+  isPending: boolean;
+  error: Error | null;
+  reset(): void;
+}
+
 /**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  experimental_useRpcRefresh(): { refresh(): void; isRefreshing: boolean };
+  /** Read tagged plugin data through BB's shared query cache and realtime lifecycle. */
+  experimental_useRpcQuery<
+    Contract extends PluginRpcContract = PluginRpcContract,
+    Method extends keyof Contract & string = keyof Contract & string,
+  >(
+    options: ExperimentalRpcQueryOptions<Contract, Method>,
+  ): ExperimentalRpcQueryState<PluginRpcResult<Contract[Method]>>;
+  /** Call a mutating RPC through BB's query client; pending until the reads its declared `invalidates` tags matched have re-read. */
+  experimental_useRpcMutation<
+    Contract extends PluginRpcContract = PluginRpcContract,
+    Method extends keyof Contract & string = keyof Contract & string,
+  >(
+    options: ExperimentalRpcMutationOptions<Contract, Method>,
+  ): ExperimentalRpcMutationState<Contract[Method]>;
+  /** Cache each key independently and batch missing or invalidated keys in the same render. */
+  experimental_useRpcKeyedQuery<
+    T = JsonValue,
+    Selection = Record<string, T>,
+  >(options: {
+    pluginId?: string;
+    method: string;
+    keys: readonly string[];
+    enabled?: boolean;
+    /** Project rows for this view; unchanged JSON subobjects retain their identity. */
+    select?(data: Record<string, T>): Selection;
+  }): ExperimentalRpcKeyedQueryState<T, Selection>;
+
   experimental_Icon: ComponentType<ExperimentalIconProps>;
   /**
    * Render provider slot override, then its logo, then its glyph, then fallback.

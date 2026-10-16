@@ -445,6 +445,7 @@ describe("plugin install flows", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -1036,6 +1037,7 @@ describe("plugin install flows", () => {
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,
+          notifyPluginChanged: () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },
@@ -1134,6 +1136,7 @@ describe("plugin install flows", () => {
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,
+          notifyPluginChanged: () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },

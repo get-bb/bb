@@ -24,6 +24,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_SourceCode`
 - `experimental_Diff`
 - `useRpc`
+- `experimental_useRpcQuery`
+- `experimental_useRpcKeyedQuery`
+- `experimental_useRpcMutation`
+- `experimental_useRpcRefresh`
 - `useRealtime`
 - `useRealtimeConnectionState`
 - `useSettings`
@@ -69,6 +73,12 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_saveFile`
 
 ## Type exports
+
+- `ExperimentalRpcQueryState`
+- `ExperimentalRpcKeyedQueryState`
+- `ExperimentalRpcQueryOptions`
+- `ExperimentalRpcMutationOptions`
+- `ExperimentalRpcMutationState`
 
 - `ExperimentalAppIcons`
 - `ExperimentalIconRegistration`

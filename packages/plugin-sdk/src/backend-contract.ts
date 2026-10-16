@@ -871,6 +871,10 @@ export interface PluginHttp {
 }
 
 export interface PluginRpc {
+  /** Refresh reads whose contract tags overlap this nonempty list. */
+  experimental_invalidate(tags: readonly string[]): void;
+  /** Refresh every read of this plugin, including untagged reads. */
+  experimental_invalidateAll(): void;
   /**
    * Register a Standard Schema-driven rpc contract and its inferred handlers,
    * served at POST
@@ -2067,7 +2071,9 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
+    | "getPluginMetadata"
+    | "updatePluginMetadata"
+    | "experimental_listPluginMetadata"
   > & {
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },

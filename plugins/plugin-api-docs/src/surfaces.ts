@@ -941,7 +941,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Call its server from its UI with schema-checked RPC",
           "Receive webhooks and serve HTTP or WebSocket routes",
-          "Push live updates to open bb windows",
+          "Refresh tagged reads after writes, with shared caching and Retry on errors",
           "Publish RPC methods other plugins can discover",
         ],
         apiSymbols: [
@@ -954,6 +954,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginHttp",
           "PluginRealtime",
           "useRpc",
+          "experimental_useRpcQuery",
+          "experimental_useRpcKeyedQuery",
+          "experimental_useRpcMutation",
+          "experimental_useRpcRefresh",
+          "ExperimentalRpcQueryState",
+          "ExperimentalRpcKeyedQueryState",
+          "ExperimentalRpcQueryOptions",
+          "ExperimentalRpcMutationOptions",
+          "ExperimentalRpcMutationState",
+          "PluginRpc.experimental_invalidate",
+          "PluginRpc.experimental_invalidateAll",
           "PluginRpcClient",
           "useRealtime",
           "useRealtimeConnectionState",
@@ -1490,6 +1501,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Test server code against an in-process fake bb server",
           "Render UI slots under vitest",
+          "Install @tanstack/react-query to test live RPC hooks in app slots",
           "Drive host workers without a machine",
         ],
         apiSymbols: [

@@ -3176,3 +3176,10 @@ back/forward, disable/reload/crash, compact focus and single-sidebar replay with
 real plugin CSS in both navigation layouts. The API is generic; no plugin-id
 special case exists in core. CLI navigation uses the existing panel URL; this
 field introduces no separate backend or headless side effect.
+
+## Plugin contract live reads and writes
+
+- `experimental_useRpcQuery`, `experimental_useRpcKeyedQuery`, `experimental_useRpcMutation`, and `experimental_useRpcRefresh` use the core `@bb/query-tags` cache mechanism per client. Query state keeps previous data during refresh errors; consumers show an inline Retry using `refetch`. Successful reads clear the error. Keyed calls accept `{ keys }` and return a record containing every requested key; consumers share one observer per plugin/method and requests batch up to 200 keys. A pure `select` projection retains unchanged JSON subobjects across key and fetch-state changes, so default rows do not republish unchanged notification levels.
+- `defineRpcContract` accepts the core `ContractTagDeclarations`: `tags(input, output)`, `keyTags(key, value)`, and `invalidates(input, output)` receive validated values. Tags are in the RPC envelope; successful writes broadcast their invalidated tags and return `invalidated`. Tagged mutations resolve after matching active reads finish refreshing.
+- `bb.rpc.experimental_invalidate(tags)` requires nonempty tags; `experimental_invalidateAll()` refreshes all reads of that plugin, including untagged reads. Load, reload, disable and reconnect refresh plugin reads through the same cache path. Plugin changed messages are scoped to `{ kind: "plugin", pluginId }` subscribers; reconnect batches subscriptions and unknown targets are ignored.
+- Core uses the same tagged reads, invalidation and mutation implementation for UI preferences. Push-notifications thread levels are the first plugin caller; delivery retains `useRealtime`. Stabilization requires additional plugin callers and validation of scoped tags, failures, reconnects, batching and sidebar observer counts. Watching and cache seeding remain outside this API.
