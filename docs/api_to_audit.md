@@ -1283,17 +1283,21 @@ from another plugin, else `navigation/rail`). Legacy `__builtin__` and
 The registration declares `placement`, `rail` or `list` (the default). bb lays
 the sidebar out from the placement before the provider renders, and keeps the
 layout around it: for `rail`, a fixed-width column that stays when the sidebar
-collapses, Settings at the bottom of the column, and the framed macOS title
-bar; for `list`, the area above the thread list, a Settings footer action,
+collapses and Settings at the bottom of the column; for `list`, the area
+above the thread list, a Settings footer action,
 Back to app rows on the Settings, Plugins, and Skills lists, and a collapse
-that hides the whole sidebar. The component receives `isCompactViewport`,
+that hides the whole sidebar. Both placements use the same framed macOS
+window chrome on wide viewports, so changing placement does not move the
+window controls, history controls, or the vertical position of Settings search.
+The component receives `isCompactViewport`,
 `placement`, and the deprecated `experimental_Original`, which renders the
 Navigation plugin's provider for the same placement, or nothing when that
 plugin is disabled.
 
-The optional `headerComponent` renders in the sidebar header row, between the
-sidebar toggle (and the macOS window controls) and bb's back and forward
-buttons, while the navigation is active. It receives `width`, `controlSize`,
+The optional `headerComponent` renders in the sidebar header row while the
+navigation is active. On wide macOS desktop windows, this row sits below the
+window title bar; elsewhere it sits between the sidebar toggle and bb's back
+and forward buttons. It receives `width`, `controlSize`,
 and `isCompactViewport`. The host clips it to the row, keeps the macOS drag
 region for non-interactive space, aligns it with the macOS window controls,
 and on a crash draws the header of the Navigation plugin's provider for the

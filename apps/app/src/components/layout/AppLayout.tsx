@@ -213,7 +213,7 @@ function SidebarStateBridge({
       collapsedRailWidth={
         hasRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
       }
-      framed={usesDesktopChrome && hasRail}
+      framed={usesDesktopChrome}
       data-testid="app-layout-root"
       open={open}
       onOpenChange={handleOpenChange}

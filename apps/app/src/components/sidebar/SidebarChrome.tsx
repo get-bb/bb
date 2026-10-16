@@ -75,7 +75,7 @@ export function SidebarTopReserveRow({
           MACOS_DRAWER_HEADER_RESERVE_CLASS,
       )}
     >
-      {hasRail || headerSlot === undefined ? (
+      {isFramed || hasRail || headerSlot === undefined ? (
         headerSlot
       ) : (
         <div

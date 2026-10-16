@@ -18,10 +18,17 @@ import {
   setCompactSecondaryPanelPresentation,
 } from "@/components/ui/secondary-panel-shelf-visibility";
 
-const viewportState = vi.hoisted(() => ({
-  compact: false,
-  macosChrome: false,
-}));
+const viewportState = vi.hoisted(
+  (): {
+    compact: boolean;
+    macosChrome: boolean;
+    navigationPlacement: "rail" | "list";
+  } => ({
+    compact: false,
+    macosChrome: false,
+    navigationPlacement: "rail",
+  }),
+);
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.compact,
@@ -62,7 +69,16 @@ vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
     appOverlays: [],
     commandPaletteActions: [],
-    experimentalSidebarNavigations: [],
+    experimentalSidebarNavigations: [
+      {
+        pluginId: "navigation",
+        id: "test-navigation",
+        title: "Navigation",
+        placement: viewportState.navigationPlacement,
+        component: () => null,
+        generation: 1,
+      },
+    ],
     fileOpeners: [],
     navPanels: [
       {
@@ -212,6 +228,7 @@ describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
     viewportState.macosChrome = false;
+    viewportState.navigationPlacement = "rail";
     setCompactSecondaryPanelPresentation("closed");
   });
 
@@ -286,42 +303,54 @@ describe("AppLayout plugin panel header", () => {
     ).toBeUndefined();
   });
 
-  it("moves the trigger and history controls into a window title bar beside the macOS rail", () => {
-    viewportState.macosChrome = true;
-    renderPluginPanelRoute();
+  it.each(["rail", "list"] as const)(
+    "keeps the macOS trigger and history controls in the window title bar with %s navigation",
+    (placement) => {
+      viewportState.navigationPlacement = placement;
+      viewportState.macosChrome = true;
+      renderPluginPanelRoute();
 
-    const titleBar = screen.getByTestId("app-window-title-bar");
-    expect(screen.getByTestId("app-layout-root").dataset.framed).toBe("");
-    expect(
-      titleBar.contains(
-        screen.getByRole("button", { name: /^Toggle sidebar/ }),
-      ),
-    ).toBe(true);
-    expect(
-      titleBar.contains(screen.getByRole("button", { name: "Go back" })),
-    ).toBe(true);
-    expect(screen.queryByTestId("app-desktop-sidebar-trigger")).toBeNull();
-  });
+      const titleBar = screen.getByTestId("app-window-title-bar");
+      expect(screen.getByTestId("app-layout-root").dataset.framed).toBe("");
+      expect(
+        titleBar.contains(
+          screen.getByRole("button", { name: /^Toggle sidebar/ }),
+        ),
+      ).toBe(true);
+      expect(
+        titleBar.contains(screen.getByRole("button", { name: "Go back" })),
+      ).toBe(true);
+      expect(screen.queryByTestId("app-desktop-sidebar-trigger")).toBeNull();
+    },
+  );
 
-  it("keeps the sidebar toggle in the rail column and no title bar on wide web, Windows, and Linux windows", () => {
-    renderPluginPanelRoute();
+  it.each(["rail", "list"] as const)(
+    "keeps the floating sidebar toggle on wide web, Windows, and Linux windows with %s navigation",
+    (placement) => {
+      viewportState.navigationPlacement = placement;
+      renderPluginPanelRoute();
 
-    expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
-    expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBeTruthy();
-    expect(
-      screen.getByTestId("app-layout-root").dataset.framed,
-    ).toBeUndefined();
-  });
+      expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
+      expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBeTruthy();
+      expect(
+        screen.getByTestId("app-layout-root").dataset.framed,
+      ).toBeUndefined();
+    },
+  );
 
-  it("keeps the floating macOS trigger on compact windows", () => {
-    viewportState.macosChrome = true;
-    viewportState.compact = true;
-    renderPluginPanelRoute();
+  it.each(["rail", "list"] as const)(
+    "keeps the floating macOS trigger on compact windows with %s navigation",
+    (placement) => {
+      viewportState.navigationPlacement = placement;
+      viewportState.macosChrome = true;
+      viewportState.compact = true;
+      renderPluginPanelRoute();
 
-    expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
-    expect(screen.getByTestId("app-desktop-sidebar-trigger")).toBeTruthy();
-    expect(
-      screen.getByTestId("app-layout-root").dataset.framed,
-    ).toBeUndefined();
-  });
+      expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
+      expect(screen.getByTestId("app-desktop-sidebar-trigger")).toBeTruthy();
+      expect(
+        screen.getByTestId("app-layout-root").dataset.framed,
+      ).toBeUndefined();
+    },
+  );
 });

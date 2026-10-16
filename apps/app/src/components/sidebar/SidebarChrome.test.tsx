@@ -2,7 +2,7 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -11,6 +11,14 @@ import {
   MACOS_DRAWER_HEADER_RESERVE_CLASS,
   SidebarTopReserveRow,
 } from "./SidebarChrome";
+
+const navigationState = vi.hoisted((): { placement: "rail" | "list" } => ({
+  placement: "rail",
+}));
+
+vi.mock("./sidebarNavigationProvider", () => ({
+  useSidebarNavigationPlacement: () => navigationState.placement,
+}));
 
 const macosDesktopInfo: BbDesktopInfo = {
   lastCheckedAt: null,
@@ -50,6 +58,7 @@ async function renderReservesTrafficLights({
 afterEach(() => {
   cleanup();
   delete window.bbDesktop;
+  navigationState.placement = "rail";
 });
 
 describe("SidebarTopReserveRow macOS traffic lights", () => {
@@ -61,13 +70,20 @@ describe("SidebarTopReserveRow macOS traffic lights", () => {
     );
   });
 
-  it("reserves nothing in the framed window, where the title bar hosts the lights", async () => {
-    window.bbDesktop = createBbDesktopApi(macosDesktopInfo);
+  it.each(["rail", "list"] as const)(
+    "keeps the framed %s header beside its content without a window-control gutter",
+    async (placement) => {
+      navigationState.placement = placement;
+      window.bbDesktop = createBbDesktopApi(macosDesktopInfo);
 
-    expect(
-      await renderReservesTrafficLights({ isCompactViewport: false }),
-    ).toBe(false);
-  });
+      expect(
+        await renderReservesTrafficLights({ isCompactViewport: false }),
+      ).toBe(false);
+      expect(
+        screen.getByRole("button", { name: "New thread" }).parentElement,
+      ).toBe(screen.getByTestId("reserve-row"));
+    },
+  );
 
   it("reserves nothing in a compact browser window", async () => {
     expect(await renderReservesTrafficLights({ isCompactViewport: true })).toBe(

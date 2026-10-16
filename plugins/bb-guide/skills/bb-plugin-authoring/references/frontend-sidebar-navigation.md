@@ -21,6 +21,9 @@ before your bundle loads:
   lists, and a collapse hides the whole sidebar. Draw a divider below your
   rows if your layout wants one.
 
+Both placements keep the same macOS window frame and title-bar controls on
+wide viewports. Placement does not change the position of Settings search.
+
 Draw New thread yourself, in your component or in a `headerComponent`. The
 Rail puts it in its header and leaves it out of Customize; Top list draws it
 as a row that the user can reorder and hide like any other.
@@ -87,11 +90,12 @@ toast. In tests, pass
 `renderSlot(..., { sidebarNavigation: { items, activeItemId } })`; actions and
 split drags are recorded in `inspection.sidebarNavigationCalls`.
 
-## Controls beside the sidebar toggle
+## Sidebar header controls
 
-A navigation can also pass `headerComponent`, rendered between the sidebar
-toggle (and the macOS window controls) and bb's back and forward buttons
-while that navigation is active. The header belongs to the navigation, so
+A navigation can also pass `headerComponent`, rendered in the sidebar header
+while that navigation is active. On wide macOS desktop windows, this row sits
+below the window title bar. Elsewhere it sits between the sidebar toggle
+and bb's back and forward buttons. The header belongs to the navigation, so
 switching providers swaps both together; bb's Rail uses its header for New
 thread. The component receives `width` (px available, updated on resize),
 `controlSize` (bb's header button size, also `--bb-sidebar-control-size`;
