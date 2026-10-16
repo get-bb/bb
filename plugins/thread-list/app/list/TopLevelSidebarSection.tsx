@@ -42,7 +42,7 @@ import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,
 } from "./groupRollups.js";
-import { SplitPaneMiniMap } from "../rows/SplitPaneMiniMap.js";
+import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
 

@@ -32,10 +32,12 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import {
+  removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { getPluginPanelRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
 import {
   SidebarNavigationProviderMount,
   SidebarNavigationRegion,
@@ -171,12 +173,13 @@ beforeAll(async () => {
   await SidebarVisibilityCustomize.preload();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   window.localStorage.clear();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
   registerDocsPanel();
+  await registerNavigationPlugin();
 });
 
 afterEach(() => {
@@ -189,7 +192,7 @@ afterEach(() => {
 });
 
 describe("sidebar navigation providers", () => {
-  it("draws bb's rail when no plugin provides navigation", () => {
+  it("draws the bundled Rail when no other plugin provides navigation", () => {
     renderHost();
 
     expect(region().dataset.sidebarNavigationPlacement).toBe("rail");
@@ -218,7 +221,7 @@ describe("sidebar navigation providers", () => {
     );
   });
 
-  it("keeps a pinned built-in over an installed plugin provider", () => {
+  it("keeps a pinned bundled layout over an installed plugin provider", () => {
     registerPlugin((app) =>
       app.slots.experimental_sidebarNavigation({
         id: "nav",
@@ -226,7 +229,7 @@ describe("sidebar navigation providers", () => {
         component: PluginNavigation,
       }),
     );
-    renderHost("__bb__/top-list");
+    renderHost("navigation/top-list");
 
     expect(screen.queryByTestId("plugin-navigation")).toBeNull();
     expect(screen.getByTestId("sidebar-navigation-list")).toBeDefined();
@@ -248,7 +251,7 @@ describe("sidebar navigation providers", () => {
     expect(await screen.findByTestId("nav-rail-customize")).toBeDefined();
   });
 
-  it("replaces a crashing plugin provider with bb's provider for the same placement", () => {
+  it("replaces a crashing plugin provider with the bundled provider for the same placement", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     registerPlugin((app) =>
       app.slots.experimental_sidebarNavigation({
@@ -266,11 +269,25 @@ describe("sidebar navigation providers", () => {
     expect(screen.getByTestId("app-nav-rail")).toBeDefined();
     expect(mocks.toastError).toHaveBeenCalledWith(
       "Sidebar navigation plugin crashed",
-      expect.anything(),
+      {
+        description:
+          "Broken rail (compact) stopped working, so bb drew Rail instead.",
+      },
     );
   });
 
-  it("renders bb's provider for the placement as a plugin's Original", () => {
+  it("says so in the list placement when no navigation plugin is enabled", () => {
+    removePluginSlotRegistrations("navigation");
+    renderHost();
+
+    expect(region().dataset.sidebarNavigationPlacement).toBe("list");
+    expect(
+      region().querySelector('[data-sidebar-navigation-placeholder="missing"]')
+        ?.textContent,
+    ).toBe("No navigation plugin is enabled.");
+  });
+
+  it("renders the bundled provider for the placement as a plugin's Original", () => {
     registerPlugin((app) =>
       app.slots.experimental_sidebarNavigation({
         id: "nav",

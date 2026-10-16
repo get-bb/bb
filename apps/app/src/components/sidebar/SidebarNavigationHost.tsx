@@ -11,15 +11,9 @@ import { Popover, PopoverAnchor } from "@bb/shared-ui/popover";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { appToast } from "@/components/ui/app-toast";
 import { useSidebar } from "@/components/ui/sidebar.js";
-import { AppNavRail } from "./AppNavRail";
+import type { ExperimentalSidebarNavigationSlot } from "@/lib/plugin-slots";
 import { SidebarNavigationCustomizePopoverContent } from "./SidebarNavigationCustomize";
-import { SidebarNavigationList } from "./SidebarNavigationList";
-import {
-  builtInNavigationForPlacement,
-  RAIL_NAVIGATION_PROVIDER,
-  type BuiltInNavigationProvider,
-  type ResolvedSidebarNavigation,
-} from "./sidebarNavigationProvider";
+import type { ResolvedSidebarNavigation } from "./sidebarNavigationProvider";
 
 const SIDEBAR_NAVIGATION_SLOT_KIND = "sidebarNavigation";
 const OPEN_MENU_SELECTOR = '[role="menu"]';
@@ -96,61 +90,23 @@ export function useSidebarNavigationCustomize(
   return { isCustomizing, setCustomizing, open, containerRef, focusReturnRef };
 }
 
-function BuiltInNavigation({
-  provider,
+function NavigationProviderSlot({
+  slot,
+  original,
   isCompactViewport,
+  onCrash,
 }: {
-  provider: BuiltInNavigationProvider;
+  slot: ExperimentalSidebarNavigationSlot;
+  original: ReactNode;
   isCompactViewport: boolean;
+  onCrash?: (pluginId: string) => void;
 }) {
-  const Component =
-    provider.key === RAIL_NAVIGATION_PROVIDER
-      ? AppNavRail
-      : SidebarNavigationList;
-  return (
-    <Component
-      isCompactViewport={isCompactViewport}
-      placement={provider.placement}
-      experimental_Original={NoOriginal}
-    />
-  );
-}
-
-function NoOriginal() {
-  return null;
-}
-
-export function SidebarNavigationProviderMount({
-  resolved,
-}: {
-  resolved: ResolvedSidebarNavigation;
-}) {
-  const { isCompactViewport } = useSidebar();
-  if (resolved.kind === "loading") return null;
-  if (resolved.kind === "built-in") {
-    return (
-      <BuiltInNavigation
-        provider={resolved.provider}
-        isCompactViewport={isCompactViewport}
-      />
-    );
-  }
-  const slot = resolved.slot;
   return (
     <PluginReplacementSlot
       replacement={{ kind: "plugin", registration: slot }}
-      original={
-        <BuiltInNavigation
-          provider={builtInNavigationForPlacement(slot.placement)}
-          isCompactViewport={isCompactViewport}
-        />
-      }
+      original={original}
       slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
-      onCrash={(pluginId) => {
-        appToast.error("Sidebar navigation plugin crashed", {
-          description: `${slot.title} (${pluginId}) stopped working, so bb drew its own navigation instead.`,
-        });
-      }}
+      {...(onCrash === undefined ? {} : { onCrash })}
     >
       {(registration, Original) => (
         <registration.component
@@ -160,6 +116,50 @@ export function SidebarNavigationProviderMount({
         />
       )}
     </PluginReplacementSlot>
+  );
+}
+
+export function SidebarNavigationProviderMount({
+  resolved,
+}: {
+  resolved: ResolvedSidebarNavigation;
+}) {
+  const { isCompactViewport } = useSidebar();
+  if (resolved.kind === "loading") return null;
+  if (resolved.kind === "missing") {
+    return (
+      <div
+        role="status"
+        data-sidebar-navigation-placeholder="missing"
+        className="px-4 py-2 text-sm text-muted-foreground"
+      >
+        No navigation plugin is enabled.
+      </div>
+    );
+  }
+  const { slot, fallback } = resolved;
+  return (
+    <NavigationProviderSlot
+      slot={slot}
+      isCompactViewport={isCompactViewport}
+      original={
+        fallback === null ? null : (
+          <NavigationProviderSlot
+            slot={fallback}
+            original={null}
+            isCompactViewport={isCompactViewport}
+          />
+        )
+      }
+      onCrash={(pluginId) => {
+        appToast.error("Sidebar navigation plugin crashed", {
+          description:
+            fallback === null
+              ? `${slot.title} (${pluginId}) stopped working.`
+              : `${slot.title} (${pluginId}) stopped working, so bb drew ${fallback.title} instead.`,
+        });
+      }}
+    />
   );
 }
 

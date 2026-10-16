@@ -9,7 +9,7 @@ import { flushSync } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { useNavigate } from "react-router-dom";
-import { OverflowFade } from "@/components/ui/overflow-fade.js";
+import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import {
   Sidebar,
   SidebarCollapsibleBody,
@@ -59,7 +59,7 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { NavRailSettingsButton } from "./AppNavRail";
+import { NavRailSettingsButton } from "./NavRailSettingsButton";
 import { SidebarNavigationHeader } from "./SidebarNavigationHeader";
 import {
   SidebarNavigationProviderMount,
@@ -237,7 +237,18 @@ export function AppSidebar({
           )}
         />
       ) : null}
-      <SidebarNavigationProviderMount resolved={navigation} />
+      {placement === "rail" ? (
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            isFramed ? "pt-2.5" : "pt-1",
+          )}
+        >
+          <SidebarNavigationProviderMount resolved={navigation} />
+        </div>
+      ) : (
+        <SidebarNavigationProviderMount resolved={navigation} />
+      )}
     </SidebarNavigationRegion>
   );
 

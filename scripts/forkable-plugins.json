@@ -18,6 +18,7 @@
     "plugins/keep-awake",
     "plugins/memory",
     "plugins/monaco-editor",
+    "plugins/navigation",
     "plugins/pdf-preview",
     "plugins/plugin-api-docs",
     "plugins/plugin-api-tester",

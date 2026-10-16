@@ -37,13 +37,16 @@ import {
 } from "@/lib/plugin-slots";
 import { getPluginPanelRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  bundledNavigationSlot,
+  registerNavigationPlugin,
+} from "@/test/fixtures/navigation-plugin";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import {
   SidebarNavigationProviderMount,
   SidebarNavigationRegion,
   useSidebarNavigationCustomize,
 } from "./SidebarNavigationHost";
-import { TOP_LIST_NAVIGATION } from "./sidebarNavigationProvider";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 
@@ -87,7 +90,11 @@ function ListHarness({ splitEnabled }: { splitEnabled: boolean }) {
     >
       <SidebarNavigationRegion placement="list" customize={customize}>
         <SidebarNavigationProviderMount
-          resolved={{ kind: "built-in", provider: TOP_LIST_NAVIGATION }}
+          resolved={{
+            kind: "plugin",
+            slot: bundledNavigationSlot("top-list"),
+            fallback: null,
+          }}
         />
       </SidebarNavigationRegion>
       <output data-testid="pathname">{location.pathname}</output>
@@ -175,12 +182,13 @@ beforeAll(async () => {
   await SidebarVisibilityCustomize.preload();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
   window.localStorage.clear();
   registerDocs();
+  await registerNavigationPlugin();
 });
 
 afterEach(() => {

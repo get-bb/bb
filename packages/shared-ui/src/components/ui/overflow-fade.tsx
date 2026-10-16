@@ -1,4 +1,4 @@
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "../../lib/utils";
 
 type OverflowFadePlacement = "above" | "below" | "left" | "right";
 export type OverflowFadeTone = "background" | "sidebar" | "surface-raised";

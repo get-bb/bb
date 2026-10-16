@@ -14,7 +14,6 @@ import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { RAIL_NAVIGATION } from "@/components/sidebar/sidebarNavigationProvider";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { MessageActionBar } from "@/components/thread/timeline/MessageActionBar";
@@ -141,10 +140,7 @@ function renderAppSidebar() {
                         onResizeMouseDown={() => {}}
                         isResizing={false}
                         isBodyHidden={false}
-                        navigation={{
-                          kind: "built-in",
-                          provider: RAIL_NAVIGATION,
-                        }}
+                        navigation={{ kind: "loading", placement: "rail" }}
                         settingsRoutePath="/settings"
                         isSettingsActive={false}
                         alternateBody={null}

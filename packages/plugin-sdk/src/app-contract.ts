@@ -381,9 +381,10 @@ export interface ExperimentalSidebarNavigationProps {
   isCompactViewport: boolean;
   placement: ExperimentalSidebarNavigationPlacement;
   /**
-   * Renders bb's own provider for the same placement: Rail or Top list. Kept
-   * for plugins written before `experimental_useSidebarNavigation`; render
-   * items from that hook instead. Scheduled for removal.
+   * Renders the bundled Navigation plugin's provider for the same placement,
+   * Rail or Top list, or nothing when that plugin is disabled. Kept for
+   * plugins written before `experimental_useSidebarNavigation`; render items
+   * from that hook instead. Scheduled for removal.
    *
    * @deprecated
    */
@@ -2043,12 +2044,13 @@ export interface PluginThreadListRegistration {
 /**
  * Draw the sidebar's navigation: New thread, Plugins, Skills, Automations,
  * plugin panels, and More, plus optional controls in the sidebar header.
- * Exclusive: bb ships two providers of its own, Rail (`__bb__/rail`, the
- * default) and Top list (`__bb__/top-list`). By default the first registered
- * plugin provider is active, falling back to Rail; the user can pin one
- * provider under Settings → Appearance → Navigation. A
- * pinned provider that is disabled or removed falls back the same way, and a
- * crashing provider is replaced by bb's provider for the same placement.
+ * Exclusive: bb's bundled Navigation plugin registers Rail
+ * (`navigation/rail`, the default) and Top list (`navigation/top-list`)
+ * through this slot. By default the first provider from another plugin is
+ * active, falling back to Rail; the user can pin one provider under Settings →
+ * Appearance → Navigation. A pinned provider that is disabled or removed falls
+ * back the same way, and a crashing provider is replaced by the Navigation
+ * plugin's provider for the same placement.
  *
  * `placement` decides the layout around the component, so bb can lay out the
  * sidebar before the plugin loads:
@@ -2078,8 +2080,8 @@ export interface ExperimentalSidebarNavigationRegistration {
    * between the sidebar toggle and bb's back and forward buttons. Content is
    * clipped to the row, so it cannot move the thread list or bb's controls.
    * On macOS the empty space keeps dragging the window; buttons, links, and
-   * inputs do not. A crashing header is replaced by the header of bb's
-   * provider for the same placement.
+   * inputs do not. A crashing header is replaced by the header of the
+   * bundled Navigation plugin's provider for the same placement.
    */
   headerComponent?: ComponentType<ExperimentalSidebarHeaderProps>;
 }
@@ -2109,8 +2111,9 @@ export interface PluginFileOpenerRegistration {
  * text — the native file preview and every plugin that calls
  * `experimental_SourceCode`. Like `experimental_threadList` this slot is
  * **exclusive**: one renderer at a time. Registering activates it while the
- * plugin is enabled; if several are registered the first in deterministic slot
- * order wins. A missing, disabled, or crashing replacement falls back to BB's
+ * plugin is enabled; if several are registered, one from a plugin the user
+ * installed wins over one bundled with bb, then the first in deterministic
+ * slot order. A missing, disabled, or crashing replacement falls back to BB's
  * renderer, and a replacement can render `Original` to delegate
  * per call (behind its own setting, by language, by size — whatever it needs).
  */

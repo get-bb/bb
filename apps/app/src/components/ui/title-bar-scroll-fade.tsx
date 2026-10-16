@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useIsSidebarFramed } from "./sidebar.js";
-import { OverflowFade, type OverflowFadeTone } from "./overflow-fade.js";
+import {
+  OverflowFade,
+  type OverflowFadeTone,
+} from "@bb/shared-ui/overflow-fade";
 
 export function TitleBarScrollFade({ tone }: { tone: OverflowFadeTone }) {
   const isFramed = useIsSidebarFramed();

@@ -41,7 +41,7 @@ import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,
 } from "./groupRollups.js";
-import { SplitPaneMiniMap } from "../rows/SplitPaneMiniMap.js";
+import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];

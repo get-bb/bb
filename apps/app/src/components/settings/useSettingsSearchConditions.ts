@@ -10,8 +10,13 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import type { SettingsSearchCondition } from "./settings-search";
 
 export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchCondition> {
-  const { diffRenderers, fileOpeners, sourceCodeRenderers, threadLists } =
-    usePluginSlots();
+  const {
+    diffRenderers,
+    experimentalSidebarNavigations,
+    fileOpeners,
+    sourceCodeRenderers,
+    threadLists,
+  } = usePluginSlots();
   const { accessState } = useLocalHostDaemonAccess();
   const cliCommandSupported = useCliCommandStatus().data?.supported ?? false;
   const performanceDiagnosticsAvailable =
@@ -29,6 +34,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   const hasDiffRenderers = diffRenderers.length > 0;
   const hasSourceCodeRenderers = sourceCodeRenderers.length > 0;
   const hasThreadLists = threadLists.length > 0;
+  const hasSidebarNavigations = experimentalSidebarNavigations.length > 0;
   const hasFilePreferences = accessState !== "unavailable";
 
   return useMemo(() => {
@@ -40,6 +46,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
       ["filePreferences", hasFilePreferences],
       ["localhostLinkRewrite", rewritesLocalhostLinks],
       ["performanceDiagnostics", performanceDiagnosticsAvailable],
+      ["sidebarNavigations", hasSidebarNavigations],
       ["sourceCodeRenderers", hasSourceCodeRenderers],
       ["threadLists", hasThreadLists],
     ];
@@ -52,6 +59,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     hasDiffRenderers,
     hasFileOpeners,
     hasFilePreferences,
+    hasSidebarNavigations,
     hasSourceCodeRenderers,
     hasThreadLists,
     performanceDiagnosticsAvailable,

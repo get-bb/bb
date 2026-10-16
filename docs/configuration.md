@@ -688,7 +688,7 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | Key                           | Value                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one |
-| `sidebar.navigationProvider`  | `__automatic__` (default): the first installed navigation plugin, else `__bb__/rail`; `__bb__/rail`, `__bb__/top-list`, or a plugin key               |
+| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`       |
 | `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                           |
 | `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
 | `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
@@ -703,7 +703,8 @@ disabled-plugin IDs are retained, and new actions default to visible. The
 footer can also be edited from its More menu or Settings → Appearance → Sidebar
 footer.
 
-A vertical rail on the left edge of the sidebar holds Home (the last thread),
+The bundled Navigation plugin draws the navigation. Its default layout,
+`navigation/rail`, is a vertical rail on the left edge of the sidebar that holds Home (the last thread),
 the visible destinations (Plugins, Skills, plugin panels), More (hidden
 destinations and Customize navigation), and Settings at the bottom. New thread sits
 in the sidebar header and cannot be hidden from the rail. The list beside the rail swaps
@@ -712,7 +713,7 @@ leaves only the rail. On narrow windows and phones the rail sits inside the
 drawer. In the macOS desktop app, wide windows add a title bar with the window
 controls, Back and Forward, and the sidebar toggle.
 
-With `sidebar.navigationProvider` set to `__bb__/top-list` (Settings →
+With `sidebar.navigationProvider` set to `navigation/top-list` (Settings →
 Appearance → Navigation), there is no rail. The visible destinations, New
 thread among them, and More (hidden destinations and Customize navigation) are
 labeled rows above the thread list, with plugin panel badges at the end of
@@ -723,7 +724,9 @@ desktop app keeps the window controls over the sidebar instead of a separate
 title bar. A navigation plugin gets the rail or list layout its registration
 declares, and a list navigation can bring its own controls beside the sidebar
 toggle; legacy `__builtin__` and `navigation/navigation` read as
-`__automatic__`.
+`__automatic__`. Disabling the Navigation plugin with no other navigation
+plugin installed leaves the list layout with no destinations; Settings stays
+in the footer.
 
 The layout keys `sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
 `sidebar.chronologicalSort`, `sidebar.sortDirection`, the three section-order

@@ -41,7 +41,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   OverflowFade,
   type OverflowFadeTone,
-} from "@/components/ui/overflow-fade";
+} from "@bb/shared-ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@bb/shared-ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";

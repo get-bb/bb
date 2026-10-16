@@ -1236,8 +1236,8 @@ exclusive; `text` is at most 8 characters; `tone` is `neutral` (the default),
 `warning`, or `critical`, and bb owns the colors. The sidebar navigation model
 runs the hook once per registered panel in the plugin's slot scope and crash
 boundary and hands the value to every navigation provider as `item.badge`.
-bb's Rail draws a count (capped at `9+`) or a dot on the icon, and does not
-draw `text`; its Top list and More menu draw the count
+The bundled Navigation plugin's Rail draws a count (capped at `9+`) or a dot
+on the icon, and does not draw `text`; its Top list and More menu draw the count
 (capped at `99+`), the text, or a dot. Both add `label` to the accessible name
 and put a dot on More, in the strongest hidden tone, while a badged panel is
 hidden there.
@@ -1254,7 +1254,8 @@ Docs: `frontend-core-slots.md`.
 **Audit before stabilizing.**
 
 1. **Core parity.** Decide whether a core destination needs a badge and, if
-   so, route it through the same `NavigationBadgeMark` and label path.
+   so, route it through the same `item.badge` path the Navigation plugin
+   draws.
 2. **Tone and text.** Confirm three tones and an 8-character `text` cover
    migrated plugins, including the six that drew several colored counts and
    now draw one badge.
@@ -1273,9 +1274,10 @@ Compact Nav 0.1.x and Sidebar Sections, load again.
 **What it does.** Draws the sidebar navigation: New thread, Search threads,
 Plugins, Skills, Automations, plugin panels, and More, plus optional controls
 in the sidebar header. Exclusive.
-`sidebar.navigationProvider` picks the provider: bb's `__bb__/rail` or
-`__bb__/top-list`, a plugin key, or `__automatic__` (the default: the first
-registered plugin provider, else Rail). Legacy `__builtin__` and
+`sidebar.navigationProvider` picks the provider by plugin key: the bundled
+Navigation plugin's `navigation/rail` or `navigation/top-list`, another
+plugin's key, or `__automatic__` (the default: the first registered provider
+from another plugin, else `navigation/rail`). Legacy `__builtin__` and
 `navigation/navigation` read as `__automatic__`.
 
 The registration declares `placement`, `rail` or `list` (the default). bb lays
@@ -1285,33 +1287,36 @@ collapses, Settings at the bottom of the column, and the framed macOS title
 bar; for `list`, the area above the thread list, a Settings footer action,
 Back to app rows on the Settings, Plugins, and Skills lists, and a collapse
 that hides the whole sidebar. The component receives `isCompactViewport`,
-`placement`, and the deprecated `experimental_Original`, which renders bb's
-provider for the same placement.
+`placement`, and the deprecated `experimental_Original`, which renders the
+Navigation plugin's provider for the same placement, or nothing when that
+plugin is disabled.
 
 The optional `headerComponent` renders in the sidebar header row, between the
 sidebar toggle (and the macOS window controls) and bb's back and forward
 buttons, while the navigation is active. It receives `width`, `controlSize`,
 and `isCompactViewport`. The host clips it to the row, keeps the macOS drag
-region for non-interactive space, and on a crash draws the header of bb's
-provider for the same placement, with one toast. It replaces the separate
+region for non-interactive space, aligns it with the macOS window controls,
+and on a crash draws the header of the Navigation plugin's provider for the
+same placement, with one toast. It replaces the separate
 `experimental_sidebarHeader` slot and its `sidebar.headerProvider` setting,
 which let users pair a header with a navigation it did not belong to. That
 slot remains as an untyped runtime alias: a plugin's header joins each of its
 navigations that has no `headerComponent`.
 
-Before plugin frontends settle, a pinned plugin provider, or the plugin
-Automatic last chose, reserves the placement it last had and draws nothing;
-Automatic with no remembered plugin draws Rail at once. Once frontends
-settle, a missing pinned provider falls back like Automatic. A crashing
-provider is replaced by bb's provider for its placement, with one toast.
+Before plugin frontends settle, a pinned provider, or the provider Automatic
+last chose, reserves the placement it last had and draws nothing until it
+registers; Automatic with nothing remembered reserves the rail. Once
+frontends settle, a missing pinned provider falls back like Automatic, and
+with no provider at all the sidebar uses the list placement and says no
+navigation plugin is enabled. A crashing provider is replaced by the
+Navigation plugin's provider for its placement, with one toast.
 
-**Core callers on the same path.** bb's Rail and Top list are the two
-built-in providers. They mount through the same host component as plugin
-providers, receive the same props, and read and act only through
-`experimental_useSidebarNavigation()`, `experimental_useSidebarNavigationSplit()`,
-and `experimental_SidebarNavigationIcon`. Rail's header is its New thread
-button, resolved with the provider like a plugin's `headerComponent`; it does
-not read the size props.
+**Core callers on the same path.** bb's Rail and Top list are the bundled,
+default-enabled Navigation plugin (`plugins/navigation`), which is on the
+forkable list. It registers both through this slot with no host-only API:
+the host owns only the placement layout, Settings, the customize editor, and
+the navigation model. Rail's header is its New thread button, registered as
+`headerComponent`; it does not read the size props.
 
 **Audit before stabilizing.**
 
@@ -1319,10 +1324,11 @@ not read the size props.
    rail provider needs a declared width.
 2. **Boundary.** Verify providers can express useful navigation without the
    drawer, thread list, footer, resize handle, Settings, or shortcuts.
-3. **Arbitration.** Confirm Automatic preferring the first installed plugin
-   provider over Rail is right, including when several are installed.
-4. **Loading.** Confirm an empty region in the remembered placement beats
-   drawing bb's provider until the plugin registers.
+3. **Arbitration.** Confirm Automatic preferring the first installed
+   provider from another plugin over the bundled Rail is right, including
+   when several are installed.
+4. **Loading.** Confirm an empty region in the remembered placement, now
+   also for the bundled Navigation plugin at every boot, is acceptable.
 5. **Original.** Remove `experimental_Original` once released plugins stop
    rendering it.
 6. **Header alias.** Remove the `experimental_sidebarHeader` alias once
@@ -1352,9 +1358,9 @@ sidebar the hook returns no items and inert actions.
 `onDragStart` for rows in menus. `experimental_SidebarNavigationIcon` renders
 bb's glyphs and panel icons with plugin branding as fallback.
 
-**Core callers on the same path.** bb's Rail, Top list, and the header New
-thread button use these hooks; the app's Settings → Appearance → Navigation
-picker reads the same registrations.
+**Core callers on the same path.** The bundled Navigation plugin's Rail, Top
+list, and header New thread button use these hooks; the app's Settings →
+Appearance → Navigation picker reads the same registrations.
 
 **Audit before stabilizing.**
 
@@ -2153,8 +2159,9 @@ or one" changes the registration shape.
 
 Exclusive slots that replace bb's source or diff renderer everywhere it draws
 supplied content, including other plugins' calls to the public components.
-Automatic selection uses the first registration in slot order, and the user
-can pin bb's renderer or a provider per client. A crash falls back to bb's
+Automatic selection prefers a registration from a plugin the user installed
+over one bundled with bb (such as Monaco), then the first in slot order, and
+the user can pin bb's renderer or a provider per client. A crash falls back to bb's
 renderer.
 
 Docs: `frontend-renderer-slots.md`.

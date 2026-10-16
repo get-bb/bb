@@ -139,7 +139,7 @@ export const uiPreferenceDefinitions = {
         : value,
     ),
     "__automatic__",
-    "Provider that draws the sidebar navigation: __bb__/rail (icon rail on the sidebar's left edge), __bb__/top-list (labeled rows above the thread list), a plugin key, or __automatic__ for the first installed navigation plugin, falling back to __bb__/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
+    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>

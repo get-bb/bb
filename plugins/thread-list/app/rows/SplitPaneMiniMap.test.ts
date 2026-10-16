@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   splitPaneMiniMapRepresentsFocusedPane,
   splitPaneMiniMapSlotGeometry,
-} from "./SplitPaneMiniMap.js";
+} from "@/components/ui/split-pane-mini-map";
 
 function visibleBounds(slot: PluginSidebarSplitPane) {
   const { x, y, width, height, strokeWidth } =

@@ -49,7 +49,7 @@ import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
-import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
+import { ShortcutPill } from "@bb/shared-ui/shortcut-pill";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
@@ -152,7 +152,7 @@ const ShortcutRecorder = memo(
           ) : shortcutPresentation === null ? (
             "Unassigned"
           ) : (
-            <AppCommandShortcutPill
+            <ShortcutPill
               className={SETTINGS_SHORTCUT_PILL_CLASS}
               shortcut={shortcutPresentation}
             />
@@ -380,7 +380,7 @@ const KeyboardCommandRow = memo(
                 {splitDefaults === null ? "Default:" : "Defaults:"}
               </span>
               {sharedDefaultShortcut !== null ? (
-                <AppCommandShortcutPill
+                <ShortcutPill
                   ariaHidden={false}
                   className={SETTINGS_DEFAULT_SHORTCUT_CLASS}
                   shortcut={presentAppShortcut(sharedDefaultShortcut, platform)}
@@ -394,7 +394,7 @@ const KeyboardCommandRow = memo(
                     <span className="inline-flex items-center bg-muted/40 px-1.5 text-2xs leading-none text-subtle-foreground">
                       {entry.label}
                     </span>
-                    <AppCommandShortcutPill
+                    <ShortcutPill
                       ariaHidden={false}
                       className={SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS}
                       shortcut={presentAppShortcut(entry.shortcut, platform)}

@@ -48,19 +48,20 @@ import {
   getThreadRoutePath,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
+import {
+  bundledNavigationSlot,
+  registerNavigationPlugin,
+} from "@/test/fixtures/navigation-plugin";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import {
   SidebarNavigationProviderMount,
   SidebarNavigationRegion,
   useSidebarNavigationCustomize,
 } from "./SidebarNavigationHost";
-import {
-  RAIL_NAVIGATION,
-  type ResolvedSidebarNavigation,
-} from "./sidebarNavigationProvider";
+import type { ResolvedSidebarNavigation } from "./sidebarNavigationProvider";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { NavRailNewThreadButton, NavRailSettingsButton } from "./AppNavRail";
+import { NavRailSettingsButton } from "./NavRailSettingsButton";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 
@@ -87,8 +88,9 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   const { SidebarNavigationProviderMount } = await vi.importActual<
     typeof import("./SidebarNavigationHost")
   >("./SidebarNavigationHost");
-  const { NavRailSettingsButton } =
-    await vi.importActual<typeof import("./AppNavRail")>("./AppNavRail");
+  const { NavRailSettingsButton } = await vi.importActual<
+    typeof import("./NavRailSettingsButton")
+  >("./NavRailSettingsButton");
   return {
     AppSidebar: ({
       navigation,
@@ -150,6 +152,12 @@ const ALL_KEYS = [
 const DOCS_PATH = getPluginPanelRoutePath({ pluginId: "garden", path: "docs" });
 const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
+function RailNewThreadButton() {
+  const Header = bundledNavigationSlot("rail").headerComponent;
+  if (Header === undefined) throw new Error("Expected the Rail header");
+  return <Header width={200} controlSize={28} isCompactViewport={false} />;
+}
+
 function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
   const closeMobileSidebar = useCloseMobileSidebar();
   const location = useLocation();
@@ -178,7 +186,11 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
         <>
           <SidebarNavigationRegion placement="rail" customize={customize}>
             <SidebarNavigationProviderMount
-              resolved={{ kind: "built-in", provider: RAIL_NAVIGATION }}
+              resolved={{
+                kind: "plugin",
+                slot: bundledNavigationSlot("rail"),
+                fallback: null,
+              }}
             />
           </SidebarNavigationRegion>
           <NavRailSettingsButton
@@ -187,7 +199,7 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
           />
         </>
       )}
-      <NavRailNewThreadButton />
+      <RailNewThreadButton />
       <output data-testid="pathname">{location.pathname}</output>
     </SidebarNavigationModelProvider>
   );
@@ -302,7 +314,7 @@ beforeAll(async () => {
   await SidebarVisibilityCustomize.preload();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
@@ -321,6 +333,7 @@ beforeEach(() => {
       ],
     }),
   );
+  await registerNavigationPlugin();
 });
 
 afterEach(() => {
@@ -332,7 +345,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("AppNavRail", () => {
+describe("Rail", () => {
   it("lists Home, the visible destinations, More, and Settings, with New thread left to the header", () => {
     renderRail(THREAD_PATH);
 
@@ -389,9 +402,10 @@ describe("AppNavRail", () => {
     expect(railButton("Automations")).toBeDefined();
   });
 
-  it("draws a remembered plugin panel before boot and keeps the same button when the plugin registers", () => {
+  it("draws a remembered plugin panel before boot and keeps the same button when the plugin registers", async () => {
     resetPluginSlotStoreForTest();
     resetPluginFrontendBootStateForTest();
+    await registerNavigationPlugin();
     writeLastKnownPluginNavPanelChrome([
       {
         pluginId: "demo",
@@ -425,9 +439,10 @@ describe("AppNavRail", () => {
     expect(railButton("Demo board")).toBe(remembered);
   });
 
-  it("drops a remembered plugin panel that never registers once frontends have settled", () => {
+  it("drops a remembered plugin panel that never registers once frontends have settled", async () => {
     resetPluginSlotStoreForTest();
     resetPluginFrontendBootStateForTest();
+    await registerNavigationPlugin();
     writeLastKnownPluginNavPanelChrome([
       {
         pluginId: "ghost",

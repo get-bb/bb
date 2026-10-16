@@ -11,6 +11,7 @@ import {
   resetPluginFrontendBootStateForTest,
 } from "@/lib/plugin-frontend-boot-state";
 import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
 import { AppSidebar } from "./AppSidebar";
 import {
   sidebarNavigationProviderAtom,
@@ -125,10 +126,11 @@ function followingSiblings(element: Element): Element[] {
   return siblings;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   window.localStorage.clear();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
+  await registerNavigationPlugin();
 });
 
 afterEach(() => {
@@ -140,7 +142,7 @@ afterEach(() => {
 
 describe("AppSidebar", () => {
   it("keeps the footer after the navigation in one column for list navigation, so docking plugins can inset it", () => {
-    renderSidebar("__bb__/top-list");
+    renderSidebar("navigation/top-list");
 
     const region = navigationRegion();
     expect(region.dataset.sidebarNavigationPlacement).toBe("list");

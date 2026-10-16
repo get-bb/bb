@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { OverflowFade } from "@/components/ui/overflow-fade";
+import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY } from "@/components/promptbox/ComposerEditorSlot";
 import {
   MOBILE_RECENT_LABEL_HEIGHT_PX,

@@ -5,44 +5,42 @@ import {
   useState,
   type ComponentProps,
 } from "react";
-import type {
-  ExperimentalSidebarNavigationItem,
-  ExperimentalSidebarNavigationProps,
-} from "@get-bb/plugin-sdk";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  experimental_SidebarNavigationIcon as SidebarNavigationIcon,
+  experimental_useSidebarNavigation,
+  experimental_useSidebarNavigationSplit,
+  type ExperimentalSidebarNavigationItem,
+  type ExperimentalSidebarNavigationProps,
+} from "@get-bb/plugin-sdk/app";
+import { Button } from "@/components/ui/button";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { Icon } from "@/components/ui/icon";
+import { OverflowFade } from "@/components/ui/overflow-fade";
+import { ShortcutPill } from "@/components/ui/shortcut-pill";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-} from "@bb/shared-ui/sidebar-hover-actions";
+} from "@/components/ui/sidebar-hover-actions";
 import {
   PROJECT_LIST_ACTION_BUTTON_CLASS,
   SIDEBAR_CONTROL_STATE_CLASS,
-} from "@bb/shared-ui/sidebar-row-classes";
-import { OverflowFade } from "@/components/ui/overflow-fade";
-import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
-import {
-  useSidebarNavigation,
-  useSidebarNavigationSplit,
-} from "@/lib/plugin-sidebar-navigation";
+} from "@/components/ui/sidebar-row-classes";
+import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
+import { cn } from "@/lib/utils";
 import {
   hiddenNavigationBadgeLabels,
   NavigationBadgeMark,
   navigationBadgeAccessibleLabel,
   strongestNavigationBadgeTone,
-} from "./navigationBadges";
+} from "./badges.js";
 import {
   SidebarNavigationItemContextMenu,
   SidebarNavigationItemDropdownMenu,
   sidebarNavigationItemMenuLabel,
   SidebarNavigationMoreMenu,
-} from "./SidebarNavigationMenus";
-import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
-import { SidebarNavigationIcon } from "./SidebarNavigationModel";
+} from "./ItemMenus.js";
 
 const MORE_MENU_SIDE_OFFSET = 4;
 
@@ -76,8 +74,8 @@ function NavigationListRow({
   isCompactViewport: boolean;
 }) {
   const { activeItemId, actions, isShortcutModifierHeld } =
-    useSidebarNavigation();
-  const split = useSidebarNavigationSplit(item.id);
+    experimental_useSidebarNavigation();
+  const split = experimental_useSidebarNavigationSplit(item.id);
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const [isContextMenuOpen, setContextMenuOpen] = useState(false);
   const shortcut = isShortcutModifierHeld ? item.shortcut : null;
@@ -128,7 +126,7 @@ function NavigationListRow({
           ) : null}
         </span>
         {shortcut ? (
-          <AppCommandShortcutPill shortcut={shortcut} />
+          <ShortcutPill shortcut={shortcut} />
         ) : item.badge && !showsOptions ? (
           <NavigationBadgeMark badge={item.badge} size="list" />
         ) : null}
@@ -227,10 +225,10 @@ function useScrollOverflow(itemCount: number) {
   return [ref, overflow] as const;
 }
 
-export function SidebarNavigationList({
+export function TopList({
   isCompactViewport,
 }: ExperimentalSidebarNavigationProps) {
-  const { items } = useSidebarNavigation();
+  const { items } = experimental_useSidebarNavigation();
   const visible = items.filter((item) => item.isVisible);
   const hidden = items.filter((item) => !item.isVisible);
   const hiddenBadgeLabels = hiddenNavigationBadgeLabels(hidden);

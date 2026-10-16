@@ -125,6 +125,7 @@
     "bb-plugin-environment-modal-sandbox": "workspace:*",
     "bb-plugin-provider-pi": "workspace:*",
     "bb-plugin-secrets": "workspace:*",
+    "bb-plugin-navigation": "workspace:*",
     "bb-plugin-thread-list": "workspace:*",
     "cacache": "^20.0.4",
     "fake-indexeddb": "^6.2.5",

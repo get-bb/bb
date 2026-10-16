@@ -6,53 +6,24 @@ import { createLastKnownCache } from "@/lib/last-known-cache";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
+  findAutomaticReplacement,
   replacementProviderKey,
 } from "@/lib/plugin-replacement-preference";
 import {
+  useBuiltinPluginIds,
   usePluginSlots,
   type ExperimentalSidebarNavigationSlot,
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
-export const RAIL_NAVIGATION_PROVIDER = "__bb__/rail";
-export const TOP_LIST_NAVIGATION_PROVIDER = "__bb__/top-list";
-
-export interface BuiltInNavigationProvider {
-  key: typeof RAIL_NAVIGATION_PROVIDER | typeof TOP_LIST_NAVIGATION_PROVIDER;
-  title: string;
-  description: string;
-  placement: ExperimentalSidebarNavigationPlacement;
-}
-
-export const RAIL_NAVIGATION: BuiltInNavigationProvider = {
-  key: RAIL_NAVIGATION_PROVIDER,
-  title: "Rail",
-  description: "Icons on the left edge",
-  placement: "rail",
-};
-
-export const TOP_LIST_NAVIGATION: BuiltInNavigationProvider = {
-  key: TOP_LIST_NAVIGATION_PROVIDER,
-  title: "Top list",
-  description: "Labeled rows above the thread list",
-  placement: "list",
-};
-
-export const BUILT_IN_NAVIGATION_PROVIDERS = [
-  RAIL_NAVIGATION,
-  TOP_LIST_NAVIGATION,
-] as const;
-
-export function builtInNavigationForPlacement(
-  placement: ExperimentalSidebarNavigationPlacement,
-): BuiltInNavigationProvider {
-  return placement === "rail" ? RAIL_NAVIGATION : TOP_LIST_NAVIGATION;
-}
-
 export type ResolvedSidebarNavigation =
-  | { kind: "built-in"; provider: BuiltInNavigationProvider }
-  | { kind: "plugin"; slot: ExperimentalSidebarNavigationSlot }
-  | { kind: "loading"; placement: ExperimentalSidebarNavigationPlacement };
+  | {
+      kind: "plugin";
+      slot: ExperimentalSidebarNavigationSlot;
+      fallback: ExperimentalSidebarNavigationSlot | null;
+    }
+  | { kind: "loading"; placement: ExperimentalSidebarNavigationPlacement }
+  | { kind: "missing" };
 
 const lastResolvedSchema = z.object({
   key: z.string().min(1),
@@ -60,36 +31,47 @@ const lastResolvedSchema = z.object({
 });
 export type LastResolvedSidebarNavigation = z.infer<typeof lastResolvedSchema>;
 
+function resolvedPlugin(
+  slot: ExperimentalSidebarNavigationSlot,
+  slots: readonly ExperimentalSidebarNavigationSlot[],
+  builtinPluginIds: ReadonlySet<string>,
+): ResolvedSidebarNavigation {
+  const fallback = builtinPluginIds.has(slot.pluginId)
+    ? undefined
+    : slots.find(
+        (candidate) =>
+          builtinPluginIds.has(candidate.pluginId) &&
+          candidate.placement === slot.placement,
+      );
+  return { kind: "plugin", slot, fallback: fallback ?? null };
+}
+
 export function resolveSidebarNavigation({
   preference,
   slots,
+  builtinPluginIds,
   settled,
   lastResolved,
 }: {
   preference: string;
   slots: readonly ExperimentalSidebarNavigationSlot[];
+  builtinPluginIds: ReadonlySet<string>;
   settled: boolean;
   lastResolved: LastResolvedSidebarNavigation | null;
 }): ResolvedSidebarNavigation {
-  const builtIn = BUILT_IN_NAVIGATION_PROVIDERS.find(
-    (provider) => provider.key === preference,
-  );
-  if (builtIn) return { kind: "built-in", provider: builtIn };
   const isAutomatic = preference === AUTOMATIC_REPLACEMENT_PROVIDER;
   const pinned = isAutomatic
     ? undefined
     : slots.find((slot) => replacementProviderKey(slot) === preference);
-  if (pinned) return { kind: "plugin", slot: pinned };
-  const automatic = slots[0];
-  if (isAutomatic && automatic) return { kind: "plugin", slot: automatic };
+  if (pinned) return resolvedPlugin(pinned, slots, builtinPluginIds);
+  const automatic = findAutomaticReplacement(slots, builtinPluginIds);
   if (!settled) {
     const awaitedKey = isAutomatic ? lastResolved?.key : preference;
-    const awaitsPlugin =
+    if (
       awaitedKey !== undefined &&
-      !BUILT_IN_NAVIGATION_PROVIDERS.some(
-        (provider) => provider.key === awaitedKey,
-      );
-    if (awaitsPlugin) {
+      (automatic === undefined ||
+        replacementProviderKey(automatic) !== awaitedKey)
+    ) {
       return {
         kind: "loading",
         placement:
@@ -97,20 +79,23 @@ export function resolveSidebarNavigation({
       };
     }
   }
-  if (automatic) return { kind: "plugin", slot: automatic };
-  return { kind: "built-in", provider: RAIL_NAVIGATION };
+  if (automatic) return resolvedPlugin(automatic, slots, builtinPluginIds);
+  if (!settled) {
+    return { kind: "loading", placement: lastResolved?.placement ?? "rail" };
+  }
+  return { kind: "missing" };
 }
 
 export function sidebarNavigationPlacement(
   resolved: ResolvedSidebarNavigation,
 ): ExperimentalSidebarNavigationPlacement {
   switch (resolved.kind) {
-    case "built-in":
-      return resolved.provider.placement;
     case "plugin":
       return resolved.slot.placement;
     case "loading":
       return resolved.placement;
+    case "missing":
+      return "list";
   }
 }
 
@@ -144,18 +129,16 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
   const [lastResolved] = useState(() =>
     lastResolvedCache.read(LAST_RESOLVED_KEY),
   );
+  const builtinPluginIds = useBuiltinPluginIds();
   const resolved = resolveSidebarNavigation({
     preference,
     slots: experimentalSidebarNavigations,
+    builtinPluginIds,
     settled,
     lastResolved,
   });
   const resolvedKey =
-    resolved.kind === "built-in"
-      ? resolved.provider.key
-      : resolved.kind === "plugin"
-        ? replacementProviderKey(resolved.slot)
-        : null;
+    resolved.kind === "plugin" ? replacementProviderKey(resolved.slot) : null;
   const placement = sidebarNavigationPlacement(resolved);
   useEffect(() => {
     if (resolvedKey === null) return;

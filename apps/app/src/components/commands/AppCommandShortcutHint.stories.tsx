@@ -9,7 +9,7 @@ import {
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
 } from "@bb/shared-ui/sidebar-row-classes";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { AppCommandShortcutPill } from "./AppCommandShortcutHint";
+import { ShortcutPill } from "@bb/shared-ui/shortcut-pill";
 
 export default {
   title: "commands/Shortcut Hint",
@@ -46,7 +46,7 @@ function ShortcutSet({
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {shortcuts.map((item) => (
-        <AppCommandShortcutPill key={item.ariaKeyshortcuts} shortcut={item} />
+        <ShortcutPill key={item.ariaKeyshortcuts} shortcut={item} />
       ))}
     </span>
   );
@@ -88,7 +88,7 @@ function TextBaselineExample({
     <CenterlineFrame>
       <span className={cn("inline-flex items-baseline gap-1.5", className)}>
         <span>Open panel</span>
-        <AppCommandShortcutPill shortcut={shortcut} />
+        <ShortcutPill shortcut={shortcut} />
       </span>
     </CenterlineFrame>
   );
@@ -100,7 +100,7 @@ function ToolbarExample() {
       <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2">
         <Icon name="MessageSquarePlus" />
         <span>New thread</span>
-        <AppCommandShortcutPill shortcut={MAC_SHORTCUTS[0]} />
+        <ShortcutPill shortcut={MAC_SHORTCUTS[0]} />
       </Button>
       <Button
         variant="ghost"
@@ -110,7 +110,7 @@ function ToolbarExample() {
       >
         <Icon name="Search" />
       </Button>
-      <AppCommandShortcutPill shortcut={MAC_SHORTCUTS[1]} />
+      <ShortcutPill shortcut={MAC_SHORTCUTS[1]} />
     </div>
   );
 }
@@ -138,7 +138,7 @@ function SidebarRowExample({
           Storybook pass for shortcut alignment
         </span>
         <span className="flex shrink-0 items-center gap-0.5">
-          <AppCommandShortcutPill shortcut={shortcut} />
+          <ShortcutPill shortcut={shortcut} />
         </span>
       </div>
     </div>
@@ -154,8 +154,8 @@ export function Overview() {
           <ShortcutSet shortcuts={WIN_SHORTCUTS} />
         </StoryRow>
         <StoryRow label="long chord">
-          <AppCommandShortcutPill shortcut={MAC_SHORTCUTS[2]} />
-          <AppCommandShortcutPill shortcut={WIN_SHORTCUTS[2]} />
+          <ShortcutPill shortcut={MAC_SHORTCUTS[2]} />
+          <ShortcutPill shortcut={WIN_SHORTCUTS[2]} />
         </StoryRow>
       </StoryCard>
 

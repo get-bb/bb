@@ -55,6 +55,7 @@ import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
   beginPluginSlotBatch,
   removePluginSlotRegistrations,
+  setBuiltinPluginIds,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "./plugin-slots";
@@ -294,6 +295,11 @@ export async function fetchFrontendCandidates(
   }
   setPluginLogoUrls(logoUrls);
   setPluginAssetIcons(assetIcons);
+  setBuiltinPluginIds(
+    plugins.flatMap((plugin) =>
+      plugin.provenance === "builtin" ? [plugin.id] : [],
+    ),
+  );
   return candidates;
 }
 

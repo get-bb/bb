@@ -67,7 +67,11 @@
       "dependsOn": ["@bb/demo-server#build", "topo"]
     },
     "@bb/demo-server#build": {
-      "dependsOn": ["@bb/app#build", "bb-plugin-thread-list#prepare:bundled"],
+      "dependsOn": [
+        "@bb/app#build",
+        "bb-plugin-navigation#prepare:bundled",
+        "bb-plugin-thread-list#prepare:bundled"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/provider-codex/icons/codex.svg",
@@ -1495,6 +1499,21 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-navigation#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-navigation#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"

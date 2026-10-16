@@ -5,8 +5,9 @@
   the native file preview, timeline file diffs, the environment diff panel's
   file bodies, and every plugin calling the host components. Registration:
   `{ id, title, description?, component }`. Like `experimental_threadList`
-  each slot is **exclusive** — one renderer at a time, first in slot order
-  wins, and a missing, disabled, or crashing replacement falls back to bb's
+  each slot is **exclusive** — one renderer at a time; a plugin the user
+  installed wins over one bundled with bb, then the first in slot order, and
+  a missing, disabled, or crashing replacement falls back to bb's
   renderer. Installing and enabling the plugin activates it, and the user can
   pin bb's renderer or a specific provider under
   **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no

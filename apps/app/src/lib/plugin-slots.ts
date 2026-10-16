@@ -484,7 +484,37 @@ export function usePluginSlots(): PluginSlotSnapshot {
   return useSyncExternalStore(subscribePluginSlots, getPluginSlotSnapshot);
 }
 
+let builtinPluginIds: ReadonlySet<string> = new Set();
+const builtinPluginIdListeners = new Set<() => void>();
+
+export function setBuiltinPluginIds(ids: Iterable<string>): void {
+  const next = new Set(ids);
+  if (
+    next.size === builtinPluginIds.size &&
+    [...next].every((id) => builtinPluginIds.has(id))
+  ) {
+    return;
+  }
+  builtinPluginIds = next;
+  for (const listener of builtinPluginIdListeners) listener();
+}
+
+function subscribeBuiltinPluginIds(listener: () => void): () => void {
+  builtinPluginIdListeners.add(listener);
+  return () => {
+    builtinPluginIdListeners.delete(listener);
+  };
+}
+
+export function useBuiltinPluginIds(): ReadonlySet<string> {
+  return useSyncExternalStore(
+    subscribeBuiltinPluginIds,
+    () => builtinPluginIds,
+  );
+}
+
 export function resetPluginSlotStoreForTest(): void {
+  setBuiltinPluginIds([]);
   registrationsByPluginId.clear();
   generationByPluginId.clear();
   flattenedByPluginId.clear();

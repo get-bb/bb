@@ -278,13 +278,15 @@ it. On narrow windows and phones the rail sits inside the drawer: Home,
 Plugins, Skills, and Settings swap the list beside it and leave the drawer
 open, and a plugin page closes it.
 
+The rail and the top list below are the two layouts of the bundled Navigation
+plugin, a built-in you can fork like the thread list.
 `sidebar.navigationProvider` picks what draws the navigation:
-`__bb__/rail` (the rail above), `__bb__/top-list` (labeled rows above the
-thread list), a navigation plugin as `<plugin-id>/<slot-id>`, or
-`__automatic__` (the default: the first installed navigation plugin, else the
-rail). Pick one in Settings → Appearance → Navigation, or:
+`navigation/rail` (the rail above), `navigation/top-list` (labeled rows above
+the thread list), another navigation plugin as `<plugin-id>/<slot-id>`, or
+`__automatic__` (the default: the first navigation from another plugin, else
+`navigation/rail`). Pick one in Settings → Appearance → Navigation, or:
 
-  bb settings ui set sidebar.navigationProvider __bb__/top-list
+  bb settings ui set sidebar.navigationProvider navigation/top-list
   bb settings ui reset sidebar.navigationProvider
 
 The top list puts the visible destinations, New thread among them, and More

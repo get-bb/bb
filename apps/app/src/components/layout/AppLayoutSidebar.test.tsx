@@ -19,9 +19,10 @@ import {
 import {
   sidebarNavigationPlacement,
   sidebarNavigationProviderAtom,
-  TOP_LIST_NAVIGATION_PROVIDER,
   type ResolvedSidebarNavigation,
 } from "@/components/sidebar/sidebarNavigationProvider";
+import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
 import {
   AppLayoutSidebar,
   type AppLayoutSidebarMode,
@@ -167,6 +168,7 @@ function SidebarModeHarness() {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  resetPluginSlotStoreForTest();
   mountCounts.appSidebar = 0;
   window.localStorage.clear();
 });
@@ -335,9 +337,10 @@ describe("AppLayoutSidebar", () => {
     expect(document.querySelectorAll('[data-sidebar="panel"]')).toHaveLength(1);
   });
 
-  it("drops the rail in the top list layout and gives Settings a row back to the app", () => {
+  it("drops the rail in the top list layout and gives Settings a row back to the app", async () => {
+    await registerNavigationPlugin();
     const store = createStore();
-    store.set(sidebarNavigationProviderAtom, TOP_LIST_NAVIGATION_PROVIDER);
+    store.set(sidebarNavigationProviderAtom, "navigation/top-list");
     render(
       <Provider store={store}>
         <CompactViewportOverrideProvider isCompactViewport={false}>

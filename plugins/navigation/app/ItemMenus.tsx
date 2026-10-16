@@ -1,30 +1,32 @@
 import { useState, type ReactNode } from "react";
-import type { ExperimentalSidebarNavigationItem } from "@get-bb/plugin-sdk";
+import {
+  experimental_SidebarNavigationIcon as SidebarNavigationIcon,
+  experimental_useSidebarNavigation,
+  type ExperimentalSidebarNavigationItem,
+} from "@get-bb/plugin-sdk/app";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@bb/shared-ui/context-menu";
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
-import { useSidebarNavigation } from "@/lib/plugin-sidebar-navigation";
-import { NavigationBadgeMark } from "./navigationBadges";
-import { SidebarNavigationIcon } from "./SidebarNavigationModel";
+} from "@/components/ui/dropdown-menu";
+import { Icon } from "@/components/ui/icon";
+import { NavigationBadgeMark } from "./badges.js";
 
 export type SidebarNavigationSurface = "rail" | "sidebar";
 
 type MenuSurface = "context" | "dropdown";
 
 function useDisablePlugin(itemId: string) {
-  const { actions } = useSidebarNavigation();
+  const { actions } = experimental_useSidebarNavigation();
   const [disablePending, setDisablePending] = useState(false);
   return {
     disablePending,
@@ -49,7 +51,7 @@ function SidebarNavigationItemMenuItems({
   menu: MenuSurface;
   canOpenInSplit: boolean;
 }) {
-  const { actions } = useSidebarNavigation();
+  const { actions } = experimental_useSidebarNavigation();
   const { disablePending, disable } = useDisablePlugin(item.id);
   const Item = menu === "context" ? ContextMenuItem : DropdownMenuItem;
   const Separator =
@@ -179,7 +181,7 @@ export function SidebarNavigationMoreMenu({
   sideOffset: number;
   testId: string;
 }) {
-  const { actions } = useSidebarNavigation();
+  const { actions } = experimental_useSidebarNavigation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>

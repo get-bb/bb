@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "split-pane-mini-map",
+  "type": "registry:ui",
+  "title": "split-pane-mini-map",
+  "description": "BB ui \"split-pane-mini-map\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/split-pane-mini-map.tsx",
+      "content": "import { cn } from \"../../lib/utils\";\n\nexport interface SplitPaneMiniMapSlot {\n  paneId: string;\n  rect: { x: number; y: number; width: number; height: number };\n  isMe: boolean;\n  isFocused: boolean;\n}\n\nconst GLYPH_SIZE = 14;\nconst GLYPH_PADDING = 1;\nconst INNER = GLYPH_SIZE - 2 * GLYPH_PADDING;\nconst OUTLINE_WIDTH = 1;\n\ninterface SplitPaneMiniMapProps {\n  slots: readonly SplitPaneMiniMapSlot[];\n  label: string;\n  isWorking?: boolean;\n}\n\nfunction offset(value: number): number {\n  return GLYPH_PADDING + value * INNER;\n}\n\nfunction extent(value: number): number {\n  return value * INNER;\n}\n\nfunction outlineInset(isFilled: boolean): number {\n  return isFilled ? 0 : OUTLINE_WIDTH / 2;\n}\n\nexport function splitPaneMiniMapSlotGeometry(slot: SplitPaneMiniMapSlot) {\n  const inset = outlineInset(slot.isMe);\n  return {\n    x: offset(slot.rect.x) + inset,\n    y: offset(slot.rect.y) + inset,\n    width: Math.max(extent(slot.rect.width) - 2 * inset, 0),\n    height: Math.max(extent(slot.rect.height) - 2 * inset, 0),\n    strokeWidth: slot.isMe ? 0 : OUTLINE_WIDTH,\n  };\n}\n\nexport function splitPaneMiniMapRepresentsFocusedPane(\n  slots: readonly SplitPaneMiniMapSlot[],\n): boolean {\n  return slots.some((slot) => slot.isMe && slot.isFocused);\n}\n\nexport function SplitPaneMiniMap({\n  slots,\n  label,\n  isWorking = false,\n}: SplitPaneMiniMapProps) {\n  const representsFocusedPane = splitPaneMiniMapRepresentsFocusedPane(slots);\n\n  return (\n    <svg\n      width={GLYPH_SIZE}\n      height={GLYPH_SIZE}\n      viewBox={`0 0 ${GLYPH_SIZE} ${GLYPH_SIZE}`}\n      className={cn(\n        \"pointer-events-none !size-3.5 shrink-0\",\n        !representsFocusedPane && \"opacity-60\",\n        isWorking && \"animate-shine-icon\",\n      )}\n      shapeRendering=\"crispEdges\"\n      role=\"img\"\n      aria-label={label}\n    >\n      {slots.map((slot) => {\n        const geometry = splitPaneMiniMapSlotGeometry(slot);\n        return (\n          <rect\n            key={slot.paneId}\n            x={geometry.x}\n            y={geometry.y}\n            width={geometry.width}\n            height={geometry.height}\n            strokeWidth={geometry.strokeWidth}\n            className={cn(\n              slot.isMe\n                ? slot.isFocused\n                  ? \"fill-primary/70 stroke-none\"\n                  : \"fill-muted-foreground/45 stroke-none\"\n                : \"fill-none stroke-muted-foreground/30\",\n            )}\n          />\n        );\n      })}\n    </svg>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/split-pane-mini-map.tsx"
+    }
+  ]
+}

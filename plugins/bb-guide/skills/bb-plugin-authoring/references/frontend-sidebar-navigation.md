@@ -3,11 +3,12 @@
 ## Drawing the sidebar navigation
 
 `app.slots.experimental_sidebarNavigation` draws the sidebar's navigation.
-It is exclusive. bb ships two providers of its own through the same slot
-contract: Rail (`__bb__/rail`, the default) and Top list
-(`__bb__/top-list`). Users pick one under Settings → Appearance → Navigation;
-Automatic uses the first installed plugin provider, or Rail when there is
-none.
+It is exclusive. bb's own Rail (`navigation/rail`, the default) and Top list
+(`navigation/top-list`) come from the bundled Navigation plugin
+(`plugins/navigation` in the bb repository), which uses only this slot and the
+hooks below, so it is a working example and a forkable starting point. Users
+pick a provider under Settings → Appearance → Navigation; Automatic uses the
+first provider from another plugin, or Rail when there is none.
 
 Declare where you draw with `placement`, because bb lays out the sidebar
 before your bundle loads:
@@ -20,12 +21,13 @@ before your bundle loads:
   lists, and a collapse hides the whole sidebar. Draw a divider below your
   rows if your layout wants one.
 
-Draw New thread yourself, in your component or in a `headerComponent`. bb's
+Draw New thread yourself, in your component or in a `headerComponent`. The
 Rail puts it in its header and leaves it out of Customize; Top list draws it
 as a row that the user can reorder and hide like any other.
 
 The component receives `isCompactViewport`, `placement`, and the deprecated
-`experimental_Original`, which renders bb's provider for your placement.
+`experimental_Original`, which renders the Navigation plugin's provider for
+your placement, or nothing when that plugin is disabled.
 
 Read the items with `experimental_useSidebarNavigation()`. It returns
 `{ items, activeItemId, isHomeActive, isShortcutModifierHeld, actions }`.

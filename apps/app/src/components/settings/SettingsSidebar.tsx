@@ -23,7 +23,7 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
 } from "@bb/shared-ui/sidebar-row-classes";
-import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
+import { ShortcutPill } from "@bb/shared-ui/shortcut-pill";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SectionSidebar,
@@ -190,7 +190,7 @@ function SettingsSearchField({
           <Icon name="X" aria-hidden />
         </Button>
       ) : (
-        <AppCommandShortcutPill
+        <ShortcutPill
           shortcut={SETTINGS_SEARCH_SHORTCUT}
           className="mr-1 max-md:pointer-coarse:hidden"
         />

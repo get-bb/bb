@@ -44,12 +44,31 @@ function navigationSlot(
   };
 }
 
-function renderHeader(slot: ExperimentalSidebarNavigationSlot) {
+function BundledHeaderFixture() {
+  return <div data-testid="bundled-header-fixture" />;
+}
+
+const BUNDLED_RAIL: ExperimentalSidebarNavigationSlot = {
+  id: "rail",
+  title: "Rail",
+  placement: "rail",
+  component: () => null,
+  headerComponent: BundledHeaderFixture,
+  pluginId: "navigation",
+  generation: 1,
+};
+
+function renderHeader(
+  slot: ExperimentalSidebarNavigationSlot,
+  fallback: ExperimentalSidebarNavigationSlot | null = null,
+) {
   return render(
     <Provider store={createStore()}>
       <MemoryRouter>
         <SidebarProvider>
-          <SidebarNavigationHeader resolved={{ kind: "plugin", slot }} />
+          <SidebarNavigationHeader
+            resolved={{ kind: "plugin", slot, fallback }}
+          />
         </SidebarProvider>
       </MemoryRouter>
     </Provider>,
@@ -117,8 +136,23 @@ describe("SidebarNavigationHeader", () => {
     expect(getNotifications()).toEqual([
       expect.objectContaining({
         title: "Sidebar header plugin crashed",
+        description: "Garden icons (garden) stopped working.",
+      }),
+    ]);
+  });
+
+  it("draws the bundled header for the same placement when a provider crashes", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderHeader(navigationSlot(HeaderFixture), BUNDLED_RAIL);
+
+    fireEvent.click(screen.getByRole("button", { name: "Crash header" }));
+
+    expect(screen.getByTestId("bundled-header-fixture")).toBeDefined();
+    expect(getNotifications()).toEqual([
+      expect.objectContaining({
         description:
-          "Garden icons (garden) stopped working, so bb drew its own sidebar header instead.",
+          "Garden icons (garden) stopped working, so bb drew the Rail header instead.",
       }),
     ]);
   });

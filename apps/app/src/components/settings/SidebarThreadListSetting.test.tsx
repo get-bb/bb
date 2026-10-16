@@ -5,6 +5,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   resetPluginSlotStoreForTest,
+  setBuiltinPluginIds,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
@@ -20,6 +21,7 @@ afterEach(async () => {
 
 describe("SidebarThreadListSetting", () => {
   it("defaults to Automatic, which prefers an installed plugin over the bundled Thread list", async () => {
+    setBuiltinPluginIds(["thread-list"]);
     setPluginSlotRegistrations(
       "thread-list",
       makePluginRegistrationSet({
@@ -65,7 +67,7 @@ describe("SidebarThreadListSetting", () => {
       .getAllByRole("menuitem")
       .map((item) => item.textContent ?? "");
     expect(options[1]).toContain("InboxFrom the zen plugin.");
-    expect(options[2]).toContain("Thread list (built-in)BB default.");
+    expect(options[2]).toBe("Thread list (built-in)");
     fireEvent.click(
       screen.getByRole("menuitem", { name: /^Thread list \(built-in\)/u }),
     );

@@ -15,6 +15,7 @@ export type SettingsSearchCondition =
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "sidebarNavigations"
   | "sourceCodeRenderers"
   | "threadLists";
 
@@ -137,6 +138,7 @@ export const SETTINGS_SEARCH_INDEX: Record<
       {
         title: "Navigation",
         keywords: ["sidebar", "rail", "top list", "layout", "labels", "plugin"],
+        when: "sidebarNavigations",
       },
       {
         title: "Sidebar thread list",

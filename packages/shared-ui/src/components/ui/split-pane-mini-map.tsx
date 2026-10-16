@@ -1,5 +1,11 @@
-import { cn } from "@bb/shared-ui/lib/utils";
-import type { PluginSidebarSplitPane } from "@get-bb/plugin-sdk";
+import { cn } from "../../lib/utils";
+
+export interface SplitPaneMiniMapSlot {
+  paneId: string;
+  rect: { x: number; y: number; width: number; height: number };
+  isMe: boolean;
+  isFocused: boolean;
+}
 
 const GLYPH_SIZE = 14;
 const GLYPH_PADDING = 1;
@@ -7,8 +13,9 @@ const INNER = GLYPH_SIZE - 2 * GLYPH_PADDING;
 const OUTLINE_WIDTH = 1;
 
 interface SplitPaneMiniMapProps {
-  slots: readonly PluginSidebarSplitPane[];
+  slots: readonly SplitPaneMiniMapSlot[];
   label: string;
+  isWorking?: boolean;
 }
 
 function offset(value: number): number {
@@ -23,7 +30,7 @@ function outlineInset(isFilled: boolean): number {
   return isFilled ? 0 : OUTLINE_WIDTH / 2;
 }
 
-function splitPaneMiniMapSlotGeometry(slot: PluginSidebarSplitPane) {
+export function splitPaneMiniMapSlotGeometry(slot: SplitPaneMiniMapSlot) {
   const inset = outlineInset(slot.isMe);
   return {
     x: offset(slot.rect.x) + inset,
@@ -34,13 +41,17 @@ function splitPaneMiniMapSlotGeometry(slot: PluginSidebarSplitPane) {
   };
 }
 
-function splitPaneMiniMapRepresentsFocusedPane(
-  slots: readonly PluginSidebarSplitPane[],
+export function splitPaneMiniMapRepresentsFocusedPane(
+  slots: readonly SplitPaneMiniMapSlot[],
 ): boolean {
   return slots.some((slot) => slot.isMe && slot.isFocused);
 }
 
-export function SplitPaneMiniMap({ slots, label }: SplitPaneMiniMapProps) {
+export function SplitPaneMiniMap({
+  slots,
+  label,
+  isWorking = false,
+}: SplitPaneMiniMapProps) {
   const representsFocusedPane = splitPaneMiniMapRepresentsFocusedPane(slots);
 
   return (
@@ -51,6 +62,7 @@ export function SplitPaneMiniMap({ slots, label }: SplitPaneMiniMapProps) {
       className={cn(
         "pointer-events-none !size-3.5 shrink-0",
         !representsFocusedPane && "opacity-60",
+        isWorking && "animate-shine-icon",
       )}
       shapeRendering="crispEdges"
       role="img"

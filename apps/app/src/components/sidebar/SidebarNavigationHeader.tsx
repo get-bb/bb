@@ -1,17 +1,13 @@
-import { useLayoutEffect, useRef, useState, type ComponentType } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { ExperimentalSidebarHeaderProps } from "@get-bb/plugin-sdk";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { appToast } from "@/components/ui/app-toast";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { ExperimentalSidebarNavigationSlot } from "@/lib/plugin-slots";
-import { NavRailNewThreadButton } from "./AppNavRail";
-import {
-  builtInNavigationForPlacement,
-  RAIL_NAVIGATION_PROVIDER,
-  type BuiltInNavigationProvider,
-  type ResolvedSidebarNavigation,
-} from "./sidebarNavigationProvider";
+import { useSidebarHeaderControlAxisClass } from "./SidebarChrome";
+import type { ResolvedSidebarNavigation } from "./sidebarNavigationProvider";
 
 const SIDEBAR_HEADER_SLOT_KIND = "sidebarHeader";
 const DEFAULT_CONTROL_SIZE = 28;
@@ -28,48 +24,47 @@ export function SidebarNavigationHeader({
 }: {
   resolved: ResolvedSidebarNavigation;
 }) {
-  switch (resolved.kind) {
-    case "built-in":
-      return <BuiltInNavigationHeader provider={resolved.provider} />;
-    case "loading":
-      return (
-        <BuiltInNavigationHeader
-          provider={builtInNavigationForPlacement(resolved.placement)}
-        />
-      );
-    case "plugin": {
-      const header = resolved.slot.headerComponent;
-      if (header === undefined) return null;
-      return <PluginNavigationHeader slot={resolved.slot} header={header} />;
-    }
-  }
+  if (resolved.kind !== "plugin") return null;
+  if (resolved.slot.headerComponent === undefined) return null;
+  return (
+    <PluginNavigationHeader slot={resolved.slot} fallback={resolved.fallback} />
+  );
 }
 
-function BuiltInNavigationHeader({
-  provider,
+function HeaderSlot({
+  slot,
+  original,
+  props,
+  onCrash,
 }: {
-  provider: BuiltInNavigationProvider;
+  slot: ExperimentalSidebarNavigationSlot;
+  original: ReactNode;
+  props: ExperimentalSidebarHeaderProps;
+  onCrash?: (pluginId: string) => void;
 }) {
-  if (provider.key !== RAIL_NAVIGATION_PROVIDER) return null;
+  const Header = slot.headerComponent;
+  if (Header === undefined) return original;
   return (
-    <div
-      data-testid="nav-rail-header"
-      data-sidebar-header-slot=""
-      className="flex h-full min-w-0 flex-1 items-center"
+    <PluginReplacementSlot
+      replacement={{ kind: "plugin", registration: slot }}
+      original={original}
+      slotKind={SIDEBAR_HEADER_SLOT_KIND}
+      {...(onCrash === undefined ? {} : { onCrash })}
     >
-      <NavRailNewThreadButton />
-    </div>
+      {() => <Header {...props} />}
+    </PluginReplacementSlot>
   );
 }
 
 function PluginNavigationHeader({
   slot,
-  header: Header,
+  fallback,
 }: {
   slot: ExperimentalSidebarNavigationSlot;
-  header: ComponentType<ExperimentalSidebarHeaderProps>;
+  fallback: ExperimentalSidebarNavigationSlot | null;
 }) {
   const { isCompactViewport } = useSidebar();
+  const axisClass = useSidebarHeaderControlAxisClass();
   const slotRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({
     width: 0,
@@ -97,35 +92,40 @@ function PluginNavigationHeader({
     return () => observer.disconnect();
   }, [isCompactViewport]);
 
+  const props = {
+    width: size.width,
+    controlSize: size.controlSize,
+    isCompactViewport,
+  };
+  const fallbackHeader =
+    fallback?.headerComponent === undefined ? null : fallback.title;
   return (
     <div
       ref={slotRef}
       data-testid="sidebar-header-slot"
       data-sidebar-header-slot=""
-      className="flex h-full min-w-0 flex-1 items-center overflow-hidden"
+      className={cn(
+        "flex h-full min-w-0 flex-1 items-center overflow-hidden",
+        axisClass,
+      )}
     >
-      <PluginReplacementSlot
-        replacement={{ kind: "plugin", registration: slot }}
+      <HeaderSlot
+        slot={slot}
+        props={props}
         original={
-          <BuiltInNavigationHeader
-            provider={builtInNavigationForPlacement(slot.placement)}
-          />
+          fallback === null ? null : (
+            <HeaderSlot slot={fallback} props={props} original={null} />
+          )
         }
-        slotKind={SIDEBAR_HEADER_SLOT_KIND}
         onCrash={(pluginId) => {
           appToast.error("Sidebar header plugin crashed", {
-            description: `${slot.title} (${pluginId}) stopped working, so bb drew its own sidebar header instead.`,
+            description:
+              fallbackHeader === null
+                ? `${slot.title} (${pluginId}) stopped working.`
+                : `${slot.title} (${pluginId}) stopped working, so bb drew the ${fallbackHeader} header instead.`,
           });
         }}
-      >
-        {() => (
-          <Header
-            width={size.width}
-            controlSize={size.controlSize}
-            isCompactViewport={isCompactViewport}
-          />
-        )}
-      </PluginReplacementSlot>
+      />
     </div>
   );
 }

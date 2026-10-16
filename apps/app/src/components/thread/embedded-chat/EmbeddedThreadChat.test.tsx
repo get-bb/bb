@@ -153,7 +153,7 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/overflow-fade", () => ({
+vi.mock("@bb/shared-ui/overflow-fade", () => ({
   OverflowFade: ({ tone }: { tone: string }) => (
     <div data-testid="embedded-chat-overflow-fade" data-tone={tone} />
   ),

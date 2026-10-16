@@ -19,13 +19,13 @@ function slot(pluginId: string, id: string): PluginThreadListSlot {
 
 function resolve(
   slots: readonly PluginThreadListSlot[],
-  preference?: string,
-  bundledProvider?: string,
+  preference: string = AUTOMATIC_REPLACEMENT_PROVIDER,
+  builtinPluginIds: ReadonlySet<string> = new Set(),
 ): PluginThreadListSlot | null {
   const resolved = resolvePreferredReplacement(
     slots,
     preference,
-    bundledProvider,
+    builtinPluginIds,
   );
   return resolved.kind === "plugin" ? resolved.registration : null;
 }
@@ -60,28 +60,28 @@ describe("resolvePreferredReplacement", () => {
     expect(resolve([], "alpha/inbox")).toBeNull();
   });
 
-  it("prefers an installed replacement over the bundled provider regardless of plugin order", () => {
+  it("prefers an installed replacement over a built-in plugin's regardless of plugin order", () => {
     const bundled = slot("thread-list", "thread-list");
     const community = slot("zen", "list");
     expect(
       resolve(
         [bundled, community],
         AUTOMATIC_REPLACEMENT_PROVIDER,
-        "thread-list/thread-list",
+        new Set(["thread-list"]),
       ),
     ).toBe(community);
     expect(
       resolve(
         [bundled],
         AUTOMATIC_REPLACEMENT_PROVIDER,
-        "thread-list/thread-list",
+        new Set(["thread-list"]),
       ),
     ).toBe(bundled);
     expect(
       resolve(
         [bundled, community],
         "thread-list/thread-list",
-        "thread-list/thread-list",
+        new Set(["thread-list"]),
       ),
     ).toBe(bundled);
   });

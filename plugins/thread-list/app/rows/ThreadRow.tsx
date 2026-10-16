@@ -68,7 +68,7 @@ import {
   sidebarShowProviderIconsAtom,
   threadRowActionsAtom,
 } from "../preferences/atoms.js";
-import { AppCommandShortcutPill } from "../ui/AppCommandShortcutPill.js";
+import { ShortcutPill } from "@/components/ui/shortcut-pill";
 import { SidebarStickyTier } from "../ui/sidebar.js";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -100,7 +100,7 @@ import type {
 } from "./sidebarThreadRowDroppable.js";
 import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motion";
 import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
-import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
+import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { ThreadRowQuickActions } from "./ThreadRowQuickActions.js";
 import { toThreadActionTarget } from "./threadActionTarget.js";
 import { useOpenThreadInSplit } from "./threadRowNavigation.js";
@@ -851,7 +851,7 @@ function ThreadRowComponent({
             </span>
           </span>
         ) : shortcut ? (
-          <AppCommandShortcutPill shortcut={shortcut} />
+          <ShortcutPill shortcut={shortcut} />
         ) : (
           <span
             className={cn(

@@ -58,6 +58,7 @@ vi.mock("@/hooks/usePluginSafeModeCommands", () => ({
 }));
 
 vi.mock("@/lib/plugin-slots", () => ({
+  useBuiltinPluginIds: () => new Set<string>(),
   usePluginSlots: () => ({
     appOverlays: [],
     commandPaletteActions: [],
