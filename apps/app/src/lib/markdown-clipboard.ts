@@ -1,3 +1,5 @@
+import { expandRangeToMath, mathMarkdown } from "./markdown-clipboard-math";
+
 const omittedElements =
   "button, script, style, input, textarea, select, audio, video, canvas, embed, iframe, object, meta, link, [data-clipboard-ignore]";
 const blockTags = new Set([
@@ -86,6 +88,8 @@ function nodeMarkdown(node: Node): string {
     return escapeText(node.textContent ?? "");
   if (!(node instanceof Element)) return childrenMarkdown(node);
   if (node.matches(omittedElements)) return "";
+  const math = mathMarkdown(node);
+  if (math !== null) return math;
   const tag = node.tagName;
   if (tag === "PRE") {
     const code = node.querySelector("code");
@@ -139,9 +143,10 @@ function nodeMarkdown(node: Node): string {
 }
 
 export function selectionClipboard(
-  range: Range,
+  selected: Range,
   root: Element,
 ): { text: string; html: string } {
+  const range = expandRangeToMath(selected);
   const start =
     range.startContainer instanceof Element
       ? range.startContainer

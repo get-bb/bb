@@ -1018,7 +1018,10 @@ function MarkdownFilePreview({
     return () => container.removeEventListener("scroll", savePosition);
   }, [scrollPosition, file.name, file.contents]);
   return (
-    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
+    <SecondaryPanelSelectionActions
+      markdown
+      onSelectionAddToChat={onSelectionAddToChat}
+    >
       <div ref={contentRef} className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
