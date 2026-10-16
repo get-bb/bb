@@ -298,7 +298,28 @@ export const oauthRefreshToken = sqliteTable(
   (table) => [index("oauth_refresh_token_grant_id_idx").on(table.grantId)],
 );
 
+export const communitySurveyResponse = sqliteTable(
+  "community_survey_response",
+  {
+    id: text("id").primaryKey(),
+    createdAt: integer("created_at").notNull(),
+    answers: text("answers").notNull(),
+  },
+);
+
+export const communityMerchAddress = sqliteTable("community_merch_address", {
+  id: text("id").primaryKey(),
+  createdAt: integer("created_at").notNull(),
+  recipientCode: text("recipient_code").notNull(),
+  name: text("name").notNull(),
+  address: text("address").notNull(),
+  country: text("country").notNull(),
+  hat: integer("hat", { mode: "boolean" }),
+});
+
 export const schema = {
+  communitySurveyResponse,
+  communityMerchAddress,
   user,
   session,
   account,

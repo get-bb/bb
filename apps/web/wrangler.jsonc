@@ -64,6 +64,11 @@
   ],
   "ratelimits": [
     {
+      "name": "COMMUNITY_FORM_RATE_LIMITER",
+      "namespace_id": "4205",
+      "simple": { "limit": 6, "period": 60 },
+    },
+    {
       "name": "LINK_START_RATE_LIMITER",
       "namespace_id": "4203",
       "simple": { "limit": 10, "period": 60 },
@@ -120,6 +125,11 @@
         },
       ],
       "ratelimits": [
+        {
+          "name": "COMMUNITY_FORM_RATE_LIMITER",
+          "namespace_id": "4206",
+          "simple": { "limit": 6, "period": 60 },
+        },
         {
           "name": "LINK_START_RATE_LIMITER",
           "namespace_id": "4204",

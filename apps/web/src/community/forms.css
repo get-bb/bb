@@ -1,0 +1,222 @@
+.community-page {
+  background: var(--bg);
+  color: var(--ink);
+}
+.community-wrap {
+  max-width: 760px;
+  padding: 0 28px;
+  margin: 0 auto;
+}
+.community-header {
+  min-height: 104px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-soft);
+}
+.community-header > span,
+.community-eyebrow,
+.community-help,
+.community-optional,
+.community-footer {
+  color: var(--dim);
+  font-size: 0.875rem;
+}
+.community-header .logo {
+  display: block;
+}
+.community-intro {
+  padding: 64px 0 24px;
+}
+.community-eyebrow {
+  margin: 0 0 20px;
+}
+.community-page h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  text-align: left;
+  margin: 0 0 24px;
+  color: var(--heading);
+}
+.community-intro > p:not(.community-eyebrow):not(.community-help),
+.community-thanks > p:not(.community-eyebrow) {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+.community-help {
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.community-page fieldset {
+  padding: 32px 0;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  min-width: 0;
+}
+.community-page legend {
+  padding: 0;
+  float: left;
+  width: 100%;
+  font-size: 1rem;
+  line-height: 1.55;
+  font-weight: 600;
+  color: var(--heading);
+  margin-bottom: 16px;
+}
+.community-page legend + * {
+  clear: both;
+}
+.community-number {
+  color: var(--dim);
+  font-weight: 400;
+}
+.community-optional {
+  font-weight: 400;
+  white-space: nowrap;
+}
+.community-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.community-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  line-height: 1.45;
+  font-size: 0.875rem;
+}
+.community-option:hover {
+  background: var(--state-hover);
+}
+.community-option:has(input:checked) {
+  background: var(--surface-recessed);
+  border-color: var(--dim);
+}
+.community-page input[type="radio"],
+.community-page input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin: 2px 0 0;
+  accent-color: var(--ink);
+}
+.community-page input[type="text"],
+.community-page textarea {
+  display: block;
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+.community-page textarea {
+  resize: vertical;
+}
+.community-page input[data-other] {
+  margin-top: 12px;
+}
+.community-page input[hidden] {
+  display: none;
+}
+.community-page :is(input, textarea, button, a):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+.community-error {
+  color: var(--del);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.community-error:empty {
+  display: none;
+}
+.community-notice {
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.community-notice a {
+  color: inherit;
+}
+.community-address {
+  margin-top: 16px;
+}
+.community-field {
+  margin: 24px 0;
+}
+.community-field > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.community-address > .community-help {
+  margin-top: -12px;
+}
+.community-submit {
+  padding: 32px 0 8px;
+}
+.community-submit .btn {
+  width: 100%;
+  justify-content: center;
+  font: inherit;
+  cursor: pointer;
+}
+.community-submit .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.community-submit > p {
+  text-align: center;
+}
+.community-footer {
+  padding: 32px 0;
+  margin-top: 48px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid var(--border-soft);
+}
+.community-footer a,
+.community-thanks a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+.community-thanks {
+  padding: 80px 0;
+  min-height: 50vh;
+}
+@media (max-width: 600px) {
+  .community-wrap {
+    padding: 0 20px;
+  }
+  .community-header {
+    min-height: 80px;
+  }
+  .community-header > span {
+    font-size: 0.75rem;
+  }
+  .community-intro {
+    padding-top: 40px;
+  }
+  .community-options {
+    grid-template-columns: 1fr;
+  }
+  .community-page fieldset {
+    padding: 28px 0;
+  }
+}
