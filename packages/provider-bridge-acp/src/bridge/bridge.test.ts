@@ -669,7 +669,9 @@ describe("acp bridge", () => {
   it("answers a minimal model/list (no params) with the synthetic default", async () => {
     const modelListId = sendRequest("model/list", {});
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
   });
@@ -728,6 +730,7 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
@@ -736,6 +739,7 @@ describe("acp bridge", () => {
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
@@ -767,10 +771,12 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           supportedReasoningEfforts: [
             {
               reasoningEffort: "medium",
@@ -809,9 +815,17 @@ describe("acp bridge", () => {
       models: {
         id: string;
         supportedReasoningEfforts: { reasoningEffort: string }[];
+        supportedServiceTiers: { id: string }[];
       }[];
       selectedOnlyModels: { id: string }[];
     };
+    expect(
+      result.models.map((model) => [model.id, model.supportedServiceTiers]),
+    ).toEqual([
+      ["default", []],
+      ["composer-2.5", []],
+      ["grok-4.6", [{ id: "fast" }]],
+    ]);
     const initialize = loggedAcpRequests(requestLog).find(
       (request) => request.method === "initialize",
     );
@@ -1002,6 +1016,7 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
@@ -1010,6 +1025,7 @@ describe("acp bridge", () => {
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
@@ -1126,7 +1142,9 @@ describe("acp bridge", () => {
     }
 
     expect((await waitForResponse(modelListId!)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
     await waitForAgentExit(readyFile);
@@ -1174,7 +1192,9 @@ describe("acp bridge", () => {
     const modelListId = sendModelList();
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
   });

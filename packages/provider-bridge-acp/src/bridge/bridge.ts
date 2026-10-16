@@ -132,10 +132,11 @@ import {
   buildModelCatalogFromSessionModels,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
+  findAcpFastConfigOption,
   findAcpThoughtLevelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
-  type AcpNativeReasoningSupport,
+  type AcpNativeModelSupport,
   type AgentModelCatalog,
 } from "./model-catalog.js";
 import {
@@ -560,6 +561,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   description: "Model selection is managed by the connected ACP agent.",
   supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
   defaultReasoningEffort: "medium",
+  supportedServiceTiers: [],
   isDefault: true,
 };
 
@@ -930,7 +932,7 @@ async function loadSessionDiscoveredModels(
       return sessionModels;
     }
 
-    const reasoningByModel = await discoverAcpNativeReasoningByModel({
+    const supportByModel = await discoverAcpNativeModelSupport({
       connection,
       sessionId: newSession.sessionId,
       modelOption,
@@ -938,7 +940,7 @@ async function loadSessionDiscoveredModels(
     });
     const models = buildModelCatalogFromConfigOptions(
       modelOption,
-      reasoningByModel,
+      supportByModel,
     );
     cachedSessionDiscoveredModels = {
       key,
@@ -961,12 +963,12 @@ async function loadSessionDiscoveredModels(
   }
 }
 
-async function discoverAcpNativeReasoningByModel(args: {
+async function discoverAcpNativeModelSupport(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   modelOption: AcpConfigOption | undefined;
   reasoningProbePriorityModelIds: readonly string[];
-}): Promise<ReadonlyMap<string, AcpNativeReasoningSupport>> {
+}): Promise<ReadonlyMap<string, AcpNativeModelSupport>> {
   const modelOptions = args.modelOption?.options ?? [];
   if (!args.modelOption || modelOptions.length === 0) {
     return new Map();
@@ -990,11 +992,11 @@ async function discoverAcpNativeReasoningByModel(args: {
     }
   }
 
-  const supportByModel = new Map<string, AcpNativeReasoningSupport>();
+  const supportByModel = new Map<string, AcpNativeModelSupport>();
   let timedOut = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<
-    ReadonlyMap<string, AcpNativeReasoningSupport>
+    ReadonlyMap<string, AcpNativeModelSupport>
   >((resolve) => {
     timeout = setTimeout(() => {
       timedOut = true;
@@ -1017,12 +1019,16 @@ async function discoverAcpNativeReasoningByModel(args: {
               },
               resultSchema: acpConfigStateResultSchema,
             });
-            supportByModel.set(
-              model.value,
-              buildAcpNativeReasoningSupport(
+            supportByModel.set(model.value, {
+              ...buildAcpNativeReasoningSupport(
                 findAcpThoughtLevelConfigOption(configState.configOptions),
               ),
-            );
+              supportedServiceTiers: findAcpFastConfigOption(
+                configState.configOptions,
+              )?.options?.some((option) => option.value === "true")
+                ? [{ id: "fast" }]
+                : [],
+            });
           } catch (error) {
             if (timedOut) {
               break;
@@ -1351,8 +1357,8 @@ async function selectAcpNativeServiceTier(args: {
   if (serviceTier === undefined) {
     return;
   }
-  const fastOption = (args.session.nativeConfig.configOptions ?? []).find(
-    (option) => option.id === "fast" && option.type === "select",
+  const fastOption = findAcpFastConfigOption(
+    args.session.nativeConfig.configOptions,
   );
   const value = serviceTier === "fast" ? "true" : "false";
   if (!fastOption?.options?.some((option) => option.value === value)) {
