@@ -18,7 +18,156 @@ const FRAME_TYPE = {
   wsOpenAck: 6,
   wsData: 7,
   closeStream: 8,
+  openReaderHttp: 9,
 } as const;
+
+export const READER_CONTEXT_CAPABILITY = "reader-context-v1";
+export const READER_CONTEXT_CAPABILITY_QUERY_PARAM = "readerContext";
+export const READER_REQUEST_INTENT_HEADER = "x-bb-reader-request";
+export const READER_CONTEXT_HEADER = "x-bb-reader-context";
+export const MAX_READER_BODY_BYTES = 8192;
+
+export interface ReaderRequestContext {
+  readonly schema: "bb-reader-context-v1";
+  readonly issuer: string;
+  readonly subject: string;
+  readonly sessionId: string;
+  readonly generation: number;
+  readonly serverId: string;
+  readonly pluginId: string;
+  readonly rpcMethod: string;
+  readonly nonce: string;
+  readonly checkedAt: number;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+  readonly method: "POST";
+  readonly path: string;
+  readonly bodySha256: string;
+  readonly bodyBytes: number;
+}
+
+export interface OpenReaderHttpFrame {
+  type: "open-reader-http";
+  streamId: number;
+  context: ReaderRequestContext;
+}
+
+export interface ReaderContextRequest {
+  dispatch(body: Uint8Array): Promise<Response>;
+}
+
+export interface ReaderContextConnection {
+  begin(
+    context: ReaderRequestContext,
+    signal: AbortSignal,
+  ): ReaderContextRequest | null;
+  close(): void;
+}
+
+export interface BuiltinConnectRequestContext {
+  openConnection(serverId: string): ReaderContextConnection | null;
+}
+
+const READER_KEYS = [
+  "schema",
+  "issuer",
+  "subject",
+  "sessionId",
+  "generation",
+  "serverId",
+  "pluginId",
+  "rpcMethod",
+  "nonce",
+  "checkedAt",
+  "issuedAt",
+  "expiresAt",
+  "method",
+  "path",
+  "bodySha256",
+  "bodyBytes",
+];
+export function readerRpcTarget(
+  path: string,
+): { pluginId: string; rpcMethod: string } | null {
+  if (path.length > 1024) return null;
+  const match =
+    /^\/api\/v1\/plugins\/([a-z0-9][a-z0-9-]*)\/rpc\/([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)$/u.exec(
+      path,
+    );
+  return match === null ? null : { pluginId: match[1]!, rpcMethod: match[2]! };
+}
+
+function readerContextSnapshot(value: unknown): Record<string, unknown> | null {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== READER_KEYS.length ||
+      keys.some((key) => typeof key !== "string" || !READER_KEYS.includes(key))
+    )
+      return null;
+    const record: Record<string, unknown> = Object.create(null);
+    for (const key of READER_KEYS) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      record[key] = descriptor.value;
+    }
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+export function parseReaderRequestContext(
+  value: unknown,
+): ReaderRequestContext {
+  const record = readerContextSnapshot(value);
+  if (record === null) throw new Error("invalid reader context");
+  for (const key of [
+    "issuer",
+    "subject",
+    "sessionId",
+    "serverId",
+    "pluginId",
+    "rpcMethod",
+    "nonce",
+    "path",
+    "bodySha256",
+  ]) {
+    if (
+      typeof record[key] !== "string" ||
+      record[key].length === 0 ||
+      record[key].length > 1024
+    )
+      throw new Error("invalid reader context");
+  }
+  for (const key of [
+    "generation",
+    "checkedAt",
+    "issuedAt",
+    "expiresAt",
+    "bodyBytes",
+  ]) {
+    if (
+      typeof record[key] !== "number" ||
+      !Number.isSafeInteger(record[key]) ||
+      record[key] < 0
+    )
+      throw new Error("invalid reader context");
+  }
+  const target = readerRpcTarget(record.path as string);
+  if (
+    record.schema !== "bb-reader-context-v1" ||
+    record.method !== "POST" ||
+    (record.bodyBytes as number) > MAX_READER_BODY_BYTES ||
+    !/^[a-f0-9]{64}$/u.test(record.bodySha256 as string) ||
+    target?.pluginId !== record.pluginId ||
+    target?.rpcMethod !== record.rpcMethod
+  )
+    throw new Error("invalid reader context");
+  return Object.freeze(record) as unknown as ReaderRequestContext;
+}
 
 export type HeaderPair = [name: string, value: string];
 
@@ -80,6 +229,7 @@ interface CloseStreamFrame {
 }
 
 export type Frame =
+  | OpenReaderHttpFrame
   | OpenHttpFrame
   | BodyChunkFrame
   | BodyEndFrame
@@ -98,6 +248,7 @@ const FRAME_TYPE_NAMES = new Map<number, Frame["type"]>([
   [FRAME_TYPE.wsOpenAck, "ws-open-ack"],
   [FRAME_TYPE.wsData, "ws-data"],
   [FRAME_TYPE.closeStream, "close-stream"],
+  [FRAME_TYPE.openReaderHttp, "open-reader-http"],
 ]);
 
 const FRAME_HEADER_BYTES = 5;
@@ -161,6 +312,12 @@ function jsonPayload(value: unknown): Uint8Array {
 
 export function encodeFrame(frame: Frame): Uint8Array {
   switch (frame.type) {
+    case "open-reader-http":
+      return withHeader(
+        FRAME_TYPE.openReaderHttp,
+        frame.streamId,
+        jsonPayload({ context: parseReaderRequestContext(frame.context) }),
+      );
     case "open-http":
       return withHeader(
         FRAME_TYPE.openHttp,
@@ -238,6 +395,25 @@ export function decodeFrame(message: ArrayBuffer | Uint8Array): Frame {
   const streamId = new DataView(buf.buffer, buf.byteOffset).getUint32(1);
   const payload = buf.subarray(5);
   switch (type) {
+    case FRAME_TYPE.openReaderHttp: {
+      if (payload.byteLength > 8192) throw new Error("invalid reader frame");
+      const meta = parseJson<Record<string, unknown>>(
+        payload,
+        "open-reader-http",
+      );
+      if (
+        typeof meta !== "object" ||
+        meta === null ||
+        Object.keys(meta).length !== 1 ||
+        !Object.hasOwn(meta, "context")
+      )
+        throw new Error("invalid reader frame");
+      return {
+        type: "open-reader-http",
+        streamId,
+        context: parseReaderRequestContext(meta.context),
+      };
+    }
     case FRAME_TYPE.openHttp: {
       const meta = parseJson<{
         method: string;

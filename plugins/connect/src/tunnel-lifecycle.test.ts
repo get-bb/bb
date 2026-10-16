@@ -3,7 +3,12 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { ShareHostResolver } from "./hosts.js";
 import { ShareRegistry } from "./shares.js";
 import { TEST_ACCOUNT } from "./testing/fake-account.js";
-import { HEARTBEAT_RESPONSE } from "@bb/tunnel-contract";
+import {
+  HEARTBEAT_RESPONSE,
+  READER_CONTEXT_CAPABILITY,
+  READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+  type BuiltinConnectRequestContext,
+} from "@bb/tunnel-contract";
 
 interface FakeWebSocketOptions {
   handshakeTimeout?: number;
@@ -66,6 +71,7 @@ const SERVER_CREDENTIAL: SharedCredential = {
 function createTunnelFixture(
   readCredential: () => Promise<SharedCredential | null> = async () =>
     SERVER_CREDENTIAL,
+  requestContext?: BuiltinConnectRequestContext,
 ) {
   const fakeHost = createFakePluginHost({
     pluginId: "connect",
@@ -93,6 +99,7 @@ function createTunnelFixture(
   });
   const tunnel: ConnectTunnel = new ConnectTunnel({
     shares,
+    requestContext,
     readCredential: read,
     confirmRefusedCredential: confirmRefused,
     defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
@@ -116,6 +123,48 @@ describe("ConnectTunnel socket lifecycle", () => {
     fakeWebSockets.instances.length = 0;
     fakeWebSockets.urls.length = 0;
     fakeWebSockets.options.length = 0;
+  });
+
+  it("advertises reader support only after the core creates a private connection", async () => {
+    const close = vi.fn();
+    const openConnection = vi.fn(() => ({ begin: () => null, close }));
+    const { fakeHost, tunnel } = createTunnelFixture(undefined, {
+      openConnection,
+    });
+    try {
+      await tunnel.start();
+      await socketCount(1);
+      expect(openConnection).toHaveBeenCalledExactlyOnceWith(
+        TEST_ACCOUNT.serverId,
+      );
+      expect(
+        new URL(fakeWebSockets.urls[0]!).searchParams.get(
+          READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+        ),
+      ).toBe(READER_CONTEXT_CAPABILITY);
+      fakeWebSockets.instances[0]!.emit("close", 1000, Buffer.from("closed"));
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      tunnel.stop();
+      await fakeHost.harness.dispose();
+    }
+  });
+  it("does not advertise a disabled private connection", async () => {
+    const { fakeHost, tunnel } = createTunnelFixture(undefined, {
+      openConnection: () => null,
+    });
+    try {
+      await tunnel.start();
+      await socketCount(1);
+      expect(
+        new URL(fakeWebSockets.urls[0]!).searchParams.has(
+          READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+        ),
+      ).toBe(false);
+    } finally {
+      tunnel.stop();
+      await fakeHost.harness.dispose();
+    }
   });
 
   it("dials the account's tunnel URL with the server credential from bb account", async () => {

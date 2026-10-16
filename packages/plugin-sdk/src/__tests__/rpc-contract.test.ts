@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
+import { normalizeRpcRegistration } from "../internal/host-policy.js";
 import type { PluginRpcClient } from "../app-contract.js";
 import {
   defineRpcContract,
@@ -75,4 +76,45 @@ describe("schema-driven rpc contract", () => {
       }),
     ).toEqual({ ok: true });
   });
+});
+
+describe("experimental authority admission declaration", () => {
+  it("normalizes exact true and preserves default false", () => {
+    const records = normalizeRpcRegistration(
+      {
+        private: {
+          input: z.null(),
+          output: z.null(),
+          experimental_requestAuthority: true,
+        },
+        ordinary: { input: z.null(), output: z.null() },
+      },
+      { private: () => null, ordinary: () => null },
+      new Map(),
+      undefined,
+    );
+    expect(records.map(([, value]) => value.requestAuthority)).toEqual([
+      true,
+      false,
+    ]);
+  });
+  it.each(["true", 1, null, {}])(
+    "refuses loosely typed authority declarations",
+    (value) => {
+      expect(() =>
+        normalizeRpcRegistration(
+          {
+            private: {
+              input: z.null(),
+              output: z.null(),
+              experimental_requestAuthority: value,
+            },
+          },
+          { private: () => null },
+          new Map(),
+          undefined,
+        ),
+      ).toThrow();
+    },
+  );
 });

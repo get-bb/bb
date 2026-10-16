@@ -15,6 +15,10 @@ import {
   type HeaderPair,
   type OpenHttpFrame,
   type OpenWsFrame,
+  type OpenReaderHttpFrame,
+  type ReaderContextConnection,
+  type ReaderContextRequest,
+  MAX_READER_BODY_BYTES,
 } from "@bb/tunnel-contract";
 import { headersForLoopbackRequest } from "./headers.js";
 import type { TunnelClientLogger } from "./logger.js";
@@ -94,7 +98,10 @@ export function isBareBbRealtimeWs(
 }
 
 interface HttpStream {
-  meta: OpenHttpFrame;
+  meta: OpenHttpFrame | OpenReaderHttpFrame;
+  dispatched: boolean;
+  bytes: number;
+  readerRequest?: ReaderContextRequest | null;
   chunks: Buffer[];
   abort: AbortController;
 }
@@ -132,9 +139,11 @@ interface TunnelSessionOptions {
   onRemoteClientsChange?: (remoteClients: number) => void;
   onActivity?: (at: number) => void;
   monotonicNow?: () => number;
+  readerContext?: ReaderContextConnection;
 }
 
 export class TunnelSession {
+  private disposed = false;
   private readonly httpStreams = new Map<number, HttpStream>();
   private readonly wsStreams = new Map<number, WsStream>();
   private lastAck = Date.now();
@@ -218,6 +227,9 @@ export class TunnelSession {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.options.readerContext?.close();
     if (this.heartbeat) clearInterval(this.heartbeat);
     for (const s of this.httpStreams.values()) s.abort.abort();
     for (const s of this.wsStreams.values())
@@ -270,23 +282,69 @@ export class TunnelSession {
   }
 
   private onFrame(frame: Frame): void {
+    if (this.disposed) return;
     this.noteActivity();
     switch (frame.type) {
+      case "open-reader-http":
       case "open-http": {
+        if (this.httpStreams.has(frame.streamId)) {
+          this.httpStreams.get(frame.streamId)?.abort.abort();
+          this.dispose();
+          return;
+        }
         const stream: HttpStream = {
           meta: frame,
+          dispatched: false,
+          bytes: 0,
           chunks: [],
           abort: new AbortController(),
         };
+        if (frame.type === "open-reader-http") {
+          stream.readerRequest =
+            this.httpStreams.size >= 1024
+              ? null
+              : this.options.readerContext?.begin(
+                  frame.context,
+                  stream.abort.signal,
+                );
+          if (stream.readerRequest == null) {
+            this.send({
+              type: "resp-head",
+              streamId: frame.streamId,
+              status: 403,
+              headers: [["cache-control", "no-store"]],
+            });
+            this.send({ type: "body-end", streamId: frame.streamId });
+            return;
+          }
+        }
         this.httpStreams.set(frame.streamId, stream);
-        if (!frame.hasBody) void this.executeHttp(frame.streamId, stream);
+        if (frame.type === "open-http" && !frame.hasBody)
+          void this.executeHttp(frame.streamId, stream);
         return;
       }
-      case "body-chunk":
-        this.httpStreams
-          .get(frame.streamId)
-          ?.chunks.push(Buffer.from(frame.data));
+      case "body-chunk": {
+        const stream = this.httpStreams.get(frame.streamId);
+        if (!stream) return;
+        if (
+          stream.dispatched ||
+          (stream.meta.type === "open-reader-http" &&
+            stream.bytes + frame.data.byteLength > MAX_READER_BODY_BYTES)
+        ) {
+          stream.abort.abort();
+          this.httpStreams.delete(frame.streamId);
+          this.send({
+            type: "close-stream",
+            streamId: frame.streamId,
+            code: 1008,
+            reason: "reader request refused",
+          });
+          return;
+        }
+        stream.bytes += frame.data.byteLength;
+        stream.chunks.push(Buffer.from(frame.data));
         return;
+      }
       case "body-end": {
         const s = this.httpStreams.get(frame.streamId);
         if (s) void this.executeHttp(frame.streamId, s);
@@ -348,6 +406,12 @@ export class TunnelSession {
     streamId: number,
     stream: HttpStream,
   ): Promise<void> {
+    if (stream.dispatched) return;
+    stream.dispatched = true;
+    if (stream.meta.type === "open-reader-http") {
+      await this.executeReaderHttp(streamId, stream);
+      return;
+    }
     const { meta } = stream;
     const originResult = this.options.resolveOrigin(meta.target);
     if (originResult.kind === "unregistered") {
@@ -424,6 +488,45 @@ export class TunnelSession {
       }
     } finally {
       this.httpStreams.delete(streamId);
+    }
+  }
+
+  private async executeReaderHttp(
+    streamId: number,
+    stream: HttpStream,
+  ): Promise<void> {
+    if (stream.meta.type !== "open-reader-http") return;
+    try {
+      const response =
+        stream.readerRequest == null
+          ? new Response("reader request refused", { status: 403 })
+          : await stream.readerRequest.dispatch(Buffer.concat(stream.chunks));
+      if (this.disposed || stream.abort.signal.aborted) return;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (this.disposed || stream.abort.signal.aborted) return;
+      this.send({
+        type: "resp-head",
+        streamId,
+        status: response.status,
+        headers: [
+          ["content-type", "application/json"],
+          ["cache-control", "no-store"],
+        ],
+      });
+      for (const chunk of chunkBody(streamId, bytes)) this.send(chunk);
+      this.send({ type: "body-end", streamId });
+    } catch {
+      if (!this.disposed && !stream.abort.signal.aborted) {
+        this.send({
+          type: "close-stream",
+          streamId,
+          code: 1008,
+          reason: "reader request refused",
+        });
+      }
+    } finally {
+      if (this.httpStreams.get(streamId) === stream)
+        this.httpStreams.delete(streamId);
     }
   }
 

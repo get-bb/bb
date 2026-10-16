@@ -70,6 +70,8 @@ export interface PluginRpcMethodContract<
   OutputSchema extends StandardSchemaV1 = StandardSchemaV1,
 > {
   readonly experimental_description?: string;
+  /** Requires a core-owned browser request authority; ordinary RPC ingress is refused. */
+  readonly experimental_requestAuthority?: boolean;
   readonly input: InputSchema;
   readonly output: OutputSchema;
 }
@@ -95,9 +97,40 @@ export type ExperimentalPluginRpcCaller =
   | { readonly kind: "plugin"; readonly pluginId: string }
   | { readonly kind: "client" };
 
+/** An opaque request capability whose authority comes only from the core registry. */
+export interface ExperimentalRequestAuthority {
+  readonly __experimentalRequestAuthority: unique symbol;
+}
+
+/** A different opaque reference bound to the exact core invocation. */
+export interface ExperimentalRequestInvocation {
+  readonly __experimentalRequestInvocation: unique symbol;
+}
+
+/** Verified browser identity for this invocation, without a login credential or read grant. */
+export interface ExperimentalReaderRequestIdentity {
+  readonly issuer: string;
+  readonly subject: string;
+  readonly sessionId: string;
+  readonly generation: number;
+  readonly serverId: string;
+  readonly pluginId: string;
+  readonly rpcMethod: string;
+  readonly requestId: string;
+  readonly bodySha256: string;
+  /** Original deadline in the core monotonic clock domain, never a new budget. */
+  readonly deadlineMs: number;
+  /** Rechecks finite validity; it does not promise instant logout or atomic delivery. */
+  isCurrent(): boolean;
+}
+
 /** Second argument of every rpc handler. */
 export interface ExperimentalPluginRpcHandlerContext {
   readonly experimental_caller: ExperimentalPluginRpcCaller;
+  /** Present only on the private authenticated reader path. Copies are not authority. */
+  readonly experimental_requestAuthority?: ExperimentalRequestAuthority;
+  /** Core-owned invocation witness paired with the request authority. */
+  readonly experimental_invocation?: ExperimentalRequestInvocation;
 }
 
 export type PluginRpcHandlers<Contract extends PluginRpcContract> = {

@@ -7,6 +7,11 @@ import {
   server,
 } from "@bb/connect-db";
 import {
+  READER_CONTEXT_CAPABILITY,
+  READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+  READER_CONTEXT_HEADER,
+  parseReaderRequestContext,
+  type ReaderRequestContext,
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
   TUNNEL_PROTOCOL_QUERY_PARAM,
@@ -82,6 +87,7 @@ interface SocketAttachment {
   streamId?: number;
   relay?: boolean;
   done?: boolean;
+  readerContext?: boolean;
 }
 
 function readTunnelTarget(headers: Headers): string | undefined {
@@ -223,6 +229,26 @@ export class TunnelDO {
       return this.offlineResponse();
     }
     const target = readTunnelTarget(request.headers);
+    const readerHeader = request.headers.get(READER_CONTEXT_HEADER);
+    if (readerHeader !== null) {
+      try {
+        const context = parseReaderRequestContext(JSON.parse(readerHeader));
+        const attachment =
+          tunnel.deserializeAttachment() as SocketAttachment | null;
+        if (
+          attachment?.readerContext !== true ||
+          target !== undefined ||
+          request.method !== "POST" ||
+          request.headers.get("upgrade") !== null ||
+          context.path !== url.pathname + url.search ||
+          this.tunnelOwner !== tunnelOwnerKey("server", context.serverId)
+        )
+          return new Response("reader request refused", { status: 403 });
+        return this.proxyHttp(request, url, tunnel, undefined, context);
+      } catch {
+        return new Response("reader request refused", { status: 403 });
+      }
+    }
     if (target !== undefined && this.clientProtocolVersion < 1) {
       return new Response(`bb connect: ${PORT_SHARE_TOO_OLD}\n`, {
         status: 502,
@@ -404,6 +430,12 @@ export class TunnelDO {
     void this.state.storage.delete(TUNNEL_VANISHED_KEY);
     void this.state.storage.delete(TUNNEL_LOST_AT_KEY);
     const pair = new WebSocketPair();
+    pair[1].serializeAttachment({
+      readerContext:
+        new URL(request.url).searchParams.get(
+          READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+        ) === READER_CONTEXT_CAPABILITY && serverId !== null,
+    });
     this.state.acceptWebSocket(pair[1], [TUNNEL_TAG]);
     setTimeout(() => this.wakeTunnelWaiters(), 0);
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -590,6 +622,7 @@ export class TunnelDO {
     url: URL,
     tunnel: WebSocket,
     target: string | undefined,
+    readerContext?: ReaderRequestContext,
   ): Promise<Response> {
     const streamId = this.nextStreamId++;
     const hasBody = request.body !== null;
@@ -618,15 +651,19 @@ export class TunnelDO {
 
     const opened = this.trySend(
       tunnel,
-      encodeFrame({
-        type: "open-http",
-        streamId,
-        method: request.method,
-        path: url.pathname + url.search,
-        headers: forwardableHeaders(request.headers),
-        hasBody,
-        ...(target !== undefined ? { target } : {}),
-      }),
+      encodeFrame(
+        readerContext === undefined
+          ? {
+              type: "open-http",
+              streamId,
+              method: request.method,
+              path: url.pathname + url.search,
+              headers: forwardableHeaders(request.headers),
+              hasBody,
+              ...(target !== undefined ? { target } : {}),
+            }
+          : { type: "open-reader-http", streamId, context: readerContext },
+      ),
     );
     if (!opened) {
       const entry = this.pendingHttp.get(streamId);
@@ -866,6 +903,7 @@ export class TunnelDO {
       }
       case "ws-open-ack":
         return;
+      case "open-reader-http":
       case "open-http":
       case "open-ws":
         return;

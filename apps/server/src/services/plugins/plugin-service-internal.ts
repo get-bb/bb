@@ -107,6 +107,8 @@ export interface PluginServiceDeps {
   getAppUrl?: () => string | null;
   dataDir: string;
   appVersion: string;
+  experimental_requestAuthorityPolicy?: import("./request-authority.js").RequestAuthorityPolicy;
+  experimental_requestAuthorityClock?: { wall(): number; monotonic(): number };
   bundledPlugins?: readonly BundledPluginRegistration[];
   bundledPluginReplacements?: readonly BundledPluginReplacement[];
   watchBuiltinPluginSources?: boolean;

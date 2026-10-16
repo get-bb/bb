@@ -5,6 +5,7 @@ import {
   decodeFrame,
   encodeFrame,
   peekFrame,
+  parseReaderRequestContext,
   setFrameStreamId,
   type Frame,
 } from "../src/index.js";
@@ -285,5 +286,172 @@ describe("frame header access", () => {
     const frame = encodeFrame({ type: "body-end", streamId: 1 });
     expect(() => setFrameStreamId(frame, -1)).toThrow(/out of range/u);
     expect(() => setFrameStreamId(new Uint8Array(2), 1)).toThrow(/too short/u);
+  });
+});
+
+describe("experimental reader-only frames", () => {
+  const context = {
+    schema: "bb-reader-context-v1",
+    issuer: "https://gate.test",
+    subject: "person-a",
+    sessionId: "opaque-session",
+    generation: 1,
+    serverId: "server-a",
+    pluginId: "tower",
+    rpcMethod: "page",
+    nonce: "nonce-a",
+    checkedAt: 100,
+    issuedAt: 101,
+    expiresAt: 1000,
+    method: "POST",
+    path: "/api/v1/plugins/tower/rpc/page",
+    bodySha256: "a".repeat(64),
+    bodyBytes: 2,
+  };
+  function bytes(value: unknown): Uint8Array {
+    const payload = new TextEncoder().encode(JSON.stringify(value));
+    const valueBytes = new Uint8Array(5 + payload.length);
+    valueBytes[0] = 9;
+    new DataView(valueBytes.buffer).setUint32(1, 7);
+    valueBytes.set(payload, 5);
+    return valueBytes;
+  }
+  it("decodes a separate reader-only frame without interpreting it as ordinary HTTP", () => {
+    expect(decodeFrame(bytes({ context }))).toEqual({
+      type: "open-reader-http",
+      streamId: 7,
+      context,
+    });
+  });
+  it.each([
+    { ...context, schema: "other" },
+    { ...context, generation: 1.5 },
+    { ...context, bodyBytes: 8193 },
+    { ...context, checkedAt: null },
+    { ...context, method: "GET" },
+    { ...context, bodySha256: "A".repeat(64) },
+    { ...context, extra: true },
+    { ...context, path: "/api/v1/plugins/other/rpc/page" },
+  ])("refuses malformed reader claims without downgrading them", (bad) => {
+    expect(() => decodeFrame(bytes({ context: bad }))).toThrow();
+  });
+  it("supports the existing RPC method grammar including leading underscores", () => {
+    expect(
+      decodeFrame(
+        bytes({
+          context: {
+            ...context,
+            rpcMethod: "_page.next",
+            path: "/api/v1/plugins/tower/rpc/_page.next",
+          },
+        }),
+      ).type,
+    ).toBe("open-reader-http");
+  });
+  it("refuses accessors without calling their getters", () => {
+    let reads = 0;
+    const input = { ...context };
+    Object.defineProperty(input, "pluginId", {
+      enumerable: true,
+      get() {
+        reads++;
+        return "tower";
+      },
+    });
+    expect(() => parseReaderRequestContext(input)).toThrow(
+      "invalid reader context",
+    );
+    expect(reads).toBe(0);
+  });
+  it("owns data descriptors without reading changing Proxy properties", () => {
+    let reads = 0;
+    const source = { ...context };
+    const input = new Proxy(source, {
+      get(target, key, receiver) {
+        reads++;
+        return key === "pluginId"
+          ? "other"
+          : Reflect.get(target, key, receiver);
+      },
+    });
+    let result: ReturnType<typeof parseReaderRequestContext> | null = null;
+    try {
+      result = parseReaderRequestContext(input);
+    } catch {}
+    expect(result !== null).toBe(true);
+    if (result === null) return;
+    expect(result).toEqual(context);
+    expect(reads).toBe(0);
+    source.subject = "changed";
+    expect(result.subject).toBe(context.subject);
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+  it("refuses symbol extras", () => {
+    expect(() =>
+      parseReaderRequestContext({ ...context, [Symbol("extra")]: true }),
+    ).toThrow("invalid reader context");
+  });
+  it.each(["ownKeys", "getOwnPropertyDescriptor", "revoked"])(
+    "gives a fresh fixed refusal after a %s trap fault",
+    (kind) => {
+      let reads = 0;
+      const error = new Proxy(
+        {},
+        {
+          get() {
+            reads++;
+            throw new Error("must not read");
+          },
+        },
+      );
+      const proxy = Proxy.revocable(
+        { ...context },
+        kind === "ownKeys"
+          ? {
+              ownKeys() {
+                throw error;
+              },
+            }
+          : kind === "getOwnPropertyDescriptor"
+            ? {
+                getOwnPropertyDescriptor() {
+                  throw error;
+                },
+              }
+            : {},
+      );
+      if (kind === "revoked") proxy.revoke();
+      let caught: unknown;
+      try {
+        parseReaderRequestContext(proxy.proxy);
+      } catch (failure) {
+        caught = failure;
+      }
+      expect(caught instanceof Error).toBe(true);
+      expect((caught as Error).message).toBe("invalid reader context");
+      expect((caught as Error).cause).toBeUndefined();
+      expect(caught === error).toBe(false);
+      expect(reads).toBe(0);
+    },
+  );
+  it("refuses boxed numeric values without coercion", () => {
+    let reads = 0;
+    const value = {
+      valueOf() {
+        reads++;
+        return 1;
+      },
+      toString() {
+        reads++;
+        return "1";
+      },
+    };
+    expect(() =>
+      parseReaderRequestContext({ ...context, generation: value }),
+    ).toThrow("invalid reader context");
+    expect(reads).toBe(0);
+  });
+  it("refuses reader envelope extras", () => {
+    expect(() => decodeFrame(bytes({ context, target: "8000" }))).toThrow();
   });
 });

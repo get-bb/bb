@@ -1,3 +1,7 @@
+import {
+  READER_CONTEXT_HEADER,
+  READER_REQUEST_INTENT_HEADER,
+} from "@bb/tunnel-contract";
 export const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
 export const MACHINE_CREDENTIAL_HEADER = "x-bb-connect-machine";
 export const GATE_AUTH_HEADER = "x-bb-gate-auth";
@@ -9,6 +13,8 @@ export const RELAY_HAS_BODY_HEADER = "x-bb-relay-has-body";
 export const RELAY_CONTENT_LENGTH_HEADER = "x-bb-relay-content-length";
 
 export const HOP_HEADERS: ReadonlySet<string> = new Set([
+  READER_CONTEXT_HEADER,
+  READER_REQUEST_INTENT_HEADER,
   "connection",
   "keep-alive",
   "transfer-encoding",

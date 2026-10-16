@@ -1144,6 +1144,9 @@ importers:
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../../packages/thread-view
+      '@bb/tunnel-contract':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-contract
       '@better-auth/api-key':
         specifier: ^1.6.23
         version: 1.6.23(patch_hash=fwm2vsuow4pmqz44y7y7iqixwu)(nemrelfxpnwyquzncqjsxkp3eq)
@@ -1223,9 +1226,6 @@ importers:
       '@bb/tunnel-client':
         specifier: workspace:*
         version: link:../../packages/tunnel-client
-      '@bb/tunnel-contract':
-        specifier: workspace:*
-        version: link:../../packages/tunnel-contract
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13

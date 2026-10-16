@@ -1879,6 +1879,10 @@ export interface PluginEvents {
 // ---------------------------------------------------------------------------
 
 export interface PluginServerApi {
+  /** Validates both opaque references against this plugin's current invocation. Returns null for ordinary HTTP, copied references, expiry or observed invalidation. This does not grant a telemetry read. */
+  experimental_inspectRequestAuthority(
+    context: import("./rpc-contract.js").ExperimentalPluginRpcHandlerContext,
+  ): import("./rpc-contract.js").ExperimentalReaderRequestIdentity | null;
   /**
    * The operator-configured public app URL from `BB_APP_URL`, or `null` when
    * the operator has not configured one. This value is not bind-gated.
@@ -2063,7 +2067,9 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
+    | "getPluginMetadata"
+    | "updatePluginMetadata"
+    | "experimental_listPluginMetadata"
   > & {
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },

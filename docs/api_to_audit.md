@@ -3094,3 +3094,82 @@ directories, linked worktrees, and submodules. Core callers: the setup guide
 Stabilize after deciding whether depth, recency window, and limit should be
 caller options, and after exercising slow or network-mounted home directories
 and Windows hosts.
+
+## Experimental reader request authority
+
+`PluginRpcMethodContract.experimental_requestAuthority: true` opts one RPC method
+into the private reader path. It defaults false. A required method rejects public
+HTTP, loopback and plugin-token calls without core-owned authority with the fixed
+`handler_error` / `reader request refused` result. Existing route status mapping
+therefore returns 500 for that public refusal; private ingress returns 403. Ordinary
+methods retain their existing behavior.
+
+The handler context has distinct opaque `experimental_requestAuthority` and
+`experimental_invocation` references. `bb.server.experimental_inspectRequestAuthority(context)`
+checks both references, the consuming plugin, the active async invocation and
+current finite validity in the same registry used by core dispatch. Shape copies,
+crossed references and a whole still-live pair reused in another invocation fail.
+The returned identity's isCurrent() also requires its original async invocation;
+the whole invocation, including input/output validation and normalization, runs
+under that scope. Ordinary invocations explicitly run without browser authority.
+The returned identity exposes issuer, subject, opaque session id, generation,
+server, plugin, RPC method, request nonce, exact body digest and the original
+core-monotonic deadline. It includes no cookie or reusable credential. Identity
+is not a read grant and supplies no Unix owner mapping.
+
+Core callers use that registry at private admission, immediately before a handler
+after input validation, after output validation and normalization, and after result
+serialization. Only the actual registered builtin Connect source/root/entry gets
+the private activation attachment. Marked visitor requests require an owner-matching
+browser independently of desktop credentials, the authenticated connection's
+reader capability, and the separate reader-only tunnel frame. They have no HTTP
+fallback. No public API can register an issuer or mint these references.
+
+This source path is disabled unless core and cloud receive explicit experimental
+policies. There is no runtime setting or adopted freshness/skew default. The
+policies bind issuer and destination and state finite freshness, maximum clock
+skew and the core request budget. The initial scope is browser-only. Cached
+verification retains original lookup age. Core starts the local budget on the
+reader open frame before body buffering, records replay without live eviction,
+and never clears observed revocation on connection/session replacement. An
+observed newer session generation retires older references. Clock reversal,
+non-finite clock values and clock faults fail closed. Either an observed source-wall
+expiry/freshness bound or the original local monotonic bound ends validity. Neither
+bound is renewed while reading the body or invoking the method. Replay and observed session
+state each cap at 1024; reaching a cap refuses new authority instead of evicting
+live state. Revocation-ledger overflow invalidates the whole registry, including
+existing authority. Session tombstones remain for the registry lifetime.
+
+Known logout becomes effective when observed; there is no instant revocation,
+atomic snapshot or atomic delivery guarantee. A single synchronous operation may
+overrun. Installed builtin code and the existing Connect/cloud transport are in
+the trusted computing base; this is not isolation from malicious same-process
+plugins or an owner replacing builtin source. The current producer uses generation
+1 for each opaque session id; registry generation retirement also supports later
+explicit generation observations, without adding a logout channel here.
+
+Stabilization requires independently reviewed real cloud/core provenance tests,
+operational freshness and clock-skew evidence, protocol compatibility review and
+an explicit activation decision. Core CLI and SDK requests remain ordinary and
+receive no browser authority. Telemetry owner mapping, policy selection, source
+attribution, trusted Python provider, installed dependencies, bundle approval,
+consumer wiring and host/runtime acceptance remain separate gates. No read
+permission or installed activation is created by these declarations.
+
+The explicit browser request-intent marker is `x-bb-reader-request: 1` on a POST
+with the exact JSON RPC input bytes to `/api/v1/plugins/<id>/rpc/<method>`.
+It is a public request flag, not evidence or permission. Supplying metadata headers
+cannot mint authority: the gate strips them and constructs its own verified
+snapshot. An unsupported/disabled gate or incapable tunnel connection refuses the
+marked request, and the reader-only frame never falls back to ordinary HTTP.
+
+The current frontend `useRpc().call()` accepts no header/options parameter and
+has only a compile-time contract. It does not automatically emit this marker.
+A reviewed browser SDK request-intent surface and actual consumer adoption remain
+follow-up work; this source unit adds neither a UI nor production consumer wiring.
+
+Private request bodies are at most 8192 bytes; reader metadata is a closed,
+bounded envelope with the existing plugin-id and RPC-method grammar. Generic RPC
+response capacity is preserved. In particular the 256 KiB document limit is not
+reapplied to its larger escaped JSON RPC envelope. A full-size canonical document
+containing backslashes is a transport capacity control.

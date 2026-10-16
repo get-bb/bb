@@ -352,6 +352,15 @@ interface ServiceInstance {
 }
 
 interface PluginRuntimeContext {
+  builtinRegistrations?: readonly import("./builtin-registry.js").BundledPluginRegistration[];
+  createConnectRequestContext?: () => {
+    bridge: import("@bb/tunnel-contract").BuiltinConnectRequestContext;
+    dispose(): void;
+  };
+  inspectRequestAuthority?: (
+    pluginId: string,
+    context: import("@get-bb/plugin-sdk").ExperimentalPluginRpcHandlerContext,
+  ) => import("@get-bb/plugin-sdk").ExperimentalReaderRequestIdentity | null;
   machineEnrollments: MachineEnrollmentService | null;
   deps: PluginServiceDeps;
   includedBuiltinNames: ReadonlySet<string>;
@@ -956,11 +965,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   async function runFactoryTimeBoxed(
-    factory: (api: BbPluginApi) => unknown,
+    factory: (
+      api: BbPluginApi,
+      core?: import("@bb/tunnel-contract").BuiltinConnectRequestContext,
+    ) => unknown,
     api: BbPluginApi,
+    core?: import("@bb/tunnel-contract").BuiltinConnectRequestContext,
   ): Promise<void> {
     await raceTimeout(
-      Promise.resolve(factory(api)),
+      Promise.resolve(core === undefined ? factory(api) : factory(api, core)),
       loadTimeoutMs,
       `load timed out after ${loadTimeoutMs}ms`,
     );
@@ -1467,7 +1480,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `service ${[...hung].join(", ")} did not stop`;
   }
 
+  const requestContextDisposals = new WeakMap<PluginApiHandle, () => void>();
+
   function discardCandidateHandle(handle: PluginApiHandle): void {
+    requestContextDisposals.get(handle)?.();
+    requestContextDisposals.delete(handle);
     for (const database of handle.databaseHandles.splice(0)) {
       try {
         database.close();
@@ -1622,6 +1639,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     };
     const handle = createPluginApi({
       pluginId: row.id,
+      inspectRequestAuthority: (requestContext) =>
+        context.inspectRequestAuthority?.(row.id, requestContext) ?? null,
       logger: deps.logger,
       db: deps.db,
       dataDir: deps.dataDir,
@@ -1810,9 +1829,38 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
         );
       }
+      const registeredConnect = context.builtinRegistrations?.find(
+        (registration) =>
+          registration.name === "connect" &&
+          registration.pluginId === "connect",
+      );
+      const trustedConnect =
+        row.id === "connect" &&
+        row.source === "builtin:connect" &&
+        row.sourceKind === "builtin" &&
+        row.sourceBuiltinName === "connect" &&
+        row.provenance === "builtin" &&
+        manifest.id === "connect" &&
+        registeredConnect !== undefined &&
+        realpathSync(row.rootDir) === realpathSync(registeredConnect.rootDir) &&
+        [
+          resolve(row.rootDir, "src/server.ts"),
+          resolve(row.rootDir, "dist/server.js"),
+        ].includes(manifest.serverEntry);
+      const requestContext = trustedConnect
+        ? context.createConnectRequestContext?.()
+        : undefined;
+      if (requestContext !== undefined) {
+        requestContextDisposals.set(handle, () => requestContext.dispose());
+        handle.disposeHooks.push(() => requestContext.dispose());
+      }
       await runFactoryTimeBoxed(
-        factory as (api: BbPluginApi) => unknown,
+        factory as (
+          api: BbPluginApi,
+          core?: import("@bb/tunnel-contract").BuiltinConnectRequestContext,
+        ) => unknown,
         handle.api,
+        requestContext?.bridge,
       );
     } catch (error) {
       for (const rollback of rollbackGenerations.reverse()) rollback();

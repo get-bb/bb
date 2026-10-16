@@ -8,6 +8,9 @@ import {
 import { WebSocket as NodeWebSocket } from "ws";
 import {
   PROTOCOL_VERSION,
+  READER_CONTEXT_CAPABILITY,
+  READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+  type BuiltinConnectRequestContext,
   TUNNEL_PROTOCOL_QUERY_PARAM,
   TUNNEL_REPLACED_CLOSE_REASON,
 } from "@bb/tunnel-contract";
@@ -43,6 +46,7 @@ export interface ConnectIdentity {
 }
 
 interface ConnectTunnelOptions {
+  requestContext?: BuiltinConnectRequestContext;
   shares: ShareRegistry;
   readCredential: () => Promise<SharedCredential | null>;
   confirmRefusedCredential: (credential: string) => Promise<unknown>;
@@ -426,7 +430,36 @@ export class ConnectTunnel {
     credential: string,
     epoch: number,
   ): void {
-    const tunnelUrl = tunnelDialUrl(identity.serverUrl);
+    const ownedRequestConnection =
+      this.options.requestContext?.openConnection(identity.serverId) ?? null;
+    let requestConnectionClosed = false;
+    const closeRequestConnection = () => {
+      if (requestConnectionClosed) return;
+      requestConnectionClosed = true;
+      ownedRequestConnection?.close();
+    };
+    const requestConnection =
+      ownedRequestConnection === null
+        ? null
+        : {
+            begin: (
+              context: import("@bb/tunnel-contract").ReaderRequestContext,
+              signal: AbortSignal,
+            ) =>
+              requestConnectionClosed
+                ? null
+                : ownedRequestConnection.begin(context, signal),
+            close: closeRequestConnection,
+          };
+    let tunnelUrl = tunnelDialUrl(identity.serverUrl);
+    if (requestConnection !== null) {
+      const capableUrl = new URL(tunnelUrl);
+      capableUrl.searchParams.set(
+        READER_CONTEXT_CAPABILITY_QUERY_PARAM,
+        READER_CONTEXT_CAPABILITY,
+      );
+      tunnelUrl = capableUrl.toString();
+    }
     this.options.log.info(
       `tunnel connecting to ${tunnelUrl} (origin ${this.options.getLoopbackBaseUrl()})`,
     );
@@ -449,6 +482,7 @@ export class ConnectTunnel {
           : undefined,
       });
     } catch (error) {
+      requestConnection?.close();
       this.lastError = `cannot dial ${tunnelUrl}: ${
         error instanceof Error ? error.message : String(error)
       }`;
@@ -456,6 +490,7 @@ export class ConnectTunnel {
       return;
     }
     this.tunnel = tunnel;
+    tunnel.once("close", () => requestConnection?.close());
     let connectedAt = 0;
     let transportError: {
       message: string;
@@ -507,6 +542,9 @@ export class ConnectTunnel {
       this.options.log.info(`tunnel connected ${JSON.stringify(diagnostics)}`);
       this.session = new TunnelSession({
         tunnel,
+        ...(requestConnection === null
+          ? {}
+          : { readerContext: requestConnection }),
         log: this.options.log,
         resolveOrigin: (target) => this.resolveStreamOrigin(target),
         onRemoteClientsChange: (count) => {

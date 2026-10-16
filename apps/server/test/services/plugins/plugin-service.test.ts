@@ -1,3 +1,9 @@
+import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import type {
+  BuiltinConnectRequestContext,
+  ReaderRequestContext,
+} from "@bb/tunnel-contract";
 import {
   cp,
   mkdtemp,
@@ -16,6 +22,7 @@ import {
   createEnvironment,
   createProject,
   getInstalledPlugin,
+  installedPlugins,
   noopNotifier,
   upsertHost,
   upsertInstalledPlugin,
@@ -163,6 +170,309 @@ describe("plugin service", () => {
       vi.restoreAllMocks();
     }
   });
+
+  async function readerFixture(options: { enabled?: boolean } = {}) {
+    const hooks: {
+      bridge?: BuiltinConnectRequestContext;
+      now: number;
+      input(): void | Promise<void>;
+      output(): void | Promise<void>;
+      calls: number;
+      context?: unknown;
+      inspect?: (context: unknown) => unknown;
+      page?: () => Promise<void>;
+    } = { now: 1000, input() {}, output() {}, calls: 0 };
+    vi.stubGlobal("__readerAuthorityFixture", hooks);
+    const connectRoot = await writePlugin(workDir, {
+      name: "bb-plugin-connect",
+      serverSource: "export default function plugin() {}",
+    });
+    await mkdir(join(connectRoot, "src"));
+    const manifest = JSON.parse(
+      await readFile(join(connectRoot, "package.json"), "utf8"),
+    );
+    manifest.bb.server = "./src/server.ts";
+    await writeFile(
+      join(connectRoot, "package.json"),
+      JSON.stringify(manifest),
+    );
+    await writeFile(
+      join(connectRoot, "src/server.ts"),
+      `export default function plugin(bb, core) { globalThis.__readerAuthorityFixture.bridge = core; }`,
+    );
+    service = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "reader-data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+      bundledPlugins: [
+        {
+          name: "connect",
+          pluginId: "connect",
+          rootDir: connectRoot,
+          autoInstall: true,
+          defaultEnabled: true,
+        },
+      ],
+      ...(options.enabled === false
+        ? {}
+        : {
+            experimental_requestAuthorityPolicy: {
+              issuer: "https://gate.test",
+              serverId: "server-a",
+              freshnessMs: 1000,
+              maxClockSkewMs: 0,
+              budgetMs: 50,
+            },
+          }),
+      experimental_requestAuthorityClock: {
+        wall: () => hooks.now,
+        monotonic: () => hooks.now,
+      },
+    });
+    const loadedConnect = await service.install("builtin:connect", {
+      kind: "root",
+    });
+    expect(loadedConnect.status).toBe("running");
+    const towerRoot = await writePlugin(workDir, {
+      name: "bb-plugin-reader-fixture",
+      serverSource: `export default function plugin(bb) {
+        const schema = (stage) => ({ "~standard": { version: 1, vendor: "fixture", async validate(value) { await globalThis.__readerAuthorityFixture[stage](); return { value }; } } });
+        globalThis.__readerAuthorityFixture.inspect = (context) => bb.server.experimental_inspectRequestAuthority(context);
+        bb.rpc.register({
+          page: { experimental_requestAuthority: true, input: schema("input"), output: schema("output") },
+          ordinary: { input: schema("input"), output: schema("output") },
+        }, {
+          async page(input, context) { const hooks = globalThis.__readerAuthorityFixture; hooks.calls++; hooks.context = context; await hooks.page?.(); return bb.server.experimental_inspectRequestAuthority(context)?.subject ?? "missing"; },
+          ordinary() { return "ordinary"; },
+        });
+      }`,
+    });
+    expect((await service.installPath(towerRoot)).status).toBe("running");
+    const body = new TextEncoder().encode('"exact query"');
+    const claim: ReaderRequestContext = {
+      schema: "bb-reader-context-v1",
+      issuer: "https://gate.test",
+      subject: "person-a",
+      sessionId: "opaque-session",
+      generation: 1,
+      serverId: "server-a",
+      pluginId: "reader-fixture",
+      rpcMethod: "page",
+      nonce: "n-a",
+      checkedAt: 990,
+      issuedAt: 995,
+      expiresAt: 5000,
+      method: "POST",
+      path: "/api/v1/plugins/reader-fixture/rpc/page",
+      bodySha256: createHash("sha256").update(body).digest("hex"),
+      bodyBytes: body.byteLength,
+    };
+    return { hooks, body, claim };
+  }
+
+  it("attaches private ingress only to the registered builtin and preserves ordinary RPC", async () => {
+    try {
+      const { hooks, body, claim } = await readerFixture();
+      expect(hooks.bridge).toBeDefined();
+      const page = service.getRpcHandler("reader-fixture", "page");
+      if (page.outcome !== "found") throw new Error("missing fixture handler");
+      expect(
+        await service.invokeRpcHandler(
+          "reader-fixture",
+          "page",
+          page.value,
+          "exact query",
+          { kind: "client" },
+        ),
+      ).toEqual({
+        ok: false,
+        error: { code: "handler_error", message: "reader request refused" },
+      });
+      expect(hooks.calls).toBe(0);
+      const ordinary = service.getRpcHandler("reader-fixture", "ordinary");
+      if (ordinary.outcome !== "found")
+        throw new Error("missing fixture handler");
+      expect(
+        await service.invokeRpcHandler(
+          "reader-fixture",
+          "ordinary",
+          ordinary.value,
+          null,
+          { kind: "client" },
+        ),
+      ).toEqual({ ok: true, result: "ordinary" });
+      const connection = hooks.bridge!.openConnection("server-a")!;
+      const pending = connection.begin(claim, new AbortController().signal)!;
+      const response = await pending.dispatch(body);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, result: "person-a" });
+      expect(hooks.calls).toBe(1);
+      await service.stop();
+      expect(
+        connection.begin(
+          { ...claim, nonce: "after-stop" },
+          new AbortController().signal,
+        ),
+      ).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("clears inherited authority throughout nested ordinary validation", async () => {
+    try {
+      const { hooks, body, claim } = await readerFixture();
+      const observations: boolean[] = [];
+      hooks.page = async () => {
+        expect(hooks.inspect!(hooks.context)).not.toBeNull();
+        hooks.input = async () => {
+          await Promise.resolve();
+          observations.push(hooks.inspect!(hooks.context) === null);
+        };
+        hooks.output = async () => {
+          await Promise.resolve();
+          observations.push(hooks.inspect!(hooks.context) === null);
+        };
+        const ordinary = service.getRpcHandler("reader-fixture", "ordinary");
+        if (ordinary.outcome !== "found")
+          throw new Error("missing fixture handler");
+        expect(
+          await service.invokeRpcHandler(
+            "reader-fixture",
+            "ordinary",
+            ordinary.value,
+            null,
+            { kind: "client" },
+          ),
+        ).toEqual({ ok: true, result: "ordinary" });
+        expect(hooks.inspect!(hooks.context)).not.toBeNull();
+        hooks.input = () => {};
+        hooks.output = () => {};
+      };
+      const connection = hooks.bridge!.openConnection("server-a")!;
+      const response = await connection
+        .begin(claim, new AbortController().signal)!
+        .dispatch(body);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, result: "person-a" });
+      expect(observations).toEqual([true, true]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("does not provide a private slot to path provenance copying the connect id", async () => {
+    try {
+      const { hooks } = await readerFixture();
+      const row = getInstalledPlugin(db, "connect")!;
+      hooks.bridge = undefined;
+      db.update(installedPlugins)
+        .set({
+          source: `path:${row.rootDir}`,
+          sourceKind: "path",
+          sourceBuiltinName: null,
+          provenance: "direct",
+        })
+        .where(eq(installedPlugins.id, "connect"))
+        .run();
+      expect((await service.reload("connect")).ok).toBe(true);
+      expect(hooks.bridge).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("withholds the private slot when the normalized builtin name no longer matches", async () => {
+    try {
+      const { hooks } = await readerFixture();
+      hooks.bridge = undefined;
+      db.update(installedPlugins)
+        .set({ sourceBuiltinName: "other" })
+        .where(eq(installedPlugins.id, "connect"))
+        .run();
+      expect((await service.reload("connect")).ok).toBe(true);
+      expect(hooks.bridge).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("withholds the private slot for a different source root with the same builtin row", async () => {
+    try {
+      const { hooks } = await readerFixture();
+      const row = getInstalledPlugin(db, "connect")!;
+      const otherRoot = join(workDir, "counterfeit-root");
+      await cp(row.rootDir, otherRoot, { recursive: true });
+      hooks.bridge = undefined;
+      db.update(installedPlugins)
+        .set({ rootDir: otherRoot })
+        .where(eq(installedPlugins.id, "connect"))
+        .run();
+      expect((await service.reload("connect")).ok).toBe(true);
+      expect(hooks.bridge).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("withholds the private slot for an unexpected entry inside the registered root", async () => {
+    try {
+      const { hooks } = await readerFixture();
+      const row = getInstalledPlugin(db, "connect")!;
+      const manifest = JSON.parse(
+        await readFile(join(row.rootDir, "package.json"), "utf8"),
+      );
+      manifest.bb.server = "./other.ts";
+      await writeFile(
+        join(row.rootDir, "package.json"),
+        JSON.stringify(manifest),
+      );
+      await writeFile(
+        join(row.rootDir, "other.ts"),
+        "export default function plugin(bb, core) { globalThis.__readerAuthorityFixture.bridge = core; }",
+      );
+      hooks.bridge = undefined;
+      expect((await service.reload("connect")).ok).toBe(true);
+      expect(hooks.bridge).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("keeps the registered builtin disabled without explicit operational policy", async () => {
+    try {
+      const { hooks } = await readerFixture({ enabled: false });
+      expect(hooks.bridge?.openConnection("server-a")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it.each(["input", "output"] as const)(
+    "rechecks authority after awaited %s validation",
+    async (stage) => {
+      try {
+        const { hooks, body, claim } = await readerFixture();
+        hooks[stage] = () => {
+          hooks.now = 1050;
+        };
+        const connection = hooks.bridge!.openConnection("server-a")!;
+        const response = await connection
+          .begin(claim, new AbortController().signal)!
+          .dispatch(body);
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          ok: false,
+          error: { code: "handler_error", message: "reader request refused" },
+        });
+        expect(hooks.calls).toBe(stage === "input" ? 0 : 1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it.each(["startup", "retry"])(
     "reports starting while a %s factory is pending",

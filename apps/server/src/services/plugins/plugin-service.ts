@@ -1,3 +1,12 @@
+import {
+  createRequestAuthorityRegistry,
+  type RequestAuthorityInvocation,
+} from "./request-authority.js";
+import type {
+  BuiltinConnectRequestContext,
+  ReaderContextConnection,
+  ReaderRequestContext,
+} from "@bb/tunnel-contract";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -574,6 +583,101 @@ function normalizeMentionSearchItems(
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
+  const requestAuthorities = createRequestAuthorityRegistry(
+    deps.experimental_requestAuthorityPolicy,
+    deps.experimental_requestAuthorityClock,
+  );
+  function readerRefused() {
+    return {
+      ok: false as const,
+      error: {
+        code: "handler_error" as const,
+        message: "reader request refused",
+      },
+    };
+  }
+  function createConnectRequestContext(): {
+    bridge: BuiltinConnectRequestContext;
+    dispose(): void;
+  } {
+    let disposed = false;
+    const connections = new Set<ReaderContextConnection>();
+    return {
+      bridge: Object.freeze({
+        openConnection(serverId: string) {
+          if (disposed || !requestAuthorities.enabled) return null;
+          const authorityConnection =
+            requestAuthorities.openConnection(serverId);
+          const connection: ReaderContextConnection = Object.freeze({
+            close() {
+              authorityConnection.close();
+              connections.delete(connection);
+            },
+            begin(claim: ReaderRequestContext, signal: AbortSignal) {
+              const ticket = authorityConnection.begin(claim, signal);
+              if (ticket === null) return null;
+              return Object.freeze({
+                async dispatch(incoming: Uint8Array) {
+                  let invocation: RequestAuthorityInvocation | null = null;
+                  try {
+                    const body = Uint8Array.from(incoming);
+                    invocation = ticket.admit(body);
+                    if (invocation === null)
+                      return Response.json(readerRefused(), { status: 403 });
+                    const target = requestAuthorities.target(invocation);
+                    if (target === null)
+                      return Response.json(readerRefused(), { status: 403 });
+                    const plugin = loaded.get(target.pluginId);
+                    const handler = plugin?.handle.rpcHandlers.get(
+                      target.rpcMethod,
+                    );
+                    if (handler?.requestAuthority !== true)
+                      return Response.json(readerRefused(), { status: 403 });
+                    const input: unknown = JSON.parse(
+                      new TextDecoder("utf-8", { fatal: true }).decode(body),
+                    );
+                    const result = await invokeRpcHandler(
+                      target.pluginId,
+                      target.rpcMethod,
+                      handler,
+                      input,
+                      { kind: "client" },
+                      invocation,
+                    );
+                    const serialized = JSON.stringify(result);
+                    if (
+                      !result.ok ||
+                      requestAuthorities.inspect(
+                        target.pluginId,
+                        invocation,
+                      ) === null
+                    )
+                      return Response.json(readerRefused(), { status: 403 });
+                    return new Response(serialized, {
+                      headers: {
+                        "content-type": "application/json",
+                        "cache-control": "no-store",
+                      },
+                    });
+                  } catch {
+                    return Response.json(readerRefused(), { status: 403 });
+                  } finally {
+                    invocation?.finish();
+                  }
+                },
+              });
+            },
+          });
+          connections.add(connection);
+          return connection;
+        },
+      }),
+      dispose() {
+        disposed = true;
+        for (const connection of connections) connection.close();
+      },
+    };
+  }
   const installHandlerTimeoutMs = deps.installHandlerTimeoutMs ?? 30_000;
 
   async function runInstallHandlers(id: string): Promise<void> {
@@ -592,6 +696,80 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     }
   }
+  async function invokeRpcHandler(
+    id: string,
+    method: string,
+    handler: PluginRpcHandler,
+    input: unknown,
+    caller: ExperimentalPluginRpcCaller,
+    invocation?: RequestAuthorityInvocation,
+  ): Promise<
+    { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
+  > {
+    if (
+      handler.requestAuthority &&
+      (invocation === undefined ||
+        requestAuthorities.inspect(id, invocation) === null)
+    )
+      return readerRefused();
+    const outcome = await invokeWrapped(id, `rpc ${method}`, () =>
+      requestAuthorities.run(invocation, async () => {
+        try {
+          const parsedInput = await validateRpcValue(
+            handler.inputSchema,
+            input,
+            "input",
+            throwRpcBoundaryError,
+          );
+          if (
+            invocation !== undefined &&
+            requestAuthorities.inspect(id, invocation) === null
+          )
+            throw new PluginRpcBoundaryError(readerRefused().error);
+          const handlerContext =
+            invocation === undefined
+              ? { experimental_caller: caller }
+              : Object.freeze({
+                  experimental_caller: invocation.experimental_caller,
+                  experimental_requestAuthority:
+                    invocation.experimental_requestAuthority,
+                  experimental_invocation: invocation.experimental_invocation,
+                });
+          const result = await handler.handler(parsedInput, handlerContext);
+          const parsedOutput = await validateRpcValue(
+            handler.outputSchema,
+            result,
+            "output",
+            throwRpcBoundaryError,
+          );
+          const normalized = normalizeRpcJsonResult(
+            parsedOutput,
+            throwRpcBoundaryError,
+          );
+          if (
+            invocation !== undefined &&
+            requestAuthorities.inspect(id, invocation) === null
+          )
+            throw new PluginRpcBoundaryError(readerRefused().error);
+          return normalized;
+        } catch (error) {
+          if (invocation !== undefined)
+            throw new PluginRpcBoundaryError(readerRefused().error);
+          throw error;
+        }
+      }),
+    );
+    if (outcome.ok) return { ok: true, result: outcome.value };
+    if (invocation !== undefined) return readerRefused();
+    if (outcome.cause instanceof PluginRpcBoundaryError) {
+      return { ok: false, error: outcome.cause.rpcError };
+    }
+    return {
+      ok: false,
+      error: { code: "handler_error", message: outcome.error },
+    };
+  }
+
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
   const pluginReplacements =
@@ -681,6 +859,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    builtinRegistrations: bundledPlugins,
+    createConnectRequestContext,
+    inspectRequestAuthority: (pluginId, context) =>
+      requestAuthorities.inspectForPlugin(pluginId, context),
     includedBuiltinNames: new Set(
       bundledPlugins
         .filter((plugin) => plugin.autoInstall)
@@ -2141,34 +2323,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
     },
 
-    async invokeRpcHandler(id, method, handler, input, caller) {
-      const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
-        const parsedInput = await validateRpcValue(
-          handler.inputSchema,
-          input,
-          "input",
-          throwRpcBoundaryError,
-        );
-        const result = await handler.handler(parsedInput, {
-          experimental_caller: caller,
-        });
-        const parsedOutput = await validateRpcValue(
-          handler.outputSchema,
-          result,
-          "output",
-          throwRpcBoundaryError,
-        );
-        return normalizeRpcJsonResult(parsedOutput, throwRpcBoundaryError);
-      });
-      if (outcome.ok) return { ok: true, result: outcome.value };
-      if (outcome.cause instanceof PluginRpcBoundaryError) {
-        return { ok: false, error: outcome.cause.rpcError };
-      }
-      return {
-        ok: false,
-        error: { code: "handler_error", message: outcome.error },
-      };
-    },
+    invokeRpcHandler,
 
     async httpToken(id, options) {
       if (!getInstalledPlugin(deps.db, id)) return undefined;

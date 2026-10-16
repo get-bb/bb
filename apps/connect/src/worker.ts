@@ -1,3 +1,10 @@
+import {
+  MAX_READER_BODY_BYTES,
+  readerRpcTarget,
+  READER_CONTEXT_HEADER,
+  READER_REQUEST_INTENT_HEADER,
+  type ReaderRequestContext,
+} from "@bb/tunnel-contract";
 import { drizzle } from "drizzle-orm/d1";
 import { escapeHtmlText } from "@bb/text-utils";
 import {
@@ -367,6 +374,8 @@ export function requestForTunnelDo(
   headers.delete(GATE_AUTH_HEADER);
   headers.delete(GATE_MACHINE_ID_HEADER);
   headers.delete(GATE_OWNER_HEADER);
+  headers.delete(READER_CONTEXT_HEADER);
+  headers.delete(READER_REQUEST_INTENT_HEADER);
   headers.delete(RELAY_HEADER);
   headers.delete(RELAY_METHOD_HEADER);
   headers.delete(RELAY_HAS_BODY_HEADER);
@@ -451,17 +460,76 @@ export function gateErrorResponse(request: Request): Response {
   );
 }
 
+async function boundedReaderBody(request: Request): Promise<Uint8Array | null> {
+  if (request.body === null) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > MAX_READER_BODY_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(next.value);
+    }
+    const body = new Uint8Array(size);
+    let at = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    return body;
+  } catch {
+    return null;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {}
+  }
+}
+
+export interface ExperimentalReaderContextPolicy {
+  issuer: string;
+  freshnessMs: number;
+  maxClockSkewMs: number;
+}
+
 const gate = {
   async fetch(
     request: Request,
     env: Env,
     ctx: ExecutionContext,
     progress: GateProgress,
+    readerPolicy?: ExperimentalReaderContextPolicy,
   ): Promise<Response> {
     const runtime = resolveConnectRuntime(env);
     const url = resolveConnectRequestUrl(request.url, request.headers, runtime);
     const host = resolveConnectRequestHost(request.headers, runtime);
+    const readerIntent = request.headers.has(READER_REQUEST_INTENT_HEADER);
+    if (
+      readerIntent &&
+      (request.headers.get(READER_REQUEST_INTENT_HEADER) !== "1" ||
+        readerPolicy === undefined ||
+        typeof readerPolicy.issuer !== "string" ||
+        !readerPolicy.issuer ||
+        !Number.isSafeInteger(readerPolicy.freshnessMs) ||
+        readerPolicy.freshnessMs <= 0 ||
+        !Number.isSafeInteger(readerPolicy.maxClockSkewMs) ||
+        readerPolicy.maxClockSkewMs < 0 ||
+        request.method !== "POST" ||
+        readerRpcTarget(url.pathname) === null ||
+        url.search !== "" ||
+        request.headers.has(MACHINE_CREDENTIAL_HEADER) ||
+        request.headers.get("upgrade") !== null)
+    )
+      return text("reader request refused\n", 403);
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
+    if (readerIntent && parsed?.target !== null)
+      return text("reader request refused\n", 403);
     if (parsed === null || parsed.target === null) {
       if (url.pathname === "/api/connect/servers") {
         return handleListAccountServers(request, env);
@@ -515,7 +583,7 @@ const gate = {
         env,
         routingKey,
         new Request(doRequest, { headers }),
-        "relay-when-enabled",
+        readerIntent ? "direct" : "relay-when-enabled",
         progress,
       );
     };
@@ -683,6 +751,74 @@ const gate = {
       return text("bb connect: not your server\n", 403);
     }
 
+    if (readerIntent) {
+      if (
+        readerPolicy === undefined ||
+        resolved.kind !== "server" ||
+        verifiedSession === null ||
+        verifiedSession.userId !== resolved.userId
+      )
+        return text("reader request refused\n", 403);
+      const issuedAt = Date.now();
+      if (
+        !Number.isSafeInteger(verifiedSession.checkedAt) ||
+        !Number.isSafeInteger(verifiedSession.expiresAt) ||
+        issuedAt + readerPolicy.maxClockSkewMs < verifiedSession.checkedAt ||
+        issuedAt >=
+          Math.min(
+            verifiedSession.expiresAt,
+            verifiedSession.checkedAt + readerPolicy.freshnessMs,
+          )
+      )
+        return text("reader request refused\n", 403);
+      const body = await boundedReaderBody(request);
+      if (body === null) return text("reader request refused\n", 403);
+      const target = readerRpcTarget(url.pathname);
+      if (target === null) return text("reader request refused\n", 403);
+      const metadata: ReaderRequestContext = {
+        schema: "bb-reader-context-v1",
+        issuer: readerPolicy.issuer,
+        subject: verifiedSession.userId,
+        sessionId: await sha256Hex(verifiedSession.sessionId),
+        generation: 1,
+        serverId: resolved.server.id,
+        pluginId: target.pluginId,
+        rpcMethod: target.rpcMethod,
+        nonce: crypto.randomUUID(),
+        checkedAt: verifiedSession.checkedAt,
+        issuedAt,
+        expiresAt: verifiedSession.expiresAt,
+        method: "POST",
+        path: url.pathname,
+        bodySha256: [
+          ...new Uint8Array(await crypto.subtle.digest("SHA-256", body)),
+        ]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join(""),
+        bodyBytes: body.byteLength,
+      };
+      if (
+        Date.now() >=
+        Math.min(
+          metadata.expiresAt,
+          metadata.checkedAt + readerPolicy.freshnessMs,
+        )
+      )
+        return text("reader request refused\n", 403);
+      const heldRequest = new Request(request.url, {
+        method: "POST",
+        headers: request.headers,
+        body: new Uint8Array(body).buffer,
+      });
+      const forward = requestForTunnelDo(heldRequest, null, "session");
+      const headers = new Headers(forward.headers);
+      headers.set(READER_CONTEXT_HEADER, JSON.stringify(metadata));
+      return responseForVisitor(
+        await tunnelDo(new Request(forward, { headers })),
+        null,
+        [],
+      );
+    }
     const doRequest = requestForTunnelDo(request, target, "session");
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
       return responseForVisitor(await tunnelDo(doRequest), null, []);
@@ -797,40 +933,52 @@ function recordGateDelay(
   );
 }
 
-export default {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
-    const progress: GateProgress = {
-      stage: "routing",
-      tunnelObjectAttempts: 0,
-      routingKey: null,
-    };
-    const requestUrl = new URL(request.url);
-    try {
-      return await withGateDeadline({
-        request,
-        deadlineMs: responseHeadTimeoutMs(
-          request.method,
-          requestUrl,
-          request.headers,
-        ),
-        slowAfterMs:
-          requestUrl.pathname === "/__tunnel" ? SLOW_TUNNEL_DIAL_MS : null,
-        progress,
-        run: () => gate.fetch(request, env, ctx, progress),
-        onDelay: (delay) =>
-          recordGateDelay(env, ctx, delay, progress.routingKey),
-      });
-    } catch (error) {
-      console.error("bb connect: request failed", {
-        method: request.method,
-        path: new URL(request.url).pathname,
-        error,
-      });
-      return gateErrorResponse(request);
-    }
-  },
-} satisfies ExportedHandler<Env>;
+export function createConnectWorker(
+  options: {
+    experimental_readerContextPolicy?: ExperimentalReaderContextPolicy;
+  } = {},
+) {
+  const readerPolicy =
+    options.experimental_readerContextPolicy === undefined
+      ? undefined
+      : Object.freeze({ ...options.experimental_readerContextPolicy });
+  return {
+    async fetch(
+      request: Request,
+      env: Env,
+      ctx: ExecutionContext,
+    ): Promise<Response> {
+      const progress: GateProgress = {
+        stage: "routing",
+        tunnelObjectAttempts: 0,
+        routingKey: null,
+      };
+      const requestUrl = new URL(request.url);
+      try {
+        return await withGateDeadline({
+          request,
+          deadlineMs: responseHeadTimeoutMs(
+            request.method,
+            requestUrl,
+            request.headers,
+          ),
+          slowAfterMs:
+            requestUrl.pathname === "/__tunnel" ? SLOW_TUNNEL_DIAL_MS : null,
+          progress,
+          run: () => gate.fetch(request, env, ctx, progress, readerPolicy),
+          onDelay: (delay) =>
+            recordGateDelay(env, ctx, delay, progress.routingKey),
+        });
+      } catch (error) {
+        console.error("bb connect: request failed", {
+          method: request.method,
+          path: new URL(request.url).pathname,
+          error,
+        });
+        return gateErrorResponse(request);
+      }
+    },
+  } satisfies ExportedHandler<Env>;
+}
+
+export default createConnectWorker();

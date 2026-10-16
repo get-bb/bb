@@ -189,6 +189,7 @@ export interface ServerMoveAppOptions {
 }
 
 interface CreateAppOptions {
+  experimental_requestAuthorityPolicy?: import("./services/plugins/request-authority.js").RequestAuthorityPolicy;
   bbAppArtifactService?: BbAppArtifactService;
   serverMove?: ServerMoveAppOptions;
   slowApiRequestLogThresholdMs?: number;
@@ -745,6 +746,8 @@ export function createApp(
     return next();
   });
   const pluginService = createPluginService({
+    experimental_requestAuthorityPolicy:
+      options?.experimental_requestAuthorityPolicy,
     machineEnrollments: getMachineEnrollmentService(deps),
     db: deps.db,
     hub: deps.hub,

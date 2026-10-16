@@ -7,3 +7,8 @@ export {
   type StreamOriginResult,
   type TunnelSessionSnapshot,
 } from "./session.js";
+
+export type {
+  BuiltinConnectRequestContext,
+  ReaderContextConnection,
+} from "@bb/tunnel-contract";

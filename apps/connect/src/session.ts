@@ -54,6 +54,7 @@ export class SettledLookupCache<T> {
 const labelCache = new SettledLookupCache<ResolvedLabel | null>();
 
 interface CachedSession {
+  checkedAt: number;
   sessionId: string;
   userId: string;
   expiresAt: number;
@@ -171,6 +172,8 @@ async function lookupLabel(
 }
 
 export interface VerifiedSessionCookie {
+  checkedAt: number;
+  expiresAt: number;
   sessionId: string;
   userId: string;
   needsRefresh: boolean;
@@ -181,6 +184,8 @@ function verifiedSession(
   now: number,
 ): VerifiedSessionCookie {
   return {
+    checkedAt: session.checkedAt,
+    expiresAt: session.expiresAt,
     sessionId: session.sessionId,
     userId: session.userId,
     needsRefresh: session.expiresAt <= now + SESSION_REFRESH_BEFORE_EXPIRY_MS,
@@ -248,6 +253,7 @@ async function lookupCachedSession(
     .get();
   return row
     ? {
+        checkedAt: now,
         sessionId: row.sessionId,
         userId: row.userId,
         expiresAt: row.expiresAt.getTime(),

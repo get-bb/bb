@@ -1703,9 +1703,15 @@ function readRpcMethodContract(
   const description = rpcDescriptionSchema.parse(
     Reflect.get(value, "experimental_description"),
   );
-  return description === null
-    ? { input, output }
-    : { input, output, experimental_description: description };
+  const authority = Reflect.get(value, "experimental_requestAuthority");
+  if (authority !== undefined && typeof authority !== "boolean")
+    throw new Error("rpc authority declaration must be boolean");
+  return {
+    input,
+    output,
+    experimental_requestAuthority: authority === true,
+    ...(description === null ? {} : { experimental_description: description }),
+  };
 }
 
 export function readRpcPublicationOptions(value: unknown) {
@@ -2870,6 +2876,7 @@ export function normalizeWebSocketRouteRegistration(
 }
 
 type RpcRegistrationRecord = {
+  requestAuthority: boolean;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -2928,6 +2935,7 @@ export function normalizeRpcRegistration(
       name,
       {
         publication: publishRpcMethod(name, methodContract, publicationOptions),
+        requestAuthority: methodContract.experimental_requestAuthority === true,
         inputSchema: methodContract.input,
         outputSchema: methodContract.output,
         handler,

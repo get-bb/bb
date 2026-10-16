@@ -29,6 +29,7 @@ import {
 
 export interface ConnectPluginOptions {
   accountRetryMinMs?: number;
+  requestContext?: import("@bb/tunnel-contract").BuiltinConnectRequestContext;
 }
 
 export function createConnectPlugin(options: ConnectPluginOptions = {}) {
@@ -79,6 +80,7 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
     const recheckServerAccess = createServerAccessRecheck(bb);
     tunnel = new ConnectTunnel({
       shares,
+      requestContext: options.requestContext,
       readCredential: () => account.connectCredential(),
       confirmRefusedCredential: (credential) =>
         account.confirmRefusedCredential(credential),

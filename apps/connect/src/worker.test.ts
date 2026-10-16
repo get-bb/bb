@@ -1,3 +1,7 @@
+import {
+  READER_CONTEXT_HEADER,
+  READER_REQUEST_INTENT_HEADER,
+} from "@bb/tunnel-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import {
@@ -199,7 +203,11 @@ import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
 import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
 import { RELAY_HEADER } from "./protocol-headers.js";
-import worker, { relativeTime, wantsHtml } from "./worker.js";
+import worker, {
+  createConnectWorker,
+  relativeTime,
+  wantsHtml,
+} from "./worker.js";
 import {
   TUNNEL_OFFLINE_HEADER,
   TUNNEL_RESTART_REASON,
@@ -221,7 +229,13 @@ const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
 function sessionDetails(userId = OWNER, needsRefresh = false) {
-  return { sessionId: `session-${userId}`, userId, needsRefresh };
+  return {
+    sessionId: `session-${userId}`,
+    userId,
+    needsRefresh,
+    checkedAt: Date.now(),
+    expiresAt: Date.now() + 60000,
+  };
 }
 
 function resolvedServer(
@@ -2329,10 +2343,14 @@ function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
   readyState = 1,
 ) {
+  let attachment: unknown = null;
   return {
     send: send ?? vi.fn(),
     close: vi.fn(),
-    deserializeAttachment: () => null,
+    serializeAttachment: (value: unknown) => {
+      attachment = value;
+    },
+    deserializeAttachment: () => attachment,
     readyState,
   } as unknown as WebSocket;
 }
@@ -3988,5 +4006,296 @@ describe("gate worker MCP routing", () => {
     expect(anonymous.status).toBe(401);
     expect(anonymous.headers.get("www-authenticate")).toBeNull();
     expect(anonymous.headers.get("content-type")).toContain("text/html");
+  });
+});
+
+describe("reader context ingress and connection capability", () => {
+  const context = {
+    schema: "bb-reader-context-v1" as const,
+    issuer: "https://gate.test",
+    subject: OWNER,
+    sessionId: "opaque-session",
+    generation: 1,
+    serverId: "server-a",
+    pluginId: "tower",
+    rpcMethod: "page",
+    nonce: "nonce-a",
+    checkedAt: 1,
+    issuedAt: 2,
+    expiresAt: 100,
+    method: "POST" as const,
+    path: "/api/v1/plugins/tower/rpc/page",
+    bodySha256: "a".repeat(64),
+    bodyBytes: 2,
+  };
+  it("constructs metadata from the matching browser and forwards the exact held bytes", async () => {
+    const lookupAt = Date.now();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockParseCookie.mockImplementation((_value, name) =>
+      name.includes("desktop") ? "foreign-desktop" : "synthetic-cookie",
+    );
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OTHER,
+      refreshGrant: null,
+    });
+    mockVerifySessionDetails.mockResolvedValue({
+      ...sessionDetails(),
+      checkedAt: lookupAt,
+      expiresAt: lookupAt + 60000,
+    });
+    const { env, ctx, captured } = makeEnv(async (request) => {
+      expect(await request.text()).toBe('  "exact query"  ');
+      return new Response("private");
+    });
+    const enabled = createConnectWorker({
+      experimental_readerContextPolicy: {
+        issuer: "https://gate.test",
+        freshnessMs: 10000,
+        maxClockSkewMs: 100,
+      },
+    });
+    const response = await enabled.fetch(
+      visitorRequest("sawyer.getbb.app", context.path, {
+        method: "POST",
+        body: '  "exact query"  ',
+        headers: {
+          [READER_REQUEST_INTENT_HEADER]: "1",
+          [READER_CONTEXT_HEADER]: "forged",
+          cookie: "__Secure-better-auth.session_token=synthetic-cookie",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    const metadata = JSON.parse(
+      captured[0]!.headers.get(READER_CONTEXT_HEADER)!,
+    );
+    expect(metadata).toMatchObject({
+      subject: OWNER,
+      serverId: "srv1",
+      checkedAt: lookupAt,
+      expiresAt: lookupAt + 60000,
+      pluginId: "tower",
+      rpcMethod: "page",
+      path: context.path,
+      bodyBytes: new TextEncoder().encode('  "exact query"  ').byteLength,
+    });
+    expect(metadata.sessionId).toMatch(/^[a-f0-9]{64}$/u);
+    expect(JSON.stringify(metadata)).not.toContain("synthetic-cookie");
+    expect(captured[0]!.headers.has(READER_REQUEST_INTENT_HEADER)).toBe(false);
+  });
+  it("refuses a foreign browser even when an owner desktop credential permits ordinary BB", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockParseCookie.mockImplementation((_value, name) =>
+      name.includes("desktop") ? "desktop" : "browser",
+    );
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: null,
+    });
+    mockServeWithCache.mockImplementation(
+      async (_request, _namespace, _context, load) => ({
+        cacheable: false,
+        response: await load(),
+      }),
+    );
+    mockRefreshAccountSession.mockResolvedValue(null);
+    const { env, ctx, captured } = makeEnv(() => new Response("private"));
+    const enabled = createConnectWorker({
+      experimental_readerContextPolicy: {
+        issuer: "https://gate.test",
+        freshnessMs: 10000,
+        maxClockSkewMs: 100,
+      },
+    });
+    const response = await enabled.fetch(
+      visitorRequest("sawyer.getbb.app", context.path, {
+        method: "POST",
+        body: "{}",
+        headers: { [READER_REQUEST_INTENT_HEADER]: "1" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(403);
+    expect(captured).toHaveLength(0);
+    const ordinary = await enabled.fetch(
+      visitorRequest("sawyer.getbb.app", context.path, {
+        method: "POST",
+        body: "{}",
+      }),
+      env as never,
+      ctx,
+    );
+    expect(ordinary.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.headers.has(READER_CONTEXT_HEADER)).toBe(false);
+  });
+  it.each(["desktop-only", "machine"])(
+    "refuses %s as reader identity",
+    async (kind) => {
+      mockResolveLabel.mockResolvedValue(resolvedServer());
+      mockParseCookie.mockImplementation((_value, name) =>
+        name.includes("desktop") ? "owner-desktop" : null,
+      );
+      mockVerifySessionDetails.mockResolvedValue(null);
+      mockVerifyDesktopSession.mockResolvedValue({
+        userId: OWNER,
+        refreshGrant: null,
+      });
+      const { env, ctx, captured } = makeEnv(() => new Response("private"));
+      const enabled = createConnectWorker({
+        experimental_readerContextPolicy: {
+          issuer: "https://gate.test",
+          freshnessMs: 10000,
+          maxClockSkewMs: 100,
+        },
+      });
+      const response = await enabled.fetch(
+        visitorRequest("sawyer.getbb.app", context.path, {
+          method: "POST",
+          body: "{}",
+          headers: {
+            [READER_REQUEST_INTENT_HEADER]: "1",
+            ...(kind === "machine"
+              ? { "x-bb-connect-machine": "synthetic-machine" }
+              : {}),
+          },
+        }),
+        env as never,
+        ctx,
+      );
+      expect(response.status).toBe(403);
+      expect(captured).toHaveLength(0);
+    },
+  );
+  it.each(["stale", "oversize", "expired"])(
+    "refuses %s reader input before forwarding",
+    async (failure) => {
+      const at = Date.now();
+      mockResolveLabel.mockResolvedValue(resolvedServer());
+      mockParseCookie.mockImplementation((_value, name) =>
+        name.includes("desktop") ? null : "browser",
+      );
+      mockVerifySessionDetails.mockResolvedValue({
+        ...sessionDetails(),
+        checkedAt: failure === "stale" ? at - 20000 : at,
+        expiresAt: failure === "expired" ? at : at + 60000,
+      });
+      const { env, ctx, captured } = makeEnv(() => new Response("private"));
+      const enabled = createConnectWorker({
+        experimental_readerContextPolicy: {
+          issuer: "https://gate.test",
+          freshnessMs: 10000,
+          maxClockSkewMs: 100,
+        },
+      });
+      const response = await enabled.fetch(
+        visitorRequest("sawyer.getbb.app", context.path, {
+          method: "POST",
+          body: failure === "oversize" ? "x".repeat(8193) : "{}",
+          headers: { [READER_REQUEST_INTENT_HEADER]: "1" },
+        }),
+        env as never,
+        ctx,
+      );
+      expect(response.status).toBe(403);
+      expect(captured).toHaveLength(0);
+    },
+  );
+  it("strips supplied context on the public forwarding builder", () => {
+    const result = requestForTunnelDo(
+      new Request("https://sawyer.getbb.app/", {
+        headers: {
+          [READER_CONTEXT_HEADER]: JSON.stringify(context),
+          [READER_REQUEST_INTENT_HEADER]: "1",
+        },
+      }),
+      null,
+    );
+    expect(result.headers.has(READER_CONTEXT_HEADER)).toBe(false);
+    expect(result.headers.has(READER_REQUEST_INTENT_HEADER)).toBe(false);
+  });
+  it("default gate refuses marked requests before any tunnel request", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ordinary"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", context.path, {
+        method: "POST",
+        body: "{}",
+        headers: { [READER_REQUEST_INTENT_HEADER]: "1" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(403);
+    expect(captured).toHaveLength(0);
+  });
+  it.each([false, true])(
+    "only sends a reader-only frame to an authenticated capable connection: %s",
+    async (capable) => {
+      const sent: Uint8Array[] = [];
+      const state = mockDoState({ protocolVersion: 1, serverId: "server-a" });
+      const dob = new TunnelDO(state.api, makeDoEnv());
+      await state.restore;
+      const tunnel = {
+        ...fakeTunnelSocket(captureSent(sent)),
+        deserializeAttachment: () => ({ readerContext: capable }),
+      } as WebSocket;
+      state.addSocket(tunnel, ["tunnel"]);
+      const pending = dob.fetch(
+        new Request(`https://do.internal${context.path}`, {
+          method: "POST",
+          body: "{}",
+          headers: { [READER_CONTEXT_HEADER]: JSON.stringify(context) },
+        }),
+      );
+      await Promise.resolve();
+      if (sent.length > 0) {
+        const first = decodeFrame(sent[0]!);
+        dob.webSocketMessage(
+          tunnel,
+          frameBuffer({
+            type: "resp-head",
+            streamId: first.streamId,
+            status: 200,
+            headers: [],
+          }),
+        );
+        dob.webSocketMessage(
+          tunnel,
+          frameBuffer({ type: "body-end", streamId: first.streamId }),
+        );
+      }
+      const response = await pending;
+      if (!capable) {
+        expect(response.status).toBe(403);
+        expect(sent).toHaveLength(0);
+      } else {
+        expect(response.status).toBe(200);
+        expect(decodeFrame(sent[0]!).type).toBe("open-reader-http");
+      }
+      await response.text();
+    },
+  );
+  it("does not reflect a server-origin reader frame through the response relay", async () => {
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket();
+    const send = vi.fn();
+    const relay = {
+      ...fakeTunnelSocket(send),
+      deserializeAttachment: () => ({ streamId: 7, relay: true }),
+    } as WebSocket;
+    state.addSocket(tunnel, ["tunnel"]);
+    state.addSocket(relay, ["relay:7"]);
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({ type: "open-reader-http", streamId: 7, context }),
+    );
+    expect(send).not.toHaveBeenCalled();
   });
 });

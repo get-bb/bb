@@ -1287,6 +1287,28 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
       },
       {
+        id: "reader-request-authority",
+        title: "Experimental reader request authority",
+        summary:
+          "Require a core-verified browser identity for a reader RPC method. This experimental path is disabled without explicit core and cloud policy and grants no read permission.",
+        bullets: [
+          "Declare experimental_requestAuthority: true on a method to refuse ordinary public and loopback RPC calls",
+          "Inspect both core-owned request and invocation references through bb.server.experimental_inspectRequestAuthority(context)",
+          "Recheck isCurrent() after cleanup; validity is finite and does not promise instant logout or atomic delivery",
+          "Keep owner mapping, reader policy, source attribution and read grants separate from identity",
+        ],
+        apiSymbols: [
+          "PluginRpcMethodContract.experimental_requestAuthority",
+          "ExperimentalPluginRpcHandlerContext.experimental_requestAuthority",
+          "ExperimentalPluginRpcHandlerContext.experimental_invocation",
+          "ExperimentalRequestAuthority",
+          "ExperimentalRequestInvocation",
+          "ExperimentalReaderRequestIdentity",
+          "PluginServerApi.experimental_inspectRequestAuthority",
+        ],
+        experimental: true,
+      },
+      {
         id: "bb-sdk",
         tagline: "Create threads and projects from plugin code",
         title: "The bb SDK",

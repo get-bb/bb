@@ -191,6 +191,7 @@ export interface PluginWebSocketRouteRecord {
 }
 
 export interface PluginRpcHandler {
+  requestAuthority?: boolean;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -486,6 +487,9 @@ export function createPluginApi(options: {
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
+  inspectRequestAuthority?: (
+    context: ExperimentalPluginRpcHandlerContext,
+  ) => import("@get-bb/plugin-sdk").ExperimentalReaderRequestIdentity | null;
   /**
    * This load's rpc caller token, attached to the plugin's
    * `bb.sdk.plugins.callRpc` requests so handlers see it as the caller.
@@ -1003,6 +1007,10 @@ export function createPluginApi(options: {
   };
 
   const server: PluginServerApi = {
+    experimental_inspectRequestAuthority(context) {
+      assertLive();
+      return options.inspectRequestAuthority?.(context) ?? null;
+    },
     get experimental_appUrl(): string | null {
       assertLive();
       return getAppUrl();

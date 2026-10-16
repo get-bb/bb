@@ -143,6 +143,8 @@ beforeEach(() => {
     sessionId: "session-owner",
     userId: OWNER,
     needsRefresh: false,
+    checkedAt: START,
+    expiresAt: START + 60000,
   });
   vi.mocked(verifyMachineCredentialDetails).mockResolvedValue({
     machineId: "machine-owner",

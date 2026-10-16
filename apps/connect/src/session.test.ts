@@ -390,6 +390,25 @@ describe("account session refresh", () => {
       .run();
   }
 
+  it("keeps the original verified lookup time on cache hits", async () => {
+    const firstAt = Date.now();
+    const token = `reader-${crypto.randomUUID()}`;
+    seedSession(token, firstAt, firstAt + expiresInMs);
+    const cookie = await signedSessionCookie(token, secret);
+    const time = vi.spyOn(Date, "now").mockReturnValue(firstAt);
+    try {
+      const first = await verifySessionCookieDetails(cookie, secret, db);
+      time.mockReturnValue(firstAt + 1000);
+      const second = await verifySessionCookieDetails(cookie, secret, db);
+      expect(first?.checkedAt).toBe(firstAt);
+      expect(second?.checkedAt).toBe(firstAt);
+      expect(second?.expiresAt).toBe(firstAt + expiresInMs);
+    } finally {
+      time.mockRestore();
+      invalidateSessionCookie(cookie);
+    }
+  });
+
   function createAuthFetch(baseURL: string, baseDomain: string) {
     const auth = betterAuth({
       secret,
@@ -430,6 +449,8 @@ describe("account session refresh", () => {
         db,
       ),
     ).resolves.toEqual({
+      checkedAt: expect.any(Number),
+      expiresAt: checkedAt + expiresInMs,
       sessionId: `id-${freshToken}`,
       userId: `user-${freshToken}`,
       needsRefresh: false,
@@ -441,6 +462,8 @@ describe("account session refresh", () => {
         db,
       ),
     ).resolves.toEqual({
+      checkedAt: expect.any(Number),
+      expiresAt: checkedAt + expiresInMs - updateAgeMs - 1000,
       sessionId: `id-${dueToken}`,
       userId: `user-${dueToken}`,
       needsRefresh: true,
