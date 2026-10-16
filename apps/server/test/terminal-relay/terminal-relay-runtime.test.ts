@@ -199,18 +199,10 @@ describe("terminal relay socket runtime", () => {
   });
 
   it("delivers a frame appended to the upgrade request through a copied non-empty head", async () => {
-    let runtime: TerminalRelayRuntime;
-    const setupResult = await setup((event) => {
-      if (event.type === "attach-requested")
-        runtime.handleMainMessage({
-          type: "attach-decision",
-          socketId: event.socketId,
-          decision: "running",
-          session,
-        });
+    let requestedSocketId: string | null = null;
+    const { runtime, port, headSize } = await setup((event) => {
+      if (event.type === "attach-requested") requestedSocketId = event.socketId;
     });
-    runtime = setupResult.runtime;
-    const { port, headSize } = setupResult;
     runtime.handleMainMessage({
       type: "terminal-state",
       terminalId: session.id,
@@ -245,7 +237,17 @@ describe("terminal relay socket runtime", () => {
     for (let index = 0; index < payload.length; index++)
       frame[6 + index] = payload[index]! ^ mask[index % 4]!;
     socket.write(Buffer.concat([request, frame]));
-    expect(await response).toContain("101 Switching Protocols");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(received).toContain("101 Switching Protocols");
+    expect(received).not.toContain('"type":"pong"');
+    if (!requestedSocketId) throw new Error("Missing attach request");
+    runtime.handleMainMessage({
+      type: "attach-decision",
+      socketId: requestedSocketId,
+      decision: "running",
+      session,
+    });
+    expect(await response).toContain('"type":"pong"');
     expect(headSize()).toBeGreaterThan(0);
     socket.destroy();
     runtime.dispose();

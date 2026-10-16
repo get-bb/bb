@@ -253,6 +253,10 @@ interface TerminalSessionLifecycleOptions {
   hub: AppDeps["hub"];
   logger: ServerLogger;
   openTimeoutMs?: number;
+  sendRelayDaemonDataMessage?: (
+    daemonSessionId: string,
+    message: HostDaemonTerminalDataServerMessage,
+  ) => boolean;
   dataPlane?: (
     host: TerminalDataPlaneHost,
     attachTimeoutMs: number,
@@ -1090,14 +1094,11 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       );
     }
 
-    const sent = this.options.hub.sendDaemonDataMessage(
-      current.daemonSessionId,
-      {
-        type: "terminal.input",
-        terminalId: current.id,
-        dataBase64: args.payload.dataBase64,
-      },
-    );
+    const sent = this.sendDaemonDataMessage(current.daemonSessionId, {
+      type: "terminal.input",
+      terminalId: current.id,
+      dataBase64: args.payload.dataBase64,
+    });
     if (!sent) {
       this.onDaemonSendFailed(current.daemonSessionId);
       throw new ApiError(502, "host_disconnected", "Host is not connected");
@@ -1141,15 +1142,12 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       );
     }
 
-    const sent = this.options.hub.sendDaemonDataMessage(
-      current.daemonSessionId,
-      {
-        type: "terminal.resize",
-        terminalId: current.id,
-        cols: args.payload.cols,
-        rows: args.payload.rows,
-      },
-    );
+    const sent = this.sendDaemonDataMessage(current.daemonSessionId, {
+      type: "terminal.resize",
+      terminalId: current.id,
+      cols: args.payload.cols,
+      rows: args.payload.rows,
+    });
     if (!sent) {
       this.onDaemonSendFailed(current.daemonSessionId);
       throw new ApiError(502, "host_disconnected", "Host is not connected");
@@ -1253,7 +1251,7 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
       rpcKey: pendingReplayKey,
       terminalId: args.session.id,
     }).promise;
-    const sent = this.options.hub.sendDaemonDataMessage(args.daemonSessionId, {
+    const sent = this.sendDaemonDataMessage(args.daemonSessionId, {
       type: "terminal.attach",
       requestId,
       terminalId: args.session.id,
@@ -1391,6 +1389,33 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
         code: "host_disconnected",
         message: "Host disconnected from terminal session",
       });
+    }
+  }
+
+  decideRelayAttach(terminalId: string): {
+    decision: "running" | "hold" | "not-running" | "not-found" | "exited";
+    session: TerminalSession | null;
+  } {
+    const current = getTerminalById(this.options.db, terminalId);
+    if (!current) return { decision: "not-found", session: null };
+    this.setTerminalState(current);
+    const decision =
+      current.status === "running" && current.daemonSessionId !== null
+        ? "running"
+        : current.status === "disconnected"
+          ? "hold"
+          : current.status === "exited"
+            ? "exited"
+            : "not-running";
+    return { decision, session: toTerminalSession(current) };
+  }
+
+  resendRelayState(): void {
+    for (const session of listTerminalSessions(this.options.db, {
+      scope: { kind: "all", statuses: ["starting", "running", "disconnected"] },
+      visible: false,
+    })) {
+      this.setTerminalState(session);
     }
   }
 
@@ -1651,6 +1676,50 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
     }
   }
 
+  onRelayBrowserInput(args: {
+    terminalId: string;
+    dataBase64: string;
+    socket: TerminalDataPlaneSocket;
+  }): void {
+    const current = this.getRunningBrowserTerminal(args);
+    if (!current) return;
+    const markedInput = updateTerminalById(this.options.db, current.id, {
+      kind: "user-input",
+    });
+    if (markedInput) {
+      this.notifyTerminalSessionChanged(markedInput);
+      this.dataPlane.broadcastSessionUpdated(
+        markedInput.id,
+        toTerminalSession(markedInput),
+      );
+    }
+    if (args.dataBase64.length > 0)
+      emitPluginTerminalInput(toTerminalSession(markedInput ?? current));
+  }
+
+  onRelayBrowserResize(args: {
+    terminalId: string;
+    cols: number;
+    rows: number;
+    socket: TerminalDataPlaneSocket;
+  }): void {
+    const current = this.getRunningBrowserTerminal(args);
+    if (!current || (current.cols === args.cols && current.rows === args.rows))
+      return;
+    const resized = updateTerminalById(this.options.db, current.id, {
+      cols: args.cols,
+      kind: "size",
+      rows: args.rows,
+    });
+    if (resized) {
+      this.notifyTerminalSessionChanged(resized);
+      this.dataPlane.broadcastSessionUpdated(
+        resized.id,
+        toTerminalSession(resized),
+      );
+    }
+  }
+
   onBrowserResize(args: {
     cols: number;
     rows: number;
@@ -1884,7 +1953,10 @@ export class TerminalSessionLifecycle implements TerminalDataPlaneHost {
     daemonSessionId: string,
     message: HostDaemonTerminalDataServerMessage,
   ): boolean {
-    return this.options.hub.sendDaemonDataMessage(daemonSessionId, message);
+    return (
+      this.options.sendRelayDaemonDataMessage?.(daemonSessionId, message) ??
+      this.options.hub.sendDaemonDataMessage(daemonSessionId, message)
+    );
   }
 
   onDaemonSendFailed(daemonSessionId: string): void {

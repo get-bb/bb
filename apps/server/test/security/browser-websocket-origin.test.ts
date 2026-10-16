@@ -78,7 +78,7 @@ afterEach(async () => {
 
 describe("browser WebSocket origin boundary", () => {
   it("rejects hostile browser origins on realtime and terminal sockets", async () => {
-    server = await startTestServer();
+    server = await startTestServer({}, { dispatcher: true });
     const realtimeUrl = websocketUrl(server.baseUrl, "/ws");
     const terminalUrl = websocketUrl(
       server.baseUrl,
@@ -94,7 +94,7 @@ describe("browser WebSocket origin boundary", () => {
   });
 
   it("rejects rebinding upgrade hosts with and without Origin", async () => {
-    server = await startTestServer();
+    server = await startTestServer({}, { dispatcher: true });
     const host = `attacker.example:${new URL(server.baseUrl).port}`;
     for (const path of [
       "/ws",
@@ -114,7 +114,10 @@ describe("browser WebSocket origin boundary", () => {
   });
 
   it("accepts direct IP and configured proxy WebSocket hosts", async () => {
-    server = await startTestServer({ appUrl: "https://box.ts.net" });
+    server = await startTestServer(
+      { appUrl: "https://box.ts.net" },
+      { dispatcher: true },
+    );
     const port = new URL(server.baseUrl).port;
     for (const origin of [
       `http://192.168.1.5:${port}`,
@@ -144,10 +147,10 @@ describe("browser WebSocket origin boundary", () => {
   });
 
   it("accepts trusted browser origins for both browser-facing sockets", async () => {
-    server = await startTestServer({
-      appUrl: "https://bb.example.test",
-      devAppPort: 5173,
-    });
+    server = await startTestServer(
+      { appUrl: "https://bb.example.test", devAppPort: 5173 },
+      { dispatcher: true },
+    );
     const realtimeUrl = websocketUrl(server.baseUrl, "/ws");
     const terminalUrl = websocketUrl(
       server.baseUrl,
@@ -173,7 +176,7 @@ describe("browser WebSocket origin boundary", () => {
   });
 
   it("keeps absent-Origin Node SDK realtime and CLI terminal sockets working", async () => {
-    server = await startTestServer();
+    server = await startTestServer({}, { dispatcher: true });
     const sdk = createNodeBbSdk({ baseUrl: server.baseUrl });
 
     let stopTarget = (): void => {};

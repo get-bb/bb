@@ -100,6 +100,7 @@ import {
   onTerminalDataSocketMessage,
   onTerminalDataSocketClose,
 } from "./ws/terminal-data-protocol.js";
+import { setTerminalUpgradeGrant } from "./ws/upgrade-dispatcher.js";
 import {
   createBbAppArtifactService,
   type BbAppArtifactService,
@@ -201,6 +202,7 @@ interface CreateAppOptions {
   serverMove?: ServerMoveAppOptions;
   slowApiRequestLogThresholdMs?: number;
   performanceDiagnosticsEnabled?: () => boolean;
+  terminalRelay?: boolean;
   staticDir?: string;
 }
 
@@ -973,11 +975,9 @@ export function createApp(
     }),
   );
 
-  app.get(
-    "/ws/terminals/:terminalId",
-    upgradeWebSocket((context) => {
+  if (options?.terminalRelay) {
+    app.get("/ws/terminals/:terminalId", (context) => {
       assertBrowserWebSocketAllowed(context);
-      const terminalId = context.req.param("terminalId");
       const query = terminalWebSocketQuerySchema.safeParse({
         outputAcks: context.req.query("outputAcks"),
         sinceSeq: context.req.query("sinceSeq"),
@@ -989,28 +989,51 @@ export function createApp(
           "Terminal websocket sinceSeq must be a non-negative integer and outputAcks must be 0 or 1",
         );
       }
-      return {
-        onOpen: (_event, socket) =>
-          onTerminalSocketOpen(deps, {
-            outputAcks: query.data.outputAcks,
-            socket,
-            sinceSeq: query.data.sinceSeq,
-            terminalId,
-          }),
-        onMessage: (event, socket) =>
-          onTerminalSocketMessage(deps, {
-            raw: event.data,
-            socket,
-            terminalId,
-          }),
-        onClose: (_event, socket) =>
-          onTerminalSocketClose(deps, {
-            socket,
-            terminalId,
-          }),
-      };
-    }),
-  );
+      setTerminalUpgradeGrant(context.env, {
+        kind: "browser",
+        terminalId: context.req.param("terminalId"),
+        outputAcks: query.data.outputAcks,
+        sinceSeq: query.data.sinceSeq,
+      });
+      return context.body(null);
+    });
+  } else {
+    app.get(
+      "/ws/terminals/:terminalId",
+      upgradeWebSocket((context) => {
+        assertBrowserWebSocketAllowed(context);
+        const terminalId = context.req.param("terminalId");
+        const query = terminalWebSocketQuerySchema.safeParse({
+          outputAcks: context.req.query("outputAcks"),
+          sinceSeq: context.req.query("sinceSeq"),
+        });
+        if (!query.success) {
+          throw new ApiError(
+            400,
+            "invalid_terminal_socket_query",
+            "Terminal websocket sinceSeq must be a non-negative integer and outputAcks must be 0 or 1",
+          );
+        }
+        return {
+          onOpen: (_event, socket) =>
+            onTerminalSocketOpen(deps, {
+              outputAcks: query.data.outputAcks,
+              socket,
+              sinceSeq: query.data.sinceSeq,
+              terminalId,
+            }),
+          onMessage: (event, socket) =>
+            onTerminalSocketMessage(deps, {
+              raw: event.data,
+              socket,
+              terminalId,
+            }),
+          onClose: (_event, socket) =>
+            onTerminalSocketClose(deps, { socket, terminalId }),
+        };
+      }),
+    );
+  }
 
   app.get(
     "/internal/ws",
@@ -1043,31 +1066,49 @@ export function createApp(
     }),
   );
 
-  app.get(
-    HOST_DAEMON_TERMINAL_DATA_PATH,
-    upgradeWebSocket(async (context) => {
+  if (options?.terminalRelay) {
+    app.get(HOST_DAEMON_TERMINAL_DATA_PATH, async (context) => {
       const websocketContext = await validateDaemonWebSocket(deps, {
         authorizationHeader: context.req.header("authorization"),
         protocolHeader: context.req.header("sec-websocket-protocol"),
         sessionId: context.req.query("sessionId") ?? null,
       });
-      return {
-        onOpen: (_event, socket) =>
-          onTerminalDataSocketOpen(deps, { ...websocketContext, socket }),
-        onMessage: (event, socket) =>
-          onTerminalDataSocketMessage(deps, {
-            raw: event.data,
-            sessionId: websocketContext.sessionId,
-            socket,
-          }),
-        onClose: (_event, socket) =>
-          onTerminalDataSocketClose(deps, {
-            sessionId: websocketContext.sessionId,
-            socket,
-          }),
-      };
-    }),
-  );
+      if (isServerMoveSnapshotFenced(deps.db)) {
+        throw new ApiError(503, "server_moving", "Server is moving");
+      }
+      setTerminalUpgradeGrant(context.env, {
+        kind: "daemon-data",
+        ...websocketContext,
+      });
+      return context.body(null);
+    });
+  } else {
+    app.get(
+      HOST_DAEMON_TERMINAL_DATA_PATH,
+      upgradeWebSocket(async (context) => {
+        const websocketContext = await validateDaemonWebSocket(deps, {
+          authorizationHeader: context.req.header("authorization"),
+          protocolHeader: context.req.header("sec-websocket-protocol"),
+          sessionId: context.req.query("sessionId") ?? null,
+        });
+        return {
+          onOpen: (_event, socket) =>
+            onTerminalDataSocketOpen(deps, { ...websocketContext, socket }),
+          onMessage: (event, socket) =>
+            onTerminalDataSocketMessage(deps, {
+              raw: event.data,
+              sessionId: websocketContext.sessionId,
+              socket,
+            }),
+          onClose: (_event, socket) =>
+            onTerminalDataSocketClose(deps, {
+              sessionId: websocketContext.sessionId,
+              socket,
+            }),
+        };
+      }),
+    );
+  }
 
   if (options?.staticDir) {
     registerStaticAppRoutes(app, options.staticDir);

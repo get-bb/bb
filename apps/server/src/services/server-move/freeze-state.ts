@@ -18,16 +18,33 @@ export function isServerMoveFrozen(db: DbConnection): boolean {
 }
 
 const snapshotFencedDatabases = new WeakSet<DbConnection>();
+const snapshotFenceListeners = new WeakMap<
+  DbConnection,
+  Set<(fenced: boolean) => void>
+>();
+
+export function onServerMoveSnapshotFence(
+  db: DbConnection,
+  listener: (fenced: boolean) => void,
+): () => void {
+  let listeners = snapshotFenceListeners.get(db);
+  if (!listeners) {
+    listeners = new Set();
+    snapshotFenceListeners.set(db, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 export function setServerMoveSnapshotFence(
   db: DbConnection,
   fenced: boolean,
 ): void {
-  if (fenced) {
-    snapshotFencedDatabases.add(db);
-    return;
-  }
-  snapshotFencedDatabases.delete(db);
+  if (fenced) snapshotFencedDatabases.add(db);
+  else snapshotFencedDatabases.delete(db);
+  for (const listener of snapshotFenceListeners.get(db) ?? []) listener(fenced);
 }
 
 export function isServerMoveSnapshotFenced(db: DbConnection): boolean {

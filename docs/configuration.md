@@ -67,6 +67,7 @@ These entries are startup-only:
   `BB_MARKETPLACE_URL`, `BB_PERF_DIAGNOSTICS`, `BB_POSTHOG_API_KEY`, and
   `BB_TELEMETRY`
 - `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, and all `BB_FF_*` feature flags
+- `BB_TERMINAL_RELAY` (`on` by default; set `off` to keep terminal WebSockets in the server process)
 
 Setting or unsetting one still reloads any other pending changes, but running
 processes keep their current values until a full launcher restart

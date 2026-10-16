@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
+import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 import {
   ensurePersonalProject,
@@ -46,6 +47,10 @@ import { createNoopTelemetryService } from "../../src/services/system/telemetry.
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { InProcessTerminalDataPlane } from "../../src/services/terminals/terminal-data-plane.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
+import {
+  installUpgradeDispatcher,
+  type UpgradeDispatcherOptions,
+} from "../../src/ws/upgrade-dispatcher.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
@@ -397,11 +402,15 @@ registerTestHarnessWarmup(() => withTestHarness(async () => undefined));
 
 export async function startTestServer(
   overrides: TestAppHarnessConfigOverrides = {},
+  options: {
+    dispatcher?: boolean;
+    onTerminalUpgrade?: UpgradeDispatcherOptions["onTerminalUpgrade"];
+  } = {},
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
   let addressInfo: AddressInfo | null = null;
   const { app, closeWebSockets, injectWebSocket, pluginService, serverMove } =
-    createApp(harness.deps);
+    createApp(harness.deps, { terminalRelay: options.dispatcher });
   const server = serve(
     {
       hostname: TEST_SERVER_HOST,
@@ -413,6 +422,23 @@ export async function startTestServer(
     },
   );
   injectWebSocket(server);
+  const terminalWss = options.dispatcher
+    ? new WebSocketServer({ noServer: true })
+    : null;
+  const restoreDispatcher = terminalWss
+    ? installUpgradeDispatcher(server, {
+        app,
+        logger: harness.deps.logger,
+        onTerminalUpgrade:
+          options.onTerminalUpgrade ??
+          (({ request, socket, head }) => {
+            terminalWss.handleUpgrade(request, socket, head, (ws) => {
+              terminalWss.emit("connection", ws, request);
+            });
+            return true;
+          }),
+      })
+    : null;
 
   while (!addressInfo) {
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -437,6 +463,8 @@ export async function startTestServer(
         });
       });
       await closeWebSockets();
+      restoreDispatcher?.();
+      terminalWss?.close();
       await closeServer;
       await harness.cleanup();
     },

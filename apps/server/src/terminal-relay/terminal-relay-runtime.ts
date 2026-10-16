@@ -206,6 +206,7 @@ export function createTerminalRelayRuntime(
             browserSockets.delete(socketId);
             plane.detachBrowserClient(ws, terminalId);
           });
+          ws.pause();
           options.send({ type: "attach-requested", terminalId, socketId });
         } else {
           const { sessionId, hostId } = message.grant;
@@ -241,8 +242,8 @@ export function createTerminalRelayRuntime(
             daemonSockets.delete(sessionId);
             options.send({ type: "daemon-data-socket-closed", sessionId });
           });
+          socket.resume();
         }
-        socket.resume();
       },
     );
   }
@@ -296,6 +297,7 @@ export function createTerminalRelayRuntime(
           });
           socket.close(1008, code);
         }
+        socket.resume();
         return;
       }
       case "terminal-state":
@@ -336,14 +338,19 @@ export function createTerminalRelayRuntime(
           );
         return;
       }
-      case "close-socket":
-        browserSockets
-          .get(message.socketId)
-          ?.socket.close(message.code, message.reason);
-        return;
-      case "attach-client": {
+      case "close-socket": {
         const socket = browserSockets.get(message.socketId)?.socket;
-        if (socket) plane.attachBrowserClient({ ...message, socket });
+        socket?.close(message.code, message.reason);
+        socket?.resume();
+        return;
+      }
+      case "attach-client": {
+        const client = browserSockets.get(message.socketId);
+        if (client) {
+          client.authorized = true;
+          plane.attachBrowserClient({ ...message, socket: client.socket });
+          client.socket.resume();
+        }
         return;
       }
       case "detach-client": {
@@ -352,15 +359,18 @@ export function createTerminalRelayRuntime(
         return;
       }
       case "hold-for-reattach": {
-        const socket = browserSockets.get(message.socketId)?.socket;
-        if (socket)
+        const client = browserSockets.get(message.socketId);
+        if (client) {
+          client.authorized = true;
           plane.holdForReattach(
             message.terminalId,
             message.session,
-            socket,
+            client.socket,
             message.sinceSeq,
             message.outputAcks,
           );
+          client.socket.resume();
+        }
         return;
       }
       case "browser-message": {
