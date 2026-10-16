@@ -1,4 +1,5 @@
 import {
+  experimental_runVcsProcess as runVcsProcess,
   experimental_sanitizeInheritedChildProcessEnv as sanitizeInheritedChildProcessEnv,
   experimental_spawnPortableOutputProcess as spawnPortableOutputProcess,
 } from "@get-bb/plugin-sdk/host";
@@ -132,6 +133,20 @@ export function runGit(
     );
   }
 
+  return runVcsProcess("git", args, () => runGitAdmitted(args, options), {
+    signal: options.signal,
+    priority: "background",
+  }).catch((error: unknown) => {
+    if (options.signal?.aborted)
+      throw createGitCommandCancelledError(args, error);
+    throw error;
+  });
+}
+
+function runGitAdmitted(
+  args: string[],
+  options: RunGitOptions,
+): Promise<GitCommandResult> {
   return new Promise<GitCommandResult>((resolve, reject) => {
     const stdout = createGitOutputBuffer();
     const stderr = createGitOutputBuffer();

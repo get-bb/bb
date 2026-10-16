@@ -2976,3 +2976,49 @@ directories, linked worktrees, and submodules. Core callers: the setup guide
 Stabilize after deciding whether depth, recency window, and limit should be
 caller options, and after exercising slow or network-mounted home directories
 and Windows hosts.
+
+## Shared VCS process admission (`@get-bb/plugin-sdk/host`)
+
+`experimental_runVcsProcess(command, args, operation, options)` admits a `git`
+or `gh` operation to the runtime's shared queue before invoking it. `args` are
+the command's arguments; they classify git network subcommands (`fetch`,
+`pull`, `push`, `clone`, `ls-remote`, `submodule update`, `remote update`).
+Arguments without a network subcommand, including an empty list for pipelines,
+admit to the local pool. The call holds the permit until the returned promise
+settles; callers must await child close and termination cleanup. Calls nested
+inside an admitted operation run under the outer permit without queueing again.
+`ExperimentalVcsProcessOptions` accepts `priority` (`interactive`, `status`,
+`background`), an optional cancellation signal, and `slots` for pipelines
+that start multiple git children. Queue cancellation prevents spawning; callers
+own cancellation of running children. Execution timeouts begin after admission.
+
+The runtime keeps two disjoint pools. The local pool admits
+`clamp(os.availableParallelism() - 2, 4, 6)` local git children, computed once
+per runtime: background work can fill two fewer slots and status work one
+fewer, so eight or more cores give six, five, and four. The
+network pool admits at most four network git or `gh` children, with at most two
+`gh`: background work can fill two slots and status work three. Waiters gain one
+priority level every 15 seconds. FIFO applies within effective priority in each
+pool: when the first waiter that is not held back by the GitHub lane needs more
+slots than its pool has free, later waiters in that pool wait behind it, so
+pipelines are not starved by single-slot work. A blocked GitHub waiter does not
+block eligible network git work, and neither pool blocks the other. The budget
+is shared across module copies in one Node runtime, including bundled plugins.
+Separate host daemons and server processes own separate budgets; arbitrary
+commands run by agents or terminals are outside this queue.
+
+Core buffered git/gh reads, streaming status/diff reads, blob reads, shell
+pipelines, watcher setup, environment provisioning, and the GitHub plugin use
+this path. The CLI and SDK's workspace reads and mutations reach the same host
+handlers. Host commands give explicit user mutations and diff panels interactive
+priority, status reads status priority, and PR polling/watcher setup/provisioning
+background priority.
+
+Before stabilization, audit cancellation and permit release on all supported
+platforms, mixed plugin bundles sharing the singleton, aging under sustained
+load, whether the CPU-scaled local capacity needs a host override and reflects
+container CPU quotas on supported hosts, whether argument
+classification should cover more network commands (for example `git lfs`), and
+whether work that escapes an admitted operation's async context should regain
+admission. Verify that every caller holds permits until its last admitted child
+exits, including pipelines.

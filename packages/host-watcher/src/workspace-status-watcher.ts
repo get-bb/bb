@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { runVcsProcess } from "@bb/process-utils";
 import path from "node:path";
 import {
   calculateExponentialBackoffDelay,
@@ -62,32 +63,39 @@ interface WorkspaceRootWatchSpecArgs {
 function runGitIgnoredMatchingStatus(
   args: GitStatusCommandArgs,
 ): Promise<GitStatusCommandResult> {
-  return new Promise<GitStatusCommandResult>((resolve, reject) => {
-    execFile(
-      "git",
-      [
-        "--no-optional-locks",
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--ignored=matching",
-        "--untracked-files=normal",
-      ],
-      {
-        cwd: args.cwd,
-        encoding: "utf8",
-        maxBuffer: WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES,
-        timeout: WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS,
-      },
-      (error, stdout) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve({ stdout });
-      },
-    );
-  });
+  const gitArgs = [
+    "--no-optional-locks",
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--ignored=matching",
+    "--untracked-files=normal",
+  ];
+  return runVcsProcess(
+    "git",
+    gitArgs,
+    () =>
+      new Promise<GitStatusCommandResult>((resolve, reject) => {
+        execFile(
+          "git",
+          gitArgs,
+          {
+            cwd: args.cwd,
+            encoding: "utf8",
+            maxBuffer: WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES,
+            timeout: WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS,
+          },
+          (error, stdout) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve({ stdout });
+          },
+        );
+      }),
+    { priority: "background" },
+  );
 }
 
 function collectIgnoredDirectoryPaths(statusOutput: string): string[] {
