@@ -1,3 +1,4 @@
+import { captureThreadCreated } from "../system/work-telemetry.js";
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
@@ -27,10 +28,7 @@ import {
 } from "./project-execution-defaults.js";
 import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
 import { projectCheckoutPathOnHost } from "../projects/project-workspace.js";
-import {
-  appendPluginMentionContext,
-  captureUserMessageSentTelemetry,
-} from "./thread-send.js";
+import { appendPluginMentionContext } from "./thread-send.js";
 import {
   attemptDispatch,
   hostIdForEnvironmentIntent,
@@ -59,7 +57,6 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
-import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { deriveForkTitle, deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
@@ -500,14 +497,10 @@ async function createPendingThreadAndAttemptFirstDispatch(
       trigger: "user",
     });
   } catch (error) {
-    emitPluginThreadDeleted({
-      ...thread,
-      deletedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
     const deleted = markThreadDeleted(deps.db, deps.hub, {
       threadId: thread.id,
     });
+    if (deleted) emitPluginThreadDeleted(deleted);
     if (deleted)
       requestThreadStorageDeletion(
         deps,
@@ -849,24 +842,6 @@ export async function createThreadFromRequest(
     ...createArgs,
     sendAt: request.sendAt,
   });
-  deps.telemetry.capture({
-    name: "thread_created",
-    properties: {
-      is_child_thread: parentThread !== null,
-      provider: request.providerId,
-    },
-  });
-  const { initiator } = resolveDispatchAuthor({
-    retrying: false,
-    senderThreadId: null,
-    startedOnBehalfOf: request.startedOnBehalfOf,
-  });
-  if (initiator === "user" && request.input.length > 0) {
-    captureUserMessageSentTelemetry(deps, {
-      isChildThread: parentThread !== null,
-      messageSource: "thread_create",
-      providerId: request.providerId,
-    });
-  }
+  captureThreadCreated(thread);
   return thread;
 }

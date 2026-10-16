@@ -1,3 +1,5 @@
+import { withMessageOrigin } from "../system/work-telemetry.js";
+import { currentTelemetryTrigger } from "../system/telemetry.js";
 import {
   getEnvironment,
   getThread,
@@ -77,7 +79,6 @@ import {
   type GroupedPrompt,
   type PromptWithGroups,
 } from "./deferred-first-turn-context.js";
-import type { TelemetryEvent } from "../system/telemetry.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
@@ -374,29 +375,6 @@ export async function appendPluginMentionContext(
   };
 }
 
-type UserMessageSentProperties = Extract<
-  TelemetryEvent,
-  { name: "user_message_sent" }
->["properties"];
-
-export function captureUserMessageSentTelemetry(
-  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "telemetry">,
-  args: {
-    isChildThread: boolean;
-    messageSource: UserMessageSentProperties["message_source"];
-    providerId: string;
-  },
-): void {
-  deps.telemetry.capture({
-    name: "user_message_sent",
-    properties: {
-      is_child_thread: args.isChildThread,
-      message_source: args.messageSource,
-      provider: args.providerId,
-    },
-  });
-}
-
 function appendAndQueueSendThreadMessageInTransaction({
   retryOf,
   beforeAppendInTransaction,
@@ -473,7 +451,23 @@ export async function sendThreadMessage(
     return;
   }
   return withThreadSendGuard(args.thread.id, () =>
-    sendThreadMessageWithoutContextClear(deps, args),
+    withMessageOrigin(
+      {
+        threadId: args.thread.id,
+        source: "thread_send",
+        trigger: args.payload.senderThreadId
+          ? "agent"
+          : currentTelemetryTrigger(),
+        captureMessage:
+          args.trigger === "user" &&
+          !args.payload.senderThreadId &&
+          args.retryOf === undefined &&
+          args.payload.input.length > 0,
+        reuse: true,
+        ...(args.retryOf ? { retryRequestId: args.retryOf.requestId } : {}),
+      },
+      () => sendThreadMessageWithoutContextClear(deps, args),
+    ),
   );
 }
 
@@ -561,8 +555,6 @@ async function sendThreadMessageWithoutContextClear(
     senderThreadId,
     startedOnBehalfOf: null,
   });
-  const shouldCaptureUserMessageSent =
-    args.trigger === "user" && initiator === "user" && input.length > 0;
   const expectedSteerTurnId =
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
@@ -610,13 +602,6 @@ async function sendThreadMessageWithoutContextClear(
       thread,
     })
   ) {
-    if (shouldCaptureUserMessageSent) {
-      captureUserMessageSentTelemetry(deps, {
-        isChildThread: thread.parentThreadId !== null,
-        messageSource: "thread_send",
-        providerId: thread.providerId,
-      });
-    }
     return;
   }
   const readyEnvironment = requireReadyThreadEnvironment(
@@ -736,13 +721,6 @@ async function sendThreadMessageWithoutContextClear(
         buildThreadStatusChangeMetadata(deps, queuedRequest.activeThread),
       );
     }
-    if (shouldCaptureUserMessageSent) {
-      captureUserMessageSentTelemetry(deps, {
-        isChildThread: thread.parentThreadId !== null,
-        messageSource: "thread_send",
-        providerId: thread.providerId,
-      });
-    }
     return;
   }
 
@@ -803,11 +781,4 @@ async function sendThreadMessageWithoutContextClear(
       );
     },
   });
-  if (shouldCaptureUserMessageSent) {
-    captureUserMessageSentTelemetry(deps, {
-      isChildThread: thread.parentThreadId !== null,
-      messageSource: "thread_send",
-      providerId: thread.providerId,
-    });
-  }
 }

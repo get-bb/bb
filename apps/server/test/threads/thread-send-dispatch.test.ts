@@ -135,7 +135,11 @@ function seedColdIdleThreadFixture(
 
 function installTelemetryCaptureSpy(harness: TestAppHarness) {
   const capture = vi.fn<TelemetryService["capture"]>();
-  harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+  harness.deps.telemetry = {
+    ...harness.deps.telemetry,
+    capture,
+    isEnabled: () => true,
+  };
   return capture;
 }
 
@@ -307,12 +311,18 @@ describe("user message telemetry", () => {
       expect(
         threadEvents.getLastExecutionOptions(harness.deps, thread.id),
       ).toMatchObject({ model: "gpt-5", reasoningLevel: "medium" });
-      expect(capture).toHaveBeenCalledWith({
+      expect(
+        capture.mock.calls.find(
+          ([event]) => event.name === "user_message_sent",
+        )?.[0],
+      ).toMatchObject({
         name: "user_message_sent",
         properties: {
           is_child_thread: false,
           message_source: "thread_send",
           provider: "codex",
+          thread_analytics_id: expect.stringMatching(/^[0-9a-f]{32}$/),
+          request_analytics_id: expect.stringMatching(/^[0-9a-f]{32}$/),
         },
       });
     });
@@ -345,7 +355,11 @@ describe("user message telemetry", () => {
         trigger: "user",
       });
 
-      expect(capture).not.toHaveBeenCalled();
+      expect(
+        capture.mock.calls.filter(
+          ([event]) => event.name === "user_message_sent",
+        ),
+      ).toEqual([]);
     });
   });
 });
