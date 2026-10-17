@@ -102,11 +102,9 @@ export function PluginPendingInteractionComposer({
     >
       {() => (
         <>
-          {inline ? null : (
+          {inline || origin === "provider" ? null : (
             <p className="mb-4 text-xs text-muted-foreground">
-              {origin === "plugin"
-                ? `Requested by ${pluginName}`
-                : `Asked by the agent through ${pluginName}`}
+              Requested by {pluginName}
             </p>
           )}
           {slot ? (
