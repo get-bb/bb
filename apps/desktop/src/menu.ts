@@ -303,13 +303,18 @@ export function buildApplicationMenuTemplate(
             args.zoomFocusedPage("reset");
           },
         },
-        {
-          accelerator: "CommandOrControl+Plus",
+        ...[
+          { accelerator: "CommandOrControl+Plus", visible: true },
+          { accelerator: "CommandOrControl+=", visible: false },
+          { accelerator: "CommandOrControl+numadd", visible: false },
+        ].map(({ accelerator, visible }) => ({
+          accelerator,
+          visible,
           label: "Zoom In",
           click() {
             args.zoomFocusedPage("in");
           },
-        },
+        })),
         {
           accelerator: "CommandOrControl+-",
           label: "Zoom Out",
