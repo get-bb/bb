@@ -70,7 +70,7 @@ export function CodexMcpElicitationField({
           value={typeof value === "boolean" ? String(value) : ""}
           disabled={disabled}
           onValueChange={(choice) => onChange(choice === "true")}
-          className="gap-0.5"
+          className="flex flex-wrap gap-1"
         >
           {[true, false].map((choice) => (
             <div
@@ -80,7 +80,7 @@ export function CodexMcpElicitationField({
               <RadioGroupItem value={String(choice)} id={`${id}-${choice}`} />
               <Label
                 htmlFor={`${id}-${choice}`}
-                className="flex-1 cursor-pointer text-sm font-medium"
+                className="cursor-pointer text-sm font-medium"
               >
                 {choice ? "Yes" : "No"}
               </Label>

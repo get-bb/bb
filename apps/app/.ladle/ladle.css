@@ -9,6 +9,7 @@
 @source "../../../plugins/workflows";
 @source "../../../plugins/provider-usage";
 @source "../../../plugins/secrets";
+@source "../../../plugins/provider-codex";
 
 .ladle-main {
   padding: 0;

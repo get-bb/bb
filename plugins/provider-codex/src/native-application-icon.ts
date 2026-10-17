@@ -53,7 +53,7 @@ export async function resolveNativeApplicationIconDataUrl(
       [
         "-t",
         "-s",
-        "32",
+        "64",
         "-o",
         tempDirectory,
         path.posix.join(appPath, "Contents", "Resources", iconFileName),

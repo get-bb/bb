@@ -202,69 +202,83 @@ function CodexMcpElicitation({
     >
       {payload ? (
         <>
-          {payload.kind === "computer_use" ? (
-            <>
-              <header className="flex items-center gap-2 text-xs text-muted-foreground">
-                <img
-                  src={computerUseIcon}
-                  alt=""
-                  className="size-5 rounded object-contain"
-                />
-                <span>Computer Use</span>
-              </header>
-              <div className="min-w-0 space-y-2">
-                <p
-                  className="flex min-w-0 items-center gap-1.5 break-words text-sm font-medium leading-5 text-foreground"
-                  title={payload.app.id}
-                >
-                  {payload.app.iconDataUrl ? (
-                    <img
-                      src={payload.app.iconDataUrl}
-                      alt=""
-                      className="size-5 shrink-0 object-contain"
-                    />
-                  ) : (
-                    <Icon
-                      name="AppWindow"
-                      aria-hidden
-                      className="size-4 shrink-0"
-                    />
-                  )}
-                  {payload.app.name}
-                </p>
+          {payload.kind === "computer_use" &&
+          (payload.riskLevel === "high" || payload.warning !== null) ? (
+            <div
+              className={`flex min-w-0 gap-2 rounded-md border px-2.5 py-2 text-xs ${payload.riskLevel === "high" ? "border-surface-destructive-border bg-surface-destructive text-destructive-text" : "border-border bg-surface-raised text-muted-foreground"}`}
+            >
+              <Icon
+                name="AlertTriangle"
+                aria-hidden
+                className="mt-px size-3.5 shrink-0"
+              />
+              <div className="min-w-0 space-y-0.5">
                 {payload.riskLevel === "high" ? (
-                  <p className="text-xs font-medium text-destructive-text">
-                    High risk
-                  </p>
+                  <p className="font-medium">High risk</p>
                 ) : null}
                 {payload.warning !== null ? (
-                  <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+                  <p className="whitespace-pre-wrap break-words text-foreground">
                     {payload.warning}
                   </p>
                 ) : null}
               </div>
-            </>
-          ) : (
-            <div className="min-w-0 space-y-1">
-              {payload.message === interaction.title ? null : (
-                <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                  {payload.message}
+            </div>
+          ) : null}
+          {payload.kind === "computer_use" ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="relative shrink-0">
+                {payload.app.iconDataUrl ? (
+                  <img
+                    src={payload.app.iconDataUrl}
+                    alt=""
+                    className="size-9 object-contain"
+                  />
+                ) : (
+                  <span className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-raised text-muted-foreground">
+                    <Icon name="AppWindow" aria-hidden className="size-4" />
+                  </span>
+                )}
+                <img
+                  src={computerUseIcon}
+                  alt=""
+                  className="absolute -bottom-0.5 -right-0.5 size-4 rounded-[4px] ring-2 ring-surface-recessed"
+                />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {payload.app.name}
                 </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                <span>{payload.serverName}</span> requests information
-              </p>
+                <p className="flex min-w-0 gap-1 text-xs text-muted-foreground">
+                  <span className="shrink-0">Computer Use</span>
+                  <span aria-hidden>·</span>
+                  <span className="truncate">{payload.app.id}</span>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised text-muted-foreground">
+                <Icon name="Plug02" aria-hidden className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {payload.serverName}
+                </p>
+                <p className="text-xs text-muted-foreground">MCP server</p>
+              </div>
             </div>
           )}
+          {payload.kind !== "computer_use" &&
+          payload.message !== interaction.title ? (
+            <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+              {payload.message}
+            </p>
+          ) : null}
           {payload.kind === "form" ? (
             <fieldset
               disabled={busy}
               aria-label="Form fields"
-              className="max-h-[50dvh] min-w-0 space-y-4 overflow-y-auto overscroll-contain pb-2 pr-1"
-              style={{
-                maskImage:
-                  "linear-gradient(to bottom, black calc(100% - 8px), transparent)",
-              }}
+              className="min-w-0 space-y-4"
             >
               {payload.fields.map((field) => (
                 <CodexMcpElicitationField
@@ -296,23 +310,20 @@ function CodexMcpElicitation({
             </fieldset>
           ) : payload.kind === "url" ? (
             <div className="space-y-2">
-              <div className="flex min-w-0 items-center gap-3 rounded-md border border-input p-3">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground">
-                  <Icon name="Globe" className="size-4" aria-hidden />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="break-all text-sm font-medium text-foreground">
+              <div className="flex min-w-0 items-start gap-2 rounded-md border border-border bg-surface-raised px-2.5 py-2">
+                <Icon
+                  name="Globe"
+                  className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+                <div className="min-w-0 text-xs">
+                  <p className="break-all font-medium text-foreground">
                     {new URL(payload.url).host}
                   </p>
-                  <p className="break-all text-xs text-muted-foreground">
+                  <p className="break-all text-muted-foreground">
                     {payload.url}
                   </p>
                 </div>
-                <Icon
-                  name="ArrowUpRight"
-                  className="size-3 shrink-0"
-                  aria-hidden
-                />
               </div>
               {urlOpened && !busy ? (
                 <UrlLink
@@ -329,7 +340,7 @@ function CodexMcpElicitation({
             </p>
           ) : null}
           <footer
-            className={`relative flex flex-wrap items-center justify-between gap-2 ${payload.kind === "form" ? "-mt-3 pt-2" : ""}`}
+            className={`flex flex-wrap items-center justify-between gap-2 ${payload.kind === "form" ? "sticky -bottom-3 z-10 -mx-3 -mb-3 border-t border-border-hairline bg-surface-recessed-solid px-3 pb-3 pt-2.5" : "mt-1"}`}
           >
             {payload.kind === "computer_use" &&
             payload.scopes.includes("always") ? (
