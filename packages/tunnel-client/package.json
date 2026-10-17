@@ -12,6 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint src test",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
