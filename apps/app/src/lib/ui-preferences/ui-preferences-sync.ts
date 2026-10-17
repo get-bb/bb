@@ -67,7 +67,7 @@ function getSyncState<Key extends UiPreferenceKey>(
 function getCachedUiPreferences(
   client: QueryClient,
 ): UiPreferencesResponse | undefined {
-  return client.getQueryData(uiPreferencesQueryOptions().queryKey);
+  return client.getQueryData(uiPreferencesQueryOptions(client).queryKey);
 }
 
 function latestEntry<Key extends UiPreferenceKey>(
@@ -185,7 +185,7 @@ function refetchUiPreferences(
   queryClient: QueryClient,
 ): Promise<UiPreferencesResponse> {
   return queryClient.fetchQuery({
-    ...uiPreferencesQueryOptions(),
+    ...uiPreferencesQueryOptions(queryClient),
     staleTime: 0,
   });
 }

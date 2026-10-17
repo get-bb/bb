@@ -4,9 +4,10 @@ import {
   CORE_TAG_SCOPE,
   createTaggedKeyedQueryOwner,
   invalidateTags,
+  optimisticQueryUpdate,
   runTaggedMutation,
   runTaggedRead,
-  taggedQueryMeta,
+  taggedQueryOptions,
 } from "../src/index.js";
 
 type Data = { value: number; tags: string[] };
@@ -16,10 +17,12 @@ afterEach(() => {
 });
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 function setup() {
   const client = new QueryClient({
@@ -38,7 +41,10 @@ function observe(
   const observer = new QueryObserver(client, {
     queryKey: [key],
     staleTime: Infinity,
-    meta: taggedQueryMeta<Data>({ scope, tagsOf: (data) => data.tags }),
+    ...taggedQueryOptions<Data>(client, [key], {
+      scope,
+      tagsOf: (data) => data.tags,
+    }),
     queryFn: ({ queryKey }) => runTaggedRead(client, queryKey, fn),
   });
   const stop = observer.subscribe(() => {});
@@ -465,4 +471,314 @@ it("loads new subscribers without rereading other rows during a keyed invalidati
     b: 1,
     c: 3,
   });
+});
+
+describe("optimistic tagged mutations", () => {
+  const outcome = () => ({ result: "saved", invalidated: ["item:a"] });
+  function prediction(client: QueryClient, value: number) {
+    return {
+      client,
+      optimistic: [
+        optimisticQueryUpdate<Data>(["a"], (current) => ({
+          ...current,
+          value,
+        })),
+      ],
+    };
+  }
+
+  it("shares predictions immediately and holds them through other invalidations until all re-reads settle", async () => {
+    const client = setup();
+    let value = 1;
+    const read = observe(client, "a", async () => ({
+      value,
+      tags: ["item:a"],
+    }));
+    await vi.waitFor(() => expect(read.value()).toBe(1));
+    const second = new QueryObserver(client, read.observer.options);
+    const seen: number[] = [];
+    disposers.push(
+      second.subscribe((result) => {
+        if (result.data) seen.push(result.data.value);
+      }),
+    );
+    const write = deferred<ReturnType<typeof outcome>>();
+    const mutation = runTaggedMutation(
+      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+      () => write.promise,
+      prediction(client, 2),
+    );
+    expect(read.value()).toBe(2);
+    expect(second.getCurrentResult().data?.value).toBe(2);
+    value = 3;
+    await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    expect(read.value()).toBe(2);
+    const fresh = deferred<Data>();
+    read.fn.mockImplementationOnce(() => fresh.promise);
+    write.resolve(outcome());
+    await vi.waitFor(() => expect(read.fn).toHaveBeenCalledTimes(3));
+    expect(read.value()).toBe(2);
+    fresh.resolve({ value: 4, tags: ["item:a"] });
+    await expect(mutation).resolves.toBe("saved");
+    expect(read.value()).toBe(4);
+    expect(second.getCurrentResult().data?.value).toBe(4);
+    expect(seen.every((value) => value === 2 || value === 4)).toBe(true);
+  });
+
+  it("rolls back a rejected write and leaves the error for the caller", async () => {
+    const client = setup();
+    const read = observe(client, "a", async () => ({
+      value: 1,
+      tags: ["item:a"],
+    }));
+    await vi.waitFor(() => expect(read.value()).toBe(1));
+    const write = deferred<ReturnType<typeof outcome>>();
+    const mutation = runTaggedMutation(
+      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+      () => write.promise,
+      prediction(client, 2),
+    );
+    expect(read.value()).toBe(2);
+    write.reject(new Error("write offline"));
+    await expect(mutation).rejects.toThrow("write offline");
+    expect(read.value()).toBe(1);
+  });
+
+  it("keeps accepted predictions and a refresh error until Retry reads fresh server data", async () => {
+    const client = setup();
+    const read = observe(client, "a", async () => ({
+      value: 1,
+      tags: ["item:a"],
+    }));
+    await vi.waitFor(() => expect(read.value()).toBe(1));
+    read.fn.mockRejectedValueOnce(new Error("read offline"));
+    await runTaggedMutation(
+      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+      async () => outcome(),
+      prediction(client, 2),
+    );
+    expect(read.value()).toBe(2);
+    expect(read.observer.getCurrentResult().error?.message).toBe(
+      "read offline",
+    );
+    read.fn.mockResolvedValueOnce({ value: 3, tags: ["item:a"] });
+    await read.observer.refetch();
+    expect(read.value()).toBe(3);
+    expect(read.observer.getCurrentResult().error).toBeNull();
+  });
+
+  it.each([
+    [true, true, 0],
+    [true, false, 0],
+    [false, true, 0],
+    [false, false, 0],
+    [true, true, 1],
+    [true, false, 1],
+    [false, true, 1],
+    [false, false, 1],
+  ] as const)(
+    "protects later predictions (earlier=%s later=%s first=%s)",
+    async (earlier, later, first) => {
+      const client = setup();
+      let value = 0;
+      const read = observe(client, "a", async () => ({
+        value,
+        tags: ["item:a"],
+      }));
+      await vi.waitFor(() => expect(read.value()).toBe(0));
+      const writes = [
+        deferred<ReturnType<typeof outcome>>(),
+        deferred<ReturnType<typeof outcome>>(),
+      ];
+      const mutations = writes.map((write, index) =>
+        runTaggedMutation(
+          (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+          () => write.promise,
+          prediction(client, index + 1),
+        ).then(
+          () => true,
+          () => false,
+        ),
+      );
+      expect(read.value()).toBe(2);
+      const success = [earlier, later];
+      const finish = async (index: number) => {
+        if (success[index]) {
+          value = (index + 1) * 10;
+          writes[index]!.resolve(outcome());
+        } else writes[index]!.reject(new Error("rejected"));
+        await expect(mutations[index]).resolves.toBe(success[index]);
+      };
+      await finish(first);
+      expect(read.value()).toBe(first === 0 ? 2 : later ? 20 : 1);
+      await finish(1 - first);
+      expect(read.value()).toBe(later ? 20 : earlier ? 10 : 0);
+      value = 99;
+      await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+      expect(read.value()).toBe(99);
+    },
+  );
+
+  it("does not replace an accepted row prediction when only a different row refreshes", async () => {
+    const client = setup();
+    const queryKey = ["optimistic-rows"];
+    let value = 1;
+    let failure = false;
+    const owner = createTaggedKeyedQueryOwner({
+      client,
+      queryKey,
+      scope: CORE_TAG_SCOPE,
+      read: async (keys) => {
+        if (failure && keys.includes("a")) throw new Error("read offline");
+        return {
+          result: Object.fromEntries(keys.map((key) => [key, value])),
+          tags: [],
+          keyTags: Object.fromEntries(
+            keys.map((key) => [key, [`item:${key}`]]),
+          ),
+        };
+      },
+    });
+    const stopA = owner.subscribe(["a"], () => {});
+    disposers.push(
+      stopA,
+      owner.subscribe(["b"], () => {}),
+    );
+    await vi.waitFor(() =>
+      expect(owner.observer.getCurrentResult().data?.result).toEqual({
+        a: 1,
+        b: 1,
+      }),
+    );
+    failure = true;
+    await runTaggedMutation(
+      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+      async () => outcome(),
+      {
+        client,
+        optimistic: [
+          optimisticQueryUpdate<number>(queryKey, () => 2, ["result", "a"]),
+        ],
+      },
+    );
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 2,
+      b: 1,
+    });
+    stopA();
+    value = 3;
+    await invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 2,
+      b: 3,
+    });
+    failure = false;
+    value = 4;
+    disposers.push(owner.subscribe(["a"], () => {}));
+    await vi.waitFor(() =>
+      expect(owner.observer.getCurrentResult().data?.result).toEqual({
+        a: 4,
+        b: 3,
+      }),
+    );
+  });
+});
+
+it("re-reads when a write completes between a read resolving and its cache commit", async () => {
+  const client = setup();
+  let value = 1;
+  const read = observe(client, "commit-gap", async () => ({
+    value,
+    tags: ["item:a"],
+  }));
+  await vi.waitFor(() => expect(read.value()).toBe(1));
+  const old = deferred<Data>();
+  const write = deferred<{ result: string; invalidated: string[] }>();
+  read.fn.mockImplementationOnce(() => old.promise);
+  const refreshing = read.observer.refetch();
+  const mutation = runTaggedMutation(
+    (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    () => write.promise,
+    {
+      client,
+      optimistic: [
+        optimisticQueryUpdate<Data>(["commit-gap"], (current) => ({
+          ...current,
+          value: 2,
+        })),
+      ],
+    },
+  );
+  expect(read.value()).toBe(2);
+  old.resolve({ value: 1, tags: ["item:a"] });
+  queueMicrotask(() => {
+    value = 3;
+    write.resolve({ result: "saved", invalidated: ["item:a"] });
+  });
+  await mutation;
+  await refreshing;
+  expect(read.value()).toBe(3);
+});
+
+it("does not acknowledge a row read before the write from a later batch's start time", async () => {
+  const client = setup();
+  const queryKey = ["row-receipts"];
+  let value = 1;
+  const response = (keys: readonly string[], current: number) => ({
+    result: Object.fromEntries(keys.map((key) => [key, current])),
+    tags: [],
+    keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+  });
+  const read = vi.fn(async (keys: readonly string[]) => response(keys, value));
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey,
+    scope: CORE_TAG_SCOPE,
+    read,
+  });
+  const stopA = owner.subscribe(["a"], () => {});
+  disposers.push(
+    stopA,
+    owner.subscribe(["b"], () => {}),
+  );
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 1,
+      b: 1,
+    }),
+  );
+  const write = deferred<{ result: string; invalidated: string[] }>();
+  const mutation = runTaggedMutation(
+    (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    () => write.promise,
+    {
+      client,
+      optimistic: [
+        optimisticQueryUpdate<number>(queryKey, () => 2, ["result", "a"]),
+      ],
+    },
+  );
+  const old = deferred<ReturnType<typeof response>>();
+  read.mockImplementationOnce(() => old.promise);
+  const first = invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  stopA();
+  const second = invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
+  old.resolve(response(["a"], 1));
+  queueMicrotask(() => {
+    value = 3;
+    write.resolve({ result: "saved", invalidated: ["item:a"] });
+  });
+  await Promise.all([first, second, mutation]);
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 2,
+    b: 3,
+  });
+  disposers.push(owner.subscribe(["a"], () => {}));
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 3,
+      b: 3,
+    }),
+  );
 });

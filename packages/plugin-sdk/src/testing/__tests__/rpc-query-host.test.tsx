@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
-import { act, cleanup } from "@testing-library/react";
+import { act, cleanup, fireEvent } from "@testing-library/react";
 import { memo } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { experimental_useRpcKeyedQuery } from "../../app.js";
+import {
+  experimental_useRpcKeyedQuery,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
+} from "../../app.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import { renderSlot } from "../app.js";
 
@@ -68,3 +72,123 @@ it("updates selected load state without rendering unchanged rows again", async (
   await slot.findByText("2 loaded");
   expect(rendered).toHaveBeenCalledTimes(count);
 });
+
+it.each(["success", "write-failure", "read-failure"] as const)(
+  "shares plain and keyed optimistic updates through the public hook (%s)",
+  { timeout: 20_000 },
+  async (outcome) => {
+    const contract = defineRpcContract({
+      detail: {
+        input: z.object({ id: z.string() }),
+        output: z.number(),
+        tags: () => ["row:a"],
+      },
+      rows: {
+        input: z.object({ keys: z.array(z.string()) }),
+        output: z.record(z.string(), z.number()),
+        keyTags: (key) => [`row:${key}`],
+      },
+      save: {
+        input: z.number(),
+        output: z.number(),
+        invalidates: () => ["row:a"],
+      },
+    });
+    let release!: () => void;
+    const write = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let server = 1;
+    let offline = false;
+    function Reader({ name }: { name: string }) {
+      const detail = experimental_useRpcQuery<typeof contract, "detail">({
+        method: "detail",
+        input: { id: "a" },
+      });
+      const rows = experimental_useRpcKeyedQuery<number>({
+        method: "rows",
+        keys: ["a"],
+      });
+      return (
+        <>
+          <output>
+            {name}:{detail.data}/{rows.data?.a}
+          </output>
+          {name === "one" && detail.error && <p>{detail.error.message}</p>}
+        </>
+      );
+    }
+    function Probe() {
+      const mutation = experimental_useRpcMutation<typeof contract, "save">({
+        method: "save",
+        optimistic: (value, cache) => {
+          cache.update("detail", { id: "a" }, () => value);
+          cache.updateKey("rows", "a", () => value);
+        },
+      });
+      return (
+        <>
+          <Reader name="one" />
+          <Reader name="two" />
+          <button
+            onClick={() => {
+              void mutation.mutate(2).catch(() => {});
+            }}
+          >
+            Save
+          </button>
+          {mutation.error && <p>{mutation.error.message}</p>}
+        </>
+      );
+    }
+    const slot = renderSlot<Record<string, never>, typeof contract>(
+      { component: Probe },
+      {},
+      {
+        experimental_rpcContract: contract,
+        rpc: {
+          detail: () => {
+            if (offline) throw new Error("read offline");
+            return server;
+          },
+          rows: ({ keys }) => {
+            if (offline) throw new Error("read offline");
+            return Object.fromEntries(keys.map((key) => [key, server]));
+          },
+          save: async () => {
+            await write;
+            if (outcome === "write-failure") throw new Error("write offline");
+            server = 3;
+            offline = outcome === "read-failure";
+            return server;
+          },
+        },
+      },
+    );
+    await slot.findByText("one:1/1");
+    fireEvent.click(slot.getByText("Save"));
+    expect(slot.getByText("one:2/2")).toBeTruthy();
+    expect(slot.getByText("two:2/2")).toBeTruthy();
+    await slot.experimental_invalidateRpc(["row:a"]);
+    expect(slot.getByText("one:2/2")).toBeTruthy();
+    await act(async () => {
+      release();
+    });
+    if (outcome === "success") {
+      await slot.findByText("one:3/3");
+      expect(slot.getByText("two:3/3")).toBeTruthy();
+    } else if (outcome === "write-failure") {
+      await slot.findByText("write offline");
+      expect(slot.getByText("one:1/1")).toBeTruthy();
+      expect(slot.getByText("two:1/1")).toBeTruthy();
+    } else {
+      await slot.findByText("read offline", {}, { timeout: 10_000 });
+      expect(slot.getByText("one:2/2")).toBeTruthy();
+      expect(slot.getByText("two:2/2")).toBeTruthy();
+      offline = false;
+      await slot.experimental_invalidateRpc(["row:a"]);
+      await slot.findByText("one:3/3");
+      expect(slot.queryByText("read offline")).toBeNull();
+    }
+  },
+);

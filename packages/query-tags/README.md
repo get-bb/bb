@@ -1,7 +1,8 @@
 # Query tags
 
-Register a query's scope and `tagsOf(data)` with `taggedQueryMeta`, and wrap its
-query function in `runTaggedRead`. `invalidateTags(client, scope, tags)` marks
+Spread `taggedQueryOptions(client, queryKey, registration)` into query options
+to register the scope and `tagsOf(data)` and project predictions at cache commit.
+Wrap the query function in `runTaggedRead`. `invalidateTags(client, scope, tags)` marks
 matching cached queries stale and awaits active reads. An empty tag list does
 nothing. Clients and scopes are independent.
 
@@ -13,3 +14,21 @@ Failed first loads can recover on the next invalidation.
 waits for active reads to settle. Refresh failures retain
 the cached data and query error; they do not turn a successful write into a
 failed mutation. A later successful read clears the query error.
+
+
+Pass `{ client, optimistic: [...] }` as the third argument to
+`runTaggedMutation`. Build each prediction with
+`optimisticQueryUpdate<Value>(queryKey, updater, path = [])`. Pure updaters
+receive the visible cached value and return its prediction; missing values are
+skipped. A path selects a nested value, such as `["result", rowId]` for a keyed
+row. `useTaggedMutation` takes a fourth callback from mutation arguments to the
+same prediction descriptors, applied synchronously when `mutate` is called.
+
+All readers see the prediction through the query cache. Server reads update an
+authoritative value beneath pending predictions. The prediction stays until the
+mutation's matched reads settle, then fresh server data replaces it. Write
+failure removes that mutation's prediction. If the write succeeds but the read
+fails, the accepted prediction stays with the read error until a successful
+refresh. Later predictions and confirmed values cannot be replaced by an older
+settle or rollback; an inverted completion retains the later confirmed value
+until a subsequent fresh read. Keyed reads acknowledge only rows they fetched.

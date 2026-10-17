@@ -3963,12 +3963,43 @@ export interface ExperimentalRpcQueryOptions<
   enabled?: boolean;
 }
 
+export interface ExperimentalRpcOptimisticCache<
+  Contract extends PluginRpcContract,
+> {
+  update<Method extends keyof Contract & string>(
+    method: Method,
+    input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+    update: (
+      current: PluginRpcResult<Contract[Method]>,
+    ) => PluginRpcResult<Contract[Method]>,
+  ): void;
+  updateKey<Method extends keyof Contract & string>(
+    method: Method,
+    key: string,
+    update: (
+      current: PluginRpcResult<Contract[Method]> extends Record<
+        string,
+        infer Value
+      >
+        ? Value
+        : never,
+    ) => PluginRpcResult<Contract[Method]> extends Record<string, infer Value>
+      ? Value
+      : never,
+  ): void;
+}
+
 export interface ExperimentalRpcMutationOptions<
   Contract extends PluginRpcContract,
   Method extends keyof Contract & string,
 > {
   pluginId?: string;
   method: Method;
+  /** Predict loaded reads synchronously; shared predictions survive accepted writes whose refresh fails. */
+  optimistic?(
+    input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+    cache: ExperimentalRpcOptimisticCache<Contract>,
+  ): void;
 }
 
 /**

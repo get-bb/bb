@@ -77,7 +77,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalRpcQueryState`
 - `ExperimentalRpcKeyedQueryState`
 - `ExperimentalRpcQueryOptions`
-- `ExperimentalRpcMutationOptions`
+- `ExperimentalRpcMutationOptions`, `ExperimentalRpcOptimisticCache`
 - `ExperimentalRpcMutationState`
 
 - `ExperimentalAppIcons`

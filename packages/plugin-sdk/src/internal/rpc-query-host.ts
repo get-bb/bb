@@ -8,7 +8,9 @@ import {
   invalidateTags,
   pluginTagScope,
   runTaggedRead,
-  taggedQueryMeta,
+  taggedQueryOptions,
+  optimisticQueryUpdate,
+  type TaggedOptimisticUpdate,
   createTaggedKeyedQueryOwner,
   useTaggedMutation,
   useQuerySelection,
@@ -17,6 +19,8 @@ import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import { z } from "zod";
 import type {
   ExperimentalRpcKeyedQueryState,
+  ExperimentalRpcMutationOptions,
+  ExperimentalRpcOptimisticCache,
   PluginSdkApp,
 } from "../app-contract.js";
 
@@ -33,6 +37,50 @@ const envelopeSchema = z.object({
   invalidated: z.array(z.string()).default([]),
 });
 type Envelope = z.infer<typeof envelopeSchema>;
+import type {
+  PluginRpcContract,
+  PluginRpcCallArgs,
+  PluginRpcResult,
+  StandardSchemaV1InferInput,
+} from "../rpc-contract.js";
+const rpcQueryKey = (pluginId: string, method: string, input: JsonValue) => [
+  "plugin-rpc",
+  pluginId,
+  method,
+  input,
+];
+const keyedQueryKey = (pluginId: string, method: string) =>
+  rpcQueryKey(pluginId, method, { keyed: true });
+function optimisticCache<Contract extends PluginRpcContract>(
+  pluginId: string,
+  updates: TaggedOptimisticUpdate[],
+): ExperimentalRpcOptimisticCache<Contract> {
+  const add = (prediction: TaggedOptimisticUpdate) => {
+    updates.push({
+      ...prediction,
+      update: (current) => jsonValueSchema.parse(prediction.update(current)),
+    });
+  };
+  return {
+    update(method, input, update) {
+      add(
+        optimisticQueryUpdate(
+          rpcQueryKey(pluginId, method, jsonValueSchema.parse(input ?? null)),
+          update,
+          ["result"],
+        ),
+      );
+    },
+    updateKey(method, key, update) {
+      add(
+        optimisticQueryUpdate(keyedQueryKey(pluginId, method), update, [
+          "result",
+          key,
+        ]),
+      );
+    },
+  };
+}
 const tagsOf = (data: Envelope) => [
   ...data.tags,
   ...Object.values(data.keyTags).flat(),
@@ -58,13 +106,16 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     const host = useHost();
     const pluginId = options.pluginId ?? host.pluginId;
     const input = jsonValueSchema.parse(options.input ?? null);
-    const queryKey = ["plugin-rpc", pluginId, options.method, input];
+    const queryKey = rpcQueryKey(pluginId, options.method, input);
     useSubscription(host, pluginId, options.enabled ?? true);
     const query = useQuery(
       {
         queryKey,
         enabled: options.enabled,
-        meta: taggedQueryMeta({ scope: pluginTagScope(pluginId), tagsOf }),
+        ...taggedQueryOptions(host.queryClient, queryKey, {
+          scope: pluginTagScope(pluginId),
+          tagsOf,
+        }),
         queryFn: () =>
           runTaggedRead(host.queryClient, queryKey, async () =>
             envelopeSchema.parse(
@@ -112,7 +163,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     if (!owner) {
       owner = createTaggedKeyedQueryOwner({
         client: host.queryClient,
-        queryKey: ["plugin-rpc", pluginId, options.method, { keyed: true }],
+        queryKey: keyedQueryKey(pluginId, options.method),
         scope: pluginTagScope(pluginId),
         read: async (keys) => {
           const response = envelopeSchema.parse(
@@ -168,20 +219,44 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       refetch,
     } as ExperimentalRpcKeyedQueryState<T, Selection>;
   }
-  const experimental_useRpcMutation: PluginSdkApp["experimental_useRpcMutation"] =
-    (options) => {
-      const host = useHost();
-      const pluginId = options.pluginId ?? host.pluginId;
-      return useTaggedMutation(
-        host.queryClient,
-        (tags) =>
-          invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
-        async (input?: JsonValue) =>
-          envelopeSchema.parse(
-            await host.call(pluginId, options.method, input ?? null),
+  function experimental_useRpcMutation<
+    Contract extends PluginRpcContract = PluginRpcContract,
+    Method extends keyof Contract & string = keyof Contract & string,
+  >(options: ExperimentalRpcMutationOptions<Contract, Method>) {
+    const host = useHost();
+    const pluginId = options.pluginId ?? host.pluginId;
+    return useTaggedMutation<
+      PluginRpcCallArgs<Contract[Method]>,
+      PluginRpcResult<Contract[Method]>
+    >(
+      host.queryClient,
+      (tags) =>
+        invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
+      async (...args) => {
+        const response = envelopeSchema.parse(
+          await host.call(
+            pluginId,
+            options.method,
+            jsonValueSchema.parse(args[0] ?? null),
           ),
-      ) as ReturnType<PluginSdkApp["experimental_useRpcMutation"]>;
-    };
+        );
+        return {
+          ...response,
+          result: response.result as PluginRpcResult<Contract[Method]>,
+        };
+      },
+      (...args) => {
+        const updates: TaggedOptimisticUpdate[] = [];
+        options.optimistic?.(
+          (args[0] ?? null) as StandardSchemaV1InferInput<
+            Contract[Method]["input"]
+          >,
+          optimisticCache<Contract>(pluginId, updates),
+        );
+        return updates;
+      },
+    );
+  }
   function experimental_useRpcRefresh() {
     const host = useHost();
     const isRefreshing =

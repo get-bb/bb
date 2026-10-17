@@ -58,7 +58,15 @@ function useThreadNotificationsData({
   const { mutate: saveLevel } = experimental_useRpcMutation<
     typeof pushNotificationsRpcContract,
     "threadNotifications.set"
-  >({ method: "threadNotifications.set" });
+  >({
+    method: "threadNotifications.set",
+    optimistic: ({ threadId, level }, cache) => {
+      cache.updateKey("threadNotifications.keyed", threadId, (current) => ({
+        ...current,
+        own: level,
+      }));
+    },
+  });
   const { values } = useSettings();
   const query = experimental_useRpcKeyedQuery<
     ThreadNotificationInputs,
