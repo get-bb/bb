@@ -998,6 +998,6 @@ export function registerPluginRoutes(
         outcome.error.code === "invalid_input" ? 400 : 500,
       );
     }
-    return context.json({ ok: true, result: outcome.result });
+    return context.json(outcome);
   });
 }

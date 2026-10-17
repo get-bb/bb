@@ -9,7 +9,6 @@ import { z } from "zod";
 import {
   addPushSubscriptionInputSchema,
   CLIENT_NOTIFICATION_CHANNEL,
-  THREAD_NOTIFICATIONS_CHANNEL,
   clientChannelSchema,
   DEFAULT_EXPO_PUSH_URL,
   DEVICE_LABEL_MAX_LENGTH,
@@ -17,7 +16,6 @@ import {
   pushNotificationsRpcContract,
   type ClientNotification,
   type PushSubscriptionSummary,
-  type ThreadNotificationsUpdate,
 } from "./contract.js";
 import {
   createNotificationPreferences,
@@ -186,10 +184,8 @@ export function createPushNotificationsPlugin(
           childLevel: ownNotificationLevelSchema.parse(childLevel),
         };
       },
-      publish: (threads) =>
-        bb.realtime.publish(THREAD_NOTIFICATIONS_CHANNEL, {
-          threads,
-        } satisfies ThreadNotificationsUpdate),
+      publish: (threadIds) =>
+        bb.rpc.experimental_invalidate(threadIds.map((id) => `thread:${id}`)),
     });
     const subscriptions = createPushSubscriptionStore(bb, {
       ...(options.now === undefined ? {} : { now: options.now }),
@@ -259,6 +255,15 @@ export function createPushNotificationsPlugin(
           throw new Error(`Push subscription not found: ${id}`);
         }
         return { ok: true as const };
+      },
+      "threadNotifications.keyed": async ({ keys }) => {
+        const rows = await preferences.list(keys);
+        return Object.fromEntries(
+          keys.map((key) => [
+            key,
+            rows[key] ?? { own: "inherit" as const, ancestorCap: null },
+          ]),
+        );
       },
       "threadNotifications.list": async ({ threadIds }) => ({
         threads: await preferences.list(threadIds),

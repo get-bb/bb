@@ -64,6 +64,7 @@ const outputs = Object.fromEntries(
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
 const EXTERNAL = [
+  /^@tanstack\/react-query($|\/)/,
   /^@get-bb\/plugin-sdk$/,
   /^node:/,
   /^@testing-library\/react($|\/)/,

@@ -145,6 +145,19 @@ export const experimental_SourceCode = runtimeComponent(
   "experimental_SourceCode",
 );
 export const experimental_Diff = runtimeComponent("experimental_Diff");
+export const experimental_useRpcQuery = runtimeFunction(
+  "experimental_useRpcQuery",
+);
+export const experimental_useRpcKeyedQuery = runtimeFunction(
+  "experimental_useRpcKeyedQuery",
+);
+export const experimental_useRpcMutation = runtimeFunction(
+  "experimental_useRpcMutation",
+);
+export const experimental_useRpcRefresh = runtimeFunction(
+  "experimental_useRpcRefresh",
+);
+
 export const useRpc = runtimeFunction("useRpc");
 export const useRealtime = runtimeFunction("useRealtime");
 export const useRealtimeConnectionState = runtimeFunction(

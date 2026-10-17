@@ -519,10 +519,13 @@ export function useSystemAiServices(options?: QueryOptions) {
   });
 }
 
-export function uiPreferencesQueryOptions() {
+export function uiPreferencesQueryOptions(client: QueryClient) {
+  const queryKey = uiPreferencesQueryKey();
   return queryOptions({
-    queryKey: uiPreferencesQueryKey(),
+    queryKey,
     ...routeTaggedRead(
+      client,
+      queryKey,
       publicApiRoutes.system.uiPreferences,
       { params: {}, input: undefined },
       (signal) => sdk.system.uiPreferences.list({ signal }),
@@ -532,11 +535,12 @@ export function uiPreferencesQueryOptions() {
 }
 
 export function useUiPreferences(options?: QueryOptions) {
+  const client = useQueryClient();
   const enabled = options?.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
 
   return useQuery({
-    ...uiPreferencesQueryOptions(),
+    ...uiPreferencesQueryOptions(client),
     enabled,
   });
 }

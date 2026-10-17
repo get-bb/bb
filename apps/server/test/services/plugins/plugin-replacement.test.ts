@@ -63,6 +63,7 @@ describe("replacement plugins", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },

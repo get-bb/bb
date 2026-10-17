@@ -12,6 +12,7 @@ const NODE_ESM_REQUIRE_BANNER = [
 const PACKAGE_EXTERNALS = ["zod", "zod/*", "cross-spawn"];
 
 const EXTRA_EXTERNALS = {
+  "./internal/rpc-query-host": ["react", "react/*", "@tanstack/react-query"],
   "./testing": ["better-sqlite3", "cron-parser", "hono", "hono/*"],
   "./testing/app": [
     "@testing-library/react",
@@ -20,6 +21,7 @@ const EXTRA_EXTERNALS = {
     "react/*",
     "react-dom",
     "react-dom/*",
+    "@tanstack/react-query",
   ],
 };
 

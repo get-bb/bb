@@ -107,32 +107,40 @@ function renderNotifications(
     itemFor = next;
   };
   let current = stored;
-  let held: Promise<void> | null = null;
   const listInput =
-    pushNotificationsRpcContract["threadNotifications.list"].input;
+    pushNotificationsRpcContract["threadNotifications.keyed"].input;
   const view = renderSlot(
     { component: Probe },
     { threadIds, onItem },
     {
+      experimental_rpcContract: {
+        "threadNotifications.keyed":
+          pushNotificationsRpcContract["threadNotifications.keyed"],
+        "threadNotifications.set":
+          pushNotificationsRpcContract["threadNotifications.set"],
+      },
       settings: { defaultLevel: "all", childLevel: "input-only" },
       rpc: {
-        "threadNotifications.list": async (input) => {
+        "threadNotifications.keyed": async (input) => {
           const threads = Object.fromEntries(
             listInput
               .parse(input)
-              .threadIds.flatMap((id) =>
-                current[id] === undefined ? [] : [[id, current[id]]],
-              ),
+              .keys.map((id) => [
+                id,
+                current[id] ?? { own: "inherit", ancestorCap: null },
+              ]),
           );
-          await held;
-          return { threads };
+          return threads;
         },
-        "threadNotifications.set": (input) => ({
-          own: pushNotificationsRpcContract[
-            "threadNotifications.set"
-          ].input.parse(input).level,
-          ancestorCap: null,
-        }),
+        "threadNotifications.set": (input) => {
+          const { threadId, level } =
+            pushNotificationsRpcContract["threadNotifications.set"].input.parse(
+              input,
+            );
+          const saved = { own: level, ancestorCap: null };
+          current = { ...current, [threadId]: saved };
+          return saved;
+        },
       },
     },
   );
@@ -157,32 +165,15 @@ function renderNotifications(
     show(ids: readonly string[]) {
       view.rerender(<Probe threadIds={ids} onItem={onItem} />);
     },
-    listCalls: () =>
-      view.inspection.rpcCalls
-        .filter((call) => call.method === "threadNotifications.list")
-        .map((call) => call.input),
     restore(next: Record<string, ThreadNotificationInputs>) {
       current = next;
-    },
-    holdReads() {
-      let release = () => {};
-      held = new Promise((resolve) => {
-        release = () => {
-          held = null;
-          resolve();
-        };
-      });
-      return async () => {
-        release();
-        await act(async () => {});
-      };
     },
   };
 }
 
 describe("thread notifications action", () => {
   it("resolves each shown thread's level and hint", async () => {
-    const { summary, listCalls } = renderNotifications(
+    const { summary } = renderNotifications(
       {
         thr_top: { own: "muted", ancestorCap: null },
         thr_child: {
@@ -236,39 +227,6 @@ describe("thread notifications action", () => {
       selected: "inherit",
     });
     expect(summary({ archivedAt: 1 })).toBeNull();
-    expect(listCalls()).toEqual([
-      {
-        threadIds: [
-          "thr_child",
-          "thr_grandchild",
-          "thr_new",
-          "thr_other",
-          "thr_top",
-        ],
-      },
-    ]);
-  });
-
-  it("fetches only ids it has not loaded, once each, and none for an empty list", async () => {
-    const { show, listCalls } = renderNotifications({}, []);
-    await act(async () => {});
-    expect(listCalls()).toEqual([]);
-    show(["thr_a", "thr_b"]);
-    await waitFor(() => expect(listCalls()).toHaveLength(1));
-    show(["thr_a", "thr_b", "thr_c"]);
-    await waitFor(() => expect(listCalls()).toHaveLength(2));
-    show(["thr_a"]);
-    show(["thr_a", "thr_b", "thr_c"]);
-    await act(async () => {});
-    const many = Array.from({ length: 250 }, (_, index) => `thr_${index}`);
-    show(many);
-    await waitFor(() => expect(listCalls()).toHaveLength(4));
-    expect(listCalls()).toEqual([
-      { threadIds: ["thr_a", "thr_b"] },
-      { threadIds: ["thr_c"] },
-      { threadIds: many.slice(0, 200) },
-      { threadIds: many.slice(200) },
-    ]);
   });
 
   it("shows an unarchived thread's stored level without a reload", async () => {
@@ -281,167 +239,41 @@ describe("thread notifications action", () => {
     await waitFor(() => expect(summary()?.selected).toBe("muted"));
   });
 
-  it("applies its own write, realtime rows, and a reload after reconnecting", async () => {
-    const { view, item, summary, restore, listCalls } = renderNotifications(
-      {},
-      ["thr_top"],
-    );
+  it("refreshes shown levels after its own write and a change from another client", async () => {
+    const { view, item, summary, restore } = renderNotifications({}, [
+      "thr_top",
+    ]);
     await waitFor(() => expect(summary()?.selected).toBe("inherit"));
-
     await act(() => item()!.run({ value: "muted", requestRename: () => {} }));
-    expect(view.inspection.rpcCalls.at(-1)).toEqual({
-      method: "threadNotifications.set",
-      input: { threadId: "thr_top", level: "muted" },
-    });
-    expect(summary()?.selected).toBe("muted");
-
-    await view.behavior.emitRealtime("threadNotifications", {
-      threads: { thr_top: { own: "inherit", ancestorCap: null } },
-    });
-    expect(summary()?.selected).toBe("inherit");
-
+    await waitFor(() => expect(summary()?.selected).toBe("muted"));
     restore({ thr_top: { own: "all", ancestorCap: null } });
-    await view.behavior.setRealtimeConnectionState("reconnecting");
-    await view.behavior.setRealtimeConnectionState("connected");
+    await view.behavior.experimental_invalidateRpc(["thread:thr_top"]);
     await waitFor(() => expect(summary()?.selected).toBe("all"));
-    expect(listCalls()).toHaveLength(2);
   });
-
-  it("keeps a level cleared to Default when a read from before the clear lands", async () => {
-    const muted = { own: "muted", ancestorCap: null } as const;
-    const { view, show, item, summary, restore, listCalls, holdReads } =
-      renderNotifications({ thr_a: muted, thr_b: muted }, []);
-    const release = holdReads();
-    show(["thr_a", "thr_b"]);
-    await waitFor(() => expect(listCalls()).toHaveLength(1));
-
-    restore({ thr_b: muted });
-    await act(() =>
-      item({ id: "thr_a" })!.run({ value: "inherit", requestRename: () => {} }),
-    );
-    restore({});
-    await view.behavior.emitRealtime("threadNotifications", {
-      threads: { thr_b: { own: "inherit", ancestorCap: null } },
-    });
-    await release();
-
-    expect(summary({ id: "thr_a" })?.selected).toBe("inherit");
-    expect(summary({ id: "thr_b" })?.selected).toBe("inherit");
-    expect(listCalls()).toHaveLength(1);
-  });
-
-  it("applies a parent's change to its children on screen without a request", async () => {
-    const { view, summary, listCalls } = renderNotifications({}, [
+  it("reflects a parent cap changed by another client", async () => {
+    const { view, summary, restore } = renderNotifications({}, [
       "thr_child",
       "thr_top",
     ]);
-    await waitFor(() => expect(listCalls()).toHaveLength(1));
+    await waitFor(() => expect(summary()?.selected).toBe("inherit"));
     const child = { id: "thr_child", parentThreadId: "thr_top" };
     expect(summary(child)?.detail).toBe("Needs input only");
 
-    await view.behavior.emitRealtime("threadNotifications", {
-      threads: {
-        thr_top: { own: "muted", ancestorCap: null },
-        thr_child: {
-          own: "inherit",
-          ancestorCap: { level: "muted", threadId: "thr_top" },
-        },
+    restore({
+      thr_top: { own: "muted", ancestorCap: null },
+      thr_child: {
+        own: "inherit",
+        ancestorCap: { level: "muted", threadId: "thr_top" },
       },
     });
+    await view.behavior.experimental_invalidateRpc([
+      "thread:thr_top",
+      "thread:thr_child",
+    ]);
     expect(summary(child)).toMatchObject({
       detail: "Muted",
       hint: "Limited by a parent thread",
     });
     expect(summary()?.selected).toBe("muted");
-    expect(listCalls()).toHaveLength(1);
-  });
-
-  it("sends no request for rows already seen, including reads still in flight", async () => {
-    const { view, show, summary, listCalls, holdReads } = renderNotifications(
-      {},
-      [],
-    );
-    const release = holdReads();
-    show(["thr_a", "thr_b"]);
-    await waitFor(() => expect(listCalls()).toHaveLength(1));
-    show(["thr_b", "thr_c"]);
-    await waitFor(() => expect(listCalls()).toHaveLength(2));
-    await view.behavior.emitRealtime("threadNotifications", {
-      threads: { thr_b: { own: "muted", ancestorCap: null } },
-    });
-    await release();
-
-    expect(summary({ id: "thr_b" })?.selected).toBe("muted");
-    show(["thr_c"]);
-    show(["thr_a", "thr_b", "thr_c"]);
-    await act(async () => {});
-    expect(listCalls()).toEqual([
-      { threadIds: ["thr_a", "thr_b"] },
-      { threadIds: ["thr_c"] },
-    ]);
-  });
-
-  it("updates rows held off screen and fetches rows it never held when shown", async () => {
-    const muted = { own: "muted", ancestorCap: null } as const;
-    const { view, show, summary, listCalls } = renderNotifications(
-      { thr_a: muted, thr_b: muted, thr_new: muted },
-      ["thr_a", "thr_b"],
-    );
-    await waitFor(() =>
-      expect(summary({ id: "thr_b" })?.selected).toBe("muted"),
-    );
-    show(["thr_a"]);
-
-    await view.behavior.emitRealtime("threadNotifications", {
-      threads: {
-        thr_b: { own: "all", ancestorCap: null },
-        thr_new: { own: "all", ancestorCap: null },
-      },
-    });
-    show(["thr_a", "thr_b", "thr_new"]);
-    await waitFor(() => expect(listCalls()).toHaveLength(2));
-    await waitFor(() =>
-      expect(summary({ id: "thr_new" })?.selected).toBe("muted"),
-    );
-    expect(summary({ id: "thr_b" })?.selected).toBe("all");
-    expect(listCalls()).toEqual([
-      { threadIds: ["thr_a", "thr_b"] },
-      { threadIds: ["thr_new"] },
-    ]);
-  });
-
-  it("refetches threads that were off screen during a reconnect when they return", async () => {
-    const { view, show, summary, restore, listCalls } = renderNotifications(
-      {
-        thr_a: { own: "muted", ancestorCap: null },
-        thr_b: { own: "muted", ancestorCap: null },
-        thr_c: { own: "muted", ancestorCap: null },
-      },
-      ["thr_a", "thr_b", "thr_c"],
-    );
-    await waitFor(() =>
-      expect(summary({ id: "thr_c" })?.selected).toBe("muted"),
-    );
-    show(["thr_a"]);
-
-    restore({
-      thr_a: { own: "muted", ancestorCap: null },
-      thr_b: { own: "all", ancestorCap: null },
-    });
-    await view.behavior.setRealtimeConnectionState("reconnecting");
-    await view.behavior.setRealtimeConnectionState("connected");
-    await waitFor(() => expect(listCalls()).toHaveLength(2));
-
-    show(["thr_a", "thr_b", "thr_c"]);
-    await waitFor(() =>
-      expect(summary({ id: "thr_b" })?.selected).toBe("all"),
-    );
-    expect(summary({ id: "thr_c" })?.selected).toBe("inherit");
-    expect(summary({ id: "thr_a" })?.selected).toBe("muted");
-    expect(listCalls()).toEqual([
-      { threadIds: ["thr_a", "thr_b", "thr_c"] },
-      { threadIds: ["thr_a"] },
-      { threadIds: ["thr_b", "thr_c"] },
-    ]);
   });
 });

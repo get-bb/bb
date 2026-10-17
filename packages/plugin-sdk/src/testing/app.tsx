@@ -1,3 +1,10 @@
+import { invalidateTags, pluginTagScope } from "@bb/query-tags";
+import { QueryClient } from "@tanstack/react-query";
+import {
+  createRpcQueryHooks,
+  type RpcQueryHost,
+} from "../internal/rpc-query-host.js";
+import { rpcResponseTags } from "../internal/rpc-tags.js";
 import * as React from "react";
 import {
   createContext,
@@ -89,6 +96,7 @@ import {
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
   type PluginRpcContract,
+  type StandardSchemaV1,
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
   type MarkdownProps,
@@ -274,6 +282,7 @@ interface TestComposerStore {
 }
 
 interface SlotEnv {
+  rpcQueryHost: RpcQueryHost;
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
   realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
@@ -1227,6 +1236,7 @@ function captureClipboardWrites(
 
 const testPluginSdkApp = {
   definePluginApp,
+  ...createRpcQueryHooks(() => useSlotEnv("rpc query").rpcQueryHost),
   useRpc<
     Contract extends PluginRpcContract = PluginRpcContract,
   >(): PluginRpcClient<Contract> {
@@ -1785,6 +1795,7 @@ export interface RenderSlotOptions<
    * message (what the real rpc client surfaces).
    */
   rpc?: PluginRpcTestHandlers<Contract>;
+  experimental_rpcContract?: NoInfer<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
   settings?: Record<string, string | number | boolean>;
   /** `useBbContext()` selection; both default to null. */
@@ -1923,6 +1934,7 @@ export interface RenderedSlotBehaviorDrivers {
    * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
    * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
    */
+  experimental_invalidateRpc(tags: readonly string[] | null): Promise<void>;
   emitRealtime(channel: string, payload: unknown): Promise<void>;
   /** Drive the lifecycle of the same connection used by realtime events. */
   setRealtimeConnectionState(
@@ -2042,22 +2054,40 @@ export function renderSlot<
     string,
     (input: unknown) => unknown
   >;
+  const parseRpcValue = async (schema: StandardSchemaV1, value: unknown) => {
+    const parsed = await schema["~standard"].validate(value);
+    if (parsed.issues !== undefined)
+      throw new Error(parsed.issues.map((issue) => issue.message).join("; "));
+    return parsed.value;
+  };
+  const queryClient = new QueryClient();
+  const callRpc = async (method: string, input?: unknown) => {
+    const normalizedInput =
+      input === undefined
+        ? null
+        : strictJsonRoundTrip(input, `rpc "${method}" input`);
+    rpcCalls.push({ method, input: normalizedInput });
+    const handler = rpcHandlers[method];
+    if (!handler) {
+      throw new Error(
+        `no rpc handler for "${method}" — add it to renderSlot options.rpc`,
+      );
+    }
+    const declaration = options.experimental_rpcContract?.[method];
+    const parsedInput = declaration
+      ? await parseRpcValue(declaration.input, normalizedInput)
+      : normalizedInput;
+    const result = await handler(parsedInput);
+    const parsedOutput = declaration
+      ? await parseRpcValue(declaration.output, result)
+      : result;
+    return {
+      result: strictJsonRoundTrip(parsedOutput, `rpc "${method}" result`),
+      ...rpcResponseTags(declaration ?? {}, parsedInput, parsedOutput),
+    };
+  };
   const rpcClient: PluginRpcClient = {
-    async call(method, input) {
-      const normalizedInput =
-        input === undefined
-          ? null
-          : strictJsonRoundTrip(input, `rpc "${method}" input`);
-      rpcCalls.push({ method, input: normalizedInput });
-      const handler = rpcHandlers[method];
-      if (!handler) {
-        throw new Error(
-          `no rpc handler for "${method}" — add it to renderSlot options.rpc`,
-        );
-      }
-      const result = await handler(normalizedInput);
-      return strictJsonRoundTrip(result, `rpc "${method}" result`);
-    },
+    call: async (method, input) => (await callRpc(method, input)).result,
   };
 
   const realtimeHandlers = new Map<string, Set<(payload: unknown) => void>>();
@@ -2577,7 +2607,14 @@ export function renderSlot<
     },
   };
 
+  const rpcQueryHost: RpcQueryHost = {
+    pluginId: options.pluginId ?? "test-plugin",
+    queryClient,
+    subscribe: () => () => {},
+    call: (_pluginId, method, input) => callRpc(method, input),
+  };
   const env: SlotEnv = {
+    rpcQueryHost,
     rpcClient,
     rpcCalls,
     realtimeHandlers,
@@ -2683,6 +2720,15 @@ export function renderSlot<
       notifyComposerListeners();
     });
   };
+  const experimental_invalidateRpc = async (tags: readonly string[] | null) => {
+    await act(async () => {
+      await invalidateTags(
+        queryClient,
+        pluginTagScope(rpcQueryHost.pluginId),
+        tags,
+      );
+    });
+  };
   const unmountSlot = (): void => {
     if (!composerOwnership.active) return;
     result.unmount();
@@ -2693,6 +2739,7 @@ export function renderSlot<
     rerender: rerenderSlot,
     unmount: unmountSlot,
     rpcCalls,
+    experimental_invalidateRpc,
     emitRealtime,
     setRealtimeConnectionState,
     setComposerText,
@@ -2706,6 +2753,7 @@ export function renderSlot<
     experimental_clipboardWrites,
     composer: composerLog,
     behavior: {
+      experimental_invalidateRpc,
       emitRealtime,
       setRealtimeConnectionState,
       setComposerText,

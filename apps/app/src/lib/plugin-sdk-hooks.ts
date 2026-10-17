@@ -1,3 +1,4 @@
+import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-host";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
   useCallback,
@@ -160,6 +161,7 @@ export async function callPluginRpc(
   pluginId: string,
   method: string,
   input?: unknown,
+  envelope = false,
 ): Promise<unknown> {
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
@@ -196,7 +198,7 @@ export async function callPluginRpc(
     }
     throw error;
   }
-  return body.result;
+  return envelope ? body : body.result;
 }
 
 export async function fetchPluginSdkSettings(
@@ -928,3 +930,30 @@ export function useComposers(): readonly PluginComposerApi[] {
     [hosts, pluginId],
   );
 }
+
+export const {
+  experimental_useRpcQuery,
+  experimental_useRpcKeyedQuery,
+  experimental_useRpcMutation,
+  experimental_useRpcRefresh,
+} = createRpcQueryHooks(() => {
+  const pluginId = usePluginId();
+  const queryClient = useQueryClient();
+  return useMemo(
+    () => ({
+      pluginId,
+      queryClient,
+      call: (
+        id: string,
+        method: string,
+        input: import("@bb/domain").JsonValue,
+      ) => callPluginRpc(fetch, id, method, input, true),
+      subscribe: (id: string) => {
+        const target = { kind: "plugin", pluginId: id } as const;
+        wsManager.subscribe(target);
+        return () => wsManager.unsubscribe(target);
+      },
+    }),
+    [pluginId, queryClient],
+  );
+});

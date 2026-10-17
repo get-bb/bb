@@ -1,3 +1,4 @@
+import type { ContractTagDeclarations } from "@bb/domain";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -1703,9 +1704,21 @@ function readRpcMethodContract(
   const description = rpcDescriptionSchema.parse(
     Reflect.get(value, "experimental_description"),
   );
-  return description === null
-    ? { input, output }
-    : { input, output, experimental_description: description };
+  const declarations: ContractTagDeclarations<unknown, unknown> = {};
+  for (const name of ["tags", "keyTags", "invalidates"] as const) {
+    const declaration = Reflect.get(value, name);
+    if (declaration !== undefined) {
+      if (typeof declaration !== "function")
+        throw new Error(`rpc ${method} ${name} must be a function`);
+      Reflect.set(declarations, name, declaration);
+    }
+  }
+  return {
+    input,
+    output,
+    ...declarations,
+    ...(description === null ? {} : { experimental_description: description }),
+  };
 }
 
 export function readRpcPublicationOptions(value: unknown) {
@@ -2761,9 +2774,10 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<[], { id: number; statement_hash: string | null }>(
-      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-    )
+    .prepare<
+      [],
+      { id: number; statement_hash: string | null }
+    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -2870,6 +2884,7 @@ export function normalizeWebSocketRouteRegistration(
 }
 
 type RpcRegistrationRecord = {
+  declarations: ContractTagDeclarations<unknown, unknown>;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -2928,6 +2943,7 @@ export function normalizeRpcRegistration(
       name,
       {
         publication: publishRpcMethod(name, methodContract, publicationOptions),
+        declarations: methodContract,
         inputSchema: methodContract.input,
         outputSchema: methodContract.output,
         handler,

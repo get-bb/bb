@@ -1636,6 +1636,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       rpcCaller: rpcCallers.issue(row.id),
+      invalidateRpc: (tags) => deps.hub.notifyPluginChanged(row.id, tags),
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1884,6 +1885,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     }
     disposeUnavailableProviderRegistrations(row.id);
+    deps.hub.notifyPluginChanged(row.id, null);
     loaded.set(row.id, plugin);
     appBundles.set(row.id, appBundleCandidate.snapshot);
     if (hostArtifactCandidate === null) hostArtifacts.delete(row.id);
@@ -1983,6 +1985,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const plugin = loaded.get(id);
     if (!plugin) return;
     loaded.delete(id);
+    deps.hub.notifyPluginChanged(id, null);
     await disposePluginInstance(id, plugin);
     releaseMutableRoots(plugin.moduleRootUrls);
     hostArtifacts.delete(id);

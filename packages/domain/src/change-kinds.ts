@@ -89,6 +89,7 @@ export type ThreadTimelineSubscriptionTarget = z.infer<
 >;
 
 export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1) }).strict(),
   z
     .object({
       kind: z.literal("thread-detail"),
@@ -144,15 +145,42 @@ export type RealtimeSubscriptionTarget = z.infer<
   typeof realtimeSubscriptionTargetSchema
 >;
 
-const subscribeMessageSchema = z.object({
-  type: z.literal("subscribe"),
-  target: realtimeSubscriptionTargetSchema,
-});
-
-const unsubscribeMessageSchema = z.object({
-  type: z.literal("unsubscribe"),
-  target: realtimeSubscriptionTargetSchema,
-});
+function isUnknownSubscriptionTarget(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    typeof value.kind === "string" &&
+    !realtimeSubscriptionTargetSchema.options.some(
+      (option) => option.shape.kind.value === value.kind,
+    )
+  );
+}
+const knownSubscriptionTargetsSchema = z.preprocess(
+  (value) =>
+    Array.isArray(value)
+      ? value.filter((target) => !isUnknownSubscriptionTarget(target))
+      : value,
+  z.array(realtimeSubscriptionTargetSchema),
+);
+const knownSubscriptionTargetSchema = z.preprocess(
+  (value) => (isUnknownSubscriptionTarget(value) ? null : value),
+  realtimeSubscriptionTargetSchema.nullable().optional(),
+);
+const subscriptionFields = {
+  target: knownSubscriptionTargetSchema,
+  targets: knownSubscriptionTargetsSchema.optional(),
+};
+const hasSubscriptionTargets = (value: {
+  target?: RealtimeSubscriptionTarget | null;
+  targets?: RealtimeSubscriptionTarget[];
+}) => (value.target !== undefined) !== (value.targets !== undefined);
+const subscribeMessageSchema = z
+  .object({ type: z.literal("subscribe"), ...subscriptionFields })
+  .refine(hasSubscriptionTargets);
+const unsubscribeMessageSchema = z
+  .object({ type: z.literal("unsubscribe"), ...subscriptionFields })
+  .refine(hasSubscriptionTargets);
 
 export const pingMessageSchema = z.object({
   type: z.literal("ping"),
@@ -202,6 +230,8 @@ export function realtimeSubscriptionTargetKey(
       return `host-detail:${target.hostId}`;
     case "host-list":
       return "host-list";
+    case "plugin":
+      return `plugin:${target.pluginId}`;
     case "system":
       return "system";
     default:
@@ -293,6 +323,15 @@ export const tagsChangedMessageSchema = z
   .strict();
 export type TagsChangedMessage = z.infer<typeof tagsChangedMessageSchema>;
 
+export const pluginChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("plugin"),
+    pluginId: z.string().min(1),
+    tags: z.array(z.string().min(1)).min(1).nullable(),
+  })
+  .strict();
+
 export const changedMessageSchema = z.discriminatedUnion("entity", [
   threadChangedMessageSchema,
   projectChangedMessageSchema,
@@ -300,6 +339,7 @@ export const changedMessageSchema = z.discriminatedUnion("entity", [
   hostChangedMessageSchema,
   systemChangedMessageSchema,
   tagsChangedMessageSchema,
+  pluginChangedMessageSchema,
 ]);
 export type ChangedMessage = z.infer<typeof changedMessageSchema>;
 
@@ -374,4 +414,5 @@ export const changedMessageLenientSchema = z.discriminatedUnion("entity", [
   hostChangedMessageLenientSchema,
   systemChangedMessageLenientSchema,
   tagsChangedMessageSchema.strip(),
+  pluginChangedMessageSchema.strip(),
 ]);

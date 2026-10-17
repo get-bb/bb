@@ -1,4 +1,8 @@
-import { CORE_TAG_SCOPE, runTaggedRead, taggedQueryMeta } from "@bb/query-tags";
+import {
+  CORE_TAG_SCOPE,
+  runTaggedRead,
+  taggedQueryOptions,
+} from "@bb/query-tags";
 import { machineEnvironmentQueryKey } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
@@ -181,7 +185,7 @@ describe("core tag realtime refresh", () => {
       const observer = new QueryObserver(client, {
         queryKey: ["tagged"],
         staleTime: Infinity,
-        meta: taggedQueryMeta<number>({
+        ...taggedQueryOptions<number>(client, ["tagged"], {
           scope: CORE_TAG_SCOPE,
           tagsOf: () => ["preferences"],
         }),

@@ -64,12 +64,12 @@ function setCachedUiPreferences(
   client: QueryClient,
   response: UiPreferencesResponse,
 ): void {
-  client.setQueryData(uiPreferencesQueryOptions().queryKey, response);
+  client.setQueryData(uiPreferencesQueryOptions(client).queryKey, response);
 }
 function getCachedUiPreferences(
   client: QueryClient,
 ): UiPreferencesResponse | undefined {
-  return client.getQueryData(uiPreferencesQueryOptions().queryKey);
+  return client.getQueryData(uiPreferencesQueryOptions(client).queryKey);
 }
 
 function conflict(currentRevision: number): BbHttpError {
@@ -292,7 +292,7 @@ describe("ui preferences sync", () => {
     const { modeAtom, queryClient, store } = createHarness();
     mocks.list.mockResolvedValueOnce(serverResponse());
     const observer = new QueryObserver(queryClient, {
-      ...uiPreferencesQueryOptions(),
+      ...uiPreferencesQueryOptions(queryClient),
       retry: false,
     });
     const stop = observer.subscribe(() => {});

@@ -86,6 +86,12 @@ const maximalChangedMessages: ChangedMessage[] = [
     changes: [...SYSTEM_CHANGE_KINDS],
   },
   { type: "changed", entity: "tags", tags: ["ui-preferences"] },
+  {
+    type: "changed",
+    entity: "plugin",
+    pluginId: "push-notifications",
+    tags: null,
+  },
 ];
 
 describe("lenient changed-message schema parity", () => {

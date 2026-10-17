@@ -1,3 +1,5 @@
+import { rpcInvalidationTags, rpcResponseTags } from "../internal/rpc-tags.js";
+import type { ContractTagDeclarations } from "@bb/domain";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -328,6 +330,7 @@ export interface FakePluginInspectionState {
   /** Every `bb.log` line, in order. */
   readonly logEntries: FakeLogEntry[];
   /** Every `bb.realtime.publish`, payload normalized like the wire. */
+  readonly experimental_rpcInvalidations: (readonly string[] | null)[];
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
   readonly needsConfigurationMessages: string[];
@@ -597,6 +600,7 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
 }
 
 interface FakeRpcRecord {
+  declarations: ContractTagDeclarations<unknown, unknown>;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -853,7 +857,16 @@ function createFakePluginHostInternal(
 
   // --- rpc ---
   const rpcHandlers = new Map<string, FakeRpcRecord>();
+  const rpcInvalidations: (readonly string[] | null)[] = [];
   const rpc: PluginRpc = {
+    experimental_invalidate(tags) {
+      assertLive();
+      rpcInvalidations.push(rpcInvalidationTags.parse(tags));
+    },
+    experimental_invalidateAll() {
+      assertLive();
+      rpcInvalidations.push(null);
+    },
     register(contract, handlers, registrationOptions) {
       assertLive();
       for (const [name, record] of normalizeRpcRegistration(
@@ -1599,6 +1612,7 @@ function createFakePluginHostInternal(
     },
     pluginId,
     logEntries,
+    experimental_rpcInvalidations: rpcInvalidations,
     realtimeSignals,
     needsConfigurationMessages,
     get recheckCount() {
@@ -1815,7 +1829,14 @@ function createFakePluginHostInternal(
         "output",
         throwRpcError,
       );
-      return normalizeRpcJsonResult(validatedOutput, throwRpcError);
+      const jsonResult = normalizeRpcJsonResult(validatedOutput, throwRpcError);
+      const { invalidated } = rpcResponseTags(
+        record.declarations,
+        validatedInput,
+        validatedOutput,
+      );
+      if (invalidated.length > 0) rpc.experimental_invalidate(invalidated);
+      return jsonResult;
     },
 
     async runCli(argv, ctx = {}) {

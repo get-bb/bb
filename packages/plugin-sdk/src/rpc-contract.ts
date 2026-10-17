@@ -1,3 +1,5 @@
+import type { ContractTagDeclarations } from "@bb/domain";
+
 /** A JSON-safe path segment reported by a Standard Schema validation issue. */
 export type PluginRpcIssuePathSegment = string | number;
 
@@ -68,6 +70,9 @@ export type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> =
 export interface PluginRpcMethodContract<
   InputSchema extends StandardSchemaV1 = StandardSchemaV1,
   OutputSchema extends StandardSchemaV1 = StandardSchemaV1,
+> extends ContractTagDeclarations<
+  StandardSchemaV1InferOutput<InputSchema>,
+  StandardSchemaV1InferOutput<OutputSchema>
 > {
   readonly experimental_description?: string;
   readonly input: InputSchema;
@@ -78,10 +83,34 @@ export type PluginRpcContract = Readonly<
   Record<string, PluginRpcMethodContract>
 >;
 
-/** Define a shared RPC contract while preserving exact method/schema types. */
-export function defineRpcContract<const Contract extends PluginRpcContract>(
-  contract: Contract,
-): Contract {
+type PluginRpcContractDefinition<
+  Inputs extends Record<string, StandardSchemaV1>,
+  Outputs extends Record<string, StandardSchemaV1>,
+> = {
+  readonly [Method in keyof Outputs]: { readonly output: Outputs[Method] };
+} & {
+  readonly [Method in keyof Inputs]: PluginRpcMethodContract<
+    Inputs[Method],
+    Outputs[Method & keyof Outputs]
+  >;
+};
+
+/**
+ * Define a shared RPC contract while preserving exact method/schema types.
+ * `tags`, `keyTags` and `invalidates` receive each method's parsed input and
+ * output types.
+ */
+export function defineRpcContract<
+  const Inputs extends Record<string, StandardSchemaV1>,
+  const Outputs extends Record<string, StandardSchemaV1>,
+>(
+  contract: PluginRpcContractDefinition<Inputs, Outputs>,
+): {
+  readonly [Method in keyof Inputs]: PluginRpcMethodContract<
+    Inputs[Method],
+    Outputs[Method & keyof Outputs]
+  >;
+} {
   return contract;
 }
 

@@ -854,6 +854,7 @@ describe("public host management", () => {
       const revokeHandler = vi.fn(async () => ({ ok: true }));
       const revokeRecord = {
         publication: null,
+        declarations: {},
         inputSchema: z.object({ machineId: z.string() }),
         outputSchema: z.object({ ok: z.literal(true) }),
         handler: revokeHandler,
@@ -864,7 +865,13 @@ describe("public host management", () => {
       });
       const invoke = vi
         .spyOn(harness.pluginService, "invokeRpcHandler")
-        .mockResolvedValue({ ok: true, result: { ok: true } });
+        .mockResolvedValue({
+          ok: true,
+          result: { ok: true },
+          tags: [],
+          keyTags: {},
+          invalidated: [],
+        });
 
       const response = await harness.app.request(`${API}/hosts/${host.id}`, {
         method: "DELETE",

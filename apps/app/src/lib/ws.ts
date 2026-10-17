@@ -129,9 +129,13 @@ export class WebSocketManager {
       this.hasConnected = true;
       this.setConnectionState("connected");
       this.startPingLoop();
-      for (const subscription of this.subscriptions.values()) {
-        this.sendMessage({ type: "subscribe", target: subscription.target });
-      }
+      if (this.subscriptions.size > 0)
+        this.sendMessage({
+          type: "subscribe",
+          targets: [...this.subscriptions.values()].map(
+            (subscription) => subscription.target,
+          ),
+        });
       const event: WebSocketConnectedEvent = reconnected
         ? { reconnected, disconnectedAt: disconnectedAt ?? Date.now() }
         : { reconnected };

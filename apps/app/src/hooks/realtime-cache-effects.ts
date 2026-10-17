@@ -1,4 +1,4 @@
-import { CORE_TAG_SCOPE, invalidateTags } from "@bb/query-tags";
+import { CORE_TAG_SCOPE, invalidateTags, pluginTagScope } from "@bb/query-tags";
 import type { QueryClient } from "@tanstack/react-query";
 import { assertNever } from "@bb/core-ui";
 import {
@@ -460,12 +460,24 @@ export function createRealtimeCacheEffects({
     }
   };
 
-  const deferredTags = new Set<string>();
-  const flushDeferredChanges = (): void => {
-    if (deferredTags.size > 0) {
-      void invalidateTags(queryClient, CORE_TAG_SCOPE, [...deferredTags]);
-      deferredTags.clear();
+  const deferredTags = new Map<string, Set<string> | null>();
+  const applyTags = (scope: string, tags: readonly string[] | null): void => {
+    if (visibility.isDocumentVisible()) {
+      void invalidateTags(queryClient, scope, tags);
+      return;
     }
+    const previous = deferredTags.get(scope);
+    deferredTags.set(
+      scope,
+      previous === null || tags === null
+        ? null
+        : new Set([...(previous ?? []), ...tags]),
+    );
+  };
+  const flushDeferredChanges = (): void => {
+    for (const [scope, tags] of deferredTags)
+      void invalidateTags(queryClient, scope, tags === null ? null : [...tags]);
+    deferredTags.clear();
     if (hasDeferredNonThreadChanges(deferredNonThreadChanges)) {
       const { environmentKindsById, hostKinds, projectKindsById, systemKinds } =
         deferredNonThreadChanges;
@@ -577,10 +589,11 @@ export function createRealtimeCacheEffects({
           }
           applyProjectChanges(message.id, message.changes);
           break;
+        case "plugin":
+          applyTags(pluginTagScope(message.pluginId), message.tags);
+          break;
         case "tags":
-          if (documentVisible)
-            void invalidateTags(queryClient, CORE_TAG_SCOPE, message.tags);
-          else addAll(deferredTags, message.tags);
+          applyTags(CORE_TAG_SCOPE, message.tags);
           break;
         case "system":
           if (!documentVisible) {
@@ -596,6 +609,15 @@ export function createRealtimeCacheEffects({
     handleConnected: (event) => {
       applySystemChanges(["plugins-changed"]);
       if (event.reconnected) {
+        const pluginIds = new Set(
+          queryClient
+            .getQueryCache()
+            .findAll({ queryKey: ["plugin-rpc"] })
+            .map((query) => query.queryKey[1]),
+        );
+        for (const pluginId of pluginIds)
+          if (typeof pluginId === "string")
+            applyTags(pluginTagScope(pluginId), null);
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,
           queryClient,

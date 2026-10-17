@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.53",
+  "version": "0.6.55",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -127,6 +127,18 @@
       "types": "./bundled-types/bb-plugin-sdk-testing-host.d.ts",
       "import": "./dist/testing/host.js",
       "default": "./dist/testing/host.js"
+    },
+    "./internal/rpc-tags": {
+      "source": "./src/internal/rpc-tags.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-tags.d.ts",
+      "import": "./dist/internal/rpc-tags.js",
+      "default": "./dist/internal/rpc-tags.js"
+    },
+    "./internal/rpc-query-host": {
+      "source": "./src/internal/rpc-query-host.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-query-host.d.ts",
+      "import": "./dist/internal/rpc-query-host.js",
+      "default": "./dist/internal/rpc-query-host.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
@@ -140,6 +152,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
     "cross-spawn": "^7.0.6",
     "zod": "^4.6.5"
   },
@@ -167,7 +180,8 @@
     "rollup-plugin-dts": "^6.4.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@bb/query-tags": "workspace:*"
   },
   "peerDependencies": {
     "@testing-library/react": "^16.3.2",
