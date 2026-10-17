@@ -34,6 +34,7 @@ import {
   normalizePluginAgentConfiguration,
   normalizeRealtimePayload,
   normalizeRpcJsonResult,
+  readPluginRpcRefusal,
   normalizeRpcRegistration,
   publishRpcMethod,
   normalizeWebSocketRouteRegistration,
@@ -1818,6 +1819,8 @@ function createFakePluginHostInternal(
           },
         });
       } catch (error) {
+        const refusal = readPluginRpcRefusal(error);
+        if (refusal !== null) return throwRpcError(refusal);
         return throwRpcError({
           code: "handler_error",
           message: errorMessage(error),

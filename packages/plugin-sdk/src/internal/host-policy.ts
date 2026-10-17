@@ -2774,10 +2774,9 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<
-      [],
-      { id: number; statement_hash: string | null }
-    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+    .prepare<[], { id: number; statement_hash: string | null }>(
+      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+    )
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -3609,6 +3608,30 @@ function normalizeRpcIssues(
       ...(path !== undefined ? { path } : {}),
     };
   });
+}
+
+const rpcRefusalSchema = z.object({
+  code: z.enum(["forbidden", "not_found", "conflict", "invalid"]),
+  message: z.string(),
+  issues: z
+    .array(
+      z.object({
+        message: z.string(),
+        path: z.array(z.union([z.string(), z.number()])).optional(),
+      }),
+    )
+    .optional(),
+});
+
+export function readPluginRpcRefusal(error: unknown): PluginRpcError | null {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    Reflect.get(error, Symbol.for("@get-bb/plugin-sdk/rpc-refusal")) !== true
+  )
+    return null;
+  const parsed = rpcRefusalSchema.safeParse(error);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function validateRpcValue(

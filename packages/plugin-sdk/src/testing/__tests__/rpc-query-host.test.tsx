@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent } from "@testing-library/react";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
+  useRpc,
   experimental_useRpcKeyedQuery,
   experimental_useRpcQuery,
   experimental_useRpcMutation,
 } from "../../app.js";
-import { defineRpcContract } from "../../rpc-contract.js";
+import {
+  defineRpcContract,
+  experimental_PluginRpcRefusal,
+} from "../../rpc-contract.js";
 import { renderSlot } from "../app.js";
 
 afterEach(cleanup);
@@ -73,7 +77,7 @@ it("updates selected load state without rendering unchanged rows again", async (
   expect(rendered).toHaveBeenCalledTimes(count);
 });
 
-it.each(["success", "write-failure", "read-failure"] as const)(
+it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
   "shares plain and keyed optimistic updates through the public hook (%s)",
   { timeout: 20_000 },
   async (outcome) => {
@@ -137,7 +141,11 @@ it.each(["success", "write-failure", "read-failure"] as const)(
           >
             Save
           </button>
-          {mutation.error && <p>{mutation.error.message}</p>}
+          {mutation.error && (
+            <p data-code={Reflect.get(mutation.error, "code")}>
+              {mutation.error.message}
+            </p>
+          )}
         </>
       );
     }
@@ -158,6 +166,11 @@ it.each(["success", "write-failure", "read-failure"] as const)(
           save: async () => {
             await write;
             if (outcome === "write-failure") throw new Error("write offline");
+            if (outcome === "refusal")
+              throw new experimental_PluginRpcRefusal({
+                code: "conflict",
+                message: "Changed elsewhere",
+              });
             server = 3;
             offline = outcome === "read-failure";
             return server;
@@ -177,8 +190,14 @@ it.each(["success", "write-failure", "read-failure"] as const)(
     if (outcome === "success") {
       await slot.findByText("one:3/3");
       expect(slot.getByText("two:3/3")).toBeTruthy();
-    } else if (outcome === "write-failure") {
-      await slot.findByText("write offline");
+    } else if (outcome === "write-failure" || outcome === "refusal") {
+      await slot.findByText(
+        outcome === "refusal" ? "Changed elsewhere" : "write offline",
+      );
+      if (outcome === "refusal")
+        expect(
+          slot.getByText("Changed elsewhere").getAttribute("data-code"),
+        ).toBe("conflict");
       expect(slot.getByText("one:1/1")).toBeTruthy();
       expect(slot.getByText("two:1/1")).toBeTruthy();
     } else {
@@ -189,6 +208,63 @@ it.each(["success", "write-failure", "read-failure"] as const)(
       await slot.experimental_invalidateRpc(["row:a"]);
       await slot.findByText("one:3/3");
       expect(slot.queryByText("read offline")).toBeNull();
+    }
+  },
+);
+
+it(
+  "exposes refusal codes and issues through plain, keyed and imperative reads",
+  { timeout: 20_000 },
+  async () => {
+    function Probe() {
+      const plain = experimental_useRpcQuery({ method: "detail", input: null });
+      const keyed = experimental_useRpcKeyedQuery({
+        method: "rows",
+        keys: ["a"],
+      });
+      const rpc = useRpc();
+      const [error, setError] = useState<Error | null>(null);
+      return (
+        <>
+          {[plain.error, keyed.error, error].map(
+            (failure, index) =>
+              failure && (
+                <output key={index}>
+                  {index}:{String(Reflect.get(failure, "code"))}:
+                  {failure.message}:
+                  {JSON.stringify(Reflect.get(failure, "issues"))}
+                </output>
+              ),
+          )}
+          <button
+            onClick={() => {
+              void rpc.call("detail").catch(setError);
+            }}
+          >
+            Read
+          </button>
+        </>
+      );
+    }
+    const refuse = () => {
+      throw new experimental_PluginRpcRefusal({
+        code: "not_found",
+        message: "Gone",
+        issues: [{ path: ["id"], message: "Missing" }],
+      });
+    };
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      { rpc: { detail: refuse, rows: refuse } },
+    );
+    fireEvent.click(slot.getByText("Read"));
+    for (const index of [0, 1, 2]) {
+      await slot.findByText(
+        `${index}:not_found:Gone:[{"path":["id"],"message":"Missing"}]`,
+        {},
+        { timeout: 10_000 },
+      );
     }
   },
 );

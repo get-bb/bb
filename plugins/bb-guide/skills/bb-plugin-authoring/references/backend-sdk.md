@@ -352,3 +352,9 @@ path-shaped `baseUrl`. Append individually encoded relative path segments to
 serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
+
+Caller-gated RPC handlers can throw `new experimental_PluginRpcRefusal({
+code: "forbidden", message: "Only the connect plugin can call this method" })`
+from `@get-bb/plugin-sdk`. `bb.sdk.plugins.callRpc` rejects with a `BbHttpError`
+whose `code` is `forbidden` and `status` is 403. See `backend-events.md` for
+the refusal codes, optional validation issues and mutation rollback behavior.
