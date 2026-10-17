@@ -543,10 +543,22 @@ function classifyShellSegment(
   }
 }
 
+const SHELL_INTENT_CACHE_MAX_ENTRIES = 4_096;
+const SHELL_INTENT_CACHE_MAX_COMMAND_CHARS = 2_000_000;
+const shellIntentCache = new Map<string, EventProjectionToolParsedIntent[]>();
+let shellIntentCacheCommandChars = 0;
+
 export function parseShellCommandIntents(
   command: string | undefined,
 ): EventProjectionToolParsedIntent[] {
   if (!command) return [];
+
+  const cached = shellIntentCache.get(command);
+  if (cached !== undefined) {
+    shellIntentCache.delete(command);
+    shellIntentCache.set(command, cached);
+    return cached.map((intent) => ({ ...intent }));
+  }
 
   let intents: EventProjectionToolParsedIntent[] = [];
   visitShellCommandSegments(command, (segment) => {
@@ -560,6 +572,21 @@ export function parseShellCommandIntents(
     }
     return true;
   });
+  if (command.length <= SHELL_INTENT_CACHE_MAX_COMMAND_CHARS) {
+    while (
+      shellIntentCache.size >= SHELL_INTENT_CACHE_MAX_ENTRIES ||
+      shellIntentCacheCommandChars + command.length >
+        SHELL_INTENT_CACHE_MAX_COMMAND_CHARS
+    ) {
+      const oldest = shellIntentCache.keys().next().value;
+      if (oldest === undefined) break;
+      shellIntentCache.delete(oldest);
+      shellIntentCacheCommandChars -= oldest.length;
+    }
+    shellIntentCache.set(command, intents);
+    shellIntentCacheCommandChars += command.length;
+    return intents.map((intent) => ({ ...intent }));
+  }
   return intents;
 }
 

@@ -20,7 +20,7 @@ it("bounds intent parsing work after a script's disqualifying write", () => {
     for (let sample = 0; sample < 5; sample += 1) {
       const started = threadCpuUsage();
       for (let repeat = 0; repeat < 32; repeat += 1) {
-        parseShellCommandIntents(command);
+        parseShellCommandIntents(`BENCH_SAMPLE=${sample}_${repeat} ${command}`);
       }
       const cpu = threadCpuUsage(started);
       samples.push(cpu.user + cpu.system);
@@ -42,4 +42,33 @@ it("keeps bb thread tell parsing linear on unterminated heredocs", () => {
   }
   const cpu = threadCpuUsage(started);
   expect(cpu.user + cpu.system).toBeLessThan(500_000);
+});
+
+it("reuses shell summaries across repeated timeline builds", () => {
+  const payload = "quoted script payload ".repeat(400);
+  const commands = Array.from(
+    { length: 64 },
+    (_, index) => `rg needle path-${index}; printf '%s' '${payload}'`,
+  );
+  for (const command of commands) {
+    expect(parseShellCommandIntents(command)[0]?.type).toBe("search");
+  }
+  const minimumCpu = (reuse: boolean): number => {
+    const samples: number[] = [];
+    for (let sample = 0; sample < 5; sample += 1) {
+      const started = threadCpuUsage();
+      for (let repeat = 0; repeat < 8; repeat += 1) {
+        for (const command of commands) {
+          parseShellCommandIntents(
+            reuse ? command : `BENCH_COLD=${sample}_${repeat} ${command}`,
+          );
+        }
+      }
+      const cpu = threadCpuUsage(started);
+      samples.push(cpu.user + cpu.system);
+    }
+    return Math.min(...samples);
+  };
+  const reusedCpu = minimumCpu(true);
+  expect(reusedCpu).toBeLessThan(minimumCpu(false) / 5);
 });

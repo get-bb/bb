@@ -6,6 +6,23 @@ import {
 } from "../src/tool-call-parsing.js";
 
 describe("tool-call shell parsing", () => {
+  it("keeps returned shell summaries independent across callers", () => {
+    const command = "rg independent src";
+    const first = parseShellCommandIntents(command);
+    first[0]!.cmd = "changed";
+    first.length = 0;
+    expect(parseShellCommandIntents(command)).toEqual([
+      { type: "search", cmd: command, query: "independent", path: "src" },
+    ]);
+    const writing = "cat independent > result.txt";
+    parseShellCommandIntents(writing).push({
+      type: "read",
+      cmd: writing,
+      name: "cat",
+      path: "independent",
+    });
+    expect(parseShellCommandIntents(writing)).toEqual([]);
+  });
   it("treats quoted shell operators as literal arguments", () => {
     expect(parseShellCommandIntents('grep "a|b" "src > docs.txt"')).toEqual([
       {
