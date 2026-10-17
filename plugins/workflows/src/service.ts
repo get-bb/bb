@@ -54,7 +54,6 @@ import {
   type WorkflowRunRow,
 } from "./data.js";
 import { parseWorkflowSource } from "./parser.js";
-import { WORKFLOW_RUNS_REALTIME_CHANNEL } from "./realtime-channel.js";
 import { executeWorkflowScript } from "./runtime.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -431,9 +430,7 @@ export function createWorkflowService(
   }
 
   function publishRunsChanged(originThreadId: string): void {
-    bb.realtime.publish(WORKFLOW_RUNS_REALTIME_CHANNEL, {
-      threadId: originThreadId,
-    });
+    bb.rpc.experimental_invalidate([`runs:${originThreadId}`]);
   }
 
   function publishRunProgress(runId: string): void {

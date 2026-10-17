@@ -37,15 +37,14 @@ Both surfaces are implemented by the plugin app with bb's registry components
 and BB theme tokens. Directive attributes and restored panel parameters are
 treated as untrusted input. The backend additionally binds every requested run
 to the directive message or panel thread, so a run ID from another thread
-cannot be inspected or stopped through these UI RPCs. The service publishes a
-`workflow-runs` realtime signal for the origin thread when a run starts, is
-claimed, settles, or is cancelled, and whenever its phase or one of its agent
-calls changes, so the composer status surface and the message cards follow a
-run from signals instead of a standing poll. While the page is visible they
-refresh on each signal (a burst folds into one follow-up request), refresh once
-when the page or the realtime connection comes back, and keep only a 15-second
-fallback poll while a run is active. A failing refresh retries with backoff from
-2 seconds up to one minute, and everything stops when the run is terminal.
+cannot be inspected or stopped through these UI RPCs. The service invalidates
+thread-scoped RPC tags when a run starts, is claimed, settles, or is cancelled,
+and whenever its phase or one of its agent calls changes. The shared query
+lifecycle refreshes the composer status surface, message cards, and panel after
+these changes, reconnect, or resume. Stop refreshes every run view even when the
+run has already finished. There is no fallback poll or plugin retry timer.
+Failed reads show Retry; refresh failures keep loaded runs visible with an
+inline warning. Elapsed labels update locally once per second while running.
 
 The security boundary is the QuickJS context: workflow code has JSON data and
 explicit orchestration capabilities, but no Node, filesystem, shell, network,

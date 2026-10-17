@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -41,16 +40,11 @@ import {
   definePluginApp,
   useBbNavigate,
   useComposer,
-  useRealtime,
-  useRealtimeConnectionState,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
   type PluginMessageDirectiveProps,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
-import {
-  WORKFLOW_RUNS_REALTIME_CHANNEL,
-  workflowRunsSignalThreadId,
-} from "./realtime-channel.js";
 import type { workflowUiRpcContract } from "./ui-contract.js";
 import type { WorkflowCallView, WorkflowRunView } from "./ui-contract.js";
 
@@ -65,8 +59,8 @@ type RunLoadState =
 
 type ActiveRunsLoadState =
   | { status: "loading" }
-  | { status: "ready"; runs: WorkflowRunView[] }
-  | { status: "error" };
+  | { status: "ready"; runs: WorkflowRunView[]; refreshError: string | null }
+  | { status: "error"; message: string };
 
 interface SharedWorkflowView {
   callsById: ReadonlyMap<string, WorkflowCallView>;
@@ -74,9 +68,6 @@ interface SharedWorkflowView {
   progress: WorkflowProgressSnapshot;
 }
 
-const ACTIVE_FALLBACK_POLL_INTERVAL_MS = 15_000;
-const FAILED_POLL_RETRY_BASE_MS = 2_000;
-const FAILED_POLL_RETRY_MAX_MS = 60_000;
 const WORKFLOW_PANEL_ACTION_ID = "workflow-run";
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const WORKFLOW_HEADER_BUTTON_CLASS =
@@ -187,16 +178,27 @@ function formatDuration(startedAt: number | null, finishedAt: number | null) {
     .join(" ");
 }
 
-function WorkflowDuration({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
+function WorkflowDuration({
+  startedAt,
+  finishedAt = null,
+  showShort = false,
+}: {
+  startedAt: number;
+  finishedAt?: number | null;
+  showShort?: boolean;
+}) {
+  const [elapsed, setElapsed] = useState(
+    () => (finishedAt ?? Date.now()) - startedAt,
+  );
   useEffect(() => {
-    setElapsed(Date.now() - startedAt);
+    setElapsed((finishedAt ?? Date.now()) - startedAt);
+    if (finishedAt !== null) return;
     const interval = window.setInterval(() => {
       setElapsed(Date.now() - startedAt);
     }, 1_000);
     return () => window.clearInterval(interval);
-  }, [startedAt]);
-  if (elapsed <= 1_000) return null;
+  }, [startedAt, finishedAt]);
+  if (!showShort && elapsed <= 1_000) return null;
   return <>{formatDuration(0, elapsed)}</>;
 }
 
@@ -354,220 +356,42 @@ function activateWorkflowAgent(
   if (childThreadId !== null) toThread(childThreadId);
 }
 
-function useWorkflowRun(
-  threadId: string,
-  runId: string | null,
-): { state: RunLoadState; refresh: () => Promise<void> } {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<RunLoadState>({ status: "loading" });
-  const requestSequence = useRef(0);
-
-  const load = useCallback(async () => {
-    const sequence = ++requestSequence.current;
-    try {
-      const result = await rpc.call("workflowRunView", { threadId, runId });
-      if (sequence === requestSequence.current) {
-        setState({ status: "ready", run: result.run, refreshError: null });
-      }
-      return true;
-    } catch (error) {
-      if (sequence === requestSequence.current) {
-        const message = error instanceof Error ? error.message : String(error);
-        setState((current) =>
-          current.status === "ready" && current.run !== null
-            ? { ...current, refreshError: message }
-            : { status: "error", message },
-        );
-      }
-      return false;
-    }
-  }, [rpc, runId, threadId]);
-  const refresh = useCallback(async () => {
-    await load();
-  }, [load]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void load();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [load]);
-
-  const refreshOnSignal = useCoalescedLoad(load);
-  useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
-    if (
-      workflowRunsSignalThreadId(payload) === threadId &&
-      readDocumentVisible()
-    ) {
-      refreshOnSignal();
-    }
-  });
-
-  const failing =
-    state.status === "error" ||
-    (state.status === "ready" && state.refreshError !== null);
-  const shouldPoll =
-    failing ||
-    (state.status === "ready" && state.run !== null && isRunActive(state.run));
-  useVisibleActivePolling(load, shouldPoll, failing);
-
-  return { state, refresh };
+function useWorkflowRun(threadId: string, runId: string | null) {
+  const query = experimental_useRpcQuery<
+    typeof workflowUiRpcContract,
+    "workflowRunView"
+  >({ method: "workflowRunView", input: { threadId, runId } });
+  const state: RunLoadState =
+    query.error !== null && query.data?.run === null
+      ? { status: "error", message: query.error.message }
+      : query.data !== undefined
+        ? {
+            status: "ready",
+            run: query.data.run,
+            refreshError: query.error?.message ?? null,
+          }
+        : query.error !== null
+          ? { status: "error", message: query.error.message }
+          : { status: "loading" };
+  return { state, refresh: query.refetch };
 }
 
-function useCoalescedLoad(load: () => Promise<boolean>): () => void {
-  const latestLoad = useRef(load);
-  useEffect(() => {
-    latestLoad.current = load;
-  }, [load]);
-  const pending = useRef({ running: false, queued: false });
-  return useCallback(() => {
-    const state = pending.current;
-    if (state.running) {
-      state.queued = true;
-      return;
-    }
-    state.running = true;
-    const run = () => {
-      void latestLoad.current().finally(() => {
-        if (state.queued) {
-          state.queued = false;
-          run();
-        } else {
-          state.running = false;
+function useActiveWorkflowRuns(threadId: string) {
+  const query = experimental_useRpcQuery<
+    typeof workflowUiRpcContract,
+    "workflowActiveRuns"
+  >({ method: "workflowActiveRuns", input: { threadId } });
+  const state: ActiveRunsLoadState =
+    query.data !== undefined
+      ? {
+          status: "ready",
+          runs: query.data.runs,
+          refreshError: query.error?.message ?? null,
         }
-      });
-    };
-    run();
-  }, []);
-}
-
-function pollDelayMs(consecutiveFailures: number): number {
-  if (consecutiveFailures === 0) return ACTIVE_FALLBACK_POLL_INTERVAL_MS;
-  return Math.min(
-    FAILED_POLL_RETRY_BASE_MS * 2 ** (consecutiveFailures - 1),
-    FAILED_POLL_RETRY_MAX_MS,
-  );
-}
-
-function subscribeDocumentVisibility(onChange: () => void): () => void {
-  document.addEventListener("visibilitychange", onChange);
-  return () => document.removeEventListener("visibilitychange", onChange);
-}
-
-function readDocumentVisible(): boolean {
-  return document.visibilityState !== "hidden";
-}
-
-function useDocumentVisible(): boolean {
-  return useSyncExternalStore(
-    subscribeDocumentVisibility,
-    readDocumentVisible,
-    () => true,
-  );
-}
-
-function useVisibleActivePolling(
-  load: () => Promise<boolean>,
-  active: boolean,
-  failing: boolean,
-): void {
-  const visible = useDocumentVisible();
-  const connection = useRealtimeConnectionState();
-  const wasHidden = useRef(false);
-  const wasDisconnected = useRef(false);
-
-  useEffect(() => {
-    if (!visible) {
-      wasHidden.current = true;
-      return;
-    }
-    if (!wasHidden.current) return;
-    wasHidden.current = false;
-    void load();
-  }, [load, visible]);
-
-  useEffect(() => {
-    if (connection !== "connected") {
-      wasDisconnected.current = true;
-      return;
-    }
-    if (!wasDisconnected.current) return;
-    wasDisconnected.current = false;
-    void load();
-  }, [connection, load]);
-
-  const failingAtStart = useRef(failing);
-  useEffect(() => {
-    failingAtStart.current = failing;
-  }, [failing]);
-  const enabled = active && visible;
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    let timeout: number | null = null;
-    let consecutiveFailures = failingAtStart.current ? 1 : 0;
-    const schedule = () => {
-      timeout = window.setTimeout(() => {
-        void load().then((succeeded) => {
-          consecutiveFailures = succeeded ? 0 : consecutiveFailures + 1;
-          if (!cancelled) schedule();
-        });
-      }, pollDelayMs(consecutiveFailures));
-    };
-    schedule();
-    return () => {
-      cancelled = true;
-      if (timeout !== null) window.clearTimeout(timeout);
-    };
-  }, [enabled, load]);
-}
-
-function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<ActiveRunsLoadState>({
-    status: "loading",
-  });
-  const requestSequence = useRef(0);
-
-  const load = useCallback(async () => {
-    const sequence = ++requestSequence.current;
-    try {
-      const result = await rpc.call("workflowActiveRuns", { threadId });
-      if (sequence === requestSequence.current) {
-        setState({ status: "ready", runs: result.runs });
-      }
-      return true;
-    } catch {
-      if (sequence === requestSequence.current) setState({ status: "error" });
-      return false;
-    }
-  }, [rpc, threadId]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void load();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [load]);
-
-  const refreshOnSignal = useCoalescedLoad(load);
-  useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
-    if (
-      workflowRunsSignalThreadId(payload) === threadId &&
-      readDocumentVisible()
-    ) {
-      refreshOnSignal();
-    }
-  });
-
-  const failing = state.status === "error";
-  const shouldPoll =
-    failing || (state.status === "ready" && state.runs.some(isRunActive));
-  useVisibleActivePolling(load, shouldPoll, failing);
-
-  return state;
+      : query.error !== null
+        ? { status: "error", message: query.error.message }
+        : { status: "loading" };
+  return { state, refresh: query.refetch };
 }
 
 export function EmptyOrError({ children }: { children: ReactNode }) {
@@ -592,13 +416,22 @@ export function WorkflowRunPanelState({ children }: { children: ReactNode }) {
   return <div className="p-4">{children}</div>;
 }
 
-function RefreshWarning({ message }: { message: string }) {
+function RefreshWarning({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
   return (
     <div
       role="status"
       className="rounded-md border border-warning/20 bg-warning/5 px-2.5 py-1.5 text-xs text-warning-text"
     >
-      Could not refresh: {message}. Retrying…
+      Could not refresh: {message}
+      <Button size="sm" variant="ghost" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }
@@ -775,7 +608,7 @@ function WorkflowStackFront({
 }
 
 function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
-  const state = useActiveWorkflowRuns(threadId);
+  const { state, refresh } = useActiveWorkflowRuns(threadId);
   const [stackExpanded, setStackExpanded] = useState(false);
   const listId = useId();
   const focus = useDisclosureFocusHandoff(stackExpanded, () =>
@@ -785,12 +618,18 @@ function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   if (stackExpanded && state.status === "ready" && state.runs.length < 2) {
     setStackExpanded(false);
   }
-  if (state.status !== "ready" || state.runs.length === 0) return null;
+  if (state.status === "error")
+    return <RefreshWarning message={state.message} onRetry={refresh} />;
+  if (state.status !== "ready") return null;
+  if (state.runs.length === 0 && state.refreshError === null) return null;
 
   const runs = state.runs;
   const collapsed = runs.length > 1 && !stackExpanded;
   return (
     <section aria-label="Active workflows" className="flex flex-col gap-2">
+      {state.refreshError !== null ? (
+        <RefreshWarning message={state.refreshError} onRetry={refresh} />
+      ) : null}
       {collapsed ? (
         <WorkflowStackFront
           runs={runs}
@@ -850,13 +689,20 @@ function WorkflowPreviewLoaded({
   source: string;
 }) {
   const navigate = useBbNavigate();
-  const { state } = useWorkflowRun(threadId, runId);
+  const { state, refresh } = useWorkflowRun(threadId, runId);
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
   const toggleId = useId();
   if (state.status === "loading") return <LoadingPreview />;
   if (state.status === "error") {
-    return <EmptyOrError>{state.message}</EmptyOrError>;
+    return (
+      <EmptyOrError>
+        {state.message}
+        <Button size="sm" variant="ghost" onClick={refresh}>
+          Retry
+        </Button>
+      </EmptyOrError>
+    );
   }
   if (state.run === null) {
     return <EmptyOrError>Workflow run not found.</EmptyOrError>;
@@ -865,7 +711,6 @@ function WorkflowPreviewLoaded({
   const shared = buildSharedWorkflowView(run);
   const activityState = runActivityState(run);
   const pillState = runPillState(run.status);
-  const duration = formatDuration(run.startedAt, run.finishedAt);
   const settledAgents = settledAgentCount(shared.progress.agents);
   return (
     <section
@@ -910,14 +755,18 @@ function WorkflowPreviewLoaded({
               {settledAgents}/{shared.progress.agents.length} agents
             </span>
           ) : null}
-          {duration === null ? null : (
+          {run.startedAt === null ? null : (
             <span
               className={activityMetaClass(
                 activityState,
                 "shrink-0 text-2xs tabular-nums",
               )}
             >
-              {duration}
+              <WorkflowDuration
+                startedAt={run.startedAt}
+                finishedAt={run.finishedAt}
+                showShort
+              />
             </span>
           )}
         </span>
@@ -974,7 +823,7 @@ function WorkflowPreviewLoaded({
       </section>
       {state.refreshError === null ? null : (
         <div className="border-t border-border-seam bg-popover px-3 py-2">
-          <RefreshWarning message={state.refreshError} />
+          <RefreshWarning message={state.refreshError} onRetry={refresh} />
         </div>
       )}
       <div className="flex min-h-9 items-center border-t border-border-seam bg-popover px-2">
@@ -1025,7 +874,10 @@ function WorkflowRunPanelLoaded({
   runId: string | null;
 }) {
   const navigate = useBbNavigate();
-  const rpc = useRpc<typeof workflowUiRpcContract>();
+  const stopMutation = experimental_useRpcMutation<
+    typeof workflowUiRpcContract,
+    "workflowStopRun"
+  >({ method: "workflowStopRun" });
   const { state, refresh } = useWorkflowRun(threadId, runId);
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
@@ -1044,7 +896,12 @@ function WorkflowRunPanelLoaded({
   if (state.status === "error") {
     return (
       <WorkflowRunPanelState>
-        <EmptyOrError>{state.message}</EmptyOrError>
+        <EmptyOrError>
+          {state.message}
+          <Button size="sm" variant="ghost" onClick={refresh}>
+            Retry
+          </Button>
+        </EmptyOrError>
       </WorkflowRunPanelState>
     );
   }
@@ -1058,7 +915,6 @@ function WorkflowRunPanelLoaded({
     );
   }
   const pillState = runPillState(run.status);
-  const duration = formatDuration(run.startedAt, run.finishedAt);
   const settledAgents = settledAgentCount(shared.progress.agents);
   const completedCalls = shared.progress.agents.filter(
     (agent) => agent.state === "done",
@@ -1070,8 +926,7 @@ function WorkflowRunPanelLoaded({
     setStopping(true);
     setStopError(null);
     try {
-      await rpc.call("workflowStopRun", { threadId, runId: run.id });
-      await refresh();
+      await stopMutation.mutate({ threadId, runId: run.id });
     } catch (error) {
       setStopError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1100,9 +955,18 @@ function WorkflowRunPanelLoaded({
             {shared.progress.agents.length > 0
               ? `${settledAgents}/${shared.progress.agents.length} agents · `
               : ""}
-            {duration === null
-              ? "Not started"
-              : `${duration} ${isRunActive(run) ? "elapsed" : "total"}`}
+            {run.startedAt === null ? (
+              "Not started"
+            ) : (
+              <>
+                <WorkflowDuration
+                  startedAt={run.startedAt}
+                  finishedAt={run.finishedAt}
+                  showShort
+                />{" "}
+                {isRunActive(run) ? "elapsed" : "total"}
+              </>
+            )}
           </span>
           <span className="ml-auto font-mono">{run.id.slice(-8)}</span>
         </div>
@@ -1122,7 +986,7 @@ function WorkflowRunPanelLoaded({
         )}
         {state.refreshError === null ? null : (
           <div className="mt-3">
-            <RefreshWarning message={state.refreshError} />
+            <RefreshWarning message={state.refreshError} onRetry={refresh} />
           </div>
         )}
         <div className="my-4 h-px bg-border-seam" />
