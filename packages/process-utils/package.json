@@ -11,7 +11,8 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "clean": "rimraf dist src/generated tsconfig.tsbuildinfo",
+    "generate:profile-worker": "node scripts/generate-profile-worker.mjs",
     "lint": "oxlint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"

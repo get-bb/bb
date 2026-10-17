@@ -451,6 +451,22 @@
         "@bb/templates#generate:plugin-scaffold"
       ]
     },
+    "@bb/process-utils#topo": {
+      "dependsOn": ["^topo", "@bb/process-utils#generate:profile-worker"]
+    },
+    "@bb/process-utils#generate:profile-worker": {
+      "dependsOn": [],
+      "inputs": [
+        "src/profile-worker.ts",
+        "src/stall-attribution.ts",
+        "src/stall-windows.ts",
+        "src/event-loop-delay.ts",
+        "scripts/generate-profile-worker.mjs",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml"
+      ],
+      "outputs": ["src/generated/profile-worker.ts"]
+    },
     "@bb/plugin-build#topo": {
       "dependsOn": ["^topo", "@bb/plugin-build#generate"]
     },
