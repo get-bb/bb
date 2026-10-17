@@ -22,16 +22,9 @@ import {
 } from "./server-access.js";
 import { ShareRegistry } from "./shares.js";
 import { ConnectTunnel } from "./tunnel.js";
-import {
-  CONNECT_REALTIME_CHANNEL,
-  REMOTE_ACTIVITY_INSTRUCTIONS_MS,
-} from "./types.js";
+import { REMOTE_ACTIVITY_INSTRUCTIONS_MS } from "./types.js";
 
-export interface ConnectPluginOptions {
-  accountRetryMinMs?: number;
-}
-
-export function createConnectPlugin(options: ConnectPluginOptions = {}) {
+export function createConnectPlugin() {
   return async function plugin(bb: BbPluginApi): Promise<void> {
     const settings = bb.settings.define({
       remoteAccess: {
@@ -68,7 +61,7 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       getIdentity: () => tunnel.getIdentity(),
       log: bb.log,
       onChange: () => {
-        bb.realtime.publish(CONNECT_REALTIME_CHANNEL, tunnel.status());
+        bb.rpc.experimental_invalidate(["status"]);
       },
     });
 
@@ -87,7 +80,7 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       getLoopbackBaseUrl,
       log: bb.log,
       onStatusChange: (status) => {
-        bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status);
+        bb.rpc.experimental_invalidate(["status"]);
         recheckServerAccess(status);
       },
     });
@@ -153,9 +146,6 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       }),
       log: bb.log,
       onAccount: (next) => tunnel.setAccount(next),
-      ...(options.accountRetryMinMs === undefined
-        ? {}
-        : { retryMinMs: options.accountRetryMinMs }),
     });
 
     bb.background.service("tunnel", {

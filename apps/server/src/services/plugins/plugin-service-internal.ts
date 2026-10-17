@@ -98,6 +98,7 @@ export interface PluginServiceDeps {
     | "notifyPluginSignal"
     | "notifySystem"
     | "notifyPluginChanged"
+    | "onPluginWatchChange"
   >;
   logger: ServerLogger;
   telemetry: TelemetryService;

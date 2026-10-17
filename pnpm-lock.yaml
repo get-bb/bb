@@ -3665,6 +3665,9 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
+      '@bb/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk

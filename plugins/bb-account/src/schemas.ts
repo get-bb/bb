@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-export const ACCOUNT_REALTIME_CHANNEL = "account";
-
 export const accountSchema = z
   .object({
     userId: z.string(),
@@ -102,5 +100,3 @@ export const loginPollOutputSchema = z
     status: accountStatusSchema,
   })
   .strict();
-
-export const accountRealtimePayloadSchema = loginPollOutputSchema;

@@ -331,6 +331,7 @@ export interface FakePluginInspectionState {
   /** Every `bb.log` line, in order. */
   readonly logEntries: FakeLogEntry[];
   /** Every `bb.realtime.publish`, payload normalized like the wire. */
+  experimental_onRpcInvalidation(listener: () => void): () => void;
   readonly experimental_rpcInvalidations: (readonly string[] | null)[];
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
@@ -859,13 +860,21 @@ function createFakePluginHostInternal(
   // --- rpc ---
   const rpcHandlers = new Map<string, FakeRpcRecord>();
   const rpcInvalidations: (readonly string[] | null)[] = [];
+  const invalidationListeners = new Set<() => void>();
   const rpc: PluginRpc = {
+    experimental_whileWatched(method) {
+      assertLive();
+      if (!rpcHandlers.has(method))
+        throw new Error(`Unknown RPC method: ${method}`);
+    },
     experimental_invalidate(tags) {
       assertLive();
+      for (const listener of invalidationListeners) listener();
       rpcInvalidations.push(rpcInvalidationTags.parse(tags));
     },
     experimental_invalidateAll() {
       assertLive();
+      for (const listener of invalidationListeners) listener();
       rpcInvalidations.push(null);
     },
     register(contract, handlers, registrationOptions) {
@@ -1613,6 +1622,12 @@ function createFakePluginHostInternal(
     },
     pluginId,
     logEntries,
+    experimental_onRpcInvalidation(listener) {
+      invalidationListeners.add(listener);
+      return () => {
+        invalidationListeners.delete(listener);
+      };
+    },
     experimental_rpcInvalidations: rpcInvalidations,
     realtimeSignals,
     needsConfigurationMessages,

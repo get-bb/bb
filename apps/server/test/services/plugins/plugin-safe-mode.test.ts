@@ -68,6 +68,7 @@ describe("plugin safe mode", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onPluginWatchChange: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },

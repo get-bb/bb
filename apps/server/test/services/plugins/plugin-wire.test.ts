@@ -565,6 +565,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       tags: [],
       keyTags: {},
       invalidated: [],
+      whileWatched: false,
     });
     const candidateRoute = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/candidate`,
@@ -589,6 +590,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       tags: [],
       keyTags: {},
       invalidated: [],
+      whileWatched: false,
     });
 
     const boom = await rpc(harness, "boom", {});
@@ -715,7 +717,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
   });
 
-  it("bb.realtime.publish broadcasts a plugin-signal WS frame to connected clients", async () => {
+  it("bb.realtime.publish delivers a plugin-signal only to subscribers of that plugin", async () => {
+    const pluginSocket = createMockHubSocket();
+    harness.hub.subscribe(pluginSocket, { kind: "plugin", pluginId: "wire" });
     const systemSocket = createMockHubSocket();
     const threadSocket = createMockHubSocket();
     harness.hub.subscribe(systemSocket, { kind: "system" });
@@ -735,17 +739,18 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       tags: [],
       keyTags: {},
       invalidated: [],
+      whileWatched: false,
     });
 
-    for (const socket of [systemSocket, threadSocket]) {
-      expect(socket.messages).toHaveLength(1);
-      expect(JSON.parse(socket.messages[0])).toEqual({
-        type: "plugin-signal",
-        pluginId: "wire",
-        channel: "issues-updated",
-        payload: { count: 42 },
-      });
-    }
+    for (const socket of [systemSocket, threadSocket])
+      expect(socket.messages).toEqual([]);
+    expect(pluginSocket.messages).toHaveLength(1);
+    expect(JSON.parse(pluginSocket.messages[0])).toEqual({
+      type: "plugin-signal",
+      pluginId: "wire",
+      channel: "issues-updated",
+      payload: { count: 42 },
+    });
   });
 
   it("bb.realtime.publish rejects payloads that do not survive JSON", async () => {
@@ -811,6 +816,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       tags: [],
       keyTags: {},
       invalidated: [],
+      whileWatched: false,
     });
   });
 });

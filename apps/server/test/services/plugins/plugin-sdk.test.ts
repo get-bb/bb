@@ -190,6 +190,7 @@ describe("plugin bb.sdk bind gate", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onPluginWatchChange: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -1049,10 +1050,30 @@ describe("plugin bb.sdk against a running server", () => {
           outputSchema: callerSchema,
         });
 
-      await expect(callWhoami()).resolves.toEqual({
-        kind: "plugin",
-        pluginId: "caller",
-      });
+      const watchWhoami = () =>
+        new Promise<z.infer<typeof callerSchema>>((resolve, reject) => {
+          const controller = new AbortController();
+          callerSdk.plugins.experimental_watchRpc({
+            pluginId: "callee",
+            method: "whoami",
+            input: null,
+            outputSchema: callerSchema,
+            signal: controller.signal,
+            onChange: (value) => {
+              controller.abort();
+              resolve(value);
+            },
+            onError: (error) => {
+              controller.abort();
+              reject(error);
+            },
+          });
+        });
+      for (const read of [callWhoami, watchWhoami])
+        await expect(read()).resolves.toEqual({
+          kind: "plugin",
+          pluginId: "caller",
+        });
 
       const cli = await fetch(
         `${server.baseUrl}/api/v1/plugins/callee/rpc/whoami`,
@@ -1068,6 +1089,7 @@ describe("plugin bb.sdk against a running server", () => {
         tags: [],
         keyTags: {},
         invalidated: [],
+        whileWatched: false,
       });
 
       const callsBeforeSpoof = whoami.mock.calls.length;
@@ -1086,7 +1108,8 @@ describe("plugin bb.sdk against a running server", () => {
       expect(whoami.mock.calls.length).toBe(callsBeforeSpoof);
 
       await server.pluginService.reload("caller");
-      await expect(callWhoami()).rejects.toMatchObject({ status: 403 });
+      for (const read of [callWhoami, watchWhoami])
+        await expect(read()).rejects.toMatchObject({ status: 403 });
       await expect(
         requireApi(server.pluginService, "caller").sdk.plugins.callRpc({
           pluginId: "callee",

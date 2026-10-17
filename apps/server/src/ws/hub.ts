@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
   type RealtimeSubscriptionTarget,
+  type PluginReadSubscriptionTarget,
   type ChangedMessage,
   type EnvironmentChangeKind,
   type HostChangeKind,
@@ -299,6 +300,31 @@ export class NotificationHub implements DbNotifier {
     PendingThreadListEventsAppended
   >();
 
+  private readonly pluginReads = new Map<
+    string,
+    PluginReadSubscriptionTarget
+  >();
+  private readonly pluginWatchListeners = new Set<
+    (target: PluginReadSubscriptionTarget, active: boolean) => void
+  >();
+
+  onPluginWatchChange(
+    listener: (target: PluginReadSubscriptionTarget, active: boolean) => void,
+  ): () => void {
+    this.pluginWatchListeners.add(listener);
+    for (const target of this.pluginReads.values()) listener(target, true);
+    return () => {
+      this.pluginWatchListeners.delete(listener);
+    };
+  }
+
+  private endPluginWatch(key: string): void {
+    const target = this.pluginReads.get(key);
+    if (!target) return;
+    this.pluginReads.delete(key);
+    for (const listener of this.pluginWatchListeners) listener(target, false);
+  }
+
   private readonly pendingTags = new Set<string>();
 
   notifyPluginChanged(pluginId: string, tags: readonly string[] | null): void {
@@ -348,6 +374,7 @@ export class NotificationHub implements DbNotifier {
       if (sockets.size === 0) {
         this.clientSocketsByKey.delete(key);
         this.threadTimelineTargetsByKey.delete(key);
+        this.endPluginWatch(key);
       }
     }
 
@@ -573,6 +600,10 @@ export class NotificationHub implements DbNotifier {
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
     sockets.add(socket);
     this.clientSocketsByKey.set(key, sockets);
+    if (target.kind === "plugin-read" && !this.pluginReads.has(key)) {
+      this.pluginReads.set(key, target);
+      for (const listener of this.pluginWatchListeners) listener(target, true);
+    }
     if (
       target.kind === "thread-timeline" &&
       !this.threadTimelineTargetsByKey.has(key)
@@ -593,6 +624,7 @@ export class NotificationHub implements DbNotifier {
     if (sockets.size === 0) {
       this.clientSocketsByKey.delete(key);
       this.threadTimelineTargetsByKey.delete(key);
+      this.endPluginWatch(key);
     }
   }
 
@@ -958,7 +990,7 @@ export class NotificationHub implements DbNotifier {
     thread: { projectId: string; threadId: string },
     request: { split: ThreadOpenSplit; file: ThreadOpenFile | null },
   ): number {
-    return this.broadcastToAllClients(
+    return this.sendClientControlSignal(
       JSON.stringify(
         threadOpenSignalSchema.parse({
           type: "thread-open",
@@ -975,7 +1007,7 @@ export class NotificationHub implements DbNotifier {
     thread: { projectId: string; threadId: string },
     action: ThreadPaneAction,
   ): number {
-    return this.broadcastToAllClients(
+    return this.sendClientControlSignal(
       JSON.stringify(
         threadPaneActionSignalSchema.parse({
           type: "thread-pane-action",
@@ -992,19 +1024,23 @@ export class NotificationHub implements DbNotifier {
     channel: string,
     payload: unknown,
   ): number {
-    return this.broadcastToAllClients(
-      JSON.stringify(
-        pluginSignalSchema.parse({
-          type: "plugin-signal",
-          pluginId,
-          channel,
-          payload,
-        }),
-      ),
+    const sockets = this.clientSocketsByKey.get(
+      subscriptionKey({ kind: "plugin", pluginId }),
     );
+    if (!sockets) return 0;
+    const encoded = JSON.stringify(
+      pluginSignalSchema.parse({
+        type: "plugin-signal",
+        pluginId,
+        channel,
+        payload,
+      }),
+    );
+    this.notifyClientsByKeySet(sockets, encoded);
+    return sockets.size;
   }
 
-  private broadcastToAllClients(payload: string): number {
+  private sendClientControlSignal(payload: string): number {
     let delivered = 0;
     for (const socket of this.clientKeysBySocket.keys()) {
       socket.send(payload);

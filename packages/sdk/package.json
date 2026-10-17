@@ -34,6 +34,11 @@
       "types": "./src/node-websocket.ts",
       "import": "./dist/node-websocket.js",
       "default": "./dist/node-websocket.js"
+    },
+    "./internal/plugin-read-watcher": {
+      "source": "./src/plugin-read-watcher.ts",
+      "types": "./src/plugin-read-watcher.ts",
+      "default": "./dist/plugin-read-watcher.js"
     }
   },
   "types": "./src/node.ts",

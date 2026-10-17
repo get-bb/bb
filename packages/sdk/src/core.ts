@@ -89,7 +89,7 @@ export function createBbSdk(
       return realtime.subscribe(args);
     },
     projects: createProjectsArea(sdkContext),
-    plugins: createPluginsArea(sdkContext),
+    plugins: createPluginsArea({ ...sdkContext, realtime }),
     providers: createProvidersArea(sdkContext),
     skills: createSkillsArea(sdkContext),
     status: createStatusArea(sdkContext),

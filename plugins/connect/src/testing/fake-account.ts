@@ -1,3 +1,5 @@
+import { createPluginReadWatcher } from "@bb/sdk/internal/plugin-read-watcher";
+import type { PluginsArea } from "@bb/sdk";
 import type {
   Account,
   AccountFetchRequest,
@@ -37,7 +39,14 @@ export const TEST_ACCOUNT: Account = {
 };
 
 export class FakeAccount {
-  available = true;
+  private isAvailable = true;
+  get available() {
+    return this.isAvailable;
+  }
+  set available(value: boolean) {
+    this.isAvailable = value;
+    this.wake();
+  }
   readonly fetches: AccountFetchRequest[] = [];
   readonly adoptions: unknown[] = [];
   readonly redemptions: unknown[] = [];
@@ -96,55 +105,34 @@ export class FakeAccount {
         { status: 503 },
       );
     }
-    return args.outputSchema.parse(
-      await this.handle(args.method, args.input, args.signal),
-    );
+    return args.outputSchema.parse(await this.handle(args.method, args.input));
+  };
+
+  readonly watchRpc: PluginsArea["experimental_watchRpc"] = (args) => {
+    const refresh = () => watcher.refresh();
+    const watcher = createPluginReadWatcher({
+      ...args,
+      read: async (signal) =>
+        args.outputSchema.parse(await this.callRpc({ ...args, signal })),
+      onStop: () => {
+        this.waiters.delete(refresh);
+      },
+    });
+    if (!args.signal.aborted) {
+      this.waiters.add(refresh);
+      watcher.refresh();
+    }
+    return watcher;
   };
 
   private wake(): void {
     for (const waiter of [...this.waiters]) waiter();
   }
 
-  private waitForChange(
-    afterRevision: number,
-    signal: AbortSignal | undefined,
-  ): Promise<AccountStatus> {
-    if (this.current.revision > afterRevision) {
-      return Promise.resolve(this.current);
-    }
-    return new Promise((resolve, reject) => {
-      const finish = () => {
-        clearTimeout(timer);
-        this.waiters.delete(finish);
-        signal?.removeEventListener("abort", abort);
-        resolve(this.current);
-      };
-      const abort = () => {
-        clearTimeout(timer);
-        this.waiters.delete(finish);
-        reject(signal?.reason ?? new Error("aborted"));
-      };
-      const timer = setTimeout(finish, 25_000);
-      timer.unref?.();
-      this.waiters.add(finish);
-      if (signal?.aborted) abort();
-      signal?.addEventListener("abort", abort, { once: true });
-    });
-  }
-
-  private async handle(
-    method: string,
-    input: unknown,
-    signal: AbortSignal | undefined,
-  ): Promise<unknown> {
+  private async handle(method: string, input: unknown): Promise<unknown> {
     switch (method) {
       case "bb-account.v1.status":
         return this.current;
-      case "bb-account.v1.waitForStatusChange":
-        return this.waitForChange(
-          (input as { afterRevision: number }).afterRevision,
-          signal,
-        );
       case "bb-account.v1.fetch": {
         const request = input as AccountFetchRequest;
         this.fetches.push(request);
@@ -185,7 +173,9 @@ export class FakeAccount {
         };
       }
       case "bb-account.v1.confirmRefusedCredential": {
-        this.refusedCredentials.push((input as { credential: string }).credential);
+        this.refusedCredentials.push(
+          (input as { credential: string }).credential,
+        );
         return this.current;
       }
       case "redeemCode": {

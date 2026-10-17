@@ -19,6 +19,8 @@ prints `{state, revision, account, login}`: `state` is `signed-in`,
 `signed-out`, or `profile-pending`, and `login` is the pending browser
 sign-in, if any.
 
+For live status, use `bb plugin rpc call bb-account bb-account.v1.status --watch --json`. It prints one JSON snapshot per line until interrupted; an unavailable method (404) ends the CLI watch. Server consumers use `bb.sdk.plugins.experimental_watchRpc`, which recovers when the plugin returns.
+
 ## Sign in
 
 - `bb account login [--json]` starts a browser sign-in. It prints a

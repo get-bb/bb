@@ -48,6 +48,7 @@ function createConnectFakeHost(options?: {
     sdk: {
       plugins: {
         callRpc: account.callRpc as never,
+        experimental_watchRpc: account.watchRpc,
       },
       system: {
         config: async () =>
@@ -1416,7 +1417,7 @@ describe("connect plugin", () => {
     account = new FakeAccount();
     host = createConnectFakeHost({ ...options, account });
     await options?.beforeLoad?.(host);
-    await createConnectPlugin({ accountRetryMinMs: 20 })(
+    await createConnectPlugin()(
       host.bb as unknown as Parameters<typeof plugin>[0],
     );
     return host;
@@ -1639,25 +1640,6 @@ describe("connect plugin", () => {
     expect(await current.bb.storage.kv.get(CREDENTIAL_COPY_KV_KEY)).toEqual(
       expect.objectContaining({ credential: "bbcred_legacy" }),
     );
-  });
-
-  it("backs off while getbb.app can't answer the adoption", async () => {
-    const current = await loadPlugin({
-      beforeLoad: (loading) =>
-        loading.bb.storage.kv.set(CREDENTIAL_COPY_KV_KEY, {
-          serverUrl: "https://sawyer.getbb.app",
-          handle: "sawyer",
-          credential: "bbcred_legacy",
-        }),
-    });
-    account.adopt = () => {
-      throw new Error("getbb.app is unreachable");
-    };
-    startTunnel(current);
-
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect(account.adoptions.length).toBeGreaterThan(1);
-    expect(account.adoptions.length).toBeLessThanOrEqual(6);
   });
 
   it("keeps a legacy credential getbb.app rejects and offers it only once", async () => {
@@ -2406,7 +2388,7 @@ describe("connect CLI", () => {
   }): Promise<FakePluginHost> {
     account = new FakeAccount();
     host = createConnectFakeHost({ ...options, account });
-    await createConnectPlugin({ accountRetryMinMs: 20 })(
+    await createConnectPlugin()(
       host.bb as unknown as Parameters<typeof plugin>[0],
     );
     return host;

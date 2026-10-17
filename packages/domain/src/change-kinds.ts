@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonValueSchema, type JsonValue } from "./json-value.js";
 import {
   threadEventTypeSchema,
   threadEventTypeValues,
@@ -88,7 +89,43 @@ export type ThreadTimelineSubscriptionTarget = z.infer<
   typeof threadTimelineSubscriptionTargetSchema
 >;
 
+export function canonicalPluginReadInput(value: JsonValue): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(canonicalPluginReadInput).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${canonicalPluginReadInput(value[key]!)}`,
+    )
+    .join(",")}}`;
+}
+
+export const pluginReadSubscriptionTargetSchema = z
+  .object({
+    kind: z.literal("plugin-read"),
+    pluginId: z.string().min(1),
+    method: z.string().min(1),
+    read: z
+      .union([
+        z.object({ input: jsonValueSchema }).strict(),
+        z.object({ key: z.string() }).strict(),
+      ])
+      .refine(
+        (read) =>
+          new TextEncoder().encode(canonicalPluginReadInput(read)).byteLength <=
+          16_384,
+        "Plugin read input exceeds 16 KiB",
+      ),
+  })
+  .strict();
+export type PluginReadSubscriptionTarget = z.infer<
+  typeof pluginReadSubscriptionTargetSchema
+>;
+
 export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
+  pluginReadSubscriptionTargetSchema,
   z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1) }).strict(),
   z
     .object({
@@ -232,6 +269,8 @@ export function realtimeSubscriptionTargetKey(
       return "host-list";
     case "plugin":
       return `plugin:${target.pluginId}`;
+    case "plugin-read":
+      return `plugin-read:${canonicalPluginReadInput({ pluginId: target.pluginId, method: target.method, read: target.read })}`;
     case "system":
       return "system";
     default:

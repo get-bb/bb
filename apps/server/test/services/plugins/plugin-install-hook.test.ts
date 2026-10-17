@@ -68,6 +68,7 @@ describe("bb.onInstall", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onPluginWatchChange: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },

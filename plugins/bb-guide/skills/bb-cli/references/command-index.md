@@ -344,3 +344,5 @@ This index lists every command path that the core CLI registers, including alias
 - `bb browser watch`
 - `bb browser import-sources`
 - `bb browser import-cookies`
+
+For live RPC snapshots, see `bb guide plugins`: `rpc list` and `rpc call` accept `--watch`.

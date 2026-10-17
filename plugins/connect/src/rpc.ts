@@ -85,13 +85,23 @@ const machineCodeSchema: z.ZodType<MachineCode> = z
   .strict();
 
 export const connectRpcContract = defineRpcContract({
-  status: { input: z.null(), output: connectStatusSchema },
+  status: {
+    input: z.null(),
+    output: connectStatusSchema,
+    tags: () => ["status"],
+  },
   setRemoteAccess: {
+    invalidates: () => ["status"],
     input: z.object({ enabled: z.boolean() }).strict(),
     output: connectStatusSchema,
   },
-  expose: { input: portInputSchema, output: shareListingSchema },
+  expose: {
+    input: portInputSchema,
+    output: shareListingSchema,
+    invalidates: () => ["status"],
+  },
   unexpose: {
+    invalidates: () => ["status"],
     input: portInputSchema,
     output: z
       .object({
@@ -103,6 +113,7 @@ export const connectRpcContract = defineRpcContract({
       .strict(),
   },
   unexposeAll: {
+    invalidates: () => ["status"],
     input: z.object({ hostId: z.string().min(1) }).strict(),
     output: z.object({ removed: z.number().int().nonnegative() }).strict(),
   },

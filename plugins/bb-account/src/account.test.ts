@@ -10,7 +10,6 @@ import {
   CONNECT_CREDENTIAL_METHOD,
   FETCH_METHOD,
   STATUS_METHOD,
-  WAIT_FOR_STATUS_CHANGE_METHOD,
   type AccountStatus,
   type LoginView,
 } from "./contract.js";
@@ -202,14 +201,10 @@ describe("bb account sign-in", () => {
     const me = stub.requestsTo("/api/account/me")[0]!;
     expect(me.authorization).toBe(`Bearer ${stored.credential}`);
     expect(me.machineHeader).toBe(stored.credential);
-    expect(
-      host.harness.realtimeSignals.some(
-        (signal) =>
-          signal.channel === "account" &&
-          (signal.payload as { status: AccountStatus }).status.state ===
-            "signed-in",
-      ),
-    ).toBe(true);
+    expect(host.harness.experimental_rpcInvalidations).toContainEqual([
+      "login",
+      "status",
+    ]);
     expect(
       host.harness.logEntries.some((entry) =>
         entry.message.includes(stored.credential),
@@ -524,9 +519,6 @@ describe("bb-account.v1.fetch", () => {
     ).credential;
     stub.revoke(credential);
 
-    const waiting = host.harness.callRpc(WAIT_FOR_STATUS_CHANGE_METHOD, {
-      afterRevision: signedIn.revision,
-    });
     const result = await host.harness.callRpc(
       FETCH_METHOD,
       {
@@ -539,7 +531,7 @@ describe("bb-account.v1.fetch", () => {
     );
 
     expect(result).toEqual({ status: 401, body: { error: "unauthorized" } });
-    const woke = (await waiting) as AccountStatus;
+    const woke = await status(host);
     expect(woke.state).toBe("signed-out");
     expect(woke.revision).toBeGreaterThan(signedIn.revision);
     expect(await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
@@ -561,47 +553,7 @@ describe("bb-account.v1.fetch", () => {
   });
 });
 
-describe("bb-account.v1.waitForStatusChange", () => {
-  it("returns at once for an older revision and wakes waiters on sign-in", async () => {
-    const host = await loadAccount();
-    const current = await status(host);
-    await expect(
-      host.harness.callRpc(WAIT_FOR_STATUS_CHANGE_METHOD, {
-        afterRevision: current.revision - 1,
-      }),
-    ).resolves.toEqual(current);
-
-    const waiting = host.harness.callRpc(WAIT_FOR_STATUS_CHANGE_METHOD, {
-      afterRevision: current.revision,
-    });
-    let settled = false;
-    void waiting.then(() => {
-      settled = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(settled).toBe(false);
-    await signInWithCode(host);
-    await expect(waiting).resolves.toMatchObject({ state: "signed-in" });
-  });
-
-  it("answers with the unchanged status after 25 seconds", async () => {
-    const host = await loadAccount();
-    const current = await status(host);
-    vi.useFakeTimers();
-    const waiting = host.harness.callRpc(WAIT_FOR_STATUS_CHANGE_METHOD, {
-      afterRevision: current.revision,
-    });
-    await vi.advanceTimersByTimeAsync(24_000);
-    let settled = false;
-    void waiting.then(() => {
-      settled = true;
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await expect(waiting).resolves.toEqual(current);
-  });
-
+describe("account revisions", () => {
   it("keeps revisions increasing across reloads", async () => {
     const host = await loadAccount();
     const first = await status(host);
@@ -858,7 +810,7 @@ describe("sign-out, profile refresh, and adoption", () => {
     const published =
       host.harness.registrations.experimental_publishedRpcMethods;
     expect(published.map((method) => method.method).sort()).toEqual(
-      [FETCH_METHOD, STATUS_METHOD, WAIT_FOR_STATUS_CHANGE_METHOD].sort(),
+      [FETCH_METHOD, STATUS_METHOD].sort(),
     );
     const fetchSchema = published.find(
       (method) => method.method === FETCH_METHOD,

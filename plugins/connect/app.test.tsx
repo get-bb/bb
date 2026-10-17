@@ -2,7 +2,46 @@
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
+import { type ConnectStatus } from "@/src/types";
+
+import { z } from "zod";
+import { connectRpcContract } from "./src/rpc.js";
+
+function renderConnect(
+  ...[registration, props, options = {}]: Parameters<typeof renderSlot>
+) {
+  let snapshot: ConnectStatus | undefined;
+  const readStatus = options.rpc?.status;
+  const slot = renderSlot(registration, props, {
+    ...options,
+    experimental_rpcContract: connectRpcContract,
+    rpc: {
+      ...options.rpc,
+      status: (input: unknown) => snapshot ?? readStatus?.(input),
+      ...Object.fromEntries(
+        ["login.start", "login.poll", "login.cancel", "redeemCode"].map(
+          (method) => [
+            method,
+            (input: unknown) =>
+              options.sdk?.plugins?.callRpc?.({
+                pluginId: "bb-account",
+                method,
+                input: z.json().parse(input),
+                outputSchema: z.unknown(),
+              }),
+          ],
+        ),
+      ),
+    },
+  });
+  return {
+    ...slot,
+    async publish(next: ConnectStatus) {
+      snapshot = next;
+      await slot.experimental_invalidateRpc(null);
+    },
+  };
+}
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -107,7 +146,7 @@ const connected = (overrides: Partial<ConnectStatus> = {}) =>
 describe("connect settings section", () => {
   it("asks to sign in to the bb account and names the local Cloud host", async () => {
     const dashboardUrl = "http://bb.localhost:42745/dashboard";
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -134,7 +173,7 @@ describe("connect settings section", () => {
       },
     });
     let currentStatus = status();
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -147,9 +186,8 @@ describe("connect settings section", () => {
     const signIn = await slot.findByRole("button", {
       name: "Sign in to your bb account",
     });
-    vi.useFakeTimers();
-    await act(async () => fireEvent.click(signIn));
-    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
+    fireEvent.click(signIn);
+    await slot.findByText("K7QP-2M4X");
     expect(account.calls[0]).toEqual({
       pluginId: "bb-account",
       method: "login.start",
@@ -161,52 +199,26 @@ describe("connect settings section", () => {
     expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
     expect(link.target).toBe("_blank");
 
-    await act(async () => vi.advanceTimersByTimeAsync(1_999));
-    expect(polls).toBe(0);
-    await act(async () => vi.advanceTimersByTimeAsync(1));
-    expect(polls).toBe(1);
-    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
-    await act(async () => vi.advanceTimersByTimeAsync(2_000));
-    expect(polls).toBe(2);
+    await slot.experimental_invalidateRpc(null, "bb-account");
     currentStatus = connected();
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
-    expect(slot.getByText("Connected")).toBeTruthy();
+    await slot.publish(currentStatus);
+    await slot.findByText("Connected");
   });
 
-  it("backs off the sign-in poll while bb account can't be reached", async () => {
+  it("keeps a pending code when the account read fails", async () => {
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => {
-        throw Object.assign(new Error("HTTP 503: tunnel offline"), {
-          status: 503,
-        });
+        throw new Error("offline");
       },
     });
-    const polls = () =>
-      account.calls.filter((call) => call.method === "login.poll").length;
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
-      {
-        openUrl: () => true,
-        sdk: account.sdk,
-        rpc: { status: () => status() },
-      },
+      { sdk: account.sdk, rpc: { status: () => status() } },
     );
-    const signIn = await slot.findByRole("button", {
-      name: "Sign in to your bb account",
-    });
-    vi.useFakeTimers();
-    await act(async () => fireEvent.click(signIn));
-    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
-    await act(async () => vi.advanceTimersByTimeAsync(1_999));
-    expect(polls()).toBe(0);
-    await act(async () => vi.advanceTimersByTimeAsync(1));
-    expect(polls()).toBe(1);
-    await act(async () => vi.advanceTimersByTimeAsync(3_999));
-    expect(polls()).toBe(1);
-    await act(async () => vi.advanceTimersByTimeAsync(1));
-    expect(polls()).toBe(2);
+    fireEvent.click(await slot.findByRole("button", { name: /Sign in/ }));
+    await slot.findByText("K7QP-2M4X");
   });
 
   it("explains when the bb account plugin is off", async () => {
@@ -217,7 +229,7 @@ describe("connect settings section", () => {
         });
       },
     });
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       { sdk: account.sdk, rpc: { status: () => status() } },
@@ -231,7 +243,7 @@ describe("connect settings section", () => {
   it("auto-submits a normalized 4-4 pairing code through bb account and applies live paired status", async () => {
     const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
     let currentStatus = status();
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -257,7 +269,7 @@ describe("connect settings section", () => {
     expect(slot.queryByText("https://workstation.getbb.app")).toBeNull();
 
     currentStatus = connected();
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
+    await slot.publish(currentStatus);
 
     await slot.findByText("Connected");
     slot.getByText("https://workstation.getbb.app");
@@ -266,7 +278,7 @@ describe("connect settings section", () => {
 
   it("does not auto-submit an incomplete code", async () => {
     const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       { sdk: account.sdk, rpc: { status: () => status() } },
@@ -290,7 +302,7 @@ describe("connect settings section", () => {
         throw new Error("HTTP 500: expired_code");
       },
     });
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       { sdk: account.sdk, rpc: { status: () => status() } },
@@ -314,7 +326,7 @@ describe("connect settings section", () => {
         throw new Error("HTTP 500: profile_unavailable");
       },
     });
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       { sdk: account.sdk, rpc: { status: () => status() } },
@@ -333,7 +345,7 @@ describe("connect settings section", () => {
   });
 
   it("shows a remote-viewer count on the connected status line", async () => {
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       { rpc: { status: () => connected({ remoteClients: 2 }) } },
@@ -343,7 +355,7 @@ describe("connect settings section", () => {
   });
 
   it("reconnecting shows the amber state with the human transport error", async () => {
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -391,13 +403,18 @@ describe("connect settings section", () => {
         },
       ],
     });
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
         rpc: {
           status: () => currentStatus,
-          unexpose: () => ({ removed: true, port: 5173 }),
+          unexpose: () => ({
+            removed: true,
+            hostId: "host-air",
+            hostName: "Air",
+            port: 5173,
+          }),
         },
       },
     );
@@ -450,11 +467,11 @@ describe("connect settings section", () => {
     await waitFor(() => expect(reachableRevoke.disabled).toBe(false));
 
     fireEvent.click(machine);
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+    await slot.publish({
       ...currentStatus,
       shares: currentStatus.shares.filter((share) => share.port !== 8080),
     });
-    const updatedMachine = slot.getByRole("button", {
+    const updatedMachine = await slot.findByRole("button", {
       name: "Workstation, 1 shared ports",
     });
     expect(updatedMachine.getAttribute("aria-expanded")).toBe("false");
@@ -473,7 +490,7 @@ describe("connect settings section", () => {
 
   it("blocks duplicate revocations while pending and allows retry after bulk failure", async () => {
     let rejectRevoke: (error: Error) => void = () => {};
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -529,7 +546,7 @@ describe("connect settings section", () => {
   });
 
   it("exposes a port through the disclosure form and surfaces errors", async () => {
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -561,7 +578,7 @@ describe("connect settings section", () => {
   });
 
   it("only offers phone pairing while bb connect is connected", async () => {
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[1]!,
       {},
       {
@@ -571,35 +588,45 @@ describe("connect settings section", () => {
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({ method: "status", input: null }),
     );
-    expect(
-      slot.queryByRole("button", { name: "Add mobile device" }),
-    ).toBeNull();
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, connected());
+    await waitFor(() =>
+      expect(
+        slot.queryByRole("button", { name: "Add mobile device" }),
+      ).toBeNull(),
+    );
+    await slot.publish(connected());
     await slot.findByRole("button", { name: "Add mobile device" });
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+    await slot.publish({
       ...connected(),
       enabled: false,
     });
-    expect(
-      slot.queryByRole("button", { name: "Add mobile device" }),
-    ).toBeNull();
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+    await waitFor(() =>
+      expect(
+        slot.queryByRole("button", { name: "Add mobile device" }),
+      ).toBeNull(),
+    );
+    await slot.publish({
       ...connected(),
       state: "reconnecting",
     });
-    expect(
-      slot.queryByRole("button", { name: "Add mobile device" }),
-    ).toBeNull();
+    await waitFor(() =>
+      expect(
+        slot.queryByRole("button", { name: "Add mobile device" }),
+      ).toBeNull(),
+    );
   });
 
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
+    let failStatus = false;
     const expiresAt = Date.now() + 600_000;
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[1]!,
       {},
       {
         rpc: {
-          status: () => connected(),
+          status: () => {
+            if (failStatus) throw new Error("offline");
+            return connected();
+          },
           createMachineCode: () => ({
             code: "K7QP-2M4X",
             expiresAt,
@@ -628,11 +655,21 @@ describe("connect settings section", () => {
       name: "QR code to pair the bb mobile app",
     })) as HTMLImageElement;
     expect(qr.src.startsWith("data:image/png")).toBe(true);
+    failStatus = true;
+    await slot.experimental_invalidateRpc(["status"]);
+    await slot.findByText("Could not load phone pairing: offline");
+    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
+    failStatus = false;
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(slot.queryByText(/Could not load phone pairing/)).toBeNull(),
+    );
+    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
   });
 
   it("an expired mobile pairing code offers a fresh one", async () => {
     let minted = 0;
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[1]!,
       {},
       {
@@ -674,7 +711,7 @@ describe("connect settings section", () => {
   });
 
   it("explains the account machine limit with a dashboard link", async () => {
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[1]!,
       {},
       {
@@ -703,7 +740,7 @@ describe("connect settings section", () => {
 
   it("turn off confirms, keeps the account, and shows the off card with a receipt", async () => {
     let currentStatus = connected();
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -734,7 +771,7 @@ describe("connect settings section", () => {
         input: { enabled: false },
       }),
     );
-    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
+    await slot.publish(currentStatus);
 
     await slot.findByText("Remote access is off");
     await slot.findByText("Remote access turned off");
@@ -751,7 +788,7 @@ describe("connect settings section", () => {
 describe("Connect settings realtime recovery", () => {
   it("refreshes missed status changes after each realtime reconnect", async () => {
     let currentStatus = connected({ state: "reconnecting" });
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -787,7 +824,7 @@ describe("Connect settings realtime recovery", () => {
 
   it("retries an initial failed status load when realtime connects", async () => {
     let reachable = false;
-    const slot = renderSlot(
+    const slot = renderConnect(
       app.settingsSections[0]!,
       {},
       {
@@ -807,30 +844,5 @@ describe("Connect settings realtime recovery", () => {
 
     await slot.findByText("Connected");
     expect(slot.queryByText(/Failed to load/)).toBeNull();
-  });
-
-  it("keeps the reconnect status when the earlier load settles late", async () => {
-    let failFirstLoad: (error: Error) => void = () => {};
-    const firstLoad = new Promise<ConnectStatus>((_, reject) => {
-      failFirstLoad = reject;
-    });
-    let calls = 0;
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      {
-        realtimeConnectionState: "connecting",
-        rpc: {
-          status: () => (++calls === 1 ? firstLoad : connected()),
-        },
-      },
-    );
-
-    await slot.behavior.setRealtimeConnectionState("connected");
-    await slot.findByText("Connected");
-    await act(async () => failFirstLoad(new Error("tunnel dropped")));
-
-    expect(slot.queryByText(/Failed to load/)).toBeNull();
-    expect(slot.getByText("Connected")).toBeTruthy();
   });
 });

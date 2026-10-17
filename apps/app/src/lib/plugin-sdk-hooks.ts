@@ -257,14 +257,18 @@ export function useRealtime(
   useEffect(() => {
     handlerRef.current = handler;
   });
-  useEffect(
-    () =>
-      wsManager.onPluginSignal((signal) => {
-        if (signal.pluginId !== pluginId || signal.channel !== channel) return;
+  useEffect(() => {
+    const target = { kind: "plugin", pluginId } as const;
+    wsManager.subscribe(target);
+    const stop = wsManager.onPluginSignal((signal) => {
+      if (signal.pluginId === pluginId && signal.channel === channel)
         handlerRef.current(signal.payload);
-      }),
-    [pluginId, channel],
-  );
+    });
+    return () => {
+      stop();
+      wsManager.unsubscribe(target);
+    };
+  }, [pluginId, channel]);
 }
 
 export function useRealtimeConnectionState(): PluginRealtimeConnectionState {
@@ -949,6 +953,20 @@ export const {
         method: string,
         input: import("@bb/domain").JsonValue,
       ) => callPluginRpc(fetch, id, method, input, true),
+      watch: (
+        id: string,
+        method: string,
+        read: { input: import("@bb/domain").JsonValue } | { key: string },
+      ) => {
+        const target = {
+          kind: "plugin-read",
+          pluginId: id,
+          method,
+          read,
+        } as const;
+        wsManager.subscribe(target);
+        return () => wsManager.unsubscribe(target);
+      },
       subscribe: (id: string) => {
         const target = { kind: "plugin", pluginId: id } as const;
         wsManager.subscribe(target);

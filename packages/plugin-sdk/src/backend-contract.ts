@@ -871,6 +871,14 @@ export interface PluginHttp {
 }
 
 export interface PluginRpc {
+  /** Run a producer once per distinct watched read until its last client leaves. Register after the method. Abort stops the producer on unwatch or plugin disposal. */
+  experimental_whileWatched(
+    method: string,
+    handler: (
+      read: { input: JsonValue } | { key: string },
+      signal: AbortSignal,
+    ) => void | Promise<void>,
+  ): void;
   /** Refresh reads whose contract tags overlap this nonempty list. */
   experimental_invalidate(tags: readonly string[]): void;
   /** Refresh every read of this plugin, including untagged reads. */
@@ -898,8 +906,8 @@ export interface PluginRpc {
 export interface PluginRealtime {
   /**
    * Broadcast an ephemeral `plugin-signal` WS message
-   * `{ pluginId, channel, payload }` to every connected client (V1 has no
-   * per-channel subscriptions). `payload` must be JSON-serializable;
+   * `{ pluginId, channel, payload }` to clients subscribed to this plugin.
+   * `useRealtime` retains that subscription; there are no per-channel subscriptions. `payload` must be JSON-serializable;
    * `undefined` is normalized to `null`. Nothing is persisted.
    */
   publish(channel: string, payload: unknown): void;

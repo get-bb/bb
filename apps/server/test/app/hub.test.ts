@@ -783,3 +783,39 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     expect(seen).toEqual([["events-appended"], ["events-appended"]]);
   });
 });
+
+it("shares watched producers across sockets and signals only plugin subscribers", () => {
+  const hub = new NotificationHub();
+  const a = createMockHubSocket();
+  const b = createMockHubSocket();
+  const idle = createMockHubSocket();
+  const changes = vi.fn();
+  hub.registerClient(idle);
+  const read = {
+    kind: "plugin-read",
+    pluginId: "demo",
+    method: "status",
+    read: { input: { a: 1, b: 2 } },
+  } as const;
+  const stop = hub.onPluginWatchChange(changes);
+  hub.subscribe(a, read);
+  hub.subscribe(b, { ...read, read: { input: { b: 2, a: 1 } } });
+  expect(changes.mock.calls).toEqual([[read, true]]);
+  hub.unsubscribe(a, read);
+  expect(changes).toHaveBeenCalledTimes(1);
+  hub.unregisterClient(b);
+  expect(changes.mock.calls).toEqual([
+    [read, true],
+    [read, false],
+  ]);
+  hub.subscribe(a, { kind: "plugin", pluginId: "demo" });
+  hub.subscribe(b, { kind: "plugin", pluginId: "other" });
+  expect(hub.notifyPluginSignal("demo", "delivery", { ok: true })).toBe(1);
+  expect(JSON.parse(a.messages[0]!)).toMatchObject({
+    type: "plugin-signal",
+    pluginId: "demo",
+  });
+  expect(b.messages).toEqual([]);
+  expect(idle.messages).toEqual([]);
+  stop();
+});

@@ -871,6 +871,7 @@ describe("public host management", () => {
           tags: [],
           keyTags: {},
           invalidated: [],
+          whileWatched: false,
         });
 
       const response = await harness.app.request(`${API}/hosts/${host.id}`, {

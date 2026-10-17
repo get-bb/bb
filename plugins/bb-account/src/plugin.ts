@@ -7,7 +7,6 @@ import {
   type BaseUrlAllowed,
 } from "./base-url.js";
 import { registerAccountCli } from "./cli.js";
-import { ACCOUNT_REALTIME_CHANNEL } from "./contract.js";
 import {
   DEFAULT_LINK_POLL_TIMING,
   LinkLogins,
@@ -41,10 +40,7 @@ export function createBbAccountPlugin(
     };
     let logins!: LinkLogins;
     const publish = () => {
-      bb.realtime.publish(ACCOUNT_REALTIME_CHANNEL, {
-        status: account.status(),
-        login: logins.view(null),
-      });
+      bb.rpc.experimental_invalidate(["login", "status"]);
     };
     const account = new AccountService({
       store: createKvAccountStore(bb.storage.kv),

@@ -8,8 +8,8 @@ import {
 import {
   definePluginApp,
   UrlLink,
-  useRealtime,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -25,22 +25,11 @@ import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { accountPrivateRpcContract } from "./src/contract.js";
 import {
-  ACCOUNT_REALTIME_CHANNEL,
-  accountRealtimePayloadSchema,
   type Account,
   type AccountStatus,
   type LoginView,
   type SignOutResult,
 } from "./src/schemas.js";
-
-const LOGIN_POLL_MS = 2_000;
-const LOGIN_POLL_MAX_MS = 30_000;
-
-function loginPollDelay(failures: number): number {
-  return failures === 0
-    ? LOGIN_POLL_MS
-    : Math.min(LOGIN_POLL_MS * 2 ** failures, LOGIN_POLL_MAX_MS);
-}
 
 const DANGER_QUIET_CLASS =
   "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
@@ -91,48 +80,16 @@ function isCompletePairingCode(formatted: string): boolean {
   return /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(formatted);
 }
 
-type AccountRpc = ReturnType<typeof useRpc<typeof accountPrivateRpcContract>>;
-
-interface AccountState {
-  status: AccountStatus;
-  login: LoginView | null;
-}
-
-function useAccountState(): {
-  state: AccountState | null;
-  loadError: string | null;
-  apply(next: AccountState): void;
-  refetch(): void;
-} {
-  const rpc = useRpc<typeof accountPrivateRpcContract>();
-  const [state, setState] = useState<AccountState | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const apply = useCallback((next: AccountState) => {
-    setState((previous) =>
-      previous !== null && previous.status.revision > next.status.revision
-        ? { status: previous.status, login: next.login }
-        : next,
-    );
-    setLoadError(null);
-  }, []);
-
-  const refetch = useCallback(() => {
-    rpc
-      .call("login.poll", { loginId: null })
-      .then(apply, (error: unknown) => setLoadError(errorText(error)));
-  }, [apply, rpc]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  useRealtime(ACCOUNT_REALTIME_CHANNEL, (payload) => {
-    const parsed = accountRealtimePayloadSchema.safeParse(payload);
-    if (parsed.success) apply(parsed.data);
-  });
-
-  return { state, loadError, apply, refetch };
+function useAccountState() {
+  const query = experimental_useRpcQuery<
+    typeof accountPrivateRpcContract,
+    "login.poll"
+  >({ method: "login.poll", input: { loginId: null } });
+  return {
+    state: query.data ?? null,
+    loadError: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 function Avatar({ account }: { account: Account }) {
@@ -227,12 +184,14 @@ function SignOutDialog({
 }
 
 function SignOutControl({
-  rpc,
   onSignedOut,
 }: {
-  rpc: AccountRpc;
   onSignedOut: (result: SignOutResult) => void;
 }) {
+  const { mutate: signOutRpc } = experimental_useRpcMutation<
+    typeof accountPrivateRpcContract,
+    "signOut"
+  >({ method: "signOut" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -240,7 +199,7 @@ function SignOutControl({
   const signOut = useCallback(() => {
     setPending(true);
     setError(null);
-    rpc.call("signOut", null).then(
+    signOutRpc(null).then(
       (result) => {
         setPending(false);
         setConfirmOpen(false);
@@ -251,7 +210,7 @@ function SignOutControl({
         setError(errorText(rpcError));
       },
     );
-  }, [onSignedOut, rpc]);
+  }, [onSignedOut, signOutRpc]);
 
   return (
     <>
@@ -279,11 +238,9 @@ function SignOutControl({
 
 function SignedInContent({
   account,
-  rpc,
   onSignedOut,
 }: {
   account: Account;
-  rpc: AccountRpc;
   onSignedOut: (result: SignOutResult) => void;
 }) {
   return (
@@ -316,17 +273,15 @@ function SignedInContent({
           Remote access and hosted services use this account.
         </span>
         <span className="flex-1" />
-        <SignOutControl rpc={rpc} onSignedOut={onSignedOut} />
+        <SignOutControl onSignedOut={onSignedOut} />
       </div>
     </div>
   );
 }
 
 function ProfilePendingContent({
-  rpc,
   onSignedOut,
 }: {
-  rpc: AccountRpc;
   onSignedOut: (result: SignOutResult) => void;
 }) {
   return (
@@ -341,7 +296,7 @@ function ProfilePendingContent({
           Remote access and hosted services start once it does.
         </span>
         <span className="flex-1" />
-        <SignOutControl rpc={rpc} onSignedOut={onSignedOut} />
+        <SignOutControl onSignedOut={onSignedOut} />
       </div>
     </div>
   );
@@ -361,13 +316,11 @@ function signOutNotice(result: SignOutResult): ReactNode {
   );
 }
 
-function PairCodeForm({
-  rpc,
-  onDone,
-}: {
-  rpc: AccountRpc;
-  onDone: () => void;
-}) {
+function PairCodeForm({ onDone }: { onDone: () => void }) {
+  const { mutate: redeemRpc } = experimental_useRpcMutation<
+    typeof accountPrivateRpcContract,
+    "redeemCode"
+  >({ method: "redeemCode" });
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -377,7 +330,7 @@ function PairCodeForm({
     if (pending || !isCompletePairingCode(code)) return;
     setPending(true);
     setError(null);
-    rpc.call("redeemCode", { code, baseUrl: null }).then(
+    redeemRpc({ code, baseUrl: null }).then(
       () => {
         setPending(false);
         setCode("");
@@ -388,7 +341,7 @@ function PairCodeForm({
         setError(errorText(rpcError));
       },
     );
-  }, [code, onDone, pending, rpc]);
+  }, [code, onDone, pending, redeemRpc]);
 
   return (
     <div className="space-y-2">
@@ -509,17 +462,21 @@ function SignInDialogBody({
 function SignInDialog({
   open,
   onOpenChange,
-  rpc,
   login,
-  onLogin,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  rpc: AccountRpc;
   login: LoginView | null;
-  onLogin: (state: AccountState) => void;
 }) {
-  const [loginId, setLoginId] = useState<string | null>(null);
+  const { mutate: startRpc } = experimental_useRpcMutation<
+    typeof accountPrivateRpcContract,
+    "login.start"
+  >({ method: "login.start" });
+  const { mutate: cancelRpc } = experimental_useRpcMutation<
+    typeof accountPrivateRpcContract,
+    "login.cancel"
+  >({ method: "login.cancel" });
+  const [startedLogin, setStartedLogin] = useState<LoginView | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const startedForOpen = useRef(false);
@@ -527,17 +484,17 @@ function SignInDialog({
   const start = useCallback(() => {
     setStarting(true);
     setStartError(null);
-    rpc.call("login.start", { baseUrl: null }).then(
+    startRpc({ baseUrl: null }).then(
       (view) => {
         setStarting(false);
-        setLoginId(view.id);
+        setStartedLogin(view);
       },
       (error: unknown) => {
         setStarting(false);
         setStartError(errorText(error));
       },
     );
-  }, [rpc]);
+  }, [startRpc]);
 
   useEffect(() => {
     if (!open) {
@@ -549,36 +506,21 @@ function SignInDialog({
     start();
   }, [open, start]);
 
-  const current = login !== null && login.id === loginId ? login : null;
-  const pendingId = current?.state === "pending" ? current.id : null;
-
-  useEffect(() => {
-    if (pendingId === null) return;
-    let cancelled = false;
-    let failures = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = () => {
-      rpc
-        .call("login.poll", { loginId: pendingId })
-        .then(
-          (result) => {
-            failures = 0;
-            if (!cancelled) onLogin(result);
-          },
-          () => {
-            failures += 1;
-          },
-        )
-        .finally(() => {
-          if (!cancelled) timer = setTimeout(poll, loginPollDelay(failures));
-        });
-    };
-    timer = setTimeout(poll, LOGIN_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [onLogin, pendingId, rpc]);
+  const pendingId = startedLogin?.state === "pending" ? startedLogin.id : null;
+  const query = experimental_useRpcQuery<
+    typeof accountPrivateRpcContract,
+    "login.poll"
+  >({
+    method: "login.poll",
+    input: { loginId: pendingId },
+    enabled: open && pendingId !== null,
+  });
+  const current =
+    query.data === undefined
+      ? login?.id === startedLogin?.id
+        ? login
+        : startedLogin
+      : query.data.login;
 
   useEffect(() => {
     if (open && current?.state === "signed-in") onOpenChange(false);
@@ -587,14 +529,14 @@ function SignInDialog({
   const close = useCallback(
     (next: boolean) => {
       if (!next && pendingId !== null) {
-        rpc.call("login.cancel", { loginId: pendingId }).then(
+        cancelRpc({ loginId: pendingId }).then(
           () => {},
           () => {},
         );
       }
       onOpenChange(next);
     },
-    [onOpenChange, pendingId, rpc],
+    [onOpenChange, pendingId, cancelRpc],
   );
 
   return (
@@ -608,10 +550,27 @@ function SignInDialog({
                 Approve this bb on getbb.app. You sign in with GitHub there.
               </DialogDescription>
             </DialogHeader>
+            {query.error ? (
+              <div>
+                <p>{query.error.message}</p>
+                <Button
+                  onClick={() => {
+                    void query.refetch();
+                  }}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : null}
             <SignInDialogBody
               login={current}
               starting={starting}
-              startError={startError}
+              startError={
+                startError ??
+                (!starting && pendingId !== null && query.data?.login === null
+                  ? "This sign-in is no longer active. Try again for a new code."
+                  : null)
+              }
               onRetry={start}
             />
             <DialogFooter>
@@ -631,14 +590,10 @@ function SignInDialog({
 }
 
 function SignedOutContent({
-  rpc,
   login,
-  onLogin,
   onChanged,
 }: {
-  rpc: AccountRpc;
   login: LoginView | null;
-  onLogin: (state: AccountState) => void;
   onChanged: () => void;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -663,24 +618,21 @@ function SignedOutContent({
           Have a pairing code?
         </Button>
       </div>
-      {codeOpen ? <PairCodeForm rpc={rpc} onDone={onChanged} /> : null}
+      {codeOpen ? <PairCodeForm onDone={onChanged} /> : null}
       <p className="text-xs text-subtle-foreground">
         From a terminal: <span className="font-mono">bb account login</span>
       </p>
       <SignInDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        rpc={rpc}
         login={login}
-        onLogin={onLogin}
       />
     </div>
   );
 }
 
 function AccountSettingsSection() {
-  const rpc = useRpc<typeof accountPrivateRpcContract>();
-  const { state, loadError, apply, refetch } = useAccountState();
+  const { state, loadError, refetch } = useAccountState();
   const [notice, setNotice] = useState<ReactNode>(null);
   const onSignedOut = useCallback(
     (result: SignOutResult) => {
@@ -690,40 +642,45 @@ function AccountSettingsSection() {
     [refetch],
   );
 
-  if (loadError !== null && state === null) {
-    return (
-      <p className="text-sm text-destructive-text">
-        Failed to load your bb account: {loadError}
-      </p>
-    );
-  }
-  if (state === null) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
-  }
-  if (state.status.state === "signed-in") {
-    return (
-      <SignedInContent
-        account={state.status.account}
-        rpc={rpc}
-        onSignedOut={onSignedOut}
-      />
-    );
-  }
-  if (state.status.state === "profile-pending") {
-    return <ProfilePendingContent rpc={rpc} onSignedOut={onSignedOut} />;
-  }
   return (
     <div className="space-y-3">
-      {notice}
-      <SignedOutContent
-        rpc={rpc}
-        login={state.login}
-        onLogin={apply}
-        onChanged={() => {
-          setNotice(null);
-          refetch();
-        }}
-      />
+      {loadError !== null ? (
+        <div role="alert">
+          <p className="text-sm text-destructive-text">
+            Failed to load your bb account: {loadError}
+          </p>
+          <Button
+            onClick={() => {
+              void refetch();
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+      {state === null ? (
+        loadError === null ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : null
+      ) : state.status.state === "signed-in" ? (
+        <SignedInContent
+          account={state.status.account}
+          onSignedOut={onSignedOut}
+        />
+      ) : state.status.state === "profile-pending" ? (
+        <ProfilePendingContent onSignedOut={onSignedOut} />
+      ) : (
+        <>
+          {notice}
+          <SignedOutContent
+            login={state.login}
+            onChanged={() => {
+              setNotice(null);
+              void refetch();
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

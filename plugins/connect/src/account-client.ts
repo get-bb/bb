@@ -109,10 +109,12 @@ export function accountErrorCode(error: unknown): string {
 
 export interface AccountClient {
   status(signal?: AbortSignal): Promise<AccountStatus>;
-  waitForStatusChange(
-    afterRevision: number,
-    signal?: AbortSignal,
-  ): Promise<AccountStatus>;
+  watchStatus(options: {
+    signal: AbortSignal;
+    prepare(status: AccountStatus): void | Promise<void>;
+    onChange(status: AccountStatus): void;
+    onError(error: Error): void;
+  }): ReturnType<BbPluginApi["sdk"]["plugins"]["experimental_watchRpc"]>;
   fetch(request: AccountFetchRequest): Promise<AccountFetchResult>;
   adoptConnectCredential(input: {
     credential: string;
@@ -165,13 +167,28 @@ export function createAccountClient(
   return {
     status: (signal) =>
       call("bb-account.v1.status", {}, accountStatusSchema, signal),
-    waitForStatusChange: (afterRevision, signal) =>
-      call(
-        "bb-account.v1.waitForStatusChange",
-        { afterRevision },
-        accountStatusSchema,
-        signal,
-      ),
+    watchStatus: (options) =>
+      getSdk().plugins.experimental_watchRpc({
+        ...options,
+        pluginId: ACCOUNT_PLUGIN_ID,
+        method: "bb-account.v1.status",
+        input: {},
+        outputSchema: accountStatusSchema,
+        onError: (error) => {
+          if (
+            httpStatusOf(error) === 503 &&
+            "code" in error &&
+            error.code === "server_moving"
+          )
+            options.onError(error);
+          else
+            options.onError(
+              httpStatusOf(error) === 404 || httpStatusOf(error) === 503
+                ? new AccountUnavailableError(error.message)
+                : error,
+            );
+        },
+      }),
     fetch: (request) =>
       call(
         "bb-account.v1.fetch",

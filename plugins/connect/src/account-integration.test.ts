@@ -108,8 +108,11 @@ async function loadBoth(
       plugins: { callRpc: callAccountRpc as never },
     },
   });
+  accountHost.harness.experimental_onRpcInvalidation(() =>
+    connectHost.harness.sdk.emitPluginChange("bb-account"),
+  );
   await seedConnect?.(connectHost);
-  await createConnectPlugin({ accountRetryMinMs: 20 })(
+  await createConnectPlugin()(
     connectHost.bb as Parameters<ReturnType<typeof createConnectPlugin>>[0],
   );
 }
@@ -178,7 +181,7 @@ afterEach(async () => {
 });
 
 describe("connect on top of bb account", () => {
-  it("keeps the live tunnel through a server move freeze and resumes account polling", async () => {
+  it("keeps the live tunnel through a server move freeze and resumes account watching", async () => {
     await loadBoth();
     await signInAccount();
     startTunnel();
@@ -186,6 +189,7 @@ describe("connect on top of bb account", () => {
     const socket = stub.tunnelDials[0]!.socket!;
 
     serverMoving = true;
+    connectHost.harness.sdk.emitPluginChange("bb-account");
     await vi.waitFor(
       () => expect(blockedAccountReads).toBeGreaterThanOrEqual(2),
       { timeout: 30_000 },
@@ -199,8 +203,9 @@ describe("connect on top of bb account", () => {
 
     const readsBeforeResume = successfulAccountReads;
     serverMoving = false;
-    await vi.waitFor(() =>
-      expect(successfulAccountReads).toBeGreaterThan(readsBeforeResume),
+    await vi.waitFor(
+      () => expect(successfulAccountReads).toBeGreaterThan(readsBeforeResume),
+      { timeout: 10_000 },
     );
     expect(await connectStatus()).toMatchObject({
       paired: true,
@@ -361,6 +366,7 @@ describe("connect on top of bb account", () => {
     await waitForConnected(1);
 
     accountRunning = false;
+    connectHost.harness.sdk.emitPluginChange("bb-account");
     accountHost = await accountHost.harness.reload(
       createBbAccountPlugin(ACCOUNT_OPTIONS),
     );
@@ -372,6 +378,7 @@ describe("connect on top of bb account", () => {
     );
 
     accountRunning = true;
+    connectHost.harness.sdk.emitPluginChange("bb-account");
     await waitForConnected(2);
   });
   it("retries when bb account is briefly unavailable while handing over the credential", async () => {

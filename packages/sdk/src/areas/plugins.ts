@@ -64,6 +64,11 @@ import {
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { canonicalPluginReadInput } from "@bb/domain";
+import {
+  createPluginReadWatcher,
+  type PluginReadWatch,
+} from "../plugin-read-watcher.js";
 import type { CreateSdkAreaArgs } from "./common.js";
 
 /**
@@ -177,6 +182,20 @@ export interface PluginCheckUpdatesArgs {
   signal?: AbortSignal;
 }
 
+export interface ExperimentalPluginWatchRpcArgs<
+  TOutput,
+> extends PluginRpcArgs<TOutput> {
+  signal: AbortSignal;
+  prepare?(value: TOutput): void | Promise<void>;
+  onChange(value: TOutput): void;
+  onError?(error: Error): void;
+}
+export interface ExperimentalPluginWatchDiscoveryArgs extends PluginRpcDiscoveryArgs {
+  signal: AbortSignal;
+  onChange(methods: PublishedPluginRpcMethod[]): void;
+  onError?(error: Error): void;
+}
+
 export interface PluginRpcArgs<TOutput> extends PluginIdArgs {
   signal?: AbortSignal;
   input?: JsonValue;
@@ -288,6 +307,12 @@ export interface PluginUpdateJobsArea {
 }
 
 export interface PluginsArea {
+  experimental_watchRpc<TOutput>(
+    args: ExperimentalPluginWatchRpcArgs<TOutput>,
+  ): PluginReadWatch;
+  experimental_watchDiscovery(
+    args: ExperimentalPluginWatchDiscoveryArgs,
+  ): PluginReadWatch;
   experimental_discoverRpc(
     args?: PluginRpcDiscoveryArgs,
   ): Promise<PublishedPluginRpcMethod[]>;
@@ -343,8 +368,12 @@ function pluginPath(pluginId: string, suffix = ""): string {
   return `/api/v1/plugins/${encodeURIComponent(id)}${suffix}`;
 }
 
-export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
-  const { transport } = args;
+export function createPluginsArea(
+  args: CreateSdkAreaArgs & {
+    realtime: import("../realtime-client.js").BbRealtimeClient;
+  },
+): PluginsArea {
+  const { transport, realtime } = args;
 
   async function requestParsed<TOutput>(
     path: string,
@@ -579,7 +608,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
   };
 
-  return {
+  const area: PluginsArea = {
     async applyUpdate(input) {
       const response = await requestUpdate(input);
       if (!("job" in response)) return response;
@@ -611,6 +640,117 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         pluginRpcDiscoveryResponseSchema,
         { signal: input.signal },
       );
+    },
+    experimental_watchRpc(input) {
+      let release: (() => void) | undefined;
+      const stops: (() => void)[] = [];
+      const watcher = createPluginReadWatcher({
+        signal: input.signal,
+        onStop: () => {
+          release?.();
+          stops.forEach((stop) => stop());
+        },
+        onError: input.onError,
+        read: async (signal) => {
+          const envelope = await requestParsed(
+            pluginPath(
+              input.pluginId,
+              `/rpc/${encodeURIComponent(input.method)}`,
+            ),
+            z.object({
+              ok: z.literal(true),
+              result: jsonValueSchema,
+              tags: z.array(z.string()).default([]),
+              keyTags: z.record(z.string(), z.array(z.string())).default({}),
+              whileWatched: z.boolean().default(false),
+            }),
+            { ...jsonInit("POST", input.input ?? null), signal },
+          );
+          signal.throwIfAborted();
+          if (envelope.whileWatched && !release)
+            release = realtime.retainTarget({
+              kind: "plugin-read",
+              pluginId: input.pluginId,
+              method: input.method,
+              read: { input: input.input ?? null },
+            });
+          if (!envelope.whileWatched && release) {
+            release();
+            release = undefined;
+          }
+          return {
+            value: input.outputSchema.parse(envelope.result),
+            fingerprint: canonicalPluginReadInput(envelope.result),
+            tags: [...envelope.tags, ...Object.values(envelope.keyTags).flat()],
+          };
+        },
+        retryNotFound: true,
+        tagsOf: (result) => result.tags,
+        prepareKey: (result) => result.fingerprint,
+        prepare: (result) => input.prepare?.(result.value),
+        onChange: (result) => {
+          input.onChange(result.value);
+        },
+      });
+      if (input.signal.aborted) return watcher;
+      stops.push(
+        realtime.subscribe({
+          event: "plugin:changed",
+          pluginId: input.pluginId,
+          callback: (event) => {
+            watcher.invalidate(event.tags);
+          },
+        }),
+      );
+      stops.push(
+        realtime.subscribe({
+          event: "realtime:connection",
+          callback: (event) => {
+            if (event.state === "connected") watcher.refresh();
+          },
+        }),
+      );
+      watcher.refresh();
+      return watcher;
+    },
+    experimental_watchDiscovery(input) {
+      let previous: string | undefined;
+      const stops: (() => void)[] = [];
+      const watcher = createPluginReadWatcher({
+        signal: input.signal,
+        onStop: () => {
+          stops.forEach((stop) => stop());
+        },
+        onError: input.onError,
+        read: (signal) => area.experimental_discoverRpc({ ...input, signal }),
+        onChange: (methods) => {
+          const key = canonicalPluginReadInput(
+            methods.map((method) => ({ ...method })),
+          );
+          if (key === previous) return;
+          previous = key;
+          input.onChange(methods);
+        },
+      });
+      if (input.signal.aborted) return watcher;
+      stops.push(
+        realtime.subscribe({
+          event: "system:changed",
+          callback: (event) => {
+            if (event.changes.includes("plugins-changed")) watcher.refresh();
+          },
+        }),
+      );
+      stops.push(
+        realtime.subscribe({
+          event: "realtime:connection",
+          callback: (event) => {
+            if (event.state === "connected") watcher.refresh();
+          },
+        }),
+      );
+      watcher.refresh();
+      return watcher;
     },
     async callRpc(input) {
       const envelope = await requestParsed(
@@ -751,4 +891,5 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
     },
   };
+  return area;
 }

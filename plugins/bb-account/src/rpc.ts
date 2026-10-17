@@ -10,7 +10,6 @@ import {
   CONNECT_CREDENTIAL_METHOD,
   FETCH_METHOD,
   STATUS_METHOD,
-  WAIT_FOR_STATUS_CHANGE_METHOD,
   accountPrivateRpcContract,
   accountRpcContract,
 } from "./contract.js";
@@ -64,8 +63,6 @@ export function registerAccountRpc(args: {
     accountRpcContract,
     {
       [STATUS_METHOD]: () => account.status(),
-      [WAIT_FOR_STATUS_CHANGE_METHOD]: (input) =>
-        account.waitForStatusChange(input.afterRevision),
       [FETCH_METHOD]: (input, context) =>
         account.fetch(input, context.experimental_caller),
     },

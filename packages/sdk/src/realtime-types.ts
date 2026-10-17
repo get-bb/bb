@@ -3,6 +3,7 @@ import type { ChangedMessage } from "@bb/domain";
 export type BbRealtimeUnsubscribe = () => void;
 
 export type BbRealtimeEventName =
+  | "plugin:changed"
   | "thread:changed"
   | "project:changed"
   | "environment:changed"
@@ -35,6 +36,7 @@ export interface BbRealtimeConnectionEvent {
 }
 
 export interface BbRealtimeEventMap {
+  "plugin:changed": Extract<ChangedMessage, { entity: "plugin" }>;
   "thread:changed": ThreadRealtimeEvent;
   "project:changed": ProjectRealtimeEvent;
   "environment:changed": EnvironmentRealtimeEvent;
@@ -88,6 +90,11 @@ export interface RealtimeConnectionSubscribeArgs {
 }
 
 export type BbRealtimeSubscribeArgsUnion =
+  | {
+      event: "plugin:changed";
+      pluginId: string;
+      callback: BbRealtimeCallback<"plugin:changed">;
+    }
   | ThreadRealtimeSubscribeArgs
   | ProjectRealtimeSubscribeArgs
   | EnvironmentRealtimeSubscribeArgs

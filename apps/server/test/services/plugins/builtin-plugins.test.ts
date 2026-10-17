@@ -189,6 +189,7 @@ function createService(args: {
     hub: {
       getDaemonSessionIdForHost: () => null,
       notifyPluginChanged: () => {},
+      onPluginWatchChange: () => () => {},
       notifyPluginSignal: () => 0,
       notifySystem: () => {},
     },
