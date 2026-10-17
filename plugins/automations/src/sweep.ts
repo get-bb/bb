@@ -10,7 +10,7 @@ import {
   type AutomationRunRow,
   type Db,
 } from "./data.js";
-import { publishAutomationChange } from "./realtime.js";
+import { invalidateAutomation } from "./live-data.js";
 import { computeNextScheduledTime } from "./schedule-helpers.js";
 import {
   errorMessage,
@@ -96,10 +96,7 @@ async function processDueAutomation(
     now: args.now,
   });
   if (!claim.advanced) return;
-  publishAutomationChange(bb, args.automation.projectId, [
-    "automations-changed",
-    "automation-runs-changed",
-  ]);
+  invalidateAutomation(bb, args.automation.projectId, true);
   const onFailure = buildScheduleFailureHandler(db, {
     run: claim.run,
   });

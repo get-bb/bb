@@ -13,7 +13,7 @@ import {
   type AutomationRunRow,
   type Db,
 } from "./data.js";
-import { publishAutomationChange } from "./realtime.js";
+import { invalidateAutomation } from "./live-data.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
 import type {
@@ -33,10 +33,12 @@ type AgentThreadsSdk = {
     args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
   ): Promise<unknown>;
 };
-export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+export type AgentRunApi = Pick<BbPluginApi, "log"> & {
+  rpc: Pick<BbPluginApi["rpc"], "experimental_invalidate">;
   sdk: { threads: AgentThreadsSdk };
 };
-export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+export type ScriptRunApi = Pick<BbPluginApi, "log"> & {
+  rpc: Pick<BbPluginApi["rpc"], "experimental_invalidate">;
   sdk: { projects: ProjectsSdk };
 };
 
@@ -145,10 +147,7 @@ export async function executeAgentRun(
   } catch (error) {
     settleDispatchFailure(bb, db, args, error);
   } finally {
-    publishAutomationChange(bb, args.automation.projectId, [
-      "automations-changed",
-      "automation-runs-changed",
-    ]);
+    invalidateAutomation(bb, args.automation.projectId, true);
   }
 }
 
@@ -317,15 +316,12 @@ export async function executeScriptRun(
       `Failed to run script for automation ${args.automation.id}: ${errorMessage(error)}`,
     );
   } finally {
-    publishAutomationChange(bb, args.automation.projectId, [
-      "automations-changed",
-      "automation-runs-changed",
-    ]);
+    invalidateAutomation(bb, args.automation.projectId, true);
   }
 }
 
 export function closeAutomationRunForSettledThread(
-  bb: Pick<BbPluginApi, "realtime">,
+  bb: { rpc: Pick<BbPluginApi["rpc"], "experimental_invalidate"> },
   db: Db,
   args: { threadId: string; status: "idle" | "failed"; error?: string | null },
 ): void {
@@ -345,10 +341,7 @@ export function closeAutomationRunForSettledThread(
     if (automation) changedProjects.add(automation.projectId);
   }
   for (const projectId of changedProjects) {
-    publishAutomationChange(bb, projectId, [
-      "automations-changed",
-      "automation-runs-changed",
-    ]);
+    invalidateAutomation(bb, projectId, true);
   }
 }
 
@@ -384,10 +377,7 @@ export async function reconcileRunningAutomationRuns(
     );
   }
   for (const projectId of changedProjects) {
-    publishAutomationChange(bb, projectId, [
-      "automations-changed",
-      "automation-runs-changed",
-    ]);
+    invalidateAutomation(bb, projectId, true);
   }
 }
 
@@ -451,7 +441,7 @@ async function reconcileOutcome(
 }
 
 export function disableAutomationsForDeletedThreadEvent(
-  bb: Pick<BbPluginApi, "realtime">,
+  bb: { rpc: Pick<BbPluginApi["rpc"], "experimental_invalidate"> },
   db: Db,
   threadId: string,
 ): void {
@@ -460,6 +450,6 @@ export function disableAutomationsForDeletedThreadEvent(
     now: Date.now(),
   });
   for (const automation of disabled) {
-    publishAutomationChange(bb, automation.projectId, "automations-changed");
+    invalidateAutomation(bb, automation.projectId);
   }
 }

@@ -487,6 +487,13 @@ export type ResolvedAutomationRunsInput = z.output<
   typeof automationRunsInputSchema
 >;
 
+export const automationRunPageInputSchema = automationRunsInputSchema
+  .omit({ cursor: true })
+  .extend({ offset: z.number().int().nonnegative() });
+export type AutomationRunPageInput = z.output<
+  typeof automationRunPageInputSchema
+>;
+
 export const automationListResponseSchema = z.array(automationReadResultSchema);
 
 export const automationRunListResponseSchema = z

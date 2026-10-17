@@ -1,3 +1,4 @@
+import type { AutomationRunPageInput } from "./rpc-types.js";
 import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -24,7 +25,7 @@ import {
   providerRoutingForEnvironment,
   resolvePermissionMode,
 } from "./provider-permissions.js";
-import { publishAutomationChange } from "./realtime.js";
+import { invalidateAutomation } from "./live-data.js";
 import { isPrintableWorkingDirectoryPath } from "./limits.js";
 import {
   AUTOMATION_RUNS_LIMIT_MAX,
@@ -67,7 +68,8 @@ import {
   projectPathForHost,
 } from "./working-directory.js";
 
-type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+type ServiceApi = Pick<BbPluginApi, "log"> & {
+  rpc: Pick<BbPluginApi["rpc"], "experimental_invalidate">;
   sdk: {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
@@ -98,6 +100,7 @@ export interface AutomationService {
   }): AutomationResponse;
   run(input: RunAutomationInput): Promise<AutomationRunRpcResponse>;
   runs(input: ResolvedAutomationRunsInput): AutomationRunListResponse;
+  runPage(input: AutomationRunPageInput): AutomationRunListResponse;
 }
 
 function requireProjectAutomation(
@@ -564,6 +567,27 @@ export function createAutomationService(args: {
 }): AutomationService {
   const { bb, db, pluginDataDir, serverUrl } = args;
 
+  function readRuns(
+    input: ResolvedAutomationRunsInput,
+    offset: number,
+  ): AutomationRunListResponse {
+    requireProjectAutomation(db, input);
+    const limit = Math.min(input.limit, AUTOMATION_RUNS_LIMIT_MAX);
+    const runs = listAutomationRuns(db, {
+      automationId: input.automationId,
+      limit: limit + 1,
+      cursor: parseRunCursor(input.cursor),
+      offset,
+    });
+    const hasMore = runs.length > limit;
+    const page = hasMore ? runs.slice(0, limit) : runs;
+    const last = page[page.length - 1];
+    return automationRunListResponseSchema.parse({
+      runs: page.map(toAutomationRunResponse),
+      nextCursor:
+        hasMore && last ? encodeRunCursor(last.startedAt, last.id) : null,
+    });
+  }
   return {
     async overview() {
       const projects = await projectNameById(bb);
@@ -650,7 +674,7 @@ export function createAutomationService(args: {
         });
         throw error;
       }
-      publishAutomationChange(bb, payload.projectId, "automations-changed");
+      invalidateAutomation(bb, payload.projectId);
       return withResolvedWorkingDirectory({
         bb,
         pluginDataDir,
@@ -797,7 +821,7 @@ export function createAutomationService(args: {
           next: patch.execution,
         });
       }
-      publishAutomationChange(bb, input.projectId, "automations-changed");
+      invalidateAutomation(bb, input.projectId);
       return withResolvedWorkingDirectory({
         bb,
         pluginDataDir,
@@ -812,10 +836,7 @@ export function createAutomationService(args: {
         dataDir: pluginDataDir,
         automationId: automation.id,
       });
-      publishAutomationChange(bb, input.projectId, [
-        "automations-changed",
-        "automation-runs-changed",
-      ]);
+      invalidateAutomation(bb, input.projectId, true);
       return { ok: true };
     },
 
@@ -829,7 +850,7 @@ export function createAutomationService(args: {
         nextRunAt: null,
       });
       if (!updated) throw new Error("Automation not found");
-      publishAutomationChange(bb, input.projectId, "automations-changed");
+      invalidateAutomation(bb, input.projectId);
       return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
@@ -852,7 +873,7 @@ export function createAutomationService(args: {
         resetConsecutiveFailures: true,
       });
       if (!updated) throw new Error("Automation not found");
-      publishAutomationChange(bb, input.projectId, "automations-changed");
+      invalidateAutomation(bb, input.projectId);
       return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
@@ -871,7 +892,7 @@ export function createAutomationService(args: {
         now,
       });
       if (!deduped) {
-        publishAutomationChange(bb, input.projectId, "automation-runs-changed");
+        invalidateAutomation(bb, input.projectId, true);
         const closeFailedRun = (error: unknown): void => {
           closeAutomationRun(db, {
             runId: run.id,
@@ -909,32 +930,14 @@ export function createAutomationService(args: {
             bb.log.error(
               `Manual automation run ${run.id} failed unexpectedly: ${errorMessage(error)}`,
             );
-            publishAutomationChange(bb, input.projectId, [
-              "automations-changed",
-              "automation-runs-changed",
-            ]);
+            invalidateAutomation(bb, input.projectId, true);
           }
         })();
       }
       return { run: toAutomationRunResponse(run) };
     },
 
-    runs(input) {
-      requireProjectAutomation(db, input);
-      const limit = Math.min(input.limit, AUTOMATION_RUNS_LIMIT_MAX);
-      const runs = listAutomationRuns(db, {
-        automationId: input.automationId,
-        limit: limit + 1,
-        cursor: parseRunCursor(input.cursor),
-      });
-      const hasMore = runs.length > limit;
-      const page = hasMore ? runs.slice(0, limit) : runs;
-      const last = page[page.length - 1];
-      return automationRunListResponseSchema.parse({
-        runs: page.map(toAutomationRunResponse),
-        nextCursor:
-          hasMore && last ? encodeRunCursor(last.startedAt, last.id) : null,
-      });
-    },
+    runs: (input) => readRuns(input, 0),
+    runPage: (input) => readRuns(input, input.offset),
   };
 }

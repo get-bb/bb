@@ -936,7 +936,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Use RPC, HTTP, WebSocket, and realtime messages to connect the plugin. With this, a plugin can:",
         bullets: [
-          "Call its server from its UI with schema-checked RPC and typed refusals",
+          "Call schema-checked RPC with typed refusals and optionally reread external content on every entry",
           "Receive webhooks and serve HTTP or WebSocket routes",
           "Predict tagged reads with rollback, Retry, timeouts, pending saves, and unchanged-success timestamps",
           "Publish RPC methods other plugins can discover and watch; run producers while reads are watched",
@@ -959,6 +959,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalRpcKeyedQueryState",
           "ExperimentalRpcQueryOptions",
           "ExperimentalRpcQueryOptions.timeoutMs",
+          "ExperimentalRpcQueryOptions.refetchOnMount",
           "ExperimentalRpcMutationOptions",
           "Predict tagged reads with rollback, Retry, timeouts, and unchanged-success timestamps",
           "ExperimentalRpcMutationState",

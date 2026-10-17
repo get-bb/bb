@@ -1,23 +1,21 @@
 import { composerCustomization, CREATE_AUTOMATION_PROMPT } from "./composer";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   definePluginApp,
   useBbNavigate,
-  useRealtime,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcKeyedQuery,
+  experimental_useRpcMutation,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
-  AutomationDetailReadResult,
   AutomationDetailResponse,
   AutomationResponse,
   AgentExecutionUpdate,
   AutomationRunListResponse,
-  AutomationRunResponse,
-  AutomationsOverviewResponse,
 } from "./src/rpc-types";
 import { AutomationDetailView } from "./detail-view";
 import {
@@ -25,6 +23,7 @@ import {
   automationProjectLabel,
   type AutomationCollectionMode,
 } from "./overview-view";
+import { AUTOMATION_RUNS_LIMIT_DEFAULT } from "./src/limits";
 import { PERSONAL_PROJECT_ID } from "./lib/format-schedule";
 import { buildAutomationEditThreadPrompt } from "./lib/edit-prompt";
 import { Button } from "@/components/ui/button";
@@ -41,7 +40,6 @@ import { ResourceListState } from "@/components/ui/resource-list";
 import { cn } from "@/lib/utils";
 
 const PANEL_PATH = "automations";
-type OverviewEntry = AutomationsOverviewResponse["automations"][number];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -73,265 +71,91 @@ function parseSubPath(subPath: string): ParsedDetailRoute | null {
   return null;
 }
 
-interface AutomationSignal {
-  projectId: string;
-  kind: "automations-changed" | "automation-runs-changed";
+function useOverview() {
+  const query = experimental_useRpcQuery<
+    typeof automationRpcContract,
+    "automations_overview"
+  >({ method: "automations_overview", input: null });
+  return {
+    entries: query.data?.automations ?? null,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
-function asSignal(payload: unknown): AutomationSignal | null {
-  if (payload === null || typeof payload !== "object") return null;
-  const record = payload as { projectId?: unknown; kind?: unknown };
-  if (
-    typeof record.projectId !== "string" ||
-    (record.kind !== "automations-changed" &&
-      record.kind !== "automation-runs-changed")
-  ) {
-    return null;
-  }
-  return { projectId: record.projectId, kind: record.kind };
+function useAutomation(route: DetailRoute) {
+  const query = experimental_useRpcQuery<
+    typeof automationRpcContract,
+    "automations_get"
+  >({ method: "automations_get", input: route, refetchOnMount: "always" });
+  return {
+    automation: query.data ?? null,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
-function useOverview(): {
-  entries: OverviewEntry[] | null;
-  error: string | null;
-  refetch: () => void;
-} {
-  const rpc = useRpc<typeof automationRpcContract>();
-  const [state, setState] = useState<{
-    entries: OverviewEntry[] | null;
-    error: string | null;
-  }>({ entries: null, error: null });
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const requestInFlightRef = useRef(false);
-  const trailingRefetchRef = useRef(false);
-
-  const runRefetch = useCallback(
-    function requestOverview(showLoading: boolean) {
-      if (requestInFlightRef.current) {
-        trailingRefetchRef.current = true;
-        return;
-      }
-      requestInFlightRef.current = true;
-      if (showLoading) {
-        setState({ entries: null, error: null });
-      }
-      rpc
-        .call("automations_overview")
-        .then(
-          (result) => {
-            const data = result as AutomationsOverviewResponse;
-            setState({ entries: data.automations, error: null });
-          },
-          (error: unknown) =>
-            setState((current) =>
-              !showLoading && current.entries !== null
-                ? current
-                : { entries: null, error: errorText(error) },
-            ),
-        )
-        .finally(() => {
-          requestInFlightRef.current = false;
-          if (trailingRefetchRef.current) {
-            trailingRefetchRef.current = false;
-            requestOverview(false);
-          }
-        });
-    },
-    [rpc],
+function useRuns(route: DetailRoute) {
+  const [pageCount, setPageCount] = useState(1);
+  const keys = Array.from({ length: pageCount }, (_, page) =>
+    JSON.stringify({ ...route, offset: page * AUTOMATION_RUNS_LIMIT_DEFAULT }),
   );
-  const refetch = useCallback(() => runRefetch(true), [runRefetch]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useEffect(
-    () => () => {
-      if (refetchTimerRef.current !== null) {
-        clearTimeout(refetchTimerRef.current);
-      }
-    },
-    [],
+  const query = experimental_useRpcKeyedQuery<AutomationRunListResponse>({
+    method: "automations_run_pages",
+    keys,
+  });
+  const pages = keys.flatMap((key) =>
+    query.data?.[key] ? [query.data[key]] : [],
   );
-  const scheduleRefetch = useCallback(() => {
-    if (requestInFlightRef.current) {
-      trailingRefetchRef.current = true;
-      return;
-    }
-    if (refetchTimerRef.current !== null) return;
-    refetchTimerRef.current = setTimeout(() => {
-      refetchTimerRef.current = null;
-      runRefetch(false);
-    }, 75);
-  }, [runRefetch]);
-  useRealtime("automations", (payload) => {
-    if (asSignal(payload) !== null) scheduleRefetch();
-  });
-  return { ...state, refetch };
-}
-
-function useAutomation(route: DetailRoute): {
-  automation: AutomationDetailReadResult | null;
-  error: string | null;
-  refetch: () => void;
-} {
-  const rpc = useRpc<typeof automationRpcContract>();
-  const { projectId, automationId } = route;
-  const [state, setState] = useState<{
-    automation: AutomationDetailReadResult | null;
-    error: string | null;
-  }>({ automation: null, error: null });
-  const requestRef = useRef(0);
-
-  const refetch = useCallback(() => {
-    const requestId = ++requestRef.current;
-    setState((current) => ({ ...current, error: null }));
-    rpc.call("automations_get", { projectId, automationId }).then(
-      (result) => {
-        if (requestRef.current !== requestId) return;
-        setState({ automation: result, error: null });
-      },
-      (error: unknown) => {
-        if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error) });
-      },
-    );
-  }, [rpc, projectId, automationId]);
-
-  useEffect(() => {
-    setState({ automation: null, error: null });
-    refetch();
-    return () => {
-      requestRef.current += 1;
-    };
-  }, [refetch]);
-  useRealtime("automations", (payload) => {
-    const signal = asSignal(payload);
-    if (signal !== null && signal.projectId === projectId) refetch();
-  });
-  return { ...state, refetch };
-}
-
-interface RunsState {
-  runs: AutomationRunResponse[];
-  nextCursor: string | null;
-  loading: boolean;
-  loadingMore: boolean;
-  error: string | null;
-}
-
-function useRuns(
-  route: DetailRoute,
-): RunsState & { loadMore: () => void; retry: () => void } {
-  const rpc = useRpc<typeof automationRpcContract>();
-  const { projectId, automationId } = route;
-  const [state, setState] = useState<RunsState>({
-    runs: [],
-    nextCursor: null,
-    loading: true,
-    loadingMore: false,
-    error: null,
-  });
-  const requestRef = useRef(0);
-  const loadMoreInFlightRef = useRef(false);
-
-  const loadFirstPage = useCallback(() => {
-    const requestId = ++requestRef.current;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    rpc.call("automations_runs", { projectId, automationId }).then(
-      (result) => {
-        if (requestRef.current !== requestId) return;
-        const page = result as AutomationRunListResponse;
-        setState({
-          runs: page.runs,
-          nextCursor: page.nextCursor,
-          loading: false,
-          loadingMore: false,
-          error: null,
-        });
-      },
-      (error: unknown) => {
-        if (requestRef.current !== requestId) return;
-        setState({
-          runs: [],
-          nextCursor: null,
-          loading: false,
-          loadingMore: false,
-          error: errorText(error),
-        });
-      },
-    );
-  }, [rpc, projectId, automationId]);
-
-  const loadMore = useCallback(() => {
-    if (
-      state.nextCursor === null ||
-      state.loadingMore ||
-      loadMoreInFlightRef.current
-    ) {
-      return;
-    }
-    const cursor = state.nextCursor;
-    const requestId = requestRef.current;
-    loadMoreInFlightRef.current = true;
-    setState((prev) => ({ ...prev, loadingMore: true }));
-    rpc
-      .call("automations_runs", { projectId, automationId, cursor })
-      .then(
-        (result) => {
-          if (requestRef.current !== requestId) return;
-          const page = result as AutomationRunListResponse;
-          setState((current) => ({
-            ...current,
-            runs: [...current.runs, ...page.runs],
-            nextCursor: page.nextCursor,
-            loadingMore: false,
-          }));
-        },
-        (error: unknown) => {
-          if (requestRef.current !== requestId) return;
-          toast.error(errorText(error));
-          setState((current) => ({ ...current, loadingMore: false }));
-        },
-      )
-      .finally(() => {
-        loadMoreInFlightRef.current = false;
-      });
-  }, [rpc, projectId, automationId, state.nextCursor, state.loadingMore]);
-
-  useEffect(() => {
-    loadFirstPage();
-  }, [loadFirstPage]);
-  useRealtime("automations", (payload) => {
-    const signal = asSignal(payload);
-    if (
-      signal !== null &&
-      signal.kind === "automation-runs-changed" &&
-      signal.projectId === projectId
-    ) {
-      loadFirstPage();
-    }
-  });
-  return { ...state, loadMore, retry: loadFirstPage };
+  const runs = [
+    ...new Map(
+      pages.flatMap((page) => page.runs).map((run) => [run.id, run]),
+    ).values(),
+  ];
+  const nextCursor = pages.at(-1)?.nextCursor ?? null;
+  const missingPage = pages.length < keys.length;
+  return {
+    runs,
+    nextCursor,
+    loading: pages.length === 0 && query.isLoading,
+    loadingMore: pageCount > 1 && query.isFetching,
+    error: query.error?.message ?? null,
+    loadMore: () => {
+      if (missingPage) void query.refetch();
+      else if (nextCursor !== null) setPageCount((current) => current + 1);
+    },
+    retry: query.refetch,
+  };
 }
 
 function useMutations() {
-  const rpc = useRpc<typeof automationRpcContract>();
-  type MutationMethod =
-    | "automations_pause"
-    | "automations_resume"
-    | "automations_run"
-    | "automations_delete";
-  const call = useCallback(
-    (method: MutationMethod, route: DetailRoute) => rpc.call(method, route),
-    [rpc],
-  );
+  const pause = experimental_useRpcMutation<
+    typeof automationRpcContract,
+    "automations_pause"
+  >({ method: "automations_pause" });
+  const resume = experimental_useRpcMutation<
+    typeof automationRpcContract,
+    "automations_resume"
+  >({ method: "automations_resume" });
+  const run = experimental_useRpcMutation<
+    typeof automationRpcContract,
+    "automations_run"
+  >({ method: "automations_run" });
+  const remove = experimental_useRpcMutation<
+    typeof automationRpcContract,
+    "automations_delete"
+  >({ method: "automations_delete" });
+  const update = experimental_useRpcMutation<
+    typeof automationRpcContract,
+    "automations_update"
+  >({ method: "automations_update" });
   return {
-    pause: (route: DetailRoute) => call("automations_pause", route),
-    resume: (route: DetailRoute) => call("automations_resume", route),
-    run: (route: DetailRoute) => call("automations_run", route),
-    delete: (route: DetailRoute) => call("automations_delete", route),
+    pause: pause.mutate,
+    resume: resume.mutate,
+    run: run.mutate,
+    delete: remove.mutate,
     update: (route: DetailRoute, agent: AgentExecutionUpdate) =>
-      rpc.call("automations_update", { ...route, agent }),
+      update.mutate({ ...route, agent }),
   };
 }
 
@@ -443,13 +267,12 @@ function OverviewView({
         () => {
           toast.success("Automation deleted");
           setDeleteTarget(null);
-          refetch();
         },
         (rpcError: unknown) =>
           toast.error(`Failed to delete automation: ${errorText(rpcError)}`),
       )
       .finally(() => setDeleting(false));
-  }, [deleteTarget, mutations, refetch]);
+  }, [deleteTarget, mutations]);
 
   const createViaChat = useCallback(
     (prompt?: string) => {
@@ -561,7 +384,6 @@ function DetailView({
         await mutations.update(route, agent);
         toast.success("Automation updated");
         setEditingRequested(false);
-        refetch();
       } catch (rpcError: unknown) {
         toast.error(`Failed to update automation: ${errorText(rpcError)}`);
         throw rpcError;
@@ -569,7 +391,7 @@ function DetailView({
         setActionPending(false);
       }
     },
-    [mutations, refetch, route],
+    [mutations, route],
   );
 
   const confirmDelete = useCallback(() => {
@@ -588,7 +410,7 @@ function DetailView({
       .finally(() => setDeleting(false));
   }, [mutations, route, onBack]);
 
-  if (error !== null) {
+  if (error !== null && automation === null) {
     return (
       <ResourceListState
         state="error"
@@ -622,7 +444,7 @@ function DetailView({
     />
   );
 
-  if ("problem" in automation && automation.problem === "invalid-stored-data") {
+  if ("problem" in automation) {
     return (
       <>
         <div className="mx-auto w-full max-w-3xl space-y-3">
@@ -679,7 +501,18 @@ function DetailView({
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
       onOpenThread={openThread}
-      footer={deleteDialog}
+      footer={
+        <>
+          {error !== null ? (
+            <ResourceListState
+              state="error"
+              message={`Couldn't refresh automation: ${error}`}
+              onRetry={refetch}
+            />
+          ) : null}
+          {deleteDialog}
+        </>
+      }
     />
   );
 }
@@ -735,6 +568,7 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
     return (
       <AutomationsPageFrame fill={false}>
         <DetailView
+          key={`${parsedRoute.route.projectId}/${parsedRoute.route.automationId}`}
           route={parsedRoute.route}
           initialEditing={parsedRoute.editing}
           onBack={backToList}

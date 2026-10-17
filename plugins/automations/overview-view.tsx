@@ -587,7 +587,7 @@ export function AutomationOverviewView({
   );
 
   let body: ReactNode;
-  if (error !== null) {
+  if (error !== null && entries === null) {
     body = (
       <ResourceListState
         state="error"
@@ -749,6 +749,13 @@ export function AutomationOverviewView({
             ) : undefined
           }
         >
+          {error !== null && entries !== null ? (
+            <ResourceListState
+              state="error"
+              message={`Couldn't refresh automations: ${error}`}
+              onRetry={onRetry}
+            />
+          ) : null}
           {body}
         </ResourceCollectionViewport>
       )}

@@ -4,6 +4,7 @@ import {
   act,
   cleanup,
   fireEvent,
+  render,
   renderHook,
   waitFor,
 } from "@testing-library/react";
@@ -486,4 +487,34 @@ it("allows slow reads and mutations without an opt-in deadline", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("rereads fresh cached content on entry when requested", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity } },
+  });
+  let content = "original file";
+  const host = {
+    pluginId: "files",
+    queryClient: client,
+    call: async () => ({ result: content, tags: ["file"] }),
+    subscribe: () => () => {},
+  };
+  const hooks = createRpcQueryHooks(() => host);
+  function File() {
+    const query = hooks.experimental_useRpcQuery({
+      method: "file",
+      input: null,
+      refetchOnMount: "always",
+    });
+    return <p>{String(query.data ?? "Loading")}</p>;
+  }
+  const first = render(<File />);
+  await first.findByText("original file");
+  first.unmount();
+  content = "edited file";
+  const second = render(<File />);
+  await second.findByText("edited file");
+  second.unmount();
+  client.clear();
 });

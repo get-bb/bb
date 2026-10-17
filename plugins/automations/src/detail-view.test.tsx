@@ -1,14 +1,28 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  PluginNavPanelProps,
   ExperimentalPermissionModePickerProps,
   ExperimentalProviderModelPickerProps,
 } from "@get-bb/plugin-sdk/app";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
+import { automationRpcContract, automationRunPageKeySchema } from "./rpc.js";
+import {
+  installTestPluginRuntime,
+  loadPluginApp,
+  renderSlot,
+} from "@get-bb/plugin-sdk/testing/app";
 import type {
+  AutomationRunResponse,
   AgentExecutionUpdate,
   AutomationDetailResponse,
 } from "./rpc-types.js";
@@ -93,6 +107,11 @@ function renderedRecipe(container: HTMLElement): Array<[string, string]> {
     ],
   );
 }
+
+type ReadContract = Pick<
+  typeof automationRpcContract,
+  "automations_overview" | "automations_get" | "automations_run_pages"
+>;
 
 const AUTOMATION: AutomationDetailResponse = {
   id: "auto_1",
@@ -694,3 +713,180 @@ describe("Automation detail recipe", () => {
     },
   );
 });
+
+it("keeps overview rows and a detail draft through refresh failures, then clears Retry", async () => {
+  const app = await loadPluginApp(() => import("../app.js"));
+  let failing = false;
+  const slot = renderSlot<PluginNavPanelProps, ReadContract>(
+    app.navPanels[0]!,
+    { subPath: "" },
+    {
+      experimental_rpcContract: automationRpcContract,
+      rpc: {
+        automations_overview: () => {
+          if (failing) throw new Error("Overview offline");
+          return {
+            automations: [
+              {
+                automation: AUTOMATION,
+                project: { id: AUTOMATION.projectId, name: "Personal" },
+              },
+            ],
+          };
+        },
+        automations_get: () => {
+          if (failing) throw new Error("Detail offline");
+          return AUTOMATION;
+        },
+        automations_run_pages: ({ keys }: { keys: string[] }) =>
+          Object.fromEntries(
+            keys.map((key) => [key, { runs: [], nextCursor: null }]),
+          ),
+      },
+    },
+  );
+  const row = await slot.findByText(AUTOMATION.name);
+  failing = true;
+  await act(async () => slot.experimental_invalidateRpc(["automations"]));
+  await slot.findByText(/Overview offline/);
+  expect(row.isConnected).toBe(true);
+  failing = false;
+  fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(slot.queryByText(/Overview offline/)).toBeNull());
+  const Panel = app.navPanels[0]!.component;
+  slot.rerender(
+    <Panel subPath={`${AUTOMATION.projectId}/${AUTOMATION.id}/edit`} />,
+  );
+  const prompt = await slot.findByRole("textbox", {
+    name: "Automation prompt",
+  });
+  fireEvent.change(prompt, { target: { value: "Unsaved draft" } });
+  failing = true;
+  await act(async () =>
+    slot.experimental_invalidateRpc([`automations:${AUTOMATION.projectId}`]),
+  );
+  await slot.findByText(/Detail offline/);
+  expect(prompt.isConnected).toBe(true);
+  expect(prompt).toHaveProperty("value", "Unsaved draft");
+  failing = false;
+  fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(slot.queryByText(/Detail offline/)).toBeNull());
+  expect(prompt).toHaveProperty("value", "Unsaved draft");
+}, 30000);
+
+it("shows edited script content after an external change and after returning to detail", async () => {
+  const app = await loadPluginApp(() => import("../app.js"));
+  let script = "echo original";
+  const route = `${AUTOMATION.projectId}/${AUTOMATION.id}`;
+  const slot = renderSlot<PluginNavPanelProps, ReadContract>(
+    app.navPanels[0]!,
+    { subPath: route },
+    {
+      experimental_rpcContract: automationRpcContract,
+      rpc: {
+        automations_overview: () => ({ automations: [] }),
+        automations_get: () => ({
+          ...AUTOMATION,
+          execution: {
+            mode: "script",
+            script,
+            interpreter: "bash",
+            timeoutMs: 60000,
+            workingDirectory: { type: "project" },
+            resolvedWorkingDirectory: "/project",
+          },
+        }),
+        automations_run_pages: ({ keys }: { keys: string[] }) =>
+          Object.fromEntries(
+            keys.map((key) => [key, { runs: [], nextCursor: null }]),
+          ),
+      },
+    },
+  );
+  await slot.findByText("echo original");
+  script = "echo changed before run";
+  await act(async () =>
+    slot.experimental_invalidateRpc([
+      "automations",
+      `automations:${AUTOMATION.projectId}`,
+      `runs:${AUTOMATION.projectId}`,
+    ]),
+  );
+  await slot.findByText("echo changed before run");
+  const Panel = app.navPanels[0]!.component;
+  slot.rerender(<Panel subPath="" />);
+  await slot.findByText("No automations installed.");
+  script = "echo changed while away";
+  slot.rerender(<Panel subPath={route} />);
+  await slot.findByText("echo changed while away");
+}, 30000);
+
+it("keeps loaded run rows through refresh and Load more errors and retries the missing page", async () => {
+  const app = await loadPluginApp(() => import("../app.js"));
+  const run: AutomationRunResponse = {
+    id: "run_first",
+    automationId: AUTOMATION.id,
+    runMode: "script",
+    threadId: null,
+    status: "succeeded",
+    trigger: "manual",
+    skipReason: null,
+    error: null,
+    output: "first output",
+    exitCode: 0,
+    scheduledFor: 1700000000000,
+    startedAt: 1700000000000,
+    finishedAt: 1700000001000,
+  };
+  let failing = false;
+  const slot = renderSlot<PluginNavPanelProps, ReadContract>(
+    app.navPanels[0]!,
+    { subPath: `${AUTOMATION.projectId}/${AUTOMATION.id}` },
+    {
+      experimental_rpcContract: automationRpcContract,
+      rpc: {
+        automations_overview: () => ({ automations: [] }),
+        automations_get: () => AUTOMATION,
+        automations_run_pages: ({ keys }: { keys: string[] }) => {
+          if (failing) throw new Error("Runs offline");
+          return Object.fromEntries(
+            keys.map((key) => {
+              const { offset } = automationRunPageKeySchema.parse(key);
+              return [
+                key,
+                {
+                  runs: [
+                    offset
+                      ? { ...run, id: "run_older", output: "older output" }
+                      : run,
+                  ],
+                  nextCursor: offset > 0 ? null : "older",
+                },
+              ];
+            }),
+          );
+        },
+      },
+    },
+  );
+  const row = await slot.findByText("first output");
+  failing = true;
+  fireEvent.click(slot.getByRole("button", { name: "Load more" }));
+  await slot.findByText("Runs unavailable.", {}, { timeout: 10000 });
+  expect(row.isConnected).toBe(true);
+  failing = false;
+  fireEvent.click(slot.getByRole("button", { name: "Load more" }));
+  await slot.findByText("older output");
+  expect(row.isConnected).toBe(true);
+  expect(slot.queryByText("Runs unavailable.")).toBeNull();
+  failing = true;
+  await act(async () =>
+    slot.experimental_invalidateRpc([`runs:${AUTOMATION.projectId}`]),
+  );
+  await slot.findByText("Runs unavailable.", {}, { timeout: 10000 });
+  expect(slot.getByText("older output").isConnected).toBe(true);
+  expect(row.isConnected).toBe(true);
+  failing = false;
+  fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(slot.queryByText("Runs unavailable.")).toBeNull());
+}, 30000);

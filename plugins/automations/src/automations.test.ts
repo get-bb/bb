@@ -230,7 +230,7 @@ function createAutomationServiceBb() {
         },
       },
     },
-    realtime: { publish: () => undefined },
+    rpc: { experimental_invalidate: () => undefined },
     log: {
       debug: () => undefined,
       error: () => undefined,
@@ -350,7 +350,7 @@ describe("startup reconciliation", () => {
   function reconcileBb(threads: {
     get: (args: { threadId: string }) => Promise<unknown>;
   }) {
-    const published: unknown[] = [];
+    const invalidated: unknown[] = [];
     return {
       bb: {
         sdk: {
@@ -364,8 +364,9 @@ describe("startup reconciliation", () => {
             },
           },
         },
-        realtime: {
-          publish: (...args: unknown[]) => void published.push(args),
+        rpc: {
+          experimental_invalidate: (...args: unknown[]) =>
+            void invalidated.push(args),
         },
         log: {
           debug: () => undefined,
@@ -374,7 +375,7 @@ describe("startup reconciliation", () => {
           warn: () => undefined,
         },
       },
-      published,
+      invalidated,
     };
   }
 
@@ -405,7 +406,7 @@ describe("startup reconciliation", () => {
       runMode: "agent",
       now: 1000,
     }).run;
-    const { bb, published } = reconcileBb({
+    const { bb, invalidated } = reconcileBb({
       get: async () => {
         throw new Error("no thread should be asked about");
       },
@@ -421,7 +422,7 @@ describe("startup reconciliation", () => {
       expect(settled.finishedAt).not.toBeNull();
       expect(getRunningAutomationRun(db, run.automationId)).toBeNull();
     }
-    expect(published.length).toBeGreaterThan(0);
+    expect(invalidated.length).toBeGreaterThan(0);
   });
 
   it("settles agent runs by their thread's state and leaves live threads alone", async () => {
@@ -856,7 +857,7 @@ describe("automation data access", () => {
             },
           },
         },
-        realtime: { publish: () => undefined },
+        rpc: { experimental_invalidate: () => undefined },
         log: {
           debug: () => undefined,
           error: () => undefined,
@@ -1290,7 +1291,7 @@ describe("automation service", () => {
           },
         },
       },
-      realtime: { publish: () => undefined },
+      rpc: { experimental_invalidate: () => undefined },
       log: {
         debug: () => undefined,
         error: () => undefined,
@@ -2232,7 +2233,7 @@ describe("script project context", () => {
           }),
         },
       },
-      realtime: { publish: () => undefined },
+      rpc: { experimental_invalidate: () => undefined },
       log: {
         debug: () => undefined,
         error: () => undefined,

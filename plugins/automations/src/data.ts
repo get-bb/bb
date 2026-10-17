@@ -992,6 +992,7 @@ export function listAutomationRuns(
     automationId: string;
     limit: number;
     cursor?: { startedAt: number; id: string } | null;
+    offset?: number;
   },
 ): AutomationRunRow[] {
   const rows = args.cursor
@@ -1003,7 +1004,7 @@ export function listAutomationRuns(
            WHERE automation_id = ?
              AND (started_at < ? OR (started_at = ? AND id < ?))
            ORDER BY started_at DESC, id DESC
-           LIMIT ?`,
+           LIMIT ? OFFSET ?`,
         )
         .all(
           args.automationId,
@@ -1011,6 +1012,7 @@ export function listAutomationRuns(
           args.cursor.startedAt,
           args.cursor.id,
           args.limit,
+          args.offset ?? 0,
         )
     : db
         .prepare(
@@ -1019,9 +1021,9 @@ export function listAutomationRuns(
            FROM automation_runs
            WHERE automation_id = ?
            ORDER BY started_at DESC, id DESC
-           LIMIT ?`,
+           LIMIT ? OFFSET ?`,
         )
-        .all(args.automationId, args.limit);
+        .all(args.automationId, args.limit, args.offset ?? 0);
   return rows.map(requiredRunRow);
 }
 

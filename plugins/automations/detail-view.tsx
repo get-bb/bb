@@ -885,7 +885,8 @@ export function AutomationDetailView({
                 </Button>
               </div>
             </ResourceDetailCollection>
-          ) : runsState.loading ? (
+          ) : null}
+          {runsState.loading ? (
             <DelayedLoading>
               <ResourceDetailCollection>
                 <div
@@ -900,7 +901,7 @@ export function AutomationDetailView({
                 </div>
               </ResourceDetailCollection>
             </DelayedLoading>
-          ) : runsState.runs.length === 0 ? (
+          ) : runsState.runs.length === 0 && runsState.error === null ? (
             <ResourceDetailCollection>
               <div
                 data-automation-runs-state="empty"
@@ -919,7 +920,7 @@ export function AutomationDetailView({
                 </Button>
               </div>
             </ResourceDetailCollection>
-          ) : (
+          ) : runsState.runs.length > 0 ? (
             <div>
               <ResourceDetailCollection className="divide-border/60">
                 {runsState.runs.map((run) => (
@@ -940,7 +941,7 @@ export function AutomationDetailView({
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </ResourceActivitySection>
       </ResourceDetailStack>
       {footer}
