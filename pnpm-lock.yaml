@@ -3935,6 +3935,9 @@ importers:
       modal:
         specifier: 0.10.0
         version: 0.10.0
+      nice-grpc-common:
+        specifier: ^2.0.4
+        version: 2.0.4
       zod:
         specifier: 4.6.5
         version: 4.6.5
