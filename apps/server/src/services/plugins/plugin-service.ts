@@ -1,4 +1,7 @@
-import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
+import {
+  createRpcKeyedProvider,
+  rpcResponseTags,
+} from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -407,6 +410,7 @@ export interface PluginService {
     input: unknown,
     caller: ExperimentalPluginRpcCaller,
     origin?: string,
+    warmKeyedMethods?: readonly string[],
   ): Promise<
     | {
         ok: true;
@@ -415,6 +419,15 @@ export interface PluginService {
         keyTags: Record<string, string[]>;
         invalidated: string[];
         whileWatched: boolean;
+        provided: Record<
+          string,
+          {
+            result: JsonValue;
+            tags: string[];
+            keyTags: Record<string, string[]>;
+            whileWatched: boolean;
+          }
+        >;
       }
     | { ok: false; error: PluginRpcError }
   >;
@@ -2152,7 +2165,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
     },
 
-    async invokeRpcHandler(id, method, handler, input, caller, origin) {
+    async invokeRpcHandler(
+      id,
+      method,
+      handler,
+      input,
+      caller,
+      origin,
+      warmKeyedMethods = [],
+    ) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
         const parsedInput = await validateRpcValue(
           handler.inputSchema,
@@ -2160,9 +2181,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "input",
           throwRpcBoundaryError,
         );
+        const provider = createRpcKeyedProvider(warmKeyedMethods);
         let result: unknown;
         try {
           result = await handler.handler(parsedInput, {
+            provideKeyed: provider.provideKeyed,
             experimental_caller: caller,
           });
         } catch (error) {
@@ -2185,11 +2208,49 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           parsedInput,
           parsedOutput,
         );
+        const provided: Record<
+          string,
+          {
+            result: JsonValue;
+            tags: string[];
+            keyTags: Record<string, string[]>;
+            whileWatched: boolean;
+          }
+        > = {};
+        for (const [target, values] of provider.entries()) {
+          const targetHandler = wireLookup(id, (plugin) =>
+            plugin.handle.rpcHandlers.get(target),
+          );
+          if (targetHandler.outcome !== "found")
+            throw new Error(`Unknown keyed method ${target}`);
+          const validated = await validateRpcValue(
+            targetHandler.value.outputSchema,
+            values,
+            "output",
+            throwRpcBoundaryError,
+          );
+          const input = await validateRpcValue(
+            targetHandler.value.inputSchema,
+            { keys: Object.keys(values) },
+            "input",
+            throwRpcBoundaryError,
+          );
+          provided[target] = {
+            result: normalizeRpcJsonResult(validated, throwRpcBoundaryError),
+            whileWatched: targetHandler.value.whileWatched === true,
+            ...rpcResponseTags(
+              targetHandler.value.declarations,
+              input,
+              validated,
+            ),
+          };
+        }
         if (envelope.invalidated.length > 0)
           deps.hub.notifyPluginChanged(id, envelope.invalidated, origin);
         return {
           ok: true as const,
           result: resultValue,
+          provided,
           ...envelope,
           whileWatched: handler.whileWatched === true,
         };

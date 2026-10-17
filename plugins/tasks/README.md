@@ -154,3 +154,26 @@ Tasks skill, which directs the worker to read and update the tracked task.
 - Batch task-list enrichment for comments and attached-thread state.
 - Add notifications and an inbox for task activity.
 - Add a command palette entry for Tasks to cmd-K.
+
+### Live task reads
+
+Board, list, activity, detail and embedded cards use the shared tagged RPC
+queries. Refresh failures retain loaded content and drafts with inline Retry.
+A failed row batch keeps the cards already loaded and retries on the next
+invalidation or Retry.
+
+`taskMembership` returns IDs ordered with open tasks first and an `openCount`
+load hint. A cold read lazily seeds the first 25 summaries into `getTasksKeyed`;
+warm membership reads return IDs only. Task summaries omit descriptions.
+`getTasksKeyed`, `getLabelsKeyed`, `getTaskThreadsKeyed` and
+`getTaskAttachmentsKeyed` use per-key contract tags. Editing one card refreshes
+that card; filtered membership refreshes only when a relevant field changes.
+`listTasks` continues to return paginated full rows for CLI and SDK clients.
+`listComments` returns comments and their attachments together as one snapshot.
+
+These reads are also available through `bb plugin rpc call tasks <method>` and
+`bb.sdk.plugins.callRpc`. A watched `listTaskPullRequests` refreshes every minute
+while a linked PR is open or draft, and stops when its last viewer leaves.
+Window focus refreshes the displayed PRs. No task view runs a refresh timer.
+
+Task mutation RPC responses contain successful results only. A rejected domain write throws a typed RPC refusal: `invalid` for invalid input and `conflict` for conflicting state. The CLI prints the same message and exits non-zero; JSON errors include the refusal code. List and detail edits share optimistic cached updates and roll back on a refused write. Title drafts stay visible through a successful save until refreshed data arrives. Description saves clear rejected drafts for `conflict` or `invalid`; other failures keep the draft pending for retry.

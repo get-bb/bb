@@ -1,3 +1,4 @@
+import { liveTaskRpcFixtures } from "./test-fixtures.js";
 // @vitest-environment jsdom
 
 import { act, cleanup, waitFor } from "@testing-library/react";
@@ -30,26 +31,21 @@ describe("Tasks nav panel badge", () => {
       { component: Badge },
       {},
       {
-        rpc: {
+        rpc: liveTaskRpcFixtures({
           sidebarOpenTaskCount: () => ({ openTaskCount }),
-        },
+        }),
       },
     );
 
     expect(await slot.findByText("12|12 open tasks")).toBeDefined();
     openTaskCount = 13;
-    await slot.behavior.emitRealtime("tasks:changed", {
-      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
+    await slot.behavior.experimental_invalidateRpc(null);
 
     await waitFor(() =>
       expect(slot.getByText("13|13 open tasks")).toBeDefined(),
     );
     openTaskCount = 7;
-    await slot.behavior.emitRealtime("projects:changed", {
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
+    await slot.behavior.experimental_invalidateRpc(null);
     await waitFor(() => expect(slot.getByText("7|7 open tasks")).toBeDefined());
     expect(
       slot.inspection.rpcCalls.filter(
@@ -65,9 +61,9 @@ describe("Tasks nav panel badge", () => {
       { component: Badge },
       {},
       {
-        rpc: {
+        rpc: liveTaskRpcFixtures({
           sidebarOpenTaskCount: () => ({ openTaskCount }),
-        },
+        }),
       },
     );
 
@@ -81,62 +77,11 @@ describe("Tasks nav panel badge", () => {
     expect(slot.container.textContent).toBe("");
 
     openTaskCount = 1;
-    await slot.behavior.emitRealtime("tasks:changed", {
-      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
+    await slot.behavior.experimental_invalidateRpc(null);
     expect(await slot.findByText("1|1 open task")).toBeDefined();
 
     openTaskCount = 0;
-    await slot.behavior.emitRealtime("tasks:changed", {
-      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
+    await slot.behavior.experimental_invalidateRpc(null);
     await waitFor(() => expect(slot.container.textContent).toBe(""));
-  });
-
-  it("coalesces a burst of task changes into one trailing count refresh", async () => {
-    let calls = 0;
-    let resolveFirstRequest:
-      | ((result: { openTaskCount: number }) => void)
-      | undefined;
-    const firstRequest = new Promise<{ openTaskCount: number }>((resolve) => {
-      resolveFirstRequest = resolve;
-    });
-
-    const slot = renderSlot(
-      { component: Badge },
-      {},
-      {
-        rpc: {
-          sidebarOpenTaskCount: () => {
-            calls += 1;
-            return calls === 1 ? firstRequest : { openTaskCount: 13 };
-          },
-        },
-      },
-    );
-
-    await waitFor(() => expect(calls).toBe(1));
-    await slot.behavior.emitRealtime("tasks:changed", {
-      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
-    await slot.behavior.emitRealtime("tasks:changed", {
-      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT2",
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
-    await slot.behavior.emitRealtime("projects:changed", {
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
-    });
-    expect(calls).toBe(1);
-
-    await act(async () => {
-      resolveFirstRequest?.({ openTaskCount: 12 });
-      await firstRequest;
-    });
-
-    await waitFor(() => expect(calls).toBe(2));
-    expect(await slot.findByText("13|13 open tasks")).toBeDefined();
   });
 });

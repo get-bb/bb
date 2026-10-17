@@ -1,52 +1,18 @@
-import {
-  listAllTasks,
-  listTasksOpenFirst,
-  patchTasks,
-  useTasksQuery,
-  type TasksRpc,
-} from "../../shell/data.js";
-import {
-  signalTaskIds,
-  type TaskSignal,
-} from "../../shell/signal-scheduler.js";
+import { useMemo } from "react";
+import { experimental_useRpcKeyedQuery } from "@get-bb/plugin-sdk/app";
+import { useTaskRows } from "../../shell/data.js";
 import type {
   Label,
-  Task,
   TaskPriority,
   TaskStatus,
   TaskThread,
 } from "../../shared/contract.js";
 import { isActiveThread } from "../detail/meta.js";
-
 interface ListTaskFilters {
   statuses: readonly TaskStatus[];
   priorities: readonly TaskPriority[];
   labelIds: readonly string[] | null;
 }
-
-function belongsToList(
-  task: Task,
-  projectId: string | null,
-  filters: ListTaskFilters,
-): boolean {
-  if (task.parentTaskId !== null) return false;
-  if (projectId !== null && task.projectId !== projectId) return false;
-  if (filters.statuses.length > 0 && !filters.statuses.includes(task.status)) {
-    return false;
-  }
-  if (
-    filters.priorities.length > 0 &&
-    !filters.priorities.includes(task.priority)
-  ) {
-    return false;
-  }
-  if (filters.labelIds !== null) {
-    const wanted = new Set(filters.labelIds);
-    if (!task.labelIds.some((labelId) => wanted.has(labelId))) return false;
-  }
-  return true;
-}
-
 export function listTasksQuery(
   projectId: string | null,
   activeOnly: boolean,
@@ -54,117 +20,73 @@ export function listTasksQuery(
 ) {
   return {
     ...(projectId === null ? {} : { projectId }),
-    ...(filters.statuses.length > 0 ? { statuses: [...filters.statuses] } : {}),
-    ...(filters.priorities.length > 0
+    ...(filters.statuses.length ? { statuses: [...filters.statuses] } : {}),
+    ...(filters.priorities.length
       ? { priorities: [...filters.priorities] }
       : {}),
-    ...(filters.labelIds !== null ? { labelIds: [...filters.labelIds] } : {}),
+    ...(filters.labelIds === null ? {} : { labelIds: [...filters.labelIds] }),
     activeOnly,
     parentTaskId: null,
   };
 }
-
 export function useListTasks(
   projectId: string | null,
   activeOnly: boolean,
   filters: ListTaskFilters,
 ) {
-  const query = listTasksQuery(projectId, activeOnly, filters);
-  return useTasksQuery<Task[]>(
-    async (rpc, publish) =>
-      filters.statuses.length > 0 || activeOnly
-        ? listAllTasks(rpc, query)
-        : listTasksOpenFirst(rpc, query, publish),
-    activeOnly ? ["tasks:changed", "threads:changed"] : ["tasks:changed"],
-    [
-      projectId,
-      activeOnly,
-      filters.statuses.join(),
-      filters.priorities.join(),
-      filters.labelIds === null ? "" : `active:${filters.labelIds.join()}`,
-    ],
-    activeOnly
-      ? {}
-      : {
-          applySignals: (rpc, current, signals) =>
-            patchTasks(
-              rpc,
-              current,
-              signalTaskIds(signals, "tasks:changed"),
-              (task) => belongsToList(task, projectId, filters),
-            ),
-        },
-  );
+  return useTaskRows(listTasksQuery(projectId, activeOnly, filters));
 }
-
 export function useLabels(projectIds: readonly string[]) {
-  return useTasksQuery<Label[]>(
-    async (rpc) => {
-      const results = await Promise.all(
-        projectIds.map((projectId) => rpc.call("listLabels", { projectId })),
-      );
-      return results.flatMap((result) => result.labels);
-    },
-    ["projects:changed"],
-    [projectIds.join()],
+  const query = experimental_useRpcKeyedQuery<Label[]>({
+    method: "getLabelsKeyed",
+    keys: projectIds,
+  });
+  const data = useMemo(
+    () =>
+      query.isLoading ? undefined : Object.values(query.data ?? {}).flat(),
+    [query.data, query.isLoading],
   );
+  return {
+    data,
+    isLoading: query.isLoading,
+    error: query.error?.message ?? null,
+    refresh: query.refetch,
+  };
 }
-
 export interface TaskRowMeta {
   activeThreads: TaskThread[];
 }
-
-async function activeThreadsFor(
-  rpc: TasksRpc,
-  taskId: string,
-): Promise<TaskThread[]> {
-  const { taskThreads } = await rpc.call("listTaskThreads", { taskId });
-  return taskThreads.filter(isActiveThread);
-}
-
-async function patchListMeta(
-  rpc: TasksRpc,
-  current: ReadonlyMap<string, TaskRowMeta>,
-  signals: readonly TaskSignal[],
-): Promise<Map<string, TaskRowMeta>> {
-  const taskIds = new Set([
-    ...signalTaskIds(signals, "threads:changed"),
-    ...signalTaskIds(signals, "tasks:changed"),
-  ]);
-  const next = new Map(current);
-  await Promise.all(
-    [...taskIds].map(async (taskId) => {
-      const activeThreads = await activeThreadsFor(rpc, taskId);
-      if (activeThreads.length > 0) next.set(taskId, { activeThreads });
-      else next.delete(taskId);
-    }),
-  );
-  return next;
-}
-
 export function useTaskListMeta(projectId: string | null) {
-  return useTasksQuery<Map<string, TaskRowMeta>>(
-    async (rpc) => {
-      const activeTasks = await listAllTasks(rpc, {
-        ...(projectId === null ? {} : { projectId }),
-        activeOnly: true,
-        parentTaskId: null,
-      });
-      const entries = await Promise.all(
-        activeTasks.map(
-          async (task) =>
-            [
-              task.id,
-              { activeThreads: await activeThreadsFor(rpc, task.id) },
-            ] as const,
-        ),
-      );
-      return new Map(
-        entries.filter(([, meta]) => meta.activeThreads.length > 0),
-      );
-    },
-    ["threads:changed", "tasks:changed"],
-    [projectId],
-    { applySignals: patchListMeta },
+  const tasks = useTaskRows({
+    ...(projectId === null ? {} : { projectId }),
+    activeOnly: true,
+    parentTaskId: null,
+  });
+  const query = experimental_useRpcKeyedQuery<
+    TaskThread[],
+    Record<string, TaskRowMeta>
+  >({
+    method: "getTaskThreadsKeyed",
+    keys: tasks.data?.map((task) => task.id) ?? [],
+    select: (rows) =>
+      Object.fromEntries(
+        Object.entries(rows).flatMap(([id, threads]) => {
+          const activeThreads = threads.filter(isActiveThread);
+          return activeThreads.length ? [[id, { activeThreads }]] : [];
+        }),
+      ),
+  });
+  const data = useMemo(
+    () => new Map(Object.entries(query.data ?? {})),
+    [query.data],
   );
+  return {
+    data,
+    isLoading: tasks.isLoading || query.isLoading,
+    error: tasks.error ?? query.error?.message ?? null,
+    refresh: () => {
+      tasks.refresh();
+      void query.refetch();
+    },
+  };
 }

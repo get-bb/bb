@@ -993,6 +993,18 @@ export function registerPluginRoutes(
         404,
       );
     }
+    let warmKeyedMethods: string[] = [];
+    try {
+      warmKeyedMethods = z
+        .array(z.string().min(1))
+        .max(500)
+        .parse(JSON.parse(context.req.header("x-bb-rpc-warm-keyed") ?? "[]"));
+    } catch {
+      return context.json(
+        { ok: false, error: "invalid warm keyed methods" },
+        400,
+      );
+    }
     const outcome = await plugins.invokeRpcHandler(
       id,
       method,
@@ -1000,6 +1012,7 @@ export function registerPluginRoutes(
       input,
       callerResolution.caller,
       mutationId.data,
+      warmKeyedMethods,
     );
     if (!outcome.ok) {
       return context.json(

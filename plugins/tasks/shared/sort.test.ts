@@ -27,10 +27,11 @@ function task(
 const keys = (tasks: readonly Task[]) => tasks.map((t) => t.key);
 
 describe("sortTasks", () => {
-  it("keeps the server order for manual without mutating the input", () => {
+  it("orders keyed rows manually without mutating the input", () => {
     const input = [task("T-2"), task("T-1")];
     const sorted = sortTasks(input, "manual");
-    expect(keys(sorted)).toEqual(["T-2", "T-1"]);
+    expect(keys(sorted)).toEqual(["T-1", "T-2"]);
+    expect(keys(input)).toEqual(["T-2", "T-1"]);
     expect(sorted).not.toBe(input);
   });
 

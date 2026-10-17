@@ -518,3 +518,107 @@ it("rereads fresh cached content on entry when requested", async () => {
   second.unmount();
   client.clear();
 });
+
+it("seeds cold rows with declared tags and skips the warm producer", async () => {
+  const produce = vi.fn(() => ({ a: 1 }));
+  const contract = defineRpcContract({
+    membership: {
+      input: z.null(),
+      output: z.array(z.string()),
+      tags: () => ["membership"],
+    },
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+      keyTags: (key) => [`row:${key}`],
+    },
+  });
+  const readRows = vi.fn(({ keys }: { keys: string[] }) =>
+    Object.fromEntries(keys.map((key) => [key, 2])),
+  );
+  const hooks = await import("../../app.js");
+  function Probe() {
+    const membership = hooks.experimental_useRpcQuery<
+      typeof contract,
+      "membership"
+    >({ method: "membership", input: null });
+    const rows = hooks.experimental_useRpcKeyedQuery<number>({
+      method: "rows",
+      keys: membership.data ?? [],
+    });
+    return <output>{Object.values(rows.data ?? {}).join(",")}</output>;
+  }
+  const slot = renderSlot<{}, typeof contract>(
+    { component: Probe },
+    {},
+    {
+      experimental_rpcContract: contract,
+      rpc: {
+        membership: (_input, ctx) => {
+          ctx!.provideKeyed("rows", produce);
+          return ["a"];
+        },
+        rows: readRows,
+      },
+    },
+  );
+  await slot.findByText("1");
+  expect(produce).toHaveBeenCalledOnce();
+  expect(readRows).not.toHaveBeenCalled();
+  await act(() => slot.experimental_invalidateRpc(["membership"]));
+  expect(produce).toHaveBeenCalledOnce();
+  await act(() => slot.experimental_invalidateRpc(["row:a"]));
+  await slot.findByText("2");
+  expect(readRows).toHaveBeenCalledOnce();
+});
+
+it("retains watched keyed reads supplied by a cold parent read", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+  });
+  const release = vi.fn();
+  const watch = vi.fn(() => release);
+  const call = vi.fn(async (_plugin: string, method: string) => {
+    if (method !== "membership")
+      throw new Error("seeded rows should not need a read");
+    return {
+      result: ["a"],
+      provided: {
+        rows: {
+          result: { a: 1 },
+          tags: [],
+          keyTags: { a: ["row:a"] },
+          whileWatched: true,
+        },
+      },
+    };
+  });
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    watch,
+    call,
+  };
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(() => {
+    const parent = hooks.experimental_useRpcQuery({
+      method: "membership",
+      input: null,
+    });
+    return hooks.experimental_useRpcKeyedQuery<number>({
+      method: "rows",
+      keys: z.array(z.string()).parse(parent.data ?? []),
+    });
+  });
+  try {
+    await waitFor(() => expect(probe.result.current.data).toEqual({ a: 1 }));
+    expect(watch).toHaveBeenCalledWith("demo", "rows", { key: "a" });
+    expect(call).toHaveBeenCalledOnce();
+    probe.unmount();
+    expect(release).toHaveBeenCalledOnce();
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});

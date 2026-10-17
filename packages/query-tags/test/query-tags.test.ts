@@ -819,3 +819,132 @@ it("does not acknowledge a row read before the write from a later batch's start 
     }),
   );
 });
+
+it("retries missing rows after any invalidation when a seeded batch failed", async () => {
+  const client = setup();
+  const { provideTaggedKeyedQueryData } = await import("../src/index.js");
+  const queryKey = ["seeded"];
+  provideTaggedKeyedQueryData(
+    client,
+    queryKey,
+    { result: { a: 1 }, tags: [], keyTags: { a: ["row:a"] } },
+    CORE_TAG_SCOPE,
+  );
+  const read = vi.fn(async (keys: readonly string[]) => ({
+    result: Object.fromEntries(keys.map((key) => [key, key === "a" ? 1 : 2])),
+    tags: [],
+    keyTags: Object.fromEntries(keys.map((key) => [key, [`row:${key}`]])),
+  }));
+  read.mockRejectedValueOnce(new Error("offline"));
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey,
+    scope: CORE_TAG_SCOPE,
+    read,
+  });
+  disposers.push(owner.subscribe(["a", "b"], () => {}));
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().error?.message).toBe("offline"),
+  );
+  await invalidateTags(client, CORE_TAG_SCOPE, ["row:b"]);
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 1,
+    b: 2,
+  });
+});
+
+it("never seeds over a warm or in-flight keyed read", async () => {
+  const client = setup();
+  const { provideTaggedKeyedQueryData } = await import("../src/index.js");
+  const data = (value: number) => ({
+    result: { a: value },
+    tags: [],
+    keyTags: { a: ["row:a"] },
+  });
+  provideTaggedKeyedQueryData(
+    client,
+    ["warm"],
+    { result: {}, tags: [], keyTags: {} },
+    CORE_TAG_SCOPE,
+  );
+  provideTaggedKeyedQueryData(client, ["warm"], data(1), CORE_TAG_SCOPE);
+  provideTaggedKeyedQueryData(client, ["warm"], data(2), CORE_TAG_SCOPE);
+  expect(client.getQueryData(["warm"])).toEqual(data(1));
+  const gate = deferred<ReturnType<typeof data>>();
+  const pending = client.fetchQuery({
+    queryKey: ["pending"],
+    queryFn: () => gate.promise,
+  });
+  provideTaggedKeyedQueryData(client, ["pending"], data(2), CORE_TAG_SCOPE);
+  expect(client.getQueryData(["pending"])).toBeUndefined();
+  gate.resolve(data(3));
+  await pending;
+  expect(client.getQueryData(["pending"])).toEqual(data(3));
+});
+
+it("restarts a providing read for transient dependencies without retaining those tags", async () => {
+  const client = setup();
+  const queryKey = ["provider"];
+  const gate = deferred<{
+    value: number;
+    tags: string[];
+    providedTags: string[];
+  }>();
+  const read = vi.fn(async () => ({
+    value: 2,
+    tags: ["membership"],
+    providedTags: ["row:a"],
+  }));
+  read.mockImplementationOnce(() => gate.promise);
+  const observer = new QueryObserver(client, {
+    queryKey,
+    ...taggedQueryOptions(client, queryKey, {
+      scope: CORE_TAG_SCOPE,
+      tagsOf: (data: { tags: string[]; providedTags: string[] }) => data.tags,
+      readTagsOf: (data) => [...data.tags, ...data.providedTags],
+    }),
+    queryFn: () => runTaggedRead(client, queryKey, read),
+  });
+  disposers.push(observer.subscribe(() => {}));
+  await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+  const invalidation = invalidateTags(client, CORE_TAG_SCOPE, ["row:a"]);
+  gate.resolve({ value: 1, tags: ["membership"], providedTags: ["row:a"] });
+  await invalidation;
+  expect(observer.getCurrentResult().data?.value).toBe(2);
+  expect(read).toHaveBeenCalledTimes(2);
+  await invalidateTags(client, CORE_TAG_SCOPE, ["row:a"]);
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it("preserves precise invalidations when seeds fill an existing idle owner", async () => {
+  const client = setup();
+  client.setDefaultOptions({ queries: { staleTime: Infinity, retry: false } });
+  const { provideTaggedKeyedQueryData } = await import("../src/index.js");
+  const queryKey = ["idle-seed"];
+  const data = (keys: readonly string[], value: number) => ({
+    result: Object.fromEntries(keys.map((key) => [key, value])),
+    tags: [],
+    keyTags: Object.fromEntries(keys.map((key) => [key, [`row:${key}`]])),
+  });
+  const read = vi.fn(async (keys: readonly string[]) => data(keys, 2));
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey,
+    scope: CORE_TAG_SCOPE,
+    read,
+  });
+  provideTaggedKeyedQueryData(
+    client,
+    queryKey,
+    data(["a", "b"], 1),
+    CORE_TAG_SCOPE,
+  );
+  disposers.push(owner.subscribe(["a", "b"], () => {}));
+  expect(read).not.toHaveBeenCalled();
+  await invalidateTags(client, CORE_TAG_SCOPE, ["row:a"]);
+  expect(read.mock.calls.map(([keys]) => keys)).toEqual([["a"]]);
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 2,
+    b: 1,
+  });
+});

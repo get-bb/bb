@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
-import type { Project, Task } from "../shared/contract.js";
+import type { Project, TaskSummary as Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
-import { listAllTasks, useTasksQuery } from "./data.js";
+import { useTaskRows } from "./data.js";
 import type { ResolvedTasksRoute, TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useTasksRefresh } from "./refresh.js";
+import { experimental_useRpcRefresh } from "@get-bb/plugin-sdk/app";
 
 const REFRESH_TASKS_LABEL = "Refresh tasks";
 
@@ -48,15 +48,10 @@ function TaskPager({
   projectId: string | null;
   onNavigate: (route: TasksRoute) => void;
 }) {
-  const siblings = useTasksQuery(
-    async (rpc) =>
-      listAllTasks(rpc, {
-        ...(projectId === null ? {} : { projectId }),
-        parentTaskId: null,
-      }),
-    ["tasks:changed"],
-    [projectId],
-  );
+  const siblings = useTaskRows({
+    ...(projectId === null ? {} : { projectId }),
+    parentTaskId: null,
+  });
   const position = useMemo(
     () => (siblings.data ? pagerPosition(siblings.data, taskKey) : null),
     [siblings.data, taskKey],
@@ -125,7 +120,7 @@ function ViewToggle({
 }
 
 function RefreshTasksButton() {
-  const { refresh, isRefreshing } = useTasksRefresh();
+  const { refresh, isRefreshing } = experimental_useRpcRefresh();
 
   const handleRefresh = useCallback(() => {
     if (isRefreshing) return;

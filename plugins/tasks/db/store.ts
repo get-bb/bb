@@ -848,7 +848,9 @@ export function createTasksStore(db: PluginDatabase) {
     return createTaskTransaction(input);
   }
 
-  function listTasksPage(filters: ListTasksFilters = {}): ListTasksPage {
+  function taskSelection(
+    filters: Omit<ListTasksFilters, "limit" | "cursor" | "sort">,
+  ) {
     const clauses: string[] = [];
     const parameters: Record<string, SqlParameter> = {};
 
@@ -927,6 +929,70 @@ export function createTasksStore(db: PluginDatabase) {
       );
     }
 
+    return {
+      parameters,
+      where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    };
+  }
+  function listTaskKeys(
+    filters: Omit<ListTasksFilters, "limit" | "cursor" | "sort">,
+  ) {
+    const { parameters, where } = taskSelection(filters);
+    const rows = db
+      .prepare<Record<string, SqlParameter>, { id: string; closed: number }>(`
+      SELECT t.id, t.status IN ('done', 'canceled') AS closed
+      FROM tasks t JOIN projects p ON p.id = t.project_id ${where}
+      ORDER BY closed, t.id
+    `)
+      .all(parameters);
+    return {
+      keys: rows.map((row) => row.id),
+      openCount: rows.filter((row) => row.closed === 0).length,
+    };
+  }
+  function getTasksByIds(ids: readonly string[]): Task[] {
+    return batchedRows(
+      ids,
+      (placeholders) => `${taskSelect} WHERE t.id IN (${placeholders})`,
+      taskFromRow,
+    );
+  }
+  function batchedRows<Row, Value>(
+    ids: readonly string[],
+    sql: (placeholders: string) => string,
+    convert: (row: Row) => Value,
+  ): Value[] {
+    const result: Value[] = [];
+    for (let offset = 0; offset < ids.length; offset += 200) {
+      const batch = ids.slice(offset, offset + 200);
+      result.push(
+        ...db
+          .prepare<string[], Row>(sql(batch.map(() => "?").join(",")))
+          .all(...batch)
+          .map(convert),
+      );
+    }
+    return result;
+  }
+  function listTaskThreadsForTasks(ids: readonly string[]): TaskThread[] {
+    return batchedRows(
+      ids,
+      (placeholders) =>
+        `SELECT * FROM task_threads WHERE task_id IN (${placeholders}) ORDER BY attached_at DESC, id DESC`,
+      taskThreadFromRow,
+    );
+  }
+  function listAttachmentsForTasks(ids: readonly string[]): Attachment[] {
+    return batchedRows(
+      ids,
+      (placeholders) =>
+        `SELECT * FROM attachments WHERE task_id IN (${placeholders}) ORDER BY created_at, id`,
+      attachmentFromRow,
+    );
+  }
+
+  function listTasksPage(filters: ListTasksFilters = {}): ListTasksPage {
+    const { parameters, where: filteredWhere } = taskSelection(filters);
     const limit = filters.limit ?? TASKS_PAGE_DEFAULT_LIMIT;
     if (!Number.isInteger(limit) || limit < 1 || limit > TASKS_PAGE_MAX_LIMIT) {
       throw new Error(
@@ -974,8 +1040,6 @@ export function createTasksStore(db: PluginDatabase) {
       parameters.cursorId = cursor.key.id;
     }
     parameters.pageLimit = limit + 1;
-    const filteredWhere =
-      clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
     const readPage = db.transaction((): ListTasksPage => {
       const revision = db
@@ -1912,6 +1976,10 @@ export function createTasksStore(db: PluginDatabase) {
     getTask,
     getTaskByKey,
     listTasksPage,
+    listTaskKeys,
+    getTasksByIds,
+    listTaskThreadsForTasks,
+    listAttachmentsForTasks,
     listTasks,
     listSubtasks,
     updateTask,

@@ -17,6 +17,8 @@ const WIRE_SOURCE = `
   import { defineRpcContract, experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
   import { z } from "zod";
   const rpcContract = defineRpcContract({
+    seed: { input: z.object({ invalid: z.boolean().default(false) }), output: z.null() },
+    rows: { input: z.object({ keys: z.array(z.string()) }), output: z.record(z.string(), z.number()), keyTags: (key: string) => ["row:" + key] },
     echo: {
       input: z.object({ x: z.number().optional(), kept: z.boolean().optional() }),
       output: z.object({ echoed: z.unknown() }),
@@ -127,6 +129,11 @@ const WIRE_SOURCE = `
       refuse: async (code: any) => {
         throw new experimental_PluginRpcRefusal({ code, message: "Cannot change this item", issues: [{ path: ["id"], message: "Unavailable" }] });
       },
+      seed: (input: any, ctx: any) => {
+        ctx.provideKeyed("rows", () => ({ a: input.invalid ? "invalid" : 42 }));
+        return null;
+      },
+      rows: () => ({ a: 42 }),
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
         throw new Error("rpc boom");
@@ -566,6 +573,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       keyTags: {},
       invalidated: [],
       whileWatched: false,
+      provided: {},
     });
     const candidateRoute = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/candidate`,
@@ -581,6 +589,41 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
   });
 
+  it("validates cold keyed seeds and omits warm producers on the wire", async () => {
+    const cold = await rpc(harness, "seed", {});
+    expect(cold.status).toBe(200);
+    expect(await cold.json()).toMatchObject({
+      provided: { rows: { result: { a: 42 }, keyTags: { a: ["row:a"] } } },
+    });
+    const invalid = await rpc(harness, "seed", { invalid: true });
+    expect(invalid.status).toBe(500);
+    const warm = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/rpc/seed`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bb-rpc-warm-keyed": '["rows"]',
+        },
+        body: JSON.stringify({ invalid: true }),
+      },
+    );
+    expect(warm.status).toBe(200);
+    expect(await warm.json()).toMatchObject({ provided: {} });
+    const malformed = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/rpc/seed`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bb-rpc-warm-keyed": "{}",
+        },
+        body: "{}",
+      },
+    );
+    expect(malformed.status).toBe(400);
+  });
+
   it("rpc: happy path, handler error → 500 envelope, unknown method → 404", async () => {
     const ok = await rpc(harness, "echo", { x: 1 });
     expect(ok.status).toBe(200);
@@ -591,6 +634,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       keyTags: {},
       invalidated: [],
       whileWatched: false,
+      provided: {},
     });
 
     const boom = await rpc(harness, "boom", {});
@@ -740,6 +784,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       keyTags: {},
       invalidated: [],
       whileWatched: false,
+      provided: {},
     });
 
     for (const socket of [systemSocket, threadSocket])
@@ -817,6 +862,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       keyTags: {},
       invalidated: [],
       whileWatched: false,
+      provided: {},
     });
   });
 });

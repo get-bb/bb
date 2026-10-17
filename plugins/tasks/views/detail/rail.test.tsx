@@ -1,3 +1,4 @@
+import { liveTaskRpcFixtures } from "../../test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
@@ -35,13 +36,12 @@ if (!window.matchMedia) {
 
 installTestPluginRuntime();
 const { PropertiesRail } = await import("./rail");
-const { TasksRefreshProvider } = await import("../../shell/refresh");
 
 function RailHarness(props: ComponentProps<typeof PropertiesRail>) {
   return (
-    <TasksRefreshProvider>
+    <>
       <PropertiesRail {...props} />
-    </TasksRefreshProvider>
+    </>
   );
 }
 
@@ -104,7 +104,11 @@ describe("project rail control", () => {
     const slot = renderSlot(
       { component: RailHarness },
       railProps(null, (projectId) => moves.push(projectId)),
-      { rpc: { listBbProjects: () => ({ bbProjects: [] }) } },
+      {
+        rpc: liveTaskRpcFixtures({
+          listBbProjects: () => ({ bbProjects: [] }),
+        }),
+      },
     );
     fireEvent.click(slot.getByRole("button", { name: "Move to project" }));
     fireEvent.click(await slot.findByRole("option", { name: /Tasks Plugin/ }));
@@ -120,7 +124,7 @@ describe("dispatch target rail control", () => {
   it("links a discovered bb project", async () => {
     const updateCalls: Array<Record<string, unknown>> = [];
     const slot = renderSlot({ component: RailHarness }, railProps(null), {
-      rpc: {
+      rpc: liveTaskRpcFixtures({
         listBbProjects: () => ({
           bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
         }),
@@ -133,7 +137,7 @@ describe("dispatch target rail control", () => {
             },
           };
         },
-      },
+      }),
     });
     fireEvent.click(slot.getByRole("button", { name: "Edit dispatch target" }));
     fireEvent.click(await slot.findByLabelText("Linked bb project"));
@@ -152,7 +156,7 @@ describe("dispatch target rail control", () => {
       { component: RailHarness },
       railProps(BB_PROJECT_ID),
       {
-        rpc: {
+        rpc: liveTaskRpcFixtures({
           listBbProjects: () => ({
             bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
           }),
@@ -165,7 +169,7 @@ describe("dispatch target rail control", () => {
               },
             };
           },
-        },
+        }),
       },
     );
     const trigger = slot.getByRole("button", {

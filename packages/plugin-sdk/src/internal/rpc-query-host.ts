@@ -15,6 +15,7 @@ import {
   createTaggedKeyedQueryOwner,
   useTaggedMutation,
   useQuerySelection,
+  provideTaggedKeyedQueryData,
 } from "@bb/query-tags";
 import {
   canonicalPluginReadInput,
@@ -37,6 +38,7 @@ export interface RpcQueryHost {
     method: string,
     input: JsonValue,
     origin?: string,
+    warmKeyedMethods?: readonly string[],
   ): Promise<unknown>;
   subscribe(pluginId: string): () => void;
   watch?(
@@ -51,6 +53,17 @@ const envelopeSchema = z.object({
   tags: z.array(z.string()).default([]),
   keyTags: z.record(z.string(), z.array(z.string())).default({}),
   invalidated: z.array(z.string()).default([]),
+  provided: z
+    .record(
+      z.string(),
+      z.object({
+        result: z.record(z.string(), jsonValueSchema),
+        tags: z.array(z.string()),
+        keyTags: z.record(z.string(), z.array(z.string())),
+        whileWatched: z.boolean().default(false),
+      }),
+    )
+    .default({}),
 });
 type Envelope = z.infer<typeof envelopeSchema>;
 import type {
@@ -113,13 +126,15 @@ async function callWithDeadline(
   input: JsonValue,
   timeoutMs: number | undefined,
   origin?: string,
+  warmKeyedMethods?: readonly string[],
 ) {
-  if (timeoutMs === undefined) return host.call(pluginId, method, input, origin);
+  if (timeoutMs === undefined)
+    return host.call(pluginId, method, input, origin, warmKeyedMethods);
   const deadlineMs = z.number().positive().finite().parse(timeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      host.call(pluginId, method, input, origin),
+      host.call(pluginId, method, input, origin, warmKeyedMethods),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -138,6 +153,37 @@ async function callWithDeadline(
 }
 
 export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
+  async function callRead(
+    host: RpcQueryHost,
+    pluginId: string,
+    method: string,
+    input: JsonValue,
+    timeoutMs?: number,
+  ) {
+    const warm = host.queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ["plugin-rpc", pluginId] })
+      .filter(
+        (query) =>
+          query.queryKey[3] &&
+          typeof query.queryKey[3] === "object" &&
+          "keyed" in query.queryKey[3] &&
+          query.state.data !== undefined,
+      )
+      .map((query) => String(query.queryKey[2]));
+    const response = envelopeSchema.parse(
+      await callWithDeadline(
+        host,
+        pluginId,
+        method,
+        input,
+        timeoutMs,
+        undefined,
+        warm,
+      ),
+    );
+    return response;
+  }
   function useSubscription(
     host: RpcQueryHost,
     pluginId: string,
@@ -164,19 +210,39 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         ...taggedQueryOptions(host.queryClient, queryKey, {
           scope: pluginTagScope(pluginId),
           tagsOf,
+          readTagsOf: (data: Envelope) => [
+            ...tagsOf(data),
+            ...Object.values(data.provided).flatMap((seed) => [
+              ...seed.tags,
+              ...Object.values(seed.keyTags).flat(),
+            ]),
+          ],
         }),
-        queryFn: () =>
-          runTaggedRead(host.queryClient, queryKey, async () =>
-            envelopeSchema.parse(
-              await callWithDeadline(
-                host,
-                pluginId,
-                options.method,
-                input,
-                options.timeoutMs,
-              ),
-            ),
-          ),
+        queryFn: async () => {
+          const response = await runTaggedRead(host.queryClient, queryKey, () =>
+            callRead(host, pluginId, options.method, input, options.timeoutMs),
+          );
+          for (const [target, data] of Object.entries(response.provided)) {
+            if (
+              provideTaggedKeyedQueryData(
+                host.queryClient,
+                keyedQueryKey(pluginId, target),
+                data,
+                pluginTagScope(pluginId),
+              )
+            ) {
+              let watched = watchedMethods.get(host.queryClient);
+              if (!watched) {
+                watched = new Set();
+                watchedMethods.set(host.queryClient, watched);
+              }
+              const identity = JSON.stringify([pluginId, target]);
+              if (data.whileWatched) watched.add(identity);
+              else watched.delete(identity);
+            }
+          }
+          return response;
+        },
       },
       host.queryClient,
     );

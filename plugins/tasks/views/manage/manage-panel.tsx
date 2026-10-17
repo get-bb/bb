@@ -1,3 +1,4 @@
+import { useTasksRpc } from "../../shell/data.js";
 import { useMemo, useState } from "react";
 import type { Folder, Label, Preset } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
@@ -6,8 +7,8 @@ import {
   useFolders,
   usePresets,
   useProjects,
-  useTasksQuery,
-  useTasksRpc,
+  useTaskRead,
+  useTaskMutation,
 } from "../../shell/data.js";
 import {
   Select,
@@ -30,7 +31,7 @@ import {
   PERMISSION_LABELS,
   PresetDialog,
   describePresetEnvironment,
-  savePresetDraft,
+  useSavePresetDraft,
   type PresetDraft,
 } from "./preset-dialog.js";
 import { ColorSwatchPicker, DEFAULT_COLOR } from "./shared.js";
@@ -106,19 +107,20 @@ function LabelEditorRow({
 
 function LabelsSection() {
   const rpc = useTasksRpc();
+  const updateLabelMutation = useTaskMutation("updateLabel");
+  const createLabelMutation = useTaskMutation("createLabel");
+  const deleteLabelMutation = useTaskMutation("deleteLabel");
   const projects = useProjects();
   const projectList = projects.data ?? [];
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
   const projectId = selectedProjectId ?? projectList[0]?.id ?? null;
-  const labels = useTasksQuery(
-    async (rpc) =>
-      projectId
-        ? (await rpc.call("listLabels", { projectId })).labels
-        : ([] as Label[]),
-    ["projects:changed"],
-    [projectId],
+  const labels = useTaskRead(
+    "listLabels",
+    { projectId: projectId ?? "" },
+    (value) => value.labels,
+    projectId !== null,
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const { error, run } = useActionError();
@@ -179,7 +181,7 @@ function LabelsSection() {
                 onCancel={() => setEditingId(null)}
                 onSubmit={(name, color) =>
                   run(async () => {
-                    await rpc.call("updateLabel", {
+                    await updateLabelMutation({
                       labelId: label.id,
                       name,
                       color,
@@ -237,7 +239,7 @@ function LabelsSection() {
         onSubmit={(name, color) =>
           run(async () => {
             if (!projectId) return;
-            await rpc.call("createLabel", { projectId, name, color });
+            await createLabelMutation({ projectId, name, color });
           })
         }
       />
@@ -268,7 +270,7 @@ function LabelsSection() {
             onConfirm={() => {
               setConfirmDelete(null);
               void run(() =>
-                rpc.call("deleteLabel", { labelId: confirmDelete.label.id }),
+                deleteLabelMutation({ labelId: confirmDelete.label.id }),
               );
             }}
           />
@@ -279,12 +281,10 @@ function LabelsSection() {
 }
 
 function PresetsSection() {
-  const rpc = useTasksRpc();
+  const savePreset = useSavePresetDraft();
+  const deletePresetMutation = useTaskMutation("deletePreset");
   const presets = usePresets();
-  const machines = useTasksQuery(
-    async (rpc) => (await rpc.call("listMachines", {})).machines,
-    [],
-  );
+  const machines = useTaskRead("listMachines", {}, (value) => value.machines);
   const [dialog, setDialog] = useState<{
     key: number;
     editing: Preset | null;
@@ -292,7 +292,7 @@ function PresetsSection() {
   const [error, setError] = useState<string | null>(null);
 
   const save = async (editing: Preset | null, draft: PresetDraft) => {
-    await savePresetDraft(rpc, editing, draft);
+    await savePreset(editing, draft);
     presets.refresh();
   };
 
@@ -387,8 +387,7 @@ function PresetsSection() {
                       aria-label={`Delete preset ${preset.name}`}
                       onClick={() => {
                         setError(null);
-                        rpc
-                          .call("deletePreset", { presetId: preset.id })
+                        deletePresetMutation({ presetId: preset.id })
                           .then(() => presets.refresh())
                           .catch((deleteError: unknown) =>
                             setError(errorMessage(deleteError)),
@@ -544,7 +543,9 @@ function FolderRow({
 }
 
 function FoldersSection() {
-  const rpc = useTasksRpc();
+  const renameFolderMutation = useTaskMutation("renameFolder");
+  const moveFolderMutation = useTaskMutation("moveFolder");
+  const deleteFolderMutation = useTaskMutation("deleteFolder");
   const folders = useFolders();
   const projects = useProjects();
   const { error, setError, run } = useActionError();
@@ -602,13 +603,11 @@ function FoldersSection() {
               folder={folder}
               rootFolders={rootFolders}
               onRename={(name) =>
-                run(() =>
-                  rpc.call("renameFolder", { folderId: folder.id, name }),
-                )
+                run(() => renameFolderMutation({ folderId: folder.id, name }))
               }
               onMove={(parentFolderId) =>
                 run(() =>
-                  rpc.call("moveFolder", {
+                  moveFolderMutation({
                     folderId: folder.id,
                     parentFolderId,
                   }),
@@ -646,7 +645,7 @@ function FoldersSection() {
             onConfirm={() => {
               setConfirmDelete(null);
               void run(async () => {
-                const result = await rpc.call("deleteFolder", {
+                const result = await deleteFolderMutation({
                   folderId: confirmDelete.id,
                 });
                 if (!result.deleted) {

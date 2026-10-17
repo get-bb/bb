@@ -1,3 +1,4 @@
+import { useTaskMutation } from "../../shell/data.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TASK_PRIORITIES,
@@ -15,7 +16,7 @@ import {
   useStagedAttachmentRetry,
   type StagedAttachment,
 } from "../../components/staged-attachments.js";
-import { useProjects, useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import { useProjects, useTaskRead } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import {
@@ -155,7 +156,8 @@ export function NewTaskDialog({
   projectId,
   defaultStatus,
 }: NewTaskDialogProps) {
-  const rpc = useTasksRpc();
+  const createLabelMutation = useTaskMutation("createLabel");
+  const createTaskMutation = useTaskMutation("createTask");
   const navigation = useTasksNavigation();
   const projects = useProjects();
 
@@ -221,16 +223,11 @@ export function NewTaskDialog({
     });
   }, [open, draft.projectId, effectiveProjectId]);
 
-  const labelsQuery = useTasksQuery(
-    async (rpc) => ({
-      projectId: effectiveProjectId,
-      labels: effectiveProjectId
-        ? (await rpc.call("listLabels", { projectId: effectiveProjectId }))
-            .labels
-        : [],
-    }),
-    ["projects:changed"],
-    [effectiveProjectId],
+  const labelsQuery = useTaskRead(
+    "listLabels",
+    { projectId: effectiveProjectId ?? "" },
+    (value) => ({ projectId: effectiveProjectId, labels: value.labels }),
+    effectiveProjectId !== null,
   );
   const labels = {
     ...labelsQuery,
@@ -266,7 +263,7 @@ export function NewTaskDialog({
     if (!name || effectiveProjectId === null || creatingLabel) return;
     setCreatingLabel(true);
     try {
-      const { label } = await rpc.call("createLabel", {
+      const { label } = await createLabelMutation({
         projectId: effectiveProjectId,
         name,
         color: DEFAULT_COLOR,
@@ -328,7 +325,7 @@ export function NewTaskDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const result = await rpc.call("createTask", {
+      const result = await createTaskMutation({
         projectId: effectiveProjectId,
         title: title.trim(),
         description,
@@ -338,10 +335,6 @@ export function NewTaskDialog({
         parentTaskId: null,
         labelIds,
       });
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
-      }
       clearNewTaskDraft();
       const staged = pendingFiles.filter((entry) => entry.status === "staged");
       const failed = await uploadStagedAttachments(staged, {

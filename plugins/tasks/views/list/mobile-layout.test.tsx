@@ -1,3 +1,4 @@
+import { liveTaskRpcFixtures } from "../../test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -59,7 +60,7 @@ function renderList() {
     app.navPanels[0]!,
     { subPath: PROJECT_ID },
     {
-      rpc: {
+      rpc: liveTaskRpcFixtures({
         listProjects: () => ({ projects: [project] }),
         listFolders: () => ({ folders: [] }),
         listPresets: () => ({ presets: [] }),
@@ -69,7 +70,7 @@ function renderList() {
         listTaskThreads: () => ({ taskThreads: [workerThread] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),
-      },
+      }),
     },
   );
 }

@@ -546,6 +546,19 @@ describe("settings", () => {
 });
 
 describe("rpc", () => {
+  it("exposes each invalidation to listeners when it is published", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const observed: (readonly string[] | null)[] = [];
+    harness.experimental_onRpcInvalidation(() => {
+      observed.push(harness.experimental_rpcInvalidations.at(-1) ?? null);
+    });
+    bb.rpc.experimental_invalidate(["first"]);
+    bb.rpc.experimental_invalidate(["second"]);
+    bb.rpc.experimental_invalidateAll();
+    expect(observed).toEqual([["first"], ["second"], null]);
+    await harness.dispose();
+  });
+
   it("callRpc validates and JSON-normalizes input and output", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "notes" });
     const contract = defineRpcContract({

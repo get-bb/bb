@@ -1,3 +1,4 @@
+import { useTaskMutation } from "../../shell/data.js";
 import { useState } from "react";
 import type {
   Label,
@@ -10,7 +11,7 @@ import type {
 import { TASK_PRIORITIES, TASK_STATUSES } from "../../shared/contract.js";
 import type { Preset } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
-import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import { useTaskRead } from "../../shell/data.js";
 import {
   PriorityIcon,
   StatusIcon,
@@ -220,7 +221,7 @@ function LabelsMenu({
   onUpdate: (update: TaskPropertyUpdate) => void;
   children: React.ReactNode;
 }) {
-  const rpc = useTasksRpc();
+  const createLabelMutation = useTaskMutation("createLabel");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -235,7 +236,7 @@ function LabelsMenu({
     if (!name || creating) return;
     setCreating(true);
     try {
-      const { label } = await rpc.call("createLabel", {
+      const { label } = await createLabelMutation({
         projectId: task.projectId,
         name,
         color: DEFAULT_COLOR,
@@ -401,7 +402,7 @@ function DispatchTargetMenu({
   onError: (message: string) => void;
   triggerClassName: string;
 }) {
-  const rpc = useTasksRpc();
+  const updateProjectMutation = useTaskMutation("updateProject");
   const [open, setOpen] = useState(false);
   const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -414,7 +415,7 @@ function DispatchTargetMenu({
     if (saving) return;
     setSaving(true);
     try {
-      await rpc.call("updateProject", {
+      await updateProjectMutation({
         projectId: project.id,
         linkedBbProjectId: linkedId,
       });
@@ -511,9 +512,10 @@ export function PropertiesRail({
     task.labelIds.includes(label.id),
   );
   const active = threads.filter(isActiveThread);
-  const bbProjects = useTasksQuery(
-    async (query) => (await query.call("listBbProjects")).bbProjects,
-    ["projects:changed"],
+  const bbProjects = useTaskRead(
+    "listBbProjects",
+    null,
+    (value) => value.bbProjects,
   );
   return (
     <aside className={cn("w-56 shrink-0 py-10 pl-2 pr-6", className)}>

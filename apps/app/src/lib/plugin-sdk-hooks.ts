@@ -163,6 +163,7 @@ export async function callPluginRpc(
   input?: unknown,
   envelope = false,
   origin?: string,
+  warmKeyedMethods?: readonly string[],
 ): Promise<unknown> {
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
@@ -172,6 +173,9 @@ export async function callPluginRpc(
       headers: {
         "content-type": "application/json",
         ...(origin ? { "x-bb-mutation-id": origin } : {}),
+        ...(warmKeyedMethods === undefined
+          ? {}
+          : { "x-bb-rpc-warm-keyed": JSON.stringify(warmKeyedMethods) }),
       },
       body: serializedInput,
     },
@@ -957,7 +961,9 @@ export const {
         method: string,
         input: import("@bb/domain").JsonValue,
         origin?: string,
-      ) => callPluginRpc(fetch, id, method, input, true, origin),
+        warmKeyedMethods?: readonly string[],
+      ) =>
+        callPluginRpc(fetch, id, method, input, true, origin, warmKeyedMethods),
       watch: (
         id: string,
         method: string,

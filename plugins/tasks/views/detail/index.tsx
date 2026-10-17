@@ -1,15 +1,20 @@
+import { RefreshError } from "../../components/refresh-error.js";
 import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import SmilePlusIcon from "@hugeicons/core-free-icons/SmilePlusIcon";
 import type { Task } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
-import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import {
-  listAllTasks,
+  useBbNavigate,
+  experimental_useRpcMutation,
+} from "@get-bb/plugin-sdk/app";
+import {
   useMentionItems,
-  useTasksQuery,
-  useTasksRpc,
+  useTaskRead,
+  useTaskRows,
+  useTaskMutation,
+  useTaskUpdateMutation,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
@@ -17,6 +22,7 @@ import { TaskActivity } from "../activity/task-activity.js";
 import { AttachmentsGrid, uploadAttachment } from "./attachments.js";
 import {
   createDescriptionSaver,
+  saveDescriptionMutation,
   type DescriptionSaver,
 } from "./description-save.js";
 import { StatusIcon } from "./meta.js";
@@ -38,13 +44,12 @@ interface DetailViewProps {
 }
 
 const DESCRIPTION_SAVE_DELAY_MS = 800;
-const ACTIVE_PULL_REQUEST_REFRESH_MS = 60_000;
 
 function SubTaskDonut({
   subtasks,
   onClick,
 }: {
-  subtasks: Task[];
+  subtasks: import("../../shared/contract.js").TaskSummary[];
   onClick: () => void;
 }) {
   if (subtasks.length === 0) return null;
@@ -112,7 +117,7 @@ function SubTasksSection({
 }: {
   ref: React.Ref<HTMLElement>;
   task: Task;
-  subtasks: Task[];
+  subtasks: import("../../shared/contract.js").TaskSummary[];
   onCreate: (title: string) => Promise<boolean>;
 }) {
   const navigation = useTasksNavigation();
@@ -193,110 +198,85 @@ function DetailSkeleton() {
   );
 }
 
-function TaskDetail({ task }: { task: Task }) {
-  const rpc = useTasksRpc();
-  const delegationRpc = useRpc<DelegationRpcContract>();
+function TaskDetail({
+  task,
+  readTaskKey,
+}: {
+  task: Task;
+  readTaskKey: string;
+}) {
+  const updateTaskMutation = useTaskUpdateMutation(() => readTaskKey).mutate;
+  const moveTaskToProjectMutation = useTaskMutation("moveTaskToProject");
+  const createTaskMutation = useTaskMutation("createTask");
+  const deleteAttachmentMutation = useTaskMutation("deleteAttachment");
+  const detach = experimental_useRpcMutation<
+    DelegationRpcContract,
+    "taskThreadsDetach"
+  >({ method: "taskThreadsDetach" }).mutate;
   const navigation = useTasksNavigation();
   const { toasts, push, dismiss } = useDetailToasts();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const subtasksRef = useRef<HTMLElement>(null);
 
   const [draft, setDraft] = useState<{ taskId: string; markdown: string }>();
-  const rpcRef = useRef(rpc);
-  rpcRef.current = rpc;
+  const rpcRef = useRef(updateTaskMutation);
+  rpcRef.current = updateTaskMutation;
   const pushRef = useRef(push);
   pushRef.current = push;
   const saverRef = useRef<DescriptionSaver | null>(null);
   saverRef.current ??= createDescriptionSaver({
-    save: async (taskId, markdown) => {
-      const result = await rpcRef.current.call("updateTask", {
-        taskId,
-        description: markdown,
-      });
-      return result.ok
-        ? { ok: true }
-        : { ok: false, errorMessage: result.error.message };
-    },
+    save: (taskId, markdown) =>
+      saveDescriptionMutation(async () => {
+        await rpcRef.current({ taskId, description: markdown });
+      }),
     onError: (message) => pushRef.current(message),
     delayMs: DESCRIPTION_SAVE_DELAY_MS,
   });
 
-  const projects = useTasksQuery(
-    async (query) => (await query.call("listProjects", {})).projects,
-    ["projects:changed"],
-  );
+  const projects = useTaskRead("listProjects", {}, (value) => value.projects);
   const project = projects.data?.find((entry) => entry.id === task.projectId);
-
-  const parent = useTasksQuery(
-    async (query) =>
-      task.parentTaskId
-        ? (await query.call("getTask", { taskId: task.parentTaskId })).task
-        : null,
-    ["tasks:changed"],
-    [task.parentTaskId],
-    { relevantTaskIds: task.parentTaskId ? [task.parentTaskId] : [] },
+  const parent = useTaskRead(
+    "getTask",
+    { taskId: task.parentTaskId ?? "" },
+    (value) => value.task,
+    task.parentTaskId !== null,
   );
-  const subtasks = useTasksQuery(
-    async (query) => listAllTasks(query, { parentTaskId: task.id }),
-    ["tasks:changed"],
-    [task.id],
+  const subtasks = useTaskRows({ parentTaskId: task.id });
+  const labels = useTaskRead(
+    "listLabels",
+    { projectId: task.projectId },
+    (value) => value.labels,
   );
-  const labels = useTasksQuery(
-    async (query) =>
-      (await query.call("listLabels", { projectId: task.projectId })).labels,
-    ["projects:changed"],
-    [task.projectId],
+  const attachments = useTaskRead(
+    "listAttachments",
+    { taskId: task.id },
+    (value) => value.attachments,
   );
-  const attachments = useTasksQuery(
-    async (query) =>
-      (await query.call("listAttachments", { taskId: task.id })).attachments,
-    ["tasks:changed"],
-    [task.id],
-    { relevantTaskIds: [task.id] },
+  const threads = useTaskRead(
+    "listTaskThreads",
+    { taskId: task.id },
+    (value) => value.taskThreads,
   );
-  const threads = useTasksQuery(
-    async (query) =>
-      (await query.call("listTaskThreads", { taskId: task.id })).taskThreads,
-    ["threads:changed"],
-    [task.id],
-    { relevantTaskIds: [task.id] },
-  );
-  const presets = useTasksQuery(
-    async (query) => (await query.call("listPresets")).presets,
-    ["projects:changed"],
-  );
-  const pullRequests = useTasksQuery(
-    async (query) => query.call("listTaskPullRequests", { taskId: task.id }),
-    ["threads:changed"],
-    [task.id],
-    { relevantTaskIds: [task.id] },
+  const presets = useTaskRead("listPresets", null, (value) => value.presets);
+  const pullRequests = useTaskRead(
+    "listTaskPullRequests",
+    { taskId: task.id },
+    (value) => value,
   );
   const refreshPullRequests = pullRequests.refresh;
-  const hasActivePullRequest = (pullRequests.data?.pullRequests ?? []).some(
-    (pullRequest) =>
-      pullRequest.state === "open" || pullRequest.state === "draft",
-  );
   useEffect(() => {
     window.addEventListener("focus", refreshPullRequests);
     return () => window.removeEventListener("focus", refreshPullRequests);
   }, [refreshPullRequests]);
-  useEffect(() => {
-    if (!hasActivePullRequest) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") refreshPullRequests();
-    }, ACTIVE_PULL_REQUEST_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [hasActivePullRequest, refreshPullRequests]);
 
   const updateTask = async (
     input: TaskPropertyUpdate & { title?: string; description?: string },
   ) => {
     try {
-      const result = await rpc.call("updateTask", {
+      await updateTaskMutation({
         taskId: task.id,
         ...input,
       });
-      if (!result.ok) push(result.error.message);
     } catch (error) {
       push(errorMessage(error));
     }
@@ -305,14 +285,10 @@ function TaskDetail({ task }: { task: Task }) {
   const moveToProject = async (projectId: string) => {
     saverRef.current?.flush(task.id);
     try {
-      const result = await rpc.call("moveTaskToProject", {
+      const result = await moveTaskToProjectMutation({
         taskId: task.id,
         projectId,
       });
-      if (!result.ok) {
-        push(result.error.message);
-        return;
-      }
       navigation.go(
         { kind: "task", taskKey: result.task.key },
         { replace: true },
@@ -350,16 +326,12 @@ function TaskDetail({ task }: { task: Task }) {
 
   const createSubtask = async (title: string): Promise<boolean> => {
     try {
-      const result = await rpc.call("createTask", {
+      const result = await createTaskMutation({
         projectId: task.projectId,
         title,
         parentTaskId: task.id,
         status: "todo",
       });
-      if (!result.ok) {
-        push(result.error.message);
-        return false;
-      }
       subtasks.refresh();
       return true;
     } catch (error) {
@@ -471,11 +443,10 @@ function TaskDetail({ task }: { task: Task }) {
           <AttachmentsGrid
             attachments={attachments.data ?? []}
             onRemove={async (attachment) => {
-              const result = await rpc.call("deleteAttachment", {
+              const result = await deleteAttachmentMutation({
                 attachmentId: attachment.id,
                 removeDescriptionReferences: true,
               });
-              if (!result.ok) throw new Error(result.error.message);
               attachments.refresh();
             }}
             onError={(message) => push(message)}
@@ -497,7 +468,7 @@ function TaskDetail({ task }: { task: Task }) {
                   pullRequests.data?.unavailableThreadIds ?? []
                 }
                 onDetach={async (thread) => {
-                  await delegationRpc.call("taskThreadsDetach", {
+                  await detach({
                     taskId: task.id,
                     threadId: thread.threadId,
                   });
@@ -527,18 +498,56 @@ function TaskDetail({ task }: { task: Task }) {
           className="hidden @[45rem]:block"
         />
       </div>
+      {[
+        projects,
+        parent,
+        subtasks,
+        labels,
+        attachments,
+        threads,
+        presets,
+        pullRequests,
+      ]
+        .filter((query) => query.error)
+        .map((query, index) => (
+          <RefreshError
+            key={index}
+            message={query.error!}
+            onRetry={query.refresh}
+          />
+        ))}
       <DetailToasts toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
 
 export function DetailView({ taskKey, onCanonicalKey }: DetailViewProps) {
-  const query = useTasksQuery(
-    async (rpc) => (await rpc.call("getTaskByKey", { taskKey })).task,
-    ["tasks:changed"],
-    [taskKey],
+  const lookup = useTaskRead(
+    "getTaskByKey",
+    { taskKey },
+    (value) => value.task,
   );
-  const canonicalKey = query.data?.key;
+  const [resolved, setResolved] = useState<{ key: string; task: Task }>();
+  if (
+    lookup.data &&
+    (resolved?.key !== taskKey || resolved.task !== lookup.data)
+  )
+    setResolved({ key: taskKey, task: lookup.data });
+  const kept = resolved?.key === taskKey ? resolved.task : undefined;
+  const followed = useTaskRead(
+    "getTask",
+    { taskId: kept?.id ?? "" },
+    (value) => value.task,
+    lookup.data === null && kept !== undefined,
+  );
+  const query =
+    lookup.data === null && kept
+      ? {
+          ...followed,
+          data: followed.data === undefined ? kept : followed.data,
+        }
+      : lookup;
+  const canonicalKey = lookup.data?.key;
   useEffect(() => {
     if (canonicalKey) onCanonicalKey?.(canonicalKey);
   }, [canonicalKey, onCanonicalKey]);
@@ -546,7 +555,7 @@ export function DetailView({ taskKey, onCanonicalKey }: DetailViewProps) {
   if (query.data === undefined) {
     return query.error ? (
       <div className="flex h-full items-center justify-center p-6 text-sm text-destructive">
-        {query.error}
+        <RefreshError message={query.error} onRetry={query.refresh} />
       </div>
     ) : (
       <DetailSkeleton />
@@ -557,8 +566,18 @@ export function DetailView({ taskKey, onCanonicalKey }: DetailViewProps) {
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
         <Icon name="FileQuestion" className="size-5" />
         Task {taskKey} was not found.
+        {query.error ? (
+          <RefreshError message={query.error} onRetry={query.refresh} />
+        ) : null}
       </div>
     );
   }
-  return <TaskDetail task={query.data} />;
+  return (
+    <>
+      {query.error ? (
+        <RefreshError message={query.error} onRetry={query.refresh} />
+      ) : null}
+      <TaskDetail task={query.data} readTaskKey={taskKey} />
+    </>
+  );
 }

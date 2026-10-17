@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDescriptionSaver,
+  saveDescriptionMutation,
   type DescriptionSaveOutcome,
 } from "./description-save.js";
 
@@ -68,6 +69,34 @@ describe("createDescriptionSaver", () => {
     await flushMicrotasks();
     expect(calls).toEqual(["draft v1", "draft v1"]);
     expect(saver.hasPending()).toBe(false);
+  });
+
+  it.each([
+    "conflict",
+    "invalid",
+    "handler_error",
+    "invalid_input",
+    "invalid_output",
+    "deadline",
+    "network",
+  ])("preserves description retry behavior for %s", async (code) => {
+    let attempts = 0;
+    const { errors, saver } = setup(() =>
+      saveDescriptionMutation(async () => {
+        attempts += 1;
+        throw Object.assign(
+          new Error("Save failed"),
+          code === "network" ? {} : { code },
+        );
+      }),
+    );
+    saver.onChange("task-1", "draft");
+    await vi.advanceTimersByTimeAsync(DELAY_MS);
+    expect(errors).toEqual(["Save failed"]);
+    expect(saver.hasPending()).toBe(code !== "conflict" && code !== "invalid");
+    saver.flush("task-1");
+    await flushMicrotasks();
+    expect(attempts).toBe(code === "conflict" || code === "invalid" ? 1 : 2);
   });
 
   it("does not clear a newer draft typed while a save is in flight", async () => {

@@ -33,6 +33,7 @@ export const CORE_TAG_SCOPE = "core";
 export interface TaggedQueryRegistration<Data> {
   scope: string;
   tagsOf(data: Data): readonly string[];
+  readTagsOf?(data: Data): readonly string[];
   onInvalidate?(data: Data | undefined, tags: readonly string[] | null): void;
 }
 
@@ -77,6 +78,8 @@ export function taggedQueryOptions<Data>(
   registrations.set(meta, {
     scope: registration.scope,
     tagsOf: (data) => registration.tagsOf(data as Data),
+    readTagsOf: (data) =>
+      (registration.readTagsOf ?? registration.tagsOf)(data as Data),
     onInvalidate: (data, tags) =>
       registration.onInvalidate?.(data as Data | undefined, tags),
   });
@@ -110,9 +113,11 @@ export async function runTaggedRead<Data>(
     try {
       const result = await read();
       receipt.record(started, paths());
-      const overlap = registration
-        ?.tagsOf(result)
-        .some((tag) => pending.tags.has(tag));
+      const overlap =
+        registration &&
+        (registration.readTagsOf ?? registration.tagsOf)(result).some((tag) =>
+          pending.tags.has(tag),
+        );
       if (overlap) registration?.onInvalidate?.(result, [...pending.tags]);
       if (pending.restart || overlap) continue;
       receipt.commit(result);
@@ -142,6 +147,7 @@ export async function invalidateTags(
     const data = getTaggedReadData(client, query.queryKey);
     const matches =
       tags === null ||
+      query.state.status === "error" ||
       (data === undefined && pending === undefined) ||
       (data !== undefined &&
         registration.tagsOf(data).some((tag) => tags.includes(tag)));
@@ -283,6 +289,37 @@ type KeyedData<Value> = {
   keyTags: Record<string, string[]>;
 };
 
+const seededQueries = new WeakSet<object>();
+
+export function provideTaggedKeyedQueryData<Value>(
+  client: QueryClient,
+  queryKey: QueryKey,
+  data: KeyedData<Value>,
+  scope: string,
+): boolean {
+  if (Object.keys(data.result).length === 0) return false;
+  const state = client.getQueryState(queryKey);
+  if (state?.data !== undefined || state?.fetchStatus === "fetching")
+    return false;
+  client.setQueryData(queryKey, data);
+  const query = client.getQueryCache().find({ queryKey, exact: true });
+  if (query) {
+    if (!registrationOf(query))
+      query.setOptions({
+        ...query.options,
+        ...taggedQueryOptions(client, queryKey, {
+          scope,
+          tagsOf: (data: KeyedData<Value>) => [
+            ...data.tags,
+            ...Object.values(data.keyTags).flat(),
+          ],
+        }),
+      });
+    seededQueries.add(query);
+  }
+  return true;
+}
+
 export function createTaggedKeyedQueryOwner<Value>(options: {
   client: QueryClient;
   queryKey: QueryKey;
@@ -412,7 +449,11 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
       const missing = requested.filter(
         (key) => !Object.hasOwn(cached?.result ?? {}, key),
       );
-      if (!stop) missingOnly = cached === undefined;
+      if (!stop)
+        missingOnly =
+          cached === undefined ||
+          (seededQueries.delete(observer.getCurrentQuery()) &&
+            !observer.getCurrentQuery().state.isInvalidated);
       listeners.add(listener);
       if (!stop) {
         stop = observer.subscribe(() => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   experimental_PermissionModePicker as PermissionModePicker,
   experimental_ProviderModelPicker as ProviderModelPicker,
@@ -7,8 +7,8 @@ import {
 import type { Preset, PresetPermissionMode } from "../../shared/contract.js";
 import { PRESET_ENVIRONMENT_KINDS } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
-import type { TasksRpc } from "../../shell/data.js";
-import { useTasksQuery } from "../../shell/data.js";
+
+import { useTaskRead, useTaskMutation } from "../../shell/data.js";
 import {
   Dialog,
   DialogContent,
@@ -106,7 +106,10 @@ function presetDraft(preset: Preset): PresetDraft {
 }
 
 export async function savePresetDraft(
-  rpc: TasksRpc,
+  writes: {
+    create: ReturnType<typeof useTaskMutation<"createPreset">>;
+    update: ReturnType<typeof useTaskMutation<"updatePreset">>;
+  },
   editing: Preset | null,
   draft: PresetDraft,
 ): Promise<void> {
@@ -126,9 +129,9 @@ export async function savePresetDraft(
     instructions: draft.instructions,
   };
   if (editing) {
-    await rpc.call("updatePreset", { presetId: editing.id, ...fields });
+    await writes.update({ presetId: editing.id, ...fields });
   } else {
-    await rpc.call("createPreset", fields);
+    await writes.create(fields);
   }
 }
 
@@ -151,9 +154,10 @@ export function PresetDialog({
   const set = <K extends keyof PresetDraft>(key: K, value: PresetDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const machinesQuery = useTasksQuery(
-    async (rpc) => (await rpc.call("listMachines", {})).machines,
-    [],
+  const machinesQuery = useTaskRead(
+    "listMachines",
+    {},
+    (value) => value.machines,
   );
   const machines = machinesQuery.data;
 
@@ -344,5 +348,15 @@ export function PresetDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function useSavePresetDraft() {
+  const create = useTaskMutation("createPreset");
+  const update = useTaskMutation("updatePreset");
+  return useCallback(
+    (editing: Preset | null, draft: PresetDraft) =>
+      savePresetDraft({ create, update }, editing, draft),
+    [create, update],
   );
 }

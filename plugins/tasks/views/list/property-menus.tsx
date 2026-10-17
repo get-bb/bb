@@ -3,7 +3,7 @@ import {
   TASK_STATUSES,
   type Label,
   type Project,
-  type Task,
+  type TaskSummary as Task,
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import type { TaskEdit } from "./optimistic.js";
+import type { TaskEdit } from "../../shared/task-edit.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
   DUE_DATE_PRESETS,

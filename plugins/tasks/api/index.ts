@@ -1,4 +1,9 @@
-import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import { experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  PluginRpcHandlers,
+  ExperimentalPluginRpcHandlerContext,
+} from "@get-bb/plugin-sdk";
 import {
   createTasksStore,
   type Attachment as StoredAttachment,
@@ -17,14 +22,12 @@ import { errorMessage } from "../shared/errors";
 import { isSideChatShapedThread } from "../shared/side-chat";
 import {
   tasksRpcContract,
+  taskRowTags,
+  taskMembershipTags,
   type Attachment as AttachmentMetadata,
-  type ProjectsChangedEvent,
   type SidebarProjectSummary,
   type Task,
   type TaskPullRequest,
-  type TasksChangedEvent,
-  type TasksDomainError,
-  type CommentsChangedEvent,
   type CommentProvider,
 } from "../shared/contract";
 
@@ -155,41 +158,59 @@ export function createStore(bb: BbPluginApi): TasksApiStore {
   };
 }
 
-class TasksDomainFailure extends Error {
-  constructor(readonly detail: TasksDomainError) {
-    super(detail.message);
-    this.name = "TasksDomainFailure";
-  }
+function fail(code: "conflict" | "invalid", message: string): never {
+  throw new experimental_PluginRpcRefusal({ code, message });
 }
 
-function fail(code: TasksDomainError["code"], message: string): never {
-  throw new TasksDomainFailure({ code, message });
-}
-
-function taskFailure(error: TasksDomainFailure) {
-  return { ok: false as const, error: error.detail };
-}
+const stores = new WeakMap<BbPluginApi, TasksApiStore>();
 
 export function publishTasksChanged(
   bb: BbPluginApi,
   taskId: string,
   projectId: string,
 ): void {
-  const payload: TasksChangedEvent = { taskId, projectId };
-  bb.realtime.publish("tasks:changed", payload);
+  const task = stores.get(bb)?.tasks.getTask(taskId);
+  bb.rpc.experimental_invalidate([
+    `task:${taskId}`,
+    `attachments:${taskId}`,
+    "sidebar",
+    `task-list:${projectId}`,
+    "task-list:all",
+    `membership:${projectId}`,
+    "membership:all",
+    ...(task
+      ? [
+          `task-key:${task.key}`,
+          ...(task.parentTaskId ? [`subtasks:${task.parentTaskId}`] : []),
+        ]
+      : []),
+  ]);
 }
 
 export function publishProjectsChanged(
   bb: BbPluginApi,
   projectId: string | null,
 ): void {
-  const payload: ProjectsChangedEvent = { projectId };
-  bb.realtime.publish("projects:changed", payload);
+  bb.rpc.experimental_invalidate([
+    "projects",
+    "folders",
+    "presets",
+    "sidebar",
+    "task-keys",
+    `project:${projectId}`,
+    `task-project:${projectId}`,
+    `membership:${projectId}`,
+    "membership:all",
+    `task-list:${projectId}`,
+    "task-list:all",
+  ]);
 }
 
 export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: CommentsChangedEvent = { taskId };
-  bb.realtime.publish("comments:changed", payload);
+  bb.rpc.experimental_invalidate([
+    `comments:${taskId}`,
+    `attachments:${taskId}`,
+  ]);
 }
 
 function apiTask(store: TasksApiStore, task: StoredTask): Task {
@@ -215,28 +236,19 @@ function validateTaskParent(
 ): void {
   if (parentTaskId === null) return;
   if (parentTaskId === ownTaskId) {
-    fail("task_parent_invalid", "A task cannot be its own parent");
+    fail("invalid", "A task cannot be its own parent");
   }
 
   const parent = store.tasks.getTask(parentTaskId);
   if (!parent) throw new Error(`Task not found: ${parentTaskId}`);
   if (parent.projectId !== projectId) {
-    fail(
-      "subtask_project_mismatch",
-      "A sub-task must belong to the same project as its parent",
-    );
+    fail("invalid", "A sub-task must belong to the same project as its parent");
   }
   if (parent.parentTaskId !== null) {
-    fail(
-      "subtask_depth_exceeded",
-      "Tasks support at most one level of sub-tasks",
-    );
+    fail("invalid", "Tasks support at most one level of sub-tasks");
   }
   if (ownTaskId && store.tasks.listSubtasks(ownTaskId).length > 0) {
-    fail(
-      "subtask_depth_exceeded",
-      "A task with sub-tasks cannot itself become a sub-task",
-    );
+    fail("invalid", "A task with sub-tasks cannot itself become a sub-task");
   }
 }
 
@@ -249,7 +261,7 @@ function validateTaskLabels(
     const label = store.tasks.getLabel(labelId);
     if (!label || label.projectId !== projectId) {
       fail(
-        "label_project_mismatch",
+        "invalid",
         `Task labels must belong to the task project: ${labelId}`,
       );
     }
@@ -578,10 +590,17 @@ async function listTaskPullRequests(
   };
 }
 
+type TaskHandlers = {
+  [M in keyof typeof tasksRpcContract]: (
+    input: Parameters<PluginRpcHandlers<typeof tasksRpcContract>[M]>[0],
+    context?: ExperimentalPluginRpcHandlerContext,
+  ) => ReturnType<PluginRpcHandlers<typeof tasksRpcContract>[M]>;
+};
+
 export function registerHandlers(
   bb: BbPluginApi,
   store: TasksApiStore,
-): PluginRpcHandlers<typeof tasksRpcContract> {
+): TaskHandlers {
   return {
     createFolder(input) {
       const folder = store.tasks.createFolder(input);
@@ -622,72 +641,101 @@ export function registerHandlers(
       return { project };
     },
     renameProjectPrefix(input) {
-      try {
-        if (store.projectPrefixExists(input.prefix, input.projectId)) {
-          fail(
-            "project_prefix_conflict",
-            `Project prefix is already in use: ${input.prefix}`,
-          );
-        }
-        const project = store.tasks.updateProject(input.projectId, {
-          prefix: input.prefix,
-        });
-        publishProjectsChanged(bb, project.id);
-        return { ok: true, project };
-      } catch (error) {
-        if (error instanceof TasksDomainFailure) return taskFailure(error);
-        throw error;
+      if (store.projectPrefixExists(input.prefix, input.projectId)) {
+        fail("conflict", `Project prefix is already in use: ${input.prefix}`);
       }
+      const project = store.tasks.updateProject(input.projectId, {
+        prefix: input.prefix,
+      });
+      publishProjectsChanged(bb, project.id);
+      return { ok: true, project };
     },
     async deleteProject(input) {
-      try {
-        if (!input.force && store.projectTaskCount(input.projectId) > 0) {
-          fail(
-            "project_not_empty",
-            "A project must be empty before it can be deleted; pass force: true to delete its tasks",
-          );
-        }
-        const taskIds = store.tasks
-          .listTasks({ projectId: input.projectId })
-          .map((task) => task.id);
-        const attachments = attachmentsForTasks(store.tasks, taskIds);
-        const deleted = store.tasks.deleteProject(input.projectId);
-        if (deleted) {
-          await removeAttachmentBlobs(bb, store.tasks, attachments);
-          publishProjectsChanged(bb, input.projectId);
-        }
-        return { ok: true, deleted };
-      } catch (error) {
-        if (error instanceof TasksDomainFailure) return taskFailure(error);
-        throw error;
+      if (!input.force && store.projectTaskCount(input.projectId) > 0) {
+        fail(
+          "conflict",
+          "A project must be empty before it can be deleted; pass force: true to delete its tasks",
+        );
       }
+      const taskIds = store.tasks
+        .listTasks({ projectId: input.projectId })
+        .map((task) => task.id);
+      const attachments = attachmentsForTasks(store.tasks, taskIds);
+      const deleted = store.tasks.deleteProject(input.projectId);
+      if (deleted) {
+        await removeAttachmentBlobs(bb, store.tasks, attachments);
+        publishProjectsChanged(bb, input.projectId);
+      }
+      return { ok: true, deleted };
     },
     listProjects(input) {
       return { projects: store.tasks.listProjects(input.folderId) };
     },
     createTask(input) {
-      try {
-        validateTaskParent(store, input.projectId, input.parentTaskId);
-        validateTaskLabels(store, input.projectId, input.labelIds);
-        const task = store.transaction(() => {
-          const created = store.tasks.createTask({
-            projectId: input.projectId,
-            title: input.title,
-            description: input.description,
-            status: input.status,
-            priority: input.priority,
-            dueDate: input.dueDate,
-            parentTaskId: input.parentTaskId,
-          });
-          replaceTaskLabels(store, created.id, input.labelIds);
-          return apiTask(store, created);
+      validateTaskParent(store, input.projectId, input.parentTaskId);
+      validateTaskLabels(store, input.projectId, input.labelIds);
+      const task = store.transaction(() => {
+        const created = store.tasks.createTask({
+          projectId: input.projectId,
+          title: input.title,
+          description: input.description,
+          status: input.status,
+          priority: input.priority,
+          dueDate: input.dueDate,
+          parentTaskId: input.parentTaskId,
         });
-        publishTasksChanged(bb, task.id, task.projectId);
-        return { ok: true, task };
-      } catch (error) {
-        if (error instanceof TasksDomainFailure) return taskFailure(error);
-        throw error;
-      }
+        replaceTaskLabels(store, created.id, input.labelIds);
+        return apiTask(store, created);
+      });
+      publishTasksChanged(bb, task.id, task.projectId);
+      return { ok: true, task };
+    },
+    taskMembership(input, context) {
+      const membership = store.tasks.listTaskKeys(input);
+      context?.provideKeyed("getTasksKeyed", () =>
+        Object.fromEntries(
+          apiTasks(
+            store,
+            store.tasks.getTasksByIds(membership.keys.slice(0, 25)),
+          ).map(({ description: _description, ...task }) => [task.id, task]),
+        ),
+      );
+      return membership;
+    },
+    getTasksKeyed({ keys }) {
+      const tasks = new Map(
+        apiTasks(store, store.tasks.getTasksByIds(keys)).map(
+          ({ description: _description, ...task }) => [task.id, task],
+        ),
+      );
+      return Object.fromEntries(
+        keys.map((key) => [key, tasks.get(key) ?? null]),
+      );
+    },
+    getLabelsKeyed({ keys }) {
+      return Object.fromEntries(
+        keys.map((key) => [key, store.tasks.listLabels(key)]),
+      );
+    },
+    getTaskThreadsKeyed({ keys }) {
+      const threads = store.tasks.listTaskThreadsForTasks(keys);
+      return Object.fromEntries(
+        keys.map((key) => [
+          key,
+          threads.filter((thread) => thread.taskId === key),
+        ]),
+      );
+    },
+    getTaskAttachmentsKeyed({ keys }) {
+      const attachments = store.tasks.listAttachmentsForTasks(keys);
+      return Object.fromEntries(
+        keys.map((key) => [
+          key,
+          attachments
+            .filter((attachment) => attachment.taskId === key)
+            .map(attachmentMetadata),
+        ]),
+      );
     },
     getTask(input) {
       const task = store.tasks.getTask(input.taskId);
@@ -697,72 +745,80 @@ export function registerHandlers(
       const task = store.tasks.getTaskByKey(input.taskKey);
       return { task: task ? apiTask(store, task) : null };
     },
-    updateTask(input) {
-      try {
-        const current = store.tasks.getTask(input.taskId);
-        if (!current) throw new Error(`Task not found: ${input.taskId}`);
-        const parentTaskId =
-          input.parentTaskId === undefined
-            ? current.parentTaskId
-            : input.parentTaskId;
-        validateTaskParent(store, current.projectId, parentTaskId, current.id);
-        if (input.labelIds) {
-          validateTaskLabels(store, current.projectId, input.labelIds);
-        }
-
-        const result = store.transaction(() => {
-          const beforeLabelIds = store.tasks
-            .listTaskLabels(current.id)
-            .map((link) => link.labelId);
-          const updated = store.tasks.updateTask(current.id, {
-            title: input.title,
-            description: input.description,
-            status: input.status,
-            priority: input.priority,
-            dueDate: input.dueDate,
-            parentTaskId: input.parentTaskId,
-          });
-          if (input.labelIds) {
-            replaceTaskLabels(store, current.id, input.labelIds);
-          }
-
-          const bodies: string[] = [];
-          if (updated.status !== current.status) {
-            bodies.push(
-              `Status changed to ${displayName(updated.status)} by ${input.authorName}`,
-            );
-          }
-          if (updated.priority !== current.priority) {
-            bodies.push(
-              `Priority changed to ${displayName(updated.priority)} by ${input.authorName}`,
-            );
-          }
-          if (updated.dueDate !== current.dueDate) {
-            bodies.push(
-              updated.dueDate === null
-                ? `Due date removed by ${input.authorName}`
-                : `Due date changed to ${updated.dueDate} by ${input.authorName}`,
-            );
-          }
-          if (input.labelIds && labelsChanged(beforeLabelIds, input.labelIds)) {
-            bodies.push(labelChangeBody(store, current.id, input.authorName));
-          }
-          writeSystemComments(store, current.id, input.authorName, bodies);
-          return {
-            task: apiTask(store, updated),
-            systemCommentsWritten: bodies.length,
-          };
-        });
-
-        publishTasksChanged(bb, result.task.id, result.task.projectId);
-        if (result.systemCommentsWritten > 0) {
-          publishCommentsChanged(bb, result.task.id);
-        }
-        return { ok: true, task: result.task };
-      } catch (error) {
-        if (error instanceof TasksDomainFailure) return taskFailure(error);
-        throw error;
+    updateTask(input, context) {
+      const current = store.tasks.getTask(input.taskId);
+      if (!current) throw new Error(`Task not found: ${input.taskId}`);
+      const parentTaskId =
+        input.parentTaskId === undefined
+          ? current.parentTaskId
+          : input.parentTaskId;
+      validateTaskParent(store, current.projectId, parentTaskId, current.id);
+      if (input.labelIds) {
+        validateTaskLabels(store, current.projectId, input.labelIds);
       }
+
+      const result = store.transaction(() => {
+        const beforeLabelIds = store.tasks
+          .listTaskLabels(current.id)
+          .map((link) => link.labelId);
+        const updated = store.tasks.updateTask(current.id, {
+          title: input.title,
+          description: input.description,
+          status: input.status,
+          priority: input.priority,
+          dueDate: input.dueDate,
+          parentTaskId: input.parentTaskId,
+        });
+        if (input.labelIds) {
+          replaceTaskLabels(store, current.id, input.labelIds);
+        }
+
+        const bodies: string[] = [];
+        if (updated.status !== current.status) {
+          bodies.push(
+            `Status changed to ${displayName(updated.status)} by ${input.authorName}`,
+          );
+        }
+        if (updated.priority !== current.priority) {
+          bodies.push(
+            `Priority changed to ${displayName(updated.priority)} by ${input.authorName}`,
+          );
+        }
+        if (updated.dueDate !== current.dueDate) {
+          bodies.push(
+            updated.dueDate === null
+              ? `Due date removed by ${input.authorName}`
+              : `Due date changed to ${updated.dueDate} by ${input.authorName}`,
+          );
+        }
+        if (input.labelIds && labelsChanged(beforeLabelIds, input.labelIds)) {
+          bodies.push(labelChangeBody(store, current.id, input.authorName));
+        }
+        writeSystemComments(store, current.id, input.authorName, bodies);
+        return {
+          task: apiTask(store, updated),
+          systemCommentsWritten: bodies.length,
+        };
+      });
+      const tags = context
+        ? []
+        : [
+            ...(tasksRpcContract.updateTask.invalidates?.(input, {
+              ok: true,
+              task: result.task,
+            }) ?? []),
+          ];
+      if (
+        current.parentTaskId !== result.task.parentTaskId &&
+        current.parentTaskId
+      )
+        tags.push(`subtasks:${current.parentTaskId}`);
+      if (tags.length)
+        bb.rpc.experimental_invalidate([tags[0]!, ...tags.slice(1)]);
+      if (!context && result.systemCommentsWritten > 0) {
+        publishCommentsChanged(bb, result.task.id);
+      }
+      return { ok: true, task: result.task };
     },
     async deleteTask(input) {
       const task = store.tasks.getTask(input.taskId);
@@ -796,7 +852,7 @@ export function registerHandlers(
         nextCursor: page.nextCursor,
       };
     },
-    boardMove(input) {
+    boardMove(input, context) {
       const current = store.tasks.getTask(input.taskId);
       if (!current) throw new Error(`Task not found: ${input.taskId}`);
       const result = store.transaction(() => {
@@ -813,8 +869,13 @@ export function registerHandlers(
         }
         return { task: apiTask(store, moved), statusChanged };
       });
-      publishTasksChanged(bb, result.task.id, result.task.projectId);
-      if (result.statusChanged) publishCommentsChanged(bb, result.task.id);
+      if (!context) {
+        bb.rpc.experimental_invalidate([
+          ...taskRowTags(result.task),
+          ...taskMembershipTags(result.task).map((scope) => `${scope}:status`),
+        ]);
+        if (result.statusChanged) publishCommentsChanged(bb, result.task.id);
+      }
       return { ok: true, task: result.task };
     },
     moveTaskToProject(input) {
@@ -879,9 +940,13 @@ export function registerHandlers(
     },
     async listComments(input) {
       const comments = store.tasks.listComments(input.taskId);
+      const attachments = store.tasks
+        .listAttachmentsForTaskComments(input.taskId)
+        .map(attachmentMetadata);
       const threadInfo = await resolveAgentThreadInfo(bb, comments);
       const providerBadges = await resolveProviderBadges(bb, threadInfo);
       return {
+        attachments,
         comments: comments.map((comment) => {
           const info =
             comment.kind === "agent" && comment.threadId !== null
@@ -918,34 +983,23 @@ export function registerHandlers(
       };
     },
     async deleteAttachment(input) {
-      try {
-        const attachment = await deleteAttachmentById(
-          bb,
-          store.tasks,
-          input.attachmentId,
-          {
-            removeDescriptionReferences: input.removeDescriptionReferences,
-          },
-        );
-        return attachment
-          ? {
-              ok: true,
-              deleted: true,
-              attachment: attachmentMetadata(attachment),
-            }
-          : { ok: true, deleted: false, attachment: null };
-      } catch (error) {
-        if (error instanceof AttachmentReferencedError) {
-          return {
-            ok: false,
-            error: {
-              code: "attachment_referenced",
-              message: error.message,
-            },
-          };
-        }
+      const attachment = await deleteAttachmentById(
+        bb,
+        store.tasks,
+        input.attachmentId,
+        { removeDescriptionReferences: input.removeDescriptionReferences },
+      ).catch((error: unknown) => {
+        if (error instanceof AttachmentReferencedError)
+          fail("conflict", error.message);
         throw error;
-      }
+      });
+      return attachment
+        ? {
+            ok: true,
+            deleted: true,
+            attachment: attachmentMetadata(attachment),
+          }
+        : { ok: true, deleted: false, attachment: null };
     },
     listTaskThreads(input) {
       return { taskThreads: store.tasks.listTaskThreads(input.taskId) };
@@ -1041,5 +1095,39 @@ export function registerHandlers(
 }
 
 export function registerTasksApi(bb: BbPluginApi, store: TasksApiStore): void {
-  bb.rpc.register(tasksRpcContract, registerHandlers(bb, store));
+  stores.set(bb, store);
+  const handlers = registerHandlers(bb, store);
+  const activePullRequests = new Set<string>();
+  bb.rpc.register(tasksRpcContract, {
+    ...handlers,
+    async listTaskPullRequests(input) {
+      const result = await handlers.listTaskPullRequests(input);
+      if (
+        result.pullRequests.some(
+          (pr) => pr.state === "open" || pr.state === "draft",
+        )
+      )
+        activePullRequests.add(input.taskId);
+      else activePullRequests.delete(input.taskId);
+      return result;
+    },
+  });
+  bb.rpc.experimental_whileWatched("listTaskPullRequests", (read, signal) => {
+    if (!("input" in read)) return;
+    const { taskId } = tasksRpcContract.listTaskPullRequests.input.parse(
+      read.input,
+    );
+    const timer = setInterval(() => {
+      if (activePullRequests.has(taskId))
+        bb.rpc.experimental_invalidate([`prs:${taskId}`]);
+    }, 60_000);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearInterval(timer);
+        activePullRequests.delete(taskId);
+      },
+      { once: true },
+    );
+  });
 }

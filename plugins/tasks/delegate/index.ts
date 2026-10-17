@@ -18,7 +18,6 @@ import {
   presetPermissionModeSchema,
   presetReasoningLevelSchema,
   presetServiceTierSchema,
-  type ThreadsChangedEvent,
 } from "../shared/contract";
 import { errorMessage } from "../shared/errors";
 import { truncateToWidth } from "../shared/text-measure";
@@ -273,8 +272,12 @@ export function createSystemComment(
 }
 
 export function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: ThreadsChangedEvent = { taskId };
-  bb.realtime.publish("threads:changed", payload);
+  bb.rpc.experimental_invalidate([
+    `threads:${taskId}`,
+    `prs:${taskId}`,
+    "active-membership",
+    "sidebar",
+  ]);
 }
 
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;

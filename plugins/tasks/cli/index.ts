@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import {
   PluginCliError,
+  experimental_PluginRpcRefusal,
   cliCommand,
   defineCli,
   type BbPluginApi,
@@ -132,6 +133,8 @@ async function guard(
       : result;
   } catch (error) {
     if (error instanceof PluginCliError) throw error;
+    if (error instanceof experimental_PluginRpcRefusal)
+      throw new CliError(error.message, { code: error.code });
     throw new CliError(friendlyError(error));
   }
 }
@@ -141,7 +144,6 @@ function normalizePrefix(value: string): string {
 }
 
 function unwrapTask(result: TaskMutationResult): Task {
-  if (!result.ok) throw new CliError(result.error.message);
   return result.task;
 }
 
@@ -2209,7 +2211,7 @@ export function registerTasksCli(
                   }),
                 ),
               );
-              if (!result.ok) throw new CliError(result.error.message);
+
               if (!result.deleted) {
                 throw new CliError(`attachment not found: ${attachmentId}`, {
                   code: "attachment_not_found",

@@ -28,3 +28,20 @@ export function rpcResponseTags<Input, Output>(
     .parse(declarations.invalidates?.(input, output) ?? []);
   return { tags, keyTags, invalidated };
 }
+
+export function createRpcKeyedProvider(warmMethods: readonly string[]) {
+  const providers = new Map<string, () => Readonly<Record<string, unknown>>>();
+  return {
+    provideKeyed(
+      method: string,
+      values: () => Readonly<Record<string, unknown>>,
+    ) {
+      if (!warmMethods.includes(method)) providers.set(method, values);
+    },
+    entries() {
+      return [...providers].map(
+        ([method, values]) => [method, values()] as const,
+      );
+    },
+  };
+}

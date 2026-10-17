@@ -1,17 +1,19 @@
 import {
+  memo,
   useEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   type Label,
-  type Task,
+  type TaskSummary as Task,
   type TaskStatus,
   type TaskThread,
 } from "../../shared/contract.js";
-import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import { useTaskMutation } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import {
@@ -22,13 +24,7 @@ import {
   visibleBoardStatuses,
 } from "./drop-position.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
-import {
-  EMPTY_META,
-  fetchBoard,
-  patchBoard,
-  type BoardCardMeta,
-  type BoardData,
-} from "./board-data.js";
+import { EMPTY_META, useBoardData, type BoardCardMeta } from "./board-data.js";
 import { STATUS_LABELS } from "../list/lib.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
@@ -81,83 +77,103 @@ function WorkingAgentsChip({ threads }: { threads: TaskThread[] }) {
   );
 }
 
+interface CardActions {
+  cards: Map<string, HTMLDivElement>;
+  open(task: Task): void;
+  pointerDown(event: ReactPointerEvent<HTMLDivElement>, task: Task): void;
+}
+
 interface TaskCardProps {
   task: Task;
   labelsById: Map<string, Label>;
   meta: BoardCardMeta;
   ghost?: boolean;
   dragging?: boolean;
-  cardRef?: (element: HTMLDivElement | null) => void;
-  onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onClick?: () => void;
+  actions?: RefObject<CardActions | null>;
 }
 
-function TaskCard({
-  task,
-  labelsById,
-  meta,
-  ghost = false,
-  dragging = false,
-  cardRef,
-  onPointerDown,
-  onClick,
-}: TaskCardProps) {
-  const labels = task.labelIds
-    .map((labelId) => labelsById.get(labelId))
-    .filter((label): label is Label => label !== undefined);
-  return (
-    <div
-      ref={cardRef}
-      data-task-key={task.key}
-      onPointerDown={onPointerDown}
-      onClick={onClick}
-      className={cn(
-        "shrink-0 rounded-lg border border-border bg-card px-2.5 py-2 shadow-2xs select-none",
-        ghost
-          ? "rotate-2 shadow-md"
-          : "cursor-pointer touch-none hover:border-input",
-        dragging && "opacity-40",
-      )}
-    >
-      <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-        <span className="tabular-nums">{task.key}</span>
-        <WorkingAgentsChip threads={meta.workingThreads} />
-      </div>
-      <div className="mt-1 line-clamp-2 text-sm leading-snug font-medium">
-        {task.title}
-      </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <PriorityIcon priority={task.priority} />
-        {labels.map((label) => (
-          <span
-            key={label.id}
-            className="flex items-center gap-1 rounded-md border border-border px-1.5 text-2xs text-muted-foreground"
-          >
+const TaskCard = memo(
+  function TaskCard({
+    task,
+    labelsById,
+    meta,
+    ghost = false,
+    dragging = false,
+    actions,
+  }: TaskCardProps) {
+    const labels = task.labelIds
+      .map((labelId) => labelsById.get(labelId))
+      .filter((label): label is Label => label !== undefined);
+    return (
+      <div
+        ref={(element) => {
+          if (element) actions?.current?.cards.set(task.id, element);
+          else actions?.current?.cards.delete(task.id);
+        }}
+        data-task-key={task.key}
+        onPointerDown={(event) => actions?.current?.pointerDown(event, task)}
+        onClick={() => actions?.current?.open(task)}
+        className={cn(
+          "shrink-0 rounded-lg border border-border bg-card px-2.5 py-2 shadow-2xs select-none",
+          ghost
+            ? "rotate-2 shadow-md"
+            : "cursor-pointer touch-none hover:border-input",
+          dragging && "opacity-40",
+        )}
+      >
+        <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+          <span className="tabular-nums">{task.key}</span>
+          <WorkingAgentsChip threads={meta.workingThreads} />
+        </div>
+        <div className="mt-1 line-clamp-2 text-sm leading-snug font-medium">
+          {task.title}
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <PriorityIcon priority={task.priority} />
+          {labels.map((label) => (
             <span
-              aria-hidden
-              className="size-1.5 rounded-full"
-              style={{ backgroundColor: label.color }}
+              key={label.id}
+              className="flex items-center gap-1 rounded-md border border-border px-1.5 text-2xs text-muted-foreground"
+            >
+              <span
+                aria-hidden
+                className="size-1.5 rounded-full"
+                style={{ backgroundColor: label.color }}
+              />
+              {label.name}
+            </span>
+          ))}
+          {meta.subTotal > 0 ? (
+            <span className="flex items-center gap-0.5 text-2xs text-muted-foreground">
+              <Icon name="GitBranch" className="size-3" />
+              {meta.subDone}/{meta.subTotal}
+            </span>
+          ) : null}
+          {meta.attachmentCount > 0 ? (
+            <Icon
+              name="Paperclip"
+              className="size-3 text-muted-foreground"
+              aria-label={`${meta.attachmentCount} attachments`}
             />
-            {label.name}
-          </span>
-        ))}
-        {meta.subTotal > 0 ? (
-          <span className="flex items-center gap-0.5 text-2xs text-muted-foreground">
-            <Icon name="GitBranch" className="size-3" />
-            {meta.subDone}/{meta.subTotal}
-          </span>
-        ) : null}
-        {meta.attachmentCount > 0 ? (
-          <Icon
-            name="Paperclip"
-            className="size-3 text-muted-foreground"
-            aria-label={`${meta.attachmentCount} attachments`}
-          />
-        ) : null}
+          ) : null}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  },
+  (previous, next) =>
+    previous.actions === next.actions &&
+    previous.task === next.task &&
+    previous.labelsById === next.labelsById &&
+    previous.ghost === next.ghost &&
+    previous.dragging === next.dragging &&
+    previous.meta.attachmentCount === next.meta.attachmentCount &&
+    previous.meta.subDone === next.meta.subDone &&
+    previous.meta.subTotal === next.meta.subTotal &&
+    previous.meta.workingThreads.length === next.meta.workingThreads.length &&
+    previous.meta.workingThreads.every(
+      (thread, index) => thread === next.meta.workingThreads[index],
+    ),
+);
 
 function BoardSkeleton() {
   return (
@@ -184,17 +200,9 @@ interface BoardViewProps {
 }
 
 export function BoardView({ projectId }: BoardViewProps) {
-  const rpc = useTasksRpc();
+  const boardMoveMutation = useTaskMutation("boardMove");
   const navigation = useTasksNavigation();
-  const board = useTasksQuery<BoardData>(
-    (queryRpc) => fetchBoard(queryRpc, projectId),
-    ["tasks:changed", "projects:changed", "threads:changed"],
-    [projectId],
-    {
-      applySignals: (queryRpc, current, signals) =>
-        patchBoard(queryRpc, projectId, current, signals),
-    },
-  );
+  const board = useBoardData(projectId);
 
   const [columns, setColumns] = useState<ColumnMap | undefined>(undefined);
   useEffect(() => {
@@ -211,6 +219,7 @@ export function BoardView({ projectId }: BoardViewProps) {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const columnRefs = useRef(new Map<TaskStatus, HTMLDivElement>());
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  const actions = useRef<CardActions | null>(null);
   const suppressClickRef = useRef(false);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => dragCleanupRef.current?.(), []);
@@ -263,20 +272,13 @@ export function BoardView({ projectId }: BoardViewProps) {
       dropIndex,
     );
     setColumns(applyBoardMove(current, taskId, toStatus, dropIndex));
-    void rpc
-      .call("boardMove", {
-        taskId,
-        status: toStatus,
-        beforeTaskId: neighbors.beforeTaskId,
-        afterTaskId: neighbors.afterTaskId,
-        authorName: "You",
-      })
-      .then(
-        (result) => {
-          if (!result.ok) board.refresh();
-        },
-        () => board.refresh(),
-      );
+    void boardMoveMutation({
+      taskId,
+      status: toStatus,
+      beforeTaskId: neighbors.beforeTaskId,
+      afterTaskId: neighbors.afterTaskId,
+      authorName: "You",
+    }).catch(() => board.refresh());
   };
 
   const handleCardPointerDown = (
@@ -360,11 +362,17 @@ export function BoardView({ projectId }: BoardViewProps) {
     navigation.go({ kind: "task", taskKey: task.key });
   };
 
+  actions.current = {
+    cards: cardRefs.current,
+    open: openTask,
+    pointerDown: handleCardPointerDown,
+  };
+
   if (columns === undefined) {
     if (board.error) {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
-          <p>Failed to load the board: {board.error}</p>
+          <p role="alert">Failed to load the board: {board.error}</p>
           <Button variant="outline" size="sm" onClick={board.refresh}>
             Retry
           </Button>
@@ -408,12 +416,7 @@ export function BoardView({ projectId }: BoardViewProps) {
           labelsById={labelsById}
           meta={metaByTaskId.get(task.id) ?? EMPTY_META}
           dragging={drag?.taskId === task.id}
-          cardRef={(element) => {
-            if (element) cardRefs.current.set(task.id, element);
-            else cardRefs.current.delete(task.id);
-          }}
-          onPointerDown={(event) => handleCardPointerDown(event, task)}
-          onClick={() => openTask(task)}
+          actions={actions}
         />,
       );
     }
@@ -463,6 +466,17 @@ export function BoardView({ projectId }: BoardViewProps) {
         drag !== null && "cursor-grabbing",
       )}
     >
+      {board.error ? (
+        <div
+          role="alert"
+          className="flex items-center gap-2 p-3 text-sm text-destructive"
+        >
+          Failed to load the board: {board.error}
+          <Button size="sm" variant="outline" onClick={board.refresh}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       {visibleBoardStatuses(columns).map(renderColumn)}
       {drag && ghostTask ? (
         <div

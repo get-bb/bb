@@ -5,6 +5,23 @@ export interface DescriptionSaveOutcome {
   errorMessage?: string;
 }
 
+export async function saveDescriptionMutation(
+  write: () => Promise<void>,
+): Promise<DescriptionSaveOutcome> {
+  try {
+    await write();
+    return { ok: true };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "conflict" || error.code === "invalid")
+    )
+      return { ok: false, errorMessage: error.message };
+    throw error;
+  }
+}
+
 interface DescriptionSaverOptions {
   save(taskId: string, markdown: string): Promise<DescriptionSaveOutcome>;
   onError(message: string): void;

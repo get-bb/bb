@@ -1,7 +1,8 @@
+import { useTaskMutation, useTaskUpdateMutation } from "../../shell/data.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Label, Task } from "../../shared/contract.js";
+import type { Label, TaskSummary as Task } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
-import { useProjects, useTasksRpc } from "../../shell/data.js";
+import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
@@ -36,8 +37,7 @@ import {
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
-import { editedTasks, matchesFilters } from "./optimistic.js";
-import { useListTaskEdits } from "./use-task-edits.js";
+import { matchesFilters, type TaskEdit } from "../../shared/task-edit.js";
 import { TaskRow } from "./row.js";
 import { rowWindows, useRowWindowViewport } from "./row-window.js";
 
@@ -71,7 +71,7 @@ function LoadingRows() {
 
 export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const navigation = useTasksNavigation();
-  const rpc = useTasksRpc();
+  const moveTaskToProjectMutation = useTaskMutation("moveTaskToProject");
   const openTask = useCallback(
     (taskKey: string) => navigation.go({ kind: "task", taskKey }),
     [navigation],
@@ -126,8 +126,22 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     priorities: filters.priorities,
     labelIds,
   });
+  const {
+    mutate: updateTask,
+    isPending: updatingTask,
+    pendingInputs,
+  } = useTaskUpdateMutation(
+    (taskId) => tasksQuery.data?.find((task) => task.id === taskId)?.key,
+  );
+  const editTask = useCallback(
+    (task: Task, patch: TaskEdit) => {
+      void updateTask({ taskId: task.id, ...patch }).catch((error: unknown) =>
+        push(errorMessage(error)),
+      );
+    },
+    [updateTask, push],
+  );
   const meta = useTaskListMeta(projectId);
-  const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
 
   const labelsById = useMemo(
     () => new Map((labels.data ?? []).map((label) => [label.id, label])),
@@ -144,19 +158,12 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   }, [labels.data]);
   const moveToProject = useCallback(
     (task: Task, targetProjectId: string) => {
-      rpc
-        .call("moveTaskToProject", {
-          taskId: task.id,
-          projectId: targetProjectId,
-        })
-        .then(
-          (result) => {
-            if (!result.ok) push(result.error.message);
-          },
-          (error: unknown) => push(errorMessage(error)),
-        );
+      moveTaskToProjectMutation({
+        taskId: task.id,
+        projectId: targetProjectId,
+      }).catch((error: unknown) => push(errorMessage(error)));
     },
-    [rpc, push],
+    [moveTaskToProjectMutation, push],
   );
   const projectsById = useMemo(
     () =>
@@ -166,7 +173,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
-    return editedTasks(tasksQuery.data, edits.entries).filter((task) =>
+    return tasksQuery.data.filter((task) =>
       matchesFilters(
         task,
         filters.statuses,
@@ -174,13 +181,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         labelIds ?? [],
       ),
     );
-  }, [
-    tasksQuery.data,
-    edits.entries,
-    filters.statuses,
-    filters.priorities,
-    labelIds,
-  ]);
+  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds]);
   const groups = useMemo(
     () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
     [displayTasks, sort],
@@ -196,17 +197,6 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   useEffect(() => {
     if (!tasksQuery.isLoading) settledScope.current = scopeKey;
   }, [scopeKey, tasksQuery.isLoading, tasksQuery.data]);
-  const routeScope = `${projectId ?? "-"}/${activeOnly}`;
-  const [settledRouteScope, setSettledRouteScope] = useState(routeScope);
-  const routeScopeChanged = settledRouteScope !== routeScope;
-  const previousRouteScope = useRef(routeScope);
-  useEffect(() => {
-    const routeScopeJustChanged = previousRouteScope.current !== routeScope;
-    previousRouteScope.current = routeScope;
-    if (!routeScopeJustChanged && !tasksQuery.isLoading) {
-      setSettledRouteScope(routeScope);
-    }
-  }, [routeScope, tasksQuery.isLoading, tasksQuery.data]);
   useListScrollRestoration(scrollRef, scopeKey, {
     contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
     loading: tasksQuery.isLoading || scopeChanged,
@@ -223,17 +213,18 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   });
 
   let body: React.ReactNode;
-  if (
-    routeScopeChanged ||
-    tasksQuery.data === undefined ||
-    displayTasks === undefined
-  ) {
+  if (tasksQuery.data === undefined || displayTasks === undefined) {
     body =
-      !routeScopeChanged && tasksQuery.error !== null ? (
+      tasksQuery.error !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"
           description={tasksQuery.error}
+          action={
+            <Button variant="outline" size="sm" onClick={tasksQuery.refresh}>
+              Retry
+            </Button>
+          }
         />
       ) : (
         <LoadingRows />
@@ -302,6 +293,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             <TaskRow
               key={task.id}
               task={task}
+              pending={
+                updatingTask &&
+                pendingInputs.some((input) => input.taskId === task.id)
+              }
               meta={meta.data?.get(task.id)}
               project={projectsById.get(task.projectId)}
               showProject={showProject}
@@ -309,9 +304,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               projectLabels={labelsByProject.get(task.projectId) ?? NO_LABELS}
               projects={projects.data ?? []}
               onMoveToProject={moveToProject}
-              onEdit={edits.edit}
+              onEdit={editTask}
               onOpen={openTask}
-              pending={edits.pending.has(task.id)}
             />
           ))}
           {hiddenBelow > 0 ? (
@@ -324,6 +318,17 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {tasksQuery.error && displayTasks !== undefined ? (
+        <div
+          role="alert"
+          className="flex items-center gap-2 p-3 text-sm text-destructive"
+        >
+          {tasksQuery.error}
+          <Button size="sm" variant="outline" onClick={tasksQuery.refresh}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <ListFilterBar
         filters={filters}
         onChange={setFilters}
@@ -334,6 +339,9 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       />
       <div
         ref={scrollRef}
+        role="region"
+        aria-label="Tasks"
+        aria-busy={updatingTask || undefined}
         className="min-h-0 flex-1 overflow-y-auto @container"
       >
         {body}

@@ -151,6 +151,11 @@ export type ExperimentalPluginRpcCaller =
 /** Second argument of every rpc handler. */
 export interface ExperimentalPluginRpcHandlerContext {
   readonly experimental_caller: ExperimentalPluginRpcCaller;
+  /** Lazily seed a registered keyed method only for a cold client cache. */
+  provideKeyed(
+    method: string,
+    values: () => Readonly<Record<string, unknown>>,
+  ): void;
 }
 
 export type PluginRpcHandlers<Contract extends PluginRpcContract> = {

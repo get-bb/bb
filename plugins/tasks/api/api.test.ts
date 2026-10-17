@@ -67,17 +67,10 @@ describe("Tasks RPC domain API", () => {
         expect(responseReturned).toBe(true);
         const { comment } = await response;
         expect(comment.notifiedCount).toBe(0);
-        expect(harness.realtimeSignals).toEqual([
-          { channel: "comments:changed", payload: { taskId: task.id } },
-        ]);
         releaseDelivery();
         await expect
           .poll(() => store.tasks.getComment(comment.id)?.notifiedCount)
           .toBe(1);
-        expect(harness.realtimeSignals).toEqual([
-          { channel: "comments:changed", payload: { taskId: task.id } },
-          { channel: "comments:changed", payload: { taskId: task.id } },
-        ]);
       } finally {
         releaseDelivery();
         await response;
@@ -125,7 +118,6 @@ describe("Tasks RPC domain API", () => {
         }),
       );
       expect(comment.notifiedCount).toBe(0);
-      await expect.poll(() => harness.realtimeSignals.length).toBe(2);
       expect(store.tasks.getComment(comment.id)).toMatchObject({
         body: "New context",
         notifiedCount: 0,
@@ -164,21 +156,15 @@ describe("Tasks RPC domain API", () => {
     store.tasks.updateTask(task.id, {
       description: `![diagram](${attachmentDownloadUrl(attachmentId)})`,
     });
-    const signalsBeforeConflict = harness.realtimeSignals.length;
 
-    const conflict = tasksRpcContract.deleteAttachment.output.parse(
-      await harness.callRpc("deleteAttachment", { attachmentId }),
-    );
-    expect(conflict).toEqual({
-      ok: false,
-      error: {
-        code: "attachment_referenced",
-        message:
-          'Attachment "diagram.png" is used in the task description. Remove it from the description before deleting the attachment.',
-      },
+    await expect(
+      harness.callRpc("deleteAttachment", { attachmentId }),
+    ).rejects.toMatchObject({
+      code: "conflict",
+      message:
+        'Attachment "diagram.png" is used in the task description. Remove it from the description before deleting the attachment.',
     });
     expect(store.tasks.getAttachment(attachmentId)).toBeDefined();
-    expect(harness.realtimeSignals).toHaveLength(signalsBeforeConflict);
 
     const deleted = tasksRpcContract.deleteAttachment.output.parse(
       await harness.callRpc("deleteAttachment", {
@@ -193,10 +179,6 @@ describe("Tasks RPC domain API", () => {
     });
     expect(store.tasks.getAttachment(attachmentId)).toBeUndefined();
     expect(store.tasks.getTask(task.id)?.description).toBe("");
-    expect(harness.realtimeSignals.at(-1)).toEqual({
-      channel: "tasks:changed",
-      payload: { taskId: task.id, projectId: project.id },
-    });
 
     await expect(
       harness.callRpc("deleteAttachment", { attachmentId }),
@@ -269,10 +251,6 @@ describe("Tasks RPC domain API", () => {
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [expect.objectContaining({ threadId: "thr_two" })],
     ]);
-    expect(harness.realtimeSignals.at(-1)).toEqual({
-      channel: "comments:changed",
-      payload: { taskId: task.id },
-    });
     await harness.dispose();
   });
 
@@ -697,16 +675,6 @@ describe("Tasks RPC domain API", () => {
     expect(quietResult.comment.notifiedCount).toBe(0);
     expect(agentComment.notifiedCount).toBe(0);
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
-    expect(harness.realtimeSignals.slice(-2)).toEqual([
-      {
-        channel: "comments:changed",
-        payload: { taskId: task.id },
-      },
-      {
-        channel: "comments:changed",
-        payload: { taskId: task.id },
-      },
-    ]);
     await harness.dispose();
   });
 
@@ -916,16 +884,6 @@ describe("Tasks RPC domain API", () => {
         harness.callRpc("deleteTask", { taskId: parent.id }),
       ).resolves.toEqual({ deleted: true });
       expect(store.tasks.getTask(child.id)?.parentTaskId).toBeNull();
-      expect(harness.realtimeSignals).toEqual([
-        {
-          channel: "tasks:changed",
-          payload: { taskId: parent.id, projectId: project.id },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: child.id, projectId: project.id },
-        },
-      ]);
     } finally {
       await harness.dispose();
     }
@@ -1008,7 +966,6 @@ describe("Tasks RPC domain API", () => {
       }),
     );
     expect(createResult.ok).toBe(true);
-    if (!createResult.ok) throw new Error(createResult.error.message);
 
     const updateResult = tasksRpcContract.updateTask.output.parse(
       await harness.callRpc("updateTask", {
@@ -1121,30 +1078,11 @@ describe("Tasks RPC domain API", () => {
     });
     await expect(
       harness.callRpc("deleteProject", { projectId: project.id }),
-    ).resolves.toEqual({
-      ok: false,
-      error: {
-        code: "project_not_empty",
-        message:
-          "A project must be empty before it can be deleted; pass force: true to delete its tasks",
-      },
+    ).rejects.toMatchObject({
+      code: "conflict",
+      message:
+        "A project must be empty before it can be deleted; pass force: true to delete its tasks",
     });
-    expect(harness.realtimeSignals).toEqual(
-      expect.arrayContaining([
-        {
-          channel: "projects:changed",
-          payload: { projectId: project.id },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: createResult.task.id, projectId: project.id },
-        },
-        {
-          channel: "comments:changed",
-          payload: { taskId: createResult.task.id },
-        },
-      ]),
-    );
 
     await expect(
       harness.callRpc("updateProject", {
@@ -1256,7 +1194,7 @@ describe("Tasks RPC domain API", () => {
         authorName: "Jem",
       }),
     );
-    if (!result.ok) throw new Error(result.error.message);
+
     expect(result.task).toMatchObject({
       id: parent.id,
       projectId: home.id,
@@ -1304,18 +1242,6 @@ describe("Tasks RPC domain API", () => {
       kind: "system",
       body: "Moved from OPS-2 to HOME-4 by Jem",
     });
-    expect(harness.realtimeSignals).toEqual(
-      expect.arrayContaining([
-        {
-          channel: "tasks:changed",
-          payload: { taskId: parent.id, projectId: ops.id },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: parent.id, projectId: home.id },
-        },
-      ]),
-    );
     await harness.dispose();
   });
 
@@ -1354,8 +1280,6 @@ describe("Tasks RPC domain API", () => {
       task: { key: "HOME-1", parentTaskId: null },
     });
     expect(store.tasks.listSubtasks(parent.id)).toEqual([]);
-
-    const signalsBeforeNoop = harness.realtimeSignals.length;
     const noop = tasksRpcContract.moveTaskToProject.output.parse(
       await harness.callRpc("moveTaskToProject", {
         taskId: child.id,
@@ -1363,7 +1287,6 @@ describe("Tasks RPC domain API", () => {
       }),
     );
     expect(noop).toMatchObject({ ok: true, task: { key: "HOME-1" } });
-    expect(harness.realtimeSignals).toHaveLength(signalsBeforeNoop);
 
     store.tasks.updateProject(ops.id, { prefix: "OPX" });
     const reused = store.tasks.createProject({
@@ -1407,7 +1330,7 @@ describe("Tasks RPC domain API", () => {
         title: "Parent",
       }),
     );
-    if (!parentResult.ok) throw new Error(parentResult.error.message);
+
     const childResult = tasksRpcContract.createTask.output.parse(
       await harness.callRpc("createTask", {
         projectId: projectResult.project.id,
@@ -1415,7 +1338,6 @@ describe("Tasks RPC domain API", () => {
         parentTaskId: parentResult.task.id,
       }),
     );
-    if (!childResult.ok) throw new Error(childResult.error.message);
 
     await expect(
       harness.callRpc("createTask", {
@@ -1423,12 +1345,9 @@ describe("Tasks RPC domain API", () => {
         title: "Grandchild",
         parentTaskId: childResult.task.id,
       }),
-    ).resolves.toEqual({
-      ok: false,
-      error: {
-        code: "subtask_depth_exceeded",
-        message: "Tasks support at most one level of sub-tasks",
-      },
+    ).rejects.toMatchObject({
+      code: "invalid",
+      message: "Tasks support at most one level of sub-tasks",
     });
 
     await harness.dispose();

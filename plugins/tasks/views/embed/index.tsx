@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   PluginMessageDirectiveProps,
   PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk";
-import { useBbNavigate, useRealtime } from "@get-bb/plugin-sdk/app";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "../../shared/contract.js";
-import { useTasksRpc } from "../../shell/data.js";
-import { TasksRefreshProvider } from "../../shell/refresh.js";
+import { useTaskRead } from "../../shell/data.js";
 import { PANEL_PATH, tasksRouteToSubPath } from "../../shell/routes.js";
 import { DetailView } from "../detail/index.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
@@ -25,53 +23,23 @@ type TaskEmbedState =
 
 function useTaskEmbed(taskKey: string): {
   state: TaskEmbedState;
-  retry: () => void;
+  retry(): void;
+  error: string | null;
 } {
-  const rpc = useTasksRpc();
-  const [state, setState] = useState<TaskEmbedState>({ kind: "loading" });
-  const seqRef = useRef(0);
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  const refresh = useCallback(() => {
-    if (taskKey === "") return;
-    const seq = ++seqRef.current;
-    rpc.call("getTaskByKey", { taskKey }).then(
-      ({ task }) => {
-        if (seq !== seqRef.current) return;
-        setState(task ? { kind: "found", task } : { kind: "not_found" });
-      },
-      () => {
-        if (seq !== seqRef.current) return;
-        setState({ kind: "error" });
-      },
-    );
-  }, [rpc, taskKey]);
-
-  useEffect(() => {
-    setState({ kind: "loading" });
-    refresh();
-  }, [refresh]);
-
-  const onEvent = useCallback(
-    (matches: (task: Task) => boolean) => {
-      const current = stateRef.current;
-      if (current.kind !== "found" || matches(current.task)) refresh();
-    },
-    [refresh],
+  const query = useTaskRead(
+    "getTaskByKey",
+    { taskKey },
+    (value) => value.task,
+    taskKey !== "",
   );
-  useRealtime("tasks:changed", (payload) => {
-    const taskId = isRecord(payload) ? payload.taskId : undefined;
-    onEvent((task) => typeof taskId !== "string" || taskId === task.id);
-  });
-  useRealtime("projects:changed", (payload) => {
-    const projectId = isRecord(payload) ? payload.projectId : undefined;
-    onEvent(
-      (task) => typeof projectId !== "string" || projectId === task.projectId,
-    );
-  });
-
-  return { state, retry: refresh };
+  const state: TaskEmbedState = query.data
+    ? { kind: "found", task: query.data }
+    : query.data === null
+      ? { kind: "not_found" }
+      : query.error
+        ? { kind: "error" }
+        : { kind: "loading" };
+  return { state, retry: query.refresh, error: query.error };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -144,7 +112,7 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   const taskKey = attributes.key?.trim() ?? "";
   const fallbackTitle = attributes.title?.trim() || null;
   const validKey = TASK_KEY_PATTERN.test(taskKey);
-  const { state, retry } = useTaskEmbed(validKey ? taskKey : "");
+  const { state, retry, error } = useTaskEmbed(validKey ? taskKey : "");
 
   if (!validKey) {
     return (
@@ -192,6 +160,16 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
               : "Task not found — deleted, or its key changed"}
           </span>
         </div>
+        {error ? (
+          <>
+            <span role="alert" className="truncate text-xs text-destructive">
+              {error}
+            </span>
+            <Button variant="ghost" size="sm" onClick={retry}>
+              Retry
+            </Button>
+          </>
+        ) : null}
         <OpenInTasksButton label="Open Tasks" />
       </CardShell>
     );
@@ -262,6 +240,16 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
           </span>
         ) : null}
       </button>
+      {error ? (
+        <span role="alert" className="truncate text-xs text-destructive">
+          {error}
+        </span>
+      ) : null}
+      {error ? (
+        <Button variant="ghost" size="sm" onClick={retry} aria-label="Retry">
+          Retry
+        </Button>
+      ) : null}
       <OpenInTasksButton
         label={`Open ${task.key} in Tasks`}
         subPath={taskDetailSubPath(task.key)}
@@ -302,8 +290,8 @@ function TaskEmbedPanelContent({ params }: PluginThreadPanelProps) {
 
 export function TaskEmbedPanel(props: PluginThreadPanelProps) {
   return (
-    <TasksRefreshProvider>
+    <>
       <TaskEmbedPanelContent {...props} />
-    </TasksRefreshProvider>
+    </>
   );
 }

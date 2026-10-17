@@ -31,7 +31,7 @@ async function createTask(
   const result = tasksRpcContract.createTask.output.parse(
     await domain.createTask(parsed),
   );
-  if (!result.ok) throw new Error(result.error.message);
+
   return result.task;
 }
 

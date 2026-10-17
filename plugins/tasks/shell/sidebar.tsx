@@ -4,13 +4,12 @@ import type {
   Preset,
   Project,
   SidebarProjectSummary,
-  Task,
+  TaskSummary as Task,
 } from "../shared/contract.js";
-import { useTasksRpc } from "./data.js";
 import type { TasksRoute } from "./routes.js";
 import {
   PresetDialog,
-  savePresetDraft,
+  useSavePresetDraft,
 } from "../views/manage/preset-dialog.js";
 import { Icon } from "@/components/ui/icon";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
@@ -181,7 +180,7 @@ export function TasksSidebar({
   const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(
     new Set(),
   );
-  const rpc = useTasksRpc();
+  const savePreset = useSavePresetDraft();
   const [presetDialog, setPresetDialog] = useState<{
     key: number;
     editing: Preset | null;
@@ -368,7 +367,7 @@ export function TasksSidebar({
             if (!open) setPresetDialog(null);
           }}
           editing={presetDialog.editing}
-          onSave={(draft) => savePresetDraft(rpc, presetDialog.editing, draft)}
+          onSave={(draft) => savePreset(presetDialog.editing, draft)}
         />
       ) : null}
     </div>

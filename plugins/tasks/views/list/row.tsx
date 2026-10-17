@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import type {
   Label,
   Project,
-  Task,
+  TaskSummary as Task,
   TaskThread,
 } from "../../shared/contract.js";
 import { Icon } from "@/components/ui/icon";
@@ -91,6 +91,7 @@ function LabelChips({
 
 interface TaskRowProps {
   task: Task;
+  pending: boolean;
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -100,11 +101,11 @@ interface TaskRowProps {
   onEdit: EditFn;
   onMoveToProject: (task: Task, projectId: string) => void;
   onOpen: (taskKey: string) => void;
-  pending: boolean;
 }
 
 export const TaskRow = memo(function TaskRow({
   task,
+  pending,
   meta,
   project,
   showProject,
@@ -114,7 +115,6 @@ export const TaskRow = memo(function TaskRow({
   onEdit,
   onMoveToProject,
   onOpen,
-  pending,
 }: TaskRowProps) {
   const [openMenu, setOpenMenu] = useState<"status" | "priority" | null>(null);
 

@@ -1,4 +1,8 @@
-import { rpcInvalidationTags, rpcResponseTags } from "../internal/rpc-tags.js";
+import {
+  createRpcKeyedProvider,
+  rpcInvalidationTags,
+  rpcResponseTags,
+} from "../internal/rpc-tags.js";
 import type { ContractTagDeclarations } from "@bb/domain";
 import {
   environmentCompositionSchema,
@@ -869,13 +873,13 @@ function createFakePluginHostInternal(
     },
     experimental_invalidate(tags) {
       assertLive();
-      for (const listener of invalidationListeners) listener();
       rpcInvalidations.push(rpcInvalidationTags.parse(tags));
+      for (const listener of invalidationListeners) listener();
     },
     experimental_invalidateAll() {
       assertLive();
-      for (const listener of invalidationListeners) listener();
       rpcInvalidations.push(null);
+      for (const listener of invalidationListeners) listener();
     },
     register(contract, handlers, registrationOptions) {
       assertLive();
@@ -1826,9 +1830,11 @@ function createFakePluginHostInternal(
         "input",
         throwRpcError,
       );
+      const provider = createRpcKeyedProvider([]);
       let result: unknown;
       try {
         result = await record.handler(validatedInput as never, {
+          provideKeyed: provider.provideKeyed,
           experimental_caller: options.experimental_caller ?? {
             kind: "client",
           },
@@ -1847,6 +1853,17 @@ function createFakePluginHostInternal(
         "output",
         throwRpcError,
       );
+      for (const [method, values] of provider.entries()) {
+        const target = rpcHandlers.get(method);
+        if (!target) throw new Error(`Unknown keyed method ${method}`);
+        const validated = await validateRpcValue(
+          target.outputSchema,
+          values,
+          "output",
+          throwRpcError,
+        );
+        normalizeRpcJsonResult(validated, throwRpcError);
+      }
       const jsonResult = normalizeRpcJsonResult(validatedOutput, throwRpcError);
       const { invalidated } = rpcResponseTags(
         record.declarations,

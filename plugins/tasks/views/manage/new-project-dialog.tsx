@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   useFolders,
   useProjects,
-  useTasksQuery,
-  useTasksRpc,
+  useTaskRead,
+  useTaskMutation,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { PROJECT_PREFIX_PATTERN } from "../../shared/contract.js";
@@ -48,7 +48,8 @@ export function NewProjectDialog({
   open,
   onOpenChange,
 }: NewProjectDialogProps) {
-  const rpc = useTasksRpc();
+  const createFolderMutation = useTaskMutation("createFolder");
+  const createProjectMutation = useTaskMutation("createProject");
   const navigation = useTasksNavigation();
   const projects = useProjects();
   const folders = useFolders();
@@ -66,9 +67,10 @@ export function NewProjectDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bbProjects = useTasksQuery(
-    async (rpc) => (await rpc.call("listBbProjects")).bbProjects,
-    [],
+  const bbProjects = useTaskRead(
+    "listBbProjects",
+    null,
+    (value) => value.bbProjects,
   );
   const bbProjectList = bbProjects.data ?? [];
 
@@ -117,7 +119,7 @@ export function NewProjectDialog({
     if (trimmed === "") return;
     setError(null);
     try {
-      const { folder } = await rpc.call("createFolder", {
+      const { folder } = await createFolderMutation({
         name: trimmed,
         parentFolderId: null,
       });
@@ -134,7 +136,7 @@ export function NewProjectDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const { project } = await rpc.call("createProject", {
+      const { project } = await createProjectMutation({
         name: name.trim(),
         prefix,
         color,

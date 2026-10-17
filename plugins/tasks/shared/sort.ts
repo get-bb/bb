@@ -1,4 +1,4 @@
-import { TASK_PRIORITIES, type Task } from "./contract.js";
+import { TASK_PRIORITIES, type TaskSummary as Task } from "./contract.js";
 import type { TaskSort } from "./pagination.js";
 
 const PRIORITY_RANK = new Map<Task["priority"], number>(
@@ -18,8 +18,18 @@ function byDueDate(a: Task, b: Task): number {
   return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
 }
 
-export function sortTasks(tasks: readonly Task[], sort: TaskSort): Task[] {
-  if (sort === "manual") return [...tasks];
+export function sortTasks<T extends Task>(
+  tasks: readonly T[],
+  sort: TaskSort,
+): T[] {
+  if (sort === "manual")
+    return [...tasks].sort(
+      (a, b) =>
+        a.projectId.localeCompare(b.projectId) ||
+        a.status.localeCompare(b.status) ||
+        a.position - b.position ||
+        a.id.localeCompare(b.id),
+    );
   const [primary, secondary] =
     sort === "priority" ? [byPriority, byDueDate] : [byDueDate, byPriority];
   return [...tasks].sort((a, b) => primary(a, b) || secondary(a, b));

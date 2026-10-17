@@ -1,3 +1,4 @@
+import { RefreshError } from "../../components/refresh-error.js";
 import { useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
@@ -17,8 +18,8 @@ import { TasksEditor } from "../../editor/tasks-editor.js";
 import { experimental_saveFile, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import {
   useMentionItems,
-  useTasksQuery,
-  useTasksRpc,
+  useTaskRead,
+  useTaskMutation,
 } from "../../shell/data.js";
 import { Lightbox } from "../detail/attachments.js";
 import {
@@ -71,17 +72,8 @@ export function activityFeedEntries(
 }
 
 function useActivityFeed(taskId: string) {
-  return useTasksQuery<FeedEntry[]>(
-    async (rpc) => {
-      const [{ comments }, { attachments }] = await Promise.all([
-        rpc.call("listComments", { taskId }),
-        rpc.call("listAttachments", { commentsOfTaskId: taskId }),
-      ]);
-      return activityFeedEntries(comments, attachments);
-    },
-    ["comments:changed", "tasks:changed"],
-    [taskId],
-    { relevantTaskIds: [taskId] },
+  return useTaskRead("listComments", { taskId }, ({ comments, attachments }) =>
+    activityFeedEntries(comments, attachments),
   );
 }
 
@@ -302,7 +294,7 @@ interface ComposerProps {
 }
 
 export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
-  const rpc = useTasksRpc();
+  const createCommentMutation = useTaskMutation("createComment");
   const navigate = useBbNavigate();
   const mentionItems = useMentionItems();
   const [body, setBody] = useState("");
@@ -331,7 +323,7 @@ export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
     const text = body.trim();
     try {
       const comment: Comment = (
-        await rpc.call("createComment", {
+        await createCommentMutation({
           taskId,
           body: text,
           notify: notify && notificationTarget.kind === "ready",
@@ -506,7 +498,7 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
         )}
       >
         {feed.error ? (
-          <div className="text-xs text-destructive">{feed.error}</div>
+          <RefreshError message={feed.error} onRetry={feed.refresh} />
         ) : null}
         {entries.length === 0 && !feed.isLoading && !feed.error ? (
           <div className="text-xs text-muted-foreground">No activity yet.</div>

@@ -476,10 +476,14 @@ export function publishAttachmentChanged(
     bb.log.warn(`failed to publish attachment change ${attachment.id}`);
     return;
   }
-  bb.realtime.publish("tasks:changed", {
-    taskId: task.id,
-    projectId: task.projectId,
-  });
+  bb.rpc.experimental_invalidate([
+    `task:${task.id}`,
+    `attachments:${task.id}`,
+    `comments:${task.id}`,
+    ...(attachment.commentId
+      ? [`comment-attachments:${attachment.commentId}`]
+      : []),
+  ]);
 }
 
 export function registerAttachments(

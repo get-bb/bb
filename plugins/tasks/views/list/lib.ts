@@ -1,7 +1,7 @@
 import {
   TASK_STATUSES,
   type Label,
-  type Task,
+  type TaskSummary as Task,
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";

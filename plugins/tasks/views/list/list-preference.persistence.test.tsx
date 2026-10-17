@@ -1,3 +1,4 @@
+import { liveTaskRpcFixtures } from "../../test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -179,7 +180,7 @@ function renderProject(projectId: string) {
   return renderSlot(
     app.navPanels[0]!,
     { subPath: projectId },
-    { rpc: baseRpc() },
+    { rpc: liveTaskRpcFixtures(baseRpc()) },
   );
 }
 
@@ -200,7 +201,7 @@ describe("list filter/sort preference persistence", () => {
     const slot = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await slot.findByText("ALP-1");
 
@@ -228,7 +229,7 @@ describe("list filter/sort preference persistence", () => {
     const remounted = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await remounted.findByText("ALP-3");
     expect(
@@ -247,7 +248,7 @@ describe("list filter/sort preference persistence", () => {
     const slotA = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await slotA.findByText("ALP-1");
     await selectSort(slotA, "Priority");
@@ -261,7 +262,7 @@ describe("list filter/sort preference persistence", () => {
     const slotB = renderSlot(
       registration,
       { subPath: PROJECT_B },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await slotB.findByText("BET-1");
     expect(
@@ -278,7 +279,7 @@ describe("list filter/sort preference persistence", () => {
     const backToA = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await backToA.findByText("ALP-1");
     expect(backToA.getByRole("button", { name: /Sort/ }).textContent).toContain(
@@ -311,7 +312,7 @@ describe("list filter/sort preference persistence", () => {
     const slot = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await slot.findByText("ALP-3");
     fireEvent.click(slot.getByRole("button", { name: /Clear/ }));
@@ -324,7 +325,7 @@ describe("list filter/sort preference persistence", () => {
     const remounted = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await remounted.findByText("ALP-1");
     expect(remounted.queryByRole("button", { name: /Clear/ })).toBeNull();
@@ -354,7 +355,7 @@ describe("list filter/sort preference persistence", () => {
     const allSlot = renderSlot(
       registration,
       { subPath: "all" },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await allSlot.findByText("ALP-1");
     await selectSort(allSlot, "Priority");
@@ -364,11 +365,13 @@ describe("list filter/sort preference persistence", () => {
       registration,
       { subPath: "active" },
       {
-        rpc: baseRpc({
-          listTasks: () => ({
-            tasks: [task(PROJECT_A, 9, "in_progress", "high")],
+        rpc: liveTaskRpcFixtures(
+          baseRpc({
+            listTasks: () => ({
+              tasks: [task(PROJECT_A, 9, "in_progress", "high")],
+            }),
           }),
-        }),
+        ),
       },
     );
     await activeSlot.findByText("ALP-9");
@@ -381,7 +384,11 @@ describe("list filter/sort preference persistence", () => {
     const registration = app.navPanels[0]!;
     const listTasksCalls: Record<string, unknown>[] = [];
     const rpc = baseRpc({}, listTasksCalls);
-    const slot = renderSlot(registration, { subPath: PROJECT_A }, { rpc });
+    const slot = renderSlot(
+      registration,
+      { subPath: PROJECT_A },
+      { rpc: liveTaskRpcFixtures(rpc) },
+    );
     await slot.findByText("ALP-1");
 
     fireEvent.click(slot.getByRole("button", { name: /^Priority/ }));
@@ -422,7 +429,7 @@ describe("list filter/sort preference persistence", () => {
     const remounted = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: liveTaskRpcFixtures(baseRpc()) },
     );
     await remounted.findByRole("button", { name: /Priority/ });
     expect(
@@ -452,7 +459,11 @@ describe("list filter/sort preference persistence", () => {
     );
     const listTasksCalls: Record<string, unknown>[] = [];
     const rpc = baseRpc({}, listTasksCalls);
-    const slot = renderSlot(app.navPanels[0]!, { subPath: PROJECT_A }, { rpc });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_A },
+      { rpc: liveTaskRpcFixtures(rpc) },
+    );
     await slot.findByRole("button", { name: /^Label/ });
     expect(slot.getByRole("button", { name: /^Label/ }).textContent).toContain(
       "DeletedLabel",

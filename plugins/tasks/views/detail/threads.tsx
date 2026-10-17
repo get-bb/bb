@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import {
+  UrlLink,
+  useBbNavigate,
+  experimental_useRpcMutation,
+} from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
   Preset,
@@ -13,12 +17,11 @@ import {
   formatRelativeTime,
   isActiveThread,
 } from "./meta.js";
-import { PresetDialog, savePresetDraft } from "../manage/preset-dialog.js";
+import { PresetDialog, useSavePresetDraft } from "../manage/preset-dialog.js";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/ui/confirm-delete-dialog";
-import { useTasksRpc } from "../../shell/data.js";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -158,8 +161,11 @@ export function DispatchControl({
   align = "end",
   className,
 }: DispatchControlProps) {
-  const rpc = useRpc<DelegationRpcContract>();
-  const tasksRpc = useTasksRpc();
+  const delegate = experimental_useRpcMutation<
+    DelegationRpcContract,
+    "delegate"
+  >({ method: "delegate" }).mutate;
+  const savePreset = useSavePresetDraft();
   const [dispatching, setDispatching] = useState(false);
   const [lastPresetId, setLastPresetId] = useState(loadLastPresetId);
   const [createDialogKey, setCreateDialogKey] = useState<number | null>(null);
@@ -167,7 +173,7 @@ export function DispatchControl({
   const dispatch = async (presetId: string) => {
     setDispatching(true);
     try {
-      await rpc.call("delegate", { taskId, presetId });
+      await delegate({ taskId, presetId });
     } catch (error) {
       onError(errorMessage(error));
     } finally {
@@ -203,7 +209,7 @@ export function DispatchControl({
               if (!open) setCreateDialogKey(null);
             }}
             editing={null}
-            onSave={(draft) => savePresetDraft(tasksRpc, null, draft)}
+            onSave={(draft) => savePreset(null, draft)}
           />
         ) : null}
       </>

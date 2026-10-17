@@ -4,7 +4,10 @@ import {
   createRpcQueryHooks,
   type RpcQueryHost,
 } from "../internal/rpc-query-host.js";
-import { rpcResponseTags } from "../internal/rpc-tags.js";
+import {
+  createRpcKeyedProvider,
+  rpcResponseTags,
+} from "../internal/rpc-tags.js";
 import * as React from "react";
 import {
   createContext,
@@ -1780,6 +1783,7 @@ export async function mountPluginContentScripts(
 export type PluginRpcTestHandlers<Contract extends PluginRpcContract> = {
   [Method in keyof Contract]: (
     input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+    context?: import("../rpc-contract.js").ExperimentalPluginRpcHandlerContext,
   ) =>
     | PluginRpcResult<Contract[Method]>
     | Promise<PluginRpcResult<Contract[Method]>>;
@@ -2055,7 +2059,10 @@ export function renderSlot<
   const rpcCalls: RpcCall[] = [];
   const rpcHandlers = (options.rpc ?? {}) as Record<
     string,
-    (input: unknown) => unknown
+    (
+      input: unknown,
+      context?: import("../rpc-contract.js").ExperimentalPluginRpcHandlerContext,
+    ) => unknown
   >;
   const parseRpcValue = async (schema: StandardSchemaV1, value: unknown) => {
     const parsed = await schema["~standard"].validate(value);
@@ -2066,7 +2073,12 @@ export function renderSlot<
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const callRpc = async (method: string, input?: unknown) => {
+  const callRpc = async (
+    method: string,
+    input?: unknown,
+    _origin?: string,
+    warmKeyedMethods: readonly string[] = [],
+  ) => {
     const normalizedInput =
       input === undefined
         ? null
@@ -2082,11 +2094,28 @@ export function renderSlot<
     const parsedInput = declaration
       ? await parseRpcValue(declaration.input, normalizedInput)
       : normalizedInput;
-    const result = await handler(parsedInput);
+    const provider = createRpcKeyedProvider(warmKeyedMethods);
+    const result = declaration
+      ? await handler(parsedInput, {
+          provideKeyed: provider.provideKeyed,
+          experimental_caller: { kind: "client" },
+        })
+      : await handler(parsedInput);
     const parsedOutput = declaration
       ? await parseRpcValue(declaration.output, result)
       : result;
+    const provided: Record<string, unknown> = {};
+    for (const [target, values] of provider.entries()) {
+      const declaration = options.experimental_rpcContract?.[target];
+      if (!declaration) throw new Error(`Unknown keyed method ${target}`);
+      const result = await parseRpcValue(declaration.output, values);
+      provided[target] = {
+        result,
+        ...rpcResponseTags(declaration, { keys: Object.keys(values) }, result),
+      };
+    }
     return {
+      provided,
       result: strictJsonRoundTrip(parsedOutput, `rpc "${method}" result`),
       ...rpcResponseTags(declaration ?? {}, parsedInput, parsedOutput),
     };
@@ -2616,7 +2645,8 @@ export function renderSlot<
     pluginId: options.pluginId ?? "test-plugin",
     queryClient,
     subscribe: () => () => {},
-    call: (_pluginId, method, input) => callRpc(method, input),
+    call: (_pluginId, method, input, origin, warm) =>
+      callRpc(method, input, origin, warm),
   };
   const env: SlotEnv = {
     rpcQueryHost,

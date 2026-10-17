@@ -1,5 +1,13 @@
+import { experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
+import { liveTaskRpcFixtures } from "../../test-fixtures.js";
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
@@ -63,8 +71,12 @@ function task(overrides: Partial<Task> & Pick<Task, "id" | "number">): Task {
 
 interface Options {
   projects?: Project[];
-  moveTaskToProject?: (input: Record<string, unknown>) => TaskMutationResult;
-  updateTask?: (input: Record<string, unknown>) => TaskMutationResult;
+  moveTaskToProject?: (
+    input: Record<string, unknown>,
+  ) => TaskMutationResult | Promise<TaskMutationResult>;
+  updateTask?: (
+    input: Record<string, unknown>,
+  ) => TaskMutationResult | Promise<TaskMutationResult>;
 }
 
 function renderList(tasks: Task[], options: Options = {}) {
@@ -72,7 +84,7 @@ function renderList(tasks: Task[], options: Options = {}) {
     app.navPanels[0]!,
     { subPath: PROJECT_ID },
     {
-      rpc: {
+      rpc: liveTaskRpcFixtures({
         listProjects: () => ({ projects: options.projects ?? [project] }),
         listFolders: () => ({ folders: [] }),
         listPresets: () => ({ presets: [] }),
@@ -89,10 +101,14 @@ function renderList(tasks: Task[], options: Options = {}) {
         updateTask: (raw) => {
           const input = rpcInput(raw);
           if (options.updateTask) return options.updateTask(input);
-          const current = tasks.find((entry) => entry.id === input.taskId)!;
-          return { ok: true, task: { ...current, ...input } };
+          const index = tasks.findIndex((entry) => entry.id === input.taskId);
+          const current = tasks[index]!;
+          const { taskId: _taskId, authorName: _authorName, ...patch } = input;
+          const updated = { ...current, ...patch };
+          tasks[index] = updated;
+          return { ok: true, task: updated };
         },
-      },
+      }),
     },
   );
 }
@@ -147,10 +163,19 @@ describe("inline row editing", () => {
     );
   });
 
-  it("optimistically applies a status change and persists it", async () => {
-    const slot = renderList([task({ id: "01HZT1", number: 1 })]);
+  it("predicts list status, rolls back a failed write, and keeps other rows unchanged", async () => {
+    let reject!: (error: Error) => void;
+    const write = new Promise<TaskMutationResult>((_resolve, fail) => {
+      reject = fail;
+    });
+    const slot = renderList(
+      [
+        task({ id: "01HZZZZZZZZZZZZZZZZZZZT1", number: 1 }),
+        task({ id: "01HZZZZZZZZZZZZZZZZZZZT2", number: 2 }),
+      ],
+      { updateTask: () => write },
+    );
     const row = await rowFor(slot, "TSK-1");
-
     fireEvent.click(
       within(row).getByRole("button", {
         name: /Change status, currently Todo/,
@@ -160,23 +185,47 @@ describe("inline row editing", () => {
     fireEvent.click(
       await within(drawer).findByRole("menuitem", { name: /Done/ }),
     );
-
+    const editedRow = () =>
+      slot.container.querySelector<HTMLElement>('[data-task-key="TSK-1"]')!;
     await waitFor(() =>
       expect(
-        slot.rpcCalls.some(
-          (call) =>
-            call.method === "updateTask" &&
-            (call.input as { status?: string }).status === "done",
-        ),
-      ).toBe(true),
-    );
-    await waitFor(() =>
-      expect(
-        within(
-          slot.container.querySelector('[data-task-key="TSK-1"]')!,
-        ).getByRole("button", { name: /Change status, currently Done/ }),
+        within(editedRow()).getByRole("button", {
+          name: /Change status, currently Done/,
+        }),
       ).toBeTruthy(),
     );
+    expect(
+      slot.getByRole("region", { name: "Tasks" }).getAttribute("aria-busy"),
+    ).toBe("true");
+    expect(editedRow().getAttribute("aria-busy")).toBe("true");
+    expect(editedRow().classList.contains("opacity-70")).toBe(true);
+    const otherRow = await rowFor(slot, "TSK-2");
+    expect(otherRow.hasAttribute("aria-busy")).toBe(false);
+    expect(otherRow.classList.contains("opacity-70")).toBe(false);
+    expect(
+      within(await rowFor(slot, "TSK-2")).getByRole("button", {
+        name: /Change status, currently Todo/,
+      }),
+    ).toBeTruthy();
+    await act(async () =>
+      reject(
+        new experimental_PluginRpcRefusal({
+          code: "invalid",
+          message: "Write rejected",
+        }),
+      ),
+    );
+    await slot.findByText("Write rejected");
+    expect(editedRow().hasAttribute("aria-busy")).toBe(false);
+    expect(editedRow().classList.contains("opacity-70")).toBe(false);
+    expect(
+      slot.getByRole("region", { name: "Tasks" }).hasAttribute("aria-busy"),
+    ).toBe(false);
+    expect(
+      within(editedRow()).getByRole("button", {
+        name: /Change status, currently Todo/,
+      }),
+    ).toBeTruthy();
   });
 
   it("optimistically applies a priority change", async () => {
@@ -205,7 +254,7 @@ describe("inline row editing", () => {
     await waitFor(() =>
       expect(
         within(
-          slot.container.querySelector('[data-task-key="TSK-1"]')!,
+          slot.container.querySelector<HTMLElement>('[data-task-key="TSK-1"]')!,
         ).getByRole("button", { name: /currently Urgent/ }),
       ).toBeTruthy(),
     );
@@ -213,10 +262,11 @@ describe("inline row editing", () => {
 
   it("rolls back and surfaces an error when the mutation fails", async () => {
     const slot = renderList([task({ id: "01HZT1", number: 1 })], {
-      updateTask: () => ({
-        ok: false,
-        error: { code: "task_parent_invalid", message: "Server rejected it" },
-      }),
+      updateTask: () => {
+        throw Object.assign(new Error("Server rejected it"), {
+          code: "invalid",
+        });
+      },
     });
     const row = await rowFor(slot, "TSK-1");
 
@@ -234,7 +284,7 @@ describe("inline row editing", () => {
     await waitFor(() =>
       expect(
         within(
-          slot.container.querySelector('[data-task-key="TSK-1"]')!,
+          slot.container.querySelector<HTMLElement>('[data-task-key="TSK-1"]')!,
         ).getByRole("button", { name: /Change status, currently Todo/ }),
       ).toBeTruthy(),
     );

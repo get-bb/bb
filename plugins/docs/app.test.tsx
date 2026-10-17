@@ -1289,7 +1289,7 @@ describe("Docs nav panel", () => {
         ).toBeTruthy();
         await act(async () => resolution.resolve());
         expect(slot.queryByRole("status")).toBeNull();
-        expect(resolveProposal).toHaveBeenLastCalledWith({
+        expect(resolveProposal.mock.lastCall?.[0]).toEqual({
           vaultId: "personal",
           path: pending.path,
           action: label.toLowerCase(),
