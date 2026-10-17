@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { StrictMode } from "react";
+import { useBeforeUnloadGuard } from "@/lib/terminal-close-guard";
 import type { TerminalSession } from "@bb/server-contract";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +51,65 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+function Guard() {
+  useBeforeUnloadGuard();
+  return null;
+}
+
+function unloadIsCancelled(): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
 describe("ThreadTerminalContent", () => {
+  it("guards only mounted usable terminal content and releases the last registration in StrictMode", () => {
+    const renderPanels = (
+      first: ThreadTerminalController,
+      second: ThreadTerminalController | null,
+    ) => (
+      <StrictMode>
+        <Guard />
+        <ThreadTerminalContent controller={first} />
+        {second !== null ? <ThreadTerminalContent controller={second} /> : null}
+      </StrictMode>
+    );
+    const first = controller(true);
+    const second = {
+      ...controller(true),
+      activeSession: makeTerminalSession({ id: "term_2" }),
+    };
+    const rendered = render(renderPanels(first, second));
+    expect(unloadIsCancelled()).toBe(true);
+
+    rendered.rerender(renderPanels(controller(false, false), second));
+    expect(unloadIsCancelled()).toBe(true);
+
+    rendered.rerender(renderPanels(controller(false, false), null));
+    expect(unloadIsCancelled()).toBe(false);
+
+    rendered.rerender(renderPanels(first, null));
+    expect(unloadIsCancelled()).toBe(true);
+    rendered.rerender(
+      renderPanels({ ...first, hasTerminalQueryError: true }, null),
+    );
+    expect(unloadIsCancelled()).toBe(false);
+
+    rendered.rerender(renderPanels(first, null));
+    expect(unloadIsCancelled()).toBe(true);
+    rendered.rerender(
+      renderPanels(
+        { ...first, activeSession: { ...session, status: "exited" } },
+        null,
+      ),
+    );
+    expect(unloadIsCancelled()).toBe(false);
+
+    rendered.rerender(renderPanels(first, null));
+    expect(unloadIsCancelled()).toBe(true);
+    rendered.unmount();
+    expect(unloadIsCancelled()).toBe(false);
+  });
   it("does not mount the terminal view until the panel opens", () => {
     const rendered = render(
       <ThreadTerminalContent
