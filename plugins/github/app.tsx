@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   definePluginApp,
   experimental_Diff as Diff,
@@ -6,8 +6,9 @@ import {
   experimental_copyToClipboard,
   UrlLink,
   useBbNavigate,
-  useRealtime,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
+  type ExperimentalRpcOptimisticCache,
   type PluginNavPanelProps,
   type PluginRpcResult,
   type PluginThreadPanelProps,
@@ -51,9 +52,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "./components/empty-state.js";
 import { Markdown } from "./components/markdown-lite.js";
 
-type IssueDetail = PluginRpcResult<
-  (typeof githubRpcContract)["getIssue"]
->["issue"];
 type PullDetail = PluginRpcResult<
   (typeof githubRpcContract)["getPull"]
 >["pull"];
@@ -94,45 +92,53 @@ function useSubPathRoute(subPath: string): [Route, (route: Route) => void] {
   return [route, navigate];
 }
 
-function useItems(kind: "issue" | "pr"): {
-  items: Item[] | null;
+function QueryError({
+  error,
+  retry,
+}: {
   error: string | null;
-} {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [state, setState] = useState<{
-    items: Item[] | null;
-    error: string | null;
-  }>({
-    items: null,
-    error: null,
-  });
-  const refetch = useCallback(() => {
-    rpc.call("listItems", { kind }).then(
-      (result) => setState({ items: result.items, error: null }),
-      (error: unknown) => setState({ items: null, error: errorText(error) }),
-    );
-  }, [rpc, kind]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("data-changed", refetch);
-  return state;
+  retry: () => Promise<void>;
+}) {
+  if (error === null) return null;
+  return (
+    <div
+      role="alert"
+      className="flex items-center gap-3 text-sm text-destructive"
+    >
+      <span>{error}</span>
+      <Button size="sm" variant="outline" onClick={() => void retry()}>
+        Retry
+      </Button>
+    </div>
+  );
 }
 
-function useLinks(): LinksMap {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [links, setLinks] = useState<LinksMap>({});
-  const refetch = useCallback(() => {
-    rpc.call("listLinks").then(
-      (result) => setLinks(result.links),
-      () => {},
-    );
-  }, [rpc]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("links-changed", refetch);
-  return links;
+function useItems(kind: "issue" | "pr") {
+  const query = experimental_useRpcQuery<typeof githubRpcContract, "listItems">(
+    {
+      method: "listItems",
+      input: { kind },
+    },
+  );
+  return {
+    items: query.data?.items ?? null,
+    error: query.error?.message ?? null,
+    retry: query.refetch,
+  };
+}
+
+function useLinks() {
+  const query = experimental_useRpcQuery<typeof githubRpcContract, "listLinks">(
+    {
+      method: "listLinks",
+      input: null,
+    },
+  );
+  return {
+    links: query.data?.links ?? {},
+    error: query.error?.message ?? null,
+    retry: query.refetch,
+  };
 }
 
 function useSpawn(): {
@@ -143,41 +149,37 @@ function useSpawn(): {
   ) => void;
   spawningKey: string | null;
 } {
-  const rpc = useRpc<typeof githubRpcContract>();
+  const work = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "startWork"
+  >({ method: "startWork" });
+  const review = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "startReview"
+  >({ method: "startReview" });
   const navigate = useBbNavigate();
   const [spawningKey, setSpawningKey] = useState<string | null>(null);
   const spawn = useCallback(
     (method: "startWork" | "startReview", repo: string, number: number) => {
       setSpawningKey(`${repo}#${number}`);
-      rpc
-        .call(method, { repo, number })
+      (method === "startWork" ? work.mutate : review.mutate)({ repo, number })
         .then((result) => {
           navigate.toThread(result.threadId);
         })
         .catch((error: unknown) => toast.error(errorText(error)))
         .finally(() => setSpawningKey(null));
     },
-    [rpc, navigate],
+    [work, review, navigate],
   );
   return { spawn, spawningKey };
 }
 
-let viewerLogin: string | null = null;
-
 function useViewer(): string | null {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [login, setLogin] = useState<string | null>(viewerLogin);
-  useEffect(() => {
-    if (viewerLogin !== null) return;
-    rpc.call("viewer").then(
-      (result) => {
-        viewerLogin = result.login;
-        setLogin(result.login);
-      },
-      () => {},
-    );
-  }, [rpc]);
-  return login;
+  const query = experimental_useRpcQuery<typeof githubRpcContract, "viewer">({
+    method: "viewer",
+    input: null,
+  });
+  return query.data?.login ?? null;
 }
 
 function Avatar({
@@ -310,30 +312,81 @@ function LabelChips({
   );
 }
 
+function predictIssueMetadata(
+  cache: ExperimentalRpcOptimisticCache<typeof githubRpcContract>,
+  input: { repo: string; number: number },
+  patch: Partial<
+    Pick<
+      NonNullable<
+        PluginRpcResult<(typeof githubRpcContract)["getIssue"]>["issue"]
+      >,
+      "state" | "assignees" | "labels"
+    >
+  >,
+) {
+  cache.update(
+    "getIssue",
+    { repo: input.repo, number: input.number },
+    (current) => ({
+      ...current,
+      issue: { ...current.issue, ...patch },
+    }),
+  );
+  cache.update("listItems", { kind: "issue" }, (current) => ({
+    ...current,
+    items: current.items.map((item) =>
+      item.repo === input.repo && item.number === input.number
+        ? { ...item, ...patch }
+        : item,
+    ),
+  }));
+}
+
 function useIssueMutations() {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const setIssueState = useCallback(
-    (repo: string, number: number, state: "open" | "closed") =>
-      rpc
-        .call("setIssueState", { repo, number, state })
+  const state = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "setIssueState"
+  >({
+    method: "setIssueState",
+    optimistic(input, cache) {
+      predictIssueMetadata(cache, input, {
+        state: input.state === "closed" ? "CLOSED" : "OPEN",
+      });
+    },
+  });
+  const assignees = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "setAssignees"
+  >({
+    method: "setAssignees",
+    optimistic(input, cache) {
+      predictIssueMetadata(cache, input, { assignees: input.assignees });
+    },
+  });
+  const labels = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "setLabels"
+  >({
+    method: "setLabels",
+    optimistic(input, cache) {
+      predictIssueMetadata(cache, input, { labels: input.labels });
+    },
+  });
+  return {
+    isPending: state.isPending || assignees.isPending || labels.isPending,
+    setIssueState: (repo: string, number: number, next: "open" | "closed") =>
+      state
+        .mutate({ repo, number, state: next })
         .then(() =>
           toast.success(
-            state === "closed" ? `#${number} closed` : `#${number} reopened`,
+            next === "closed" ? `#${number} closed` : `#${number} reopened`,
           ),
         ),
-    [rpc],
-  );
-  const setAssignees = useCallback(
-    (repo: string, number: number, assignees: string[]) =>
-      rpc.call("setAssignees", { repo, number, assignees }),
-    [rpc],
-  );
-  const setLabels = useCallback(
-    (repo: string, number: number, labels: string[]) =>
-      rpc.call("setLabels", { repo, number, labels }),
-    [rpc],
-  );
-  return { setIssueState, setAssignees, setLabels };
+    setAssignees: (repo: string, number: number, next: string[]) =>
+      assignees.mutate({ repo, number, assignees: next }),
+    setLabels: (repo: string, number: number, next: string[]) =>
+      labels.mutate({ repo, number, labels: next }),
+  };
 }
 
 function FilterSuggestionIcon({ icon }: { icon: SuggestionIcon }) {
@@ -761,22 +814,19 @@ function DetailSkeleton() {
 function ItemsTable({
   kind,
   items,
-  error,
   hasFilter,
   onOpenItem,
 }: {
   kind: "issue" | "pr";
   items: Item[] | null;
-  error: string | null;
   hasFilter: boolean;
   onOpenItem: (repo: string, number: number) => void;
 }) {
-  const links = useLinks();
+  const linkQuery = useLinks();
+  const links = linkQuery.links;
 
   let body: React.ReactNode;
-  if (error !== null) {
-    body = <EmptyState message={error} />;
-  } else if (items === null) {
+  if (items === null) {
     body = <TableSkeleton />;
   } else if (items.length === 0) {
     body = (
@@ -813,6 +863,7 @@ function ItemsTable({
         <span className={COL.updated}>Updated</span>
         <span className={COL.actions} />
       </div>
+      <QueryError error={linkQuery.error} retry={linkQuery.retry} />
       {body}
     </div>
   );
@@ -830,23 +881,21 @@ function AssigneePicker({
   repo,
   assignees,
   onToggle,
+  disabled,
 }: {
   repo: string;
+  disabled: boolean;
   assignees: string[];
   onToggle: (login: string, assigned: boolean) => void;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
   const viewer = useViewer();
-  const [users, setUsers] = useState<string[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (users !== null) return;
-    rpc.call("assignableUsers", { repo }).then(
-      (result) => setUsers(result.users),
-      (error: unknown) => setLoadError(errorText(error)),
-    );
-  }, [rpc, repo, users]);
+  const [opened, setOpened] = useState(false);
+  const query = experimental_useRpcQuery<
+    typeof githubRpcContract,
+    "assignableUsers"
+  >({ method: "assignableUsers", input: { repo }, enabled: opened });
+  const users = query.data?.users ?? null;
+  const loadError = query.error?.message ?? null;
 
   const ordered =
     users === null
@@ -854,8 +903,8 @@ function AssigneePicker({
       : [...users].sort((a, b) => Number(b === viewer) - Number(a === viewer));
 
   return (
-    <DropdownMenu onOpenChange={(open) => open && load()}>
-      <DropdownMenuTrigger asChild>
+    <DropdownMenu onOpenChange={(open) => open && setOpened(true)}>
+      <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           size="sm"
           variant="ghost"
@@ -870,7 +919,12 @@ function AssigneePicker({
       >
         <DropdownMenuLabel>Assignees</DropdownMenuLabel>
         {loadError !== null ? (
-          <DropdownMenuItem disabled>{loadError}</DropdownMenuItem>
+          <>
+            <DropdownMenuItem disabled>{loadError}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void query.refetch()}>
+              Retry
+            </DropdownMenuItem>
+          </>
         ) : ordered === null ? (
           <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
         ) : ordered.length === 0 ? (
@@ -878,6 +932,7 @@ function AssigneePicker({
         ) : (
           ordered.map((login) => (
             <DropdownMenuCheckboxItem
+              disabled={disabled}
               key={login}
               checked={assignees.includes(login)}
               onCheckedChange={(checked) => onToggle(login, checked)}
@@ -902,22 +957,20 @@ function LabelPicker({
   repo,
   labels,
   onToggle,
+  disabled,
 }: {
   repo: string;
+  disabled: boolean;
   labels: string[];
   onToggle: (label: string, enabled: boolean) => void;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [available, setAvailable] = useState<string[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (available !== null) return;
-    rpc.call("repositoryLabels", { repo }).then(
-      (result) => setAvailable(result.labels),
-      (error: unknown) => setLoadError(errorText(error)),
-    );
-  }, [rpc, repo, available]);
+  const [opened, setOpened] = useState(false);
+  const query = experimental_useRpcQuery<
+    typeof githubRpcContract,
+    "repositoryLabels"
+  >({ method: "repositoryLabels", input: { repo }, enabled: opened });
+  const available = query.data?.labels ?? null;
+  const loadError = query.error?.message ?? null;
 
   const ordered =
     available === null
@@ -927,8 +980,8 @@ function LabelPicker({
         );
 
   return (
-    <DropdownMenu onOpenChange={(open) => open && load()}>
-      <DropdownMenuTrigger asChild>
+    <DropdownMenu onOpenChange={(open) => open && setOpened(true)}>
+      <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           size="sm"
           variant="ghost"
@@ -943,7 +996,12 @@ function LabelPicker({
       >
         <DropdownMenuLabel>Labels</DropdownMenuLabel>
         {loadError !== null ? (
-          <DropdownMenuItem disabled>{loadError}</DropdownMenuItem>
+          <>
+            <DropdownMenuItem disabled>{loadError}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void query.refetch()}>
+              Retry
+            </DropdownMenuItem>
+          </>
         ) : ordered === null ? (
           <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
         ) : ordered.length === 0 ? (
@@ -951,6 +1009,7 @@ function LabelPicker({
         ) : (
           ordered.map((label) => (
             <DropdownMenuCheckboxItem
+              disabled={disabled}
               key={label}
               checked={labels.includes(label)}
               onCheckedChange={(checked) => onToggle(label, checked === true)}
@@ -974,101 +1033,71 @@ function IssueDetailView({
   number: number;
   onBack: () => void;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const links = useLinks();
+  const mutation = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "commentIssue"
+  >({ method: "commentIssue" });
+  const query = experimental_useRpcQuery<typeof githubRpcContract, "getIssue">({
+    method: "getIssue",
+    input: { repo, number },
+  });
+  const detail = query.data?.issue ?? null;
+  const error = query.error?.message ?? null;
+  const linkQuery = useLinks();
+  const links = linkQuery.links;
   const { spawn, spawningKey } = useSpawn();
-  const { setIssueState, setAssignees, setLabels } = useIssueMutations();
-  const [detail, setDetail] = useState<IssueDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { setIssueState, setAssignees, setLabels, isPending } =
+    useIssueMutations();
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
 
-  const load = useCallback(() => {
-    rpc.call("getIssue", { repo, number }).then(
-      (result) => {
-        setDetail(result.issue);
-        setError(null);
-      },
-      (err: unknown) => setError(errorText(err)),
+  const changeState = (next: "open" | "closed") => {
+    void setIssueState(repo, number, next).catch((err: unknown) =>
+      toast.error(errorText(err)),
     );
-  }, [rpc, repo, number]);
-  useEffect(() => {
-    setDetail(null);
-    load();
-  }, [load]);
+  };
+  const toggleAssignee = (login: string, assigned: boolean) => {
+    if (detail === null) return;
+    const next = assigned
+      ? [...new Set([...detail.assignees, login])]
+      : detail.assignees.filter((entry) => entry !== login);
+    void setAssignees(repo, number, next).catch((err: unknown) =>
+      toast.error(errorText(err)),
+    );
+  };
+  const toggleLabel = (label: string, enabled: boolean) => {
+    if (detail === null) return;
+    const next = enabled
+      ? [...new Set([...detail.labels, label])]
+      : detail.labels.filter((entry) => entry !== label);
+    void setLabels(repo, number, next).catch((err: unknown) =>
+      toast.error(errorText(err)),
+    );
+  };
 
-  const changeState = useCallback(
-    (next: "open" | "closed") => {
-      setDetail((prev) =>
-        prev === null
-          ? prev
-          : { ...prev, state: next === "closed" ? "CLOSED" : "OPEN" },
-      );
-      setIssueState(repo, number, next).catch((err: unknown) => {
-        toast.error(errorText(err));
-        load();
-      });
-    },
-    [setIssueState, repo, number, load],
-  );
-
-  const toggleAssignee = useCallback(
-    (login: string, assigned: boolean) => {
-      let next: string[] = [];
-      setDetail((prev) => {
-        if (prev === null) return prev;
-        next = assigned
-          ? [...new Set([...prev.assignees, login])]
-          : prev.assignees.filter((entry) => entry !== login);
-        return { ...prev, assignees: next };
-      });
-      setAssignees(repo, number, next).catch((err: unknown) => {
-        toast.error(errorText(err));
-        load();
-      });
-    },
-    [setAssignees, repo, number, load],
-  );
-
-  const toggleLabel = useCallback(
-    (label: string, enabled: boolean) => {
-      let next: string[] = [];
-      setDetail((prev) => {
-        if (prev === null) return prev;
-        next = enabled
-          ? [...new Set([...prev.labels, label])]
-          : prev.labels.filter((entry) => entry !== label);
-        return { ...prev, labels: next };
-      });
-      setLabels(repo, number, next).catch((err: unknown) => {
-        toast.error(errorText(err));
-        load();
-      });
-    },
-    [setLabels, repo, number, load],
-  );
-
-  const postComment = useCallback(() => {
+  const postComment = () => {
     if (comment.trim().length === 0) return;
     setPosting(true);
-    rpc
-      .call("commentIssue", { repo, number, body: comment })
+    mutation
+      .mutate({ repo, number, body: comment })
       .then(() => {
         setComment("");
-        load();
       })
       .catch((err: unknown) => toast.error(errorText(err)))
       .finally(() => setPosting(false));
-  }, [rpc, repo, number, comment, load]);
+  };
 
-  if (error !== null) return <EmptyState message={error} />;
+  const errorBanner = <QueryError error={error} retry={query.refetch} />;
   if (detail === null) {
+    if (error !== null) return errorBanner;
     return <DetailSkeleton />;
   }
 
   const issueLinks = links[`issue:${repo}#${number}`];
   return (
     <div className="@container/github-detail flex flex-col gap-4">
+      {errorBanner}
+      <QueryError error={linkQuery.error} retry={linkQuery.retry} />
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onBack}>
           ← Issues
@@ -1165,6 +1194,7 @@ function IssueDetailView({
           <div className="flex flex-col gap-2">
             <SidebarHeading>Status</SidebarHeading>
             <Select
+              disabled={isPending}
               value={detail.state === "OPEN" ? "open" : "closed"}
               onValueChange={(value) =>
                 changeState(value === "closed" ? "closed" : "open")
@@ -1192,6 +1222,7 @@ function IssueDetailView({
             <div className="flex items-center justify-between">
               <SidebarHeading>Assignees</SidebarHeading>
               <AssigneePicker
+                disabled={isPending}
                 repo={repo}
                 assignees={detail.assignees}
                 onToggle={toggleAssignee}
@@ -1216,6 +1247,7 @@ function IssueDetailView({
             <div className="flex items-center justify-between">
               <SidebarHeading>Labels</SidebarHeading>
               <LabelPicker
+                disabled={isPending}
                 repo={repo}
                 labels={detail.labels}
                 onToggle={toggleLabel}
@@ -1554,30 +1586,24 @@ function PullReviewersList({ pull }: { pull: PullDetail }) {
   );
 }
 
-function PullCommentBox({
-  repo,
-  number,
-  onPosted,
-}: {
-  repo: string;
-  number: number;
-  onPosted: () => void;
-}) {
-  const rpc = useRpc<typeof githubRpcContract>();
+function PullCommentBox({ repo, number }: { repo: string; number: number }) {
+  const mutation = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "commentPull"
+  >({ method: "commentPull" });
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
   const post = useCallback(() => {
     if (comment.trim().length === 0) return;
     setPosting(true);
-    rpc
-      .call("commentPull", { repo, number, body: comment })
+    mutation
+      .mutate({ repo, number, body: comment })
       .then(() => {
         setComment("");
-        onPosted();
       })
       .catch((error: unknown) => toast.error(errorText(error)))
       .finally(() => setPosting(false));
-  }, [rpc, repo, number, comment, onPosted]);
+  }, [mutation, repo, number, comment]);
   return (
     <div className="flex flex-col gap-2">
       <Textarea
@@ -1614,34 +1640,26 @@ function PullDetailView({
   compact?: boolean;
   workspaceEnvironmentId?: string | null;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const links = useLinks();
+  const query = experimental_useRpcQuery<typeof githubRpcContract, "getPull">({
+    method: "getPull",
+    input: { repo, number },
+  });
+  const pull = query.data?.pull ?? null;
+  const error = query.error?.message ?? null;
+  const linkQuery = useLinks();
+  const links = linkQuery.links;
   const { spawn, spawningKey } = useSpawn();
-  const [pull, setPull] = useState<PullDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    rpc.call("getPull", { repo, number }).then(
-      (result) => {
-        setPull(result.pull);
-        setError(null);
-      },
-      (err: unknown) => setError(errorText(err)),
-    );
-  }, [rpc, repo, number]);
-  useEffect(() => {
-    setPull(null);
-    load();
-  }, [load]);
-
-  if (error !== null) return <EmptyState message={error} />;
+  const errorBanner = <QueryError error={error} retry={query.refetch} />;
   if (pull === null) {
+    if (error !== null) return errorBanner;
     return <DetailSkeleton />;
   }
 
   const pullLinks = links[`pr:${repo}#${number}`];
   const mainColumn = (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
+      {errorBanner}
+      <QueryError error={linkQuery.error} retry={linkQuery.retry} />
       <ChecksSection checks={pull.checks} />
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -1685,7 +1703,7 @@ function PullDetailView({
         </div>
       ) : null}
 
-      <PullCommentBox repo={repo} number={number} onPosted={load} />
+      <PullCommentBox repo={repo} number={number} />
     </div>
   );
 
@@ -1803,8 +1821,9 @@ function PullPickerList({
 }: {
   onPick: (repo: string, number: number) => void;
 }) {
-  const { items, error } = useItems("pr");
-  if (error !== null) return <EmptyState message={error} />;
+  const { items, error, retry } = useItems("pr");
+  if (error !== null && items === null)
+    return <QueryError error={error} retry={retry} />;
   if (items === null) {
     return (
       <DelayedLoading>
@@ -1822,6 +1841,7 @@ function PullPickerList({
   }
   return (
     <div className="@container/github-picker overflow-hidden rounded-lg border border-border bg-card">
+      <QueryError error={error} retry={retry} />
       <div className="divide-y divide-border">
         {open.map((item) => (
           <button
@@ -1847,32 +1867,19 @@ function PullPickerList({
 }
 
 function PullPanelTab({ threadId }: PluginThreadPanelProps) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [resolved, setResolved] = useState(false);
-  const [selected, setSelected] = useState<{
-    repo: string;
-    number: number;
-    environmentId: string | null;
-  } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    rpc.call("pullForThread", { threadId }).then(
-      (result) => {
-        if (cancelled) return;
-        if (result.pull !== null) setSelected(result.pull);
-        setResolved(true);
-      },
-      () => {
-        if (!cancelled) setResolved(true);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [rpc, threadId]);
-
-  if (!resolved) {
+  const query = experimental_useRpcQuery<
+    typeof githubRpcContract,
+    "pullForThread"
+  >({ method: "pullForThread", input: { threadId } });
+  const [choice, setSelected] = useState<
+    | { repo: string; number: number; environmentId: string | null }
+    | null
+    | undefined
+  >(undefined);
+  const selected = choice === undefined ? (query.data?.pull ?? null) : choice;
+  if (query.data === undefined) {
+    if (query.error)
+      return <QueryError error={query.error.message} retry={query.refetch} />;
     return <DetailSkeleton />;
   }
   if (selected === null) {
@@ -1890,14 +1897,18 @@ function PullPanelTab({ threadId }: PluginThreadPanelProps) {
     );
   }
   return (
-    <PullDetailView
-      repo={selected.repo}
-      number={selected.number}
-      compact
-      workspaceEnvironmentId={selected.environmentId}
-      backLabel="All PRs"
-      onBack={() => setSelected(null)}
-    />
+    <>
+      <QueryError error={query.error?.message ?? null} retry={query.refetch} />
+      <PullDetailView
+        key={`${selected.repo}#${selected.number}`}
+        repo={selected.repo}
+        number={selected.number}
+        compact
+        workspaceEnvironmentId={selected.environmentId}
+        backLabel="All PRs"
+        onBack={() => setSelected(null)}
+      />
+    </>
   );
 }
 
@@ -1910,7 +1921,10 @@ function NewIssueForm({
   onCreated: (repo: string, number: number | null) => void;
   onCancel: () => void;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
+  const mutation = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "createIssue"
+  >({ method: "createIssue" });
   const [repo, setRepo] = useState(repos[0]?.repo ?? "");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -1918,15 +1932,15 @@ function NewIssueForm({
 
   const create = useCallback(() => {
     setCreating(true);
-    rpc
-      .call("createIssue", { repo, title, body })
+    mutation
+      .mutate({ repo, title, body })
       .then((result) => {
         toast.success("Issue created");
         onCreated(repo, result.number);
       })
       .catch((err: unknown) => toast.error(errorText(err)))
       .finally(() => setCreating(false));
-  }, [rpc, repo, title, body, onCreated]);
+  }, [mutation, repo, title, body, onCreated]);
 
   return (
     <div className="flex max-w-2xl flex-col gap-3">
@@ -1970,35 +1984,34 @@ function NewIssueForm({
   );
 }
 
-function useStatus(): { status: Status | null; refetch: () => void } {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [status, setStatus] = useState<Status | null>(null);
-  const refetch = useCallback(() => {
-    rpc.call("status").then(
-      (result) => setStatus(result),
-      () => {},
-    );
-  }, [rpc]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("data-changed", refetch);
-  return { status, refetch };
+function useStatus() {
+  const query = experimental_useRpcQuery<typeof githubRpcContract, "status">({
+    method: "status",
+    input: null,
+  });
+  return {
+    status: query.data ?? null,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 function PanelHeader() {
-  const rpc = useRpc<typeof githubRpcContract>();
+  const mutation = experimental_useRpcMutation<
+    typeof githubRpcContract,
+    "refresh"
+  >({ method: "refresh" });
   const { status } = useStatus();
   const [syncing, setSyncing] = useState(false);
   const [failed, setFailed] = useState(false);
   const refresh = useCallback(() => {
     setSyncing(true);
     setFailed(false);
-    rpc
-      .call("refresh")
+    mutation
+      .mutate()
       .catch(() => setFailed(true))
       .finally(() => setSyncing(false));
-  }, [rpc]);
+  }, [mutation]);
   return (
     <>
       <span className="hidden text-xs text-muted-foreground @min-[40rem]/page-header:inline">
@@ -2040,7 +2053,7 @@ const DEFAULT_QUERY = "is:open ";
 
 function GithubPanel({ subPath }: PluginNavPanelProps) {
   const [route, navigate] = useSubPathRoute(subPath);
-  const { status } = useStatus();
+  const { status, error: statusError, refetch: retryStatus } = useStatus();
   const [query, setQueryState] = useState<string>(() => {
     try {
       return window.localStorage.getItem(QUERY_KEY) ?? DEFAULT_QUERY;
@@ -2062,6 +2075,8 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
           route={route}
           navigate={navigate}
           status={status}
+          statusError={statusError}
+          retryStatus={retryStatus}
           query={query}
           setQuery={setQuery}
         />
@@ -2083,7 +2098,7 @@ function ListView({
   repos: RepoInfo[];
   onOpenItem: (repo: string, number: number) => void;
 }) {
-  const { items, error } = useItems(kind);
+  const { items, error, retry } = useItems(kind);
   const viewer = useViewer();
   const parsed = useMemo(() => parseQuery(query), [query]);
   const filtered = useMemo(
@@ -2102,10 +2117,10 @@ function ListView({
         repos={repos}
         kind={kind}
       />
+      <QueryError error={error} retry={retry} />
       <ItemsTable
         kind={kind}
         items={filtered}
-        error={error}
         hasFilter={query.trim().length > 0}
         onOpenItem={onOpenItem}
       />
@@ -2117,12 +2132,16 @@ function GithubPanelBody({
   route,
   navigate,
   status,
+  statusError,
+  retryStatus,
   query,
   setQuery,
 }: {
   route: Route;
   navigate: (route: Route) => void;
   status: Status | null;
+  statusError: string | null;
+  retryStatus: () => Promise<void>;
   query: string;
   setQuery: (query: string) => void;
 }) {
@@ -2136,63 +2155,76 @@ function GithubPanelBody({
     },
     [navigate],
   );
-  if (status !== null && status.ghState === "unavailable") {
-    return (
-      <EmptyState
-        message={`GitHub CLI could not reach GitHub. Check your network or keychain; the plugin retries by itself. (${status.ghError ?? ""})`}
-      />
+  const connectionError =
+    statusError ??
+    (status !== null && !status.ghOk
+      ? (status.ghError ?? "GitHub CLI is unavailable or not authenticated")
+      : null);
+  const connectionBanner =
+    connectionError === null ? null : (
+      <div
+        role="alert"
+        className="flex items-center gap-3 text-sm text-destructive"
+      >
+        <span>{connectionError}</span>
+        <Button size="sm" variant="outline" onClick={() => void retryStatus()}>
+          Retry GitHub connection
+        </Button>
+      </div>
     );
-  }
-  if (status !== null && !status.ghOk) {
+  if (route.view === "issue" || route.view === "pull") {
     return (
-      <EmptyState
-        message={`GitHub CLI is not available or not authenticated. Install it from cli.github.com, run \`gh auth login\`, then reload the plugin. (${status.ghError ?? ""})`}
-      />
-    );
-  }
-  if (status !== null && status.repos.length === 0) {
-    return (
-      <EmptyState message="No GitHub repos tracked yet. Create a BB project whose checkout has a GitHub origin remote, or add repos via the extraRepos plugin setting." />
-    );
-  }
-
-  if (route.view === "issue") {
-    return (
-      <IssueDetailView
-        repo={route.repo}
-        number={route.number}
-        onBack={() => navigate({ view: "issues" })}
-      />
-    );
-  }
-  if (route.view === "pull") {
-    return (
-      <PullDetailView
-        repo={route.repo}
-        number={route.number}
-        onBack={() => navigate({ view: "pulls" })}
-      />
+      <>
+        {connectionBanner}
+        {route.view === "issue" ? (
+          <IssueDetailView
+            key={`${route.repo}#${route.number}`}
+            repo={route.repo}
+            number={route.number}
+            onBack={() => navigate({ view: "issues" })}
+          />
+        ) : (
+          <PullDetailView
+            key={`${route.repo}#${route.number}`}
+            repo={route.repo}
+            number={route.number}
+            onBack={() => navigate({ view: "pulls" })}
+          />
+        )}
+      </>
     );
   }
   if (route.view === "new") {
     return (
-      <NewIssueForm
-        repos={status?.repos ?? []}
-        onCreated={(repo, number) =>
-          navigate(
-            number !== null
-              ? { view: "issue", repo, number }
-              : { view: "issues" },
-          )
-        }
-        onCancel={() => navigate({ view: "issues" })}
-      />
+      <>
+        {connectionBanner}
+        <NewIssueForm
+          repos={status?.repos ?? []}
+          onCreated={(repo, number) =>
+            navigate(
+              number !== null
+                ? { view: "issue", repo, number }
+                : { view: "issues" },
+            )
+          }
+          onCancel={() => navigate({ view: "issues" })}
+        />
+      </>
     );
   }
+  if (status === null && connectionError !== null) return connectionBanner;
+  if (status !== null && status.repos.length === 0)
+    return (
+      <>
+        {connectionBanner}
+        <EmptyState message="No GitHub repos tracked yet. Create a BB project whose checkout has a GitHub origin remote, or add repos via the extraRepos plugin setting." />
+      </>
+    );
 
   const kind = route.view === "pulls" ? "pr" : "issue";
   return (
     <div className="flex flex-col gap-3">
+      {connectionBanner}
       <div className="flex items-center gap-2">
         <Tabs
           value={route.view}

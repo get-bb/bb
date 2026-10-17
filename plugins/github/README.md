@@ -66,6 +66,25 @@ the existing retry backoff: 30 seconds, doubling to a five-minute cap, reset
 after a successful sync. Partial repository failures use the normal interval.
 The interval is internal policy; there is no polling setting.
 
+## Live reads and writes
+
+The RPC contract declares read tags and write invalidations. The panel uses the
+SDK query and mutation hooks, so writes from the panel, SDK, or
+`bb plugin rpc call github <method>` refresh matching active reads in every
+connected client. Creating an issue refreshes both issue and PR lists because
+its repository sync replaces both caches. Manual sync also refreshes open
+details. Background sync refreshes details when the cached item snapshot changes.
+Thread and environment changes refresh the linked PR lookup.
+
+A failed first read shows Retry. A failed refresh keeps the loaded content and
+shows an inline error with Retry. Issue and PR comment editors, and the new issue
+form, stay mounted through connection failures. Failed comments retain their
+drafts; successful comments clear them. Issue metadata edits update after the
+write and matching reads finish; metadata controls wait for that update before
+accepting another edit. Client caches are per client; there is no
+client refresh timer. The server sync schedule and its retry backoff above remain
+unchanged.
+
 ## Development
 
 Run the checks from the repository root:

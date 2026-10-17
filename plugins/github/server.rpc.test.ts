@@ -426,11 +426,6 @@ describe("github plugin RPC behavior", () => {
     ).resolves.toMatchObject({
       context: expect.stringContaining("Live issue body."),
     });
-    expect(
-      harness.realtimeSignals.filter(
-        (signal) => signal.channel === "data-changed",
-      ),
-    ).toHaveLength(3);
   });
 
   it("normalizes draft state, checks, review threads, and paginated files", async () => {
