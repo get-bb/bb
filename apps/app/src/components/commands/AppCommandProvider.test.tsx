@@ -10,17 +10,29 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type AppCommandId } from "@bb/domain";
+import {
+  defaultAppSettings,
+  type AppCommandId,
+  type AppKeybindings,
+  type KeyboardCommandId,
+} from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandContext,
   useAppCommandHandler,
+  useAppCommandRunner,
   useAppCommandShortcut,
   useIsAppCommandModifierHeld,
 } from "./AppCommandProvider";
 
-const testState = vi.hoisted(() => ({
-  calls: [] as string[],
+interface TestState {
+  calls: string[];
+  showKeyboardHints: boolean;
+  keybindings: AppKeybindings;
+}
+
+const testState = vi.hoisted((): TestState => ({
+  calls: [],
   showKeyboardHints: true,
   keybindings: [
     {
@@ -215,7 +227,7 @@ vi.mock("@/lib/bb-desktop", () => ({
 }));
 
 interface HandlerProps {
-  command?: AppCommandId;
+  command?: KeyboardCommandId;
   enabled?: boolean;
   name: string;
   priority?: number;
@@ -238,6 +250,28 @@ function Handler({
     priority,
     enabled,
   );
+  return null;
+}
+
+function ShortcutSelection() {
+  const { getShortcutCommand } = useAppCommandRunner();
+  return (
+    <button
+      onKeyDown={(event) => {
+        const command = getShortcutCommand(event.nativeEvent, [
+          "thread.search",
+          "plugin:example/open",
+        ]);
+        if (command) testState.calls.push(`selected:${command}`);
+      }}
+    >
+      Shortcut target
+    </button>
+  );
+}
+
+function ModalContext() {
+  useAppCommandContext("modalOpen", true);
   return null;
 }
 
@@ -301,6 +335,173 @@ afterEach(() => {
 });
 
 describe("AppCommandProvider", () => {
+  it.each([
+    ["л", "KeyK", "k", false],
+    ["З", "KeyP", "p", true],
+    ["х", "BracketLeft", "[", false],
+    ["Ъ", "BracketRight", "]", true],
+    ["б", "Comma", ",", false],
+    ["ю", "Period", ".", false],
+    ["ж", "Semicolon", ";", false],
+    ["э", "Quote", "'", false],
+    ["ё", "Backquote", "`", false],
+    ["№", "Digit3", "3", true],
+    ["κ", "KeyK", "k", false],
+    ["ל", "KeyK", "k", false],
+    ["ش", "KeyA", "a", false],
+  ])(
+    "dispatches %s through the physical %s binding exactly once",
+    (key, code, canonical, shiftKey) => {
+      const original = testState.keybindings;
+      testState.keybindings = [
+        {
+          command: "thread.search",
+          desktopOnly: false,
+          shortcut: {
+            key: canonical,
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: shiftKey,
+          },
+          when: { all: ["mainSurface"], none: ["modalOpen", "terminalFocus"] },
+        },
+      ];
+      try {
+        renderProvider(<Handler name="search" result={true} />);
+        const event = new KeyboardEvent("keydown", {
+          key,
+          code,
+          ctrlKey: true,
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        });
+        window.dispatchEvent(event);
+        expect(testState.calls).toEqual(["search"]);
+        expect(event.defaultPrevented).toBe(true);
+      } finally {
+        testState.keybindings = original;
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "prefers eligible legacy Unicode over Latin fallback regardless of registration order (%s)",
+    (reverse) => {
+      const original = testState.keybindings;
+      const search = original.find(
+        (binding) => binding.command === "thread.search",
+      )!;
+      const latin = {
+        ...search,
+        command: "plugin:example/open" as const,
+      };
+      const legacy = {
+        ...search,
+        shortcut: { ...search.shortcut, key: "л" },
+        when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
+      };
+      testState.keybindings = reverse ? [latin, legacy] : [legacy, latin];
+      try {
+        const rendered = renderProvider(
+          <>
+            <Handler name="legacy" result={true} />
+            <Handler
+              command="plugin:example/open"
+              name="plugin"
+              result={true}
+            />
+            <ShortcutSelection />
+          </>,
+        );
+        const press = () =>
+          screen.getByRole("button", { name: "Shortcut target" }).dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "л",
+              code: "KeyK",
+              ctrlKey: true,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        press();
+        expect(testState.calls).toEqual(["selected:thread.search", "legacy"]);
+        rendered.rerender(
+          <MemoryRouter>
+            <AppCommandProvider>
+              <Handler name="legacy" result={true} />
+              <Handler
+                command="plugin:example/open"
+                name="plugin"
+                result={true}
+              />
+              <ModalContext />
+            </AppCommandProvider>
+          </MemoryRouter>,
+        );
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "л",
+            code: "KeyK",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        expect(testState.calls).toEqual([
+          "selected:thread.search",
+          "legacy",
+          "plugin",
+        ]);
+      } finally {
+        testState.keybindings = original;
+      }
+    },
+  );
+
+  it("dispatches Cmd+K from Russian input on macOS", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    renderProvider(<Handler name="search" result={true} />);
+    const event = new KeyboardEvent("keydown", {
+      key: "л",
+      code: "KeyK",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(testState.calls).toEqual(["search"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it.each([
+    { isComposing: true },
+    { repeat: true },
+    { shiftKey: true },
+    { altKey: true },
+    { metaKey: true },
+    { key: "Dead" },
+    { key: "Unidentified" },
+    { code: "" },
+    { code: "Unknown" },
+    { code: "toString" },
+  ])("leaves unsafe or mismatched input untouched: %j", (changes) => {
+    renderProvider(<Handler name="search" result={true} />);
+    const event = new KeyboardEvent("keydown", {
+      key: "л",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+      ...changes,
+    });
+    window.dispatchEvent(event);
+    expect(testState.calls).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("shares shortcut-hint modifier state after 700ms and clears it on release or blur", () => {
     vi.useFakeTimers();
     renderProvider(<ModifierState />);
