@@ -57,7 +57,8 @@ export function registerUsageSource(bb: BbPluginApi) {
     if (
       !providers.some(
         (provider) =>
-          provider.id === providerId && provider.pluginId === "bb--provider-acp-next",
+          provider.id === providerId &&
+          provider.pluginId === "bb--provider-acp-next",
       )
     )
       throw new Error("Usage resource no longer exists.");
@@ -123,6 +124,35 @@ export function registerUsageSource(bb: BbPluginApi) {
     pending.set(resourceId, { refresh, promise });
     return promise;
   };
+  bb.background.service("usage-inventory", {
+    async start(signal) {
+      const invalidate = () =>
+        bb.rpc.experimental_invalidate(["usage-inventory"]);
+      const stopHosts = bb.sdk.subscribe({
+        event: "host:changed",
+        callback: invalidate,
+      });
+      const stopSystem = bb.sdk.subscribe({
+        event: "system:changed",
+        callback: (event) => {
+          if (
+            event.changes.includes("provider-registrations-changed") ||
+            event.changes.includes("config-changed")
+          )
+            invalidate();
+        },
+      });
+      try {
+        if (!signal.aborted)
+          await new Promise<void>((resolve) =>
+            signal.addEventListener("abort", () => resolve(), { once: true }),
+          );
+      } finally {
+        stopHosts();
+        stopSystem();
+      }
+    },
+  });
   bb.rpc.register(
     usageSourceRpcContract,
     {
@@ -136,7 +166,9 @@ export function registerUsageSource(bb: BbPluginApi) {
                 capability: "usage",
               });
               return providers
-                .filter((provider) => provider.pluginId === "bb--provider-acp-next")
+                .filter(
+                  (provider) => provider.pluginId === "bb--provider-acp-next",
+                )
                 .map((provider) => {
                   const id = JSON.stringify([host.id, provider.id]);
                   return {

@@ -6,7 +6,7 @@
   "description": "Preview of the rebuilt ACP adapter for bb threads with ACP agents.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.90"
+    "bbPluginSdk": ">=0.6.60"
   },
   "bb": {
     "name": "ACP providers [New adapter]",

@@ -17,12 +17,22 @@ states; unavailable usage is never represented as zero consumption.
 
 Settings → Installed plugins → Provider usage contains the usage page, using its
 full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Both surfaces share the plugin’s aggregation and cache. Neither display is required for source
-plugins to publish their usage.
+plugins to publish their usage. Inventories update on source, machine and config
+changes. While a read is watched, measurements refresh every minute in settings
+and every two minutes in the footer; hidden and closed clients release their
+watch. Both displays keep prior measurements on refresh failure and offer Retry.
+A successful read clears refresh errors.
 
 Use `bb plugin rpc list --method provider-usage.v1.listResources --json` to find sources
 and `bb plugin rpc inspect <plugin-id> provider-usage.v1.listResources --json`
 to inspect their published contracts. RPC calls accept JSON through
-`--input-file`. See the Plugin Guide for the contract API.
+`--input-file`. To watch the aggregate, call
+`bb plugin rpc call bb--provider-usage getUsage --watch --input-file request.json`
+with `{"force":false,"machineIds":null,"providerIds":[],"maxAgeMs":60000}`
+for inventory, or select machine and provider IDs to watch measurements.
+`refreshUsage` accepts the same fields except `force`, refreshes the selected
+measurements, and invalidates inventory and usage for every client.
+See the Plugin Guide for the contract API.
 
 `bb settings usage --json` and `bb.sdk.system.usageLimits()` remain the
 host-local provider-maintenance view; they do not aggregate shared pool accounts.

@@ -117,6 +117,7 @@ export const usageSourceRpcContract = defineRpcContract({
   [usageListMethod]: {
     input: usageListInputSchema,
     output: usageResourceListSchema,
+    tags: () => ["usage-inventory"],
     experimental_description:
       "Cheap complete inventory of resources owned by this source. Reads local metadata only; never refreshes quota or contacts providers. IDs are stable and source-local. Resource order is display order. Shared label preserves empty groups. Resources may disappear between list and fetch.",
   },
