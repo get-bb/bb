@@ -149,7 +149,7 @@ export function createStorage(
     await Promise.allSettled(jobs);
   });
   const changed = () => {
-    if (!lifecycle.signal.aborted) bb.realtime.publish("changed", null);
+    if (!lifecycle.signal.aborted) bb.rpc.experimental_invalidate(["hosts"]);
   };
   function read(hostId: string): Scan | null {
     const row = db

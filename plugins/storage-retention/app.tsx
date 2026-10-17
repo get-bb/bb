@@ -1,20 +1,13 @@
 import { toast } from "sonner";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   definePluginApp,
   experimental_Icon as PluginIcon,
   experimental_copyToClipboard,
   useBbNavigate,
-  useRealtime,
-  useRpc,
-  useSdk,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
+  experimental_useRpcRefresh,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import { DatabaseRestoreIcon } from "./icons/database-restore.js";
@@ -44,7 +37,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { storageRpc, State, Policy } from "./src/contract.js";
+import type {
+  storageRpc,
+  State,
+  Policy,
+  HostMetadata,
+} from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
   LARGE_FILE_NUDGE_MIN_BYTES,
@@ -53,9 +51,7 @@ import {
 type HostReport = import("./src/storage-types.js").HostStorageResponse;
 type Hosts = import("./src/storage-types.js").HostStorageListResponse["hosts"];
 type LargeFileTotals = NonNullable<HostReport["report"]>["archivedLargeFiles"];
-type Machine = Awaited<
-  ReturnType<ReturnType<typeof useSdk>["hosts"]["list"]>
->[number];
+type Machine = HostMetadata["machines"][number];
 const PANEL = "storage";
 const ARCHIVE_PRESETS = [7, 14, 30, 60, 90, 180, 365];
 const DELETE_PRESETS = [7, 30, 90, 180, 365];
@@ -148,44 +144,36 @@ type StorageData = {
 };
 
 function StoragePanel(props: PluginNavPanelProps) {
-  const rpc = useRpc<typeof storageRpc>();
-  const sdk = useSdk();
-  const [data, setData] = useState<StorageData | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const stateRevision = useRef(0);
-  const refreshRevision = useRef(0);
-  const updateState = useCallback((state: State) => {
-    stateRevision.current++;
-    setData((current) => (current === null ? null : { ...current, state }));
-  }, []);
-  const refresh = useCallback(async () => {
-    const revision = stateRevision.current;
-    const request = ++refreshRevision.current;
-    try {
-      const [state, reports, machines, config] = await Promise.all([
-        rpc.call("state", null),
-        rpc.call("hosts", null),
-        sdk.hosts.list({ type: "persistent" }),
-        sdk.system.config(),
-      ]);
-      if (request !== refreshRevision.current) return;
-      setData((current) => ({
-        state:
-          revision === stateRevision.current || current === null
-            ? state
-            : current.state,
-        hosts: reports.hosts,
-        machines: Object.fromEntries(machines.map((host) => [host.id, host])),
-        primaryHostId: config.primaryHostId,
-      }));
-      setLoadError(null);
-    } catch (error) {
-      if (request === refreshRevision.current) setLoadError(message(error));
-    }
-  }, [rpc, sdk]);
+  const stateQuery = experimental_useRpcQuery<typeof storageRpc, "state">({
+    method: "state",
+    input: null,
+  });
+  const hostsQuery = experimental_useRpcQuery<typeof storageRpc, "hosts">({
+    method: "hosts",
+    input: null,
+  });
+  const metadataQuery = experimental_useRpcQuery<typeof storageRpc, "metadata">(
+    { method: "metadata", input: null },
+  );
+  const { refresh } = experimental_useRpcRefresh();
+  const error = stateQuery.error ?? hostsQuery.error ?? metadataQuery.error;
+  const { data: state } = stateQuery;
+  const { data: reports } = hostsQuery;
+  const { data: metadata } = metadataQuery;
+  const data: StorageData | null =
+    state && reports && metadata
+      ? {
+          state,
+          hosts: reports.hosts,
+          machines: Object.fromEntries(
+            metadata.machines.map((host) => [host.id, host]),
+          ),
+          primaryHostId: metadata.primaryHostId,
+        }
+      : null;
   const previousJobs = useRef(new Map<string, string>());
   useEffect(() => {
-    for (const host of data?.hosts ?? []) {
+    for (const host of reports?.hosts ?? []) {
       for (const kind of [
         "largeFileCleanup",
         "archivedFileCleanup",
@@ -200,7 +188,9 @@ function StoragePanel(props: PluginNavPanelProps) {
           previous !== signature &&
           job.state !== "idle"
         ) {
-          const machine = data?.machines[host.hostId]?.name ?? host.hostId;
+          const machine =
+            metadata?.machines.find((machine) => machine.id === host.hostId)
+              ?.name ?? host.hostId;
           const feedback = cleanupFeedback(
             "kind" in job
               ? job.kind
@@ -229,48 +219,14 @@ function StoragePanel(props: PluginNavPanelProps) {
         previousJobs.current.set(key, signature);
       }
     }
-  }, [data]);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  useRealtime("changed", refresh);
-  useRealtime("policy-changed", async () => {
-    const revision = stateRevision.current;
-    try {
-      const state = await rpc.call("state", null);
-      if (revision === stateRevision.current) updateState(state);
-    } catch (error) {
-      toast.error("Couldn’t refresh retention settings", {
-        description: message(error),
-      });
-    }
-  });
-  useEffect(() => {
-    const hosts = sdk.subscribe({
-      event: "host:changed",
-      callback: () => {
-        void refresh();
-      },
-    });
-    const connection = sdk.subscribe({
-      event: "realtime:connection",
-      callback: (event) => {
-        if (event.state === "connected" && event.reconnected) void refresh();
-      },
-    });
-    return () => {
-      hosts();
-      connection();
-    };
-  }, [sdk, refresh]);
+  }, [reports, metadata]);
   return (
     <StoragePage
       key={props.subPath}
       hostId={props.subPath || null}
       data={data}
-      loadError={loadError}
+      loadError={error ? message(error) : null}
       refresh={refresh}
-      updateState={updateState}
     />
   );
 }
@@ -280,23 +236,56 @@ function StoragePage({
   data,
   loadError,
   refresh,
-  updateState,
 }: {
   hostId: string | null;
   data: StorageData | null;
   loadError: string | null;
-  refresh: () => Promise<void>;
-  updateState: (state: State) => void;
+  refresh: () => void;
 }) {
-  const rpc = useRpc<typeof storageRpc>();
+  const { mutate: configure, isPending: savingSetting } =
+    experimental_useRpcMutation<typeof storageRpc, "configure">({
+      method: "configure",
+      optimistic(input, cache) {
+        cache.update("state", null, (current) => ({
+          ...current,
+          policy: { ...current.policy, ...input },
+        }));
+      },
+    });
+  const { mutate: startCleanup } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "startCleanup"
+  >({ method: "startCleanup" });
+  const { mutate: startClearLargeFiles } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "startClearLargeFiles"
+  >({ method: "startClearLargeFiles" });
+  const { mutate: scanHost } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "scanHost"
+  >({ method: "scanHost" });
+  const { mutate: startClearArchivedFiles } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "startClearArchivedFiles"
+  >({ method: "startClearArchivedFiles" });
+  const { mutate: clearThread } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "clearThread"
+  >({ method: "clearThread" });
+  const { mutate: removeDevInstances } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "removeDevInstances"
+  >({ method: "removeDevInstances" });
+  const { mutate: scanAll } = experimental_useRpcMutation<
+    typeof storageRpc,
+    "scanAll"
+  >({ method: "scanAll" });
   const navigate = useBbNavigate();
   const state = data?.state ?? null;
   const hosts = data?.hosts ?? [];
   const machines = data?.machines ?? {};
   const primaryHostId = data?.primaryHostId ?? null;
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
-  const [savingSetting, setSavingSetting] = useState(false);
-  const settingSavePending = useRef(false);
   const [actionBusy, setBusy] = useState(false);
   const busy =
     actionBusy ||
@@ -352,7 +341,6 @@ function StoragePage({
           id,
           description: "Started on all online machines",
         });
-      void refresh();
     } catch (error) {
       toast.error(feedback.failed, {
         id,
@@ -363,12 +351,8 @@ function StoragePage({
     }
   }
   async function saveSetting<K extends keyof Policy>(key: K, value: Policy[K]) {
-    if (state === null || settingSavePending.current) return;
-    const previous = state;
+    if (state === null || savingSetting) return;
     const next = { ...state, policy: { ...state.policy, [key]: value } };
-    settingSavePending.current = true;
-    setSavingSetting(true);
-    updateState(next);
     const description = {
       archiveAfterDays: "Archive inactive threads",
       deleteAfterDays: "Delete archived threads",
@@ -377,15 +361,11 @@ function StoragePage({
         "Delete development data when its checkout is removed",
     }[key];
     try {
-      updateState(await rpc.call("configure", next.policy));
+      await configure(next.policy);
     } catch (error) {
-      updateState(previous);
       toast.error("Couldn’t save setting", {
         description: `${description} · ${message(error)}`,
       });
-    } finally {
-      settingSavePending.current = false;
-      setSavingSetting(false);
     }
   }
   async function runRowAction(
@@ -406,7 +386,6 @@ function StoragePage({
           id,
           description: description || feedback.description,
         });
-      void refresh();
     } catch (error) {
       toast.error(feedback.failed, {
         id,
@@ -455,7 +434,7 @@ function StoragePage({
       detail:
         "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
       run: async () => {
-        await rpc.call("startCleanup", { hostId: target, kind: "development" });
+        await startCleanup({ hostId: target, kind: "development" });
         return "Development storage cleanup started in the background.";
       },
     };
@@ -472,7 +451,7 @@ function StoragePage({
       title: `Delete ${totals.fileCount.toLocaleString()} large ${totals.fileCount === 1 ? "file" : "files"} (${bytes(totals.bytes)})?`,
       detail: `Delete files of ${bytes(LARGE_FILE_MIN_BYTES)} or more from ${plural(totals.threadCount, "archived thread")}. Smaller files and conversation history will be kept. Pinned threads are skipped. This can’t be undone.`,
       run: async () => {
-        await rpc.call("startClearLargeFiles", { hostId: target });
+        await startClearLargeFiles({ hostId: target });
         return "Large-file cleanup started in the background.";
       },
     };
@@ -650,9 +629,7 @@ function StoragePage({
                 size="sm"
                 className="shrink-0"
                 disabled={actionBusy || scanning || offline || !detail}
-                onClick={() =>
-                  void perform(() => rpc.call("scanHost", { hostId }))
-                }
+                onClick={() => void perform(() => scanHost({ hostId }))}
               >
                 <Icon
                   name="RotateCcw"
@@ -796,7 +773,7 @@ function StoragePage({
                           action: "Clear archived files",
                           detail: `Delete ${bytes(report.archivedFiles.bytes)} of stored files from ${plural(report.archivedFiles.threadCount, "archived thread")} on this machine. This includes small files. Conversations and uploaded attachments will be kept. Pinned and running threads are skipped. This can’t be undone.`,
                           run: async () => {
-                            await rpc.call("startClearArchivedFiles", {
+                            await startClearArchivedFiles({
                               hostId: report.hostId,
                             });
                             return "Archived-file cleanup started in the background.";
@@ -865,7 +842,7 @@ function StoragePage({
                           detail:
                             "Delete folders no longer attached to a thread. Existing threads and their files will be kept. This can’t be undone.",
                           run: async () => {
-                            await rpc.call("startCleanup", {
+                            await startCleanup({
                               kind: "orphans",
                               hostId: report.hostId,
                             });
@@ -885,7 +862,7 @@ function StoragePage({
                       onAction={() =>
                         void perform(
                           async () => {
-                            await rpc.call("startCleanup", {
+                            await startCleanup({
                               kind: "worktrees",
                               hostId,
                             });
@@ -1007,7 +984,7 @@ function StoragePage({
                                     description: thread.title,
                                   },
                                   async () => {
-                                    await rpc.call("clearThread", {
+                                    await clearThread({
                                       threadId: thread.threadId,
                                     });
                                     return thread.title;
@@ -1051,7 +1028,7 @@ function StoragePage({
                           description: `${report.developerStorage!.path}/${entry.name}`,
                         },
                         async () => {
-                          const result = await rpc.call("removeDevInstances", {
+                          const result = await removeDevInstances({
                             hostId: report.hostId,
                             names: [entry.name],
                             stopRunning: false,
@@ -1070,14 +1047,11 @@ function StoragePage({
                               detail:
                                 "Its dev server is running. BB will stop it, then delete its database, logs, and thread files. The source checkout is kept. This can’t be undone.",
                               run: async () => {
-                                const stopped = await rpc.call(
-                                  "removeDevInstances",
-                                  {
-                                    hostId: report.hostId,
-                                    names: [entry.name],
-                                    stopRunning: true,
-                                  },
-                                );
+                                const stopped = await removeDevInstances({
+                                  hostId: report.hostId,
+                                  names: [entry.name],
+                                  stopRunning: true,
+                                });
                                 if (stopped.removedCount === 0)
                                   throw new Error(
                                     "No data was deleted. Rescan the machine to update its status.",
@@ -1140,9 +1114,7 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     disabled={actionBusy || scannable.length === 0}
-                    onClick={() =>
-                      void perform(() => rpc.call("scanAll", null))
-                    }
+                    onClick={() => void perform(() => scanAll(null))}
                   >
                     <Icon name="RotateCcw" />
                     Scan all
@@ -1172,16 +1144,12 @@ function StoragePage({
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
                     onScan={() =>
-                      void perform(
-                        () => rpc.call("scanHost", { hostId: host.hostId }),
-                        {
-                          title: "Starting storage scan",
-                          completed: "Storage scan started",
-                          failed: "Couldn’t start storage scan",
-                          description:
-                            machines[host.hostId]?.name ?? host.hostId,
-                        },
-                      )
+                      void perform(() => scanHost({ hostId: host.hostId }), {
+                        title: "Starting storage scan",
+                        completed: "Storage scan started",
+                        failed: "Couldn’t start storage scan",
+                        description: machines[host.hostId]?.name ?? host.hostId,
+                      })
                     }
                   />
                 ))}

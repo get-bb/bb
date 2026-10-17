@@ -53,7 +53,7 @@ export function createService(bb: BbPluginApi) {
   async function configure(policy: Policy) {
     requireActive();
     await bb.storage.kv.set("policy", policySchema.parse(policy));
-    bb.realtime.publish("policy-changed", null);
+    bb.rpc.experimental_invalidate(["state", "retention-preview"]);
     return state();
   }
   async function sweep() {
@@ -108,7 +108,7 @@ export function createService(bb: BbPluginApi) {
       }
       if (!disposed) {
         await bb.storage.kv.set("lastRun", run);
-        bb.realtime.publish("changed", null);
+        bb.rpc.experimental_invalidate(["state", "retention-preview", "hosts"]);
       }
     } finally {
       running = false;

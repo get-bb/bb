@@ -25,8 +25,16 @@ export default function plugin(bb: BbPluginApi) {
       const unsubscribe = bb.sdk.subscribe({
         event: "host:changed",
         callback: (event) => {
+          bb.rpc.experimental_invalidate(["hosts"]);
           if (event.changes.includes("host-connected"))
             void storage.reconcileDevelopmentStorage();
+        },
+      });
+      const unsubscribeSystem = bb.sdk.subscribe({
+        event: "system:changed",
+        callback: (event) => {
+          if (event.changes.includes("config-changed"))
+            bb.rpc.experimental_invalidate(["hosts"]);
         },
       });
       const unsubscribeConnection = bb.sdk.subscribe({
@@ -45,6 +53,7 @@ export default function plugin(bb: BbPluginApi) {
         });
       } finally {
         unsubscribe();
+        unsubscribeSystem();
         unsubscribeConnection();
       }
     },
@@ -71,6 +80,21 @@ export default function plugin(bb: BbPluginApi) {
     storage.clearPendingArchives(cleanupEnabled),
   );
   bb.rpc.register(storageRpc, {
+    async metadata() {
+      const [machines, config] = await Promise.all([
+        bb.sdk.hosts.list({ type: "persistent" }),
+        bb.sdk.system.config(),
+      ]);
+      return {
+        machines: machines.map(({ id, name, status, lastSeenAt }) => ({
+          id,
+          name,
+          status,
+          lastSeenAt,
+        })),
+        primaryHostId: config.primaryHostId,
+      };
+    },
     startCleanup: storage.startCleanup,
     hosts: () => storage.hosts(),
     host: storage.host,

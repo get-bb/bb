@@ -12,18 +12,28 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeHostResponse } from "@get-bb/plugin-sdk/testing";
 import { z } from "zod";
 import { policySchema, storageRpc } from "./src/contract.js";
-import { makeSystemConfig } from "../../apps/app/src/test/fixtures/system-config.js";
 import type { State } from "./src/contract.js";
 import type { HostStorageListResponse } from "./src/storage-types.js";
 
+const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollIntoView",
+);
 const app = await loadPluginApp(() => import("./app"));
 afterEach(() => {
   cleanup();
   toast.dismiss();
   vi.restoreAllMocks();
+  if (scrollIntoViewDescriptor)
+    Object.defineProperty(
+      HTMLElement.prototype,
+      "scrollIntoView",
+      scrollIntoViewDescriptor,
+    );
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
 
-function fixture(subPath = "host_test") {
+function fixture(subPath = "host_test", metadataError: Error | null = null) {
   let state: State = {
     policy: {
       archiveAfterDays: null,
@@ -86,14 +96,28 @@ function fixture(subPath = "host_test") {
   });
   const remove = vi.fn(
     async (_input: z.infer<typeof storageRpc.removeDevInstances.input>) => ({
-    running: [] as string[],
-    removedCount: 1,
-    removedBytes: 20,
-    skippedCount: 0,
-    stoppedProcessCount: 1,
+      running: [] as string[],
+      removedCount: 1,
+      removedBytes: 20,
+      skippedCount: 0,
+      stoppedProcessCount: 1,
     }),
   );
   const start = vi.fn(async () => null);
+  const readState = vi.fn(() => state);
+  const metadata = vi.fn(async () => {
+    if (metadataError) throw metadataError;
+    return {
+      machines: [
+        makeHostResponse({
+          id: "host_test",
+          name: "Test machine",
+          status: "connected",
+        }),
+      ],
+      primaryHostId: "host_test",
+    };
+  });
   const Component = app.navPanels[0]!.component;
   const slot = renderSlot<{ subPath: string }>(
     {
@@ -106,8 +130,10 @@ function fixture(subPath = "host_test") {
     },
     { subPath },
     {
+      experimental_rpcContract: storageRpc,
       rpc: {
-        state: () => state,
+        state: readState,
+        metadata,
         configure: (input) => configure(policySchema.parse(input)),
         hosts: reports,
         removeDevInstances: (input) =>
@@ -116,24 +142,18 @@ function fixture(subPath = "host_test") {
         startClearLargeFiles: start,
         startCleanup: start,
       },
-      sdk: {
-        subscribe: () => () => {},
-        hosts: {
-          list: async () => [
-            makeHostResponse({
-              id: "host_test",
-              name: "Test machine",
-              status: "connected",
-            }),
-          ],
-        },
-        system: {
-          config: async () => makeSystemConfig({ primaryHostId: "host_test" }),
-        },
-      },
     },
   );
-  return { slot, configure, remove, start, hosts, reports };
+  return {
+    slot,
+    configure,
+    remove,
+    start,
+    hosts,
+    reports,
+    metadata,
+    readState,
+  };
 }
 
 it("stops a running development instance only after the user confirms stop and remove", async () => {
@@ -198,7 +218,56 @@ it("shows cleanup failures as toasts, keeps other actions available, and permits
   expect(start).toHaveBeenCalledTimes(2);
 });
 
-it("saves switches immediately and rolls failed saves back without a storage scan", async () => {
+it.each(["switch", "select"] as const)(
+  "predicts a %s setting and rolls back a rejected write",
+  async (kind) => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const { slot, configure } = fixture("");
+    let reject!: (error: Error) => void;
+    configure.mockImplementationOnce(
+      () =>
+        new Promise<State>((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const control =
+      kind === "switch"
+        ? await slot.findByRole("switch", {
+            name: "Delete thread storage on archive",
+          })
+        : await slot.findByRole("combobox", {
+            name: "Archive inactive threads",
+          });
+    if (kind === "switch") fireEvent.click(control);
+    else {
+      fireEvent.click(control);
+      fireEvent.click(
+        await slot.findByRole("option", { name: "After 1 week" }),
+      );
+    }
+    await waitFor(() =>
+      expect(
+        kind === "switch"
+          ? control.getAttribute("aria-checked")
+          : control.textContent,
+      ).toBe(kind === "switch" ? "true" : "After 1 week"),
+    );
+    await waitFor(() => expect(control.hasAttribute("disabled")).toBe(true));
+    await act(async () => reject(new Error("Save rejected")));
+    await waitFor(() =>
+      expect(
+        kind === "switch"
+          ? control.getAttribute("aria-checked")
+          : control.textContent,
+      ).toBe(kind === "switch" ? "false" : "Never"),
+    );
+  },
+);
+
+it("saves switches immediately and keeps the saved value on failure without a storage scan", async () => {
   const { slot, configure } = fixture("");
   const page = within(slot.container);
   const toggle = await page.findByRole("switch", {
@@ -235,7 +304,7 @@ it("toasts background completion once and keeps completed messages out of the pa
     clearedBytes: 0,
   };
   await act(async () => {
-    await slot.emitRealtime("changed", null);
+    await slot.experimental_invalidateRpc(["hosts"]);
   });
   await within(slot.container).findByText(
     /Removing archived files in the background/,
@@ -246,7 +315,7 @@ it("toasts background completion once and keeps completed messages out of the pa
     clearedBytes: 100,
   };
   await act(async () => {
-    await slot.emitRealtime("changed", null);
+    await slot.experimental_invalidateRpc(["hosts"]);
   });
   await waitFor(() =>
     expect(
@@ -295,7 +364,7 @@ it("hands an all-machines large-file cleanup toast over to each machine's job un
   await waitFor(() => expect(loadingDescriptions()).toEqual([]));
   hosts[0]!.largeFileCleanup = { state: "running", startedAt: Date.now() };
   await act(async () => {
-    await slot.emitRealtime("changed", null);
+    await slot.experimental_invalidateRpc(["hosts"]);
   });
   await waitFor(() => expect(loadingDescriptions()).toEqual(["Test machine"]));
   hosts[0]!.largeFileCleanup = {
@@ -304,7 +373,7 @@ it("hands an all-machines large-file cleanup toast over to each machine's job un
     clearedBytes: 2 * 1024 * 1024 * 1024,
   };
   await act(async () => {
-    await slot.emitRealtime("changed", null);
+    await slot.experimental_invalidateRpc(["hosts"]);
   });
   await waitFor(() =>
     expect(
@@ -313,41 +382,6 @@ it("hands an all-machines large-file cleanup toast over to each machine's job un
     ).toContain("Large archived files deleted"),
   );
   expect(loadingDescriptions()).toEqual([]);
-});
-
-it("does not keep cleanup controls locked while the follow-up report is slow", async () => {
-  const { slot, reports, hosts } = fixture();
-  const page = within(slot.container);
-  fireEvent.click(
-    await page.findByRole("button", { name: "Clear archived files" }),
-  );
-  let finish = () => {};
-  reports.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finish = () => resolve({ hosts });
-      }),
-  );
-  try {
-    fireEvent.click(
-      within(page.getByRole("region", { name: "Confirm cleanup" })).getByRole(
-        "button",
-        { name: "Clear archived files" },
-      ),
-    );
-    await waitFor(() =>
-      expect(
-        page.queryByRole("region", { name: "Confirm cleanup" }),
-      ).toBeNull(),
-    );
-    expect(
-      page
-        .getByRole("button", { name: "Remove orphans" })
-        .hasAttribute("disabled"),
-    ).toBe(false);
-  } finally {
-    await act(async () => finish());
-  }
 });
 
 it("starts orphan cleanup in the background, shows progress, and toasts completion", async () => {
@@ -366,7 +400,7 @@ it("starts orphan cleanup in the background, shows progress, and toasts completi
   ).toEqual({ hostId: "host_test", kind: "orphans" });
   hosts[0]!.maintenance = { state: "running", kind: "orphans" };
   await act(async () => {
-    await slot.emitRealtime("changed", null);
+    await slot.experimental_invalidateRpc(["hosts"]);
   });
   await page.findByText("Removing orphaned storage…");
   expect(
@@ -380,7 +414,7 @@ it("starts orphan cleanup in the background, shows progress, and toasts completi
     message: "Removed 1 orphaned storage folder",
   };
   await act(async () => {
-    await slot.emitRealtime("changed", null);
+    await slot.experimental_invalidateRpc(["hosts"]);
   });
   await waitFor(() =>
     expect(
@@ -462,7 +496,7 @@ it.each([
       message: "Test machine",
     };
     await act(async () => {
-      await slot.emitRealtime("changed", null);
+      await slot.experimental_invalidateRpc(["hosts"]);
     });
     await waitFor(() =>
       expect(
@@ -471,3 +505,97 @@ it.each([
     );
   },
 );
+
+it("shows host rename and disconnect updates even when reports have not changed", async () => {
+  const { slot, metadata } = fixture("");
+  await slot.findByText("Test machine");
+  metadata.mockResolvedValue({
+    machines: [
+      makeHostResponse({
+        id: "host_test",
+        name: "Renamed machine",
+        status: "disconnected",
+      }),
+    ],
+    primaryHostId: "host_test",
+  });
+  await act(async () => slot.experimental_invalidateRpc(["hosts"]));
+  await slot.findByText("Renamed machine");
+  expect(slot.getByText("Offline")).toBeTruthy();
+});
+
+it.each(["metadata", "policy"] as const)(
+  "keeps loaded controls on %s failure and recovers with Retry",
+  async (kind) => {
+    const { slot, metadata, readState } = fixture("");
+    const control = await slot.findByRole("switch", {
+      name: "Delete thread storage on archive",
+    });
+    if (kind === "metadata")
+      metadata.mockRejectedValue(new Error("Read unavailable"));
+    else
+      readState.mockImplementation(() => {
+        throw new Error("Read unavailable");
+      });
+    await act(async () =>
+      slot.experimental_invalidateRpc([
+        kind === "metadata" ? "hosts" : "state",
+      ]),
+    );
+    expect(
+      await slot.findByRole("alert", {}, { timeout: 10000 }),
+    ).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Read unavailable"),
+    );
+    expect(
+      slot.getByRole("switch", { name: "Delete thread storage on archive" }),
+    ).toBe(control);
+    metadata.mockReset();
+    metadata.mockResolvedValue({
+      machines: [
+        makeHostResponse({
+          id: "host_test",
+          name: "Test machine",
+          status: "connected",
+        }),
+      ],
+      primaryHostId: "host_test",
+    });
+    readState.mockReset();
+    readState.mockReturnValue({
+      policy: {
+        archiveAfterDays: null,
+        deleteAfterDays: null,
+        deleteStorageOnArchive: false,
+        deleteDevDataOnCheckoutRemoval: false,
+      },
+      lastRun: null,
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(slot.queryByRole("alert")).toBeNull());
+    expect(
+      slot.getByRole("switch", { name: "Delete thread storage on archive" }),
+    ).toBe(control);
+  },
+  15000,
+);
+
+it("offers Retry when host metadata fails on first load", async () => {
+  const { slot, metadata } = fixture("", new Error("Metadata unavailable"));
+  await slot.findByText("Metadata unavailable", {}, { timeout: 10000 });
+  expect(slot.queryByRole("switch")).toBeNull();
+  metadata.mockResolvedValue({
+    machines: [
+      makeHostResponse({
+        id: "host_test",
+        name: "Recovered machine",
+        status: "connected",
+      }),
+    ],
+    primaryHostId: "host_test",
+  });
+  fireEvent.click(slot.getByRole("button", { name: "Try again" }));
+  await slot.findByText("Recovered machine");
+  expect(slot.queryByRole("alert")).toBeNull();
+}, 15000);

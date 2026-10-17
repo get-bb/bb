@@ -35,8 +35,26 @@ export const previewSchema = z.object({
 });
 export type Preview = z.infer<typeof previewSchema>;
 const machineInput = z.object({ hostId: z.string().min(1) }).strict();
+const hostMetadataSchema = z.object({
+  machines: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      status: z.enum(["connected", "disconnected"]),
+      lastSeenAt: z.number().nullable(),
+    }),
+  ),
+  primaryHostId: z.string().nullable(),
+});
+export type HostMetadata = z.infer<typeof hostMetadataSchema>;
 export const storageRpc = defineRpcContract({
+  metadata: {
+    input: z.null(),
+    output: hostMetadataSchema,
+    tags: () => ["hosts"],
+  },
   startCleanup: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: z
       .object({
         hostId: z.string().min(1),
@@ -45,23 +63,43 @@ export const storageRpc = defineRpcContract({
       .strict(),
     output: z.null(),
   },
-  hosts: { input: z.null(), output: hostStorageListResponseSchema },
-  host: { input: machineInput, output: hostStorageResponseSchema },
-  scanHost: { input: machineInput, output: hostStorageResponseSchema },
-  scanAll: { input: z.null(), output: hostStorageListResponseSchema },
+  hosts: {
+    tags: () => ["hosts"],
+    input: z.null(),
+    output: hostStorageListResponseSchema,
+  },
+  host: {
+    tags: () => ["hosts"],
+    input: machineInput,
+    output: hostStorageResponseSchema,
+  },
+  scanHost: {
+    invalidates: () => ["hosts", "retention-preview"],
+    input: machineInput,
+    output: hostStorageResponseSchema,
+  },
+  scanAll: {
+    invalidates: () => ["hosts", "retention-preview"],
+    input: z.null(),
+    output: hostStorageListResponseSchema,
+  },
   removeOrphans: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: machineInput,
     output: hostStorageRemoveOrphansResponseSchema,
   },
   retryWorktreeCleanup: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: machineInput,
     output: hostStorageRetryWorktreeCleanupResponseSchema,
   },
   startClearLargeFiles: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
     output: z.null(),
   },
   clearLargeFiles: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
     output: z.object({
       clearedFiles: z.number().int().nonnegative(),
@@ -69,11 +107,17 @@ export const storageRpc = defineRpcContract({
     }),
   },
   clearThread: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: z.object({ threadId: z.string().min(1) }).strict(),
     output: z.object({ ok: z.literal(true) }),
   },
-  startClearArchivedFiles: { input: machineInput, output: z.null() },
+  startClearArchivedFiles: {
+    invalidates: () => ["hosts", "retention-preview"],
+    input: machineInput,
+    output: z.null(),
+  },
   clearArchivedFiles: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: machineInput,
     output: z.object({
       clearedThreads: z.number().int().nonnegative(),
@@ -81,6 +125,7 @@ export const storageRpc = defineRpcContract({
     }),
   },
   removeDevInstances: {
+    invalidates: () => ["hosts", "retention-preview"],
     input: z.union([
       z.object({ hostId: z.string().min(1), names: z.null() }).strict(),
       z
@@ -99,7 +144,15 @@ export const storageRpc = defineRpcContract({
       stoppedProcessCount: z.number().int().nonnegative(),
     }),
   },
-  state: { input: z.null(), output: stateSchema },
-  preview: { input: policySchema, output: previewSchema },
-  configure: { input: policySchema, output: stateSchema },
+  state: { tags: () => ["state"], input: z.null(), output: stateSchema },
+  preview: {
+    tags: () => ["retention-preview"],
+    input: policySchema,
+    output: previewSchema,
+  },
+  configure: {
+    invalidates: () => ["state", "retention-preview"],
+    input: policySchema,
+    output: stateSchema,
+  },
 });
