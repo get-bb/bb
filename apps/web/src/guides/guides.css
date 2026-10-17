@@ -835,6 +835,10 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 36px;
   }
+
+  .gd-overview li:last-child {
+    border-bottom: 0;
+  }
 }
 
 @media (max-width: 640px) {
