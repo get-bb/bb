@@ -4013,6 +4013,8 @@ export interface ExperimentalRpcMutationState<
 > {
   mutate(...args: PluginRpcCallArgs<Method>): Promise<PluginRpcResult<Method>>;
   isPending: boolean;
+  /** Inputs of every pending call made by this hook, including matched read refreshes. Empty after settle; other hook instances are excluded. */
+  pendingInputs: readonly StandardSchemaV1InferInput<Method["input"]>[];
   error: Error | null;
   reset(): void;
 }

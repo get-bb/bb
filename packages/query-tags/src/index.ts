@@ -3,11 +3,13 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import {
   QueryObserver,
   useMutation,
+  useMutationState,
   replaceEqualDeep,
   type Query,
   type QueryClient,
@@ -194,35 +196,47 @@ export function restartTaggedRead(query: object): void {
   if (pending) pending.restart = true;
 }
 
-export function useTaggedMutation<Args extends unknown[], Result>(
+export function useTaggedMutation<Input, Result>(
   client: QueryClient,
   invalidate: (tags: readonly string[]) => Promise<void>,
-  call: (...args: Args) => Promise<TaggedMutationOutcome<Result>>,
-  optimistic?: (...args: Args) => readonly TaggedOptimisticUpdate[],
+  call: (input: Input) => Promise<TaggedMutationOutcome<Result>>,
+  optimistic?: (input: Input) => readonly TaggedOptimisticUpdate[],
 ) {
+  const [owner] = useState(() => ({}));
   const predict = useRef(optimistic);
   useEffect(() => {
     predict.current = optimistic;
   }, [optimistic]);
-  const mutation = useMutation<
-    Result,
-    Error,
-    { args: Args; prediction: ReturnType<typeof beginOptimisticMutation> }
-  >(
+  type Variables = {
+    input: Input;
+    prediction: ReturnType<typeof beginOptimisticMutation>;
+  };
+  const mutation = useMutation<Result, Error, Variables>(
     {
-      mutationFn: ({ args, prediction }) =>
-        executeTaggedMutation(invalidate, () => call(...args), prediction),
+      meta: { taggedMutationOwner: owner },
+      mutationFn: ({ input, prediction }) =>
+        executeTaggedMutation(invalidate, () => call(input), prediction),
+    },
+    client,
+  );
+  const pendingInputs = useMutationState(
+    {
+      filters: {
+        status: "pending",
+        predicate: (entry) => entry.options.meta?.taggedMutationOwner === owner,
+      },
+      select: (entry) => (entry.state.variables as Variables).input,
     },
     client,
   );
   const { mutateAsync } = mutation;
   const mutate = useCallback(
-    (...args: Args) => {
+    (input: Input) => {
       const prediction = beginOptimisticMutation(
         client,
-        predict.current?.(...args) ?? [],
+        predict.current?.(input) ?? [],
       );
-      return mutateAsync({ args, prediction }).catch((error: unknown) => {
+      return mutateAsync({ input, prediction }).catch((error: unknown) => {
         prediction.rollback();
         throw error;
       });
@@ -231,7 +245,8 @@ export function useTaggedMutation<Args extends unknown[], Result>(
   );
   return {
     mutate,
-    isPending: mutation.isPending,
+    pendingInputs,
+    isPending: pendingInputs.length > 0,
     error: mutation.error,
     reset: mutation.reset,
   };

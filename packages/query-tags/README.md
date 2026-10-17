@@ -15,7 +15,6 @@ waits for active reads to settle. Refresh failures retain
 the cached data and query error; they do not turn a successful write into a
 failed mutation. A later successful read clears the query error.
 
-
 Pass `{ client, optimistic: [...] }` as the third argument to
 `runTaggedMutation`. Build each prediction with
 `optimisticQueryUpdate<Value>(queryKey, updater, path = [])`. Pure updaters
@@ -32,3 +31,7 @@ fails, the accepted prediction stays with the read error until a successful
 refresh. Later predictions and confirmed values cannot be replaced by an older
 settle or rollback; an inverted completion retains the later confirmed value
 until a subsequent fresh read. Keyed reads acknowledge only rows they fetched.
+
+`useTaggedMutation` accepts one typed input per call. Its `pendingInputs` contains
+all pending inputs for that hook instance, and `isPending` stays true until all
+writes and their matched rereads settle. Other hook instances are excluded.

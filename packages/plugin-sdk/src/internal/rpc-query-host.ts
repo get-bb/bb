@@ -225,19 +225,19 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
   >(options: ExperimentalRpcMutationOptions<Contract, Method>) {
     const host = useHost();
     const pluginId = options.pluginId ?? host.pluginId;
-    return useTaggedMutation<
-      PluginRpcCallArgs<Contract[Method]>,
+    const mutation = useTaggedMutation<
+      StandardSchemaV1InferInput<Contract[Method]["input"]>,
       PluginRpcResult<Contract[Method]>
     >(
       host.queryClient,
       (tags) =>
         invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
-      async (...args) => {
+      async (input) => {
         const response = envelopeSchema.parse(
           await host.call(
             pluginId,
             options.method,
-            jsonValueSchema.parse(args[0] ?? null),
+            jsonValueSchema.parse(input),
           ),
         );
         return {
@@ -245,17 +245,28 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
           result: response.result as PluginRpcResult<Contract[Method]>,
         };
       },
-      (...args) => {
+      (input) => {
         const updates: TaggedOptimisticUpdate[] = [];
         options.optimistic?.(
-          (args[0] ?? null) as StandardSchemaV1InferInput<
-            Contract[Method]["input"]
-          >,
+          input,
           optimisticCache<Contract>(pluginId, updates),
         );
         return updates;
       },
     );
+    const { mutate } = mutation;
+    return {
+      ...mutation,
+      mutate: useCallback(
+        (...args: PluginRpcCallArgs<Contract[Method]>) =>
+          mutate(
+            (args[0] ?? null) as StandardSchemaV1InferInput<
+              Contract[Method]["input"]
+            >,
+          ),
+        [mutate],
+      ),
+    };
   }
   function experimental_useRpcRefresh() {
     const host = useHost();
