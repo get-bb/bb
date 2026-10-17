@@ -1,7 +1,7 @@
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  applyRemotePreferenceSignal,
+  attachPreferencesRpc,
   attachPreferencesStore,
   flushPreferenceWritesForTest,
   hydratePreferences,
@@ -15,17 +15,14 @@ import {
 import { createSyncedPreferenceAtom } from "./synced-preference-atom.js";
 import { defaultPreferences } from "../../shared/preferences.js";
 
-function fakeRpc(
-  preferences: Record<string, unknown> = {},
-): PreferencesRpc & { calls: { method: string; input: unknown }[] } {
+function fakeRpc(): PreferencesRpc & {
+  calls: { method: string; input: unknown }[];
+} {
   const calls: { method: string; input: unknown }[] = [];
   return {
     calls,
     async call(method: string, input: unknown) {
       calls.push({ method, input });
-      if (method === "listPreferences") {
-        return { preferences: { ...defaultPreferences(), ...preferences } };
-      }
       return input;
     },
   };
@@ -71,7 +68,10 @@ describe("preferences sync", () => {
     const store = getDefaultStore();
     const modeAtom = createSyncedPreferenceAtom("organizationMode");
     expect(store.get(preferencesReadyAtom())).toBe(false);
-    await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
+    hydratePreferences({
+      ...defaultPreferences(),
+      organizationMode: "machine",
+    });
     expect(store.get(preferencesReadyAtom())).toBe(true);
     expect(store.get(modeAtom)).toBe("machine");
     expect(
@@ -105,7 +105,10 @@ describe("preferences sync", () => {
     attachPreferencesStore(getDefaultStore(), "my-sidebar");
 
     expect(hydratePreferencesFromMirror()).toBe(false);
-    await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
+    hydratePreferences({
+      ...defaultPreferences(),
+      organizationMode: "machine",
+    });
 
     expect(
       JSON.parse(mirror.getItem("bb.my-sidebar.preferences.v1") ?? "{}")
@@ -118,7 +121,8 @@ describe("preferences sync", () => {
 
   it("applies a local write immediately and coalesces the server write", async () => {
     const rpc = fakeRpc();
-    await hydratePreferences(rpc);
+    attachPreferencesRpc(rpc);
+    hydratePreferences(defaultPreferences());
     const store = getDefaultStore();
     const collapsedAtom = createSyncedPreferenceAtom("collapsedProjects");
     store.set(collapsedAtom, ["proj_a"]);
@@ -144,28 +148,32 @@ describe("preferences sync", () => {
 
   it("takes a remote change from another window unless a local write is pending", async () => {
     const rpc = fakeRpc();
-    await hydratePreferences(rpc);
+    attachPreferencesRpc(rpc);
+    hydratePreferences(defaultPreferences());
     const store = getDefaultStore();
     const sortAtom = createSyncedPreferenceAtom("chronologicalSort");
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "alpha" });
-    expect(store.get(sortAtom)).toBe("alpha");
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "bogus" });
-    expect(store.get(sortAtom)).toBe("alpha");
-    applyRemotePreferenceSignal({ key: "nope", value: 1 });
+    hydratePreferences({ ...defaultPreferences(), chronologicalSort: "alpha" });
     expect(store.get(sortAtom)).toBe("alpha");
 
     store.set(sortAtom, "created");
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "updated" });
+    hydratePreferences({
+      ...defaultPreferences(),
+      chronologicalSort: "updated",
+    });
     expect(store.get(sortAtom)).toBe("created");
     vi.advanceTimersByTime(200);
     await flushPreferenceWritesForTest();
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "updated" });
+    hydratePreferences({
+      ...defaultPreferences(),
+      chronologicalSort: "updated",
+    });
     expect(store.get(sortAtom)).toBe("updated");
   });
 
   it("does not write back a value that did not change", async () => {
     const rpc = fakeRpc();
-    await hydratePreferences(rpc);
+    attachPreferencesRpc(rpc);
+    hydratePreferences(defaultPreferences());
     const store = getDefaultStore();
     const modeAtom = createSyncedPreferenceAtom("organizationMode");
     store.set(modeAtom, "chronological");
@@ -183,7 +191,10 @@ describe("preferences sync with a provided store", () => {
     const custom = createStore();
     attachPreferencesStore(custom, "thread-list");
     const modeAtom = createSyncedPreferenceAtom("organizationMode");
-    await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
+    hydratePreferences({
+      ...defaultPreferences(),
+      organizationMode: "machine",
+    });
     expect(custom.get(preferencesReadyAtom())).toBe(true);
     expect(custom.get(modeAtom)).toBe("machine");
     expect(getDefaultStore().get(preferencesReadyAtom())).toBe(false);

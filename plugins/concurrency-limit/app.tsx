@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
-  useRealtime,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,6 @@ type ConfigurationInput = Pick<
 >;
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-const CONFIGURATION_CHANGED_CHANNEL = "configuration-changed";
 const GLOBAL_FIELD = "global";
 
 function errorMessage(error: unknown): string {
@@ -41,65 +40,72 @@ function draftsFor(view: ConfigurationView): Record<string, string> {
 }
 
 function ConcurrencyLimitSettings() {
-  const rpc = useRpc<typeof concurrencyLimitRpcContract>();
-  const [view, setView] = useState<ConfigurationView | null>(null);
+  const query = experimental_useRpcQuery<
+    typeof concurrencyLimitRpcContract,
+    "getConfiguration"
+  >({ method: "getConfiguration", input: null });
+  const { mutate } = experimental_useRpcMutation<
+    typeof concurrencyLimitRpcContract,
+    "setConfiguration"
+  >({ method: "setConfiguration" });
+  const view = query.data ?? null;
+  const latestView = useRef(view);
+  const dirty = useRef(new Set<string>());
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setError] = useState<string | null>(null);
   const [invalidField, setInvalidField] = useState<string | null>(null);
   const activeRef = useRef(true);
-  const savingRef = useRef(false);
+  const error = saveError ?? query.error?.message ?? null;
 
   const applyView = useCallback((next: ConfigurationView) => {
-    setView(next);
-    setDrafts(draftsFor(next));
+    setDrafts((current) => {
+      const nextDrafts = draftsFor(next);
+      for (const field of dirty.current) {
+        if (current[field] !== undefined) nextDrafts[field] = current[field];
+      }
+      return nextDrafts;
+    });
   }, []);
 
-  const refetch = useCallback(() => {
-    if (savingRef.current) return;
-    void rpc.call("getConfiguration").then(
-      (configuration) => {
-        if (!activeRef.current || savingRef.current) return;
-        applyView(configuration);
-        setError(null);
-        setSaveState("saved");
-      },
-      (loadError: unknown) => {
-        if (!activeRef.current) return;
-        setError(errorMessage(loadError));
-        setSaveState("error");
-      },
-    );
-  }, [applyView, rpc]);
-
+  useEffect(() => {
+    if (view !== null) {
+      latestView.current = view;
+      applyView(view);
+    }
+  }, [view, applyView]);
+  useEffect(() => {
+    if (view !== null && !query.isFetching && query.error === null) {
+      setError(null);
+      setSaveState((current) => (current === "error" ? "idle" : current));
+    }
+  }, [view, query.dataUpdatedAt, query.isFetching, query.error]);
   useEffect(() => {
     activeRef.current = true;
-    refetch();
     return () => {
       activeRef.current = false;
     };
-  }, [refetch]);
-  useRealtime(CONFIGURATION_CHANGED_CHANNEL, refetch);
+  }, []);
 
-  async function save(next: ConfigurationInput): Promise<void> {
-    savingRef.current = true;
+  async function save(field: string, next: ConfigurationInput): Promise<void> {
     setSaveState("saving");
     setError(null);
     try {
-      const saved = await rpc.call("setConfiguration", next);
+      const saved = await mutate(next);
       if (!activeRef.current) return;
+      dirty.current.delete(field);
+      latestView.current = saved;
       applyView(saved);
       setSaveState("saved");
     } catch (saveError) {
       if (!activeRef.current) return;
       setError(errorMessage(saveError));
       setSaveState("error");
-    } finally {
-      savingRef.current = false;
     }
   }
 
   function changeDraft(field: string, value: string): void {
+    dirty.current.add(field);
     setDrafts((current) => ({ ...current, [field]: value }));
     if (invalidField === field) setInvalidField(null);
   }
@@ -109,14 +115,21 @@ function ConcurrencyLimitSettings() {
       setInvalidField(field);
       return;
     }
-    if (commit.kind === "changed") void save(commit.configuration);
+    if (commit.kind === "changed") void save(field, commit.configuration);
+    else {
+      dirty.current.delete(field);
+      if (view !== null) applyView(view);
+    }
   }
 
   function commitGlobal(): void {
     if (view === null) return;
     applyCommit(
       GLOBAL_FIELD,
-      commitGlobalLimitDraft(view, drafts[GLOBAL_FIELD] ?? ""),
+      commitGlobalLimitDraft(
+        latestView.current ?? view,
+        drafts[GLOBAL_FIELD] ?? "",
+      ),
     );
   }
 
@@ -124,7 +137,11 @@ function ConcurrencyLimitSettings() {
     if (view === null) return;
     applyCommit(
       hostId,
-      commitHostLimitDraft(view, hostId, drafts[hostId] ?? ""),
+      commitHostLimitDraft(
+        latestView.current ?? view,
+        hostId,
+        drafts[hostId] ?? "",
+      ),
     );
   }
 
@@ -139,6 +156,15 @@ function ConcurrencyLimitSettings() {
         role={error === null ? "status" : "alert"}
       >
         {error ?? "Loading limits…"}
+        {error !== null && (
+          <button
+            type="button"
+            className="ml-2 underline"
+            onClick={() => void query.refetch()}
+          >
+            Retry
+          </button>
+        )}
       </p>
     );
   }
@@ -242,6 +268,13 @@ function ConcurrencyLimitSettings() {
         ) : error !== null ? (
           <span className="text-xs text-destructive" role="alert">
             {error}
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => void query.refetch()}
+            >
+              Retry
+            </button>
           </span>
         ) : (
           <span className="text-xs text-muted-foreground" role="status">

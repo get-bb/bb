@@ -3914,6 +3914,8 @@ export interface BbNavigate {
 // ---------------------------------------------------------------------------
 
 export interface ExperimentalRpcQueryState<T> {
+  /** Timestamp of the last successful read, including unchanged responses; zero before success. */
+  dataUpdatedAt: number;
   data: T | undefined;
   error: Error | null;
   isLoading: boolean;

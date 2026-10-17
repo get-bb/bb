@@ -19,7 +19,6 @@ import {
 
 const CONFIGURATION_KEY = "configuration";
 const CAPACITIES_KEY = "host-capacities";
-const CONFIGURATION_CHANGED_CHANNEL = "configuration-changed";
 const RETRY_MIN_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 export const MAX_REASON_LENGTH = 200;
@@ -86,10 +85,12 @@ export const concurrencyLimitRpcContract = defineRpcContract({
   getConfiguration: {
     input: z.null(),
     output: hostConfigurationSchema,
+    tags: () => ["configuration"],
   },
   setConfiguration: {
     input: configurationSchema,
     output: hostConfigurationSchema,
+    invalidates: () => ["configuration"],
   },
 });
 
@@ -236,7 +237,6 @@ export default async function concurrencyLimitPlugin(
     const normalized = normalizeConfiguration(next);
     await bb.storage.kv.set(CONFIGURATION_KEY, normalized);
     configuration = normalized;
-    bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
     await bb.experimental_hooks.recheck("message.dispatch");
   }
 
@@ -305,6 +305,7 @@ export default async function concurrencyLimitPlugin(
                 ...configuration,
                 globalLimit: parseLimitArgument(requested, "unlimited"),
               });
+              bb.rpc.experimental_invalidate(["configuration"]);
             }
             return {
               exitCode: 0,
@@ -345,6 +346,7 @@ export default async function concurrencyLimitPlugin(
                   parseLimitArgument(requested, "auto"),
                 ),
               );
+              bb.rpc.experimental_invalidate(["configuration"]);
             }
             const updated = (await readConfiguration()).hosts.find(
               (candidate) => candidate.id === hostId,
@@ -419,7 +421,7 @@ export default async function concurrencyLimitPlugin(
       );
       if (changed) {
         await persistCapacities();
-        bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
+        bb.rpc.experimental_invalidate(["configuration"]);
         await bb.experimental_hooks.recheck("message.dispatch");
       }
       return retry ? "retry" : "settled";
@@ -473,7 +475,7 @@ export default async function concurrencyLimitPlugin(
                 change === "host-connected" || change === "host-disconnected",
             )
           )
-            bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
+            bb.rpc.experimental_invalidate(["configuration"]);
           if (event.changes.includes("host-connected"))
             requestRefresh(event.id);
         },

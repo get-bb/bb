@@ -56,10 +56,7 @@ describe("thread-list preferences rpc", () => {
       preferences: { organizationMode: string };
     };
     expect(listed.preferences.organizationMode).toBe("machine");
-    expect(harness.realtimeSignals).toEqual([
-      { channel: "preferences", payload: { key: "showProviderIcons", value: false } },
-      { channel: "preferences", payload: { key: "organizationMode", value: "machine" } },
-    ]);
+    expect(harness.experimental_rpcInvalidations).toContainEqual(["preferences"]);
   });
 
   it("rejects a value that fails the preference's schema and leaves storage alone", async () => {
@@ -283,7 +280,5 @@ it("validates lifecycle selection through CLI and RPC and broadcasts it", async 
     await expect(harness.behavior.callRpc("setPreference", { key: "threadLifecycles", value })).rejects.toThrow(/Invalid value/);
   }
   await expect(bb.storage.kv.get("preference:threadLifecycles")).resolves.toEqual(["archived"]);
-  expect(harness.realtimeSignals).toContainEqual({
-    channel: "preferences", payload: { key: "threadLifecycles", value: ["archived"] },
-  });
+  expect(harness.experimental_rpcInvalidations).toContainEqual(["preferences"]);
 });

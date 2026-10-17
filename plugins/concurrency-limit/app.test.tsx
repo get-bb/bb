@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
@@ -162,3 +162,73 @@ describe("Concurrency limit settings", () => {
     );
   });
 });
+
+it("clears a failed save after an unchanged successful read without losing a draft", async () => {
+  const configuration = { globalLimit: null, hostOverrides: [], hosts };
+  const slot = renderSlot(
+    app.settingsSections[0]!,
+    {},
+    {
+      rpc: {
+        getConfiguration: () => configuration,
+        setConfiguration: () => {
+          throw new Error("Save failed");
+        },
+      },
+    },
+  );
+  const input = await slot.findByRole("spinbutton", {
+    name: "Overall thread limit",
+  });
+  fireEvent.change(input, { target: { value: "7" } });
+  fireEvent.blur(input);
+  await slot.findByText("Save failed");
+  await act(async () => {
+    await slot.experimental_invalidateRpc(null);
+  });
+  await waitFor(() => expect(slot.queryByText("Save failed")).toBeNull());
+  expect(input.getAttribute("value")).toBe("7");
+});
+
+it.each([false, true])(
+  "offers Retry after a failed read with loaded data: %s",
+  async (loaded) => {
+    let fail = !loaded;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          getConfiguration: () => {
+            if (fail) throw new Error("Limits unavailable");
+            return { globalLimit: null, hostOverrides: [], hosts };
+          },
+        },
+      },
+    );
+    const input = loaded
+      ? await slot.findByRole("spinbutton", { name: "Overall thread limit" })
+      : null;
+    if (input) {
+      fireEvent.change(input, { target: { value: "9" } });
+      fail = true;
+      await act(async () => {
+        await slot.experimental_invalidateRpc(null);
+      });
+    }
+    await slot.findByText("Limits unavailable", {}, { timeout: 12000 });
+    fail = false;
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(slot.queryByText("Limits unavailable")).toBeNull(),
+    );
+    const recovered = slot.getByRole("spinbutton", {
+      name: "Overall thread limit",
+    });
+    if (input) {
+      expect(recovered).toBe(input);
+      expect(recovered.getAttribute("value")).toBe("9");
+    }
+  },
+  20000,
+);

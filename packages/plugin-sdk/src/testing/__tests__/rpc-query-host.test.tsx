@@ -328,3 +328,32 @@ it("retains plain and keyed watched reads until their consumers disable them", a
     client.clear();
   }
 });
+
+it("reports successful reads even when their data stays unchanged", async () => {
+  const contract = defineRpcContract({
+    value: { input: z.null(), output: z.number(), tags: () => ["value"] },
+  });
+  function Probe() {
+    const query = experimental_useRpcQuery<typeof contract, "value">({
+      method: "value",
+      input: null,
+    });
+    return <output>{query.dataUpdatedAt}</output>;
+  }
+  const slot = renderSlot(
+    { component: Probe },
+    {},
+    {
+      experimental_rpcContract: contract,
+      rpc: { value: () => 7 },
+    },
+  );
+  await waitFor(() =>
+    expect(Number(slot.container.textContent)).toBeGreaterThan(0),
+  );
+  const first = Number(slot.container.textContent);
+  await slot.experimental_invalidateRpc(["value"]);
+  await waitFor(() =>
+    expect(Number(slot.container.textContent)).toBeGreaterThan(first),
+  );
+});

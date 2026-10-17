@@ -2,13 +2,12 @@ import { useEffect } from "react";
 import { useAtomValue, useStore } from "jotai";
 import {
   experimental_usePluginId,
-  useRealtime,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
 } from "@get-bb/plugin-sdk/app";
 import type { threadListRpcContract } from "../../server.js";
-import { PREFERENCES_CHANGED_CHANNEL } from "../../shared/preferences.js";
 import {
-  applyRemotePreferenceSignal,
+  attachPreferencesRpc,
   attachPreferencesStore,
   hydratePreferences,
   hydratePreferencesFromMirror,
@@ -21,31 +20,47 @@ export function usePreferencesReady(): boolean {
 
 let syncOwnerCount = 0;
 
-export function usePreferencesSync(): void {
-  const rpc = useRpc<typeof threadListRpcContract>();
+export function usePreferencesSync() {
+  const query = experimental_useRpcQuery<
+    typeof threadListRpcContract,
+    "listPreferences"
+  >({ method: "listPreferences", input: null });
+  const { mutate } = experimental_useRpcMutation<
+    typeof threadListRpcContract,
+    "setPreference"
+  >({ method: "setPreference" });
   const store = useStore();
   const pluginId = experimental_usePluginId();
   useEffect(() => {
     attachPreferencesStore(store, pluginId);
+    attachPreferencesRpc({ call: (_method, input) => mutate(input) });
     syncOwnerCount += 1;
     if (syncOwnerCount === 1) {
       hydratePreferencesFromMirror();
-      void hydratePreferences(rpc).catch((error: unknown) => {
-        console.warn(
-          `${pluginId}: loading preferences failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      });
     }
     return () => {
       syncOwnerCount -= 1;
     };
-  }, [pluginId, rpc, store]);
-  useRealtime(PREFERENCES_CHANGED_CHANNEL, applyRemotePreferenceSignal);
+  }, [pluginId, mutate, store]);
+  useEffect(() => {
+    if (query.data !== undefined) hydratePreferences(query.data.preferences);
+  }, [query.data]);
+  return query;
 }
 
 export function PreferencesSync() {
-  usePreferencesSync();
-  return null;
+  const query = usePreferencesSync();
+  if (query.error === null) return null;
+  return (
+    <p role="alert" className="px-3 text-xs text-destructive">
+      {query.error.message}
+      <button
+        type="button"
+        className="ml-2 underline"
+        onClick={() => void query.refetch()}
+      >
+        Retry
+      </button>
+    </p>
+  );
 }

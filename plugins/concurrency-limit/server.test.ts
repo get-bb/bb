@@ -278,20 +278,20 @@ describe("configuration", () => {
     const service = harness.behavior.runService("capacity-detector");
     await vi.waitFor(() => {
       expect(harness.experimental_hostRpcCalls).toHaveLength(1);
-      expect(harness.realtimeSignals).toHaveLength(1);
+      expect(harness.experimental_rpcInvalidations).toHaveLength(1);
     });
     const hostListCalls = harness.inspection.sdk.callsTo("hosts.list").length;
 
     changes.emitHostChanges("host-a", ["provider-model-catalog-changed"]);
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(harness.realtimeSignals).toHaveLength(1);
+    expect(harness.experimental_rpcInvalidations).toHaveLength(1);
     expect(harness.experimental_hostRpcCalls).toHaveLength(1);
     expect(harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(
       hostListCalls,
     );
 
     changes.emitHostChanges("host-a", ["host-disconnected"]);
-    expect(harness.realtimeSignals).toHaveLength(2);
+    expect(harness.experimental_rpcInvalidations).toHaveLength(2);
 
     service.controller.abort();
     await service.done;

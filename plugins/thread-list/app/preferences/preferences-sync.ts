@@ -2,11 +2,9 @@ import { atom, getDefaultStore, type PrimitiveAtom } from "jotai";
 
 type PreferencesStore = ReturnType<typeof getDefaultStore>;
 import {
-  defaultPreferences,
   getPreferenceDefault,
   parseStoredPreferenceValue,
   PREFERENCE_KEYS,
-  preferencesChangedSignalSchema,
   type PreferenceKey,
   type PreferenceValue,
   type PreferenceValues,
@@ -19,7 +17,6 @@ export function preferencesMirrorStorageKey(pluginId: string): string {
 }
 
 export interface PreferencesRpc {
-  call(method: "listPreferences", input: null): Promise<unknown>;
   call(
     method: "setPreference",
     input: { key: PreferenceKey; value: unknown },
@@ -40,7 +37,6 @@ interface SyncState {
   rpc: PreferencesRpc | null;
   store: PreferencesStore | null;
   pluginId: string | null;
-  hydrateGeneration: number;
 }
 
 function createSyncState(): SyncState {
@@ -51,7 +47,6 @@ function createSyncState(): SyncState {
     rpc: null,
     store: null,
     pluginId: null,
-    hydrateGeneration: 0,
   };
 }
 
@@ -178,40 +173,14 @@ export function hydratePreferencesFromMirror(): boolean {
   return true;
 }
 
-export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
+export function attachPreferencesRpc(rpc: PreferencesRpc): void {
   state.rpc = rpc;
-  const generation = ++state.hydrateGeneration;
-  const response = await rpc.call("listPreferences", null);
-  if (generation !== state.hydrateGeneration) return;
-  const preferences =
-    typeof response === "object" && response !== null
-      ? (response as { preferences?: unknown }).preferences
-      : undefined;
-  const values: Partial<PreferenceValues> = {};
-  if (typeof preferences === "object" && preferences !== null) {
-    for (const key of PREFERENCE_KEYS) {
-      const result = parseStoredPreferenceValue(
-        key,
-        (preferences as Record<string, unknown>)[key],
-      );
-      if (result.success) {
-        (values as Record<PreferenceKey, unknown>)[key] = result.value;
-      }
-    }
-  }
-  applyValues({ ...defaultPreferences(), ...values });
-  writeMirror(mirrorStorage());
-  activeStore().set(state.readyAtom, true);
 }
 
-export function applyRemotePreferenceSignal(payload: unknown): void {
-  const parsed = preferencesChangedSignalSchema.safeParse(payload);
-  if (!parsed.success) return;
-  const { key, value } = parsed.data;
-  const result = parseStoredPreferenceValue(key, value);
-  if (!result.success) return;
-  applyValues({ [key]: result.value } as Partial<PreferenceValues>);
+export function hydratePreferences(preferences: PreferenceValues): void {
+  applyValues(preferences);
   writeMirror(mirrorStorage());
+  activeStore().set(state.readyAtom, true);
 }
 
 function flushWrite(key: PreferenceKey): void {
@@ -277,7 +246,6 @@ export function resetPreferencesSyncForTest(): void {
   }
   state.pendingWrites.clear();
   state.rpc = null;
-  state.hydrateGeneration += 1;
   const store = activeStore();
   for (const key of PREFERENCE_KEYS) {
     store.set(valueAtomFor(key), getPreferenceDefault(key));

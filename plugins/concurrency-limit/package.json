@@ -6,7 +6,7 @@
   "description": "Control the number of concurrent threads that are running in bb",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.102"
+    "bbPluginSdk": ">=0.6.58"
   },
   "bb": {
     "name": "Concurrency limit",

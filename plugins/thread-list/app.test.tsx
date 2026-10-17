@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
+import { getDefaultStore } from "jotai";
+import { sidebarOrganizationModeAtom } from "./app/preferences/atoms.js";
+import { threadListRpcContract } from "./server.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import {
@@ -394,4 +398,44 @@ describe("thread-list plugin", () => {
     link.click();
     await waitFor(() => expect(listProps.onNavigate).toHaveBeenCalledOnce());
   });
+});
+
+it("persists a layout change made before initial preferences load", async () => {
+  setPreferencesMirrorStorageForTest(null);
+  let mode = "chronological";
+  let finishRead: (() => void) | undefined;
+  const slot = renderList(
+    {},
+    {
+      rpc: {
+        listPreferences: () =>
+          new Promise((resolve) => {
+            finishRead = () =>
+              resolve({
+                preferences: {
+                  ...defaultPreferences(),
+                  organizationMode: mode,
+                },
+              });
+          }),
+        setPreference: (input) => {
+          mode = String(
+            threadListRpcContract.setPreference.input.parse(input).value,
+          );
+          return input;
+        },
+      },
+    },
+  );
+  await act(async () => {
+    getDefaultStore().set(sidebarOrganizationModeAtom, "project");
+  });
+  await waitFor(() => expect(mode).toBe("project"));
+  await act(async () => {
+    finishRead?.();
+  });
+  await waitFor(() =>
+    expect(slot.queryByLabelText("Loading sidebar navigation")).toBeNull(),
+  );
+  expect(sectionHeaders()).toEqual(["Pinned", "App", "Web", "Threads"]);
 });
