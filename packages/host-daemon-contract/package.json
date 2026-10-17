@@ -23,6 +23,11 @@
       "source": "./src/workspace.ts",
       "types": "./src/workspace.ts",
       "default": "./src/workspace.ts"
+    },
+    "./terminal-data": {
+      "source": "./src/terminal-data.ts",
+      "types": "./src/terminal-data.ts",
+      "default": "./src/terminal-data.ts"
     }
   },
   "types": "./src/index.ts",

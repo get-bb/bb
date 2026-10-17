@@ -3,12 +3,13 @@ import { createDesktopUpdateChannel } from "./services/system/desktop-update-cha
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "@bb/config/server";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
+import { z } from "zod";
 import {
   getAppSettings,
   getDisabledProviderIds,
@@ -49,6 +50,14 @@ import {
   createTelemetryService,
 } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
+import { RelayTerminalDataPlane } from "./services/terminals/terminal-data-plane-relay.js";
+import { TerminalRelaySupervisor } from "./terminal-relay/terminal-relay-supervisor.js";
+import type { TerminalRelayToMainMessage } from "./terminal-relay/terminal-relay-ipc.js";
+import { installUpgradeDispatcher } from "./ws/upgrade-dispatcher.js";
+import {
+  isServerMoveSnapshotFenced,
+  onServerMoveSnapshotFence,
+} from "./services/server-move/freeze-state.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerLogger, ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
@@ -206,11 +215,154 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_SERVER_LAUNCH_ID !== undefined) {
     runtimeConfig.launchId = serverConfig.BB_SERVER_LAUNCH_ID;
   }
-  const terminalSessions = new TerminalSessionLifecycle({
+  const relayEnabled =
+    z.enum(["on", "off"]).optional().parse(process.env.BB_TERMINAL_RELAY) !==
+    "off";
+  let relayPlane: RelayTerminalDataPlane | null = null;
+  let terminalSessions: TerminalSessionLifecycle;
+  const relay = relayEnabled
+    ? new TerminalRelaySupervisor({
+        entryPath:
+          extname(fileURLToPath(import.meta.url)) === ".ts"
+            ? join(selfDir, "terminal-relay", "terminal-relay-main.ts")
+            : join(selfDir, "terminal-relay.js"),
+        env: { ...process.env, BB_DATA_DIR: serverConfig.BB_DATA_DIR },
+        execArgv: process.execArgv,
+        execPath: process.execPath,
+        logger,
+        onRestart: () => {
+          relayPlane?.reset();
+          terminalSessions.resendRelayState();
+          relay?.send({
+            type: "move-fence",
+            pending:
+              pendingServerMove !== null || isServerMoveSnapshotFenced(db),
+          });
+        },
+        onMessage: (message: TerminalRelayToMainMessage) => {
+          if (message.type === "log") {
+            logger.warn(
+              { ...message.details, source: "terminal-relay" },
+              message.message,
+            );
+            return;
+          }
+          if (!relayPlane) return;
+          try {
+            switch (message.type) {
+              case "attach-requested": {
+                const decision = terminalSessions.decideRelayAttach(
+                  message.terminalId,
+                );
+                relay?.send({
+                  type: "attach-decision",
+                  socketId: message.socketId,
+                  ...decision,
+                });
+                return;
+              }
+              case "browser-input":
+                terminalSessions.onRelayBrowserInput({
+                  terminalId: message.terminalId,
+                  dataBase64: message.dataBase64,
+                  socket: relayPlane.socketForId(message.socketId),
+                });
+                return;
+              case "browser-resize":
+                terminalSessions.onRelayBrowserResize({
+                  terminalId: message.terminalId,
+                  cols: message.cols,
+                  rows: message.rows,
+                  socket: relayPlane.socketForId(message.socketId),
+                });
+                return;
+              case "terminal-exited":
+                terminalSessions.onTerminalExited(message);
+                return;
+              case "attach-error":
+                terminalSessions.onAttachError({ ...message });
+                return;
+              case "catch-up-error":
+                terminalSessions.onCatchUpError({ ...message });
+                return;
+              case "replay":
+                terminalSessions.onReplay({
+                  daemonSessionId: message.daemonSessionId,
+                  message: {
+                    type: "terminal.replay",
+                    terminalId: message.terminalId,
+                    requestId: message.requestId,
+                    chunks: message.chunks,
+                    replayStartSeq: message.replayStartSeq,
+                    nextSeq: message.nextSeq,
+                  },
+                });
+                return;
+              case "daemon-data-socket-opened":
+                relayPlane.daemonOpened(message.sessionId);
+                terminalSessions.onDaemonDataSocketOpened(message.sessionId);
+                return;
+              case "daemon-data-socket-closed":
+                relayPlane.daemonClosed(message.sessionId);
+                terminalSessions.onDaemonDataSocketClosed(message.sessionId);
+                return;
+              case "daemon-send-failed":
+                terminalSessions.onDaemonSendFailed(message.sessionId);
+                return;
+              case "metrics":
+                relayPlane.updateClients(message.clients);
+                return;
+              case "ready":
+                logger.info({ pid: message.pid }, "Terminal relay ready");
+                return;
+            }
+          } catch (error) {
+            logger.error(
+              { err: error, messageType: message.type },
+              "Terminal relay message failed",
+            );
+            if (message.type === "attach-requested") {
+              relay?.send({
+                type: "send-socket-message",
+                socketId: message.socketId,
+                message: {
+                  type: "error",
+                  code: "terminal_socket_error",
+                  message: "Terminal session could not be attached",
+                },
+              });
+              relay?.send({
+                type: "close-socket",
+                socketId: message.socketId,
+                code: 1008,
+                reason: "terminal_socket_error",
+              });
+            }
+          }
+        },
+      })
+    : null;
+  const stopRelayFence = relay
+    ? onServerMoveSnapshotFence(db, (pending) => {
+        relay.send({ type: "move-fence", pending });
+      })
+    : null;
+  terminalSessions = new TerminalSessionLifecycle({
     config: runtimeConfig,
     db,
     hub,
     logger,
+    ...(relay === null
+      ? {}
+      : {
+          sendRelayDaemonDataMessage: (daemonSessionId, message) =>
+            relayPlane?.sendDaemonDataMessage(daemonSessionId, message) ??
+            false,
+          dataPlane: () => {
+            relayPlane = new RelayTerminalDataPlane(relay);
+            return relayPlane;
+          },
+        }),
   });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config: runtimeConfig,
@@ -344,8 +496,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       },
       staticDir,
       performanceDiagnosticsEnabled: () => diagnosticsEnabled(),
+      terminalRelay: relay !== null,
     },
   );
+  if (relay) void relay.start();
   disconnectImportedDaemonSessions(
     {
       config: runtimeConfig,
@@ -432,6 +586,46 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverConfig,
   });
   injectWebSocket(server);
+  if (relay) {
+    installUpgradeDispatcher(server, {
+      app,
+      logger,
+      onTerminalUpgrade: ({ grant, head, request }) => {
+        if (!relay.isReady()) return false;
+        if (isServerMoveSnapshotFenced(db)) {
+          relay.send({ type: "move-fence", pending: true });
+          return false;
+        }
+        const headers = Object.fromEntries(
+          Object.entries(request.headers)
+            .filter(
+              (entry): entry is [string, string | string[]] =>
+                entry[1] !== undefined,
+            )
+            .map(([key, value]) => [
+              key,
+              Array.isArray(value) ? value.join(", ") : value,
+            ]),
+        );
+        request.socket.pause();
+        const details = {
+          head: head.toString("base64"),
+          headers,
+          method: request.method ?? "GET",
+          url: request.url ?? "/",
+        };
+        return grant.kind === "browser"
+          ? relay.send(
+              { type: "accept-browser", grant, ...details },
+              request.socket,
+            )
+          : relay.send(
+              { type: "accept-daemon-data", grant, ...details },
+              request.socket,
+            );
+      },
+    });
+  }
 
   logger.info(
     {
@@ -483,6 +677,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      stopRelayFence?.();
       serverMove.dispose();
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
@@ -509,6 +704,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         });
       });
       await closeWebSockets();
+      await relay?.stop();
       await closeServer;
     })();
     return shutdownPromise;

@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
+import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 import {
   ensurePersonalProject,
@@ -44,7 +45,13 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
+import { InProcessTerminalDataPlane } from "../../src/services/terminals/terminal-data-plane.js";
+import type { HostDaemonTerminalDataServerMessage } from "@bb/host-daemon-contract";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
+import {
+  installUpgradeDispatcher,
+  type UpgradeDispatcherOptions,
+} from "../../src/ws/upgrade-dispatcher.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
@@ -96,6 +103,13 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
   cliCommandService?: CliCommandService;
   terminalAttachTimeoutMs?: number;
+  terminalDataPlane?: NonNullable<
+    ConstructorParameters<typeof TerminalSessionLifecycle>[0]["dataPlane"]
+  >;
+  sendRelayDaemonDataMessage?: (
+    daemonSessionId: string,
+    message: HostDaemonTerminalDataServerMessage,
+  ) => boolean;
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
   nativeRootsClock?: () => number;
@@ -163,6 +177,8 @@ export async function createTestAppHarness(
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
+    terminalDataPlane,
+    sendRelayDaemonDataMessage,
     nativeRootsClock,
     seedFirstPartyProviders = true,
     ...configOverrides
@@ -254,6 +270,10 @@ export async function createTestAppHarness(
     config,
     db,
     hub,
+    dataPlane:
+      terminalDataPlane ??
+      ((host, timeoutMs) => new InProcessTerminalDataPlane(host, timeoutMs)),
+    ...(sendRelayDaemonDataMessage ? { sendRelayDaemonDataMessage } : {}),
     logger,
     openTimeoutMs: terminalOpenTimeoutMs,
   });
@@ -394,11 +414,16 @@ registerTestHarnessWarmup(() => withTestHarness(async () => undefined));
 
 export async function startTestServer(
   overrides: TestAppHarnessConfigOverrides = {},
+  options: {
+    dispatcher?: boolean;
+    onTerminalUpgrade?: UpgradeDispatcherOptions["onTerminalUpgrade"];
+    transferredSockets?: boolean;
+  } = {},
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
   let addressInfo: AddressInfo | null = null;
   const { app, closeWebSockets, injectWebSocket, pluginService, serverMove } =
-    createApp(harness.deps);
+    createApp(harness.deps, { terminalRelay: options.dispatcher });
   const server = serve(
     {
       hostname: TEST_SERVER_HOST,
@@ -410,6 +435,23 @@ export async function startTestServer(
     },
   );
   injectWebSocket(server);
+  const terminalWss = options.dispatcher
+    ? new WebSocketServer({ noServer: true })
+    : null;
+  const restoreDispatcher = terminalWss
+    ? installUpgradeDispatcher(server, {
+        app,
+        logger: harness.deps.logger,
+        onTerminalUpgrade:
+          options.onTerminalUpgrade ??
+          (({ request, socket, head }) => {
+            terminalWss.handleUpgrade(request, socket, head, (ws) => {
+              terminalWss.emit("connection", ws, request);
+            });
+            return true;
+          }),
+      })
+    : null;
 
   while (!addressInfo) {
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -434,7 +476,14 @@ export async function startTestServer(
         });
       });
       await closeWebSockets();
-      await closeServer;
+      restoreDispatcher?.();
+      terminalWss?.close();
+      if (options.transferredSockets) {
+        if ("closeAllConnections" in server) server.closeAllConnections();
+        server.unref();
+      } else {
+        await closeServer;
+      }
       await harness.cleanup();
     },
   };

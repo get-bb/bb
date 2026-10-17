@@ -94,7 +94,6 @@ export const SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES: ReadonlySet<
   "plugin-host.signal",
   "plugin-host.worker-exited",
   "terminal.opened",
-  "terminal.exited",
 ]);
 
 export function onDaemonSocketOpen(
@@ -153,6 +152,10 @@ export function onDaemonSocketMessage(
     hostDaemonDaemonWsMessageSchema,
   );
   if (message === null) {
+    deps.logger.warn(
+      { sessionId: args.sessionId },
+      "Invalid daemon control websocket message",
+    );
     return;
   }
 

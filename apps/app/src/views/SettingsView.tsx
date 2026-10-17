@@ -70,6 +70,7 @@ import { AiServicesSettingsSection } from "@/components/settings/AiServicesSetti
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { TerminalSettingsSection } from "@/components/settings/TerminalSettingsSection";
 import { BrowserSettingsSection } from "@/components/settings/BrowserSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
@@ -1343,6 +1344,8 @@ export function SettingsView() {
     );
   } else if (activeSection === "keyboard") {
     content = <KeyboardSettingsSection />;
+  } else if (activeSection === "terminal") {
+    content = <TerminalSettingsSection />;
   } else if (activeSection === "browser") {
     content = <BrowserSettingsSection />;
   } else if (activeSection === "files") {

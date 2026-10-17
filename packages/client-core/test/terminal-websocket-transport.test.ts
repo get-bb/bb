@@ -141,6 +141,28 @@ describe("TerminalWebSocketTransport", () => {
     harness.transport.dispose();
   });
 
+  it("measures an attached socket ping and clears stale RTT after reconnect", () => {
+    let now = 1_000;
+    const roundTrips: number[] = [];
+    const harness = createHarness({
+      now: () => now,
+      onRoundTrip: (rttMs) => roundTrips.push(rttMs),
+    });
+    harness.transport.start();
+    harness.sockets[0]?.open();
+    harness.transport.measureRoundTrip();
+    expect(harness.sockets[0]?.sent).toContain(
+      JSON.stringify({ type: "ping" }),
+    );
+    now += 80;
+    harness.sockets[0]?.receive({ type: "pong" });
+    expect(roundTrips).toEqual([80]);
+    expect(harness.transport.lastRoundTripMs).toBe(80);
+    harness.sockets[0]?.close();
+    expect(harness.transport.lastRoundTripMs).toBeNull();
+    harness.transport.dispose();
+  });
+
   it("filters replay duplicates after reconnect and reports sequence gaps", () => {
     vi.useFakeTimers();
     const gaps = vi.fn<(expectedSeq: number, receivedSeq: number) => void>();

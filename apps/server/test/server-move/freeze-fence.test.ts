@@ -29,6 +29,7 @@ import {
   onDaemonSocketMessage,
   onDaemonSocketOpen,
 } from "../../src/ws/daemon-protocol.js";
+import { onTerminalDataSocketMessage } from "../../src/ws/terminal-data-protocol.js";
 import {
   internalAuthHeaders,
   registerTestHostRpcCapture,
@@ -143,6 +144,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
     title: "zsh",
   });
   const socket = { close: vi.fn(), send: vi.fn() };
+  const dataSocket = { close: vi.fn(), send: vi.fn() };
   const plugins = {
     handleHostSignal: vi.fn(),
     handleHostWorkerExit: vi.fn(),
@@ -201,16 +203,24 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
           closeReason: "process-exit",
         },
       ]) {
-        onDaemonSocketMessage(
-          harness.deps,
-          {
-            hostId: host.id,
-            sessionId: session.id,
-            socket,
+        if (raw.type === "terminal.exited") {
+          onTerminalDataSocketMessage(harness.deps, {
             raw: JSON.stringify(raw),
-          },
-          plugins,
-        );
+            sessionId: session.id,
+            socket: dataSocket,
+          });
+        } else {
+          onDaemonSocketMessage(
+            harness.deps,
+            {
+              hostId: host.id,
+              sessionId: session.id,
+              socket,
+              raw: JSON.stringify(raw),
+            },
+            plugins,
+          );
+        }
       }
     },
     expectDropped() {
@@ -226,6 +236,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
         closeReason: null,
       });
       expect(socket.close).not.toHaveBeenCalled();
+      expect(dataSocket.close).toHaveBeenCalledWith(1012, "server-moving");
     },
     expectApplied() {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({

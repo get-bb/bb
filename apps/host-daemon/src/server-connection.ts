@@ -1,6 +1,6 @@
-import { Buffer } from "node:buffer";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_TERMINAL_DATA_PATH,
   buildHostDaemonWebSocketAuthorizationHeader,
   buildHostDaemonWebSocketProtocols,
   hostDaemonDaemonWsMessageSchema,
@@ -70,15 +70,6 @@ type SessionCloseHandler = (
 ) => void | Promise<void>;
 
 const SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS = 512;
-const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
-const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
-const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
-
-interface PendingTerminalSocketPayload {
-  bytes: number;
-  payload: string;
-}
-
 function recoverableMessageKey(
   message: HostDaemonDaemonWsMessage,
 ): string | null {
@@ -89,30 +80,8 @@ function recoverableMessageKey(
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
     case "environment-metadata-change":
       return `environment-metadata-change\u0000${message.environmentId}`;
-    case "terminal.exited":
-      return `terminal.exited\u0000${message.terminalId}`;
     default:
       return null;
-  }
-}
-
-function isTerminalDaemonOutputMessage(
-  message: HostDaemonDaemonWsMessage,
-): boolean {
-  return message.type === "terminal.output";
-}
-
-function isTerminalDaemonLifecycleMessage(
-  message: HostDaemonDaemonWsMessage,
-): boolean {
-  switch (message.type) {
-    case "terminal.error":
-    case "terminal.exited":
-    case "terminal.opened":
-    case "terminal.replay":
-      return true;
-    default:
-      return false;
   }
 }
 
@@ -142,11 +111,6 @@ export class ServerConnection {
   private fatalConnectError: ServerResponseError | null = null;
   private protocolMismatchObserved = false;
   private sessionInvalidationInProgress = false;
-  private pendingTerminalSocketBytes = 0;
-  private readonly pendingTerminalSocketPayloads: PendingTerminalSocketPayload[] =
-    [];
-  private terminalSocketDrainTimeout: ReturnType<typeof setTimeout> | null =
-    null;
   private readonly pendingRecoverableMessages = new Map<
     string,
     HostDaemonDaemonWsMessage
@@ -195,28 +159,8 @@ export class ServerConnection {
       return false;
     }
 
-    const payload = JSON.stringify(parsed);
-    if (
-      isTerminalDaemonOutputMessage(parsed) &&
-      (this.pendingTerminalSocketPayloads.length > 0 ||
-        (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES)
-    ) {
-      return this.enqueueTerminalSocketPayload(payload);
-    }
-    if (
-      isTerminalDaemonLifecycleMessage(parsed) &&
-      this.pendingTerminalSocketPayloads.length > 0
-    ) {
-      this.flushTerminalSocketPayloads(true);
-      if (
-        this.pendingTerminalSocketPayloads.length > 0 ||
-        websocket.readyState !== OPEN_READY_STATE
-      ) {
-        return false;
-      }
-    }
     try {
-      websocket.send(payload);
+      websocket.send(JSON.stringify(parsed));
     } catch (error) {
       this.options.logger.warn(
         { ...runtimeErrorLogFields(error), type: parsed.type },
@@ -229,84 +173,6 @@ export class ServerConnection {
       this.pendingRecoverableMessages.delete(recoverableKey);
     }
     return true;
-  }
-
-  private enqueueTerminalSocketPayload(payload: string): boolean {
-    const bytes = Buffer.byteLength(payload, "utf8");
-    if (
-      this.pendingTerminalSocketBytes + bytes >
-      TERMINAL_SOCKET_MAX_QUEUE_BYTES
-    ) {
-      this.options.logger.warn(
-        {
-          maxQueueBytes: TERMINAL_SOCKET_MAX_QUEUE_BYTES,
-          pendingBytes: this.pendingTerminalSocketBytes,
-        },
-        "Terminal websocket output queue exceeded its limit",
-      );
-      this.clearTerminalSocketPayloads();
-      this.websocket?.close(1013, "terminal-backpressure");
-      return false;
-    }
-    this.pendingTerminalSocketPayloads.push({ bytes, payload });
-    this.pendingTerminalSocketBytes += bytes;
-    this.scheduleTerminalSocketDrain();
-    return true;
-  }
-
-  private scheduleTerminalSocketDrain(): void {
-    if (this.terminalSocketDrainTimeout !== null) {
-      return;
-    }
-    this.terminalSocketDrainTimeout = setTimeout(() => {
-      this.terminalSocketDrainTimeout = null;
-      this.flushTerminalSocketPayloads(false);
-    }, TERMINAL_SOCKET_DRAIN_POLL_MS);
-  }
-
-  private flushTerminalSocketPayloads(ignoreHighWater: boolean): void {
-    const websocket = this.websocket;
-    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
-      this.clearTerminalSocketPayloads();
-      return;
-    }
-    while (
-      this.pendingTerminalSocketPayloads.length > 0 &&
-      (ignoreHighWater ||
-        (websocket.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES)
-    ) {
-      const pending = this.pendingTerminalSocketPayloads[0];
-      if (!pending) {
-        break;
-      }
-      try {
-        websocket.send(pending.payload);
-      } catch (error) {
-        this.options.logger.warn(
-          { ...runtimeErrorLogFields(error) },
-          "Failed to drain terminal websocket output",
-        );
-        websocket.close(1013, "send-failed");
-        this.clearTerminalSocketPayloads();
-        return;
-      }
-      this.pendingTerminalSocketPayloads.shift();
-      this.pendingTerminalSocketBytes -= pending.bytes;
-    }
-    if (this.pendingTerminalSocketPayloads.length === 0) {
-      this.clearTerminalSocketPayloads();
-      return;
-    }
-    this.scheduleTerminalSocketDrain();
-  }
-
-  private clearTerminalSocketPayloads(): void {
-    if (this.terminalSocketDrainTimeout !== null) {
-      clearTimeout(this.terminalSocketDrainTimeout);
-      this.terminalSocketDrainTimeout = null;
-    }
-    this.pendingTerminalSocketPayloads.length = 0;
-    this.pendingTerminalSocketBytes = 0;
   }
 
   setSessionCloseHandler(handler: SessionCloseHandler | undefined): void {
@@ -870,13 +736,20 @@ export class ServerConnection {
   }
 
   private clearSession(): void {
-    this.clearTerminalSocketPayloads();
     if (!this.session) {
       return;
     }
 
     this.session = null;
     this.options.setSession?.(null);
+  }
+
+  buildTerminalDataWebSocketUrl(sessionId: string): string {
+    const serverUrl = new URL(this.options.serverUrl);
+    serverUrl.protocol = serverUrl.protocol === "https:" ? "wss:" : "ws:";
+    serverUrl.pathname = HOST_DAEMON_TERMINAL_DATA_PATH;
+    serverUrl.searchParams.set("sessionId", sessionId);
+    return serverUrl.toString();
   }
 
   private buildWebSocketUrl(sessionId: string): string {

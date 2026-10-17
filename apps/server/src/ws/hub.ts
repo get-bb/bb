@@ -1,5 +1,4 @@
 import { emitPluginThreadEvents } from "../services/plugins/plugin-thread-events.js";
-import { Buffer } from "node:buffer";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
   type RealtimeSubscriptionTarget,
@@ -19,24 +18,20 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   HostDaemonOnlineRpcResponseMessage,
   HostDaemonServerWsMessage,
+  HostDaemonTerminalDataServerMessage,
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import {
   pluginSignalSchema,
   serverMessageSchema,
-  terminalServerMessageSchema,
   threadOpenSignalSchema,
   threadPaneActionSignalSchema,
   type ThreadTimelineSignal,
   type ThreadPaneAction,
   type ThreadOpenFile,
   type ThreadOpenSplit,
-  type TerminalServerMessage,
 } from "@bb/server-contract";
 
-const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
-const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
-const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
 const THREAD_LIST_EVENTS_APPENDED_COALESCE_MS = 1_000;
 const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> =
   new Set<ThreadEventType>(["client/turn/requested", "turn/completed"]);
@@ -45,12 +40,6 @@ interface HubSocket {
   close(code?: number, reason?: string): void;
   raw?: { bufferedAmount: number };
   send(data: string): void;
-}
-
-interface TerminalSocketSendQueue {
-  bytes: number;
-  payloads: string[];
-  timeout: ReturnType<typeof setTimeout> | null;
 }
 
 export type ServerChangedMessage =
@@ -246,6 +235,7 @@ export class NotificationHub implements DbNotifier {
       socket: HubSocket;
     }
   >();
+  private readonly daemonDataSockets = new Map<string, HubSocket>();
   private readonly daemonSessionLocalApiPortsBySessionId = new Map<
     string,
     number | null
@@ -273,19 +263,6 @@ export class NotificationHub implements DbNotifier {
     string,
     ReturnType<typeof setTimeout>
   >();
-  private readonly terminalClientSocketsById = new Map<
-    string,
-    Set<HubSocket>
-  >();
-  private readonly terminalSocketSendQueues = new Map<
-    HubSocket,
-    TerminalSocketSendQueue
-  >();
-  private readonly terminalIdsByClientSocket = new Map<
-    HubSocket,
-    Set<string>
-  >();
-  private readonly terminalResizeOwnerById = new Map<string, HubSocket>();
   private readonly threadEventWaiters = new Map<
     string,
     Set<ThreadEventWaiter>
@@ -302,7 +279,6 @@ export class NotificationHub implements DbNotifier {
   }
 
   unregisterClient(socket: HubSocket): void {
-    this.unregisterTerminalClientSocket(socket);
     const keys = this.clientKeysBySocket.get(socket);
     if (!keys) {
       return;
@@ -328,210 +304,6 @@ export class NotificationHub implements DbNotifier {
     return () => {
       this.changedMessageListeners.delete(listener);
     };
-  }
-
-  registerTerminalClient(terminalId: string, socket: HubSocket): void {
-    const sockets =
-      this.terminalClientSocketsById.get(terminalId) ?? new Set<HubSocket>();
-    sockets.add(socket);
-    this.terminalClientSocketsById.set(terminalId, sockets);
-
-    const terminalIds =
-      this.terminalIdsByClientSocket.get(socket) ?? new Set<string>();
-    terminalIds.add(terminalId);
-    this.terminalIdsByClientSocket.set(socket, terminalIds);
-  }
-
-  claimTerminalResizeOwnership(terminalId: string, socket: HubSocket): void {
-    this.terminalResizeOwnerById.set(terminalId, socket);
-  }
-
-  isTerminalResizeOwner(terminalId: string, socket: HubSocket): boolean {
-    return this.terminalResizeOwnerById.get(terminalId) === socket;
-  }
-
-  unregisterTerminalClient(terminalId: string, socket: HubSocket): void {
-    const sockets = this.terminalClientSocketsById.get(terminalId);
-    if (sockets) {
-      sockets.delete(socket);
-      if (sockets.size === 0) {
-        this.terminalClientSocketsById.delete(terminalId);
-      }
-    }
-    this.releaseTerminalResizeOwnership(terminalId, socket, sockets);
-
-    const terminalIds = this.terminalIdsByClientSocket.get(socket);
-    if (!terminalIds) {
-      return;
-    }
-    terminalIds.delete(terminalId);
-    if (terminalIds.size === 0) {
-      this.terminalIdsByClientSocket.delete(socket);
-      this.clearTerminalSocketSendQueue(socket);
-    }
-  }
-
-  unregisterTerminalClientSocket(socket: HubSocket): void {
-    const terminalIds = this.terminalIdsByClientSocket.get(socket);
-    if (!terminalIds) {
-      return;
-    }
-
-    for (const terminalId of terminalIds) {
-      const sockets = this.terminalClientSocketsById.get(terminalId);
-      if (!sockets) {
-        continue;
-      }
-      sockets.delete(socket);
-      if (sockets.size === 0) {
-        this.terminalClientSocketsById.delete(terminalId);
-      }
-      this.releaseTerminalResizeOwnership(terminalId, socket, sockets);
-    }
-
-    this.terminalIdsByClientSocket.delete(socket);
-    this.clearTerminalSocketSendQueue(socket);
-  }
-
-  private releaseTerminalResizeOwnership(
-    terminalId: string,
-    socket: HubSocket,
-    sockets: Set<HubSocket> | undefined,
-  ): void {
-    if (this.terminalResizeOwnerById.get(terminalId) !== socket) {
-      return;
-    }
-    let replacement: HubSocket | undefined;
-    for (const candidate of sockets ?? []) {
-      replacement = candidate;
-    }
-    if (replacement === undefined) {
-      this.terminalResizeOwnerById.delete(terminalId);
-    } else {
-      this.terminalResizeOwnerById.set(terminalId, replacement);
-    }
-  }
-
-  sendTerminalSocketMessage(
-    socket: HubSocket,
-    message: TerminalServerMessage,
-  ): void {
-    this.sendOrQueueTerminalPayload(
-      socket,
-      JSON.stringify(terminalServerMessageSchema.parse(message)),
-    );
-  }
-
-  hasTerminalClients(terminalId: string): boolean {
-    return (this.terminalClientSocketsById.get(terminalId)?.size ?? 0) > 0;
-  }
-
-  sendTerminalClientMessage(
-    terminalId: string,
-    message: TerminalServerMessage,
-  ): void {
-    const sockets = this.terminalClientSocketsById.get(terminalId);
-    if (!sockets) {
-      return;
-    }
-
-    const payload = JSON.stringify(terminalServerMessageSchema.parse(message));
-    for (const socket of [...sockets]) {
-      this.sendOrQueueTerminalPayload(socket, payload);
-    }
-  }
-
-  private sendOrQueueTerminalPayload(socket: HubSocket, payload: string): void {
-    const existingQueue = this.terminalSocketSendQueues.get(socket);
-    if (
-      !existingQueue &&
-      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
-    ) {
-      try {
-        socket.send(payload);
-        return;
-      } catch {
-        this.dropTerminalSocket(socket, "terminal-send-failed");
-        return;
-      }
-    }
-
-    const queue = existingQueue ?? {
-      bytes: 0,
-      payloads: [],
-      timeout: null,
-    };
-    const payloadBytes = Buffer.byteLength(payload, "utf8");
-    if (queue.bytes + payloadBytes > TERMINAL_SOCKET_MAX_QUEUE_BYTES) {
-      this.dropTerminalSocket(socket, "terminal-backpressure");
-      return;
-    }
-    queue.payloads.push(payload);
-    queue.bytes += payloadBytes;
-    this.terminalSocketSendQueues.set(socket, queue);
-    this.scheduleTerminalSocketDrain(socket, queue);
-  }
-
-  private scheduleTerminalSocketDrain(
-    socket: HubSocket,
-    queue: TerminalSocketSendQueue,
-  ): void {
-    if (queue.timeout !== null) {
-      return;
-    }
-    queue.timeout = setTimeout(() => {
-      queue.timeout = null;
-      this.flushTerminalSocketQueue(socket, queue);
-    }, TERMINAL_SOCKET_DRAIN_POLL_MS);
-  }
-
-  private flushTerminalSocketQueue(
-    socket: HubSocket,
-    queue: TerminalSocketSendQueue,
-  ): void {
-    if (this.terminalSocketSendQueues.get(socket) !== queue) {
-      return;
-    }
-    while (
-      queue.payloads.length > 0 &&
-      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
-    ) {
-      const payload = queue.payloads[0];
-      if (payload === undefined) {
-        break;
-      }
-      try {
-        socket.send(payload);
-      } catch {
-        this.dropTerminalSocket(socket, "terminal-send-failed");
-        return;
-      }
-      queue.payloads.shift();
-      queue.bytes -= Buffer.byteLength(payload, "utf8");
-    }
-    if (queue.payloads.length === 0) {
-      this.clearTerminalSocketSendQueue(socket);
-      return;
-    }
-    this.scheduleTerminalSocketDrain(socket, queue);
-  }
-
-  private dropTerminalSocket(socket: HubSocket, reason: string): void {
-    this.unregisterTerminalClientSocket(socket);
-    try {
-      socket.close(1013, reason);
-    } catch {}
-  }
-
-  private clearTerminalSocketSendQueue(socket: HubSocket): void {
-    const queue = this.terminalSocketSendQueues.get(socket);
-    if (!queue) {
-      return;
-    }
-    if (queue.timeout !== null) {
-      clearTimeout(queue.timeout);
-    }
-    this.terminalSocketSendQueues.delete(socket);
   }
 
   subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
@@ -625,6 +397,8 @@ export class NotificationHub implements DbNotifier {
     if (!entry) {
       return;
     }
+    this.daemonDataSockets.get(sessionId)?.close(1000, "daemon-disconnect");
+    this.daemonDataSockets.delete(sessionId);
     this.daemonSessions.delete(sessionId);
     this.daemonSessionLocalApiPortsBySessionId.delete(sessionId);
     this.daemonSessionPlatformsBySessionId.delete(sessionId);
@@ -668,6 +442,10 @@ export class NotificationHub implements DbNotifier {
   hasDaemonForHost(hostId: string): boolean {
     const sessionId = this.daemonSessionIdsByHost.get(hostId);
     return sessionId !== undefined && this.daemonSessions.has(sessionId);
+  }
+
+  hasDaemonSession(sessionId: string): boolean {
+    return this.daemonSessions.has(sessionId);
   }
 
   getDaemonSessionIdForHost(hostId: string): string | null {
@@ -1245,6 +1023,27 @@ export class NotificationHub implements DbNotifier {
     for (const listener of this.changedMessageListeners) {
       listener(message);
     }
+  }
+
+  registerDaemonDataSocket(sessionId: string, socket: HubSocket): void {
+    this.daemonDataSockets.get(sessionId)?.close(1012, "replaced");
+    this.daemonDataSockets.set(sessionId, socket);
+  }
+
+  unregisterDaemonDataSocket(sessionId: string, socket: HubSocket): boolean {
+    if (this.daemonDataSockets.get(sessionId) !== socket) return false;
+    this.daemonDataSockets.delete(sessionId);
+    return true;
+  }
+
+  sendDaemonDataMessage(
+    sessionId: string,
+    message: HostDaemonTerminalDataServerMessage,
+  ): boolean {
+    const socket = this.daemonDataSockets.get(sessionId);
+    if (!socket) return false;
+    socket.send(JSON.stringify(message));
+    return true;
   }
 
   sendDaemonMessage(

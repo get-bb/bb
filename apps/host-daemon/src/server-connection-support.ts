@@ -7,6 +7,7 @@ import {
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonServerWsMessage,
   type HostDaemonSessionOpenResponse,
+  type HostDaemonTerminalDataServerMessage,
   type HostDaemonWatchSetReplaceMessage,
 } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
@@ -40,6 +41,14 @@ export type CreateReconnectingWebSocket = (
   urlProvider: () => Promise<string>,
   options: ReconnectingWebSocketOptions,
 ) => ReconnectingWebSocketLike;
+export type HostDaemonTerminalDataConnectionOptions = {
+  createWebSocket?: CreateReconnectingWebSocket;
+  hostKey: string;
+  logger: HostDaemonLogger;
+  onMessage(message: HostDaemonTerminalDataServerMessage): void | Promise<void>;
+  serverHeaders: Record<string, string>;
+  urlProvider(sessionId: string): Promise<string>;
+};
 
 export type HostDaemonServerTerminalMessage = Exclude<
   HostDaemonServerWsMessage,

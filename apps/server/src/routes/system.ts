@@ -310,6 +310,8 @@ export function registerSystemRoutes(
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
+      terminalPredictiveEcho:
+        settings.terminalPredictiveEcho ?? current.terminalPredictiveEcho,
       showGitChanges: settings.showGitChanges ?? current.showGitChanges,
       keepHistoryAfterContextClear:
         settings.keepHistoryAfterContextClear ??

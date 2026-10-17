@@ -45,6 +45,8 @@ import {
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
+import { TerminalLocalEchoAddon } from "./terminal-local-echo-addon";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
 import { TerminalMobileControls } from "./TerminalMobileControls";
 import { attachTerminalCopyShortcut } from "./terminal-copy-shortcut";
@@ -434,11 +436,12 @@ type TerminalSessionStatusNoticeRef = {
 
 interface HandleTerminalServerMessageArgs {
   acknowledgeOutput: (nextSeq: number) => void;
+  echoAddon: TerminalLocalEchoAddon;
   message: TerminalServerMessage;
   onSessionChange?: (session: TerminalSession) => void;
   replayNextSeq: number | null;
   replayWriteState: TerminalReplayWriteState;
-  setReplayNextSeq: (nextSeq: number) => void;
+  setReplayNextSeq: (nextSeq: number | null) => void;
   terminal: XTermTerminal;
 }
 
@@ -603,6 +606,7 @@ function handleTerminalServerMessage({
   acknowledgeOutput,
   message,
   onSessionChange,
+  echoAddon,
   replayNextSeq,
   replayWriteState,
   setReplayNextSeq,
@@ -610,23 +614,41 @@ function handleTerminalServerMessage({
 }: HandleTerminalServerMessageArgs): void {
   switch (message.type) {
     case "attached":
+      echoAddon.reset();
       onSessionChange?.(message.session);
-      setReplayNextSeq(message.nextSeq);
+      setReplayNextSeq(
+        message.replayStartSeq < message.nextSeq ? message.nextSeq : null,
+      );
       return;
     case "pong":
       return;
     case "session-updated":
+      if (message.session.status !== "running") echoAddon.reset();
       onSessionChange?.(message.session);
       return;
     case "output": {
       const nextSeq = message.chunk.seq + 1;
-      writeTerminalOutput({
-        data: decodeBase64Bytes(message.chunk.dataBase64),
-        isReplay: replayNextSeq !== null && message.chunk.seq < replayNextSeq,
-        onParsed: () => acknowledgeOutput(nextSeq),
-        replayWriteState,
-        terminal,
-      });
+      const data = decodeBase64Bytes(message.chunk.dataBase64);
+      const isReplay =
+        replayNextSeq !== null && message.chunk.seq < replayNextSeq;
+      if (replayNextSeq !== null && nextSeq >= replayNextSeq)
+        setReplayNextSeq(null);
+      if (isReplay || replayWriteState.suppressedWriteCount > 0)
+        echoAddon.reset();
+      const output = isReplay ? data : echoAddon.reconcile(data);
+      if (output.length === 0) {
+        acknowledgeOutput(nextSeq);
+      } else {
+        writeTerminalOutput({
+          data: output,
+          isReplay,
+          onParsed: () => {
+            acknowledgeOutput(nextSeq);
+          },
+          replayWriteState,
+          terminal,
+        });
+      }
       return;
     }
     case "error":
@@ -636,6 +658,7 @@ function handleTerminalServerMessage({
       });
       return;
     case "exited":
+      echoAddon.reset();
       onSessionChange?.(message.session);
       writeTerminalStatus({
         terminal,
@@ -658,6 +681,16 @@ export function ThreadTerminalView({
   onTitleChange,
   session,
 }: ThreadTerminalViewProps) {
+  const predictiveEchoEnabled =
+    useSystemConfig().data?.generalSettings.terminalPredictiveEcho ?? false;
+  const predictiveEchoEnabledRef = useRef(predictiveEchoEnabled);
+  const echoAddonRef = useRef<TerminalLocalEchoAddon | null>(null);
+  predictiveEchoEnabledRef.current = predictiveEchoEnabled;
+  useEffect(() => {
+    echoAddonRef.current?.setEnabled(
+      predictiveEchoEnabled && session.status === "running",
+    );
+  }, [predictiveEchoEnabled, session.status]);
   const isTouchDevice = useMediaQuery("(pointer: coarse)");
   const [controlActive, setControlActive] = useState(false);
   const controlActiveRef = useRef(false);
@@ -1049,11 +1082,18 @@ export function ThreadTerminalView({
           connectionNoticeTimeout = null;
         }
       };
+      const echoAddon = new TerminalLocalEchoAddon(activeTerminal);
+      echoAddonRef.current = echoAddon;
+      echoAddon.setEnabled(
+        predictiveEchoEnabledRef.current &&
+          sessionStatusRef.current === "running",
+      );
       const activeTransport = new TerminalWebSocketTransport({
         onConnectionState: (state) => {
           if (disposed) {
             return;
           }
+          if (state !== "attached") echoAddon.setRoundTripMs(0);
           if (state === "reconnecting") {
             if (reconnecting) {
               return;
@@ -1081,6 +1121,7 @@ export function ThreadTerminalView({
           }
           reconnectingNoticeVisible = false;
         },
+        onRoundTrip: (rttMs) => echoAddon.setRoundTripMs(rttMs),
         onInputOverflow: (maxBytes) => {
           writeTerminalStatus({
             terminal: activeTerminal,
@@ -1094,9 +1135,11 @@ export function ThreadTerminalView({
           });
         },
         onMessage: (message) => {
+          if (message.type === "attached") activeTransport.measureRoundTrip();
           handleTerminalServerMessage({
             acknowledgeOutput: (nextSeq) =>
               activeTransport.acknowledgeOutput(nextSeq),
+            echoAddon,
             message,
             onSessionChange: onSessionChangeRef.current,
             replayNextSeq,
@@ -1109,6 +1152,7 @@ export function ThreadTerminalView({
         },
         onSequenceGap: () => {
           activeTerminal.reset();
+          echoAddon.reset();
           writeTerminalStatus({
             terminal: activeTerminal,
             text: "Some terminal output was unavailable after reconnect",
@@ -1131,6 +1175,13 @@ export function ThreadTerminalView({
           controlActiveRef.current = false;
           setControlActive(false);
         }
+        if (
+          predictiveEchoEnabledRef.current &&
+          sessionStatusRef.current === "running" &&
+          replayNextSeq === null &&
+          replayWriteState.suppressedWriteCount === 0
+        )
+          echoAddon.onUserInput(data);
         forwardTerminalData({
           data,
           onInput: sendTerminalInput,
@@ -1200,6 +1251,7 @@ export function ThreadTerminalView({
         reportDocumentVisibility,
       );
       transport?.dispose();
+      echoAddonRef.current = null;
       terminal?.dispose();
       terminalRef.current = null;
       scheduleFitRef.current = null;

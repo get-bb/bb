@@ -170,6 +170,15 @@ export const SETTINGS_SEARCH_INDEX: Record<
       },
     ],
   },
+  terminal: {
+    keywords: ["shell", "latency", "echo"],
+    settings: [
+      {
+        title: "Predictive local echo",
+        keywords: ["typing", "terminal", "latency"],
+      },
+    ],
+  },
   browser: {
     keywords: ["cookies", "sessions", "import", "sign in", "login"],
     settings: [],

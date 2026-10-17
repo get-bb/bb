@@ -1,5 +1,6 @@
 import type { JsonObject } from "@bb/domain";
 import { onDaemonSocketMessage } from "../../src/ws/daemon-protocol.js";
+import { onTerminalDataSocketMessage } from "../../src/ws/terminal-data-protocol.js";
 import type { TestAppHarness } from "./test-app.js";
 
 export interface TestDaemonWebSocket {
@@ -20,6 +21,16 @@ export function feedRawDaemonWebSocketMessage(
 ): void {
   onDaemonSocketMessage(args.harness.deps, {
     hostId: args.hostId,
+    raw: JSON.stringify(args.rawMessage),
+    sessionId: args.sessionId,
+    socket: args.socket,
+  });
+}
+
+export function feedRawDaemonDataWebSocketMessage(
+  args: Omit<FeedRawDaemonWebSocketMessageArgs, "hostId">,
+): void {
+  onTerminalDataSocketMessage(args.harness.deps, {
     raw: JSON.stringify(args.rawMessage),
     sessionId: args.sessionId,
     socket: args.socket,

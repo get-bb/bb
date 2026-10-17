@@ -571,7 +571,7 @@ const hostDaemonTerminalOpenMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalAttachMessageSchema = z
+export const hostDaemonTerminalAttachMessageSchema = z
   .object({
     type: z.literal("terminal.attach"),
     requestId: terminalRequestIdSchema,
@@ -585,7 +585,7 @@ const hostDaemonTerminalAttachMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalInputMessageSchema = z
+export const hostDaemonTerminalInputMessageSchema = z
   .object({
     type: z.literal("terminal.input"),
     terminalId: terminalIdSchema,
@@ -593,7 +593,7 @@ const hostDaemonTerminalInputMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalResizeMessageSchema = z
+export const hostDaemonTerminalResizeMessageSchema = z
   .object({
     type: z.literal("terminal.resize"),
     terminalId: terminalIdSchema,
@@ -610,7 +610,7 @@ const hostDaemonTerminalCloseMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalFlowControlMessageSchema = z
+export const hostDaemonTerminalFlowControlMessageSchema = z
   .object({
     type: z.literal("terminal.flow-control"),
     terminalId: terminalIdSchema,
@@ -618,7 +618,7 @@ const hostDaemonTerminalFlowControlMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalAckMessageSchema = z
+export const hostDaemonTerminalAckMessageSchema = z
   .object({
     type: z.literal("terminal.ack"),
     terminalId: terminalIdSchema,
@@ -655,12 +655,7 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   hostDaemonWatchSetReplaceMessageSchema,
   hostDaemonConnectSharesReplaceMessageSchema,
   hostDaemonTerminalOpenMessageSchema,
-  hostDaemonTerminalAttachMessageSchema,
-  hostDaemonTerminalInputMessageSchema,
-  hostDaemonTerminalResizeMessageSchema,
   hostDaemonTerminalCloseMessageSchema,
-  hostDaemonTerminalFlowControlMessageSchema,
-  hostDaemonTerminalAckMessageSchema,
 ]);
 export type HostDaemonServerWsMessage = z.infer<
   typeof hostDaemonServerWsMessageSchema
@@ -748,7 +743,7 @@ const hostDaemonTerminalOpenedMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalOutputMessageSchema = z
+export const hostDaemonTerminalOutputMessageSchema = z
   .object({
     type: z.literal("terminal.output"),
     terminalId: terminalIdSchema,
@@ -756,7 +751,7 @@ const hostDaemonTerminalOutputMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalReplayMessageSchema = z
+export const hostDaemonTerminalReplayMessageSchema = z
   .object({
     type: z.literal("terminal.replay"),
     requestId: terminalRequestIdSchema,
@@ -767,7 +762,7 @@ const hostDaemonTerminalReplayMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalExitedMessageSchema = z
+export const hostDaemonTerminalExitedMessageSchema = z
   .object({
     type: z.literal("terminal.exited"),
     terminalId: terminalIdSchema,
@@ -776,7 +771,7 @@ const hostDaemonTerminalExitedMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalErrorMessageSchema = z
+export const hostDaemonTerminalErrorMessageSchema = z
   .object({
     type: z.literal("terminal.error"),
     requestId: terminalRequestIdSchema,
@@ -798,9 +793,6 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   environmentHookProgressMessageSchema,
   serverMoveProgressMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
-  hostDaemonTerminalOutputMessageSchema,
-  hostDaemonTerminalReplayMessageSchema,
-  hostDaemonTerminalExitedMessageSchema,
   hostDaemonTerminalErrorMessageSchema,
   hostDaemonOnlineRpcResponseMessageSchema,
 ]);
