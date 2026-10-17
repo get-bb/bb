@@ -1742,6 +1742,86 @@ describe("acp bridge", () => {
     expect(notifications("session/replaced")).toHaveLength(1);
   });
 
+  it.each([
+    { setting: "model", restorable: false },
+    { setting: "reasoning", restorable: false },
+    { setting: "model", restorable: true },
+    { setting: "reasoning", restorable: true },
+  ])(
+    "preserves the session across CLI $setting changes (restorable=$restorable)",
+    async ({ setting, restorable }) => {
+      chmodSync(FAKE_AGENT_PATH, 0o755);
+      const promptLog = join(workspaceDir, "settings-prompts.log");
+      const launch: AgentLaunchArgs = {
+        agent: { command: FAKE_AGENT_PATH, args: [] },
+        modelListArgs: ["--list-models"],
+        selectFlag: "--model",
+        reasoningCli: {
+          flag: "--reasoning-effort",
+          supportedLevels: ["low", "high"],
+          defaultLevel: "low",
+        },
+        envVars: {
+          FAKE_ACP_LOAD_SESSION: restorable ? "1" : "0",
+          FAKE_ACP_MODEL_LINES: "pinme - Pin Me\nother - Other",
+          FAKE_ACP_PROMPT_LOG: promptLog,
+        },
+      };
+      const originalOptions = executionOptions({
+        model: "pinme",
+        reasoningLevel: "low",
+        providerOptions: launchProviderOptions(launch),
+      });
+      const { providerThreadId } = await startThread({
+        ...launch,
+        model: "pinme",
+        reasoningLevel: "low",
+      });
+      const originalArgv = "argv:--model pinme --reasoning-effort low";
+      expect(
+        await completeTurnWith(providerThreadId, "echo-argv", originalOptions),
+      ).toBe(originalArgv);
+      const changedOptions = executionOptions({
+        model: setting === "model" ? "other" : "pinme",
+        reasoningLevel: setting === "reasoning" ? "high" : "low",
+        providerOptions: launchProviderOptions(launch),
+      });
+      if (restorable) {
+        expect(
+          await completeTurnWith(providerThreadId, "echo-argv", changedOptions),
+        ).toBe(
+          setting === "model"
+            ? "argv:--model other --reasoning-effort low"
+            : "argv:--model pinme --reasoning-effort high",
+        );
+        expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+          providerThreadId,
+          contextLost: false,
+        });
+        return;
+      }
+      const changedTurnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "echo-argv", mentions: [] }],
+        options: changedOptions,
+      });
+      const response = await waitForResponse(changedTurnId);
+      expect(
+        response.error,
+        JSON.stringify({
+          response,
+          replacements: notifications("session/replaced"),
+        }),
+      ).toMatchObject({
+        message: expect.stringContaining("cannot restore"),
+      });
+      expect(notifications("session/replaced")).toHaveLength(0);
+      expect(loggedPrompts(promptLog)).toEqual(["echo-argv"]);
+      expect(
+        await completeTurnWith(providerThreadId, "echo-argv", originalOptions),
+      ).toBe(originalArgv);
+    },
+  );
+
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: {

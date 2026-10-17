@@ -2313,6 +2313,15 @@ function reconcileExecutionSettings(
     permissionMode: options.permissionMode,
     workspaceWriteRoots,
   };
+  const launchModelChanged = !isDeepStrictEqual(
+    launchModelSelection(session.construction),
+    launchModelSelection(construction),
+  );
+  if (launchModelChanged && !session.supportsLoadSession) {
+    throw new Error(
+      "This ACP agent cannot restore its session. Start a new thread to change the launch-time model or reasoning level.",
+    );
+  }
   const launchArgsChanged =
     !isDeepStrictEqual(
       permissionCliArgsForMode(
@@ -2323,11 +2332,7 @@ function reconcileExecutionSettings(
         construction.permissionCli,
         construction.permissionMode,
       ),
-    ) ||
-    !isDeepStrictEqual(
-      launchModelSelection(session.construction),
-      launchModelSelection(construction),
-    );
+    ) || launchModelChanged;
   const restart =
     session.connection.exited ||
     session.restartAfterCancelError ||
