@@ -411,6 +411,16 @@ async function handleRequest(message) {
   if (requestLogPath !== null) {
     appendFileSync(requestLogPath, `${JSON.stringify({ method, params })}\n`);
   }
+  const profileResult =
+    params.permissions && !script?.ignorePermissionProfile
+      ? {
+          activePermissionProfile: { id: params.permissions },
+          sandbox: script?.profileSandbox ?? {
+            type: "workspaceWrite",
+            writableRoots: params.runtimeWorkspaceRoots ?? [],
+          },
+        }
+      : {};
   switch (method) {
     case "initialize":
       respond(id, {});
@@ -459,9 +469,31 @@ async function handleRequest(message) {
       if (script?.configReadError) {
         respondError(id, -32601, "Configuration read unavailable");
       } else {
-        respond(id, script?.configRead ?? { config: { model: null } });
+        respond(
+          id,
+          script?.configReadPath
+            ? JSON.parse(readFileSync(script.configReadPath, "utf8"))
+            : (script?.configRead ?? { config: { model: null } }),
+        );
       }
       return;
+    case "permissionProfile/list": {
+      if (script?.permissionProfilesUnavailable) {
+        respondError(id, -32601, "Permission profiles unavailable");
+        return;
+      }
+      const config = script?.configReadPath
+        ? JSON.parse(readFileSync(script.configReadPath, "utf8")).config
+        : script?.configRead?.config;
+      respond(id, {
+        data: [
+          ":workspace",
+          ":read-only",
+          ...Object.keys(config?.permissions ?? {}),
+        ].map((id) => ({ id, allowed: true })),
+      });
+      return;
+    }
     case "skills/extraRoots/set":
       respond(id, {});
       return;
@@ -473,7 +505,7 @@ async function handleRequest(message) {
       threadCounter += 1;
       const threadId = `codex-fx-${processInstanceId}-${threadCounter}`;
       notify("thread/started", { thread: { id: threadId } });
-      respond(id, { thread: { id: threadId } });
+      respond(id, { thread: { id: threadId }, ...profileResult });
       return;
     }
     case "thread/resume": {
@@ -504,6 +536,7 @@ async function handleRequest(message) {
         replayLastTurnUsage(params.threadId);
       }
       respond(id, {
+        ...profileResult,
         thread: {
           id: params.threadId,
           ...(script?.resumedDaybreakEnabled === undefined
@@ -539,7 +572,7 @@ async function handleRequest(message) {
       const threadId = replaysUsage
         ? `usage-replay-fork-${processInstanceId}-${threadCounter}`
         : `codex-fx-${processInstanceId}-fork-${threadCounter}`;
-      respond(id, { thread: { id: threadId } });
+      respond(id, { thread: { id: threadId }, ...profileResult });
 
       if (replaysUsage) {
         replayLastTurnUsage(threadId);

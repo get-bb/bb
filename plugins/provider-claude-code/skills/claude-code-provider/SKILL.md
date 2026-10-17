@@ -36,3 +36,19 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 
 Inspect the thread and provider state after a change; do not restart unrelated
 threads or change settings merely to answer a question.
+
+## macOS capture permissions
+
+A Bash sandbox and macOS Screen Recording authorization are separate checks.
+Confirm the session's sandbox setting before blaming sandbox isolation. When a
+capture fails, inspect the shell's process ancestry before naming the app or
+executable that needs a grant. A bb host daemon launched by mise's Node binary
+can have a different macOS privacy identity from bb.app; granting bb.app access
+does not establish authorization for that daemon's children.
+
+Use an authorized read-only capture preflight and process query on the capture
+host. Start with `ps -o pid,ppid,comm -p $$`, then inspect each parent until the
+launcher is identified. Report the observed launcher and authorization result,
+and label an unavailable preflight as unverified. After a user changes a grant,
+retry the capture to confirm it works. Do not restart unrelated agent sessions
+to test a permission hypothesis.

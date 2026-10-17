@@ -373,3 +373,642 @@ it("applies follow-up permission changes in both directions without replacing th
     recordedRequests().filter((request) => request.method === "initialize"),
   ).toHaveLength(1);
 }, 30_000);
+
+const workspaceProfileConfig = {
+  config: {
+    default_permissions: "workspace-dev",
+    permissions: {
+      "workspace-dev": {
+        extends: ":workspace",
+        workspace_roots: { "/developer-cache": true },
+        filesystem: { "/private-data": "none" },
+      },
+    },
+  },
+};
+
+it.each(["start", "resume", "fork"] as const)(
+  "preserves the configured workspace profile when constructing a %s session",
+  async (kind) => {
+    const storageRoot = join(workspaceDir, "thread-storage");
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({ requestLogPath, configRead: workspaceProfileConfig }),
+    );
+    harness.sendRequest(1, `thread/${kind}`, {
+      threadId: THREAD_ID,
+      ...(kind === "resume" ? { providerThreadId: "profile-resume" } : {}),
+      ...(kind === "fork" ? { sourceProviderThreadId: "profile-fork" } : {}),
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: {
+        ...autoAskSessionOptions,
+        providerOptions: { additionalWorkspaceWriteRoots: [storageRoot] },
+      },
+    });
+    const response = await harness.waitForResponse(1);
+    const { providerThreadId } = z
+      .object({ providerThreadId: z.string() })
+      .parse(response.result);
+    const started = recordedRequests().find(
+      (entry) => entry.method === `thread/${kind}`,
+    )?.params;
+    expect(started).toMatchObject({
+      permissions: "workspace-dev",
+      runtimeWorkspaceRoots: [workspaceDir, storageRoot],
+      approvalPolicy: "on-request",
+      approvalsReviewer: "auto_review",
+    });
+    expect(started).not.toHaveProperty("sandbox");
+    expect(started?.config).not.toHaveProperty(
+      "sandbox_workspace_write.writable_roots",
+    );
+    for (const [index, options] of [
+      autoAskSessionOptions,
+      FULL_ACCESS_SESSION_OPTIONS,
+      autoAskSessionOptions,
+    ].entries()) {
+      const id = index + 2;
+      harness.sendRequest(id, "turn/start", {
+        threadId: THREAD_ID,
+        providerThreadId,
+        clientRequestId: `creq_prmcheckx${id}`,
+        input: [{ type: "text", text: "say hello", mentions: [] }],
+        options: {
+          ...options,
+          providerOptions: { additionalWorkspaceWriteRoots: [storageRoot] },
+        },
+      });
+      expect((await harness.waitForResponse(id)).result).toEqual({
+        threadId: THREAD_ID,
+      });
+      const turn = recordedRequests()
+        .filter((entry) => entry.method === "turn/start")
+        .at(-1)?.params;
+      if (options.permissionScope === "workspace") {
+        expect(turn).toMatchObject({
+          permissions: "workspace-dev",
+          runtimeWorkspaceRoots: [workspaceDir, storageRoot],
+          approvalsReviewer: "auto_review",
+        });
+        expect(turn).not.toHaveProperty("sandboxPolicy");
+      } else {
+        expect(turn).toMatchObject({
+          sandboxPolicy: { type: "dangerFullAccess" },
+          approvalPolicy: "never",
+        });
+        expect(turn).not.toHaveProperty("permissions");
+      }
+    }
+  },
+  30_000,
+);
+
+it("does not promote a workspace session to a configured full-access profile", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRead: {
+        config: {
+          default_permissions: "unrestricted",
+          permissions: { unrestricted: { extends: ":danger-full-access" } },
+        },
+      },
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const response = await harness.waitForResponse(1);
+  expect(response.result).toMatchObject({
+    providerThreadId: expect.any(String),
+  });
+  const started = recordedRequests().find(
+    (entry) => entry.method === "thread/start",
+  )?.params;
+  expect(started).toMatchObject({
+    sandbox: "workspace-write",
+    approvalPolicy: "on-request",
+    approvalsReviewer: "auto_review",
+  });
+  expect(started).not.toHaveProperty("permissions");
+}, 30_000);
+
+it("interrupts an active profile turn before switching to full access", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({ requestLogPath, configRead: workspaceProfileConfig }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse((await harness.waitForResponse(1)).result);
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_prmcheckx2",
+    input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
+    options: autoAskSessionOptions,
+  });
+  await harness.waitForResponse(2);
+  await vi.waitFor(() =>
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        method: "thread/delta",
+        params: expect.objectContaining({
+          deltas: expect.arrayContaining([
+            expect.objectContaining({ kind: "turn.open" }),
+          ]),
+        }),
+      }),
+    ),
+  );
+  harness.sendRequest(3, "turn/steer", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    expectedTurnId: "turn-fx-1",
+    clientRequestId: "creq_prmcheckx3",
+    input: [{ type: "text", text: "Continue with full access", mentions: [] }],
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  await harness.waitForResponse(3);
+  const turns = recordedRequests().filter(
+    (entry) => entry.method === "turn/start",
+  );
+  expect(turns[0]?.params).toMatchObject({
+    permissions: "workspace-dev",
+    runtimeWorkspaceRoots: [workspaceDir],
+  });
+  expect(turns.at(-1)?.params).toMatchObject({
+    sandboxPolicy: { type: "dangerFullAccess" },
+  });
+  expect(
+    recordedRequests().filter((entry) => entry.method === "turn/interrupt"),
+  ).toHaveLength(1);
+}, 30_000);
+
+it("retains the legacy sandbox when an older app-server cannot read configuration", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({ requestLogPath, configReadError: true }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const response = await harness.waitForResponse(1);
+  expect(response.result).toMatchObject({
+    providerThreadId: expect.any(String),
+  });
+  expect(
+    recordedRequests().find((entry) => entry.method === "thread/start")?.params,
+  ).toMatchObject({
+    sandbox: "workspace-write",
+    approvalsReviewer: "auto_review",
+  });
+}, 30_000);
+
+it("rejects malformed permission configuration instead of silently widening access", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRead: {
+        config: {
+          default_permissions: "broken",
+          permissions: { broken: { extends: 42 } },
+        },
+      },
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  expect((await harness.waitForResponse(1)).error).toMatchObject({
+    message: expect.stringContaining("config/read"),
+  });
+  expect(
+    recordedRequests().filter((entry) => entry.method === "thread/start"),
+  ).toEqual([]);
+}, 30_000);
+
+it.each([":read-only", "inspect-only"])(
+  "rejects a %s default with a clear workspace mode error",
+  async (profile) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        configRead: {
+          config: {
+            default_permissions: profile,
+            permissions: { "inspect-only": { extends: ":read-only" } },
+          },
+        },
+      }),
+    );
+    harness.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(1)).error).toMatchObject({
+      message:
+        "Configured permissions are read-only; BB workspace modes require write access.",
+    });
+    expect(
+      recordedRequests().some((entry) => entry.method === "thread/start"),
+    ).toBe(false);
+  },
+);
+
+it.each(["unsupported-base", "restricted"])(
+  "rejects a selected profile with unsupported base %s before starting a thread",
+  async (base) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        configRead: {
+          config: {
+            default_permissions: "restricted",
+            permissions: { restricted: { extends: base } },
+          },
+        },
+      }),
+    );
+    harness.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(1)).error).toMatchObject({
+      message:
+        "Configured permissions profile has missing or cyclic inheritance.",
+    });
+    expect(
+      recordedRequests().filter((entry) => entry.method === "thread/start"),
+    ).toEqual([]);
+  },
+  30_000,
+);
+
+it("refreshes a renamed or removed profile before the next workspace turn", async () => {
+  const configPath = join(workspaceDir, "config.json");
+  writeFileSync(configPath, JSON.stringify(workspaceProfileConfig));
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({ requestLogPath, configReadPath: configPath }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const started = await harness.waitForResponse(1);
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+  for (const [index, profile] of ["renamed-dev", null].entries()) {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        config: {
+          default_permissions: profile,
+          permissions: profile ? { [profile]: { extends: ":workspace" } } : {},
+        },
+      }),
+    );
+    const id = index + 2;
+    harness.sendRequest(id, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: `creq_prmcheckx${id}`,
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(id)).result).toEqual({
+      threadId: THREAD_ID,
+    });
+    const turn = recordedRequests()
+      .filter((entry) => entry.method === "turn/start")
+      .at(-1)?.params;
+    if (profile) {
+      expect(turn?.permissions).toBe("renamed-dev");
+      expect(turn).not.toHaveProperty("sandboxPolicy");
+    } else {
+      expect(turn).toMatchObject({ sandboxPolicy: { type: "workspaceWrite" } });
+      expect(turn).not.toHaveProperty("permissions");
+    }
+  }
+});
+
+it("uses the legacy sandbox when an older server lacks native profile support", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRead: workspaceProfileConfig,
+      permissionProfilesUnavailable: true,
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  expect((await harness.waitForResponse(1)).result).toHaveProperty(
+    "providerThreadId",
+  );
+  const started = recordedRequests().find(
+    (entry) => entry.method === "thread/start",
+  )?.params;
+  expect(started?.sandbox).toBe("workspace-write");
+  expect(started).not.toHaveProperty("permissions");
+});
+
+it.each(["start", "resume", "fork"] as const)(
+  "rejects a %s response that did not activate the selected profile",
+  async (kind) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        configRead: workspaceProfileConfig,
+        ignorePermissionProfile: true,
+      }),
+    );
+    harness.sendRequest(1, `thread/${kind}`, {
+      threadId: THREAD_ID,
+      ...(kind === "resume" ? { providerThreadId: "profile-resume" } : {}),
+      ...(kind === "fork" ? { sourceProviderThreadId: "profile-fork" } : {}),
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(1)).error).toMatchObject({
+      message: "Codex did not activate the configured permissions profile.",
+    });
+    expect(
+      recordedRequests().some((entry) => entry.method === "turn/start"),
+    ).toBe(false);
+  },
+);
+
+it("checks native support when a full session switches to workspace", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRead: workspaceProfileConfig,
+      permissionProfilesUnavailable: true,
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse((await harness.waitForResponse(1)).result);
+  expect(
+    recordedRequests().some(
+      (entry) => entry.method === "permissionProfile/list",
+    ),
+  ).toBe(false);
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_prmcheckx2",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: autoAskSessionOptions,
+  });
+  expect((await harness.waitForResponse(2)).result).toEqual({
+    threadId: THREAD_ID,
+  });
+  expect(
+    recordedRequests().some(
+      (entry) => entry.method === "permissionProfile/list",
+    ),
+  ).toBe(true);
+  const turn = recordedRequests().find(
+    (entry) => entry.method === "turn/start",
+  )?.params;
+  expect(turn).toMatchObject({
+    sandboxPolicy: { type: "workspaceWrite", networkAccess: true },
+  });
+  expect(turn).not.toHaveProperty("permissions");
+});
+
+it.each(["chained", "standalone"])(
+  "preserves a configured %s profile",
+  async (profile) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        configRead: {
+          config: {
+            default_permissions: profile,
+            permissions: {
+              chained: { extends: "parent" },
+              parent: { extends: ":workspace" },
+              standalone: {
+                filesystem: { ":root": "read", ":workspace_roots": "write" },
+              },
+            },
+          },
+        },
+      }),
+    );
+    harness.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(1)).result).toHaveProperty(
+      "providerThreadId",
+    );
+    const started = recordedRequests().find(
+      (entry) => entry.method === "thread/start",
+    )?.params;
+    expect(started).toMatchObject({
+      permissions: profile,
+      runtimeWorkspaceRoots: [workspaceDir],
+    });
+    expect(started).not.toHaveProperty("sandbox");
+  },
+);
+
+it("does not promote workspace mode through a chain ending in full access", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRead: {
+        config: {
+          default_permissions: "chained",
+          permissions: {
+            chained: { extends: "parent" },
+            parent: { extends: ":danger-full-access" },
+          },
+        },
+      },
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  expect((await harness.waitForResponse(1)).result).toHaveProperty(
+    "providerThreadId",
+  );
+  const started = recordedRequests().find(
+    (entry) => entry.method === "thread/start",
+  )?.params;
+  expect(started?.sandbox).toBe("workspace-write");
+  expect(started).not.toHaveProperty("permissions");
+});
+
+it.each(["start", "resume", "fork"] as const)(
+  "rejects a %s profile whose effective sandbox is unrestricted",
+  async (kind) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        configRead: workspaceProfileConfig,
+        profileSandbox: { type: "externalSandbox", networkAccess: "enabled" },
+      }),
+    );
+    harness.sendRequest(1, `thread/${kind}`, {
+      threadId: THREAD_ID,
+      ...(kind === "resume" ? { providerThreadId: "profile-resume" } : {}),
+      ...(kind === "fork" ? { sourceProviderThreadId: "profile-fork" } : {}),
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(1)).error).toMatchObject({
+      message: "Configured permissions exceed BB workspace isolation.",
+    });
+    expect(
+      recordedRequests().some((entry) => entry.method === "turn/start"),
+    ).toBe(false);
+  },
+);
+
+it("keeps networking enabled for the plain workspace default", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRead: { config: { default_permissions: ":workspace" } },
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse((await harness.waitForResponse(1)).result);
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_prmcheckx2",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: autoAskSessionOptions,
+  });
+  expect((await harness.waitForResponse(2)).result).toEqual({
+    threadId: THREAD_ID,
+  });
+  const turn = recordedRequests().find(
+    (entry) => entry.method === "turn/start",
+  )?.params;
+  expect(turn).toMatchObject({
+    sandboxPolicy: { type: "workspaceWrite", networkAccess: true },
+  });
+  expect(turn).not.toHaveProperty("permissions");
+});
+
+it("revalidates a profile changed to unrestricted rules before dispatching a turn", async () => {
+  const configPath = join(workspaceDir, "config.json");
+  writeFileSync(configPath, JSON.stringify(workspaceProfileConfig));
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({ requestLogPath, configReadPath: configPath }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse((await harness.waitForResponse(1)).result);
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      config: {
+        default_permissions: "workspace-dev",
+        permissions: {
+          "workspace-dev": {
+            extends: ":workspace",
+            filesystem: { ":root": "write" },
+          },
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configReadPath: configPath,
+      profileSandbox: { type: "externalSandbox", networkAccess: "enabled" },
+    }),
+  );
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_prmcheckx2",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: autoAskSessionOptions,
+  });
+  expect((await harness.waitForResponse(2)).error).toMatchObject({
+    message: "Configured permissions exceed BB workspace isolation.",
+  });
+  expect(
+    recordedRequests().some((entry) => entry.method === "thread/resume"),
+  ).toBe(true);
+  expect(
+    recordedRequests().some((entry) => entry.method === "turn/start"),
+  ).toBe(false);
+});
