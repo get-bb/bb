@@ -307,6 +307,51 @@ describe("timeline grouping context cache", () => {
     });
   });
 
+  it("reads only rows after the cached sequence when a new turn changes the context", () => {
+    withTestThread((testThread) => {
+      const firstMaxSeq = appendRows(testThread, [
+        userRequest("request-1"),
+        turnStarted("turn-1"),
+        accepted("request-1", "turn-1"),
+      ]);
+      expect(
+        expectCachedEqualsCold(testThread, firstMaxSeq)
+          .orderingBoundarySequence,
+      ).toBeNull();
+
+      const maxSeq = appendRows(testThread, [userRequest("request-2")]);
+      const readStarts: unknown[] = [];
+      const raw = testThread.db.$client;
+      const originalPrepare = raw.prepare.bind(raw);
+      Object.defineProperty(raw, "prepare", {
+        configurable: true,
+        writable: true,
+        value: (source: string) => {
+          const statement = originalPrepare(source);
+          if (!source.includes("'$.clientRequestId'")) return statement;
+          const originalAll = statement.all.bind(statement);
+          statement.all = (...params: unknown[]) => {
+            readStarts.push(params[1]);
+            return originalAll(...params);
+          };
+          return statement;
+        },
+      });
+      try {
+        expect(
+          expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+        ).toBe(firstMaxSeq + 1);
+      } finally {
+        Object.defineProperty(raw, "prepare", {
+          configurable: true,
+          writable: true,
+          value: originalPrepare,
+        });
+      }
+      expect(readStarts).toEqual([firstMaxSeq + 1]);
+    });
+  });
+
   it.each([
     {
       name: "a user request arrives while a turn is still running",
