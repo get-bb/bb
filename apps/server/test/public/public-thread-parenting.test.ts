@@ -405,6 +405,7 @@ describe("public thread parenting routes", () => {
       expect(summary).toEqual({
         nonDeletedChildCount: 3,
         unarchivedDescendantCount: 1,
+        workspaceRemovalDelayMs: null,
       });
     });
   });
@@ -434,6 +435,7 @@ describe("public thread parenting routes", () => {
       ).toEqual({
         nonDeletedChildCount: 1,
         unarchivedDescendantCount: 1,
+        workspaceRemovalDelayMs: null,
       });
     });
   });
