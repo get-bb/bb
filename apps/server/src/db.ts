@@ -26,6 +26,13 @@ export function initDb(
   options: InitDbOptions = {},
 ): DbConnection {
   const db = createConnection(databasePath, {
+    backgroundCheckpoint: {
+      onError: (error) =>
+        options.logger?.error(
+          { err: error },
+          "Database checkpoint worker failed; restored synchronous auto-checkpoint",
+        ),
+    },
     slowQueryLogger: options.logger,
     slowQueryThresholdMs: options.slowQueryThresholdMs,
     slowQueryDiagnosticsEnabled: options.slowQueryDiagnosticsEnabled,

@@ -801,6 +801,20 @@ PID, and UTC window). Profiles are kept for up to 12 hours and 1 GB total,
 oldest first, so copy the ones you need. They use private permissions and
 contain local paths and function names; inspect before sharing.
 
+The server moves main-database WAL checkpoints to a worker after it opens a
+second connection. It runs a passive checkpoint every second, leaving readers
+and writers running, with the existing WAL/NORMAL durability settings. A held
+read transaction can delay checkpoint completion and let the WAL grow; it is
+retried on the next interval. Worker startup or runtime failure logs
+`Database checkpoint worker failed; restored synchronous auto-checkpoint` and
+restores the original threshold. Closing the main connection synchronously waits
+for the worker to release its database connection, including its final
+checkpoint, before returning; a pending worker is prevented from opening it.
+This lets server moves and imports immediately rename or delete the database
+files on Windows. Close throws if the worker cannot acknowledge shutdown within
+30 seconds. Main-thread SQL and WAL writes remain synchronous, so a slow commit
+alone does not prove a checkpoint stall.
+
 ### Turn traces
 
 While both gates are on, every message sent through the send API also writes
