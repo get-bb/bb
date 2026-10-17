@@ -207,10 +207,14 @@ fsync waits. Page faults do not identify whether the fault was on the SQLite
 mmap, the server heap, or another mapping, and these counters do not measure
 swap-in bytes.
 
-`diagnostics.wal.sizeBytes` is the WAL's physical file size, sampled only when
-emitting a slow log with diagnostics enabled. Missing or inaccessible WAL files
-and in-memory databases report null. WAL size can include space reused by
-earlier generations; it does not measure uncheckpointed backlog or identify
+`diagnostics.wal.sizeBytes` is the most recent asynchronous sample of the WAL's
+physical file size. A slow log with diagnostics enabled requests a refresh at
+most once per second per connection, with at most one refresh in flight.
+`diagnostics.wal.sampledAt` is the sample's UTC completion time; the log uses
+the previous sample, which may be older after an idle period. Both fields are
+null before the first sample and for in-memory databases. Missing or
+inaccessible WAL files report a null size with a sample timestamp. WAL size
+can include space reused by earlier generations; it does not measure uncheckpointed backlog or identify
 checkpoint progress. Resource sampling is also disabled with the live gate.
 
 ## Pending Question Drafts
@@ -801,6 +805,15 @@ PID, and UTC window). Profiles are kept for up to 12 hours and 1 GB total,
 oldest first, so copy the ones you need. They use private permissions and
 contain local paths and function names; inspect before sharing.
 
+A worker connects to the main-thread inspector and processes completed
+profiles, serializes JSON, and writes files. Captures overlap at rotation to
+preserve coverage without restarting V8's sampler. Native V8 sampling and
+profile completion still have some main-thread cost. Retention scans existing
+files once at startup, then tracks this recorder's writes incrementally; use
+one server per data directory. Rotation does not queue more captures while a
+previous capture is being saved. Shutdown awaits the active save and writes
+the final capture.
+
 ### Turn traces
 
 While both gates are on, every message sent through the send API also writes
@@ -858,8 +871,8 @@ applied chunk.
    `stallCauseCandidate`, when a measured synchronous operation is long enough
    (within one 20 ms sample) to explain the maximum delay, and `unattributed`
    otherwise. A candidate is not a confirmed cause: both fall somewhere in the
-   five-second window. Profiler work is measured as `cpu-profile:start`,
-   `cpu-profile:finish`, and `cpu-profile:serialize`.
+   five-second window. Profile processing runs in a worker and no longer emits
+   the historical `cpu-profile:*` synchronous-work labels.
 2. Load the `.cpuprofile` covering that time and PID in Chrome DevTools'
    JavaScript profiler, select the window, and read the bottom-up view.
    Match function names against the exact source revision of the build.

@@ -31,8 +31,11 @@ describe("performance diagnostics", () => {
       },
     });
     try {
-      const until = performance.now() + 40;
-      while (performance.now() < until) Math.sqrt(performance.now());
+      function mainThreadWork() {
+        const until = performance.now() + 80;
+        while (performance.now() < until) Math.sqrt(performance.now());
+      }
+      mainThreadWork();
       await Promise.all([monitor.stop(), monitor.stop()]);
       const directory = join(dataDir, "logs", "performance");
       const files = await readdir(directory);
@@ -40,7 +43,15 @@ describe("performance diagnostics", () => {
       expect(files[0]).toMatch(/^profile-\d+-[0-9a-f-]+\.cpuprofile$/);
       const path = join(directory, files[0]!);
       const profile = JSON.parse(await readFile(path, "utf8"));
-      expect(profile.nodes.length).toBeGreaterThan(0);
+      expect(profile.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            callFrame: expect.objectContaining({
+              functionName: "mainThreadWork",
+            }),
+          }),
+        ]),
+      );
       expect(profile.samples.length).toBeGreaterThan(0);
       expect(profile.endTime).toBeGreaterThan(profile.startTime);
       if (process.platform !== "win32")
@@ -52,7 +63,7 @@ describe("performance diagnostics", () => {
     }
   });
 
-  it("rotates continuous bounded windows and ignores unrelated console captures", async () => {
+  it("rotates bounded main-thread windows and ignores unrelated console captures", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-rotation-"));
     const savedPaths: string[] = [];
     const warnings: unknown[] = [];
@@ -167,6 +178,31 @@ describe("performance diagnostics", () => {
       );
       expect(warnings).toEqual([]);
     } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stops cleanly when saving a capture fails", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-save-failure-"));
+    const warnings: unknown[] = [];
+    const monitor = await startPerformanceDiagnostics({
+      dataDir,
+      logger: {
+        info: () => {},
+        warn: (fields) => {
+          warnings.push(fields);
+        },
+      },
+    });
+    try {
+      await rm(join(dataDir, "logs", "performance"), {
+        recursive: true,
+        force: true,
+      });
+      await Promise.all([monitor.stop(), monitor.stop()]);
+      expect(warnings).toHaveLength(1);
+    } finally {
+      await monitor.stop();
       await rm(dataDir, { recursive: true, force: true });
     }
   });
