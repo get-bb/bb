@@ -428,6 +428,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
+  "provider.list_commands": {
+    commands: [
+      {
+        name: "simplify",
+        description: "Simplify the changed code",
+        inputHint: "[<target>]",
+      },
+    ],
+  },
   "provider.health": {
     supported: true,
     health: {
@@ -1255,7 +1264,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(238);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(239);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

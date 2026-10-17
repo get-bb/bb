@@ -19,6 +19,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import type {
+  CommandListResult,
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
@@ -62,6 +63,11 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  listCommands: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd: string;
+  }) => Promise<CommandListResult>;
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

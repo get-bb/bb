@@ -37,7 +37,6 @@ import {
   type HookCallback,
   type PermissionResult,
   type SDKMessage,
-  type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import {
@@ -64,9 +63,8 @@ import { MissingClaudeCliError } from "./missing-cli-error.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
   PROVIDER_COMMANDS_STATE_KIND,
-  commandExclusionsFromInit,
+  createClaudeCodeBridgeCommandListMemo,
   toProviderCommandsState,
-  type ClaudeCommandExclusions,
 } from "./provider-commands.js";
 import {
   claudeThreadForkParamsSchema,
@@ -233,8 +231,6 @@ interface ClaudeSessionRestart {
 }
 
 interface ThreadSession {
-  commandExclusions: ClaudeCommandExclusions | null;
-  commandLaunchCwd: string | null;
   commandListGeneration: number;
   contextUsageCollector: ClaudeContextUsageCollector;
   session: SdkSession;
@@ -786,9 +782,12 @@ async function applyLiveSessionSettings(
   threadSession.attachment.liveSettings = next;
 }
 
-const MODEL_LIST_MEMO_TTL_MS = 2 * 60_000;
+const PROVIDER_CATALOG_MEMO_TTL_MS = 2 * 60_000;
+const listCommandsMemoized = createClaudeCodeBridgeCommandListMemo({
+  ttlMs: PROVIDER_CATALOG_MEMO_TTL_MS,
+});
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
-  ttlMs: MODEL_LIST_MEMO_TTL_MS,
+  ttlMs: PROVIDER_CATALOG_MEMO_TTL_MS,
 });
 
 function sendThreadDeltas(
@@ -1094,8 +1093,6 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
     })),
   );
   const threadSession: ThreadSession = {
-    commandExclusions: null,
-    commandLaunchCwd: null,
     commandListGeneration: 0,
     contextUsageCollector: new ClaudeContextUsageCollector(),
     session,
@@ -1478,13 +1475,12 @@ function getCurrentThreadSession(
 
 function publishProviderCommands(
   threadSession: ThreadSession,
-  commands: readonly SlashCommand[],
+  commands: unknown,
 ): void {
-  const exclusions = threadSession.commandExclusions;
-  if (threadSession.closing || exclusions === null) {
+  if (threadSession.closing) {
     return;
   }
-  const state = toProviderCommandsState(commands, exclusions);
+  const state = toProviderCommandsState(commands);
   const serialized = JSON.stringify(state);
   const { attachment } = threadSession;
   if (
@@ -1555,10 +1551,6 @@ function createOnSdkMessage(
       message,
     });
     if (message.type === "system" && message.subtype === "init") {
-      threadSession.commandLaunchCwd ??= message.cwd;
-      if (message.cwd === threadSession.commandLaunchCwd) {
-        threadSession.commandExclusions = commandExclusionsFromInit(message);
-      }
       refreshProviderCommands(threadSession);
     } else if (
       message.type === "system" &&
@@ -2196,6 +2188,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
           skills: { configure: true },
+          commands: { list: true },
         },
       };
       sendResult(request.id, result);
@@ -2203,6 +2196,21 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
     case "model/list":
       try {
         sendResult(request.id, await listModelsMemoized());
+      } catch (error) {
+        if (error instanceof MissingClaudeCliError) {
+          sendError(
+            request.id,
+            BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE,
+            error.message,
+          );
+          break;
+        }
+        throw error;
+      }
+      break;
+    case "commands/list":
+      try {
+        sendResult(request.id, await listCommandsMemoized(request.params.cwd));
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
           sendError(

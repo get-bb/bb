@@ -48,6 +48,8 @@ Read the installed declarations for exact current signatures.
 - `buildShellEnvOverrides`
 - `claudeTaskToolNameSchema`
 - `claudeTaskToolOutputSchema`
+- `commandListParamsSchema`
+- `commandListResultSchema`
 - `createBridgeIo`
 - `createBridgeLineHandler`
 - `createPendingToolCallTracker`

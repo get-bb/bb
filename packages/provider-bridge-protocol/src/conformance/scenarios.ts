@@ -373,6 +373,7 @@ export interface HandshakeScenarioOutcome {
 
 export async function runHandshakeScenario(
   client: ConformanceClient,
+  fixture: ConformanceSessionFixture,
 ): Promise<HandshakeScenarioOutcome> {
   const id = client.request(BRIDGE_REQUEST_METHODS.initialize, {
     protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -418,54 +419,59 @@ export async function runHandshakeScenario(
   return {
     results: [
       pass("handshake/initialize", title),
-      ...(await runSkillsConfigureDeclaredScenario(
-        client,
-        parsed.data.capabilities.skills.configure,
-      )),
+      ...(await runDeclaredRequestScenario(client, {
+        id: "skills/configure-declared",
+        method: BRIDGE_REQUEST_METHODS.skillsConfigure,
+        params: { roots: [] },
+        capability: "skills.configure",
+        declared: parsed.data.capabilities.skills.configure,
+      })),
+      ...(await runDeclaredRequestScenario(client, {
+        id: "commands/list-declared",
+        method: BRIDGE_REQUEST_METHODS.commandList,
+        params: { cwd: fixture.cwd },
+        capability: "commands.list",
+        declared: parsed.data.capabilities.commands.list,
+      })),
     ],
     capabilities: parsed.data.capabilities,
   };
 }
 
-const SKILLS_CONFIGURE_DECLARED_ID = "skills/configure-declared";
-const SKILLS_CONFIGURE_DECLARED_TITLE =
-  "skills/configure is handled iff the handshake declares skills.configure";
-
-async function runSkillsConfigureDeclaredScenario(
+async function runDeclaredRequestScenario(
   client: ConformanceClient,
-  declared: boolean,
+  args: {
+    id: string;
+    method: string;
+    params: Record<string, unknown>;
+    capability: string;
+    declared: boolean;
+  },
 ): Promise<ConformanceCheckResult[]> {
-  const id = client.request(BRIDGE_REQUEST_METHODS.skillsConfigure, {
-    roots: [],
-  });
+  const title = `${args.method} is handled iff the handshake declares ${args.capability}`;
+  const id = client.request(args.method, args.params);
   const response = await client.waitForResponse(id);
   if (response === null) {
-    return [
-      fail(
-        SKILLS_CONFIGURE_DECLARED_ID,
-        SKILLS_CONFIGURE_DECLARED_TITLE,
-        "skills/configure was not answered",
-      ),
-    ];
+    return [fail(args.id, title, `${args.method} was not answered`)];
   }
-  if (declared) {
+  if (args.declared) {
     return response.error === undefined
-      ? [pass(SKILLS_CONFIGURE_DECLARED_ID, SKILLS_CONFIGURE_DECLARED_TITLE)]
+      ? [pass(args.id, title)]
       : [
           fail(
-            SKILLS_CONFIGURE_DECLARED_ID,
-            SKILLS_CONFIGURE_DECLARED_TITLE,
-            `the handshake declares skills.configure but the request failed: ${JSON.stringify(response.error)}`,
+            args.id,
+            title,
+            `the handshake declares ${args.capability} but the request failed: ${JSON.stringify(response.error)}`,
           ),
         ];
   }
   return errorCode(response) === BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND
-    ? [pass(SKILLS_CONFIGURE_DECLARED_ID, SKILLS_CONFIGURE_DECLARED_TITLE)]
+    ? [pass(args.id, title)]
     : [
         fail(
-          SKILLS_CONFIGURE_DECLARED_ID,
-          SKILLS_CONFIGURE_DECLARED_TITLE,
-          `the handshake does not declare skills.configure, yet the bridge answered the request with ${JSON.stringify(response.error ?? response.result)}; declare it (the runtime never sends an undeclared request)`,
+          args.id,
+          title,
+          `the handshake does not declare ${args.capability}, yet the bridge answered the request with ${JSON.stringify(response.error ?? response.result)}; declare it (the runtime never sends an undeclared request)`,
         ),
       ];
 }

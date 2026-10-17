@@ -17,6 +17,7 @@ import type {
 } from "@bb/domain";
 import type {
   ProviderHealthResult,
+  CommandListResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
   ProviderUsageResult,
@@ -284,6 +285,12 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
+export interface ListCommandsArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd: string;
+}
+
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -326,6 +333,8 @@ export interface AgentRuntime {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+
+  listCommands(args: ListCommandsArgs): Promise<CommandListResult>;
 
   providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 

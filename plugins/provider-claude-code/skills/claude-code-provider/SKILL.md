@@ -30,11 +30,13 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 - bb passes only `BB_CLAUDE_CODE_EXECUTABLE` and `CLAUDE_CODE_OAUTH_TOKEN` to
   the CLI. Mint the token with `claude setup-token` for machines with no
   interactive login.
-- Each session reports Claude Code's skills, including bundled ones such as
-  `/simplify` and `/code-review`, to the composer's `/` menu and
-  `bb thread commands`. Terminal-only commands and Claude Code's own settings
-  commands such as `/model` are left out. The list appears after the thread's
-  first turn starts.
+- Claude Code's own slash commands, including bundled skills such as
+  `/simplify` and `/code-review`, appear in the composer's `/` menu,
+  `bb project commands`, and `bb thread commands`. The provider reads them from
+  Claude Code for the project folder without sending a prompt, and each thread
+  refreshes them when a turn starts. Commands for settings bb manages (such as
+  `/model`, `/config`, `/fast`), terminal-only commands (such as `/doctor`),
+  and bb's own skills are left out.
 - Structured plan, message editing, and compaction are supported through the
   corresponding `bb thread` commands. Unlisted model IDs are accepted by the
   provider; verify actual availability on the target host.

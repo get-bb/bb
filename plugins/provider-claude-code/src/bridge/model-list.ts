@@ -1,63 +1,19 @@
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
-import {
-  query,
-  type Options,
-  type SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
-import { translateMissingClaudeCliCatalogError } from "./missing-cli-error.js";
-import { resolveClaudeCodeExecutable } from "./session-options.js";
-
-function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
-  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
-  return {
-    cwd: process.cwd(),
-    env,
-    persistSession: false,
-    settingSources: ["user", "project", "local"],
-    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
-  };
-}
-
-async function* promptWithoutMessages(
-  signal: AbortSignal,
-): AsyncGenerator<SDKUserMessage> {
-  if (signal.aborted) {
-    return;
-  }
-  await new Promise<void>((resolve) => {
-    signal.addEventListener("abort", () => resolve(), { once: true });
-  });
-}
+import { probeClaudeInitialization } from "./initialization-probe.js";
 
 async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  const promptEnd = new AbortController();
-  let session: ReturnType<typeof query>;
-  try {
-    session = query({
-      prompt: promptWithoutMessages(promptEnd.signal),
-      options: buildModelProbeOptions(env),
-    });
-  } catch (error) {
-    promptEnd.abort();
-    throw translateMissingClaudeCliCatalogError(error);
+  const initialization = await probeClaudeInitialization({
+    env,
+    cwd: process.cwd(),
+  });
+  if (initialization.models.length === 0) {
+    throw new Error("Claude Code reported no models.");
   }
-
-  try {
-    const initialization = await session.initializationResult();
-    if (initialization.models.length === 0) {
-      throw new Error("Claude Code reported no models.");
-    }
-    return buildClaudeCodeModels(initialization.models);
-  } catch (error) {
-    throw translateMissingClaudeCliCatalogError(error);
-  } finally {
-    promptEnd.abort();
-    session.close();
-  }
+  return buildClaudeCodeModels(initialization.models);
 }
 
 export async function listClaudeCodeBridgeModels(

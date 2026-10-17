@@ -13,6 +13,7 @@ import {
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
+  commandListParamsSchema,
   bridgeRequestEnvelopeSchema,
   providerMaintenanceParamsSchema,
   providerInstallationRunParamsSchema,
@@ -108,6 +109,10 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("model/list"),
     params: z.object({}),
+  }),
+  z.object({
+    method: z.literal("commands/list"),
+    params: commandListParamsSchema,
   }),
   z.object({
     method: z.literal("provider/health"),

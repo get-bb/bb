@@ -1021,8 +1021,6 @@ describe("bridge", () => {
       );
       queries[0].emit({
         ...init,
-        cwd: "/tmp/worktree/elsewhere",
-        skills: [],
         uuid: "00000000-0000-4000-8000-000000000002",
       });
       await vi.waitFor(() =>
@@ -1056,6 +1054,41 @@ describe("bridge", () => {
       );
     } finally {
       await stopBridgeThread({ bridge, queries, threadId });
+      bridge.restore();
+    }
+  });
+
+  it("lists a folder's commands from Claude Code without sending a prompt", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const close = vi.fn();
+    queryMock.mockReturnValue({
+      initializationResult: vi.fn().mockResolvedValue({
+        commands: [
+          { name: "simplify", description: "Simplify code", argumentHint: "" },
+          { name: "model", description: "Set the model", argumentHint: "" },
+          {
+            name: "bb-global-skills:bb-cli",
+            description: "Injected by bb",
+            argumentHint: "",
+          },
+        ],
+      }),
+      close,
+    });
+
+    try {
+      bridge.sendRequest(1, "commands/list", { cwd: "/tmp/commands-project" });
+      const response = await bridge.waitForResponse(1);
+
+      expect(response.result).toEqual({
+        commands: [{ name: "simplify", description: "Simplify code" }],
+      });
+      expect(queryMock).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({ cwd: "/tmp/commands-project" }),
+      });
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
       bridge.restore();
     }
   });

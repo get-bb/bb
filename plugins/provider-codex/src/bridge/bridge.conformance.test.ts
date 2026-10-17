@@ -62,6 +62,7 @@ it("passes the canonical protocol suite against supervised fake app-server child
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
     "skills/configure-declared": "pass",
+    "commands/list-declared": "pass",
     "session/start-identity": "pass",
     "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",

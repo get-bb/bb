@@ -666,6 +666,15 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     withResolvedBridgeLaunch(command, options, (args) =>
       options.listModels(args),
     ),
+  "provider.list_commands": async (command, options) =>
+    options.listCommands({
+      providerId: command.providerId,
+      bridgeLaunch: await resolveRuntimeBridgeLaunch(
+        command.bridgeLaunch,
+        options,
+      ),
+      cwd: command.cwd,
+    }),
   "provider.health": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
       options.providerHealth(args),

@@ -770,6 +770,8 @@ export async function createHostDaemonApp(
     runtimeManager,
     listModels: (args) =>
       withMaintenanceRuntime((runtime) => runtime.listModels(args)),
+    listCommands: (args) =>
+      withMaintenanceRuntime((runtime) => runtime.listCommands(args)),
     providerHealth: (args) =>
       withMaintenanceRuntime((runtime) => runtime.providerHealth(args)),
     providerUsage: (args) =>

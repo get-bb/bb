@@ -37,6 +37,9 @@ export const bridgeCapabilitiesSchema = z
     skills: z
       .object({ configure: z.boolean().default(false) })
       .default({ configure: false }),
+    commands: z
+      .object({ list: z.boolean().default(false) })
+      .default({ list: false }),
   })
   .passthrough();
 

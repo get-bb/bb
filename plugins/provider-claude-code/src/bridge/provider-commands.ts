@@ -1,7 +1,5 @@
-import type {
-  SDKSystemMessage,
-  SlashCommand,
-} from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
+import { probeClaudeInitialization } from "./initialization-probe.js";
 import { isClaudeSkillPluginName } from "./skill-plugins.js";
 
 export const PROVIDER_COMMANDS_STATE_KIND = "bb/provider-commands";
@@ -10,6 +8,67 @@ const MAX_COMMANDS = 500;
 const MAX_DESCRIPTION_LENGTH = 300;
 const MAX_INPUT_HINT_LENGTH = 200;
 const MAX_PAYLOAD_BYTES = 60 * 1024;
+
+const HIDDEN_COMMANDS: ReadonlySet<string> = new Set([
+  "add-dir",
+  "advisor",
+  "agents",
+  "auto-mode-setup",
+  "autocompact",
+  "clear",
+  "color",
+  "compact",
+  "config",
+  "doctor",
+  "effort",
+  "exit",
+  "export",
+  "fast",
+  "focus",
+  "heapdump",
+  "hooks",
+  "ide",
+  "import",
+  "install-github-app",
+  "keybindings",
+  "login",
+  "logout",
+  "mcp",
+  "model",
+  "output-style",
+  "permissions",
+  "plugin",
+  "privacy-settings",
+  "quit",
+  "reload-plugins",
+  "rename",
+  "resume",
+  "sandbox",
+  "statusline",
+  "terminal-setup",
+  "theme",
+  "upgrade",
+  "vim",
+  "workflow-launch-exec",
+]);
+
+const reportedCommandSchema = z.object({
+  name: z.string(),
+  description: z.string().catch(""),
+  argumentHint: z.string().catch(""),
+});
+
+function readReportedCommands(
+  value: unknown,
+): z.infer<typeof reportedCommandSchema>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    const parsed = reportedCommandSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
 
 export type ClaudeProviderCommand = {
   name: string;
@@ -20,21 +79,6 @@ export type ClaudeProviderCommand = {
 export type ClaudeProviderCommandsState = {
   commands: ClaudeProviderCommand[];
 };
-
-export type ClaudeCommandExclusions = ReadonlySet<string>;
-
-export function commandExclusionsFromInit(
-  message: Pick<
-    SDKSystemMessage,
-    "skills" | "slash_commands" | "terminal_slash_commands"
-  >,
-): ClaudeCommandExclusions {
-  const skills = new Set(message.skills);
-  return new Set([
-    ...message.slash_commands.filter((name) => !skills.has(name)),
-    ...(message.terminal_slash_commands ?? []),
-  ]);
-}
 
 function isInjectedSkill(name: string): boolean {
   const separator = name.indexOf(":");
@@ -48,9 +92,9 @@ function truncate(value: string, maxLength: number): string {
 }
 
 export function toProviderCommandsState(
-  commands: readonly SlashCommand[],
-  exclusions: ClaudeCommandExclusions,
+  reported: unknown,
 ): ClaudeProviderCommandsState {
+  const commands = readReportedCommands(reported);
   const state: ClaudeProviderCommandsState = { commands: [] };
   const seen = new Set<string>();
   let bytes = Buffer.byteLength(JSON.stringify(state));
@@ -59,8 +103,8 @@ export function toProviderCommandsState(
     if (
       name === "" ||
       name.startsWith("__") ||
+      HIDDEN_COMMANDS.has(name) ||
       isInjectedSkill(name) ||
-      exclusions.has(name) ||
       seen.has(name)
     ) {
       continue;
@@ -86,4 +130,55 @@ export function toProviderCommandsState(
     bytes += entryBytes;
   }
   return state;
+}
+
+export async function listClaudeCodeBridgeCommands(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<ClaudeProviderCommandsState> {
+  const initialization = await probeClaudeInitialization({ env, cwd });
+  return toProviderCommandsState(initialization.commands);
+}
+
+interface ClaudeCodeBridgeCommandListMemoOptions {
+  list?: (cwd: string) => Promise<ClaudeProviderCommandsState>;
+  now?: () => number;
+  ttlMs: number;
+}
+
+export function createClaudeCodeBridgeCommandListMemo({
+  list = listClaudeCodeBridgeCommands,
+  now = Date.now,
+  ttlMs,
+}: ClaudeCodeBridgeCommandListMemoOptions): (
+  cwd: string,
+) => Promise<ClaudeProviderCommandsState> {
+  const settled = new Map<
+    string,
+    { state: ClaudeProviderCommandsState; expiresAt: number }
+  >();
+  const pending = new Map<string, Promise<ClaudeProviderCommandsState>>();
+  return (cwd) => {
+    const cached = settled.get(cwd);
+    if (cached !== undefined && cached.expiresAt > now()) {
+      return Promise.resolve(cached.state);
+    }
+    settled.delete(cwd);
+    const inFlight = pending.get(cwd);
+    if (inFlight !== undefined) {
+      return inFlight;
+    }
+    const probe = list(cwd)
+      .then((state) => {
+        settled.set(cwd, { state, expiresAt: now() + ttlMs });
+        return state;
+      })
+      .finally(() => {
+        if (pending.get(cwd) === probe) {
+          pending.delete(cwd);
+        }
+      });
+    pending.set(cwd, probe);
+    return probe;
+  };
 }

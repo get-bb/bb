@@ -275,6 +275,9 @@ function createFakeRuntime(): AgentRuntime {
         selectedOnlyModels: [],
       };
     },
+    async listCommands() {
+      return { commands: [] };
+    },
     async providerHealth() {
       return { supported: false as const };
     },
