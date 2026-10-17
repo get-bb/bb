@@ -25,7 +25,7 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": ["audio", "remote-notification"]
       },
       "associatedDomains": ["applinks:getbb.app", "applinks:*.getbb.app"]
     },
