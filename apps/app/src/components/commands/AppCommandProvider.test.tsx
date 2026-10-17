@@ -229,6 +229,7 @@ vi.mock("@/lib/bb-desktop", () => ({
 interface HandlerProps {
   command?: KeyboardCommandId;
   enabled?: boolean;
+  available?: boolean;
   name: string;
   priority?: number;
   result: boolean;
@@ -237,6 +238,7 @@ interface HandlerProps {
 function Handler({
   command = "thread.search",
   enabled,
+  available = true,
   name,
   priority,
   result,
@@ -249,6 +251,7 @@ function Handler({
     },
     priority,
     enabled,
+    () => available,
   );
   return null;
 }
@@ -455,6 +458,92 @@ describe("AppCommandProvider", () => {
           "legacy",
           "plugin",
         ]);
+      } finally {
+        testState.keybindings = original;
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "falls back through pane capture when a Unicode handler is unavailable or removed (%s)",
+    (reverse) => {
+      const original = testState.keybindings;
+      const search = original.find(
+        (binding) => binding.command === "thread.search",
+      )!;
+      const legacy = {
+        ...search,
+        command: "panel.nextTab" as const,
+        shortcut: { ...search.shortcut, key: "л" },
+      };
+      const latin = { ...search, command: "plugin:example/open" as const };
+      testState.keybindings = reverse ? [latin, legacy] : [legacy, latin];
+      try {
+        const content = (handler: ReactNode) => (
+          <MemoryRouter>
+            <AppCommandProvider>
+              {handler}
+              <Handler
+                command="plugin:example/open"
+                name="fallback"
+                result={true}
+              />
+            </AppCommandProvider>
+          </MemoryRouter>
+        );
+        const rendered = render(
+          content(
+            <Handler command="panel.nextTab" name="literal" result={true} />,
+          ),
+        );
+        const press = () => {
+          testState.calls.length = 0;
+          const event = new KeyboardEvent("keydown", {
+            key: "л",
+            code: "KeyK",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          });
+          window.dispatchEvent(event);
+          return event;
+        };
+        expect(press().defaultPrevented).toBe(true);
+        expect(testState.calls).toEqual(["literal"]);
+        rendered.rerender(
+          content(
+            <Handler
+              command="panel.nextTab"
+              name="literal"
+              available={false}
+              result={true}
+            />,
+          ),
+        );
+        expect(press().defaultPrevented).toBe(true);
+        expect(testState.calls).toEqual(["fallback"]);
+        rendered.rerender(
+          content(
+            <Handler
+              command="panel.nextTab"
+              name="literal"
+              enabled={false}
+              result={true}
+            />,
+          ),
+        );
+        expect(press().defaultPrevented).toBe(true);
+        expect(testState.calls).toEqual(["fallback"]);
+        rendered.rerender(content(null));
+        expect(press().defaultPrevented).toBe(true);
+        expect(testState.calls).toEqual(["fallback"]);
+        rendered.rerender(
+          content(
+            <Handler command="panel.nextTab" name="declining" result={false} />,
+          ),
+        );
+        expect(press().defaultPrevented).toBe(false);
+        expect(testState.calls).toEqual(["declining"]);
       } finally {
         testState.keybindings = original;
       }
