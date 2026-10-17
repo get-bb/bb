@@ -21,9 +21,11 @@ import {
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
+  runStartupRecoverySweep,
   runThreadLifecycleSweep,
   runPeriodicSweeps,
 } from "../../src/services/system/periodic-sweeps.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import {
   appendThreadProvisioningEvent,
   buildCwdBranchEntries,
@@ -60,7 +62,8 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { installFakeEnvironmentProvider } from "../helpers/environment-provider.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { registerFirstPartyProviders } from "../helpers/provider-registry.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
@@ -73,6 +76,67 @@ const THREAD_START_EXECUTION = {
   permissionMode: "accept-edits",
   source: "client/turn/requested",
 } satisfies ResolvedThreadExecutionOptions;
+
+function seedWorkspaceReadyStartingThread(
+  harness: TestAppHarness,
+  args: { hostId: string; path: string },
+) {
+  const { host } = seedHostSession(harness.deps, { id: args.hostId });
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: host.id,
+  });
+  const environment = seedEnvironment(harness.deps, {
+    hostId: host.id,
+    projectId: project.id,
+    path: args.path,
+    status: "ready",
+  });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+    status: "starting",
+  });
+  const requestedContext = createThreadStartup({
+    clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+    environmentIntent: {
+      type: "reuse",
+      environmentId: environment.id,
+    },
+    execution: THREAD_START_EXECUTION,
+    fork: null,
+    input: textInput("start after workspace ready"),
+    titleProvided: true,
+    seedWithoutRun: false,
+  });
+  const attachedContext = {
+    ...requestedContext,
+    state: { ...requestedContext.state, environmentId: environment.id },
+  };
+  const workspaceReadyEventSequence = appendThreadProvisioningEvent(
+    harness.deps,
+    {
+      threadId: thread.id,
+      environmentId: environment.id,
+      provisioningId: attachedContext.state.provisioningId,
+      status: "active",
+      entries: buildCwdBranchEntries({
+        path: args.path,
+        branchName: null,
+        headSha: null,
+      }),
+    },
+  );
+  saveThreadProvisionContext({
+    replace: false,
+    db: harness.db,
+    threadId: thread.id,
+    context: {
+      ...attachedContext,
+      state: { ...attachedContext.state, workspaceReadyEventSequence },
+    },
+  });
+  return thread;
+}
 
 describe("thread provisioning recovery", () => {
   it("keeps attached offline provisioning stable and repairs missing attachment state", async () =>
@@ -203,61 +267,9 @@ describe("thread provisioning recovery", () => {
 
   it("does not fail a live start when provisioning advances again after dispatch", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-live-thread-start-recovery",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
+      const thread = seedWorkspaceReadyStartingThread(harness, {
+        hostId: "host-live-thread-start-recovery",
         path: "/tmp/live-thread-start-recovery",
-        status: "ready",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        status: "starting",
-      });
-      const requestedContext = createThreadStartup({
-        clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-        environmentIntent: {
-          type: "reuse",
-          environmentId: environment.id,
-        },
-        execution: THREAD_START_EXECUTION,
-        fork: null,
-        input: textInput("start after workspace ready"),
-        titleProvided: true,
-        seedWithoutRun: false,
-      });
-      const attachedContext = {
-        ...requestedContext,
-        state: { ...requestedContext.state, environmentId: environment.id },
-      };
-      const workspaceReadyEventSequence = appendThreadProvisioningEvent(
-        harness.deps,
-        {
-          threadId: thread.id,
-          environmentId: environment.id,
-          provisioningId: attachedContext.state.provisioningId,
-          status: "active",
-          entries: buildCwdBranchEntries({
-            path: "/tmp/live-thread-start-recovery",
-            branchName: null,
-            headSha: null,
-          }),
-        },
-      );
-      saveThreadProvisionContext({
-        replace: false,
-        db: harness.db,
-        threadId: thread.id,
-        context: {
-          ...attachedContext,
-          state: { ...attachedContext.state, workspaceReadyEventSequence },
-        },
       });
 
       let startCommand: QueuedCommand | null = null;
@@ -284,6 +296,46 @@ describe("thread provisioning recovery", () => {
           await reportQueuedCommandError(harness, startCommand, {
             errorCode: "test_live_start_cleanup",
             errorMessage: "Test settled live thread start",
+          });
+        }
+      }
+    });
+  });
+
+  it("defers orphaned thread starts until provider registrations settle", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedWorkspaceReadyStartingThread(harness, {
+        hostId: "host-deferred-thread-start-recovery",
+        path: "/tmp/deferred-thread-start-recovery",
+      });
+      const providerRegistry = createProviderRegistryService({
+        deferRegistrationsSettled: true,
+      });
+      await registerFirstPartyProviders(providerRegistry);
+      harness.deps.providerRegistry = providerRegistry;
+
+      await runStartupRecoverySweep(harness.deps);
+
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toEqual([]);
+      expect(getThread(harness.db, thread.id)?.status).toBe("starting");
+
+      providerRegistry.markRegistrationsSettled();
+      let startCommand: QueuedCommand | null = null;
+      try {
+        await runThreadLifecycleSweep(harness.deps);
+        startCommand = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === thread.id,
+        );
+        expect(getThread(harness.db, thread.id)?.status).toBe("starting");
+      } finally {
+        if (startCommand !== null) {
+          await reportQueuedCommandError(harness, startCommand, {
+            errorCode: "test_deferred_start_cleanup",
+            errorMessage: "Test settled deferred thread start",
           });
         }
       }

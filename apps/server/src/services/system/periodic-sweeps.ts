@@ -309,14 +309,16 @@ async function runThreadProvisioningOrphanCleanupSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): Promise<void> {
-  const provisioningThreads = deps.db
-    .select({
-      id: threads.id,
-      status: threads.status,
-    })
-    .from(threads)
-    .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
-    .all();
+  const provisioningThreads = deps.providerRegistry.registrationsSettled()
+    ? deps.db
+        .select({
+          id: threads.id,
+          status: threads.status,
+        })
+        .from(threads)
+        .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
+        .all()
+    : [];
 
   for (const thread of provisioningThreads) {
     try {
