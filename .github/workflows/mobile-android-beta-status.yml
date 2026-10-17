@@ -1,0 +1,50 @@
+name: Android beta review status
+
+on:
+  workflow_run:
+    workflows: [Release Android beta]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Release Android beta run ID to recheck, including previously terminal states
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+concurrency:
+  group: android-beta-review-status
+  cancel-in-progress: false
+
+jobs:
+  status:
+    if: github.repository == 'get-bb/bb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 9.15.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Check the exact builds in Google Play
+        working-directory: apps/mobile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_RELEASE_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id || '' }}
+        run: node scripts/android-beta-status.mjs
