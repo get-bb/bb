@@ -152,6 +152,7 @@
     "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
     "cross-spawn": "^7.0.6",
     "zod": "^4.6.5"
   },
@@ -179,8 +180,7 @@
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1",
-    "@bb/query-tags": "workspace:*",
-    "@tanstack/react-query": "^5.62.0"
+    "@bb/query-tags": "workspace:*"
   },
   "peerDependencies": {
     "@testing-library/react": "^16.3.2",
@@ -190,8 +190,7 @@
     "cron-parser": "^5.5.0",
     "hono": "^4.11.9",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@tanstack/react-query": "^5.62.0"
+    "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "@testing-library/react": {
@@ -216,9 +215,6 @@
       "optional": true
     },
     "react-dom": {
-      "optional": true
-    },
-    "@tanstack/react-query": {
       "optional": true
     }
   }

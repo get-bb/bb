@@ -1501,7 +1501,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Test server code against an in-process fake bb server",
           "Render UI slots under vitest",
-          "Install @tanstack/react-query to test live RPC hooks in app slots",
           "Drive host workers without a machine",
         ],
         apiSymbols: [

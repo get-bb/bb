@@ -53,7 +53,6 @@ const EXTERNAL_DEPENDENCIES = [
   "@radix-ui/react-dialog",
   "@radix-ui/react-slot",
   "@testing-library/react",
-  "@tanstack/react-query",
   "@types/better-sqlite3",
   "@types/node",
   "@types/react",
