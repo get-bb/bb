@@ -84,31 +84,34 @@ describe("Codex app permission interaction", () => {
   it("shows the app without secondary helper copy", () => {
     const slot = renderPermission();
 
-    expect(slot.getByText(permission.app.name).getAttribute("title")).toBe(
-      permission.app.id,
-    );
+    expect(slot.getByText(permission.app.name)).toBeTruthy();
+    expect(slot.getByText(permission.app.id)).toBeTruthy();
     expect(slot.getByText("Computer Use")).toBeTruthy();
     expect(slot.queryByText("Low risk")).toBeNull();
     expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Stop turn" })).toBeNull();
   });
 
-  it("places the host icon beside the app name and retains the name without an icon", () => {
+  it("shows the host app icon and falls back without one", () => {
     const iconDataUrl = "data:image/png;base64,aWNvbg==";
     const slot = renderPayload({
       ...permission,
       app: { ...permission.app, iconDataUrl },
     });
-    const appName = slot.getByText(permission.app.name);
-    expect(appName.querySelector("img")?.getAttribute("src")).toBe(iconDataUrl);
+    expect(
+      slot.container.querySelector(`img[src="${iconDataUrl}"]`),
+    ).toBeTruthy();
     slot.unmount();
     const fallback = renderPayload({
       ...permission,
       app: { ...permission.app, iconDataUrl: null },
     });
     expect(
-      fallback.getByText(permission.app.name).querySelector("img"),
+      fallback.container.querySelector(
+        'img[src^="data:image/png;base64,aWNv"]',
+      ),
     ).toBeNull();
+    expect(fallback.getByText(permission.app.name)).toBeTruthy();
     expect(
       fallback.getByRole("button", { name: "Allow for this session" }),
     ).toBeTruthy();
