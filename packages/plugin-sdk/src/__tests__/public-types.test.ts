@@ -171,7 +171,10 @@ const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
   "StandardSchemaV1Result",
 ] as const;
 
-const EXPECTED_RPC_ROOT_VALUE_EXPORTS = ["defineRpcContract"] as const;
+const EXPECTED_RPC_ROOT_VALUE_EXPORTS = [
+  "defineRpcContract",
+  "experimental_PluginRpcRefusal",
+] as const;
 
 const EXPECTED_HOST_ROOT_TYPE_EXPORTS = [
   "ExperimentalHostCallOptions",

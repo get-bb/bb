@@ -103,3 +103,35 @@ it("cancels an in-flight discovery request when its signal aborts", async () => 
   controller.abort(new Error("unmounted"));
   await expect(discovery).rejects.toThrow("unmounted");
 });
+
+it.each([
+  ["forbidden", 403],
+  ["not_found", 404],
+  ["conflict", 409],
+  ["invalid", 422],
+])("callRpc preserves refusal %s and HTTP %s", async (code, status) => {
+  const error = {
+    code,
+    message: "Caller cannot write",
+    issues: [{ path: ["id"], message: "Unavailable" }],
+  };
+  const sdk = createBbSdk({
+    transport: createHttpTransport({
+      baseUrl: "http://bb.test",
+      runtime: "node",
+      fetch: async () => Response.json({ ok: false, error }, { status }),
+    }),
+  });
+  await expect(
+    sdk.plugins.callRpc({
+      pluginId: "private",
+      method: "write",
+      outputSchema: z.null(),
+    }),
+  ).rejects.toMatchObject({
+    code,
+    status,
+    message: `HTTP ${status}: Caller cannot write`,
+    body: { ok: false, error },
+  });
+});

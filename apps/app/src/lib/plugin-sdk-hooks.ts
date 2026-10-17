@@ -190,6 +190,7 @@ export async function callPluginRpc(
           ? body.error
           : `rpc "${method}" failed (HTTP ${response.status})`;
     const error = new Error(message);
+    Reflect.set(error, "status", response.status);
     if (structured !== null) {
       const code = Reflect.get(structured, "code");
       const issues = Reflect.get(structured, "issues");

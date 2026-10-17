@@ -437,7 +437,14 @@ Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
 also carry normalized `{ message, path? }[]` issues. Unknown methods return
 404, invalid JSON/input returns 400, and handler/output/serialization failures
-return 500. Results must be strict JSON values: cyclic objects, bigint,
+return 500. Handlers may throw `new experimental_PluginRpcRefusal({ code, message, issues? })`
+(import from `@get-bb/plugin-sdk`) for expected refusals: `forbidden` → 403,
+`not_found` → 404, `conflict` → 409, `invalid` → 422. These codes and optional
+`PluginRpcValidationIssue[]` issues reach callers through the same error
+envelope. Refusals do not increment handler error counts or change status
+detail. A refused mutation rejects, rolls back shared optimistic updates, and
+publishes no invalidations. `bb plugin rpc call` prints the code and message
+and exits non-zero. Results must be strict JSON values: cyclic objects, bigint,
 undefined/functions, class instances, symbol keys, and non-finite numbers are
 rejected rather than coerced or silently dropped.
 

@@ -72,6 +72,28 @@ describe("callPluginRpc", () => {
     );
   });
 
+  it.each([
+    ["forbidden", 403],
+    ["not_found", 404],
+    ["conflict", 409],
+    ["invalid", 422],
+  ])(
+    "preserves refusal %s and HTTP %s for useRpc and query hooks",
+    async (code, status) => {
+      const error = {
+        code,
+        message: "Caller cannot write",
+        issues: [{ path: ["id"], message: "Unavailable" }],
+      };
+      const fetchImpl = vi.fn<FetchLike>(async () =>
+        jsonResponse({ ok: false, error }, false, status),
+      );
+      await expect(
+        callPluginRpc(fetchImpl, "private", "write"),
+      ).rejects.toMatchObject({ ...error, status });
+    },
+  );
+
   it("surfaces structured wire failures with stable code and issues", async () => {
     const fetchImpl = vi.fn<FetchLike>(async () =>
       jsonResponse(

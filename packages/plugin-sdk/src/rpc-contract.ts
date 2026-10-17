@@ -11,6 +11,10 @@ export interface PluginRpcValidationIssue {
 
 /** Stable wire error categories for plugin RPC. */
 export type PluginRpcErrorCode =
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "invalid"
   | "invalid_json"
   | "invalid_input"
   | "handler_error"
@@ -23,6 +27,26 @@ export interface PluginRpcError {
   code: PluginRpcErrorCode;
   message: string;
   issues?: PluginRpcValidationIssue[];
+}
+
+const refusalBrand = Symbol.for("@get-bb/plugin-sdk/rpc-refusal");
+
+/** Expected handler refusal; reaches callers without recording a plugin crash. */
+export class experimental_PluginRpcRefusal extends Error {
+  readonly [refusalBrand] = true;
+  readonly code: "forbidden" | "not_found" | "conflict" | "invalid";
+  readonly issues?: PluginRpcValidationIssue[];
+
+  constructor(args: {
+    code: experimental_PluginRpcRefusal["code"];
+    message: string;
+    issues?: PluginRpcValidationIssue[];
+  }) {
+    super(args.message);
+    this.name = "experimental_PluginRpcRefusal";
+    this.code = args.code;
+    this.issues = args.issues;
+  }
 }
 
 /**

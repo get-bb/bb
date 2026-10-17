@@ -995,7 +995,20 @@ export function registerPluginRoutes(
     if (!outcome.ok) {
       return context.json(
         { ok: false, error: outcome.error },
-        outcome.error.code === "invalid_input" ? 400 : 500,
+        (
+          {
+            invalid_json: 400,
+            invalid_input: 400,
+            forbidden: 403,
+            not_found: 404,
+            conflict: 409,
+            invalid: 422,
+            handler_error: 500,
+            invalid_output: 500,
+            non_json_result: 500,
+            unknown_method: 404,
+          } as const
+        )[outcome.error.code],
       );
     }
     return context.json(outcome);
