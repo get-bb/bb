@@ -157,6 +157,64 @@ describe("agent annotations page script", () => {
     expect(root.querySelector(".pin")).toBeNull();
   });
 
+  it("saves an open draft when another element, a pin, or the toolbar takes over", () => {
+    const messages: unknown[] = [];
+    const bridge: Bridge = { postMessage: (data) => messages.push(data) };
+    const heading = requireElement(document.querySelector("h1"));
+    evaluate(buildActivateExpression({}), bridge);
+    button.click();
+    const root = shadowRoot();
+    requireElement(root.querySelector("textarea")).value = "Make this green";
+
+    Object.defineProperty(document, "elementsFromPoint", {
+      configurable: true,
+      value: () => [heading, document.body, document.documentElement],
+    });
+    heading.click();
+    const first = pageMessageSchema.parse(messages[0]);
+    if (first.type !== "annotation") throw new Error("Expected annotation");
+    expect(first.annotation.comment).toBe("Make this green");
+    expect(root.querySelector(".target-tag")?.textContent).toBe("h1");
+
+    requireElement(root.querySelector("textarea")).value = "Bigger heading";
+    requireElement(root.querySelector<HTMLButtonElement>(".pin")).click();
+    expect(
+      messages
+        .map((message) => pageMessageSchema.parse(message))
+        .filter((message) => message.type === "annotation")
+        .map((message) => message.annotation.comment),
+    ).toEqual(["Make this green", "Bigger heading"]);
+    const edit = requireElement(root.querySelector("textarea"));
+    expect(edit.value).toBe("Make this green");
+
+    edit.value = "Make this blue";
+    evaluate(buildControllerExpression("deactivate"), bridge);
+    expect(messages.at(-1)).toEqual({
+      type: "annotation-update",
+      id: first.annotation.id,
+      comment: "Make this blue",
+    });
+    expect(root.querySelector(".editor")).toBeNull();
+    expect(root.querySelectorAll(".pin")).toHaveLength(2);
+  });
+
+  it("discards an open draft when dismissed without saving", () => {
+    const messages: unknown[] = [];
+    const bridge: Bridge = { postMessage: (data) => messages.push(data) };
+    evaluate(buildActivateExpression({}), bridge);
+    button.click();
+    const root = shadowRoot();
+    requireElement(root.querySelector("textarea")).value = "Not finished";
+
+    expect(evaluate(buildControllerExpression("dismiss"), bridge)).toEqual({
+      active: false,
+      count: 0,
+    });
+    expect(messages).toEqual([]);
+    expect(root.querySelector(".editor")).toBeNull();
+    expect(root.querySelector(".pin")).toBeNull();
+  });
+
   it("deletes a pin and its element marker without leaving an editor", () => {
     const messages: unknown[] = [];
     const bridge: Bridge = { postMessage: (data) => messages.push(data) };
