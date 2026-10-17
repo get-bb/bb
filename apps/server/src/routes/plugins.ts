@@ -881,6 +881,7 @@ export function registerPluginRoutes(
   }
 
   app.all("/plugins/:id/http/*", async (context) => {
+    const signal = context.req.raw.signal;
     const id = context.req.param("id");
     const subPath = pluginHttpSubPath(context, id);
     const lookup = plugins.getHttpRoute(id, context.req.method, subPath);
@@ -922,7 +923,11 @@ export function registerPluginRoutes(
         503,
       );
     }
-    return plugins.invokeHttpRoute(id, fresh.value, context);
+    const response = await plugins.invokeHttpRoute(id, fresh.value, context);
+    if (signal.aborted) {
+      await response.body?.cancel(signal.reason);
+    }
+    return response;
   });
 
   app.post("/plugins/:id/rpc/:method", async (context) => {
