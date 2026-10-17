@@ -1016,6 +1016,13 @@
       "when": 1792016697708,
       "tag": "0144_thread_parent_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "6",
+      "when": 1792208936004,
+      "tag": "0145_terminal_sessions_status_thread_index",
+      "breakpoints": true
     }
   ]
 }

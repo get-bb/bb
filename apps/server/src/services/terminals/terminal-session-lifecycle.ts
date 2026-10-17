@@ -5,6 +5,7 @@ import {
   createTerminalSession,
   getSessionById,
   getTerminalSession,
+  countTerminalSessions,
   listTerminalSessions,
   updateTerminalSession,
   updateTerminalSessions,
@@ -704,30 +705,24 @@ export class TerminalSessionLifecycle {
     switch (target.kind) {
       case "thread": {
         const thread = requirePublicThread(this.options.db, target.threadId);
-        return listTerminalSessions(this.options.db, {
+        return countTerminalSessions(this.options.db, {
           scope: { kind: "thread", threadId: thread.id },
           visible: false,
-        }).length;
+        });
       }
       case "environment":
-        return listTerminalSessions(this.options.db, {
+        return countTerminalSessions(this.options.db, {
           scope: {
             environmentId: target.environmentId,
             kind: "threadless-environment",
           },
           visible: false,
-        }).length;
+        });
       case "host_path":
-        return listTerminalSessions(this.options.db, {
-          scope: { kind: "all" },
+        return countTerminalSessions(this.options.db, {
+          scope: { kind: "host-path", hostId: target.hostId, cwd: target.cwd },
           visible: true,
-        }).filter(
-          (session) =>
-            session.threadId === null &&
-            session.environmentId === null &&
-            session.hostId === target.hostId &&
-            (target.cwd === null || session.initialCwd === target.cwd),
-        ).length;
+        });
     }
   }
 
