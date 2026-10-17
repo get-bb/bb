@@ -405,6 +405,16 @@ describe("framed desktop sidebar", () => {
     const body = screen.getByTestId("body");
     expect(screen.getByTestId("framed-probe").textContent).toBe("true");
     expect(screen.getByTestId("wrapper").dataset.framed).toBe("");
+    expect(
+      screen
+        .getByTestId("wrapper")
+        .classList.contains("pl-(--bb-window-frame-leading-lip)"),
+    ).toBe(false);
+    expect(
+      screen
+        .getByTestId("wrapper")
+        .style.getPropertyValue("--bb-window-card-collapsed-left"),
+    ).toBe("52px");
     expect(body.classList.contains("rounded-tl-(--bb-frame-card-radius)")).toBe(
       true,
     );
@@ -428,7 +438,7 @@ describe("framed desktop sidebar", () => {
     ).toBe(true);
   });
 
-  it("keeps a lip of window frame beside and below the card", () => {
+  it("keeps a lip of window frame on both sides of and below the card", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>
         <SidebarProvider framed data-testid="wrapper">
@@ -442,6 +452,15 @@ describe("framed desktop sidebar", () => {
     const inset = screen.getByTestId("inset");
     expect(wrapper.classList.contains("pr-(--bb-window-frame-lip)")).toBe(true);
     expect(wrapper.classList.contains("pb-(--bb-window-frame-lip)")).toBe(true);
+    expect(
+      wrapper.classList.contains("pl-(--bb-window-frame-leading-lip)"),
+    ).toBe(true);
+    expect(
+      wrapper.style.getPropertyValue("--bb-window-card-collapsed-left"),
+    ).toBe("var(--bb-window-frame-leading-lip)");
+    expect(screen.getByTestId("panel").className).toContain(
+      "left-(--bb-window-frame-leading-lip)",
+    );
     expect(screen.getByTestId("panel").className).toContain(
       "var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip)",
     );
