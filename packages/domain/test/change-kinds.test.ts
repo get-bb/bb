@@ -90,6 +90,7 @@ const maximalChangedMessages: ChangedMessage[] = [
     type: "changed",
     entity: "plugin",
     pluginId: "push-notifications",
+    origin: "88b06647-d209-4ffa-8957-709ef63b7d1a",
     tags: null,
   },
 ];

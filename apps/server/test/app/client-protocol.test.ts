@@ -232,13 +232,15 @@ it("routes batched plugin subscriptions and invalidate-all to the subscribed soc
     }),
   );
   hub.notifyPluginChanged("other", null);
-  hub.notifyPluginChanged("push-notifications", null);
+  const origin = "88b06647-d209-4ffa-8957-709ef63b7d1a";
+  hub.notifyPluginChanged("push-notifications", null, origin);
   expect(socket.closed).toEqual([]);
   expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
     {
       type: "changed",
       entity: "plugin",
       pluginId: "push-notifications",
+      origin,
       tags: null,
     },
   ]);

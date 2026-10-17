@@ -1,4 +1,5 @@
 import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
+import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -945,6 +946,13 @@ export function registerPluginRoutes(
         403,
       );
     }
+    const mutationId = z
+      .string()
+      .uuid()
+      .optional()
+      .safeParse(context.req.header("x-bb-mutation-id"));
+    if (!mutationId.success)
+      return context.json({ ok: false, error: "invalid mutation id" }, 400);
     const rawBody = await context.req.text();
     let input: unknown;
     if (rawBody.length > 0) {
@@ -991,6 +999,7 @@ export function registerPluginRoutes(
       lookup.value,
       input,
       callerResolution.caller,
+      mutationId.data,
     );
     if (!outcome.ok) {
       return context.json(

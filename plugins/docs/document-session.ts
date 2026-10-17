@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { useEffect, useMemo, useSyncExternalStore, useState } from "react";
+import { experimental_useRpcQuery, useRpc } from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
-import { isRecord } from "./markdown-document.js";
+import { useDocsRpc } from "./rpc.js";
 import type { Proposal } from "./proposals.js";
 
 type Rpc = ReturnType<typeof useRpc<typeof docsRpcContract>>;
@@ -19,7 +19,7 @@ export type DocumentIO = {
     content: string,
     expectedSha256: string | null,
   ): Promise<{ outcome: "written"; sha256: string } | { outcome: "conflict" }>;
-  afterSave?(): Promise<void>;
+  afterSave?(content: string): Promise<void>;
   proposals?: {
     update(content: string, version: number): Promise<Proposal>;
     resolve(
@@ -27,6 +27,7 @@ export type DocumentIO = {
       version: number,
     ): Promise<Pick<Document, "content" | "sha256" | "proposal">>;
   };
+  liveRead?: { vaultId: string; path: string };
   delay: number;
 };
 type DocumentState = Document & {
@@ -88,32 +89,37 @@ function createSession(io: DocumentIO) {
     });
     return result;
   };
+  const receiveError = (error: Error) => set({ error: error.message });
+  const receive = (file: Document) => {
+    const proposal = file.proposal;
+    if (state.saving || state.busy) return;
+    set({ previewBaseUrl: file.previewBaseUrl, previewPath: file.previewPath });
+    if (state.dirty) {
+      if (
+        file.sha256 !== state.sha256 ||
+        proposal?.version !== state.proposal?.version
+      ) {
+        set({ error: new DocumentConflict().message, conflict: true });
+        return;
+      }
+      set({ error: null, conflict: false });
+    } else
+      set({
+        ...file,
+        loaded: true,
+        initialContent: state.loaded ? state.initialContent : file.content,
+        draft: proposal?.status === "pending" ? proposal.content : file.content,
+        error: null,
+        conflict: false,
+      });
+  };
   const refresh = (): Promise<void> => {
     refreshAgain = true;
     if (refreshing) return refreshing;
     refreshing = run(async () => {
       do {
         refreshAgain = false;
-        const file = await io.read(state.previewBaseUrl);
-        const proposal = file.proposal;
-        if (state.busy) continue;
-        if (state.dirty) {
-          if (
-            file.sha256 !== state.sha256 ||
-            proposal?.version !== state.proposal?.version
-          )
-            throw new DocumentConflict();
-        } else {
-          set({
-            ...file,
-            loaded: true,
-            initialContent: file.content,
-            draft:
-              proposal?.status === "pending" ? proposal.content : file.content,
-            error: null,
-            conflict: false,
-          });
-        }
+        receive(await io.read(state.previewBaseUrl));
       } while (refreshAgain);
     })
       .catch(() => undefined)
@@ -140,7 +146,7 @@ function createSession(io: DocumentIO) {
           const result = await io.write(content, force ? null : state.sha256);
           if (result.outcome === "conflict") throw new DocumentConflict();
           set({ content, sha256: result.sha256, conflict: false });
-          await io.afterSave?.();
+          await io.afterSave?.(content);
         }
         force = false;
       }
@@ -184,6 +190,10 @@ function createSession(io: DocumentIO) {
       .finally(() => set({ busy: false }));
   };
   return {
+    receive,
+    receiveError,
+    discard: () => set({ draft: savedDraft() }),
+    setPreview: (previewBaseUrl: string) => set({ previewBaseUrl }),
     initialize: (content: string) => set({ content, draft: content }),
     reload: async () => {
       if (timer) clearTimeout(timer);
@@ -207,42 +217,48 @@ function createSession(io: DocumentIO) {
   };
 }
 
-export function createDocumentSession(rpc: Rpc, vaultId: string, path: string) {
-  let previewExpiresAt = 0;
+export function createDocumentSession(
+  rpc: Rpc,
+  vaultId: string,
+  path: string,
+  writes?: ReturnType<typeof useDocsRpc>,
+) {
   return createSession({
     delay: 500,
-    read: async (previewBaseUrl) => {
-      const [file, proposal, preview] = await Promise.all([
-        rpc.call("readNote", { vaultId, path }),
-        rpc.call("readProposal", { vaultId, path }),
-        previewBaseUrl && Date.now() < previewExpiresAt
-          ? Promise.resolve({ baseUrl: previewBaseUrl })
-          : rpc.call("preparePreview", { vaultId, path }).then((preview) => {
-              previewExpiresAt = preview.expiresAtMs;
-              return preview;
-            }),
-      ]);
+    read: async () => {
+      const file = await rpc.call("readDocument", { vaultId, path });
       return {
         content: file.content,
         sha256: file.sha256,
-        proposal,
-        previewBaseUrl: preview.baseUrl,
+        proposal: file.proposal,
+        previewBaseUrl: file.preview.baseUrl,
         previewPath: path,
       };
     },
     write: (content, expectedSha256) =>
-      rpc.call("saveNote", { vaultId, path, content, expectedSha256 }),
+      (writes?.saveNote ?? ((input) => rpc.call("saveNote", input)))({
+        vaultId,
+        path,
+        content,
+        expectedSha256,
+      }),
     proposals: {
       update: (content, expectedVersion) =>
-        rpc.call("updateProposal", { vaultId, path, content, expectedVersion }),
+        (
+          writes?.updateProposal ??
+          ((input) => rpc.call("updateProposal", input))
+        )({ vaultId, path, content, expectedVersion }),
       resolve: async (action, expectedVersion) => {
-        const proposal = await rpc.call("resolveProposal", {
+        const proposal = await (
+          writes?.resolveProposal ??
+          ((input) => rpc.call("resolveProposal", input))
+        )({
           vaultId,
           path,
           action,
           expectedVersion,
         });
-        const file = await rpc.call("readNote", { vaultId, path });
+        const file = await rpc.call("readDocument", { vaultId, path });
         return { content: file.content, sha256: file.sha256, proposal };
       },
     },
@@ -251,30 +267,128 @@ export function createDocumentSession(rpc: Rpc, vaultId: string, path: string) {
 
 const sessions = new Map<string, ReturnType<typeof createSession>>();
 
-function useSession(session: ReturnType<typeof createSession>) {
+function useSession(session: ReturnType<typeof createSession>, live = false) {
   const state = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
     session.getSnapshot,
   );
   useEffect(() => {
-    void session.refresh();
+    if (!live) void session.refresh();
     return () => {
       void session.flush().catch(() => undefined);
     };
-  }, [session]);
+  }, [session, live]);
   return { state, session };
 }
 
+function useLeaseUrl(
+  lease: { baseUrl: string; expiresAtMs: number } | undefined,
+) {
+  const [now, setNow] = useState(Date.now);
+  const expires = lease?.expiresAtMs;
+  useEffect(() => {
+    if (expires === undefined) return;
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, expires - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [expires]);
+  return lease && lease.expiresAtMs > Math.max(now, Date.now())
+    ? lease.baseUrl
+    : "";
+}
+
+export function usePreviewLease(
+  input: { vaultId: string; path: string },
+  enabled = true,
+) {
+  const query = experimental_useRpcQuery<
+    typeof docsRpcContract,
+    "preparePreview"
+  >({ method: "preparePreview", input, enabled });
+  return { ...query, baseUrl: useLeaseUrl(query.data) };
+}
+
+function useLiveSession(
+  session: ReturnType<typeof createSession>,
+  input: { vaultId: string; path: string } | undefined,
+  proposals: boolean,
+) {
+  const result = useSession(session, input !== undefined);
+  const query = experimental_useRpcQuery<
+    typeof docsRpcContract,
+    "readDocument"
+  >({
+    method: "readDocument",
+    input: input ?? { vaultId: "", path: "" },
+    enabled: input !== undefined,
+  });
+  const previewBaseUrl = useLeaseUrl(query.data?.preview);
+  const refetch = query.refetch;
+  useEffect(() => {
+    if (input !== undefined && query.data !== undefined) void refetch();
+    // oxlint-disable-next-line react/exhaustive-deps
+  }, [session, refetch]);
+  useEffect(() => {
+    if (input === undefined) return;
+    session.setPreview(previewBaseUrl);
+    const error = query.error;
+    if (error) session.receiveError(error);
+    else if (
+      !query.isFetching &&
+      query.data &&
+      !result.state.saving &&
+      !result.state.busy
+    ) {
+      session.receive({
+        content: query.data.content,
+        sha256: query.data.sha256,
+        proposal: proposals ? query.data.proposal : null,
+        previewBaseUrl,
+        previewPath: input.path,
+      });
+    }
+  }, [
+    session,
+    input,
+    query.data,
+    query.error,
+    query.isFetching,
+    previewBaseUrl,
+    proposals,
+    result.state.saving,
+    result.state.busy,
+  ]);
+  const refresh = async () => {
+    await query.refetch();
+  };
+  return input === undefined
+    ? result
+    : {
+        ...result,
+        session: {
+          ...session,
+          refresh,
+          reload: async () => {
+            session.discard();
+            await refresh();
+          },
+        },
+      };
+}
+
 export function useSavedDocument(io: DocumentIO) {
-  return useSession(useMemo(() => createSession(io), [io]));
+  const session = useMemo(() => createSession(io), [io]);
+  return useLiveSession(session, io.liveRead, false);
 }
 
 export function useDocumentSession(vaultId: string, path: string) {
-  const rpc = useRpc<typeof docsRpcContract>();
+  const rpc = useDocsRpc();
   const key = JSON.stringify([vaultId, path]);
   const session =
-    sessions.get(key) ?? createDocumentSession(rpc, vaultId, path);
+    sessions.get(key) ?? createDocumentSession(rpc, vaultId, path, rpc);
   sessions.delete(key);
   sessions.set(key, session);
   for (const [cachedKey, cachedSession] of sessions) {
@@ -286,19 +400,6 @@ export function useDocumentSession(vaultId: string, path: string) {
     )
       sessions.delete(cachedKey);
   }
-  const result = useSession(session);
-  const changed = useCallback(
-    (payload: unknown) => {
-      if (!isRecord(payload)) return;
-      if (typeof payload.vaultId === "string" && payload.vaultId !== vaultId)
-        return;
-      if (typeof payload.path === "string" && payload.path !== path) return;
-      if (payload.proposalOnly === true) return;
-      void session.refresh();
-    },
-    [session, vaultId, path],
-  );
-  useRealtime("vault-changed", changed);
-  useRealtime("proposal-changed", changed);
-  return result;
+  const input = useMemo(() => ({ vaultId, path }), [vaultId, path]);
+  return useLiveSession(session, input, true);
 }

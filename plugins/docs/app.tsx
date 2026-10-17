@@ -12,8 +12,7 @@ import {
   experimental_copyToClipboard,
   useBbNavigate,
   useComposer,
-  useRpc,
-  useRealtime,
+  experimental_useRpcQuery,
   type PluginFileOpenerProps,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
@@ -24,10 +23,12 @@ import {
   DOMParser as ProseMirrorDOMParser,
   type Node as ProseMirrorNode,
 } from "@tiptap/pm/model";
+import { useDocsRpc } from "./rpc.js";
 import { createProposalDiff, proposalDiffKey } from "./proposal-diff.js";
 import {
   useDocumentSession,
   useSavedDocument,
+  usePreviewLease,
   type DocumentIO,
 } from "./document-session.js";
 import { Icon } from "@/components/ui/icon";
@@ -138,11 +139,6 @@ interface NotesData {
   error: string | null;
 }
 
-interface PreviewLease {
-  baseUrl: string;
-  expiresAtMs: number;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -182,6 +178,8 @@ function relativeFrom(base: string, target: string): string {
 
 function previewUrl(baseUrl: string, notePath: string, source: string): string {
   if (/^(https?:|data:|blob:|#)/i.test(source)) return source;
+  if (!baseUrl)
+    return `about:blank#${encodePath(normalizeRelative(dirname(notePath), source))}`;
   return `${baseUrl}/${encodePath(normalizeRelative(dirname(notePath), source))}`;
 }
 
@@ -207,7 +205,7 @@ function storedMarkdown(
   baseUrl: string,
   notePath: string,
 ): string {
-  const prefix = `${baseUrl}/`;
+  const prefix = baseUrl ? `${baseUrl}/` : "about:blank#";
   return content.replace(
     /(!\[[^\]]*\]\()([^\s)]+)([^)]*\))/g,
     (_match, start: string, source: string, end: string) => {
@@ -224,7 +222,7 @@ function storedMarkdown(
 }
 
 interface HtmlEmbedOptions {
-  baseUrl: string;
+  baseUrl(): string;
   notePath: string;
 }
 
@@ -234,7 +232,7 @@ const HtmlEmbed = Node.create<HtmlEmbedOptions>({
   atom: true,
   isolating: true,
   addOptions() {
-    return { baseUrl: "", notePath: "" };
+    return { baseUrl: () => "", notePath: "" };
   },
   addAttributes() {
     return {
@@ -278,7 +276,7 @@ const HtmlEmbed = Node.create<HtmlEmbedOptions>({
       iframe.setAttribute("sandbox", "allow-scripts");
       iframe.style.height = `${Math.min(1200, Math.max(120, Number(node.attrs.height) || 360))}px`;
       iframe.src = previewUrl(
-        this.options.baseUrl,
+        this.options.baseUrl(),
         this.options.notePath,
         String(node.attrs.src),
       );
@@ -448,6 +446,7 @@ function TiptapEditor(props: {
   const editorRef = useRef<Editor | null>(null);
   const baselineRef = useRef<ProseMirrorNode | null>(null);
   const sourceRef = useRef(initialValue);
+  const baseUrlRef = useRef(previewBaseUrl);
   const blocksRef = useRef<MarkdownBlocks | null>(null);
   const latest = useRef(props);
   latest.current = props;
@@ -458,7 +457,7 @@ function TiptapEditor(props: {
       const body = parseMarkdownDocument(latest.current.baseMarkdown).body;
       const root = new window.DOMParser().parseFromString(
         editor.storage.markdown.parser.parse(
-          displayMarkdown(body, previewBaseUrl, notePath),
+          displayMarkdown(body, baseUrlRef.current, notePath),
         ),
         "text/html",
       ).body;
@@ -484,7 +483,7 @@ function TiptapEditor(props: {
         .chain()
         .focus()
         .setImage({
-          src: previewUrl(previewBaseUrl, notePath, result.markdownPath),
+          src: previewUrl(baseUrlRef.current, notePath, result.markdownPath),
           alt: file.name,
         })
         .run();
@@ -506,7 +505,7 @@ function TiptapEditor(props: {
         MarkdownTaskInput,
         HtmlBlock,
         HtmlSource,
-        HtmlEmbed.configure({ baseUrl: previewBaseUrl, notePath }),
+        HtmlEmbed.configure({ baseUrl: () => baseUrlRef.current, notePath }),
         Placeholder.configure({ placeholder: "Start writing…" }),
         Markdown.configure({
           html: true,
@@ -554,7 +553,7 @@ function TiptapEditor(props: {
     blocksRef.current = loadMarkdownBlocks(
       editor,
       markdownDocument.body,
-      (source) => displayMarkdown(source, previewBaseUrl, notePath),
+      (source) => displayMarkdown(source, baseUrlRef.current, notePath),
       false,
     );
     setBase(editor);
@@ -565,7 +564,7 @@ function TiptapEditor(props: {
           editor.storage.markdown.serializer.serialize(
             editor.schema.topNodeType.create(null, nodes),
           ),
-          previewBaseUrl,
+          baseUrlRef.current,
           notePath,
         ),
       );
@@ -577,19 +576,23 @@ function TiptapEditor(props: {
       editorRef.current = null;
     };
     // oxlint-disable-next-line react/exhaustive-deps
-  }, [initialValue, notePath, previewBaseUrl, inline]);
+  }, [initialValue, notePath, inline]);
 
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor || value === undefined) return;
-    if (value !== sourceRef.current && value !== serializeRef.current()) {
+    if (!editor) return;
+    const current = serializeRef.current();
+    const next = value ?? current;
+    const leaseChanged = baseUrlRef.current !== previewBaseUrl;
+    baseUrlRef.current = previewBaseUrl;
+    if (leaseChanged || (next !== sourceRef.current && next !== current)) {
       const { from, to } = editor.state.selection;
       const focused = editor.isFocused;
       blocksRef.current = loadMarkdownBlocks(
         editor,
-        parseMarkdownDocument(value).body,
-        (source) => displayMarkdown(source, previewBaseUrl, notePath),
-        true,
+        parseMarkdownDocument(next).body,
+        (source) => displayMarkdown(source, baseUrlRef.current, notePath),
+        !leaseChanged,
       );
       if (focused)
         editor.commands.setTextSelection({
@@ -597,7 +600,7 @@ function TiptapEditor(props: {
           to: Math.min(to, editor.state.doc.content.size),
         });
     }
-    sourceRef.current = value;
+    sourceRef.current = next;
   }, [value, notePath, previewBaseUrl]);
   useEffect(() => {
     if (editorRef.current) setBase(editorRef.current);
@@ -616,155 +619,16 @@ function TiptapEditor(props: {
   );
 }
 
-type DocsRpcClient = ReturnType<typeof useRpc<typeof docsRpcContract>>;
-
-interface NotebookStore {
-  consumers: Set<symbol>;
-  data: NotesData | null;
-  error: string | null;
-  inFlight: Promise<void> | null;
-  listeners: Set<() => void>;
-  owner: symbol | null;
-  pendingRefreshRpc: DocsRpcClient | null;
-  requestId: number;
-  vaultId: string | null;
-}
-
-const notebookStores = new Map<string | null, NotebookStore>();
-
-function getNotebookStore(vaultId: string | null): NotebookStore {
-  const existing = notebookStores.get(vaultId);
-  if (existing) return existing;
-  const store: NotebookStore = {
-    consumers: new Set(),
-    data: null,
-    error: null,
-    inFlight: null,
-    listeners: new Set(),
-    owner: null,
-    pendingRefreshRpc: null,
-    requestId: 0,
-    vaultId,
-  };
-  notebookStores.set(vaultId, store);
-  return store;
-}
-
-function notifyNotebookStore(store: NotebookStore): void {
-  for (const listener of store.listeners) listener();
-}
-
-function refreshNotebookStore(
-  store: NotebookStore,
-  rpc: DocsRpcClient,
-  { queueIfInFlight = true }: { queueIfInFlight?: boolean } = {},
-): Promise<void> {
-  if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
-  if (store.inFlight) {
-    if (queueIfInFlight) store.pendingRefreshRpc = rpc;
-    return store.inFlight;
-  }
-  if (store.error !== null) {
-    store.error = null;
-    notifyNotebookStore(store);
-  }
-  const requestId = ++store.requestId;
-  const request = rpc
-    .call("listNotes", store.vaultId ? { vaultId: store.vaultId } : {})
-    .then((value) => {
-      if (
-        requestId !== store.requestId ||
-        notebookStores.get(store.vaultId) !== store
-      )
-        return;
-      store.data = value;
-      store.error = null;
-      notifyNotebookStore(store);
-    })
-    .catch((error: unknown) => {
-      if (
-        requestId !== store.requestId ||
-        notebookStores.get(store.vaultId) !== store
-      )
-        return;
-      const message = errorMessage(error);
-      if (store.data === null) store.error = message;
-      else store.data = { ...store.data, error: message };
-      notifyNotebookStore(store);
-    })
-    .finally(() => {
-      if (store.inFlight !== request) return;
-      store.inFlight = null;
-      const pendingRefreshRpc = store.pendingRefreshRpc;
-      store.pendingRefreshRpc = null;
-      if (
-        pendingRefreshRpc !== null &&
-        store.consumers.size > 0 &&
-        notebookStores.get(store.vaultId) === store
-      ) {
-        void refreshNotebookStore(store, pendingRefreshRpc, {
-          queueIfInFlight: false,
-        });
-      }
-    });
-  store.inFlight = request;
-  return request;
-}
-
 function useNotebook(vaultId: string | null) {
-  const rpc = useRpc<typeof docsRpcContract>();
-  const rpcRef = useRef(rpc);
-  rpcRef.current = rpc;
-  const store = useMemo(() => getNotebookStore(vaultId), [vaultId]);
-  const consumerRef = useRef(Symbol("docs-notebook-consumer"));
-  const [, rerender] = useState(0);
-  const refresh = useCallback(() => {
-    void refreshNotebookStore(store, rpcRef.current);
-  }, [store]);
-
-  useEffect(() => {
-    const consumer = consumerRef.current;
-    const listener = () => rerender((version) => version + 1);
-    store.consumers.add(consumer);
-    store.listeners.add(listener);
-    store.owner ??= consumer;
-    if (store.data === null) {
-      void refreshNotebookStore(store, rpcRef.current, {
-        queueIfInFlight: false,
-      });
-    }
-    return () => {
-      store.consumers.delete(consumer);
-      store.listeners.delete(listener);
-      if (store.owner === consumer)
-        store.owner = store.consumers.values().next().value ?? null;
-      if (store.consumers.size === 0) {
-        queueMicrotask(() => {
-          if (
-            store.consumers.size !== 0 ||
-            notebookStores.get(store.vaultId) !== store
-          )
-            return;
-          store.requestId += 1;
-          store.pendingRefreshRpc = null;
-          notebookStores.delete(store.vaultId);
-        });
-      }
-    };
-  }, [store]);
-
-  useRealtime(
-    "vault-changed",
-    useCallback(() => {
-      if (store.owner === consumerRef.current) refresh();
-    }, [refresh, store]),
-  );
-
-  const data =
-    store.data && (vaultId === null || store.data.vault.id === vaultId)
-      ? store.data
-      : null;
-  return { data, error: store.error, refresh };
+  const query = experimental_useRpcQuery<typeof docsRpcContract, "listNotes">({
+    method: "listNotes",
+    input: vaultId === null ? {} : { vaultId },
+  });
+  return {
+    data: query.data,
+    error: query.error?.message ?? null,
+    refresh: query.refetch,
+  };
 }
 
 function DocumentSkeleton() {
@@ -886,7 +750,7 @@ function InlineDocument({
     document.vaultId,
     document.path,
   );
-  const rpc = useRpc<typeof docsRpcContract>();
+  const rpc = useDocsRpc();
   const composer = useComposer();
   const navigate = useBbNavigate();
   const [editing, setEditing] = useState(false);
@@ -1073,7 +937,9 @@ function InlineDocument({
           </p>
         )}
         <div
-          className={panel ? "relative min-h-0 flex-1 overflow-y-auto" : "relative"}
+          className={
+            panel ? "relative min-h-0 flex-1 overflow-y-auto" : "relative"
+          }
           style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
         >
           {!state.loaded ? (
@@ -1112,7 +978,7 @@ function InlineDocument({
                   onFirstRender={() => undefined}
                   onMarkdownChange={session.edit}
                   onUpload={async (file) => {
-                    const result = await rpc.call("uploadAttachment", {
+                    const result = await rpc.uploadAttachment({
                       vaultId: document.vaultId,
                       notePath: document.path,
                       name: file.name,
@@ -1201,47 +1067,31 @@ function HtmlPreview({
   title,
   panel = false,
 }: DocumentRef & { panel?: boolean }) {
-  const rpc = useRpc<typeof docsRpcContract>();
-  const [state, setState] = useState<PreviewLease | { error: string } | null>(
-    null,
-  );
-  useEffect(() => {
-    let active = true;
-    setState(null);
-    rpc
-      .call("preparePreview", {
-        vaultId,
-        path,
-      })
-      .then((lease) => {
-        if (active) setState(lease);
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setState({
-            error: errorMessage(error),
-          });
-      });
-    return () => {
-      active = false;
-    };
-  }, [path, vaultId, rpc]);
-  if (!state) return <DocumentSkeleton />;
-  if ("error" in state)
-    return (
-      <div
-        className={`text-sm text-destructive ${panel ? "" : "min-w-0 flex-1 p-6"}`}
-      >
-        {state.error}
-      </div>
-    );
+  const preview = usePreviewLease({ vaultId, path });
+  if (!preview.data && !preview.error) return <DocumentSkeleton />;
   return (
-    <iframe
-      className="min-h-0 flex-1 border-0 bg-white"
-      sandbox="allow-scripts"
-      title={title}
-      src={`${state.baseUrl}/${encodePath(path)}`}
-    />
+    <>
+      {preview.error ? (
+        <div className={`text-sm text-destructive ${panel ? "" : "p-6"}`}>
+          {preview.error.message}{" "}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void preview.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+      {preview.baseUrl ? (
+        <iframe
+          className="min-h-0 flex-1 border-0 bg-white"
+          sandbox="allow-scripts"
+          title={title}
+          src={`${preview.baseUrl}/${encodePath(path)}`}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1323,6 +1173,13 @@ function SavedDocumentEditor({
       <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
         {state.error}
         {errorHint}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void session.refresh()}
+        >
+          Retry
+        </Button>
       </div>
     ) : (
       <DocumentSkeleton />
@@ -1351,6 +1208,17 @@ function SavedDocumentEditor({
       {state.error && !state.conflict && (
         <div className="border-b border-border px-4 py-2 text-xs text-destructive">
           {state.error}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              void (state.dirty ? session.flush() : session.refresh()).catch(
+                () => undefined,
+              )
+            }
+          >
+            Retry
+          </Button>
         </div>
       )}
       <TiptapEditor
@@ -1369,21 +1237,20 @@ function SavedDocumentEditor({
 function NotePane({
   vaultId,
   notePath,
-  onChanged,
   onRenamed,
 }: {
   vaultId: string;
   notePath: string;
-  onChanged(): void;
   onRenamed(path: string): void;
 }) {
-  const rpc = useRpc<typeof docsRpcContract>();
-  const callbacks = useRef({ onChanged, onRenamed });
-  callbacks.current = { onChanged, onRenamed };
+  const rpc = useDocsRpc();
+  const callbacks = useRef({ onRenamed });
+  callbacks.current = { onRenamed };
   const { io, upload } = useMemo(() => {
     let path = notePath;
     const io: DocumentIO = {
       delay: 700,
+      liveRead: { vaultId, path: notePath },
       read: async () => {
         const [file, lease] = await Promise.all([
           rpc.call("readNote", { vaultId, path }),
@@ -1398,15 +1265,15 @@ function NotePane({
         };
       },
       write: (content, expectedSha256) =>
-        rpc.call("saveNote", {
+        rpc.saveNote({
           vaultId,
           path,
           content,
           ...(expectedSha256 === null ? {} : { expectedSha256 }),
         }),
-      afterSave: async () => {
-        callbacks.current.onChanged();
-        const renamed = await rpc.call("renameToTitle", { vaultId, path });
+      afterSave: async (content) => {
+        if (parseMarkdownDocument(content).title) return;
+        const renamed = await rpc.renameToTitle({ vaultId, path });
         if (renamed.path !== path) {
           path = renamed.path;
           callbacks.current.onRenamed(path);
@@ -1414,7 +1281,7 @@ function NotePane({
       },
     };
     const upload = async (file: File) => {
-      const result = await rpc.call("uploadAttachment", {
+      const result = await rpc.uploadAttachment({
         vaultId,
         notePath: path,
         name: file.name,
@@ -1424,17 +1291,11 @@ function NotePane({
     };
     return { io, upload };
   }, [rpc, vaultId, notePath]);
-  return (
-    <SavedDocumentEditor
-      io={io}
-      onUpload={upload}
-      onReload={() => location.reload()}
-    />
-  );
+  return <SavedDocumentEditor io={io} onUpload={upload} />;
 }
 
 function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
-  const rpc = useRpc<typeof docsRpcContract>();
+  const rpc = useDocsRpc();
   const navigate = useBbNavigate();
   const liveFileTarget = useMemo<ExperimentalLiveFileTarget | null>(() => {
     switch (source.kind) {
@@ -1495,7 +1356,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
         };
       },
       write: (content, expectedSha256) =>
-        rpc.call("saveOpenedFile", {
+        rpc.saveOpenedFile({
           source: openerSource,
           path: filePath,
           content,
@@ -2054,7 +1915,7 @@ function NotesWorkspace({
   navigationOnly: boolean;
   onNavigate?(subPath: string, replace?: boolean): void;
 }) {
-  const rpc = useRpc<typeof docsRpcContract>();
+  const rpc = useDocsRpc();
   const navigate = useBbNavigate();
   const navigateTo = useCallback(
     (next: string, replace?: boolean) => {
@@ -2119,14 +1980,13 @@ function NotesWorkspace({
   const selectedFolder = filePath ? dirname(filePath) : "";
   const newNote = () =>
     void rpc
-      .call("createNote", {
+      .createNote({
         vaultId: activeVaultId,
         parent: selectedFolder,
         name: "Untitled",
       })
       .then((value) => {
         if (isCurrentVault(activeVaultId)) {
-          refresh();
           open(value.path);
         }
       });
@@ -2136,11 +1996,10 @@ function NotesWorkspace({
     setFolderError(null);
     const target = selectedFolder ? `${selectedFolder}/${name}` : name;
     try {
-      await rpc.call("createFolder", { vaultId: activeVaultId, path: target });
+      await rpc.createFolder({ vaultId: activeVaultId, path: target });
       if (!isCurrentVault(activeVaultId)) return;
       setFolderName("");
       setFolderDialogOpen(false);
-      refresh();
     } catch (error) {
       setFolderError(errorMessage(error));
     }
@@ -2152,7 +2011,7 @@ function NotesWorkspace({
     if (!name || !rootPath) return;
     setVaultError(null);
     try {
-      const value = await rpc.call("createVault", {
+      const value = await rpc.createVault({
         name,
         rootPath,
         ...(vaultHostId === "primary" ? {} : { hostId: vaultHostId }),
@@ -2170,12 +2029,11 @@ function NotesWorkspace({
 
   const deleteFile = async (path: string) => {
     try {
-      await rpc.call("deletePath", {
+      await rpc.deletePath({
         vaultId: activeVaultId,
         path,
       });
       if (!isCurrentVault(activeVaultId)) return;
-      refresh();
       if (filePath === path) {
         navigateTo(activeVaultId, true);
       }
@@ -2187,13 +2045,12 @@ function NotesWorkspace({
 
   const reorderFiles = async (parent: string, paths: string[]) => {
     try {
-      await rpc.call("reorderFiles", {
+      await rpc.reorderFiles({
         vaultId: activeVaultId,
         parent,
         paths,
       });
       if (!isCurrentVault(activeVaultId)) return;
-      refresh();
     } catch (error) {
       toast.error(`Could not reorder files: ${errorMessage(error)}`);
     }
@@ -2210,14 +2067,14 @@ function NotesWorkspace({
       : fileName;
     try {
       let orderPreserved = true;
-      await rpc.call("movePath", {
+      await rpc.movePath({
         vaultId: activeVaultId,
         from: sourcePath,
         to: destinationPath,
       });
       if (targetOrder) {
         try {
-          await rpc.call("reorderFiles", {
+          await rpc.reorderFiles({
             vaultId: activeVaultId,
             parent: targetFolder,
             paths: targetOrder,
@@ -2230,7 +2087,6 @@ function NotesWorkspace({
         }
       }
       if (!isCurrentVault(activeVaultId)) return;
-      refresh();
       if (filePath === sourcePath) open(destinationPath, true);
       if (orderPreserved) {
         toast.success(
@@ -2246,6 +2102,14 @@ function NotesWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {error ? (
+        <div className="flex items-center gap-2 p-3 text-sm text-destructive">
+          Could not refresh vault: {error}
+          <Button size="sm" variant="outline" onClick={() => void refresh()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <div className="flex min-h-0 flex-1">
         {navigationOnly ? (
           <Tree
@@ -2267,9 +2131,7 @@ function NotesWorkspace({
             key={`${activeVaultId}:${filePath}`}
             vaultId={activeVaultId}
             notePath={filePath}
-            onChanged={refresh}
             onRenamed={(next) => {
-              refresh();
               open(next, true);
             }}
           />

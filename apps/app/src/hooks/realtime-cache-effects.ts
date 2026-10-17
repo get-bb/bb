@@ -1,4 +1,9 @@
-import { CORE_TAG_SCOPE, invalidateTags, pluginTagScope } from "@bb/query-tags";
+import {
+  CORE_TAG_SCOPE,
+  invalidateTags,
+  pluginTagScope,
+  isOwnMutationOrigin,
+} from "@bb/query-tags";
 import type { QueryClient } from "@tanstack/react-query";
 import { assertNever } from "@bb/core-ui";
 import {
@@ -461,11 +466,16 @@ export function createRealtimeCacheEffects({
   };
 
   const deferredTags = new Map<string, Set<string> | null>();
-  const applyTags = (scope: string, tags: readonly string[] | null): void => {
+  const applyTags = (
+    scope: string,
+    tags: readonly string[] | null,
+    origin?: string,
+  ): void => {
     if (visibility.isDocumentVisible()) {
-      void invalidateTags(queryClient, scope, tags);
+      void invalidateTags(queryClient, scope, tags, origin);
       return;
     }
+    if (isOwnMutationOrigin(queryClient, scope, origin)) return;
     const previous = deferredTags.get(scope);
     deferredTags.set(
       scope,
@@ -590,7 +600,11 @@ export function createRealtimeCacheEffects({
           applyProjectChanges(message.id, message.changes);
           break;
         case "plugin":
-          applyTags(pluginTagScope(message.pluginId), message.tags);
+          applyTags(
+            pluginTagScope(message.pluginId),
+            message.tags,
+            message.origin,
+          );
           break;
         case "tags":
           applyTags(CORE_TAG_SCOPE, message.tags);

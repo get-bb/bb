@@ -44,6 +44,30 @@ export interface TaggedMutationOutcome<Result> {
 const registrations = new WeakMap<object, TaggedQueryRegistration<unknown>>();
 const reads = new WeakMap<object, { tags: Set<string>; restart: boolean }>();
 
+const mutationOrigins = new WeakMap<QueryClient, Map<string, string>>();
+
+export function createMutationOrigin(
+  client: QueryClient,
+  scope: string,
+): string {
+  const origins = mutationOrigins.get(client) ?? new Map<string, string>();
+  mutationOrigins.set(client, origins);
+  const origin = crypto.randomUUID();
+  origins.set(origin, scope);
+  if (origins.size > 1024) origins.delete(origins.keys().next().value!);
+  return origin;
+}
+
+export function isOwnMutationOrigin(
+  client: QueryClient,
+  scope: string,
+  origin: string | undefined,
+): boolean {
+  return (
+    origin !== undefined && mutationOrigins.get(client)?.get(origin) === scope
+  );
+}
+
 export function taggedQueryOptions<Data>(
   client: QueryClient,
   queryKey: QueryKey,
@@ -106,8 +130,9 @@ export async function invalidateTags(
   client: QueryClient,
   scope: string,
   tags: readonly string[] | null,
+  origin?: string,
 ): Promise<void> {
-  if (tags?.length === 0) return;
+  if (tags?.length === 0 || isOwnMutationOrigin(client, scope, origin)) return;
   const matched = new Set<Query>();
   const pendingReads: Promise<unknown>[] = [];
   for (const query of client.getQueryCache().getAll()) {

@@ -367,6 +367,7 @@ export const pluginChangedMessageSchema = z
     type: z.literal("changed"),
     entity: z.literal("plugin"),
     pluginId: z.string().min(1),
+    origin: z.string().uuid().optional(),
     tags: z.array(z.string().min(1)).min(1).nullable(),
   })
   .strict();

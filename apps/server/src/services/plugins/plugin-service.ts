@@ -406,6 +406,7 @@ export interface PluginService {
     handler: PluginRpcHandler,
     input: unknown,
     caller: ExperimentalPluginRpcCaller,
+    origin?: string,
   ): Promise<
     | {
         ok: true;
@@ -2151,7 +2152,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
     },
 
-    async invokeRpcHandler(id, method, handler, input, caller) {
+    async invokeRpcHandler(id, method, handler, input, caller, origin) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
         const parsedInput = await validateRpcValue(
           handler.inputSchema,
@@ -2185,7 +2186,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           parsedOutput,
         );
         if (envelope.invalidated.length > 0)
-          deps.hub.notifyPluginChanged(id, envelope.invalidated);
+          deps.hub.notifyPluginChanged(id, envelope.invalidated, origin);
         return {
           ok: true as const,
           result: resultValue,

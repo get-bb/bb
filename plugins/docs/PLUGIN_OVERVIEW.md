@@ -16,3 +16,9 @@ Collaborate with agents on editing Markdown docs inline. Edit directly inside th
 Agents get the `docs` skill and the `bb docs` command. They list vaults with `bb docs vaults` and read files with `bb docs read`. They edit with `bb docs pull`, `bb docs status`, and `bb docs push`. Push uses version checks, so a concurrent edit is reported as a conflict instead of being overwritten.
 
 Agents can propose changes with `bb docs propose` without replacing the saved document. Proposal updates and approval actions check versions to protect concurrent edits.
+
+Open documents and notebooks share BB's live query cache. Saves refresh the touched note and its vault's tree; proposal edits refresh that proposal. Moving or deleting a folder also refreshes its descendants. Other open documents keep their cached content. CLI writes and external file changes reach open documents too.
+
+A failed refresh keeps the editor or notebook visible with an error and Retry. Unsaved drafts survive failures and remote edits. Returning to a cached document reads its current content. Preview leases renew while watched; expired previews clear without replacing the editor.
+
+The plugin RPC reads `readDocument` (a coherent file/proposal snapshot), `listNotes`, and `preparePreview` can be watched through `bb.sdk.plugins.experimental_watchRpc` or `bb plugin rpc call simple-notes <method> --input-file <json-file> --watch`. Existing `bb docs` write and sync commands publish the same scoped changes.

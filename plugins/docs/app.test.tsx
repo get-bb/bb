@@ -5,9 +5,34 @@ import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   loadPluginApp,
-  renderSlot,
+  renderSlot as renderTestSlot,
   type RenderSlotOptions,
 } from "@get-bb/plugin-sdk/testing/app";
+
+import { docsRpcContract } from "./server.js";
+import { z } from "zod";
+
+const testContract = Object.fromEntries(
+  Object.entries(docsRpcContract).map(([name, method]) => [
+    name,
+    { ...method, input: z.unknown(), output: z.unknown() },
+  ]),
+);
+const renderSlot: typeof renderTestSlot = (registration, props, options = {}) =>
+  renderTestSlot(registration, props, {
+    ...options,
+    experimental_rpcContract: testContract,
+    rpc: {
+      ...options.rpc,
+      readDocument: async (input: unknown) => ({
+        ...z
+          .object({ content: z.string(), sha256: z.string() })
+          .parse(await options.rpc?.readNote?.(input)),
+        proposal: (await options.rpc?.readProposal?.(input)) ?? null,
+        preview: await options.rpc?.preparePreview?.(input),
+      }),
+    },
+  });
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
@@ -380,175 +405,16 @@ describe("Docs nav panel", () => {
     slot.rerender(<PanelContent subPath="work/two.md" />);
     await slot.findByText("Work");
     expect(slot.rpcCalls).toContainEqual({
-      method: "readNote",
+      method: "readDocument",
       input: { vaultId: "work", path: "two.md" },
     });
 
     slot.rerender(<PanelContent subPath="personal/one.md" />);
     await slot.findByText("Personal");
     expect(slot.rpcCalls).toContainEqual({
-      method: "readNote",
+      method: "readDocument",
       input: { vaultId: "personal", path: "one.md" },
     });
-  });
-
-  it("shares one notebook request across page and navigation mounts and vault events", async () => {
-    type PendingNotebook = {
-      vaultId: string;
-      resolve: (value: ReturnType<typeof listNotesResult>) => void;
-    };
-    const pending: PendingNotebook[] = [];
-    const notebook = (vaultId: string) => ({
-      ...listNotesResult([
-        {
-          path: `${vaultId}.md`,
-          title: vaultId === "work" ? "Work note" : "Personal note",
-          preview: "",
-          modifiedAtMs: 1,
-        },
-      ]),
-      vaults: [
-        {
-          id: "personal",
-          name: "Personal",
-          hostId: null,
-          rootPath: "/vaults/personal",
-        },
-        {
-          id: "work",
-          name: "Work",
-          hostId: null,
-          rootPath: "/vaults/work",
-        },
-      ],
-      vault: {
-        id: vaultId,
-        name: vaultId === "work" ? "Work" : "Personal",
-        hostId: null,
-        rootPath: `/vaults/${vaultId}`,
-      },
-    });
-    const rpc = {
-      listNotes: (rawInput: unknown) => {
-        const input = rawInput as { vaultId?: string } | undefined;
-        const vaultId = input?.vaultId ?? "personal";
-        return new Promise<ReturnType<typeof listNotesResult>>((resolve) => {
-          pending.push({ vaultId, resolve });
-        });
-      },
-      readNote: (rawInput: unknown) => {
-        const input = rawInput as { vaultId: string };
-        return {
-          content: `# ${input.vaultId === "work" ? "Work document" : "Personal document"}`,
-          sha256: input.vaultId,
-        };
-      },
-      preparePreview: () => preview,
-      createNote: () => ({ path: "created.md" }),
-      renameToTitle: (rawInput: unknown) => {
-        const input = rawInput as { path: string };
-        return { path: input.path };
-      },
-    };
-    const page = renderSlot(
-      docsRegistration,
-      { subPath: "personal/personal.md" },
-      { rpc },
-    );
-    const navigation = renderSlot(
-      navigationRegistration,
-      { subPath: "personal/personal.md" },
-      { rpc },
-    );
-    await waitFor(() => expect(pending).toHaveLength(1));
-    expect(pending.map((request) => request.vaultId)).toEqual(["personal"]);
-    for (const request of pending.splice(0))
-      request.resolve(notebook("personal"));
-    await page.findByText("Personal document");
-    await navigation.findByText("Personal note");
-
-    await page.emitRealtime("vault-changed", { vaultId: "personal" });
-    await navigation.emitRealtime("vault-changed", { vaultId: "personal" });
-    await waitFor(() => expect(pending).toHaveLength(1));
-    const latePersonalRequests = pending.splice(0);
-    expect(latePersonalRequests.map((request) => request.vaultId)).toEqual([
-      "personal",
-    ]);
-
-    page.rerender(<docsRegistration.component subPath="work/work.md" />);
-    navigation.rerender(<navigationView.component subPath="work/work.md" />);
-    expect(page.queryByText("Personal document")).toBeNull();
-    expect(navigation.queryByText("Personal note")).toBeNull();
-    await waitFor(() => expect(pending).toHaveLength(1));
-    const workRequests = pending.splice(0);
-    expect(workRequests.map((request) => request.vaultId)).toEqual(["work"]);
-    for (const request of workRequests) request.resolve(notebook("work"));
-    await page.findByText("Work document");
-    await navigation.findByText("Work note");
-
-    for (const request of latePersonalRequests) {
-      request.resolve(notebook("personal"));
-    }
-    await act(async () => undefined);
-    expect(page.queryByText("Personal document")).toBeNull();
-    expect(navigation.queryByText("Personal note")).toBeNull();
-    expect(page.getByText("Work document")).toBeTruthy();
-    expect(navigation.getByText("Work note")).toBeTruthy();
-
-    fireEvent.click(navigation.getByRole("button", { name: "New note" }));
-    await waitFor(() =>
-      expect(navigation.rpcCalls).toContainEqual({
-        method: "createNote",
-        input: { vaultId: "work", parent: "", name: "Untitled" },
-      }),
-    );
-  });
-
-  it("runs one follow-up refresh when a vault changes during an active request", async () => {
-    const requests: Array<{
-      resolve(value: ReturnType<typeof listNotesResult>): void;
-    }> = [];
-    const slot = renderSlot(
-      navigationRegistration,
-      { subPath: "personal" },
-      {
-        rpc: {
-          listNotes: () =>
-            new Promise<ReturnType<typeof listNotesResult>>((resolve) => {
-              requests.push({ resolve });
-            }),
-        },
-      },
-    );
-
-    await waitFor(() => expect(requests).toHaveLength(1));
-    await slot.emitRealtime("vault-changed", { vaultId: "personal" });
-    expect(requests).toHaveLength(1);
-
-    requests[0]!.resolve(
-      listNotesResult([
-        {
-          path: "stale.md",
-          title: "Stale note",
-          preview: "",
-          modifiedAtMs: 1,
-        },
-      ]),
-    );
-    await waitFor(() => expect(requests).toHaveLength(2));
-    requests[1]!.resolve(
-      listNotesResult([
-        {
-          path: "fresh.md",
-          title: "Fresh note",
-          preview: "",
-          modifiedAtMs: 2,
-        },
-      ]),
-    );
-
-    await slot.findByText("Fresh note");
-    expect(slot.queryByText("Stale note")).toBeNull();
   });
 
   it("ignores an obsolete vault refresh and rename after a deferred save", async () => {
@@ -1380,27 +1246,30 @@ describe("Docs nav panel", () => {
         status: action === "reject" ? "pending" : "undone",
         resolvedSha256: action === "reject" ? null : "original-sha",
       };
+      let current = pending;
       let resolution = deferred<void>();
       const resolveProposal = vi
         .fn()
         .mockImplementationOnce(async () => {
           await resolution.promise;
-          return {
+          current = {
             ...pending,
             version: pending.version + 1,
             status: action === "reject" ? "rejected" : "pending",
           };
+          return current;
         })
         .mockImplementationOnce(async () => {
           await resolution.promise;
-          return {
+          current = {
             ...pending,
             version: pending.version + 2,
             status: "pending",
           };
+          return current;
         });
       const slot = renderDocument(pending.path, "Proposal", {
-        rpc: { readProposal: () => pending, resolveProposal },
+        rpc: { readProposal: () => current, resolveProposal },
       });
       const steps = action === "reject" ? ["Reject", "Undo"] : ["Redo"];
       for (const [index, label] of steps.entries()) {
@@ -1437,7 +1306,7 @@ describe("Docs nav panel", () => {
     },
   );
 
-  it("parses rich proposal baselines in an inert document and scopes refreshes", async () => {
+  it("parses rich proposal baselines in an inert document", async () => {
     const parse = vi.spyOn(ProseMirrorDOMParser.prototype, "parse");
     const pending = {
       vaultId: "personal",
@@ -1474,36 +1343,6 @@ describe("Docs nav panel", () => {
       "formatted baseline",
     );
     parse.mockRestore();
-    readNote.mockClear();
-    await slot.emitRealtime("vault-changed", { vaultId: "other" });
-    await slot.emitRealtime("vault-changed", {
-      vaultId: "personal",
-      path: "other.md",
-    });
-    await slot.emitRealtime("proposal-changed", {
-      vaultId: "personal",
-      path: "other.md",
-      version: 2,
-    });
-    await slot.emitRealtime("vault-changed", {
-      vaultId: "personal",
-      path: pending.path,
-      proposalOnly: true,
-    });
-    expect(readNote).not.toHaveBeenCalled();
-    await slot.emitRealtime("proposal-changed", {
-      vaultId: "personal",
-      path: pending.path,
-      version: 2,
-    });
-    await waitFor(() => expect(readNote).toHaveBeenCalledTimes(1));
-    await slot.emitRealtime("vault-changed", {
-      vaultId: "personal",
-      path: pending.path,
-    });
-    await waitFor(() => expect(readNote).toHaveBeenCalledTimes(2));
-    await slot.emitRealtime("vault-changed", {});
-    await waitFor(() => expect(readNote).toHaveBeenCalledTimes(3));
   });
 
   it("opens a chosen document from the unconfigured Document panel", async () => {
@@ -1768,4 +1607,95 @@ describe("Docs nav panel", () => {
     expect(slot.queryByPlaceholderText("Search this vault")).toBeNull();
     slot.getByText("Roadmap");
   });
+});
+
+it("keeps the notebook visible during a refresh failure and recovers with Retry", async () => {
+  let failing = false;
+  const slot = renderSlot(
+    navigationRegistration,
+    { subPath: "personal" },
+    {
+      rpc: {
+        listNotes: () => {
+          if (failing) throw new Error("Unknown vault");
+          return listNotesResult([
+            {
+              path: "kept.md",
+              title: "Kept note",
+              preview: "",
+              modifiedAtMs: 1,
+            },
+          ]);
+        },
+      },
+    },
+  );
+  const note = await slot.findByText("Kept note");
+  failing = true;
+  await slot.experimental_invalidateRpc(["notes:personal"]);
+  await slot.findByText(/Could not refresh vault: Unknown vault/);
+  expect(note.isConnected).toBe(true);
+  failing = false;
+  fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(slot.queryByText(/Unknown vault/)).toBeNull());
+  expect(note.isConnected).toBe(true);
+});
+
+it("refreshes an open document after another client edits it and surfaces read failures", async () => {
+  let content = "Original live body";
+  let failing = false;
+  const slot = renderDocument("live-body.md", "Live body", {
+    rpc: {
+      readNote: () => {
+        if (failing) throw new Error("Document host offline");
+        return { content, sha256: content };
+      },
+    },
+  });
+  const editor = await slot.findByRole("textbox", { name: "Document content" });
+  content = "Body from another client";
+  await slot.experimental_invalidateRpc(["note:personal:live-body.md"]);
+  await slot.findByText(content);
+  expect(slot.getByRole("textbox", { name: "Document content" })).toBe(editor);
+  failing = true;
+  await slot.experimental_invalidateRpc(["note:personal:live-body.md"]);
+  await slot.findByText("Document host offline");
+  expect(editor.isConnected).toBe(true);
+  failing = false;
+  fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+  await waitFor(() =>
+    expect(slot.queryByText("Document host offline")).toBeNull(),
+  );
+});
+
+it("keeps the focused editor and draft while replacing and expiring preview leases", async () => {
+  let lease = { baseUrl: "/preview/one", expiresAtMs: Date.now() + 60_000 };
+  const slot = renderDocument("live-lease.md", "Live lease", {
+    rpc: {
+      readNote: () => ({
+        content: "![Chart](chart.png)\n\nDraft body",
+        sha256: "body",
+      }),
+      preparePreview: () => lease,
+    },
+  });
+  const editor = await slot.findByRole("textbox", { name: "Document content" });
+  editor.focus();
+  lease = { baseUrl: "/preview/two", expiresAtMs: Date.now() + 60_000 };
+  await slot.experimental_invalidateRpc(["preview:personal:live-lease.md"]);
+  await waitFor(() =>
+    expect(slot.getByRole("img", { name: "Chart" }).getAttribute("src")).toBe(
+      "/preview/two/chart.png",
+    ),
+  );
+  expect(slot.getByRole("textbox", { name: "Document content" })).toBe(editor);
+  expect(document.activeElement).toBe(editor);
+  lease = { ...lease, expiresAtMs: Date.now() - 1 };
+  await slot.experimental_invalidateRpc(["preview:personal:live-lease.md"]);
+  await waitFor(() =>
+    expect(
+      slot.getByRole("img", { name: "Chart" }).getAttribute("src"),
+    ).not.toContain("/preview/two"),
+  );
+  expect(editor.textContent).toContain("Draft body");
 });

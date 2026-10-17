@@ -327,11 +327,16 @@ export class NotificationHub implements DbNotifier {
 
   private readonly pendingTags = new Set<string>();
 
-  notifyPluginChanged(pluginId: string, tags: readonly string[] | null): void {
+  notifyPluginChanged(
+    pluginId: string,
+    tags: readonly string[] | null,
+    origin?: string,
+  ): void {
     this.notifyClients({
       type: "changed",
       entity: "plugin",
       pluginId,
+      ...(origin === undefined ? {} : { origin }),
       tags: tags === null ? null : [...tags],
     });
   }

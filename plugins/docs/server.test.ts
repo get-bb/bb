@@ -74,6 +74,7 @@ async function loadNotebook(
         }),
       },
       hosts: { list: async () => [] },
+      subscribe: () => () => {},
     },
   });
   await simpleNotes(host.bb, watchVault);
@@ -309,17 +310,6 @@ describe("Docs RPC contract", () => {
     });
   });
 });
-
-async function waitForSignal(
-  predicate: () => boolean,
-  timeoutMs = 2_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("Timed out waiting for signal");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
 
 describe("Docs mention provider", () => {
   it("shares note reads across overlapping searches and subsequent keystrokes", async () => {
@@ -1562,7 +1552,7 @@ describe("Docs vault operations", () => {
     expect(harness.sdk.callsTo("threads.storageLocation")).toEqual([]);
   });
 
-  it("publishes watched filesystem changes without waiting for the poll", async () => {
+  it("refreshes mentioned document content after an external file edit", async () => {
     const changeListeners: Array<() => void> = [];
     const closeWatcher = vi.fn();
     const watchedRoots: string[] = [];
@@ -1600,16 +1590,6 @@ describe("Docs vault operations", () => {
       expect(await provider.search(context)).toMatchObject([
         { title: "Updated" },
       ]);
-      await waitForSignal(
-        () =>
-          harness.realtimeSignals.some(
-            (signal) =>
-              signal.channel === "vault-changed" &&
-              isRecord(signal.payload) &&
-              signal.payload.vaultId === "personal",
-          ),
-        1_000,
-      );
     } finally {
       service.controller.abort();
       await service.done;

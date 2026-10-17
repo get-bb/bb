@@ -2,6 +2,7 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CORE_TAG_SCOPE,
+  createMutationOrigin,
   createTaggedKeyedQueryOwner,
   invalidateTags,
   optimisticQueryUpdate,
@@ -58,6 +59,42 @@ function observe(
 }
 
 describe("tagged reads and mutations", () => {
+  it.each(["before", "after"])(
+    "skips an own mutation echo arriving %s the response, while other clients and external changes refresh",
+    async (arrival) => {
+      const writer = setup();
+      const reader = setup();
+      let value = 1;
+      const read = async () => ({ value, tags: ["note:a"] });
+      const own = observe(writer, "note", read);
+      const other = observe(reader, "note", read);
+      await vi.waitFor(() =>
+        expect([own.value(), other.value()]).toEqual([1, 1]),
+      );
+      const origin = createMutationOrigin(writer, CORE_TAG_SCOPE);
+      const broadcast = () =>
+        Promise.all([
+          invalidateTags(writer, CORE_TAG_SCOPE, ["note:a"], origin),
+          invalidateTags(reader, CORE_TAG_SCOPE, ["note:a"], origin),
+        ]);
+      await runTaggedMutation(
+        (tags) => invalidateTags(writer, CORE_TAG_SCOPE, tags),
+        async () => {
+          value = 2;
+          if (arrival === "before") await broadcast();
+          return { result: value, invalidated: ["note:a"] };
+        },
+      );
+      if (arrival === "after") await broadcast();
+      expect([own.value(), other.value()]).toEqual([2, 2]);
+      expect(own.fn).toHaveBeenCalledTimes(2);
+      expect(other.fn).toHaveBeenCalledTimes(2);
+      value = 3;
+      await invalidateTags(writer, CORE_TAG_SCOPE, ["note:a"]);
+      expect(own.value()).toBe(3);
+    },
+  );
+
   it("refreshes matching active reads, leaves inactive data stale and isolates clients and scopes", async () => {
     const client = setup();
     let value = 1;

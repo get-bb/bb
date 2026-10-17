@@ -48,11 +48,10 @@ async function loadedSession(
   current = file(),
 ) {
   const call = vi.fn<Rpc["call"]>();
-  call.mockResolvedValueOnce(current);
-  call.mockResolvedValueOnce(pending);
   call.mockResolvedValueOnce({
-    baseUrl: "/preview",
-    expiresAtMs: Date.now() + 60_000,
+    ...current,
+    proposal: pending,
+    preview: { baseUrl: "/preview", expiresAtMs: Date.now() + 60_000 },
   });
   const session = createDocumentSession({ call }, "personal", "letter.md");
   await session.refresh();
@@ -70,14 +69,16 @@ describe("Docs document sessions", () => {
   it("renews expired previews when a cached document refreshes", async () => {
     const { session, call } = await loadedSession();
     vi.advanceTimersByTime(60_001);
-    call.mockResolvedValueOnce(file());
-    call.mockResolvedValueOnce(null);
     call.mockResolvedValueOnce({
-      baseUrl: "/renewed-preview",
-      expiresAtMs: Date.now() + 60_000,
+      ...file(),
+      proposal: null,
+      preview: {
+        baseUrl: "/renewed-preview",
+        expiresAtMs: Date.now() + 60_000,
+      },
     });
     await session.refresh();
-    expect(call).toHaveBeenCalledWith("preparePreview", {
+    expect(call).toHaveBeenCalledWith("readDocument", {
       vaultId: "personal",
       path: "letter.md",
     });
@@ -159,7 +160,10 @@ describe("Docs document sessions", () => {
       ...proposal("accepted", 3),
       content: "Edited candidate",
     });
-    call.mockResolvedValueOnce(file("Edited candidate", "accepted-sha"));
+    call.mockResolvedValueOnce({
+      ...file("Edited candidate", "accepted-sha"),
+      proposal: proposal("accepted", 3),
+    });
     session.edit("Edited candidate");
     await session.resolve("accept");
     expect(call.mock.calls).toEqual([
@@ -181,7 +185,7 @@ describe("Docs document sessions", () => {
           expectedVersion: 2,
         },
       ],
-      ["readNote", { vaultId: "personal", path: "letter.md" }],
+      ["readDocument", { vaultId: "personal", path: "letter.md" }],
     ]);
     expect(session.getSnapshot()).toMatchObject({
       draft: "Edited candidate",
@@ -214,8 +218,11 @@ describe("Docs document sessions", () => {
 
   it("preserves dirty text when a remote refresh returns changed content", async () => {
     const { session, call } = await loadedSession();
-    call.mockResolvedValueOnce(file("Remote edit", "remote-sha"));
-    call.mockResolvedValueOnce(null);
+    call.mockResolvedValueOnce({
+      ...file("Remote edit", "remote-sha"),
+      proposal: null,
+      preview: { baseUrl: "/preview", expiresAtMs: Date.now() + 60_000 },
+    });
     session.edit("My unsaved edit");
     await session.refresh();
     expect(session.getSnapshot()).toMatchObject({
@@ -229,12 +236,20 @@ describe("Docs document sessions", () => {
 
   it("preserves text typed while a refresh is in flight", async () => {
     const { session, call } = await loadedSession(proposal());
-    const remote = deferred<ReturnType<typeof file>>();
+    const remote = deferred<{
+      content: string;
+      sha256: string;
+      proposal: Proposal;
+      preview: { baseUrl: string; expiresAtMs: number };
+    }>();
     call.mockReturnValueOnce(remote.promise);
-    call.mockResolvedValueOnce(proposal("pending", 2));
     const refreshing = session.refresh();
     session.edit("My candidate edit");
-    remote.resolve(file());
+    remote.resolve({
+      ...file(),
+      proposal: proposal("pending", 2),
+      preview: { baseUrl: "/preview", expiresAtMs: Date.now() + 60_000 },
+    });
     await refreshing;
     expect(session.getSnapshot()).toMatchObject({
       draft: "My candidate edit",
@@ -245,8 +260,11 @@ describe("Docs document sessions", () => {
 
   it("keeps a queued refresh from replacing the proposal being accepted", async () => {
     const { session, call } = await loadedSession(proposal());
-    call.mockResolvedValueOnce(file());
-    call.mockResolvedValueOnce(proposal("pending", 2));
+    call.mockResolvedValueOnce({
+      ...file(),
+      preview: { baseUrl: "/preview", expiresAtMs: Date.now() + 60_000 },
+      proposal: proposal("pending", 2),
+    });
     call.mockRejectedValueOnce(new Error("The proposal changed."));
     const refresh = session.refresh();
     await session.resolve("accept");

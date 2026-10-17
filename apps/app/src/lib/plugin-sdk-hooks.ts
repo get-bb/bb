@@ -162,13 +162,17 @@ export async function callPluginRpc(
   method: string,
   input?: unknown,
   envelope = false,
+  origin?: string,
 ): Promise<unknown> {
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(origin ? { "x-bb-mutation-id": origin } : {}),
+      },
       body: serializedInput,
     },
   );
@@ -952,7 +956,8 @@ export const {
         id: string,
         method: string,
         input: import("@bb/domain").JsonValue,
-      ) => callPluginRpc(fetch, id, method, input, true),
+        origin?: string,
+      ) => callPluginRpc(fetch, id, method, input, true, origin),
       watch: (
         id: string,
         method: string,

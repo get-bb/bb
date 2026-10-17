@@ -22,7 +22,13 @@ provider, and directive are all Docs.
   go through `bb.sdk.files` with an explicit vault root. Saves retain SHA-256
   compare-and-swap conflict handling. Local vaults use native filesystem
   watching for immediate UI refreshes; remote or unwatchable vaults fall back
-  to polling.
+  to polling. Remote vault scans run only while a notebook or document is watched.
+- **Live documents:** tagged RPC queries share snapshots of content, proposal,
+  and preview lease. Saves refresh the touched note and vault tree; proposal
+  edits refresh that proposal, and folder moves/deletes refresh descendants.
+  Refresh failures keep loaded content visible with Retry. Returning to a cached
+  document reads it again. Watched preview leases renew at expiry without
+  replacing the editor; an expired preview URL clears while renewal is pending.
 - **Default Markdown editor:** Docs registers for `.md`, `.mdx`, and
   `.markdown` files, so it can be selected under Settings → File openers or
   chosen from a file link's Open with menu. Workspace, absolute host, and
@@ -239,9 +245,9 @@ Proposals follow file and folder moves made through Docs and are cleared when
 their document, folder, or vault is removed.
 
 The RPC equivalents are `readProposal`, `proposeNote`, `updateProposal`, and
-`resolveProposal`. `proposal-changed` signals carry `vaultId`, `path`, and
-`version`. `vault-changed` can include `path` for a single-document change and
-`proposalOnly: true` when the matching `proposal-changed` signal covers it.
-Events without a path still invalidate the whole vault (or all vaults when
-`vaultId` is absent), including external filesystem changes. Existing file
-read, save, and sync APIs remain supported.
+`resolveProposal`. Watch `readDocument` for a coherent content/proposal/preview
+snapshot through `bb.sdk.plugins.experimental_watchRpc` or
+`bb plugin rpc call simple-notes readDocument --input-file <json-file> --watch`.
+Contract tags scope updates to the affected document, proposal, or vault tree,
+including external file changes. Existing file read, save, and sync APIs remain
+supported.

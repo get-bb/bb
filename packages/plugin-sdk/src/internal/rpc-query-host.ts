@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
   invalidateTags,
+  createMutationOrigin,
   pluginTagScope,
   runTaggedRead,
   taggedQueryOptions,
@@ -31,7 +32,12 @@ import type {
 export interface RpcQueryHost {
   pluginId: string;
   queryClient: QueryClient;
-  call(pluginId: string, method: string, input: JsonValue): Promise<unknown>;
+  call(
+    pluginId: string,
+    method: string,
+    input: JsonValue,
+    origin?: string,
+  ): Promise<unknown>;
   subscribe(pluginId: string): () => void;
   watch?(
     pluginId: string,
@@ -106,13 +112,14 @@ async function callWithDeadline(
   method: string,
   input: JsonValue,
   timeoutMs: number | undefined,
+  origin?: string,
 ) {
-  if (timeoutMs === undefined) return host.call(pluginId, method, input);
+  if (timeoutMs === undefined) return host.call(pluginId, method, input, origin);
   const deadlineMs = z.number().positive().finite().parse(timeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      host.call(pluginId, method, input),
+      host.call(pluginId, method, input, origin),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -323,6 +330,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
             options.method,
             jsonValueSchema.parse(input),
             options.timeoutMs,
+            createMutationOrigin(host.queryClient, pluginTagScope(pluginId)),
           ),
         );
         return {

@@ -1,5 +1,7 @@
 import { proposalSchema, type Proposal } from "./proposals.js";
 import { watch } from "node:fs";
+import { readFile as readNativeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
@@ -100,12 +102,40 @@ interface VaultWatcher {
   on(event: "error", listener: () => void): void;
 }
 
-type WatchVault = (rootPath: string, onChange: () => void) => VaultWatcher;
+type WatchVault = (
+  rootPath: string,
+  onChange: (relativePath?: string) => void,
+  writtenFiles: Map<string, string>,
+) => VaultWatcher;
 
-const watchNativeVault: WatchVault = (rootPath, onChange) => {
-  const watcher = watch(rootPath, { recursive: true }, onChange);
+const watchNativeVault: WatchVault = (rootPath, onChange, writtenFiles) => {
+  const pending = new Map<string | undefined, ReturnType<typeof setTimeout>>();
+  const watcher = watch(rootPath, { recursive: true }, (_event, filename) => {
+    const file = filename?.toString().replaceAll("\\", "/");
+    if (/\.bb-write-[0-9a-f-]{36}$/i.test(file ?? "")) return;
+    if (pending.has(file)) return;
+    pending.set(file, setTimeout(async () => {
+      pending.delete(file);
+      if (file !== undefined) {
+        const absolute = path.join(rootPath, file);
+        const written = writtenFiles.get(absolute);
+        if (written !== undefined) {
+          try {
+            const content = await readNativeFile(absolute);
+            if (createHash("sha256").update(content).digest("hex") === written)
+              return;
+          } catch {}
+          writtenFiles.delete(absolute);
+        }
+      }
+      onChange(file);
+    }, 5));
+  });
   return {
-    close: () => watcher.close(),
+    close: () => {
+      for (const timer of pending.values()) clearTimeout(timer);
+      watcher.close();
+    },
     on: (event, listener) => {
       watcher.on(event, listener);
     },
@@ -258,12 +288,59 @@ type SyncState = z.infer<typeof syncStateSchema>;
 type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
 type OpenerSource = z.infer<typeof openerSourceSchema>;
 
-export const docsRpcContract = defineRpcContract({
+function pathTags(vaultId: string, relativePath: string): string[] {
+  const parts = relativePath.split("/");
+  return parts.map(
+    (_, index) => `path:${vaultId}:${parts.slice(0, index + 1).join("/")}`,
+  );
+}
+
+function documentTags(
+  input: { vaultId?: string; path: string },
+  id = input.vaultId ?? "default",
+): string[] {
+  return [
+    ...(input.vaultId === undefined ? ["vaults"] : []),
+    `vault:${id}`,
+    `note:${id}:${input.path}`,
+    `proposal:${id}:${input.path}`,
+    ...pathTags(id, input.path),
+  ];
+}
+
+function noteChanges(
+  input: { vaultId?: string; path: string },
+  id = input.vaultId ?? "default",
+): string[] {
+  return [`notes:${id}`, `note:${id}:${input.path}`];
+}
+
+const createDocsRpcContract = (resolveVaultId: (id: string | undefined) => string) => defineRpcContract({
+  readDocument: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: z
+      .object({
+        content: z.string(),
+        sha256: z.string(),
+        proposal: proposalSchema.nullable(),
+        preview: previewSchema,
+      })
+      .strict(),
+    tags: (input) => [
+      ...documentTags(input, resolveVaultId(input.vaultId)),
+      `preview:${resolveVaultId(input.vaultId)}:${input.path}`,
+    ],
+  },
   readProposal: {
+    tags: (input) =>
+      documentTags(input, resolveVaultId(input.vaultId)).filter((tag) => !tag.startsWith("note:")),
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: proposalSchema.nullable(),
   },
   proposeNote: {
+    invalidates: (input) => [
+      `proposal:${resolveVaultId(input.vaultId)}:${input.path}`,
+    ],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -276,6 +353,9 @@ export const docsRpcContract = defineRpcContract({
     output: proposalSchema,
   },
   updateProposal: {
+    invalidates: (input) => [
+      `proposal:${resolveVaultId(input.vaultId)}:${input.path}`,
+    ],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -287,6 +367,12 @@ export const docsRpcContract = defineRpcContract({
     output: proposalSchema,
   },
   resolveProposal: {
+    invalidates: (input, output) => [
+      ...(output.status === "accepted" || output.status === "undone"
+        ? noteChanges(input, resolveVaultId(input.vaultId))
+        : []),
+      `proposal:${resolveVaultId(input.vaultId)}:${input.path}`,
+    ],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -311,6 +397,17 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   syncApply: {
+    invalidates: (input, output) =>
+      input.dryRun
+        ? []
+        : [
+            `notes:${resolveVaultId(input.vaultId)}`,
+            ...[
+              ...output.written.map((file) => file.remotePath),
+              ...output.deleted,
+              ...output.deletedDirectories,
+            ].map((file) => `path:${resolveVaultId(input.vaultId)}:${file}`),
+          ],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -344,6 +441,11 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   listNotes: {
+    tags: (_input, output) => [
+      "vaults",
+      `vault:${output.vault.id}`,
+      `notes:${output.vault.id}`,
+    ],
     input: z.object({ vaultId: vaultIdSchema }).strict(),
     output: z
       .object({
@@ -375,10 +477,14 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   readNote: {
+    tags: (input) =>
+      documentTags(input, resolveVaultId(input.vaultId)).filter((tag) => !tag.startsWith("proposal:")),
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: fileReadSchema,
   },
   saveNote: {
+    invalidates: (input, output) =>
+      output.outcome === "written" ? noteChanges(input, resolveVaultId(input.vaultId)) : [],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -390,6 +496,8 @@ export const docsRpcContract = defineRpcContract({
     output: fileWriteSchema,
   },
   createNote: {
+    invalidates: (input, output) =>
+      noteChanges({ ...input, path: output.path }, resolveVaultId(input.vaultId)),
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -401,6 +509,10 @@ export const docsRpcContract = defineRpcContract({
     output: pathResultSchema,
   },
   deletePath: {
+    invalidates: (input) => [
+      `notes:${resolveVaultId(input.vaultId)}`,
+      `path:${resolveVaultId(input.vaultId)}:${input.path}`,
+    ],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -411,10 +523,12 @@ export const docsRpcContract = defineRpcContract({
     output: okResultSchema,
   },
   createFolder: {
+    invalidates: (input) => [`notes:${resolveVaultId(input.vaultId)}`],
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: pathResultSchema,
   },
   reorderFiles: {
+    invalidates: (input) => [`notes:${resolveVaultId(input.vaultId)}`],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -425,6 +539,11 @@ export const docsRpcContract = defineRpcContract({
     output: z.object({ paths: z.array(vaultPathSchema) }).strict(),
   },
   movePath: {
+    invalidates: (input) => [
+      `notes:${resolveVaultId(input.vaultId)}`,
+      `path:${resolveVaultId(input.vaultId)}:${input.from}`,
+      `path:${resolveVaultId(input.vaultId)}:${input.to}`,
+    ],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -435,10 +554,19 @@ export const docsRpcContract = defineRpcContract({
     output: pathResultSchema,
   },
   renameToTitle: {
+    invalidates: (input, output) =>
+      input.path === output.path
+        ? []
+        : [
+            `notes:${resolveVaultId(input.vaultId)}`,
+            `path:${resolveVaultId(input.vaultId)}:${input.path}`,
+            `path:${resolveVaultId(input.vaultId)}:${output.path}`,
+          ],
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: pathResultSchema,
   },
   createVault: {
+    invalidates: () => ["vaults"],
     input: z
       .object({
         name: z.string().min(1),
@@ -449,10 +577,12 @@ export const docsRpcContract = defineRpcContract({
     output: vaultSchema,
   },
   removeVault: {
+    invalidates: (input) => ["vaults", `vault:${input.vaultId}`],
     input: z.object({ vaultId: z.string().min(1) }).strict(),
     output: okResultSchema,
   },
   uploadAttachment: {
+    invalidates: (input) => [`notes:${resolveVaultId(input.vaultId)}`],
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -470,10 +600,16 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   preparePreview: {
+    tags: (input) => [
+      `vault:${resolveVaultId(input.vaultId)}`,
+      `preview:${resolveVaultId(input.vaultId)}:${input.path}`,
+      ...pathTags(resolveVaultId(input.vaultId), input.path),
+    ],
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: previewSchema,
   },
   openFile: {
+    tags: (input) => [`opened:${JSON.stringify(input.source)}:${input.path}`],
     input: z
       .object({ source: openerSourceSchema, path: z.string().min(1) })
       .strict(),
@@ -486,6 +622,10 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   saveOpenedFile: {
+    invalidates: (input, output) =>
+      output.outcome === "written"
+        ? [`opened:${JSON.stringify(input.source)}:${input.path}`]
+        : [],
     input: z
       .object({
         source: openerSourceSchema,
@@ -497,6 +637,8 @@ export const docsRpcContract = defineRpcContract({
     output: fileWriteSchema,
   },
 });
+
+export const docsRpcContract = createDocsRpcContract((id) => id ?? "default");
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -723,6 +865,12 @@ export default async function plugin(
   watchVault: WatchVault = watchNativeVault,
 ) {
   const db = bb.storage.database();
+  const writtenFiles = new Map<string, string>();
+  function forgetWrittenFiles(...paths: string[]) {
+    for (const file of writtenFiles.keys())
+      if (paths.some((root) => file === root || file.startsWith(`${root}/`)))
+        writtenFiles.delete(file);
+  }
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS vaults (
       id TEXT PRIMARY KEY,
@@ -972,6 +1120,21 @@ export default async function plugin(
     return { ...file, path: relativePath };
   }
 
+  function invalidate(tags: string[]) {
+    const defaultId = z
+      .string()
+      .parse(
+        db
+          .prepare("SELECT id FROM vaults ORDER BY created_at, name LIMIT 1")
+          .pluck()
+          .get(),
+      );
+    const aliases = tags
+      .filter((tag) => tag.split(":")[1] === defaultId)
+      .map((tag) => tag.replace(`:${defaultId}`, ":default"));
+    if (tags.length) bb.rpc.experimental_invalidate([...tags, ...aliases]);
+  }
+
   async function writeFile(args: {
     vaultId?: string;
     rawPath: unknown;
@@ -979,7 +1142,6 @@ export default async function plugin(
     contentEncoding?: "utf8" | "base64";
     expectedSha256?: unknown;
     createOnly?: boolean;
-    proposalOnly?: boolean;
   }) {
     const vault = getVault(args.vaultId);
     const relativePath = requireVaultPath(args.rawPath);
@@ -1000,12 +1162,12 @@ export default async function plugin(
           : {}),
     });
     if (result.outcome === "written") {
+      if (!vault.hostId) {
+        writtenFiles.set(absolutePath(vault, relativePath), result.sha256);
+        if (writtenFiles.size > 1024)
+          writtenFiles.delete(writtenFiles.keys().next().value!);
+      }
       mentionSummaries.delete(vault.id);
-      bb.realtime.publish("vault-changed", {
-        vaultId: vault.id,
-        path: relativePath,
-        ...(args.proposalOnly ? { proposalOnly: true } : {}),
-      });
     }
     return result;
   }
@@ -1048,16 +1210,6 @@ export default async function plugin(
     db.prepare(
       "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?) ON CONFLICT(vault_id, path) DO UPDATE SET data = excluded.data",
     ).run(proposal.vaultId, proposal.path, JSON.stringify(proposal));
-    bb.realtime.publish("vault-changed", {
-      vaultId: proposal.vaultId,
-      path: proposal.path,
-      proposalOnly: true,
-    });
-    bb.realtime.publish("proposal-changed", {
-      vaultId: proposal.vaultId,
-      path: proposal.path,
-      version: proposal.version,
-    });
     return proposal;
   }
 
@@ -1205,6 +1357,7 @@ export default async function plugin(
         destinationPath: absolutePath(vault, to),
         rootPath: vault.rootPath,
       });
+      forgetWrittenFiles(absolutePath(vault, from), absolutePath(vault, to));
       db.transaction(() => {
         const rows = db
           .prepare(
@@ -1224,7 +1377,6 @@ export default async function plugin(
         }
       })();
       mentionSummaries.delete(vault.id);
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { path: to };
     });
   }
@@ -1249,9 +1401,9 @@ export default async function plugin(
         rootPath: vault.rootPath,
         recursive,
       });
+      forgetWrittenFiles(absolutePath(vault, relativePath));
       deleteProposals(vault.id, relativePath);
       mentionSummaries.delete(vault.id);
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { ok: true };
     });
   }
@@ -1652,7 +1804,62 @@ export default async function plugin(
     };
   }
 
+  const previewWatches = new Map<
+    string,
+    {
+      count: number;
+      timer: ReturnType<typeof setTimeout> | null;
+      expiresAtMs: number | null;
+    }
+  >();
+  function schedulePreview(
+    key: string,
+    expiresAtMs: number,
+    vaultId: string,
+    filePath: string,
+  ) {
+    const watch = previewWatches.get(key);
+    if (
+      !watch ||
+      (watch.expiresAtMs !== null && watch.expiresAtMs <= expiresAtMs)
+    )
+      return;
+    watch.expiresAtMs = expiresAtMs;
+    if (watch.timer) clearTimeout(watch.timer);
+    watch.timer = setTimeout(
+      () => {
+        watch.timer = null;
+        watch.expiresAtMs = null;
+        invalidate([`preview:${vaultId}:${filePath}`]);
+      },
+      Math.max(0, expiresAtMs - Date.now()),
+    );
+  }
   const handlers: PluginRpcHandlers<typeof docsRpcContract> = {
+    async readDocument(input) {
+      const vault = getVault(input.vaultId);
+      return serializeVault(vault.id, async () => {
+        const [file, preview] = await Promise.all([
+          readFile(vault.id, input.path),
+          bb.sdk.files.createPreview({
+            ...hostArgs(vault),
+            rootPath: vault.rootPath,
+          }),
+        ]);
+        schedulePreview(
+          JSON.stringify(input),
+          preview.expiresAtMs,
+          vault.id,
+          input.path,
+        );
+        return {
+          content: file.content,
+          sha256: file.sha256,
+          proposal: readProposal(vault.id, input.path),
+          preview,
+        };
+      });
+    },
     async readProposal(input) {
       return readProposal(getVault(input.vaultId).id, input.path);
     },
@@ -1747,7 +1954,6 @@ export default async function plugin(
             rawPath: input.path,
             content: restoring ? proposal.baseContent : proposal.content,
             expectedSha256,
-            proposalOnly: true,
           });
           if (result.outcome === "conflict") throw new Error(conflictMessage);
           next.resolvedSha256 = result.sha256;
@@ -1796,7 +2002,6 @@ export default async function plugin(
         rootPath: vault.rootPath,
         recursive: false,
       });
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { path: relativePath };
     },
     async reorderFiles(input) {
@@ -1842,7 +2047,6 @@ export default async function plugin(
         );
       });
       replaceOrder();
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { paths };
     },
     async movePath(input) {
@@ -1887,7 +2091,6 @@ export default async function plugin(
       db.prepare(
         "INSERT INTO vaults (id, name, host_id, root_path, created_at) VALUES (?, ?, ?, ?, ?)",
       ).run(id, name, hostId, resolvedRoot, Date.now());
-      bb.realtime.publish("vault-changed", { vaultId: id });
       return getVault(id);
     },
     async removeVault(input) {
@@ -1901,7 +2104,6 @@ export default async function plugin(
           db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
         })();
         mentionSummaries.delete(id);
-        bb.realtime.publish("vault-changed", { vaultId: id });
         return { ok: true as const };
       });
     },
@@ -1950,10 +2152,17 @@ export default async function plugin(
         path: absolutePath(vault, relativePath),
         rootPath: vault.rootPath,
       });
-      return bb.sdk.files.createPreview({
+      const preview = await bb.sdk.files.createPreview({
         ...hostArgs(vault),
         rootPath: vault.rootPath,
       });
+      schedulePreview(
+        JSON.stringify(input),
+        preview.expiresAtMs,
+        vault.id,
+        relativePath,
+      );
+      return preview;
     },
     async openFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
@@ -1997,7 +2206,54 @@ export default async function plugin(
     },
   };
 
-  bb.rpc.register(docsRpcContract, handlers);
+  const serverContract = createDocsRpcContract((id) => getVault(id).id);
+  bb.rpc.register(serverContract, handlers);
+  const watchedVaults = new Map<string, number>();
+  function watchVaultRead(id: string, signal: AbortSignal) {
+    watchedVaults.set(id, (watchedVaults.get(id) ?? 0) + 1);
+    signal.addEventListener(
+      "abort",
+      () => {
+        const remaining = (watchedVaults.get(id) ?? 1) - 1;
+        if (remaining) watchedVaults.set(id, remaining);
+        else watchedVaults.delete(id);
+      },
+      { once: true },
+    );
+  }
+  for (const method of ["preparePreview", "readDocument"] as const)
+    bb.rpc.experimental_whileWatched(method, (read, signal) => {
+      if (!("input" in read)) return;
+      const input = docsRpcContract.preparePreview.input.parse(read.input);
+      if (method === "readDocument")
+        watchVaultRead(getVault(input.vaultId).id, signal);
+      const key = JSON.stringify(input);
+      const current = previewWatches.get(key) ?? {
+        count: 0,
+        timer: null,
+        expiresAtMs: null,
+      };
+      current.count++;
+      previewWatches.set(key, current);
+      invalidate([`preview:${getVault(input.vaultId).id}:${input.path}`]);
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (--current.count === 0) {
+            if (current.timer) clearTimeout(current.timer);
+            previewWatches.delete(key);
+          }
+        },
+        { once: true },
+      );
+    });
+  for (const method of ["listNotes", "readNote"] as const) {
+    bb.rpc.experimental_whileWatched(method, (read, signal) => {
+      if (!("input" in read)) return;
+      const input = docsRpcContract[method].input.parse(read.input);
+      watchVaultRead(getVault(input.vaultId).id, signal);
+    });
+  }
 
   async function readHttpInput<Schema extends z.ZodType>(
     context: Parameters<Parameters<BbPluginApi["http"]["route"]>[2]>[0],
@@ -2044,6 +2300,35 @@ export default async function plugin(
     };
   }
 
+  function publish<Input, Output>(
+    declaration: {
+      input: z.ZodType<Input>;
+      invalidates?: (input: Input, output: Output) => readonly string[];
+    },
+    handle: (input: Input) => Output | Promise<Output>,
+  ) {
+    return async (input: Input) => {
+      const result = await handle(input);
+      const tags = declaration.invalidates?.(input, result) ?? [];
+      if (tags.length) invalidate([...tags]);
+      return result;
+    };
+  }
+
+  const externalHandlers = {
+    ...handlers,
+    saveNote: publish(serverContract.saveNote, handlers.saveNote),
+    createFolder: publish(serverContract.createFolder, handlers.createFolder),
+    movePath: publish(serverContract.movePath, handlers.movePath),
+    deletePath: publish(serverContract.deletePath, handlers.deletePath),
+    syncApply: publish(serverContract.syncApply, handlers.syncApply),
+    resolveProposal: publish(serverContract.resolveProposal, handlers.resolveProposal),
+    proposeNote: publish(serverContract.proposeNote, handlers.proposeNote),
+    updateProposal: publish(serverContract.updateProposal, handlers.updateProposal),
+    createVault: publish(serverContract.createVault, handlers.createVault),
+    removeVault: publish(serverContract.removeVault, handlers.removeVault),
+  };
+
   function routeRpc<Schema extends z.ZodType>(
     routePath: string,
     schema: Schema,
@@ -2061,7 +2346,7 @@ export default async function plugin(
     );
   }
 
-  routeRpc("/list", docsRpcContract.listNotes.input, handlers.listNotes);
+  routeRpc("/list", docsRpcContract.listNotes.input, externalHandlers.listNotes);
 
   function hostPathApi(
     rootPath: string,
@@ -2732,7 +3017,7 @@ export default async function plugin(
         ...plan,
       };
     }
-    const applied = await syncApply({
+    const applied = await externalHandlers.syncApply({
       vaultId: existing.state.vault.id,
       writes,
       deletes,
@@ -2814,17 +3099,17 @@ export default async function plugin(
     }
     return JSON.stringify(result, null, 2);
   }
-  routeRpc("/read", docsRpcContract.readNote.input, handlers.readNote);
-  routeRpc("/write", docsRpcContract.saveNote.input, handlers.saveNote);
-  routeRpc("/mkdir", docsRpcContract.createFolder.input, handlers.createFolder);
-  routeRpc("/move", docsRpcContract.movePath.input, handlers.movePath);
-  routeRpc("/remove", docsRpcContract.deletePath.input, handlers.deletePath);
+  routeRpc("/read", docsRpcContract.readNote.input, externalHandlers.readNote);
+  routeRpc("/write", docsRpcContract.saveNote.input, externalHandlers.saveNote);
+  routeRpc("/mkdir", docsRpcContract.createFolder.input, externalHandlers.createFolder);
+  routeRpc("/move", docsRpcContract.movePath.input, externalHandlers.movePath);
+  routeRpc("/remove", docsRpcContract.deletePath.input, externalHandlers.deletePath);
   routeRpc(
     "/sync/snapshot",
     docsRpcContract.syncSnapshot.input,
-    handlers.syncSnapshot,
+    externalHandlers.syncSnapshot,
   );
-  routeRpc("/sync/apply", docsRpcContract.syncApply.input, handlers.syncApply);
+  routeRpc("/sync/apply", docsRpcContract.syncApply.input, externalHandlers.syncApply);
 
   async function attemptCli(
     work: () => Promise<PluginCliResult>,
@@ -2929,7 +3214,7 @@ export default async function plugin(
               throw new CliUsageError(
                 "This action requires a proposal version.",
               );
-            const result = await handlers.resolveProposal({
+            const result = await externalHandlers.resolveProposal({
               vaultId: input.options.vault,
               path: requireVaultPath(input.positionals.path),
               action,
@@ -2957,7 +3242,7 @@ export default async function plugin(
             attemptCli(async () => ({
               exitCode: 0,
               stdout: JSON.stringify(
-                await handlers.readProposal({
+                await externalHandlers.readProposal({
                   vaultId: input.options.vault,
                   path: requireVaultPath(input.positionals.path),
                 }),
@@ -3014,7 +3299,7 @@ export default async function plugin(
                 throw new CliUsageError(
                   "Proposal file must be UTF-8 Markdown.",
                 );
-              const result = await handlers.proposeNote({
+              const result = await externalHandlers.proposeNote({
                 vaultId: input.options.vault,
                 path: requireVaultPath(input.positionals.path, {
                   extension: ".md",
@@ -3048,7 +3333,7 @@ export default async function plugin(
                 throw new CliUsageError(
                   "This action requires a proposal version.",
                 );
-              const result = await handlers.updateProposal({
+              const result = await externalHandlers.updateProposal({
                 vaultId: input.options.vault,
                 path: requireVaultPath(input.positionals.path),
                 content: input.options.content,
@@ -3098,7 +3383,7 @@ export default async function plugin(
               exitCode: 0,
               stdout: renderCliResult(
                 "vault-add",
-                await handlers.createVault({
+                await externalHandlers.createVault({
                   name: input.positionals.name,
                   rootPath: input.positionals["absolute-root"],
                   hostId: input.positionals["host-id"],
@@ -3123,7 +3408,7 @@ export default async function plugin(
               exitCode: 0,
               stdout: renderCliResult(
                 "vault-remove",
-                await handlers.removeVault({ vaultId: input.positionals.id }),
+                await externalHandlers.removeVault({ vaultId: input.positionals.id }),
                 input.options.json,
               ),
             })),
@@ -3346,9 +3631,9 @@ export default async function plugin(
               exitCode: 0,
               stdout: renderCliResult(
                 "write",
-                await writeFile({
+                await externalHandlers.saveNote({
                   vaultId: input.options.vault,
-                  rawPath: input.positionals.path,
+                  path: input.positionals.path,
                   content: input.options.content,
                 }),
                 input.options.json,
@@ -3373,7 +3658,7 @@ export default async function plugin(
               exitCode: 0,
               stdout: renderCliResult(
                 "mkdir",
-                await handlers.createFolder({
+                await externalHandlers.createFolder({
                   vaultId: input.options.vault,
                   path: input.positionals.path,
                 }),
@@ -3404,11 +3689,11 @@ export default async function plugin(
               exitCode: 0,
               stdout: renderCliResult(
                 "move",
-                await movePath(
-                  input.options.vault,
-                  input.positionals.from,
-                  input.positionals.to,
-                ),
+                await externalHandlers.movePath({
+                  vaultId: input.options.vault,
+                  from: input.positionals.from,
+                  to: input.positionals.to,
+                }),
                 input.options.json,
               ),
               stderr: DEPRECATED_MUTATION_WARNING,
@@ -3439,11 +3724,11 @@ export default async function plugin(
               exitCode: 0,
               stdout: renderCliResult(
                 "remove",
-                await removePath(
-                  input.options.vault,
-                  input.positionals.path,
-                  input.options.recursive,
-                ),
+                await externalHandlers.deletePath({
+                  vaultId: input.options.vault,
+                  path: input.positionals.path,
+                  recursive: input.options.recursive,
+                }),
                 input.options.json,
               ),
               stderr: DEPRECATED_DELETION_WARNING,
@@ -3500,8 +3785,22 @@ export default async function plugin(
     async start(signal) {
       const watchers = new Map<string, VaultWatcher>();
       const retryNative = new Set<string>();
-      let debounce: NodeJS.Timeout | null = null;
-      let previous = "";
+      const previous = new Map<string, Map<string, number> | null>();
+      const unsubscribeHost = bb.sdk.subscribe({
+        event: "host:changed",
+        callback: () =>
+          invalidate([
+            "vaults",
+            ...z
+              .array(z.object({ id: z.string() }))
+              .parse(
+                db
+                  .prepare("SELECT id FROM vaults WHERE host_id IS NOT NULL")
+                  .all(),
+              )
+              .map((vault) => `vault:${vault.id}`),
+          ]),
+      });
       try {
         while (!signal.aborted) {
           const vaults = listVaults();
@@ -3517,15 +3816,18 @@ export default async function plugin(
           for (const vault of vaults) {
             if (vault.hostId || watchers.has(vault.id)) continue;
             try {
-              const watcher = watchVault(vault.rootPath, () => {
+              const watcher = watchVault(vault.rootPath, (relativePath) => {
                 mentionSummaries.delete(vault.id);
-                if (debounce) clearTimeout(debounce);
-                debounce = setTimeout(() => {
-                  bb.realtime.publish("vault-changed", {
-                    vaultId: vault.id,
-                  });
-                }, 250);
-              });
+                invalidate(
+                  relativePath === undefined
+                    ? [`vault:${vault.id}`]
+                    : [
+                        `notes:${vault.id}`,
+                        `note:${vault.id}:${relativePath}`,
+                        `path:${vault.id}:${relativePath}`,
+                      ],
+                );
+              }, writtenFiles);
               watcher.on("error", () => {
                 watcher.close();
                 watchers.delete(vault.id);
@@ -3543,36 +3845,45 @@ export default async function plugin(
             }
           }
 
-          const snapshots: string[] = [];
           for (const vault of vaults) {
-            if (watchers.has(vault.id)) continue;
+            if (
+              watchers.has(vault.id) ||
+              (vault.hostId && !watchedVaults.has(vault.id))
+            )
+              continue;
+            let next: Map<string, number> | null;
             try {
               const { entries } = await listEntries(vault);
               const notes = await listNoteSummaries(vault, entries);
-              snapshots.push(
-                JSON.stringify({
-                  id: vault.id,
-                  entries: entries.map(
-                    (entry) => `${entry.kind}:${entry.path}`,
-                  ),
-                  notes: notes.map(
-                    (note) => `${note.path}:${note.modifiedAtMs}`,
-                  ),
-                }),
-              );
+              next = new Map(entries.map((entry) => [entry.path, 0]));
+              for (const note of notes) next.set(note.path, note.modifiedAtMs);
             } catch {
-              snapshots.push(`${vault.id}:offline`);
+              next = null;
             }
+            const old = previous.get(vault.id);
+            if (old !== undefined) {
+              if (old === null || next === null) {
+                if (old !== next) invalidate([`vault:${vault.id}`]);
+              } else {
+                const changed = [
+                  ...new Set([...old.keys(), ...next.keys()]),
+                ].filter((file) => old.get(file) !== next.get(file));
+                if (changed.length)
+                  invalidate([
+                    `notes:${vault.id}`,
+                    ...changed.flatMap((file) => [
+                      `note:${vault.id}:${file}`,
+                      `path:${vault.id}:${file}`,
+                    ]),
+                  ]);
+              }
+            }
+            previous.set(vault.id, next);
           }
-          const next = snapshots.join("\n");
-          if (previous && previous !== next) {
-            bb.realtime.publish("vault-changed", {});
-          }
-          previous = next;
           await waitForDelay(10_000, signal);
         }
       } finally {
-        if (debounce) clearTimeout(debounce);
+        unsubscribeHost();
         for (const watcher of watchers.values()) watcher.close();
       }
     },
