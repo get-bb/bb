@@ -139,25 +139,54 @@ describe("application menu", () => {
     expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 
-  it("routes zoom shortcuts to the focused page's clamped zoom", () => {
-    const zoomFocusedPage = vi.fn();
-    const template = buildApplicationMenuTemplate(
-      menuArgs(vi.fn(), { zoomFocusedPage }),
-    );
-    const viewMenu = template.find((item) => item.label === "View");
-    const submenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+  it.each([true, false])(
+    "routes zoom shortcuts and hidden aliases to the focused page's clamped zoom (Mac: %s)",
+    (isMac) => {
+      const zoomFocusedPage = vi.fn();
+      const template = buildApplicationMenuTemplate(
+        menuArgs(vi.fn(), { isMac, zoomFocusedPage }),
+      );
+      const viewMenu = template.find((item) => item.label === "View");
+      const submenu = viewMenu?.submenu;
+      expect(Array.isArray(submenu)).toBe(true);
+      if (!Array.isArray(submenu)) {
+        throw new Error("View submenu must be a template array");
+      }
 
-    for (const [label, accelerator] of [
-      ["Actual Size", "CommandOrControl+0"],
-      ["Zoom In", "CommandOrControl+Plus"],
-      ["Zoom Out", "CommandOrControl+-"],
-    ]) {
-      const item = submenu.find((entry) => entry.label === label);
-      expect(item?.accelerator).toBe(accelerator);
-      item?.click?.({} as never, undefined, {} as never);
-    }
-    expect(zoomFocusedPage.mock.calls).toEqual([["reset"], ["in"], ["out"]]);
-  });
+      expect(
+        submenu
+          .filter((item) => item.label === "Zoom In" && item.visible !== false)
+          .map((item) => item.accelerator),
+      ).toEqual(["CommandOrControl+Plus"]);
+
+      for (const [accelerator, visible] of [
+        ["CommandOrControl+Plus", true],
+        ["CommandOrControl+=", false],
+        ["CommandOrControl+numadd", false],
+      ] as const) {
+        const item = submenu.find((entry) => entry.accelerator === accelerator);
+        expect(item?.label).toBe("Zoom In");
+        expect(item?.visible !== false).toBe(visible);
+        expect(item?.registerAccelerator).not.toBe(false);
+        item?.click?.({} as never, undefined, {} as never);
+      }
+      for (const [label, accelerator] of [
+        ["Actual Size", "CommandOrControl+0"],
+        ["Zoom Out", "CommandOrControl+-"],
+      ]) {
+        const item = submenu.find((entry) => entry.label === label);
+        expect(item?.accelerator).toBe(accelerator);
+        item?.click?.({} as never, undefined, {} as never);
+      }
+      expect(zoomFocusedPage.mock.calls).toEqual([
+        ["in"],
+        ["in"],
+        ["in"],
+        ["reset"],
+        ["out"],
+      ]);
+    },
+  );
 
   it("shows reload shortcuts without globally stealing browser commands", () => {
     const reloadWindow = vi.fn();
