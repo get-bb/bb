@@ -3673,6 +3673,35 @@ export function getActiveStoredTurnId(
   return completed ? null : latestStarted.turnId;
 }
 
+export function isStoredTurnMainRunIdle(
+  db: DbQueryConnection,
+  args: { threadId: string; turnId: string },
+): boolean {
+  const latest = db
+    .select({ data: events.data })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.turnId, args.turnId),
+        eq(events.type, "turn/mainRun/updated"),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!latest) {
+    return false;
+  }
+  const data: unknown = JSON.parse(latest.data);
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "state" in data &&
+    data.state === "idle"
+  );
+}
+
 export function getLatestCompletedThreadContextClearSequence(
   db: DbQueryConnection,
   args: GetLatestCompletedThreadContextClearSequenceArgs,

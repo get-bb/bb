@@ -941,8 +941,29 @@ describe("claude-code background task translation", () => {
     expect(intermediateResult).not.toContainEqual(
       expect.objectContaining({ type: "turn/completed" }),
     );
+    expect(intermediateResult).toContainEqual(
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(TURN_1),
+        state: "idle",
+      }),
+    );
+    expect(
+      harness.translate(
+        { type: "result", subtype: "end_turn", session_id: "sess-1" },
+        context,
+      ),
+    ).not.toContainEqual(
+      expect.objectContaining({ type: "turn/mainRun/updated" }),
+    );
 
-    harness.translate(loadFixture("task-notification-subagent.json"), context);
+    const notification = harness.translate(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    expect(notification).not.toContainEqual(
+      expect.objectContaining({ type: "turn/mainRun/updated" }),
+    );
     const resumed = harness.translate(
       {
         type: "assistant",
@@ -957,6 +978,11 @@ describe("claude-code background task translation", () => {
     expect(resumed).not.toContainEqual(
       expect.objectContaining({ type: "turn/started" }),
     );
+    expect(resumed[0]).toMatchObject({
+      type: "turn/mainRun/updated",
+      scope: turnScope(TURN_1),
+      state: "running",
+    });
     expect(resumed).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
@@ -982,6 +1008,9 @@ describe("claude-code background task translation", () => {
         scope: turnScope(TURN_1),
         status: "completed",
       }),
+    );
+    expect(finalResult).not.toContainEqual(
+      expect.objectContaining({ type: "turn/mainRun/updated" }),
     );
   });
 
