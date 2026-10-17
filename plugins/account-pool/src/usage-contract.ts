@@ -117,6 +117,7 @@ export const usageListMethod = "provider-usage.v1.listResources";
 export const usageFetchMethod = "provider-usage.v1.getResource";
 export const usageSourceRpcContract = defineRpcContract({
   [usageListMethod]: {
+    tags: () => ["accounts"],
     input: usageListInputSchema,
     output: usageResourceListSchema,
     experimental_description:

@@ -480,10 +480,9 @@ describe("Account Pool plugin", () => {
     expect(
       accountPoolConfigSchema.parse(await host.bb.storage.kv.get("config")),
     ).toEqual(updated);
-    expect(host.harness.inspection.realtimeSignals).toContainEqual({
-      channel: "config-changed",
-      payload: {},
-    });
+    expect(
+      host.harness.inspection.experimental_rpcInvalidations,
+    ).toContainEqual(["config", "accounts"]);
   });
 
   it.each([
@@ -1509,10 +1508,9 @@ describe("Account Pool plugin", () => {
       accessToken: "login-access",
       refreshToken: "login-refresh",
     });
-    expect(host.harness.inspection.realtimeSignals).toContainEqual({
-      channel: "accounts-changed",
-      payload: {},
-    });
+    expect(
+      host.harness.inspection.experimental_rpcInvalidations,
+    ).toContainEqual(["accounts"]);
 
     const cliStarted = await host.harness.behavior.runCli([
       "account",
@@ -5959,8 +5957,8 @@ describe("Account Pool plugin", () => {
       options: { now: () => now },
     });
     const changedCount = () =>
-      fixture.host.harness.inspection.realtimeSignals.filter(
-        (signal) => signal.channel === "accounts-changed",
+      fixture.host.harness.inspection.experimental_rpcInvalidations.filter(
+        (tags) => tags?.includes("accounts"),
       ).length;
     const baseline = changedCount();
     const forward = async (key: string) => {

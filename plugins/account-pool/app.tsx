@@ -27,7 +27,9 @@ import {
   definePluginApp,
   experimental_copyToClipboard,
   useBbNavigate,
-  useRealtime,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
+  experimental_useRpcRefresh,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
@@ -76,10 +78,6 @@ import {
   statusSchema,
 } from "./src/contracts.js";
 import { blockingResetAt } from "./src/quota.js";
-import {
-  ACCOUNT_POOL_ACCOUNTS_CHANGED,
-  ACCOUNT_POOL_CONFIG_CHANGED,
-} from "./src/realtime.js";
 
 type DialogState =
   | { kind: "account" | "priority" | "remove"; accountId: string }
@@ -856,11 +854,112 @@ function ConfigFieldRow({
   );
 }
 
+function usePoolMutation<Method extends keyof typeof accountPoolRpcContract>(
+  method: Method,
+) {
+  return experimental_useRpcMutation<typeof accountPoolRpcContract, Method>({
+    method,
+  }).mutate;
+}
+
+function useAccountEnabledMutation(
+  method: "account.enable" | "account.disable",
+) {
+  return experimental_useRpcMutation<
+    typeof accountPoolRpcContract,
+    typeof method
+  >({
+    method,
+    optimistic(input, cache) {
+      cache.update("status.get", null, (current) => {
+        const enabled = method === "account.enable";
+        const accounts = current.accounts.map((account): AccountSummary =>
+          account.id === input.id
+            ? { ...account, enabled, status: enabled ? "ready" : "disabled" }
+            : account,
+        );
+        return {
+          ...current,
+          accounts,
+          enabledAccountCount: accounts.filter((account) => account.enabled)
+            .length,
+        };
+      });
+    },
+  });
+}
+
 function AccountPoolSettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
+  const enable = useAccountEnabledMutation("account.enable");
+  const disable = useAccountEnabledMutation("account.disable");
+  const configMutation = experimental_useRpcMutation<
+    typeof accountPoolRpcContract,
+    "config.set"
+  >({
+    method: "config.set",
+    optimistic(input, cache) {
+      cache.update("config.get", null, (current) => ({ ...current, ...input }));
+    },
+  });
+  const mutations = {
+    "account.add": usePoolMutation("account.add"),
+    "account.remove": usePoolMutation("account.remove"),
+    "account.enable": enable.mutate,
+    "account.disable": disable.mutate,
+    "account.setPriority": usePoolMutation("account.setPriority"),
+    "account.refreshUsage": usePoolMutation("account.refreshUsage"),
+    "config.set": configMutation.mutate,
+    "login.complete": usePoolMutation("login.complete"),
+    "codexLogin.poll": usePoolMutation("codexLogin.poll"),
+    "token.rotate": usePoolMutation("token.rotate"),
+  };
+  const pollLogin = mutations["codexLogin.poll"];
+  const statusQuery = experimental_useRpcQuery<
+    typeof accountPoolRpcContract,
+    "status.get"
+  >({ method: "status.get", input: null });
+  const configQuery = experimental_useRpcQuery<
+    typeof accountPoolRpcContract,
+    "config.get"
+  >({ method: "config.get", input: null });
+  const { refresh } = experimental_useRpcRefresh();
   const navigate = useBbNavigate();
-  const [status, setStatus] = useState<PoolStatus | null>(readCachedStatus);
-  const [statusIsCached, setStatusIsCached] = useState(status !== null);
+  const [cachedStatus] = useState(readCachedStatus);
+  const status = statusQuery.data ?? cachedStatus;
+  const statusIsCached =
+    statusQuery.data === undefined && cachedStatus !== null;
+  const routing = experimental_useRpcMutation<
+    typeof accountPoolRpcContract,
+    "routing.set"
+  >({
+    method: "routing.set",
+    optimistic(input, cache) {
+      cache.update("status.get", null, (current) => ({
+        ...current,
+        routing: { ...current.routing, [input.provider]: input.enabled },
+      }));
+    },
+  });
+  const reorder = experimental_useRpcMutation<
+    typeof accountPoolRpcContract,
+    "account.reorder"
+  >({
+    method: "account.reorder",
+    optimistic(input, cache) {
+      cache.update("status.get", null, (current) => ({
+        ...current,
+        accounts: [
+          ...current.accounts.filter(
+            (account) => account.provider !== input.provider,
+          ),
+          ...input.accountIds.flatMap((id) =>
+            current.accounts.filter((account) => account.id === id),
+          ),
+        ],
+      }));
+    },
+  });
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
   const [drafts, setDrafts] = useState<Record<ConfigField, string>>({
     anthropicUpstreamBaseUrl: "",
@@ -879,13 +978,7 @@ function AccountPoolSettings() {
   const [pending, setPending] = useState<ReadonlyMap<string, boolean | null>>(
     () => new Map(),
   );
-  const configSaving = CONFIG_FIELDS.some((field) =>
-    pending.has(`config-${field}`),
-  );
-  const [optimisticOrder, setOptimisticOrder] = useState<{
-    provider: PoolProvider;
-    ids: string[];
-  } | null>(null);
+  const configSaving = configMutation.isPending;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {
@@ -901,46 +994,59 @@ function AccountPoolSettings() {
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState("100");
   const [countdown, setCountdown] = useState(0);
-  const mounted = useRef(true);
   const threshold =
     config?.switchThreshold ?? DEFAULT_ACCOUNT_POOL_CONFIG.switchThreshold;
+  const appliedConfig = useRef<AccountPoolConfig | null>(null);
   const applyConfig = useCallback((next: AccountPoolConfig) => {
+    appliedConfig.current = next;
     setConfig(next);
     setDrafts(configDrafts(next));
   }, []);
-  const refresh = useCallback(async () => {
-    try {
-      const next = await rpc.call("status.get", null);
-      writeCachedStatus(next);
-      if (!mounted.current) return;
-      setStatus(next);
-      setStatusIsCached(false);
-    } catch (loadError) {
-      if (mounted.current) setError(errorText(loadError));
-    }
-  }, [rpc]);
-  const refreshConfig = useCallback(async () => {
-    try {
-      const next = await rpc.call("config.get", null);
-      if (mounted.current) applyConfig(next);
-    } catch (loadError) {
-      if (mounted.current) setError(errorText(loadError));
-    }
-  }, [applyConfig, rpc]);
   useEffect(() => {
-    mounted.current = true;
-    void refresh();
-    void refreshConfig();
-    return () => {
-      mounted.current = false;
-    };
-  }, [refresh, refreshConfig]);
-  useRealtime(ACCOUNT_POOL_ACCOUNTS_CHANGED, () => {
-    void refresh();
-  });
-  useRealtime(ACCOUNT_POOL_CONFIG_CHANGED, () => {
-    void refreshConfig();
-  });
+    if (
+      statusQuery.data === undefined ||
+      statusQuery.isFetching ||
+      statusQuery.error !== null
+    )
+      return;
+    writeCachedStatus(statusQuery.data);
+    setError(null);
+  }, [statusQuery.data, statusQuery.isFetching, statusQuery.error]);
+  useEffect(() => {
+    const next = configQuery.data;
+    if (
+      next === undefined ||
+      configQuery.isFetching ||
+      configQuery.error !== null
+    )
+      return;
+    const previous = appliedConfig.current;
+    if (
+      previous === null ||
+      previous.parentMode !== next.parentMode ||
+      CONFIG_FIELDS.some((field) => previous[field] !== next[field])
+    )
+      applyConfig(next);
+    setConfigErrors({
+      anthropicUpstreamBaseUrl: null,
+      codexUpstreamBaseUrl: null,
+      switchThreshold: null,
+    });
+    setError(null);
+  }, [
+    configQuery.data,
+    configQuery.isFetching,
+    configQuery.error,
+    applyConfig,
+  ]);
+  const displayError =
+    configQuery.error?.message ??
+    statusQuery.error?.message ??
+    enable.error?.message ??
+    disable.error?.message ??
+    routing.error?.message ??
+    reorder.error?.message ??
+    error;
   useEffect(() => {
     if (codexStep === null || loginDone !== null) return;
     const update = () =>
@@ -957,14 +1063,13 @@ function AccountPoolSettings() {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
-        const result = await rpc.call("codexLogin.poll", {
+        const result = await pollLogin({
           sessionId: codexStep.sessionId,
         });
         if (cancelled) return;
         if (result.status === "complete") {
           setLoginDone(result.account.label);
           setCodexStep(null);
-          await refresh();
         } else if (result.status === "error") {
           setCodexStep(null);
           setError(result.message);
@@ -978,7 +1083,7 @@ function AccountPoolSettings() {
       cancelled = true;
       if (timer !== null) clearTimeout(timer);
     };
-  }, [codexStep, loginDone, refresh, rpc]);
+  }, [codexStep, loginDone, pollLogin]);
   const accounts = status?.accounts ?? [];
   const selectedAccount =
     dialog?.kind === "account" ||
@@ -1006,7 +1111,6 @@ function AccountPoolSettings() {
     setError(null);
     try {
       await action();
-      await refresh();
     } catch (actionError) {
       setError(errorText(actionError));
     } finally {
@@ -1017,8 +1121,12 @@ function AccountPoolSettings() {
     return pending.get(key) ?? stored;
   }
   function accountPending(accountId: string): boolean {
-    return ACCOUNT_ACTIONS.some((action) =>
-      pending.has(`${action}-${accountId}`),
+    return (
+      (enable.isPending &&
+        enable.pendingInputs.some((input) => input.id === accountId)) ||
+      (disable.isPending &&
+        disable.pendingInputs.some((input) => input.id === accountId)) ||
+      ACCOUNT_ACTIONS.some((action) => pending.has(`${action}-${accountId}`))
     );
   }
   function updateConfigDraft(field: ConfigField, value: string): void {
@@ -1061,17 +1169,14 @@ function AccountPoolSettings() {
           ? { anthropicUpstreamBaseUrl: value }
           : { codexUpstreamBaseUrl: value };
     }
-    markPending(`config-${field}`, null);
     setConfigErrors((current) => ({ ...current, [field]: null }));
     try {
-      applyConfig(await rpc.call("config.set", update));
+      applyConfig(await mutations["config.set"](update));
     } catch (saveError) {
       setConfigErrors((current) => ({
         ...current,
         [field]: errorText(saveError),
       }));
-    } finally {
-      clearPending(`config-${field}`);
     }
   }
   async function startClaude(): Promise<void> {
@@ -1104,7 +1209,7 @@ function AccountPoolSettings() {
       return;
     }
     await run(`import-${provider}`, async () => {
-      await rpc.call("account.add", {
+      await mutations["account.add"]({
         provider,
         source: { kind: "import" },
         label: null,
@@ -1125,20 +1230,23 @@ function AccountPoolSettings() {
       setDialog({ kind: "remove", accountId: account.id });
       return;
     }
+    if (action === "toggle") {
+      setError(null);
+      await mutations[account.enabled ? "account.disable" : "account.enable"]({
+        id: account.id,
+      }).catch((actionError) => setError(errorText(actionError)));
+      return;
+    }
     await run(`${action}-${account.id}`, async () => {
-      if (action === "toggle")
-        await rpc.call(account.enabled ? "account.disable" : "account.enable", {
-          id: account.id,
-        });
       if (action === "refresh")
-        await rpc.call("account.refreshUsage", { accountId: account.id });
+        await mutations["account.refreshUsage"]({ accountId: account.id });
     });
   }
   async function reorderAccounts(
     provider: PoolProvider,
     event: DragEndEvent,
   ): Promise<void> {
-    if (pending.has(`order-${provider}`) || event.over === null) return;
+    if (reorder.isPending || event.over === null) return;
     const ids = accounts
       .filter((account) => account.provider === provider)
       .map((account) => account.id);
@@ -1146,13 +1254,11 @@ function AccountPoolSettings() {
     const to = ids.findIndex((id) => id === event.over?.id);
     if (from < 0 || to < 0 || from === to) return;
     const accountIds = arrayMove(ids, from, to);
-    setOptimisticOrder({ provider, ids: accountIds });
+    setError(null);
     try {
-      await run(`order-${provider}`, async () => {
-        await rpc.call("account.reorder", { provider, accountIds });
-      });
-    } finally {
-      setOptimisticOrder(null);
+      await reorder.mutate({ provider, accountIds });
+    } catch (actionError) {
+      setError(errorText(actionError));
     }
   }
   function closeDialog(): void {
@@ -1191,7 +1297,7 @@ function AccountPoolSettings() {
                 void run(
                   "parent-mode",
                   async () => {
-                    await rpc.call("config.set", {
+                    await mutations["config.set"]({
                       parentMode: enabled ? "proxy" : "isolate",
                     });
                   },
@@ -1211,12 +1317,15 @@ function AccountPoolSettings() {
           {status?.inFlight ?? 0} in flight · used by {hubHosts}
           {statusIsCached ? " · refreshing…" : null}
         </p>
-        {error === null ? null : (
+        {displayError === null ? null : (
           <div
             role="alert"
             className="rounded-md border border-destructive/40 bg-surface-destructive px-3 py-2 text-sm text-destructive-text"
           >
-            {error}
+            {displayError}
+            <Button variant="outline" size="sm" onClick={refresh}>
+              Retry
+            </Button>
           </div>
         )}
         {status !== null && !statusIsCached && accounts.length === 0 ? (
@@ -1244,21 +1353,9 @@ function AccountPoolSettings() {
           </div>
         ) : null}
         {PROVIDERS.map((provider) => {
-          const serverAccounts = accounts.filter(
+          const providerAccounts = accounts.filter(
             (account) => account.provider === provider.id,
           );
-          const order =
-            optimisticOrder?.provider === provider.id
-              ? optimisticOrder.ids
-              : null;
-          const providerAccounts =
-            order !== null &&
-            order.length === serverAccounts.length &&
-            serverAccounts.every((account) => order.includes(account.id))
-              ? order.flatMap((id) =>
-                  serverAccounts.filter((account) => account.id === id),
-                )
-              : serverAccounts;
           return (
             <SettingsSection
               key={provider.id}
@@ -1267,23 +1364,16 @@ function AccountPoolSettings() {
               action={
                 <div className="flex items-center gap-2">
                   <Switch
-                    checked={switchValue(
-                      `routing-${provider.id}`,
-                      status?.routing[provider.id] ?? true,
-                    )}
+                    checked={status?.routing[provider.id] ?? true}
                     aria-label={`Route ${provider.title} threads`}
-                    onCheckedChange={(enabled) =>
-                      void run(
-                        `routing-${provider.id}`,
-                        async () => {
-                          await rpc.call("routing.set", {
-                            provider: provider.id,
-                            enabled,
-                          });
-                        },
-                        enabled,
-                      )
-                    }
+                    onCheckedChange={(enabled) => {
+                      setError(null);
+                      void routing
+                        .mutate({ provider: provider.id, enabled })
+                        .catch((actionError) =>
+                          setError(errorText(actionError)),
+                        );
+                    }}
                   />
                   <AddAccountMenu
                     provider={provider.id}
@@ -1323,8 +1413,7 @@ function AccountPoolSettings() {
                             pending.has(`refresh-${account.id}`)
                           }
                           reorderDisabled={
-                            providerAccounts.length < 2 ||
-                            pending.has(`order-${provider.id}`)
+                            providerAccounts.length < 2 || reorder.isPending
                           }
                           onAction={(action) =>
                             void accountAction(account, action)
@@ -1448,7 +1537,7 @@ function AccountPoolSettings() {
                       variant="outline"
                       onClick={() =>
                         void run(`rotate-${host.hostId}`, async () => {
-                          await rpc.call("token.rotate", {
+                          await mutations["token.rotate"]({
                             machine: host.hostId,
                           });
                         })
@@ -1492,7 +1581,7 @@ function AccountPoolSettings() {
                   }
                   onClick={() =>
                     void run(`priority-${selectedAccount.id}`, async () => {
-                      await rpc.call("account.setPriority", {
+                      await mutations["account.setPriority"]({
                         accountId: selectedAccount.id,
                         priority: Number(priority),
                       });
@@ -1532,7 +1621,7 @@ function AccountPoolSettings() {
                   }
                   onClick={() =>
                     void run("api-key", async () => {
-                      await rpc.call("account.add", {
+                      await mutations["account.add"]({
                         provider: "claude",
                         source: { kind: "api-key", apiKey: apiKey.trim() },
                         label: null,
@@ -1576,7 +1665,7 @@ function AccountPoolSettings() {
                   disabled={pending.has(`remove-${selectedAccount.id}`)}
                   onClick={() =>
                     void run(`remove-${selectedAccount.id}`, async () => {
-                      await rpc.call("account.remove", {
+                      await mutations["account.remove"]({
                         id: selectedAccount.id,
                       });
                       setDialog(null);
@@ -1612,7 +1701,7 @@ function AccountPoolSettings() {
             complete={() =>
               void run("complete-claude", async () => {
                 if (loginStep === null) return;
-                const added = await rpc.call("login.complete", {
+                const added = await mutations["login.complete"]({
                   sessionId: loginStep.sessionId,
                   pasted: pastedCode,
                 });

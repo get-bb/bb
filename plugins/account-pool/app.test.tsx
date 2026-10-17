@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { accountPoolRpcContract } from "./src/rpc.js";
 import type {
   AccountPoolConfig,
   AccountSummary,
@@ -124,6 +131,7 @@ function render(
     app.settingsSections[0]!,
     {},
     {
+      experimental_rpcContract: accountPoolRpcContract,
       rpc: {
         "status.get": () => status(accounts),
         "config.get": () => config(),
@@ -345,7 +353,57 @@ describe("Account Pool settings", () => {
         await slot.findByRole("button", { name: "person@example.com actions" }),
       );
       fireEvent.click(await slot.findByText(action));
-      expect(slot.rpcCalls).toContainEqual({ method, input });
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({ method, input }),
+      );
+    },
+  );
+
+  it.each([true, false])(
+    "predicts account enabled=%s and rolls back a rejected write",
+    async (enabled) => {
+      const write = deferred<{ account: AccountSummary | null }>();
+      const slot = render(
+        [
+          account({ enabled, status: enabled ? "ready" : "disabled" }),
+          account({
+            id: "22222222-2222-4222-8222-222222222222",
+            label: "Other",
+          }),
+        ],
+        {
+          [enabled ? "account.disable" : "account.enable"]: () => write.promise,
+        },
+      );
+      const previous = enabled ? "Ready" : "Disabled";
+      const predicted = enabled ? "Disabled" : "Ready";
+      const details = () =>
+        within(slot.getByRole("button", { name: "Open person@example.com" }));
+      await waitFor(() => expect(details().getByText(previous)).toBeTruthy());
+      fireEvent.pointerDown(
+        slot.getByRole("button", { name: "person@example.com actions" }),
+      );
+      fireEvent.click(await slot.findByText(enabled ? "Disable" : "Enable"));
+      await waitFor(() => expect(details().getByText(predicted)).toBeTruthy());
+      expect(details().queryByText(previous)).toBeNull();
+      expect(
+        slot
+          .getByRole("button", { name: "Reorder person@example.com" })
+          .hasAttribute("disabled"),
+      ).toBe(true);
+      expect(
+        slot
+          .getByRole("button", { name: "Reorder Other" })
+          .hasAttribute("disabled"),
+      ).toBe(false);
+      await act(async () => write.reject(new Error("Toggle rejected")));
+      await slot.findByText("Toggle rejected");
+      expect(details().getByText(previous)).toBeTruthy();
+      expect(
+        slot
+          .getByRole("button", { name: "Reorder person@example.com" })
+          .hasAttribute("disabled"),
+      ).toBe(false);
     },
   );
 
@@ -362,10 +420,12 @@ describe("Account Pool settings", () => {
       false,
     );
     fireEvent.click(slot.getByRole("button", { name: "Remove" }));
-    expect(slot.rpcCalls).toContainEqual({
-      method: "account.remove",
-      input: { id: account().id },
-    });
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "account.remove",
+        input: { id: account().id },
+      }),
+    );
   });
 
   it("opens the correct provider sign-in flow from each Add account menu", async () => {
@@ -402,19 +462,47 @@ describe("Account Pool settings", () => {
     ).toContain("ABCD-1234");
   });
 
-  it("persists provider routing from the section switch", async () => {
-    const slot = render([account()], {
-      "routing.set": () => ({ provider: "claude", enabled: false }),
+  it("predicts provider routing and rolls back a rejected write", async () => {
+    const write = deferred<{ provider: "claude"; enabled: boolean }>();
+    const slot = render([account()], { "routing.set": () => write.promise });
+    await slot.findByText("person@example.com");
+    const control = await slot.findByRole("switch", {
+      name: "Route Claude threads",
     });
-    fireEvent.click(
-      await slot.findByRole("switch", { name: "Route Claude threads" }),
-    );
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "routing.set",
-        input: { provider: "claude", enabled: false },
-      }),
-    );
+    expect(control.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(control);
+    expect(control.getAttribute("aria-checked")).toBe("false");
+    expect(control.hasAttribute("disabled")).toBe(false);
+    await act(async () => write.reject(new Error("Routing unavailable")));
+    await slot.findByText("Routing unavailable");
+    expect(control.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("keeps a saved config draft visible until its re-read lands", async () => {
+    const write = deferred<AccountPoolConfig>();
+    const read = deferred<AccountPoolConfig>();
+    let saved = false;
+    const next = config({ switchThreshold: 0.86 });
+    const slot = render([account()], {
+      "config.get": () => (saved ? read.promise : config()),
+      "config.set": async () => {
+        const result = await write.promise;
+        saved = true;
+        return result;
+      },
+    });
+    fireEvent.click(await slot.findByRole("button", { name: "Advanced" }));
+    const input = await slot.findByLabelText("Quota switch threshold");
+    if (!(input instanceof HTMLInputElement))
+      throw new Error("Expected threshold input");
+    await waitFor(() => expect(input.value).toBe("0.98"));
+    fireEvent.change(input, { target: { value: "0.86" } });
+    fireEvent.blur(input);
+    expect(input.value).toBe("0.86");
+    await act(async () => write.resolve(next));
+    expect(input.value).toBe("0.86");
+    await act(async () => read.resolve(next));
+    expect(input.value).toBe("0.86");
   });
 
   it("edits Advanced config fields and shows URL validation inline", async () => {
@@ -736,6 +824,7 @@ describe("Account Pool settings", () => {
 
   it("restores the displayed order and reports a rejected reorder", async () => {
     measureAccountRows();
+    const write = deferred<null>();
     const slot = render(
       [
         account({ label: "First" }),
@@ -745,14 +834,22 @@ describe("Account Pool settings", () => {
         }),
       ],
       {
-        "account.reorder": () => {
-          throw new Error("Refresh the account list and try again.");
-        },
+        "account.reorder": () => write.promise,
       },
     );
     const handle = await slot.findByRole("button", { name: "Reorder First" });
     await keyboardMove(handle);
     fireEvent.keyDown(document, { code: "Space" });
+    await waitFor(() =>
+      expect(
+        slot
+          .getAllByRole("button", { name: /Reorder/ })
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual(["Reorder Second", "Reorder First"]),
+    );
+    await act(async () =>
+      write.reject(new Error("Refresh the account list and try again.")),
+    );
     expect(
       await slot.findByText("Refresh the account list and try again."),
     ).toBeTruthy();
@@ -794,3 +891,43 @@ describe("Account Pool settings", () => {
     },
   );
 });
+
+it.each([false, true])(
+  "shows configuration failures with Retry and preserves an existing draft (loaded=%s)",
+  async (loaded) => {
+    let failed = !loaded;
+    const slot = render([account()], {
+      "config.get": () => {
+        if (failed) throw new Error("Configuration unavailable");
+        return config();
+      },
+    });
+    let input: HTMLInputElement | null = null;
+    if (loaded) {
+      fireEvent.click(await slot.findByRole("button", { name: "Advanced" }));
+      const field = await slot.findByLabelText("Anthropic upstream base URL");
+      if (!(field instanceof HTMLInputElement))
+        throw new Error("Expected config input");
+      input = field;
+      fireEvent.change(input, {
+        target: { value: "https://draft.example.com" },
+      });
+      failed = true;
+      await act(async () => {
+        await slot.experimental_invalidateRpc(["config"]);
+      });
+    }
+    await slot.findByText("Configuration unavailable", {}, { timeout: 12_000 });
+    if (input) expect(input.value).toBe("https://draft.example.com");
+    failed = false;
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(slot.queryByText("Configuration unavailable")).toBeNull(),
+    );
+    if (input) {
+      expect(slot.getByLabelText("Anthropic upstream base URL")).toBe(input);
+      expect(input.value).toBe("https://draft.example.com");
+    }
+  },
+  20_000,
+);

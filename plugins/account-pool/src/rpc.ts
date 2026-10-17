@@ -29,48 +29,59 @@ import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 export const accountPoolRpcContract = defineRpcContract({
   "account.add": {
+    invalidates: () => ["accounts"],
     input: accountAddInputSchema,
     output: accountSchema,
   },
   "account.list": {
+    tags: () => ["accounts"],
     input: z.null(),
     output: z.array(accountSummarySchema),
   },
   "account.remove": {
+    invalidates: () => ["accounts"],
     input: accountIdInputSchema,
     output: z.object({ removed: z.boolean() }).strict(),
   },
   "account.enable": {
+    invalidates: () => ["accounts"],
     input: accountIdInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
   "account.disable": {
+    invalidates: () => ["accounts"],
     input: accountIdInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
   "account.setPriority": {
+    invalidates: () => ["accounts"],
     input: accountPriorityInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
   "account.reorder": {
+    invalidates: () => ["accounts"],
     input: accountReorderInputSchema,
     output: z.null(),
   },
   "account.refreshUsage": {
+    invalidates: () => ["accounts"],
     input: z.object({ accountId: z.string().uuid() }).strict(),
     output: z.object({ account: accountSummarySchema.nullable() }).strict(),
   },
   "routing.set": {
+    invalidates: () => ["accounts"],
     input: routingSetInputSchema,
     output: z
       .object({ provider: z.enum(["claude", "codex"]), enabled: z.boolean() })
       .strict(),
   },
   "config.get": {
+    tags: () => ["config"],
     input: z.null(),
     output: accountPoolConfigSchema,
   },
   "config.set": {
+    invalidates: () => ["config", "accounts"],
     input: accountPoolConfigSetInputSchema,
     output: accountPoolConfigSchema,
   },
@@ -79,6 +90,7 @@ export const accountPoolRpcContract = defineRpcContract({
     output: loginStartSchema,
   },
   "login.complete": {
+    invalidates: () => ["accounts"],
     input: loginCompleteInputSchema,
     output: accountSchema,
   },
@@ -87,6 +99,8 @@ export const accountPoolRpcContract = defineRpcContract({
     output: codexLoginStartSchema,
   },
   "codexLogin.poll": {
+    invalidates: (_input, output) =>
+      output.status === "complete" ? ["accounts"] : [],
     input: codexLoginPollInputSchema,
     output: codexLoginPollSchema,
   },
@@ -95,18 +109,22 @@ export const accountPoolRpcContract = defineRpcContract({
     output: codexLoginCancelSchema,
   },
   "status.get": {
+    tags: () => ["accounts", "config"],
     input: z.null(),
     output: statusSchema,
   },
   "status.routedThreads": {
+    tags: () => ["accounts", "config"],
     input: z.null(),
     output: routedThreadStatusListSchema,
   },
   "token.rotate": {
+    invalidates: () => ["accounts"],
     input: tokenRotateInputSchema,
     output: hubTokenSummarySchema,
   },
   "bypass.set": {
+    invalidates: () => ["accounts"],
     input: bypassInputSchema,
     output: bypassInputSchema,
   },
