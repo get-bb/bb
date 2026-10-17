@@ -258,6 +258,7 @@ export function BottomAnchoredScrollBody({
     trailingTimeout: number | null;
   }>({ lastWriteAt: 0, trailingTimeout: null });
   const userDetachedFromBottomRef = useRef(false);
+  const lastObservedScrollTopRef = useRef(0);
   const maxScrollOffsetRef = useRef(0);
   const resizeObserverHasDeliveredRef = useRef(false);
   const observedScrollGeometryRef = useRef<{
@@ -735,6 +736,11 @@ export function BottomAnchoredScrollBody({
     const hasDirectUserScrollInput =
       userScrollInputPendingRef.current || pointerScrollIntentRef.current;
     userScrollInputPendingRef.current = false;
+    const scrollTop = scrollArea.scrollTop;
+    const movedUpWhileSticking =
+      shouldStickToBottomRef.current &&
+      scrollTop < lastObservedScrollTopRef.current - BOTTOM_ANCHOR_THRESHOLD_PX;
+    lastObservedScrollTopRef.current = scrollTop;
 
     if (scrollToTopInProgressRef.current) {
       if (scrollArea.scrollTop <= 0) scrollToTopInProgressRef.current = false;
@@ -757,16 +763,16 @@ export function BottomAnchoredScrollBody({
 
     let nearBottom = isScrolledNearBottom(
       readMaxScrollOffset(scrollArea),
-      scrollArea.scrollTop,
+      scrollTop,
     );
     if (
       !nearBottom &&
       shouldStickToBottomRef.current &&
-      hasRecentUserScrollIntent()
+      (hasRecentUserScrollIntent() || movedUpWhileSticking)
     ) {
       nearBottom = isScrolledNearBottom(
         refreshMaxScrollOffset(scrollArea),
-        scrollArea.scrollTop,
+        scrollTop,
       );
     }
 
@@ -775,7 +781,7 @@ export function BottomAnchoredScrollBody({
       return;
     }
 
-    if (!hasRecentUserScrollIntent()) return;
+    if (!hasRecentUserScrollIntent() && !movedUpWhileSticking) return;
 
     userDetachedFromBottomRef.current = true;
     shouldStickToBottomRef.current = false;

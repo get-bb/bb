@@ -1024,6 +1024,62 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(150);
   });
 
+  it("stays where the reader scrolled up without a recognized input event", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    mockScrollAreaRect(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+    fireEvent.scroll(scrollArea);
+
+    scrollArea.scrollTop = 150;
+    fireEvent.scroll(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 430,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
+  it("stays pinned when a content shrink clamps the viewport without user input", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    mockScrollAreaRect(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+    fireEvent.scroll(scrollArea);
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 200,
+      clientHeight: 100,
+      scrollTop: 100,
+    });
+    fireEvent.scroll(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 250,
+      clientHeight: 100,
+      scrollTop: 100,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
   it("tracks isAtBottom transitions against the cache refreshed by resizes", () => {
     const { scrollArea, rowElements } = renderTimeline({
       threadId: "thread-a",
