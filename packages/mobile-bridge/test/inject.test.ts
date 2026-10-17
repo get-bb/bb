@@ -113,6 +113,31 @@ describe("buildBridgeInjectionScript", () => {
     expect(native.capabilities).toContain("share");
   });
 
+  it("locks the native shell viewport at its initial scale", () => {
+    let content =
+      "width=device-width, initial-scale=1.0, maximum-scale=3, viewport-fit=cover";
+    let ready: (() => void) | undefined;
+    const viewport = {
+      getAttribute: (name: string) => (name === "content" ? content : null),
+      setAttribute: (name: string, value: string) => {
+        if (name === "content") content = value;
+      },
+    };
+    const document = {
+      querySelector: () => viewport,
+      addEventListener: (type: string, listener: () => void) => {
+        if (type === "DOMContentLoaded") ready = listener;
+      },
+    };
+
+    installBridge({}, { document });
+    ready?.();
+
+    expect(content).toBe(
+      "width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no",
+    );
+  });
+
   it("posts a request the shell can parse, and resolves it on the reply", async () => {
     const { native, posted, run } = installBridge();
     const promise = native.request("share", {
