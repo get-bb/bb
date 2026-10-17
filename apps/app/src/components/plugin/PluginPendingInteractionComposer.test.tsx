@@ -554,7 +554,7 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.getByText("Requested by secrets")).toBeDefined();
   });
 
-  it("names the agent as the asker for a provider-origin request", () => {
+  it("omits the plugin attribution for a provider-origin request", () => {
     registerSecretsBranding("Secrets");
     markPluginFrontendsSettled();
     renderComposer(
@@ -565,9 +565,7 @@ describe("PluginPendingInteractionComposer", () => {
         origin="provider"
       />,
     );
-    expect(
-      screen.getByText("Asked by the agent through Secrets"),
-    ).toBeDefined();
+    expect(screen.queryByText(/Secrets/)).toBeNull();
     expect(screen.getByRole("button", { name: "Stop turn" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
