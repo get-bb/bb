@@ -16,7 +16,7 @@ import {
   type PluginRpcTestHandlers,
 } from "@get-bb/plugin-sdk/testing/app";
 
-import type { rpcContract } from "./server";
+import { rpcContract } from "./server";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -53,14 +53,17 @@ const ENDLESS_CATALOG: Catalog = {
 interface Deferred<T> {
   promise: Promise<T>;
   resolve(value: T): void;
+  reject(error: Error): void;
 }
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 class ResizeObserverStub {
@@ -150,7 +153,11 @@ function renderPreview(
   rpc: PluginRpcTestHandlers<typeof rpcContract>,
   subPath = "thread",
 ) {
-  return renderSlot(panel, { subPath }, { rpc });
+  return renderSlot(
+    panel,
+    { subPath },
+    { rpc, experimental_rpcContract: rpcContract },
+  );
 }
 
 function themeControl(): HTMLButtonElement {
@@ -354,9 +361,11 @@ describe("Theme Preview", () => {
           .getByRole("button", { name: "Appearance" })
           .getAttribute("aria-current"),
       ).toBe("page");
-      expect(
-        within(settings).getByRole("button", { name: "Palette" }).textContent,
-      ).toContain("Default");
+      await waitFor(() =>
+        expect(
+          within(settings).getByRole("button", { name: "Palette" }).textContent,
+        ).toContain("Default"),
+      );
       expect(
         within(settings).getByRole("switch", { name: "Fade inactive splits" }),
       ).toBeDefined();
@@ -703,9 +712,7 @@ describe("Theme Preview", () => {
       screen.queryByRole("textbox", { name: "Search threads" }),
     ).toBeNull();
     fireEvent.click(components);
-    expect(screen.getByRole("textbox", { name: "Search threads" })).toBe(
-      search,
-    );
+    expect(screen.getByPlaceholderText("Search threads…")).toBe(search);
     expect((search as HTMLInputElement).value).toBe("endless color");
     expect(
       screen
@@ -818,86 +825,63 @@ describe("Theme Preview", () => {
     }
   });
 
-  it("keeps the last resolved catalog across route remounts instead of flashing an empty picker", async () => {
-    const first = renderPreview({
-      themeCatalog: () => DEFAULT_CATALOG,
-      setTheme: () => DEFAULT_CATALOG,
+  it("refreshes another client's selection and keeps preview input", async () => {
+    let current = DEFAULT_CATALOG;
+    const slot = renderPreview({
+      themeCatalog: () => current,
+      setTheme: () => current,
     });
     await screen.findByRole("combobox", { name: /Default/i });
-    first.lifecycle.unmount();
-
-    const refresh = deferred<Catalog>();
-    renderPreview({
-      themeCatalog: () => refresh.promise,
-      setTheme: () => DEFAULT_CATALOG,
-    });
-
-    expect(screen.getByRole("combobox", { name: /Default/i })).toBeDefined();
-    expect(
-      screen.queryByRole("combobox", { name: "Loading themes" }),
-    ).toBeNull();
-    await act(async () => refresh.resolve(DEFAULT_CATALOG));
+    const input = screen.getByPlaceholderText("Search threads…");
+    fireEvent.change(input, { target: { value: "keep this draft" } });
+    current = ENDLESS_CATALOG;
+    await slot.experimental_invalidateRpc(["catalog"]);
+    await screen.findByRole("combobox", { name: /Endless Color/i });
+    expect(screen.getByPlaceholderText("Search threads…")).toBe(input);
+    expect((input as HTMLInputElement).value).toBe("keep this draft");
   });
 
-  it("queues one immediate refresh when change signals arrive during a stale catalog request", async () => {
-    const stale = deferred<Catalog>();
-    let catalogCalls = 0;
-    const slot = renderPreview({
-      themeCatalog: () => {
-        catalogCalls += 1;
-        return catalogCalls === 1 ? stale.promise : ENDLESS_CATALOG;
-      },
-      setTheme: () => ENDLESS_CATALOG,
-    });
-
-    await waitFor(() => expect(catalogCalls).toBe(1));
-    await slot.behavior.emitRealtime("theme-preview:changed", null);
-    await slot.behavior.emitRealtime("theme-preview:changed", null);
-
-    await act(async () => stale.resolve(DEFAULT_CATALOG));
-
-    await waitFor(() => expect(catalogCalls).toBe(2));
-    expect(
-      screen.getByRole("combobox", { name: /Endless Color/i }),
-    ).toBeDefined();
-    expect(catalogCalls).toBe(2);
-  });
-
-  it("times out a stuck catalog request and lets the queued refresh recover", async () => {
-    vi.useFakeTimers();
-    const stuck = deferred<Catalog>();
-    let catalogCalls = 0;
-    renderPreview({
-      themeCatalog: () => {
-        catalogCalls += 1;
-        return catalogCalls === 1 ? stuck.promise : ENDLESS_CATALOG;
-      },
-      setTheme: () => ENDLESS_CATALOG,
-    });
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(catalogCalls).toBe(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-
-    expect(catalogCalls).toBe(2);
-    expect(
-      screen.getByRole("combobox", { name: /Endless Color/i }),
-    ).toBeDefined();
-  });
+  it.each([false, true])(
+    "offers Retry after a catalog error, loaded: %s",
+    async (loaded) => {
+      let fail = !loaded;
+      const slot = renderPreview({
+        themeCatalog: () => {
+          if (fail) throw new Error("Catalog unavailable");
+          return DEFAULT_CATALOG;
+        },
+        setTheme: () => DEFAULT_CATALOG,
+      });
+      if (loaded) {
+        await screen.findByRole("combobox", { name: /Default/i });
+        fail = true;
+        await slot.experimental_invalidateRpc(["catalog"]);
+      }
+      await screen.findByText("Catalog unavailable", {}, { timeout: 10_000 });
+      const control = themeControl();
+      if (loaded) expect(control.textContent).toContain("Default");
+      fail = false;
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await waitFor(() =>
+        expect(screen.queryByText("Catalog unavailable")).toBeNull(),
+      );
+      expect(themeControl()).toBe(control);
+      expect(control.textContent).toContain("Default");
+    },
+  );
 
   it("owns a visible pending state and blocks duplicate selections", async () => {
     const pending = deferred<Catalog>();
+    let current = DEFAULT_CATALOG;
     let selectionCalls = 0;
     renderPreview({
-      themeCatalog: () => DEFAULT_CATALOG,
+      themeCatalog: () => current,
       setTheme: () => {
         selectionCalls += 1;
-        return pending.promise;
+        return pending.promise.then((next) => {
+          current = next;
+          return next;
+        });
       },
     });
 
@@ -924,22 +908,31 @@ describe("Theme Preview", () => {
     );
   });
 
-  it("keeps a failed selection recoverable beside the owning control", async () => {
+  it("predicts a selection, rolls back a failed write, and offers Retry", async () => {
+    const write = deferred<Catalog>();
+    let current = DEFAULT_CATALOG;
     let selectionCalls = 0;
     renderPreview({
-      themeCatalog: () => DEFAULT_CATALOG,
+      themeCatalog: () => current,
       setTheme: () => {
         selectionCalls += 1;
-        if (selectionCalls === 1) throw new Error("rpc disconnected");
-        return ENDLESS_CATALOG;
+        if (selectionCalls === 1) return write.promise;
+        current = ENDLESS_CATALOG;
+        return current;
       },
     });
 
     await chooseEndlessDark();
 
+    expect(
+      (await screen.findByRole("combobox", { name: /Applying Endless Color/i }))
+        .textContent,
+    ).toContain("Endless Color");
+    await act(async () => write.reject(new Error("rpc disconnected")));
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Theme didn’t apply",
     );
+    expect(themeControl().textContent).toContain("Default");
     fireEvent.click(screen.getByRole("button", { name: "Retry theme" }));
     await waitFor(() =>
       expect(
@@ -972,6 +965,9 @@ describe("Theme Preview", () => {
     if (!endless) throw new Error("Endless Color option was not rendered");
     pickOption(endless);
 
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(control.disabled).toBe(true);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20_000);

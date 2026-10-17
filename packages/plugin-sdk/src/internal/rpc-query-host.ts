@@ -100,6 +100,36 @@ const owners = new WeakMap<
   QueryClient,
   Map<string, ReturnType<typeof createTaggedKeyedQueryOwner<JsonValue>>>
 >();
+async function callWithDeadline(
+  host: RpcQueryHost,
+  pluginId: string,
+  method: string,
+  input: JsonValue,
+  timeoutMs: number | undefined,
+) {
+  if (timeoutMs === undefined) return host.call(pluginId, method, input);
+  const deadlineMs = z.number().positive().finite().parse(timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      host.call(pluginId, method, input),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `RPC "${method}" timed out after ${deadlineMs / 1000} seconds`,
+              ),
+            ),
+          deadlineMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
   function useSubscription(
     host: RpcQueryHost,
@@ -130,7 +160,13 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         queryFn: () =>
           runTaggedRead(host.queryClient, queryKey, async () =>
             envelopeSchema.parse(
-              await host.call(pluginId, options.method, input),
+              await callWithDeadline(
+                host,
+                pluginId,
+                options.method,
+                input,
+                options.timeoutMs,
+              ),
             ),
           ),
       },
@@ -280,10 +316,12 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
       async (input) => {
         const response = envelopeSchema.parse(
-          await host.call(
+          await callWithDeadline(
+            host,
             pluginId,
             options.method,
             jsonValueSchema.parse(input),
+            options.timeoutMs,
           ),
         );
         return {

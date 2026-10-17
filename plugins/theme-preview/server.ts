@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
@@ -35,10 +35,15 @@ const catalogSchema = z
   .strict();
 
 export const rpcContract = defineRpcContract({
-  themeCatalog: { input: z.object({}).strict(), output: catalogSchema },
+  themeCatalog: {
+    input: z.object({}).strict(),
+    output: catalogSchema,
+    tags: () => ["catalog"],
+  },
   setTheme: {
     input: z.object({ themeId: z.string().min(1) }).strict(),
     output: catalogSchema,
+    invalidates: () => ["catalog"],
   },
 });
 
@@ -633,51 +638,116 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.service("theme-watch", {
     async start(signal) {
-      let watcher: FSWatcher | null = null;
+      const watchers: FSWatcher[] = [];
       let timer: ReturnType<typeof setTimeout> | null = null;
-      try {
-        const raw = (await bb.sdk.theme.catalog({ signal })) as {
-          dir?: unknown;
-        };
-        if (signal.aborted) return;
-        const dir = typeof raw?.dir === "string" ? raw.dir : null;
-        if (!dir) return;
-        const onChange = () => {
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(async () => {
-            try {
-              const next = await catalog();
-              bb.realtime.publish("theme-preview:changed", {
-                revision: next.revision,
-                at: Date.now(),
-              });
-            } catch (error) {
+      const onChange = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          void catalog()
+            .catch((error) =>
               bb.log.warn(
                 `theme-preview: watch refresh failed: ${String(error)}`,
+              ),
+            )
+            .finally(() => {
+              if (!signal.aborted) bb.rpc.experimental_invalidate(["catalog"]);
+            });
+        }, 120);
+      };
+      const refreshRoots = async () => {
+        for (const watcher of watchers.splice(0)) watcher.close();
+        const [themes, plugins] = await Promise.all([
+          bb.sdk.theme.catalog({ signal }),
+          bb.sdk.plugins.list({ signal }),
+        ]);
+        const roots = new Set([themes.dir]);
+        for (const entry of plugins.plugins) {
+          try {
+            const manifest = z
+              .object({
+                bb: z
+                  .object({
+                    themes: z.array(z.object({ css: z.string() })).default([]),
+                  })
+                  .optional(),
+              })
+              .parse(
+                JSON.parse(
+                  await readFile(
+                    resolve(entry.rootDir, "package.json"),
+                    "utf8",
+                  ),
+                ),
               );
-            }
-          }, 120);
-        };
-        try {
-          watcher = watch(dir, { recursive: true }, onChange);
-          watcher.on("error", (error) =>
-            bb.log.warn(`theme-preview: watcher error: ${String(error)}`),
-          );
-          bb.log.info(`theme-preview: watching ${dir}`);
-        } catch (error) {
-          bb.log.warn(`theme-preview: cannot watch ${dir}: ${String(error)}`);
-          return;
+            for (const theme of manifest.bb?.themes ?? [])
+              roots.add(dirname(resolve(entry.rootDir, theme.css)));
+          } catch (error) {
+            bb.log.warn(
+              `theme-preview: theme roots unavailable: ${String(error)}`,
+            );
+          }
         }
-        await new Promise<void>((resolve) => {
-          if (signal.aborted) resolve();
-          else
-            signal.addEventListener("abort", () => resolve(), { once: true });
-        });
+        for (const root of roots) {
+          if (signal.aborted) return;
+          try {
+            let ancestor = dirname(root);
+            for (;;) {
+              try {
+                await stat(ancestor);
+                break;
+              } catch (error) {
+                const parent = dirname(ancestor);
+                if (parent === ancestor) throw error;
+                ancestor = parent;
+              }
+            }
+            if (signal.aborted) return;
+            const watcher = watch(
+              ancestor,
+              { recursive: true },
+              (_event, file) => {
+                const changed =
+                  file === null ? root : resolve(ancestor, String(file));
+                if (
+                  changed === root ||
+                  changed.startsWith(root + sep) ||
+                  root.startsWith(changed + sep)
+                )
+                  onChange();
+              },
+            );
+            watcher.on("error", (error) => bb.log.warn(String(error)));
+            watchers.push(watcher);
+          } catch (error) {
+            bb.log.warn(
+              `theme-preview: cannot watch ${root}: ${String(error)}`,
+            );
+          }
+        }
+      };
+      const stop = bb.sdk.subscribe({
+        event: "system:changed",
+        callback: (event) => {
+          if (event.changes.includes("config-changed")) onChange();
+          if (event.changes.includes("plugins-changed")) {
+            onChange();
+            void refreshRoots().catch((error) => bb.log.warn(String(error)));
+          }
+        },
+      });
+      try {
+        await refreshRoots();
+        if (!signal.aborted) await catalog();
+        if (!signal.aborted)
+          await new Promise<void>((resolve) =>
+            signal.addEventListener("abort", () => resolve(), { once: true }),
+          );
       } catch (error) {
         if (!signal.aborted) throw error;
       } finally {
+        stop();
         if (timer) clearTimeout(timer);
-        watcher?.close();
+        for (const watcher of watchers) watcher.close();
       }
     },
   });

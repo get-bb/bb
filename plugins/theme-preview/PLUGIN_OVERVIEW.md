@@ -6,7 +6,7 @@ See a custom theme on real bb screens before you commit to it, and find contrast
 - Mock **Thread**, **Split**, and **Settings** screens painted with the selected theme.
 - **Overlays** and **Components** sections with dialogs, menus, buttons, inputs, and status chips.
 - A **Style sheet** that lists each resolved token with its value and a WCAG contrast ratio against the surface it sits on.
-- A live reload. While the panel is open, each save of the active theme file repaints the app and the preview.
+- A live reload. Each save of the active theme file repaints the app, even with the panel closed. The preview receives live catalog updates without polling; failed reads keep the current preview and offer Retry.
 
 ## How it works
 

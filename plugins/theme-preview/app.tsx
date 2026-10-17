@@ -1,8 +1,8 @@
 import {
   definePluginApp,
   useBbNavigate,
-  useRealtime,
-  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
 } from "@get-bb/plugin-sdk/app";
 import { Badge as BbBadge } from "@/components/ui/badge";
 import { Button as BbButton } from "@/components/ui/button";
@@ -89,7 +89,7 @@ import {
   type FrameComposition,
   type LayoutBand,
 } from "./responsive-layout";
-import { LatestRequest, contrastRatio } from "./theme-utils";
+import { contrastRatio } from "./theme-utils";
 import {
   AREA_TITLES,
   COLOR_GROUPS,
@@ -120,25 +120,6 @@ const VIEW_LABEL = Object.fromEntries(
 const STUDIO_MAX_WIDTH = 1600;
 const MOCK_PROVIDER_ICON_URL =
   "/api/v1/plugins/provider-claude-code/assets/icon";
-const CLIENT_RPC_TIMEOUT_MS = 20_000;
-
-function withRpcTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timeout = setTimeout(
-      () =>
-        reject(
-          new Error(
-            `${label} timed out after ${CLIENT_RPC_TIMEOUT_MS / 1000} seconds`,
-          ),
-        ),
-      CLIENT_RPC_TIMEOUT_MS,
-    );
-  });
-  return Promise.race([operation, deadline]).finally(() => {
-    if (timeout !== undefined) clearTimeout(timeout);
-  });
-}
 
 type Mode = "light" | "dark";
 type ThemeSelection = { themeId: string; mode: Mode };
@@ -3048,16 +3029,6 @@ type Catalog = {
 };
 
 const EMPTY_CATALOG: Catalog = { activeThemeId: null, themes: [], revision: 0 };
-let catalogSnapshot: Catalog = EMPTY_CATALOG;
-
-function commitCatalog(
-  next: Catalog,
-  update: (catalog: Catalog) => void,
-): void {
-  catalogSnapshot = next;
-  update(next);
-}
-
 const CHIP_KEYS = ["sidebar", "canvas", "card", "primary", "accent"] as const;
 
 function Chips({
@@ -3174,7 +3145,7 @@ function ThemePicker({
   catalog,
   computed,
   mode,
-  pendingSelection,
+  selectionPending,
   selectionSlow,
   selectionFailed,
   onPick,
@@ -3183,14 +3154,14 @@ function ThemePicker({
   catalog: Catalog;
   computed: Computed;
   mode: Mode;
-  pendingSelection: ThemeSelection | null;
+  selectionPending: boolean;
   selectionSlow: boolean;
   selectionFailed: boolean;
   onPick: (themeId: string, mode: Mode) => void;
   onRetry: () => void;
 }) {
-  const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
-  const displayMode = pendingSelection?.mode ?? mode;
+  const displayThemeId = catalog.activeThemeId;
+  const displayMode = mode;
   const current =
     catalog.themes.find((theme) => theme.id === displayThemeId) ??
     catalog.themes[0];
@@ -3201,7 +3172,7 @@ function ThemePicker({
     : null;
   const measured = (name: string): string | null => computed[name]?.rgb || null;
   const currentSwatch: Swatch | null =
-    pendingSelection === null && current?.id === catalog.activeThemeId
+    !selectionPending && current?.id === catalog.activeThemeId
       ? {
           canvas: diskSwatch?.canvas ?? measured("canvas"),
           sidebar: diskSwatch?.sidebar ?? measured("sidebar"),
@@ -3213,7 +3184,7 @@ function ThemePicker({
           fontMono: diskSwatch?.fontMono ?? null,
         }
       : diskSwatch;
-  const pending = pendingSelection !== null;
+  const pending = selectionPending;
   const unavailable = pending;
   const loading = catalog.themes.length === 0;
   const accessibleName = loading
@@ -3380,7 +3351,29 @@ function useColorMode(): [Mode, (next: Mode) => void] {
 }
 
 function PreviewPage({ subPath }: { subPath: string }) {
-  const rpc = useRpc<typeof rpcContract>();
+  const catalogQuery = experimental_useRpcQuery<
+    typeof rpcContract,
+    "themeCatalog"
+  >({
+    method: "themeCatalog",
+    input: {},
+    timeoutMs: 20_000,
+  });
+  const selectionMutation = experimental_useRpcMutation<
+    typeof rpcContract,
+    "setTheme"
+  >({
+    method: "setTheme",
+    timeoutMs: 20_000,
+    optimistic(input, cache) {
+      cache.update("themeCatalog", {}, (current) => ({
+        ...current,
+        activeThemeId: input.themeId,
+      }));
+    },
+  });
+  const catalog = catalogQuery.data ?? EMPTY_CATALOG;
+  const error = catalogQuery.error?.message;
   const [mode, setMode] = useColorMode();
   const navigate = useBbNavigate();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -3390,19 +3383,11 @@ function PreviewPage({ subPath }: { subPath: string }) {
     band: "mobile",
     width: 0,
   });
-  const [catalog, setCatalog] = useState<Catalog>(() => catalogSnapshot);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingSelection, setPendingSelection] =
-    useState<ThemeSelection | null>(null);
+  const selectionPending = selectionMutation.isPending;
   const [failedSelection, setFailedSelection] = useState<ThemeSelection | null>(
     null,
   );
   const [selectionSlow, setSelectionSlow] = useState(false);
-  const catalogRequests = useRef(new LatestRequest());
-  const selectionPending = useRef(false);
-  const catalogLoadPending = useRef(false);
-  const catalogLoadQueued = useRef(false);
-
   const requestedView = useMemo<View>(() => {
     const first = subPath.split("/").filter(Boolean)[0] ?? "";
     return (VIEWS as readonly string[]).includes(first)
@@ -3410,60 +3395,19 @@ function PreviewPage({ subPath }: { subPath: string }) {
       : "thread";
   }, [subPath]);
 
-  const loadRef = useRef<() => void>(() => {});
   useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      if (selectionPending.current || catalogLoadPending.current) {
-        catalogLoadQueued.current = true;
-        return;
-      }
-      catalogLoadQueued.current = false;
-      catalogLoadPending.current = true;
-      const request = catalogRequests.current.begin();
-      withRpcTimeout(rpc.call("themeCatalog", {}), "Theme catalog")
-        .then((c) => {
-          if (
-            !cancelled &&
-            !catalogLoadQueued.current &&
-            catalogRequests.current.isLatest(request)
-          ) {
-            commitCatalog(c, setCatalog);
-            setError(null);
-          }
-        })
-        .catch((e) => {
-          if (
-            !cancelled &&
-            !catalogLoadQueued.current &&
-            catalogRequests.current.isLatest(request)
-          ) {
-            setError(String(e));
-          }
-        })
-        .finally(() => {
-          catalogLoadPending.current = false;
-          if (!cancelled && catalogLoadQueued.current) load();
-        });
-    };
-    loadRef.current = load;
-    load();
-    const timer = setInterval(load, 8000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [rpc]);
-  useRealtime("theme-preview:changed", () => loadRef.current());
+    if (!catalogQuery.isFetching && !catalogQuery.error)
+      setFailedSelection(null);
+  }, [catalogQuery.isFetching, catalogQuery.error]);
 
   useEffect(() => {
-    if (!pendingSelection) {
+    if (!selectionPending) {
       setSelectionSlow(false);
       return;
     }
     const timer = setTimeout(() => setSelectionSlow(true), 5_000);
     return () => clearTimeout(timer);
-  }, [pendingSelection]);
+  }, [selectionPending]);
 
   useLayoutEffect(() => {
     const header = headerRef.current;
@@ -3498,34 +3442,12 @@ function PreviewPage({ subPath }: { subPath: string }) {
   }, []);
 
   const applySelection = (selection: ThemeSelection) => {
-    if (selectionPending.current) return;
+    if (selectionMutation.isPending) return;
     setMode(selection.mode);
-    selectionPending.current = true;
-    setPendingSelection(selection);
     setFailedSelection(null);
-    setError(null);
-    const request = catalogRequests.current.begin();
-    withRpcTimeout(
-      rpc.call("setTheme", { themeId: selection.themeId }),
-      "Theme selection",
-    )
-      .then((next) => {
-        if (catalogRequests.current.isLatest(request)) {
-          commitCatalog(next, setCatalog);
-          setFailedSelection(null);
-        }
-      })
-      .catch(() => {
-        if (catalogRequests.current.isLatest(request))
-          setFailedSelection(selection);
-      })
-      .finally(() => {
-        if (catalogRequests.current.isLatest(request)) {
-          selectionPending.current = false;
-          setPendingSelection(null);
-          if (catalogLoadQueued.current) loadRef.current();
-        }
-      });
+    selectionMutation
+      .mutate({ themeId: selection.themeId })
+      .catch(() => setFailedSelection(selection));
   };
   const pick = (themeId: string, nextMode: Mode) =>
     applySelection({ themeId, mode: nextMode });
@@ -3547,7 +3469,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const mobilePreview = frameWidth < 768;
   const view =
     mobilePreview && requestedView === "split" ? "thread" : requestedView;
-  const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
+  const displayThemeId = catalog.activeThemeId;
   const displayThemeName =
     catalog.themes.find((theme) => theme.id === displayThemeId)?.name ??
     "Current theme";
@@ -3621,14 +3543,19 @@ function PreviewPage({ subPath }: { subPath: string }) {
             </TabsList>
           </Tabs>
           {error ? (
-            <span
-              style={{
-                fontSize: 12,
-                color: v("destructive-text", v("destructive")),
-              }}
+            <div
+              role="alert"
+              className="flex items-center gap-2 text-xs text-destructive"
             >
-              {error}
-            </span>
+              <span>{error}</span>
+              <BbButton
+                size="sm"
+                variant="outline"
+                onClick={() => void catalogQuery.refetch()}
+              >
+                Retry
+              </BbButton>
+            </div>
           ) : null}
           <div
             style={{
@@ -3644,7 +3571,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
               catalog={catalog}
               computed={computed}
               mode={mode}
-              pendingSelection={pendingSelection}
+              selectionPending={selectionPending}
               selectionSlow={selectionSlow}
               selectionFailed={failedSelection !== null}
               onPick={pick}

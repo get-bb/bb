@@ -14,8 +14,8 @@ import { z } from "zod";
 import {
   useRpc,
   experimental_useRpcKeyedQuery,
-  experimental_useRpcQuery,
   experimental_useRpcMutation,
+  experimental_useRpcQuery,
 } from "../../app.js";
 import {
   defineRpcContract,
@@ -356,4 +356,134 @@ it("reports successful reads even when their data stays unchanged", async () => 
   await waitFor(() =>
     expect(Number(slot.container.textContent)).toBeGreaterThan(first),
   );
+});
+
+it("releases a stuck mutation with an error and permits Retry", async () => {
+  vi.useFakeTimers();
+  try {
+    let stuck = true;
+    function Probe() {
+      const mutation = experimental_useRpcMutation({
+        method: "save",
+        timeoutMs: 20_000,
+      });
+      return (
+        <button
+          disabled={mutation.isPending}
+          onClick={() => void mutation.mutate({}).catch(() => {})}
+        >
+          {mutation.error?.message ?? (mutation.isPending ? "Saving" : "Save")}
+        </button>
+      );
+    }
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      {
+        rpc: { save: () => (stuck ? new Promise(() => {}) : "saved") },
+      },
+    );
+    const button = slot.getByRole("button");
+    await act(async () => {
+      button.click();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(button.textContent).toBe("Saving");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_001);
+    });
+    expect(button.textContent).toBe('RPC "save" timed out after 20 seconds');
+    expect(button.hasAttribute("disabled")).toBe(false);
+    stuck = false;
+    await act(async () => {
+      button.click();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(button.textContent).toBe("Save");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("exposes a stuck read error and recovers through Retry", async () => {
+  vi.useFakeTimers();
+  try {
+    let stuck = true;
+    function Probe() {
+      const query = experimental_useRpcQuery({
+        method: "read",
+        input: {},
+        timeoutMs: 20_000,
+      });
+      return (
+        <button
+          disabled={query.isFetching}
+          onClick={() => void query.refetch()}
+        >
+          {query.error?.message ?? query.data?.toString() ?? "Loading"}
+        </button>
+      );
+    }
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      {
+        rpc: { read: () => (stuck ? new Promise(() => {}) : "loaded") },
+      },
+    );
+    const button = slot.getByRole("button");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(90_000);
+    });
+    expect(button.textContent).toBe('RPC "read" timed out after 20 seconds');
+    expect(button.hasAttribute("disabled")).toBe(false);
+    stuck = false;
+    await act(async () => {
+      button.click();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(button.textContent).toBe("loaded");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("allows slow reads and mutations without an opt-in deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    let release!: (value: string) => void;
+    const pending = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    function Probe() {
+      const query = experimental_useRpcQuery({ method: "read", input: {} });
+      const mutation = experimental_useRpcMutation({ method: "save" });
+      return (
+        <button onClick={() => void mutation.mutate({}).catch(() => {})}>
+          {query.error?.message ?? query.data?.toString() ?? "Loading"}/
+          {mutation.error?.message ?? (mutation.isPending ? "Saving" : "Ready")}
+        </button>
+      );
+    }
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      {
+        rpc: { read: () => pending, save: () => pending },
+      },
+    );
+    const button = slot.getByRole("button");
+    await act(async () => {
+      button.click();
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(button.textContent).toBe("Loading/Saving");
+    await act(async () => {
+      release("loaded");
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(button.textContent).toBe("loaded/Ready");
+  } finally {
+    vi.useRealTimers();
+  }
 });

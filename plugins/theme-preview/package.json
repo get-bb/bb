@@ -6,7 +6,7 @@
   "description": "Preview and validate bb themes across representative app screens, components, overlays, style tokens, and contrast checks.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.6"
+    "bbPluginSdk": ">=0.6.59"
   },
   "bb": {
     "name": "Theme Preview",

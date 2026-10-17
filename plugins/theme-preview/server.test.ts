@@ -85,7 +85,11 @@ describe("parseThemeSwatches", () => {
 function themeHost(sdk: FakeSdkOverrides) {
   return createFakePluginHost({
     pluginId: "theme-preview",
-    sdk: { plugins: { list: async () => ({ plugins: [] }) }, ...sdk },
+    sdk: {
+      subscribe: () => () => {},
+      plugins: { list: async () => ({ plugins: [] }) },
+      ...sdk,
+    },
   });
 }
 
@@ -395,6 +399,48 @@ describe("createCatalogLoader", () => {
 });
 
 describe("theme watcher", () => {
+  it("discovers a root created after startup and reapplies edited active CSS without a viewer", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "theme-preview-late-root-"));
+    const directory = join(parent, "themes");
+    const file = join(directory, "theme-a", "theme.css");
+    const applied: string[] = [];
+    let catalogs = 0;
+    const { bb, harness } = themeHost({
+      theme: {
+        catalog: async () => {
+          catalogs += 1;
+          return {
+            active: { themeId: "theme-a" },
+            custom: ["theme-a"],
+            dir: directory,
+          };
+        },
+        set: async (id: string) => {
+          applied.push(id);
+        },
+      },
+    });
+    await plugin(bb);
+    const running = harness.behavior.runService("theme-watch");
+    try {
+      await vi.waitFor(() => expect(catalogs).toBeGreaterThanOrEqual(2));
+      await mkdir(join(directory, "theme-a"), { recursive: true });
+      await writeFile(file, ":root { --canvas: #ffffff; }");
+      await vi.waitFor(() =>
+        expect(
+          harness.inspection.experimental_rpcInvalidations.length,
+        ).toBeGreaterThan(0),
+      );
+      await writeFile(file, ":root { --canvas: #dddddd; --primary: #abcdef; }");
+      await vi.waitFor(() => expect(applied).toContain("theme-a"));
+    } finally {
+      running.controller.abort();
+      await running.done;
+      await harness.dispose();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   it("stops promptly when aborted during the initial catalog request", async () => {
     let markCatalogStarted!: () => void;
     const catalogStarted = new Promise<void>((resolve) => {
