@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import { realParcelWatcher } from "../real-parcel-watcher.js";
 import type { ParentToChildMessage } from "./messages.js";
-import { createParcelChildHandler } from "./parcel-child-handler.js";
+import {
+  createParcelChildHandler,
+  disposeThenExit,
+} from "./parcel-child-handler.js";
+
+const DISCONNECT_EXIT_DEADLINE_MS = 2_000;
 
 const handler = createParcelChildHandler({
   parcel: realParcelWatcher,
@@ -16,7 +21,11 @@ process.on("message", (message) => {
 });
 
 process.on("disconnect", () => {
-  void handler.dispose().finally(() => process.exit(0));
+  disposeThenExit({
+    deadlineMs: DISCONNECT_EXIT_DEADLINE_MS,
+    dispose: () => handler.dispose(),
+    exit: () => process.exit(0),
+  });
 });
 
 process.send?.({ kind: "ready" });

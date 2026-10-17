@@ -7,7 +7,10 @@ import {
   type ParcelWatcherSubscribeOptions,
 } from "./parcel-watcher-backend.js";
 import { pathExists } from "./path-exists.js";
-import { isRescanRequiredMessage } from "./watch-recovery.js";
+import {
+  isEventsDroppedMessage,
+  isRescanRequiredMessage,
+} from "./watch-recovery.js";
 import {
   describeSubscribeFailure,
   toWatchErrorMessage,
@@ -146,6 +149,10 @@ export class RootSubscription {
           }
           if (error) {
             const message = toWatchErrorMessage(error);
+            if (isEventsDroppedMessage(message)) {
+              this.args.onDroppedEvents();
+              return;
+            }
             if (isRescanRequiredMessage(message)) {
               recoverableFailureObserved = true;
               this.recoveryPending = true;

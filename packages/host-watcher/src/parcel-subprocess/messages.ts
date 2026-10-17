@@ -28,6 +28,7 @@ export type ChildToParentMessage =
     }
   | { kind: "unsubscribed"; id: string }
   | { kind: "events"; id: string; events: SerializedParcelEvent[] }
+  | { kind: "events-dropped"; id: string; count: number }
   | {
       kind: "watch-error";
       id: string;
