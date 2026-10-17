@@ -936,7 +936,13 @@ describe("claude synthetic no-response handling", () => {
       context,
     );
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(TURN_1),
+        state: "idle",
+      }),
+    ]);
     harness.translate(loadFixture("task-notification-subagent.json"), context);
     const finalEvents = harness.translate(
       {

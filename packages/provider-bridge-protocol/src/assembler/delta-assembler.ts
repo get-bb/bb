@@ -2005,6 +2005,20 @@ export function createDeltaAssembler(
         return;
       }
 
+      case "turn.mainRun": {
+        if (state.currentTurnId === undefined) {
+          return;
+        }
+        events.push({
+          type: "turn/mainRun/updated",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(state.currentTurnId),
+          state: delta.state,
+        });
+        return;
+      }
+
       case "turn.diff": {
         const turnId =
           delta.providerTurnId !== undefined

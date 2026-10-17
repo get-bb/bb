@@ -315,6 +315,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "thread/tokenUsage/updated":
     case "turn/plan/updated":
     case "turn/diff/updated":
+    case "turn/mainRun/updated":
     case "provider/error":
     case "provider/unhandled":
       return { providerThreadId: event.providerThreadId };
@@ -452,6 +453,16 @@ async function applyEventEffects(
             threadId: entry.threadId,
             environmentId:
               getThread(deps.db, entry.threadId)?.environmentId ?? null,
+          });
+        }
+        continue;
+      }
+
+      if (event.type === "turn/mainRun/updated") {
+        if (event.state === "idle") {
+          followUps.push({
+            kind: "queued-message-dispatch",
+            wake: { kind: "thread-ready", threadId: entry.threadId },
           });
         }
         continue;

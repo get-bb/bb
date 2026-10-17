@@ -155,6 +155,10 @@
       "diff": "required",
       "providerTurnId": "optional"
     },
+    "turn.mainRun": {
+      "kind": "required",
+      "state": "required"
+    },
     "turn.open": {
       "kind": "required",
       "providerTurnId": "optional",
