@@ -1,13 +1,11 @@
-import type { Mermaid } from "mermaid";
+type PeleModule = typeof import("pele/lazy");
 
-let mermaidImportPromise: Promise<Mermaid> | null = null;
+let peleImportPromise: Promise<PeleModule> | null = null;
 
-export function loadMermaid(): Promise<Mermaid> {
-  if (mermaidImportPromise === null) {
-    mermaidImportPromise = import("mermaid").then(
-      (mermaidModule) => mermaidModule.default,
-    );
+export function loadPele(): Promise<PeleModule> {
+  if (peleImportPromise === null) {
+    peleImportPromise = import("pele/lazy");
   }
 
-  return mermaidImportPromise;
+  return peleImportPromise;
 }

@@ -46,7 +46,7 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
 });
 
 vi.mock("./markdown-mermaid-loader.js", () => ({
-  loadMermaid: () => new Promise(() => {}),
+  loadPele: () => new Promise(() => {}),
 }));
 
 const LEGS = ["incremental", "legacy"] as const;
