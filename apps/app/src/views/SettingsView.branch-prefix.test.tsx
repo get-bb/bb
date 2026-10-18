@@ -12,6 +12,9 @@ import { GeneralSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  terminalCopyOnSelect?: boolean;
+  onTerminalCopyOnSelectChange?: (enabled: boolean) => void;
+  generalSettingsDisabled?: boolean;
   managedBranchPrefix?: string;
   onManagedBranchPrefixChange?: (prefix: string) => void;
 }) {
@@ -26,7 +29,11 @@ function renderSection(overrides?: {
       summarizeShellCommands={true}
       onSummarizeShellCommandsChange={vi.fn()}
       desktopBrowserAvailable={false}
-      generalSettingsDisabled={false}
+      generalSettingsDisabled={overrides?.generalSettingsDisabled ?? false}
+      terminalCopyOnSelect={overrides?.terminalCopyOnSelect ?? true}
+      onTerminalCopyOnSelectChange={
+        overrides?.onTerminalCopyOnSelectChange ?? vi.fn()
+      }
       managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
       navigateToThreadAfterCreate={false}
       onManagedBranchPrefixChange={
@@ -51,6 +58,34 @@ function branchPrefixInput() {
   }
   return input;
 }
+
+describe("terminal copy-on-select setting", () => {
+  it("displays the saved value and allows opting out", () => {
+    const onChange = vi.fn();
+    renderSection({ onTerminalCopyOnSelectChange: onChange });
+    const toggle = screen.getByRole("switch", { name: "Copy on select" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(false);
+    cleanup();
+    renderSection({ terminalCopyOnSelect: false });
+    expect(
+      screen
+        .getByRole("switch", { name: "Copy on select" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  it("prevents changes while settings are loading or saving", () => {
+    const onChange = vi.fn();
+    renderSection({
+      generalSettingsDisabled: true,
+      onTerminalCopyOnSelectChange: onChange,
+    });
+    fireEvent.click(screen.getByRole("switch", { name: "Copy on select" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
 
 describe("new branch prefix setting", () => {
   it("saves a valid prefix on Enter", () => {
