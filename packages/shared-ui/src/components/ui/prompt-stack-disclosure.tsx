@@ -100,7 +100,7 @@ export function PromptStackPeekLayers({
 export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
 
 export const PROMPT_STACK_TRAILING_SLOT_CLASS =
-  "-mr-3 ml-auto flex w-8 shrink-0 items-center justify-center";
+  "ml-auto mr-px flex w-6 shrink-0 items-center justify-center";
 const HOVER_CHEVRON_CLASS =
   "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden";
 
