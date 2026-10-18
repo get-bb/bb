@@ -95,7 +95,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   log: "plaintext",
 };
 
-const PREVIEW_RENDERED_EXTENSIONS = new Set(["md", "markdown"]);
+const PREVIEW_RENDERED_EXTENSIONS = new Set(["md", "markdown", "html", "htm"]);
 
 export const CLAIMED_EXTENSIONS: readonly string[] = Object.keys(
   LANGUAGE_BY_EXTENSION,

@@ -1,7 +1,7 @@
 # Frontend testing API symbol index
 
-Use the app entrypoint for `app.tsx` tests.
-Use the host entrypoint for host-worker tests.
+Use this index to check `app.tsx` test imports; backend-api-index.md lists
+the backend and host-entry test entrypoints.
 Read `testing.md` for examples and fidelity limits.
 
 ## `@get-bb/plugin-sdk/testing/app`
@@ -12,11 +12,9 @@ Read `testing.md` for examples and fidelity limits.
 - `NavigateCall`
 - `ExperimentalFixedTabOpenCall`
 - `ComposerLog`
-- `SidebarActionCall` — deprecated, runtime-only for older plugins' tests of
-  `experimental_useSidebarThreadActions`
-- `TestThreadActionsResolver` — what `renderSlot` `options.threadActions` returns for
-  `experimental_useThreadActions(thread)` and the fake thread menus; receives
-  the caller's `requestRename`
+- `SidebarActionCall`
+- `SidebarNavigationCall`
+- `TestThreadActionsResolver`
 - `installTestPluginRuntime`
 - `CapturedPluginApp`
 - `PluginAppSource`
@@ -32,10 +30,3 @@ Read `testing.md` for examples and fidelity limits.
 - `RenderedSlotLifecycleControls`
 - `RenderedSlot`
 - `renderSlot`
-
-## `@get-bb/plugin-sdk/testing/host`
-
-- `ExperimentalHostHarnessSignal`
-- `ExperimentalCreateHostEntryHarnessOptions`
-- `ExperimentalHostEntryHarness`
-- `experimental_createHostEntryHarness`

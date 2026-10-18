@@ -15,6 +15,9 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS } from "@/lib/bb-desktop";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { MemoryRouter } from "react-router-dom";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import {
   ThreadActionCollectors,
@@ -114,7 +117,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -137,7 +139,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -166,7 +167,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -198,7 +198,6 @@ describe("ThreadDetailHeader", () => {
       >
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -247,7 +246,6 @@ describe("ThreadDetailHeader", () => {
               ) : null}
             </>
           )}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -306,7 +304,6 @@ describe("ThreadDetailHeader", () => {
               ) : null}
             </>
           )}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -332,7 +329,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -368,7 +364,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -409,7 +404,6 @@ describe("ThreadDetailHeader", () => {
           <PaneContext.Provider value={PANE_CONTEXT}>
             <ThreadDetailHeader
               actionsMenu={null}
-              childPillLabel={null}
               isSecondaryPanelOpen={false}
               onOpenThreadGitAction={vi.fn()}
               onToggleSecondaryPanel={vi.fn()}
@@ -457,7 +451,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -487,7 +480,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -510,7 +502,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -546,7 +537,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -588,7 +578,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -609,6 +598,44 @@ describe("ThreadDetailHeader", () => {
     );
   });
 
+  it("places the window toggle's reserved slot over the title-bar toggle so its whole box stays clickable", () => {
+    window.bbDesktop = createBbDesktopApi({
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <SidebarProvider framed>
+          <PaneContext.Provider
+            value={{ ...PANE_CONTEXT, reservesWindowPanelToggle: true }}
+          >
+            <ThreadDetailHeader
+              actionsMenu={null}
+              isSecondaryPanelOpen={false}
+              onOpenThreadGitAction={vi.fn()}
+              onToggleSecondaryPanel={vi.fn()}
+              threadHeaderGitActions={[]}
+              threadId={THREAD_ID}
+              threadTitle="Pinned toggle"
+            />
+          </PaneContext.Provider>
+        </SidebarProvider>
+      </MemoryRouter>,
+    );
+
+    const slot = container.querySelector("span[aria-hidden].header-icon-button");
+    expect(slot).not.toBeNull();
+    const classes = slot?.className.split(" ") ?? [];
+    for (const token of MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS.split(" ")) {
+      expect(classes).toContain(token);
+    }
+  });
+
   it("does not start a pane drag while the header title is being edited", async () => {
     const beginPaneDrag = vi.fn();
     render(
@@ -621,7 +648,6 @@ describe("ThreadDetailHeader", () => {
       >
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -634,7 +660,11 @@ describe("ThreadDetailHeader", () => {
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
     const input = await screen.findByRole("textbox", { name: "Thread name" });
-    fireEvent.pointerDown(input, { button: 0 });
+    const titleRow = input.closest("p");
+    if (titleRow === null) {
+      throw new Error("Expected the editor inside the header title row");
+    }
+    fireEvent.pointerDown(titleRow, { button: 0 });
 
     expect(beginPaneDrag).not.toHaveBeenCalled();
   });
@@ -656,7 +686,6 @@ describe("ThreadDetailHeader", () => {
               menuArgs.current = args;
               return null;
             }}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}

@@ -7,6 +7,7 @@ import { CONTROL_HOVER_TRANSITION } from "./motion.js";
 import { Icon } from "../../components/ui/icon.js";
 import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
 import {
+  type ResponsiveOverlayContextValue,
   COMPACT_SHEET_CONTENT_STYLE,
   ResponsiveDrawerShell,
   stripRadixContentProps,
@@ -16,6 +17,7 @@ import {
   blurActiveKeyboardInputBeforeOverlayOpen,
   isLastInputKeyboard,
 } from "./overlay-trigger.js";
+import { useCloseWhenAnchorDetaches } from "./overlay-anchor.js";
 
 const SELECT_OPEN_KEYS = new Set([" ", "Enter", "ArrowUp", "ArrowDown"]);
 const ENABLED_OPTION_SELECTOR = '[role="option"]:not([aria-disabled="true"])';
@@ -33,6 +35,12 @@ interface CompactSelectContextValue {
 
 const CompactSelectContext =
   React.createContext<CompactSelectContextValue | null>(null);
+const SelectOverlayContext =
+  React.createContext<ResponsiveOverlayContextValue>({
+    isCompactViewport: false,
+    open: false,
+    onOpenChange: () => {},
+  });
 const CompactSelectListContext = React.createContext(false);
 const CompactSelectGroupLabelContext = React.createContext<string | undefined>(
   undefined,
@@ -123,15 +131,17 @@ function Select({
 
   return (
     <CompactSelectContext.Provider value={compact}>
-      <SelectPrimitive.Root
-        {...props}
-        value={value}
-        onValueChange={handleValueChange}
-        open={!isCompactViewport && open}
-        onOpenChange={onOpenChange}
-      >
-        {children}
-      </SelectPrimitive.Root>
+      <SelectOverlayContext.Provider value={overlay}>
+        <SelectPrimitive.Root
+          {...props}
+          value={value}
+          onValueChange={handleValueChange}
+          open={!isCompactViewport && open}
+          onOpenChange={onOpenChange}
+        >
+          {children}
+        </SelectPrimitive.Root>
+      </SelectOverlayContext.Provider>
     </CompactSelectContext.Provider>
   );
 }
@@ -166,6 +176,12 @@ const SelectTrigger = React.forwardRef<
     ref,
   ) => {
     const compact = React.useContext(CompactSelectContext);
+    const overlay = React.useContext(SelectOverlayContext);
+    const anchorRef = useCloseWhenAnchorDetaches(
+      ref,
+      overlay.open && !overlay.isCompactViewport,
+      overlay.onOpenChange,
+    );
     const compactProps =
       compact === null
         ? { onClick, onKeyDown, onPointerDown }
@@ -197,7 +213,7 @@ const SelectTrigger = React.forwardRef<
 
     return (
       <SelectPrimitive.Trigger
-        ref={ref}
+        ref={anchorRef}
         className={cn(
           `flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm ${CONTROL_HOVER_TRANSITION} placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1`,
           className,

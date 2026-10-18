@@ -1,17 +1,34 @@
 import { openSecondaryPanelTabInState } from "@bb/client-core";
 import type { ThreadTab } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
+import { setCachedThreadTabs } from "@/hooks/cache-owners/thread-tabs-cache-owner";
 import {
+  createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
+  createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
+  type FixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import { createPluginPageFixedPanelTab } from "./fixed-panel-tabs-state";
 import {
   areThreadTabListsEquivalent,
   mergeThreadTabChanges,
   reconcileFixedPanelTabsState,
+  resolveFixedPanelTabsHydration,
+  scheduleThreadTabsPersistence,
 } from "./thread-tabs-sync";
+
+const updateThreadTabs = vi.hoisted(() => vi.fn());
+
+vi.mock("./sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./sdk")>();
+  return {
+    ...actual,
+    sdk: { threads: { tabs: { update: updateThreadTabs } } },
+  };
+});
 
 function browserTab(
   id: string,
@@ -170,4 +187,113 @@ it("returns to the prior terminal when another client removes the active termina
     source,
   ]);
   expect(reconciled.secondary.activeTabId).toBe(source.id);
+});
+
+it("does not restore a removed placeholder when a stale client closes a terminal", async () => {
+  const queryClient = new QueryClient();
+  const threadId = "stale-terminal-close";
+  const info = createThreadInfoFixedPanelTab();
+  const source = createTerminalFixedPanelTab({ terminalId: "source" });
+  const detour = createTerminalFixedPanelTab({ terminalId: "detour" });
+  const placeholder = createNewTabFixedPanelTab();
+  setCachedThreadTabs(queryClient, threadId, {
+    revision: 9,
+    tabs: [info, source, detour],
+  });
+  updateThreadTabs.mockResolvedValue({ revision: 10, tabs: [info, source] });
+
+  scheduleThreadTabsPersistence({
+    queryClient,
+    threadId,
+    previousTabs: [info, source, placeholder, detour],
+    tabs: [info, source, placeholder],
+  });
+
+  await vi.waitFor(() => {
+    expect(updateThreadTabs).toHaveBeenCalledWith({
+      expectedRevision: 9,
+      tabs: [info, source],
+      threadId,
+    });
+  });
+});
+
+describe("resolveFixedPanelTabsHydration", () => {
+  const localTab = createBrowserFixedPanelTab({
+    environmentId: null,
+    url: "https://local.example.com",
+  });
+  const remoteTab = createBrowserFixedPanelTab({
+    environmentId: null,
+    url: "https://remote.example.com",
+  });
+  const openWith = (tabs: FixedPanelTab[]) =>
+    createEmptyFixedPanelTabsState({
+      lastUsedAt: 123,
+      secondary: { activeTabId: tabs[0]?.id ?? null, isOpen: true, tabs },
+    });
+
+  it("migrates existing local tabs when the server has no tab row", () => {
+    const current = openWith([localTab]);
+    expect(
+      resolveFixedPanelTabsHydration({
+        current,
+        hasPendingWrite: false,
+        localTabs: current.secondary.tabs,
+        server: { revision: 0, tabs: [] },
+      }),
+    ).toEqual({ kind: "migrate-local-tabs" });
+  });
+
+  it("adopts server tabs while keeping presentation state local", () => {
+    const current = openWith([createThreadInfoFixedPanelTab()]);
+    expect(
+      resolveFixedPanelTabsHydration({
+        current,
+        hasPendingWrite: false,
+        localTabs: current.secondary.tabs,
+        server: { revision: 4, tabs: [remoteTab] },
+      }),
+    ).toEqual({
+      kind: "replace",
+      state: {
+        ...current,
+        secondary: {
+          activeTabId: remoteTab.id,
+          isOpen: true,
+          tabs: [remoteTab],
+        },
+      },
+    });
+  });
+
+  it("closes an open thread panel when hydration leaves no tabs", () => {
+    const current = openWith([]);
+    expect(
+      resolveFixedPanelTabsHydration({
+        current,
+        hasPendingWrite: false,
+        localTabs: [],
+        server: { revision: 2, tabs: [] },
+      }),
+    ).toEqual({
+      kind: "replace",
+      state: {
+        ...current,
+        secondary: { activeTabId: null, isOpen: false, tabs: [] },
+      },
+    });
+  });
+
+  it("leaves a state the server already matches untouched so storage is not rewritten", () => {
+    const current = openWith([remoteTab]);
+    expect(
+      resolveFixedPanelTabsHydration({
+        current,
+        hasPendingWrite: false,
+        localTabs: current.secondary.tabs,
+        server: { revision: 4, tabs: [remoteTab] },
+      }),
+    ).toBeNull();
+  });
 });

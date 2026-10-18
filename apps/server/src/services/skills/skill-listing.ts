@@ -390,6 +390,7 @@ export async function listProjectSkillFiles(
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.list_files",
+      followRootSymlink: true,
       path: rootPath,
       limit: 200,
       includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
@@ -434,6 +435,7 @@ export async function readProjectSkill(
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.read_file_relative",
+      followRootSymlink: true,
       rootPath,
       path: args.path,
       dotfiles: "deny",

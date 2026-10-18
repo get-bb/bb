@@ -231,7 +231,11 @@ export function extractClaudeCommandExecutionOutput(
 interface ClaudeResultTokenUsage {
   last: ThreadEventTokenUsageBreakdown;
   modelContextWindow: number | null;
+  promptCacheTtlMs: number | undefined;
 }
+
+const CLAUDE_ONE_HOUR_CACHE_TTL_MS = 60 * 60_000;
+const CLAUDE_FIVE_MINUTE_CACHE_TTL_MS = 5 * 60_000;
 
 export function extractClaudeResultTokenUsage(
   message: ClaudeResultMessage | SDKResultMessage,
@@ -256,6 +260,9 @@ export function extractClaudeResultTokenUsage(
       reasoningOutputTokens: 0,
     },
     modelContextWindow,
+    promptCacheTtlMs: parsed.success
+      ? toPromptCacheTtlMs(parsed.data)
+      : undefined,
   };
 }
 
@@ -319,6 +326,17 @@ function toTokenUsageBreakdown(
     outputTokens,
     reasoningOutputTokens: 0,
   };
+}
+
+function toPromptCacheTtlMs(usage: ClaudeSdkUsage): number | undefined {
+  const writes = usage.cache_creation;
+  if (toNonNegativeNumber(writes?.ephemeral_1h_input_tokens) > 0) {
+    return CLAUDE_ONE_HOUR_CACHE_TTL_MS;
+  }
+  if (toNonNegativeNumber(writes?.ephemeral_5m_input_tokens) > 0) {
+    return CLAUDE_FIVE_MINUTE_CACHE_TTL_MS;
+  }
+  return undefined;
 }
 
 function toClaudeCurrentContextTokens(usage: ClaudeSdkUsage): number | null {

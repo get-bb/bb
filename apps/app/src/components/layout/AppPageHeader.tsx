@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode, type Ref } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import {
+  useIsSidebarFramed,
   useIsSidebarShowing,
   useSidebarKeepsCollapsedRail,
 } from "@/components/ui/sidebar.js";
@@ -10,12 +11,15 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
-  BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
   CHROME_ROW_CLASS,
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
-  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
+  MACOS_TITLE_BAR_BAND_CLASS,
+  MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
+  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_ROW_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
@@ -24,6 +28,7 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { scrollPageToTop } from "@/lib/page-scroll-to-top";
+import { resolveWindowTopLeftReserveClassName } from "./windowTopLeftReserve";
 
 export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 
@@ -54,6 +59,7 @@ export function AppPageHeader({
   const isSidebarShowing = useIsSidebarShowing();
   const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
   const isCompactViewport = useIsCompactViewport();
+  const isInTitleBar = useIsSidebarFramed() && isWindowDragRegion;
   const localHeaderRef = useRef<HTMLElement>(null);
   const composedHeaderRef = useComposedRefs(headerRef, localHeaderRef);
   const handleScrollToTop = () => {
@@ -67,12 +73,17 @@ export function AppPageHeader({
     windowState: desktopWindowState,
   });
   const windowTopLeftReserveClassName =
-    ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing)
-      ? !sidebarKeepsCollapsedRail &&
-        (reserveMacosTrafficLights
-          ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
-          : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS)
-      : false;
+    isInTitleBar &&
+    ownsWindowTopLeft &&
+    (isCompactViewport || !isSidebarShowing)
+      ? MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS
+      : resolveWindowTopLeftReserveClassName({
+          isCompactViewport,
+          isSidebarShowing,
+          ownsWindowTopLeft,
+          reserveMacosTrafficLights,
+          sidebarKeepsCollapsedRail,
+        });
   return (
     <header
       ref={composedHeaderRef}
@@ -93,9 +104,13 @@ export function AppPageHeader({
           : undefined
       }
       className={cn(
-        CHROME_ROW_HEIGHT_CLASS,
-        HEADER_SEAM_CLASS,
-        APP_PAGE_HEADER_SURFACE_CLASS,
+        isInTitleBar
+          ? [MACOS_TITLE_BAR_BAND_CLASS, MACOS_TITLE_BAR_CONTROL_AXIS_CLASS]
+          : [
+              CHROME_ROW_HEIGHT_CLASS,
+              HEADER_SEAM_CLASS,
+              APP_PAGE_HEADER_SURFACE_CLASS,
+            ],
         "@container/page-header relative shrink-0 select-none px-4",
         usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
         className,
@@ -113,9 +128,13 @@ export function AppPageHeader({
         data-testid="app-page-header-content-row"
         className={cn(
           CHROME_ROW_CLASS,
+          isInTitleBar && MACOS_TITLE_BAR_ROW_CLASS,
           "relative z-10 gap-1 md:gap-2",
           isCompactViewport && "pointer-events-none",
-          usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
+          usesDesktopChrome && [
+            MACOS_CHROME_CONTROL_AXIS_CLASS,
+            MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+          ],
           "transition-[padding] duration-200 ease-linear",
           windowTopLeftReserveClassName,
         )}

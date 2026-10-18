@@ -13,17 +13,16 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import semver from "semver";
 import {
-  createConnection,
   createEnvironment,
   createProject,
   getInstalledPlugin,
-  migrate,
   noopNotifier,
   upsertHost,
   upsertInstalledPlugin,
   upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { pluginListResponseSchema } from "@bb/server-contract";
@@ -114,8 +113,7 @@ describe("plugin service", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-test-"));
     service = createPluginService({
       aiServices: createAiServiceRegistry(),
@@ -940,6 +938,7 @@ describe("plugin service", () => {
       sourceKind: "https",
       manifestUrl: "https://plugins.acme.test/marketplace.json",
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify({
         schemaVersion: 2,
@@ -1032,6 +1031,7 @@ describe("plugin service", () => {
       sourceKind: "https",
       manifestUrl: "https://plugins.acme.test/marketplace.json",
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify({
         schemaVersion: 2,
@@ -1082,8 +1082,7 @@ describe("plugin service", () => {
 
   it("holds every plugin a hold names at start without running its factory or starting its services", async () => {
     const globals = globalThis as Record<string, unknown>;
-    const db = createConnection(":memory:");
-    migrate(db);
+    const db = createMigratedConnection();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-hold-test-"));
     const fixture = { db, workDir };
     let service = createTelemetryTrackedService([], fixture);
@@ -1539,8 +1538,7 @@ describe("plugins-changed broadcast", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-notify-test-"));
     notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
     providerRegistry = createProviderRegistryService();

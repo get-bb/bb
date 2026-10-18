@@ -1,13 +1,20 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
-  type PointerEvent as ReactPointerEvent,
+  useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
+import type {
+  ExperimentalSidebarNavigationActions,
+  ExperimentalSidebarNavigationIcon,
+  ExperimentalSidebarNavigationItem,
+  ExperimentalSidebarNavigationState,
+} from "@get-bb/plugin-sdk";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   useAppCommandRunner,
@@ -25,26 +32,26 @@ import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
+  getRootComposeRoutePath,
+  SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
+import {
+  NavigationBadgeSources,
+  type NavigationBadges,
+} from "./navigationBadges";
 import {
   createSidebarNavigationRows,
   getResourceNavigationRoutePath,
   getSidebarNavigationRowContent,
   isSameSidebarNavigationItem,
+  NEW_THREAD_NAVIGATION_ITEM_ID,
   resolveActiveSidebarNavigationItemId,
   SIDEBAR_NAVIGATION_LEADING_KEYS,
   toSidebarNavigationItem,
-  type SidebarNavigationActions,
-  type SidebarNavigationItem,
-  type SidebarNavigationItemIcon,
   type SidebarNavigationRow,
-  type SidebarNavigationState,
 } from "./sidebarNavigationItems";
-import {
-  usePaneContentSplitActions,
-  usePaneContentSplitDrag,
-} from "./usePaneContentSplitDrag";
+import { usePaneContentSplitActions } from "./usePaneContentSplitDrag";
 import {
   useSidebarNavigationArrangement,
   type SidebarNavigationArrangement,
@@ -54,11 +61,12 @@ export interface SidebarNavigationHostOptions {
   onNavigate?: () => void;
   onNewChat?: () => void;
   onSearchThreads?: () => void;
+  onOpenCustomize?: () => void;
   splitEnabled: boolean;
 }
 
 export interface SidebarNavigationModel {
-  state: SidebarNavigationState;
+  state: ExperimentalSidebarNavigationState;
   arrangement: SidebarNavigationArrangement<SidebarNavigationRow>;
   rowsById: ReadonlyMap<string, SidebarNavigationRow>;
   splitEnabled: boolean;
@@ -69,7 +77,7 @@ const SidebarNavigationModelContext =
   createContext<SidebarNavigationModel | null>(null);
 
 const HOST_ICON_NAMES: Record<
-  Extract<SidebarNavigationItemIcon, { kind: "host" }>["name"],
+  Extract<ExperimentalSidebarNavigationIcon, { kind: "host" }>["name"],
   IconName
 > = {
   "new-thread": "MessageSquarePlus",
@@ -82,7 +90,7 @@ export function SidebarNavigationIcon({
   icon,
   className,
 }: {
-  icon: SidebarNavigationItemIcon;
+  icon: ExperimentalSidebarNavigationIcon;
   className?: string;
 }) {
   if (icon.kind === "host") {
@@ -104,15 +112,15 @@ export function SidebarNavigationIcon({
 }
 
 function useStableItems(
-  items: readonly SidebarNavigationItem[],
-): readonly SidebarNavigationItem[] {
+  items: readonly ExperimentalSidebarNavigationItem[],
+): readonly ExperimentalSidebarNavigationItem[] {
   const previousRef = useRef<{
-    byId: Map<string, SidebarNavigationItem>;
-    list: readonly SidebarNavigationItem[];
+    byId: Map<string, ExperimentalSidebarNavigationItem>;
+    list: readonly ExperimentalSidebarNavigationItem[];
   }>({ byId: new Map(), list: [] });
   return useMemo(() => {
     const previous = previousRef.current;
-    const byId = new Map<string, SidebarNavigationItem>();
+    const byId = new Map<string, ExperimentalSidebarNavigationItem>();
     const list = items.map((item) => {
       const prior = previous.byId.get(item.id);
       const stable =
@@ -127,6 +135,10 @@ function useStableItems(
     previousRef.current = { byId, list: next };
     return next;
   }, [items]);
+}
+
+function isSettingsPathname(pathname: string): boolean {
+  return matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname) !== null;
 }
 
 export function SidebarNavigationModelProvider({
@@ -144,6 +156,15 @@ export function SidebarNavigationModelProvider({
   );
   const rowsById = useMemo(
     () => new Map(rows.map((row) => [getPluginNavPanelKey(row), row])),
+    [rows],
+  );
+  const [badges, setBadges] = useState<NavigationBadges>(() => new Map());
+  const badgedPanels = useMemo(
+    () =>
+      rows.flatMap((row) => {
+        const panel = row.panelEntry?.panel;
+        return panel ? [{ itemId: getPluginNavPanelKey(row), panel }] : [];
+      }),
     [rows],
   );
   const location = useLocation();
@@ -170,7 +191,7 @@ export function SidebarNavigationModelProvider({
             : row.action.kind === "search-threads"
               ? searchThreadsDisabled
               : false,
-        isVisible: row.action.kind === "new-thread" || visibleSet.has(key),
+        isVisible: visibleSet.has(key),
         shortcut:
           row.action.kind === "new-thread" && newThreadShortcut
             ? {
@@ -183,11 +204,13 @@ export function SidebarNavigationModelProvider({
                   ariaKeyShortcuts: threadSearchShortcut.ariaKeyshortcuts,
                 }
               : null,
+        badge: badges.get(key) ?? null,
       });
     });
   }, [
     arrangement.ordered,
     arrangement.visibleKeys,
+    badges,
     newThreadDisabled,
     newThreadShortcut,
     searchThreadsDisabled,
@@ -199,11 +222,22 @@ export function SidebarNavigationModelProvider({
     rows,
     pathname: location.pathname,
   });
+  const isHomeActive =
+    !isSettingsPathname(location.pathname) &&
+    (activeItemId === null || activeItemId === NEW_THREAD_NAVIGATION_ITEM_ID);
+  const currentRoutePath = `${location.pathname}${location.search}${location.hash}`;
+  const homeRoutePathRef = useRef(
+    isHomeActive ? currentRoutePath : getRootComposeRoutePath(),
+  );
+  useEffect(() => {
+    if (isHomeActive) homeRoutePathRef.current = currentRoutePath;
+  }, [currentRoutePath, isHomeActive]);
 
   const latest = useRef({
     arrangement,
     commandRunner,
     host,
+    isHomeActive,
     items,
     navigate,
     rowsById,
@@ -215,6 +249,7 @@ export function SidebarNavigationModelProvider({
       arrangement,
       commandRunner,
       host,
+      isHomeActive,
       items,
       navigate,
       rowsById,
@@ -223,7 +258,7 @@ export function SidebarNavigationModelProvider({
     };
   });
 
-  const actions = useMemo<SidebarNavigationActions>(() => {
+  const actions = useMemo<ExperimentalSidebarNavigationActions>(() => {
     const lookup = (itemId: string) => {
       const current = latest.current;
       const row = current.rowsById.get(itemId);
@@ -283,8 +318,19 @@ export function SidebarNavigationModelProvider({
           }
         }
       },
+      goHome() {
+        const current = latest.current;
+        if (current.isHomeActive) return;
+        void current.navigate(homeRoutePathRef.current);
+      },
       setVisible(itemId, isVisible) {
         latest.current.arrangement.setVisible(itemId, isVisible);
+      },
+      setOrder(itemIds) {
+        latest.current.arrangement.setOrder(itemIds);
+      },
+      openCustomize() {
+        latest.current.host.onOpenCustomize?.();
       },
       openDetails(itemId) {
         const found = lookup(itemId);
@@ -322,9 +368,15 @@ export function SidebarNavigationModelProvider({
     };
   }, []);
 
-  const state = useMemo<SidebarNavigationState>(
-    () => ({ items, activeItemId, isShortcutModifierHeld, actions }),
-    [actions, activeItemId, isShortcutModifierHeld, items],
+  const state = useMemo<ExperimentalSidebarNavigationState>(
+    () => ({
+      items,
+      activeItemId,
+      isHomeActive,
+      isShortcutModifierHeld,
+      actions,
+    }),
+    [actions, activeItemId, isHomeActive, isShortcutModifierHeld, items],
   );
   const model = useMemo<SidebarNavigationModel>(
     () => ({
@@ -338,56 +390,22 @@ export function SidebarNavigationModelProvider({
   );
   return (
     <SidebarNavigationModelContext.Provider value={model}>
+      <NavigationBadgeSources panels={badgedPanels} setBadges={setBadges} />
       {children}
     </SidebarNavigationModelContext.Provider>
   );
 }
 
+export function useOptionalSidebarNavigationModel(): SidebarNavigationModel | null {
+  return useContext(SidebarNavigationModelContext);
+}
+
 export function useSidebarNavigationModel(): SidebarNavigationModel {
-  const model = useContext(SidebarNavigationModelContext);
+  const model = useOptionalSidebarNavigationModel();
   if (model === null) {
     throw new Error(
       "useSidebarNavigationModel must be used within a SidebarNavigationModelProvider.",
     );
   }
   return model;
-}
-
-export function useSidebarNavigation(): SidebarNavigationState {
-  return useSidebarNavigationModel().state;
-}
-
-const PLACEHOLDER_SPLIT_CONTENT = { kind: "new-thread" } as const;
-
-export function useSidebarNavigationSplit(itemId: string): {
-  splitProps: {
-    onPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
-  };
-  isAvailable: boolean;
-} {
-  const model = useSidebarNavigationModel();
-  const row = model.rowsById.get(itemId);
-  const target = useMemo(() => {
-    const content = row ? getSidebarNavigationRowContent(row) : null;
-    return row && content ? { content, label: row.label } : null;
-  }, [row]);
-  const enabled = target !== null && model.splitEnabled;
-  const onNavigate = model.onNavigate;
-  const options = useMemo(
-    () => ({
-      content: target?.content ?? PLACEHOLDER_SPLIT_CONTENT,
-      enabled,
-      label: target?.label ?? "",
-      ...(onNavigate ? { onNavigate } : {}),
-    }),
-    [enabled, onNavigate, target],
-  );
-  const { onPointerDown } = usePaneContentSplitDrag(options);
-  return useMemo(
-    () => ({
-      splitProps: onPointerDown ? { onPointerDown } : {},
-      isAvailable: onPointerDown !== undefined,
-    }),
-    [onPointerDown],
-  );
 }

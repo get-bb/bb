@@ -17,10 +17,17 @@ import {
   QueuedMessagesPendingCard,
 } from "./LazyQueuedMessagesList";
 
-const mocks = vi.hoisted(() => ({ imported: vi.fn() }));
+const mocks = vi.hoisted(() => {
+  let releaseImport = () => {};
+  const importGate = new Promise<void>((resolve) => {
+    releaseImport = resolve;
+  });
+  return { imported: vi.fn(), importGate, releaseImport };
+});
 
 vi.mock("./QueuedMessagesList", async (importOriginal) => {
   mocks.imported();
+  await mocks.importGate;
   return importOriginal();
 });
 
@@ -32,10 +39,12 @@ const noop = () => {};
 
 function Queue({
   queuedMessages,
+  initiallyExpanded = false,
 }: {
   queuedMessages: readonly ThreadQueuedMessage[];
+  initiallyExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   return (
     <LazyQueuedMessagesList
       attachedToComposer
@@ -62,10 +71,27 @@ it("downloads the queue only for queued work, warming it from the pending summar
   expect(view.container.innerHTML).toBe("");
   expect(mocks.imported).not.toHaveBeenCalled();
 
-  view.rerender(
-    <QueuedMessagesPendingCard expanded={false} queuedMessageCount={2} />,
-  );
+  view.rerender(<QueuedMessagesPendingCard queuedMessageCount={2} />);
   await waitFor(() => expect(mocks.imported).toHaveBeenCalledOnce());
+  view.rerender(
+    <Queue
+      initiallyExpanded
+      queuedMessages={[
+        makeThreadQueuedMessage({
+          id: "q_1",
+          content: [
+            { type: "text", text: "Please check the follow-up", mentions: [] },
+          ],
+        }),
+      ]}
+    />,
+  );
+  screen.getByText("Please check the follow-up");
+  expect(
+    screen.queryByRole("button", { name: "Send queued message 1 now" }),
+  ).toBeNull();
+  view.rerender(<QueuedMessagesPendingCard queuedMessageCount={2} />);
+  mocks.releaseImport();
   await act(() => LazyQueuedMessagesList.preload());
   expect(mocks.imported).toHaveBeenCalledOnce();
   screen.getByRole("status", { name: "Loading queued messages" });

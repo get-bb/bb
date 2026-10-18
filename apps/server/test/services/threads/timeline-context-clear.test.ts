@@ -7,16 +7,15 @@ import {
   type Thread,
 } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   insertEvents,
   listEvents,
-  migrate,
   noopNotifier,
   upsertHost,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
@@ -60,8 +59,7 @@ function clientTurnRequestedEvent(
 }
 
 function setup(): { db: DbConnection; thread: Thread } {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
@@ -114,6 +112,8 @@ describe("timeline context-clear epochs", () => {
         includeNestedRows: true,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         maxInlineOutputChars: null,
         maxSeq: 2,
       };
@@ -129,7 +129,6 @@ describe("timeline context-clear epochs", () => {
         }),
       ]);
       expect(latest.timelinePage).toMatchObject({
-        hasOlderRows: false,
         olderCursor: null,
       });
       expect(
@@ -237,6 +236,8 @@ describe("timeline context-clear epochs", () => {
       includeNestedRows: true,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 20 },
@@ -252,7 +253,6 @@ describe("timeline context-clear epochs", () => {
     ).toEqual(["Context cleared", "Newest response"]);
     expect(timeline.contextWindowUsage).toBeUndefined();
     expect(timeline.timelinePage).toMatchObject({
-      hasOlderRows: false,
       olderCursor: null,
     });
     expect(
@@ -326,6 +326,8 @@ describe("timeline context-clear epochs", () => {
       includeNestedRows: true,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 1 },
@@ -336,7 +338,7 @@ describe("timeline context-clear epochs", () => {
       expect(page.contextBoundarySeq).toBe(2);
       rowSequences.push(...page.rows.map((row) => row.sourceSeqStart));
       expect(page.rows.every((row) => row.sourceSeqStart >= 2)).toBe(true);
-      if (!page.timelinePage.hasOlderRows) break;
+      if (page.timelinePage.olderCursor === null) break;
       const cursor = page.timelinePage.olderCursor;
       if (cursor === null) throw new Error("expected an older cursor");
       expect(cursor.anchorSeq).toBeGreaterThanOrEqual(2);
@@ -346,6 +348,8 @@ describe("timeline context-clear epochs", () => {
         includeNestedRows: true,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         maxInlineOutputChars: null,
         maxSeq: 6,
         page: { kind: "older", segmentLimit: 1, beforeCursor: cursor },
@@ -355,7 +359,6 @@ describe("timeline context-clear epochs", () => {
     expect(rowSequences).toContain(2);
     expect(rowSequences).not.toContain(1);
     expect(page.timelinePage).toMatchObject({
-      hasOlderRows: false,
       olderCursor: null,
     });
     db.$client.close();
@@ -405,6 +408,8 @@ describe("timeline context-clear epochs", () => {
       includeNestedRows: true,
       includeClearedContextHistory: true,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       maxInlineOutputChars: null,
       maxSeq: 4,
     };
@@ -425,7 +430,7 @@ describe("timeline context-clear epochs", () => {
         }),
       );
       const cursor = page.timelinePage.olderCursor;
-      if (!page.timelinePage.hasOlderRows || cursor === null) break;
+      if (page.timelinePage.olderCursor === null || cursor === null) break;
       page = buildThreadTimelineWithProfile(db, thread, {
         ...options,
         page: { kind: "older", segmentLimit: 1, beforeCursor: cursor },

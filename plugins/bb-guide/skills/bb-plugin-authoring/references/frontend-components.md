@@ -221,31 +221,20 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   absent from projectless pickers. Availability is resolved for that
   project and machine: available rows work normally; setup-required rows show
   the plugin's message and submit routes to that plugin's settings; unavailable
-  rows are disabled with the provider's message. A provider whose inputs schema
-  does not accept `{}` is also disabled until its plugin registers an inputs
-  control; an empty-accepting schema needs no slot. Choosing a row chooses that provider and, for a
-  provider, the machine; everything else that provider needs comes
-  from its plugin's own inputs control, rendered beside the picker. The reuse
+  rows are disabled with the provider's message. Choosing a row chooses that
+  provider and its machine; everything else that provider needs comes from
+  its plugin's `experimental_environmentProviderInputs` control, rendered
+  beside the picker (frontend-core-slots.md). The reuse
   picker beside it offers the environments this project's live threads are
   already running in. bb contributes no branch chip of its own: the worktree
   provider's control owns the base branch, and the checkout provider's owns
   the directory and the branch to switch to.
 
-  An environment composition declares `machineProviderId` and
-  `environmentProviderId`; choosing it creates the machine and runs the concrete
-  environment provider. It appears once, outside existing-host groups.
-  Machine-only registrations do not contribute environment-picker entries.
-  When the composition's machine provider declares inputs, its
-  `experimental_machineProviderInputs` compact chip renders before the
-  environment provider's inputs chip. It reports a ready default on mount and
-  opens richer configuration in the shared responsive drawer; a blocked or
-  crashed control disables submit with its short reason.
-  The Machines page renders the machine provider's icon and display name as the
-  kind next to each provider-created machine's name. Manually enrolled machines
-  have no kind.
-  Machine inputs are persisted and readable by every plugin, so never put
-  secrets in them; store credentials in plugin settings and emit only
-  non-secret configuration or references.
+  An environment composition (backend-machines.md) appears once, outside
+  existing-host groups; when its machine provider declares inputs, that
+  provider's `experimental_machineProviderInputs` chip renders before the
+  environment provider's inputs chip.
+
   Store-then-restore: the request's selection fields map to the `default*`
   seed props. The host composer creates `input` and `executionInputSources`
   from its draft and selection provenance. A plugin can re-open a saved
@@ -275,7 +264,9 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   submit it calls `onSubmit(request)` with a JSON-serializable
   `NewThreadRequest`
   `{ projectId, providerId, model, reasoningLevel, permissionMode,
-serviceTier?, executionInputSources, environment, input }`. Hand it to
+serviceTier?, sessionOptions?, executionInputSources, environment, input }`
+  (`sessionOptions` only when the user changed an agent option the provider
+  declares). Hand it to
   `useSdk().threads.spawn` from the frontend (or forward it verbatim to your
   backend rpc and `bb.sdk.threads.spawn` when the create needs server-side
   work), adding `sectionId` / `parentThreadId` / `title` / `visibility`
@@ -309,6 +300,7 @@ serviceTier?, executionInputSources, environment, input }`. Hand it to
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+
 - `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
   input (the prompt box's microphone preference, transcription service, and
   errors). Props: `value`, `onValueChange(value)`, optional
@@ -320,7 +312,6 @@ serviceTier?, executionInputSources, environment, input }`. Hand it to
   submission while `onVoiceInputActiveChange` reports `true`. The registry's
   `voice-input-textarea` item re-exports it, and `question-form` uses it for
   free-text answers. Alias it on import like `experimental_NewThreadComposer`.
-
 
 ## Shared app and provider icons
 
@@ -352,10 +343,15 @@ string), and `strings.iconTint` without fetching. An id-only record resolves a
 frontend registration or fallback. For example:
 
 ```tsx
-<ProviderIcon providerKind="agent" provider={provider} fallback="Bot" className="size-4" />
+<ProviderIcon
+  providerKind="agent"
+  provider={provider}
+  fallback="Bot"
+  className="size-4"
+/>
 ```
 
- Resolution is the matching kind/id `app.slots.experimental_providerIcon` override,
+Resolution is the matching kind/id `app.slots.experimental_providerIcon` override,
 then a legacy unscoped override, then
 declared logo mask, then glyph through the shared app registry, then fallback.
 Invalid tints are ignored. Overrides update and remount per plugin generation;

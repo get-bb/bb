@@ -9,7 +9,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { createPortal } from "react-dom";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
@@ -28,6 +28,8 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginAppOverlays } from "./PluginAppOverlays";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import { LocationProbe } from "@/test/location-probe";
+import { SidebarThreadEntriesTestProvider } from "@/test/sidebarThreadEntriesTestProvider";
 
 vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
   ThreadDeleteDialog: () => null,
@@ -72,10 +74,6 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
     isError: false,
   }),
 }));
-
-function LocationProbe() {
-  return <div data-testid="location">{useLocation().pathname}</div>;
-}
 
 function PortaledProbe() {
   const context = useBbContext();
@@ -190,14 +188,16 @@ describe("PluginAppOverlays", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/projects/proj_1/threads/thr_1"]}>
-          <RouteNavigationProvider>
-            <ThreadActionsProvider>
-              <PluginAppOverlays />
-              <LocationProbe />
-            </ThreadActionsProvider>
-          </RouteNavigationProvider>
-        </MemoryRouter>
+        <SidebarThreadEntriesTestProvider>
+          <MemoryRouter initialEntries={["/projects/proj_1/threads/thr_1"]}>
+            <RouteNavigationProvider>
+              <ThreadActionsProvider>
+                <PluginAppOverlays />
+                <LocationProbe />
+              </ThreadActionsProvider>
+            </RouteNavigationProvider>
+          </MemoryRouter>
+        </SidebarThreadEntriesTestProvider>
       </QueryClientProvider>,
     );
 

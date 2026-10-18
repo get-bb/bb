@@ -54,6 +54,7 @@ describe("server choice IPC", () => {
       }),
     }));
     const sync = createConnectServerSync({
+      getAccountSession: async () => null,
       getCredential: () => null,
       getLocalServerUrl: () => "http://127.0.0.1:1234",
       onServers: (next) => {
@@ -90,7 +91,7 @@ describe("server choice IPC", () => {
     await sync.syncNow();
     expect(list(event)).toContainEqual({
       id: "connect:remote",
-      name: "Remote",
+      name: "remote.example",
       active: false,
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -105,6 +106,16 @@ describe("server choice IPC", () => {
       list({ ...event, sender: { id: 99, mainFrame: frame } }),
     ).toThrow("limited to bb windows");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await store.setCustomServerName(
+      "https://user:password@custom.example/private",
+      "Office",
+    );
+    expect(list(event)).toContainEqual({ ...initial[1], name: "Office" });
+    await store.setCustomServerName(
+      "https://user:password@custom.example/private",
+      null,
+    );
+    expect(list(event)).toContainEqual(initial[1]);
   });
 
   it("accepts only inactive native choices from the application main frame", async () => {

@@ -1,3 +1,4 @@
+import { selectionClipboard } from "@/lib/markdown-clipboard";
 import { useEffect, useRef, type ReactNode } from "react";
 
 export interface SelectionAnchorPoint {
@@ -515,11 +516,73 @@ function handleSharedKeyUp(): void {
   scheduleSharedReport();
 }
 
-function handleSharedCopy(): void {
+export function readSelectedMessageMarkdown(): string | null {
   const selection = window.getSelection();
-  if (selection === null || selection.rangeCount !== 1) return;
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1)
+    return null;
   const range = selection.getRangeAt(0);
+  const instance =
+    findInstanceContaining(range.startContainer) ??
+    findInstanceContaining(range.endContainer);
+  if (!instance) return null;
+  const node = instance.node;
+  const clipped =
+    node.contains(range.startContainer) && node.contains(range.endContainer)
+      ? range
+      : clippedRangeForWhitespaceBoundarySpill(node, range);
+  return clipped === null ? null : selectionClipboard(clipped, node).text;
+}
+
+function handleSharedCopy(event: ClipboardEvent): void {
+  if (event.defaultPrevented) return;
+  const selection = window.getSelection();
+  if (selection === null || selection.isCollapsed || selection.rangeCount !== 1)
+    return;
+  const range = selection.getRangeAt(0);
+  const startInstance = findInstanceContaining(range.startContainer);
+  const endInstance = findInstanceContaining(range.endContainer);
+  if (event.clipboardData && startInstance && endInstance) {
+    const instances = Array.from(proseInstances)
+      .filter((instance) => range.intersectsNode(instance.node))
+      .sort((a, b) =>
+        a.node.compareDocumentPosition(b.node) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+          ? -1
+          : 1,
+      );
+    const parts = instances.map((instance) => {
+      const clipped = range.cloneRange();
+      if (!instance.node.contains(range.startContainer))
+        clipped.setStart(instance.node, 0);
+      if (!instance.node.contains(range.endContainer))
+        clipped.setEnd(instance.node, instance.node.childNodes.length);
+      return selectionClipboard(clipped, instance.node);
+    });
+    const payload = {
+      text: parts.map((part) => part.text).join("\n\n"),
+      html: parts.map((part) => part.html).join(""),
+    };
+    if (payload.text) {
+      event.clipboardData.setData("text/plain", payload.text);
+      event.clipboardData.setData("text/html", payload.html);
+      event.preventDefault();
+    }
+    return;
+  }
   for (const instance of proseInstances) {
+    if (event.clipboardData) {
+      const clipped = clippedRangeForWhitespaceBoundarySpill(
+        instance.node,
+        range,
+      );
+      if (clipped) {
+        const payload = selectionClipboard(clipped, instance.node);
+        event.clipboardData.setData("text/plain", payload.text);
+        event.clipboardData.setData("text/html", payload.html);
+        event.preventDefault();
+        return;
+      }
+    }
     if (
       typeof range.intersectsNode === "function" &&
       range.intersectsNode(instance.node) &&

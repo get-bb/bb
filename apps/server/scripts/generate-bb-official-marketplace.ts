@@ -63,6 +63,11 @@ export interface BundledPluginIdentity {
   pluginId: string;
 }
 
+export interface BundledPluginListing extends BundledPluginIdentity {
+  autoInstall: boolean;
+  defaultEnabled: boolean;
+}
+
 export interface PluginGitDates {
   publishedAt: string;
   updatedAt: string;
@@ -210,11 +215,36 @@ function marketplaceIcon(pluginName: string, declared: string) {
   return { url: `./${pluginName}/${relative}` };
 }
 
+function publishedTime(publishedAt: string | undefined): number {
+  const time = Date.parse(publishedAt ?? "");
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+export function bbOfficialShelfOrder(
+  entries: readonly {
+    id: string;
+    onByDefault: boolean;
+    publishedAt?: string;
+  }[],
+): string[] {
+  return [...entries]
+    .sort((left, right) => {
+      if (left.onByDefault !== right.onByDefault) {
+        return left.onByDefault ? 1 : -1;
+      }
+      const leftTime = publishedTime(left.publishedAt);
+      const rightTime = publishedTime(right.publishedAt);
+      if (leftTime !== rightTime) return rightTime > leftTime ? 1 : -1;
+      return left.id.localeCompare(right.id);
+    })
+    .map((entry) => entry.id);
+}
+
 export async function generateBbOfficialMarketplace(args: {
   repositoryRoot: string;
   catalogFieldsPath: string;
   outputPath: string;
-  plugins: readonly BundledPluginIdentity[];
+  plugins: readonly BundledPluginListing[];
   warn: (message: string) => void;
 }): Promise<void> {
   const catalogJson: unknown = JSON.parse(
@@ -271,6 +301,11 @@ export async function generateBbOfficialMarketplace(args: {
       };
     }),
   );
+  const onByDefaultIds = new Set(
+    args.plugins
+      .filter((plugin) => plugin.autoInstall && plugin.defaultEnabled)
+      .map((plugin) => plugin.pluginId),
+  );
   const document = {
     schemaVersion: 2,
     name: BUNDLED_MARKETPLACE_NAME,
@@ -281,7 +316,15 @@ export async function generateBbOfficialMarketplace(args: {
       {
         id: "bb-official",
         displayName: "BB Official",
-        pluginIds: entries.map((entry) => entry.id),
+        pluginIds: bbOfficialShelfOrder(
+          entries.map((entry) => ({
+            id: entry.id,
+            onByDefault: onByDefaultIds.has(entry.id),
+            ...("publishedAt" in entry
+              ? { publishedAt: entry.publishedAt }
+              : {}),
+          })),
+        ),
       },
     ],
     plugins: entries,

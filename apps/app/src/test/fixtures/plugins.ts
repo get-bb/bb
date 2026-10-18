@@ -39,6 +39,7 @@ export function makePluginRegistrationSet(
     sourceCodeRenderers: [],
     diffRenderers: [],
     messageDirectives: [],
+    codeFenceRenderers: [],
     messageActions: [],
     commandPaletteActions: [],
     providerIcons: [],

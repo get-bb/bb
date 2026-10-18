@@ -494,7 +494,7 @@ export function ThreadActionsProvider({
           closeDialog?.();
           showMutationErrorToast({
             error,
-            fallbackMessage: "Failed to archive thread and children",
+            fallbackMessage: "Failed to archive thread and its child threads",
             lifecycleOperation: "archive_thread",
           });
         },

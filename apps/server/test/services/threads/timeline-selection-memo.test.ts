@@ -192,6 +192,7 @@ function workflowTask(id: string, completed: boolean) {
     description: "workflow",
     id,
     skipTranscript: false,
+    foreground: false,
     status: completed ? "completed" : "pending",
     taskStatus: completed ? "completed" : "running",
     taskType: LOCAL_WORKFLOW_TASK_TYPE,
@@ -561,7 +562,8 @@ function walkOlderPages(
   let page = latest;
   for (let depth = 0; depth < 10; depth += 1) {
     const cursor = page.response.timelinePage.olderCursor;
-    if (!page.response.timelinePage.hasOlderRows || cursor === null) return;
+    if (page.response.timelinePage.olderCursor === null || cursor === null)
+      return;
     page = expectWarmEqualsCold(
       testThread,
       {

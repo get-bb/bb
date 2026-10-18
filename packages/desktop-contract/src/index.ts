@@ -4,3 +4,4 @@ export * from "./info.js";
 export * from "./version-feed.js";
 
 export * from "./servers.js";
+export * from "./macos-window-chrome.js";

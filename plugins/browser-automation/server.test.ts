@@ -16,7 +16,13 @@ async function setup() {
   const desktopTabs: FakeTab[] = [{ tabId: "created", control: null }];
   const tabChangeListeners: TabChangeListener[] = [];
   const worker = vi.fn(
-    async ({ method }: { method: string }): Promise<unknown> =>
+    async ({
+      method,
+    }: {
+      method: string;
+      hostId: string;
+      signal?: AbortSignal;
+    }): Promise<unknown> =>
       method === "run"
         ? { text: "done", images: [], exitCode: 0 }
         : method === "prepare"
@@ -483,6 +489,158 @@ describe("server session ownership", () => {
       ).toHaveLength(1);
     } finally {
       await h.harness.lifecycle.dispose();
+    }
+  });
+});
+describe("server session cleanup", () => {
+  const ready = { status: "ready", version: "1.0.0-test", source: "release" };
+  const ownedBy = (sessionId: string) => ({
+    threadId: "thread-test",
+    sessionId,
+  });
+  async function openLocal(
+    h: Awaited<ReturnType<typeof setup>>,
+    hostId = "local-host",
+  ) {
+    return rpcContract.open.output.parse(
+      await h.harness.behavior.callRpc("open", {
+        threadId: "thread-test",
+        selection: { backend: "local", hostId },
+      }),
+    );
+  }
+  async function listed(h: Awaited<ReturnType<typeof setup>>, id: string) {
+    const sessions = rpcContract.list.output.parse(
+      await h.harness.behavior.callRpc("list", { threadId: "thread-test" }),
+    );
+    return sessions.find((entry) => entry.id === id);
+  }
+  const hostCalls = (h: Awaited<ReturnType<typeof setup>>, method: string) =>
+    h.worker.mock.calls.filter(([call]) => call.method === method);
+
+  it("rejects close when the host cannot release the browser and retries on the next close", async () => {
+    const h = await setup();
+    try {
+      const flaky = await openLocal(h, "flaky-host");
+      const other = await openLocal(h);
+      h.worker.mockImplementation(async ({ method, hostId }) => {
+        if (method === "close" && hostId === "flaky-host")
+          throw new Error("profile directory busy");
+        return null;
+      });
+      await expect(
+        h.harness.behavior.callRpc("close", ownedBy(flaky.id)),
+      ).rejects.toThrow("profile directory busy");
+      expect((await listed(h, flaky.id))?.state).toBe("closed");
+      expect((await listed(h, other.id))?.state).toBe("ready");
+      await expect(
+        h.harness.behavior.callRpc("run", {
+          ...ownedBy(flaky.id),
+          script: "1",
+        }),
+      ).rejects.toThrow("stopped or expired");
+      await expect(
+        h.harness.behavior.callRpc("stop", ownedBy(flaky.id)),
+      ).rejects.toThrow("Browser session closed");
+      h.worker.mockImplementation(async () => null);
+      expect(
+        await h.harness.behavior.callRpc("close", ownedBy(flaky.id)),
+      ).toMatchObject({ state: "closed" });
+      await h.harness.behavior.callRpc("close", ownedBy(flaky.id));
+      expect(hostCalls(h, "close")).toHaveLength(3);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it("shares one cleanup outcome across concurrent closes", async () => {
+    const h = await setup();
+    try {
+      const session = await openLocal(h);
+      let failHost!: () => void;
+      h.worker.mockImplementation(async ({ method }) => {
+        if (method === "close")
+          await new Promise<void>(
+            (_resolve, reject) =>
+              (failHost = () => reject(new Error("browser still running"))),
+          );
+        return null;
+      });
+      const outcomes = Promise.allSettled([
+        h.harness.behavior.callRpc("close", ownedBy(session.id)),
+        h.harness.behavior.callRpc("close", ownedBy(session.id)),
+      ]);
+      await vi.waitFor(() => expect(hostCalls(h, "close")).toHaveLength(1));
+      failHost();
+      expect(
+        (await outcomes).map((outcome) =>
+          outcome.status === "rejected" ? String(outcome.reason) : "resolved",
+        ),
+      ).toEqual([
+        expect.stringContaining("browser still running"),
+        expect.stringContaining("browser still running"),
+      ]);
+      expect(hostCalls(h, "close")).toHaveLength(1);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it("aborts a host startup that completes after close", async () => {
+    const h = await setup();
+    try {
+      let finishStartup!: () => void;
+      h.worker.mockImplementation(async ({ method }) => {
+        if (method === "prepare") return ready;
+        if (method === "open")
+          await new Promise<void>((resolve) => (finishStartup = resolve));
+        return null;
+      });
+      const opening = h.harness.behavior.callRpc("open", {
+        threadId: "thread-test",
+        selection: { backend: "local", hostId: "local-host" },
+      });
+      const rejected = expect(opening).rejects.toThrow();
+      await vi.waitFor(() => expect(hostCalls(h, "open")).toHaveLength(1));
+      const [session] = rpcContract.list.output.parse(
+        await h.harness.behavior.callRpc("list", { threadId: "thread-test" }),
+      );
+      expect(
+        await h.harness.behavior.callRpc("close", ownedBy(session!.id)),
+      ).toMatchObject({ state: "closed" });
+      expect(hostCalls(h, "open")[0]![0].signal?.aborted).toBe(true);
+      finishStartup();
+      await rejected;
+      expect((await listed(h, session!.id))?.state).toBe("closed");
+      expect(hostCalls(h, "close")).toHaveLength(1);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it("finishes cleanup that was pending when the plugin restarted", async () => {
+    const h = await setup();
+    let current = h;
+    try {
+      const session = await openLocal(h);
+      h.worker.mockImplementation(async ({ method }) =>
+        method === "close" ? new Promise<null>(() => {}) : null,
+      );
+      void h.harness.behavior
+        .callRpc("close", ownedBy(session.id))
+        .catch(() => {});
+      await vi.waitFor(() => expect(hostCalls(h, "close")).toHaveLength(1));
+      h.worker.mockImplementation(async () => null);
+      current = { ...h, ...(await h.harness.lifecycle.reload(plugin)) };
+      expect(hostCalls(h, "close")).toHaveLength(1);
+      await current.harness.behavior.runService("restart-cleanup").done;
+      expect(hostCalls(h, "close")).toHaveLength(2);
+      expect(
+        await current.harness.behavior.callRpc("close", ownedBy(session.id)),
+      ).toMatchObject({ state: "closed" });
+      expect(hostCalls(h, "close")).toHaveLength(2);
+    } finally {
+      await current.harness.lifecycle.dispose();
     }
   });
 });

@@ -431,10 +431,7 @@ export function useScrollToSearchedMessage(
     }
     const selector = `[data-timeline-row-id="${escapeTimelineRowId(targetLeafRow.id)}"]`;
     const renderedTarget = document.querySelector<HTMLElement>(selector);
-    if (
-      renderedTarget === null ||
-      renderedTarget.dataset.timelineWindowedRealized === "false"
-    ) {
+    if (renderedTarget === null) {
       return;
     }
     let frame: number;

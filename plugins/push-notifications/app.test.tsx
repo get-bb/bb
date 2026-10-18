@@ -145,9 +145,6 @@ function renderNotifications(
       : {
           detail: action.detail ?? null,
           icon: action.icon,
-          inheritLabel:
-            action.choices?.items.find((choice) => choice.id === "inherit")
-              ?.label ?? null,
           hint: action.choices?.hint ?? null,
           selected:
             action.choices?.items.find((choice) => choice.selected)?.id ?? null,
@@ -203,14 +200,12 @@ describe("thread notifications action", () => {
     expect(summary()).toEqual({
       detail: "Muted",
       icon: "push-notifications/off",
-      inheritLabel: "Default (All activity)",
       hint: null,
       selected: "muted",
     });
     expect(summary({ id: "thr_child", parentThreadId: "thr_top" })).toEqual({
       detail: "Muted",
       icon: "push-notifications/off",
-      inheritLabel: "Default (Needs input only)",
       hint: "Limited by a parent thread",
       selected: "inherit",
     });
@@ -219,28 +214,24 @@ describe("thread notifications action", () => {
     ).toEqual({
       detail: "Muted",
       icon: "push-notifications/off",
-      inheritLabel: "Default (Needs input only)",
       hint: "Limited by an ancestor thread",
       selected: "inherit",
     });
     expect(summary({ id: "thr_other", parentThreadId: "thr_top" })).toEqual({
       detail: "Needs input only",
       icon: "BellDot",
-      inheritLabel: "Default (Needs input only)",
       hint: null,
       selected: "inherit",
     });
     expect(summary({ id: "thr_new" })).toEqual({
       detail: "All activity",
       icon: "push-notifications/ringing",
-      inheritLabel: "Default (All activity)",
       hint: null,
       selected: "inherit",
     });
     expect(summary({ id: "thr_unshown" })).toEqual({
       detail: "All activity",
       icon: "push-notifications/ringing",
-      inheritLabel: "Default (All activity)",
       hint: null,
       selected: "inherit",
     });

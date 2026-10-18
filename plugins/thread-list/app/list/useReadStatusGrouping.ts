@@ -6,6 +6,9 @@ import {
   collapseParentThreads,
   createThreadUnreadPredicate,
   groupComparatorByReadStatus,
+  rememberHeldReadStatus,
+  resolveHeldReadStatus,
+  restoreHeldReadStatus,
   type HeldReadStatus,
 } from "../model/read-status-grouping.js";
 import {
@@ -14,31 +17,19 @@ import {
 } from "../preferences/atoms.js";
 
 const threadsExpandedWhileGroupedAtom = atom<readonly string[]>([]);
-let lastHeldReadStatus: HeldReadStatus | null = null;
 
-export function useHeldReadStatus(
+function useHeldReadStatus(
   threads: readonly SidebarThread[],
   selectedThreadId: string | undefined,
 ): HeldReadStatus | null {
   const [held, setHeld] = useState<HeldReadStatus | null>(() =>
-    lastHeldReadStatus?.threadId === selectedThreadId
-      ? lastHeldReadStatus
-      : null,
+    restoreHeldReadStatus(selectedThreadId),
   );
   useEffect(() => {
-    lastHeldReadStatus = held;
+    rememberHeldReadStatus(held);
   }, [held]);
-  if (held?.threadId === selectedThreadId) {
-    return held;
-  }
-  const thread =
-    selectedThreadId === undefined
-      ? undefined
-      : threads.find((candidate) => candidate.id === selectedThreadId);
-  const next = thread
-    ? { threadId: thread.id, isUnread: thread.isUnread }
-    : null;
-  if (next !== null || held !== null) {
+  const next = resolveHeldReadStatus(held, threads, selectedThreadId);
+  if (next !== held) {
     setHeld(next);
   }
   return next;

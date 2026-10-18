@@ -319,6 +319,11 @@
       "types": "./src/components/ui/sidebar-row-classes.ts",
       "default": "./src/components/ui/sidebar-row-classes.ts"
     },
+    "./sidebar-hover-actions": {
+      "source": "./src/components/ui/sidebar-hover-actions.ts",
+      "types": "./src/components/ui/sidebar-hover-actions.ts",
+      "default": "./src/components/ui/sidebar-hover-actions.ts"
+    },
     "./sidebar-visibility-customize": {
       "source": "./src/components/ui/sidebar-visibility-customize.tsx",
       "types": "./src/components/ui/sidebar-visibility-customize.tsx",
@@ -353,6 +358,21 @@
       "source": "./src/components/ui/use-sidebar-reorder-dnd.ts",
       "types": "./src/components/ui/use-sidebar-reorder-dnd.ts",
       "default": "./src/components/ui/use-sidebar-reorder-dnd.ts"
+    },
+    "./overflow-fade": {
+      "source": "./src/components/ui/overflow-fade.tsx",
+      "types": "./src/components/ui/overflow-fade.tsx",
+      "default": "./src/components/ui/overflow-fade.tsx"
+    },
+    "./shortcut-pill": {
+      "source": "./src/components/ui/shortcut-pill.tsx",
+      "types": "./src/components/ui/shortcut-pill.tsx",
+      "default": "./src/components/ui/shortcut-pill.tsx"
+    },
+    "./split-pane-mini-map": {
+      "source": "./src/components/ui/split-pane-mini-map.tsx",
+      "types": "./src/components/ui/split-pane-mini-map.tsx",
+      "default": "./src/components/ui/split-pane-mini-map.tsx"
     }
   },
   "scripts": {

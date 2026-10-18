@@ -16,6 +16,7 @@ import {
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
+import { useOptionalPaneContext } from "./PaneContext";
 
 type ThreadTimelinePaneProps = Omit<
   ComponentProps<typeof ThreadTimelinePane>,
@@ -77,6 +78,7 @@ function ThreadDetailSecondaryContentBody({
   secondaryPanel,
   timeline,
 }: ThreadDetailSecondaryContentProps) {
+  const paneContext = useOptionalPaneContext();
   const composerHost = usePluginComposerHost();
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
 
@@ -116,6 +118,7 @@ function ThreadDetailSecondaryContentBody({
       <SecondaryPanelLayout
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
+        onSwipeOpen={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
         panelGroupKey="thread-detail"
         resetKey={timeline.threadId}
@@ -156,6 +159,7 @@ function ThreadDetailSecondaryContentBody({
             }
             onToggleConversationCollapse={onToggleMainCollapse}
             resizablePanelId={resizablePanelId}
+            isAtWindowTop={paneContext?.isTopRow !== false}
             metadataContent={metadataContent}
           />
         )}

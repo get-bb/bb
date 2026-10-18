@@ -300,7 +300,12 @@ describe("guide fixture boundaries", () => {
     expect(railEnd).toBeGreaterThan(railStart);
     expect(rail).toContain('data-guide-region="nav-panel"');
     expect(rail).toContain('class="sr-only">Your panel');
-    expect(markup).not.toContain("sidebar-navigation");
+    expect(
+      markup.lastIndexOf('data-guide-region="sidebar-navigation"', railStart),
+    ).toBeGreaterThan(-1);
+    expect(markup).toMatch(
+      /data-guide-badge="sidebar-navigation"[\s\S]*?data-guide-badge-placement="start"/,
+    );
   });
 
   it("grows the app window within capped viewport-fit bounds while retaining loose timeline spacing", () => {

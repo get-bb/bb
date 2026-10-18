@@ -44,12 +44,17 @@ const promptActions: readonly PromptBoxAction[] = [
 
 const idleVoice: PromptVoiceConfig = {
   state: "idle",
+  delivery: "insert",
   microphoneWarning: null,
   isSupported: true,
   stream: null,
+  failedRecordings: [],
   start: noop,
   stop: noop,
   send: noop,
+  retry: noop,
+  discard: noop,
+  download: noop,
   cancel: noop,
 };
 

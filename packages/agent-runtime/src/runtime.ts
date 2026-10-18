@@ -327,6 +327,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadIdentityRegistry.createProviderState({ providerId }),
     env: options.env,
     getNextRequestId: () => nextRequestId++,
+    handleDeferredEvents: (args) => {
+      if (suppressedThreadEventIds.has(args.sourceThreadId)) {
+        return;
+      }
+      emitTranslatedEvents({
+        events: args.events,
+        proc: args.providerProcess,
+        sourceThreadId: args.sourceThreadId,
+      });
+    },
     handleStdoutLine: (args) =>
       handleStdoutLine(args.line, args.providerProcess),
     onProcessExit: options.onProcessExit,

@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
+import {
+  DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+  shortenTimelineResponseOutputs,
+} from "../../../src/services/threads/timeline-output-shortening.js";
+
+function truncateOnly(input: ThreadTimelineResponse): ThreadTimelineResponse {
+  return shortenTimelineResponseOutputs(input, {
+    maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+    preview: false,
+  });
+}
+
+const base = {
+  id: "row",
+  threadId: "thr_x",
+  turnId: "turn_1",
+  sourceSeqStart: 1,
+  sourceSeqEnd: 2,
+  startedAt: 0,
+  createdAt: 0,
+};
+
+function response(rows: TimelineRow[]): ThreadTimelineResponse {
+  return {
+    rows,
+    contextBoundarySeq: null,
+    completedTurnDisplay: "collapse",
+    activePromptMode: null,
+    activeThinking: null,
+    activeWorkflows: [],
+    activeBackgroundCommands: [],
+    pendingTodos: null,
+    goal: null,
+    providerCommands: null,
+    sessionOptions: null,
+    modelFallback: null,
+    maxSeq: 0,
+    timelinePage: {
+      returnedSegmentCount: 0,
+      olderCursor: null,
+      historySnapshot: "",
+      olderRowsSourceSeqEnd: null,
+    },
+  };
+}
+
+function commandRow(output: string): TimelineRow {
+  return {
+    ...base,
+    kind: "work",
+    status: "completed",
+    workKind: "command",
+    callId: "c1",
+    command: "echo",
+    cwd: null,
+    source: null,
+    output,
+    exitCode: 0,
+    completedAt: 1,
+    approvalStatus: null,
+    activityIntents: [],
+  };
+}
+
+describe("shortenTimelineResponseOutputs", () => {
+  it("truncates a command output above the cap and keeps a marker", () => {
+    const big = "x".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS + 5_000);
+    const out = truncateOnly(response([commandRow(big)]));
+    const row = out.rows[0] as Extract<
+      TimelineRow,
+      { kind: "work"; workKind: "command" }
+    >;
+    expect(row.output.length).toBeLessThan(big.length);
+    expect(row.output).toContain("more characters truncated");
+    expect(
+      row.output.startsWith("x".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS)),
+    ).toBe(true);
+  });
+
+  it("leaves small outputs and their row identity untouched", () => {
+    const input = response([commandRow("ok")]);
+    const out = truncateOnly(input);
+    expect(out).toBe(input);
+    expect(out.rows[0]).toBe(input.rows[0]);
+  });
+
+  it("recurses into turn children", () => {
+    const big = "y".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS + 1_000);
+    const turn: TimelineRow = {
+      ...base,
+      kind: "turn",
+      turnId: "turn_1",
+      status: "completed",
+      summaryCount: 1,
+      completedAt: 1,
+      children: [commandRow(big)],
+    };
+    const out = truncateOnly(response([turn]));
+    const turnOut = out.rows[0] as Extract<TimelineRow, { kind: "turn" }>;
+    const child = turnOut.children![0] as Extract<
+      TimelineRow,
+      { kind: "work"; workKind: "command" }
+    >;
+    expect(child.output).toContain("more characters truncated");
+  });
+
+  it("previews an output after truncating it", () => {
+    const big = "z".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS + 2_000);
+    const out = shortenTimelineResponseOutputs(response([commandRow(big)]), {
+      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      preview: true,
+    });
+    const row = out.rows[0] as Extract<
+      TimelineRow,
+      { kind: "work"; workKind: "command" }
+    >;
+    expect(row.output).toContain("characters omitted from preview");
+    expect(row.output.endsWith("more characters truncated]")).toBe(true);
+  });
+});

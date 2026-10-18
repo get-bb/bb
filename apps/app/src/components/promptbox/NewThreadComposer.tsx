@@ -3,6 +3,7 @@ import { usePendingAttachmentUploads } from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import {
   getPluginConfigurationRoutePath,
   getSettingsRoutePath,
@@ -866,6 +867,7 @@ export function NewThreadComposer({
   const creationOptions = useThreadCreationOptions({
     scope: selectionScope,
     preferenceProjectId: projectId,
+    catalogProjectId: isProjectless ? undefined : projectId,
     resetKey: `${projectId}\0${seedSignature}`,
     resolveProviderRouting,
     initialProviderId: seed?.providerId ?? projectDefaults?.providerId,
@@ -1453,7 +1455,10 @@ export function NewThreadComposer({
   const changeProject = useCallback(
     async (nextProjectId: string | null): Promise<ProjectChangeOutcome> => {
       const nextValue = nextProjectId ?? PERSONAL_PROJECT_ID;
-      if (nextValue === projectId) return "unchanged";
+      if (nextValue === projectId) {
+        await onProjectChange(nextValue);
+        return "unchanged";
+      }
       if (
         isCopyingAttachmentsRef.current ||
         pendingUploadCountRef.current > 0 ||
@@ -1696,10 +1701,22 @@ export function NewThreadComposer({
       setAttachmentError(null);
       const clearedSubmittedDraft =
         promptDraft.clearIfCurrentMatches(submittedDraft);
+      recordTelemetryEvent({
+        name: "new_thread_submit",
+        properties: { outcome: "started" },
+      });
       try {
         await onSubmit(request);
+        recordTelemetryEvent({
+          name: "new_thread_submit",
+          properties: { outcome: "accepted" },
+        });
         clearReuseEnvironment();
       } catch (submitError) {
+        recordTelemetryEvent({
+          name: "new_thread_submit",
+          properties: { outcome: "failed" },
+        });
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
         }
@@ -1982,6 +1999,7 @@ export function NewThreadComposer({
               triggers: promptMentions.triggers,
               results: promptMentions.results,
               isLoading: promptMentions.isLoading,
+              isRefreshing: promptMentions.isRefreshing,
               isError: promptMentions.isError,
               onQueryChange: promptMentions.setQuery,
               resolveLink:

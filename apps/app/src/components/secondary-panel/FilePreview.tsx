@@ -45,6 +45,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatByteSize } from "@/lib/format-byte-size";
+import { saveFile } from "@/lib/save-file";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type {
   FilePreviewLineRange,
@@ -108,7 +109,13 @@ export type FilePreviewState =
       textPreviewKind: TextFilePreviewKind | null;
     };
 
+interface FilePreviewDownload {
+  url: string;
+  fileName: string;
+}
+
 interface FilePreviewProps {
+  download?: FilePreviewDownload | null;
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
@@ -140,6 +147,7 @@ interface HtmlFilePreviewBodyProps {
 }
 
 interface FilePreviewHeaderProps {
+  download: FilePreviewDownload | null;
   previewIcon: ReactNode;
   path: string;
   copyPath: string | null;
@@ -447,6 +455,7 @@ export function getCsvTruncationNote(
 }
 
 export function FilePreview({
+  download = null,
   state,
   path,
   copyPath = null,
@@ -547,6 +556,7 @@ export function FilePreview({
     >
       {headerMode === "file" ? (
         <FilePreviewHeader
+          download={download}
           previewIcon={
             <FilePreviewIcon
               key={path}
@@ -661,6 +671,7 @@ function FilePreviewBody({
 }
 
 function FilePreviewHeader({
+  download,
   previewIcon,
   path,
   copyPath,
@@ -724,6 +735,23 @@ function FilePreviewHeader({
                   <TooltipContent side="bottom">
                     {isRefreshing ? "Refreshing file" : "Refresh file"}
                   </TooltipContent>
+                </Tooltip>
+              ) : null}
+              {download !== null ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
+                      onClick={() => void saveFile(download)}
+                      aria-label="Download"
+                    >
+                      <Icon name="Download" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Download</TooltipContent>
                 </Tooltip>
               ) : null}
               {rawContents === null ? null : (
@@ -883,6 +911,11 @@ function FilePreviewHeader({
                       <Icon name="Copy" aria-hidden /> {copyFileContentsLabel}
                     </DropdownMenuItem>
                   ) : null}
+                  {download !== null ? (
+                    <DropdownMenuItem onSelect={() => void saveFile(download)}>
+                      <Icon name="Download" aria-hidden /> Download
+                    </DropdownMenuItem>
+                  ) : null}
                   {onRefresh ? (
                     <DropdownMenuItem
                       disabled={isRefreshing}
@@ -1023,7 +1056,10 @@ function MarkdownFilePreview({
     return () => container.removeEventListener("scroll", savePosition);
   }, [scrollPosition, file.name, file.contents]);
   return (
-    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
+    <SecondaryPanelSelectionActions
+      markdown
+      onSelectionAddToChat={onSelectionAddToChat}
+    >
       <div ref={contentRef} className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
@@ -1307,7 +1343,14 @@ function UnsupportedFilePreview({ file }: UnsupportedFilePreviewProps) {
           : "This file type can't be previewed."}
       </p>
       <Button asChild variant="outline" size="sm">
-        <a href={file.url} download={file.name}>
+        <a
+          href={file.url}
+          download={file.name}
+          onClick={(event) => {
+            event.preventDefault();
+            void saveFile({ url: file.url, fileName: file.name });
+          }}
+        >
           <Icon name="Download" aria-hidden />
           Download
         </a>

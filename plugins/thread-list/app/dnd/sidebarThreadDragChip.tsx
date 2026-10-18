@@ -1,7 +1,11 @@
 import { COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
 import type { ClientRect, Modifier } from "@dnd-kit/core";
-import { getEventCoordinates } from "@dnd-kit/utilities";
+import {
+  getEventCoordinates,
+  type Coordinates,
+  type Transform,
+} from "@dnd-kit/utilities";
 import { useMemo } from "react";
 import type { CSSProperties } from "react";
 import {
@@ -48,15 +52,20 @@ export function SidebarThreadDragChip({
   );
 }
 
-export function createSnapSidebarThreadDragChipToCursor(): Modifier {
+type SidebarThreadDragChipSnapArgs = Pick<
+  Parameters<Modifier>[0],
+  "active" | "activeNodeRect" | "draggingNodeRect" | "transform"
+> & { pointer: Coordinates | null };
+
+export function createSidebarThreadDragChipSnap() {
   let overlayOriginRect: ClientRect | null = null;
   return ({
-    activatorEvent,
     active,
     activeNodeRect,
     draggingNodeRect,
+    pointer,
     transform,
-  }) => {
+  }: SidebarThreadDragChipSnapArgs): Transform => {
     if (active === null) {
       overlayOriginRect = null;
       return transform;
@@ -65,26 +74,43 @@ export function createSnapSidebarThreadDragChipToCursor(): Modifier {
     if (
       overlayOriginRect === null ||
       draggingNodeRect === null ||
-      activatorEvent === null
+      pointer === null
     ) {
       return transform;
     }
-    const coordinates = getEventCoordinates(activatorEvent);
-    if (coordinates === null) return transform;
     return {
       ...transform,
       x:
         transform.x +
-        coordinates.x -
+        pointer.x -
         overlayOriginRect.left -
         draggingNodeRect.width / 2,
       y:
         transform.y +
-        coordinates.y -
+        pointer.y -
         overlayOriginRect.top -
         draggingNodeRect.height / 2,
     };
   };
+}
+
+function createSnapSidebarThreadDragChipToCursor(): Modifier {
+  const snap = createSidebarThreadDragChipSnap();
+  return ({
+    activatorEvent,
+    active,
+    activeNodeRect,
+    draggingNodeRect,
+    transform,
+  }) =>
+    snap({
+      active,
+      activeNodeRect,
+      draggingNodeRect,
+      transform,
+      pointer:
+        activatorEvent === null ? null : getEventCoordinates(activatorEvent),
+    });
 }
 
 export function useSidebarThreadDragOverlayModifiers(): Modifier[] {

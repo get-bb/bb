@@ -28,6 +28,7 @@ import {
 import { useIsMutating } from "@tanstack/react-query";
 import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import {
   dimInactiveSplitsAtom,
@@ -887,6 +888,7 @@ interface SplitTreeProps {
 function SplitTree(props: SplitTreeProps) {
   const { node, path, isTopRow, isLeftEdge, isRightEdge, focusedPaneId } =
     props;
+  const isSidebarFramed = useIsSidebarFramed();
 
   if (node.type === "pane") {
     const isFocused = node.paneId === focusedPaneId;
@@ -941,6 +943,9 @@ function SplitTree(props: SplitTreeProps) {
           data-pane-focus-scrim=""
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
+            isSidebarFramed &&
+              (isMaximized || isTopRow) &&
+              "top-[calc(var(--bb-window-frame-top)_+_1px)]",
             isFocused || !props.dimsInactiveSplits
               ? "bg-transparent"
               : "bg-background/30",
@@ -1327,6 +1332,10 @@ function NonThreadPaneContent({
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
         !isBoundedPane && content.kind === "new-thread" && "-m-4 md:-m-5",
+        !isBoundedPane &&
+          !panel &&
+          content.kind !== "new-thread" &&
+          "pt-(--bb-window-frame-top)",
       )}
     >
       {isBoundedPane || panel ? (
@@ -1502,6 +1511,7 @@ function SplitDivider({
   onResize,
 }: SplitDividerProps) {
   const horizontal = dir === "row";
+  const isSidebarFramed = useIsSidebarFramed();
   const finishResizeRef = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
@@ -1613,7 +1623,7 @@ function SplitDivider({
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
         "group relative z-[25] flex-shrink-0 transition-colors",
-        "bg-border-seam",
+        isSidebarFramed ? "bg-border" : "bg-border-seam",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",

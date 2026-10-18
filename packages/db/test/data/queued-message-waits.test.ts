@@ -30,7 +30,7 @@ import {
   deleteThread,
 } from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
@@ -76,6 +76,7 @@ describe("queued message waits", () => {
     const { db, thread } = setup();
     const row = queue(db, thread.id);
 
+    expect(row.state).toBe("queued");
     expect(row.sendAt).toBeNull();
     expect(row.waitingOn).toBeNull();
     expect(row.waitHolder).toBeNull();
@@ -204,6 +205,7 @@ describe("queued message waits", () => {
       id: row.id,
       threadId: thread.id,
     });
+    expect(cleared?.state).toBe("queued");
     expect(cleared?.waitingOn).toBeNull();
     expect(cleared?.waitHolder).toBeNull();
     expect(cleared?.sendAt).toBeNull();

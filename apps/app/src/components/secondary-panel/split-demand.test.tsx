@@ -94,6 +94,7 @@ function Surface({ open, browser }: { open: boolean; browser: boolean }) {
         canShowNativeBrowserView={false}
         environmentId="env"
         onUpdate={noop}
+        onOpenInNewTab={null}
         threadId="thread"
       />
     </PanelGroup>

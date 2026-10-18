@@ -1,4 +1,8 @@
-import type { ThreadStatus, ThreadTimelinePendingTodos } from "@bb/domain";
+import type {
+  ThreadParentNotifications,
+  ThreadStatus,
+  ThreadTimelinePendingTodos,
+} from "@bb/domain";
 import type {
   ProjectResponse,
   ThreadListResponse,
@@ -17,6 +21,7 @@ export interface StatusGetArgs {
 export interface StatusThreadSummary {
   environmentId: string | null;
   id: string;
+  parentNotifications: ThreadParentNotifications;
   parentThreadId: string | null;
   pinnedAt: number | null;
   projectId: string;
@@ -54,6 +59,7 @@ function summarizeThread(thread: StatusSourceThread): StatusThreadSummary {
   return {
     environmentId: thread.environmentId ?? null,
     id: thread.id,
+    parentNotifications: thread.parentNotifications,
     parentThreadId: thread.parentThreadId ?? null,
     pinnedAt: thread.pinnedAt,
     projectId: thread.projectId,

@@ -1,5 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { PendingInteraction } from "@bb/domain";
+import {
+  mutationOptions,
+  type QueryClient,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+import type { Host, PendingInteraction } from "@bb/domain";
 import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { isHostDisconnectedError } from "@/lib/lifecycle-errors";
@@ -17,21 +22,27 @@ interface ResolveThreadPendingInteractionMutationRequest {
   resolution: ResolvePendingInteractionRequest;
 }
 
-function useIsThreadHostConnected(threadId: string): boolean {
-  const environmentId = useThread(threadId).data?.environmentId;
-  const hostId = useEnvironment(environmentId).data?.hostId;
-  const hosts = useHosts({ enabled: hostId !== undefined }).data;
-  return (
-    hosts?.some((host) => host.id === hostId && host.status === "connected") ??
-    false
-  );
+interface VisibleResolveInteractionErrorArgs {
+  error: Error | null;
+  hostId: string | undefined;
+  hosts: readonly Host[] | undefined;
 }
 
-export function useResolveThreadPendingInteraction(threadId: string) {
-  const queryClient = useQueryClient();
-  const isHostConnected = useIsThreadHostConnected(threadId);
+export function visibleResolveInteractionError({
+  error,
+  hostId,
+  hosts,
+}: VisibleResolveInteractionErrorArgs): Error | null {
+  const isHostConnected =
+    hosts?.some((host) => host.id === hostId && host.status === "connected") ??
+    false;
+  return isHostConnected && isHostDisconnectedError(error) ? null : error;
+}
 
-  const mutation = useMutation({
+export function resolveThreadPendingInteractionMutationOptions(
+  queryClient: QueryClient,
+) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to resolve pending interaction.",
       showErrorToast: false,
@@ -55,8 +66,23 @@ export function useResolveThreadPendingInteraction(threadId: string) {
       return interaction;
     },
   });
+}
 
-  const isStaleHostError =
-    isHostConnected && isHostDisconnectedError(mutation.error);
-  return { ...mutation, error: isStaleHostError ? null : mutation.error };
+export function useResolveThreadPendingInteraction(threadId: string) {
+  const queryClient = useQueryClient();
+  const environmentId = useThread(threadId).data?.environmentId;
+  const hostId = useEnvironment(environmentId).data?.hostId;
+  const hosts = useHosts({ enabled: hostId !== undefined }).data;
+  const mutation = useMutation(
+    resolveThreadPendingInteractionMutationOptions(queryClient),
+  );
+
+  return {
+    ...mutation,
+    error: visibleResolveInteractionError({
+      error: mutation.error,
+      hostId,
+      hosts,
+    }),
+  };
 }

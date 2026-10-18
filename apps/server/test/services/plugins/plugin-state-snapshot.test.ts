@@ -11,19 +11,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   createPluginArtifact,
   createPluginStateSnapshot,
   getInstalledPlugin,
   getPluginKvValue,
   listPluginArtifacts,
   listPluginStateSnapshots,
-  migrate,
   setPluginKvValue,
   setPluginStateSnapshotStatus,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { garbageCollectPluginArtifacts } from "../../../src/services/plugins/plugin-artifact-gc.js";
 import {
   createPluginStateSnapshotOnDisk,
@@ -36,8 +35,7 @@ describe("plugin activation snapshots and garbage collection", () => {
   let dataDir: string;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     dataDir = await mkdtemp(join(tmpdir(), "bb-plugin-snapshot-"));
   });
 

@@ -21,6 +21,8 @@
   --color-destructive-text: var(--destructive-text);
   --color-warning: var(--warning);
   --color-warning-text: var(--warning-text);
+  --color-attention: var(--attention);
+  --color-surface-attention: var(--surface-attention);
   --color-success: var(--success);
   --color-border: var(--border);
   --color-border-hairline: var(--border-hairline);
@@ -129,6 +131,8 @@
   --destructive-text: oklch(0.45 0.19 25.8625);
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
+  --attention: oklch(0.74 0.15 80);
+  --surface-attention: color-mix(in oklab, var(--attention) 14%, transparent);
   --success: oklch(0.7 0.15 155);
   --border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
   --border-hairline: color-mix(in oklch, var(--ink) 14.7%, var(--canvas));
@@ -209,6 +213,8 @@
   --destructive-text: oklch(0.65 0.16 22);
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
+  --attention: oklch(0.8 0.15 80);
+  --surface-attention: color-mix(in oklab, var(--attention) 12%, transparent);
   --success: oklch(0.74 0.15 155);
   --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
   --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));

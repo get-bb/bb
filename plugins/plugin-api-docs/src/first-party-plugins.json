@@ -70,6 +70,11 @@
     "icon": "Brain"
   },
   {
+    "id": "navigation",
+    "name": "Navigation",
+    "icon": "PanelLeft"
+  },
+  {
     "id": "environment-modal-sandbox",
     "name": "Modal Sandbox [Experimental]",
     "icon": null
@@ -146,7 +151,7 @@
   },
   {
     "id": "bb--provider-acp-next",
-    "name": "ACP providers (new adapter)",
+    "name": "ACP providers [New adapter]",
     "icon": null
   },
   {

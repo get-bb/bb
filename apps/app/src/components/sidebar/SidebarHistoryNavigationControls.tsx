@@ -98,7 +98,12 @@ export function SidebarHistoryNavigationControls({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className={cn("relative flex items-center gap-1", className)}>
+      <div
+        className={cn(
+          "relative flex items-center gap-(--bb-chrome-control-gap)",
+          className,
+        )}
+      >
         <SidebarHistoryShortcutHints />
         <SidebarHistoryNavButton
           command="history.back"

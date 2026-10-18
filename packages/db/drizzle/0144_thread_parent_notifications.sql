@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `parent_notifications` text DEFAULT 'auto' NOT NULL;

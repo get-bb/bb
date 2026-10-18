@@ -18,6 +18,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { moduleReferences } from "./module-references.js";
 
 const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist"]);
 const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]s|tsx)$/u;
@@ -39,11 +40,6 @@ const TEST_IMPORT_ALLOWLIST: readonly RegExp[] = [
   /^vitest$/u,
 ];
 
-const IMPORT_SPECIFIER_PATTERN =
-  /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']([^"']+)["']/gu;
-/** An `import()` / `require()` whose argument is not a string literal. */
-const DYNAMIC_SPECIFIER_PATTERN =
-  /\b(?:import|require)\s*\(\s*(?!["'])([^)]+)\)/gu;
 const RELATIVE_SPECIFIER_PATTERN = /^\.\.?\//u;
 
 export interface PublicSdkOnlyScanOptions {
@@ -89,18 +85,6 @@ function listSourceFiles(directory: string): string[] {
     }
   }
   return files;
-}
-
-function importSpecifiers(source: string): string[] {
-  return [...source.matchAll(IMPORT_SPECIFIER_PATTERN)].map(
-    (match) => match[1] ?? "",
-  );
-}
-
-function dynamicSpecifiers(source: string): string[] {
-  return [...source.matchAll(DYNAMIC_SPECIFIER_PATTERN)].map((match) =>
-    (match[1] ?? "").trim(),
-  );
 }
 
 /** True when a relative specifier from `file` resolves outside the package. */
@@ -150,9 +134,13 @@ export function scanPublicSdkOnly(
     const allowlist = TEST_FILE_PATTERN.test(path)
       ? testAllowlist
       : pluginAllowlist;
-    const source = readFileSync(path, "utf8");
-    for (const specifier of importSpecifiers(source)) {
-      if (specifier.startsWith(PRIVATE_PACKAGE_PREFIX)) {
+    const references = moduleReferences(readFileSync(path, "utf8"), {
+      jsx: path.endsWith(".tsx"),
+    });
+    for (const { specifier, dynamic } of references) {
+      if (dynamic) {
+        violations.push({ file, specifier, reason: "dynamic-specifier" });
+      } else if (specifier.startsWith(PRIVATE_PACKAGE_PREFIX)) {
         violations.push({ file, specifier, reason: "private-package" });
       } else if (
         RELATIVE_SPECIFIER_PATTERN.test(specifier) &&
@@ -163,9 +151,6 @@ export function scanPublicSdkOnly(
       } else if (!allowlist.some((pattern) => pattern.test(specifier))) {
         violations.push({ file, specifier, reason: "outside-allowlist" });
       }
-    }
-    for (const specifier of dynamicSpecifiers(source)) {
-      violations.push({ file, specifier, reason: "dynamic-specifier" });
     }
   }
   return {

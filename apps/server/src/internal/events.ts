@@ -68,7 +68,10 @@ import {
 import { getAuthenticatedDaemon } from "./auth.js";
 import { validateExtensionPayloads } from "./extension-payloads.js";
 import { validatePresentationIcons } from "./presentation-icons.js";
-import { observeTurnTraceEventBatch } from "../services/system/turn-trace.js";
+import {
+  observeStreamTraceEventBatch,
+  observeTurnTraceEventBatch,
+} from "../services/system/turn-trace.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -371,7 +374,7 @@ function notifyInsertedEventThreads(
 function addParentTurnNotificationFollowUp(
   args: AddParentTurnNotificationFollowUpArgs,
 ): void {
-  if (!isParentNotifiableChildThread(args.thread)) {
+  if (!isParentNotifiableChildThread(args.thread, args.turnStatus)) {
     return;
   }
   if (args.turnStatus === "failed") {
@@ -475,7 +478,7 @@ async function applyEventEffects(
         if (
           turnCompleted.thread &&
           turnCompleted.isRootTurnCompletion &&
-          isParentNotifiableChildThread(turnCompleted.thread)
+          isParentNotifiableChildThread(turnCompleted.thread, event.status)
         ) {
           const alreadyHandledByCommandFailure =
             event.status === "failed" &&
@@ -1166,12 +1169,14 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         eventInputs,
         insertedInputIndexes: appendResult.insertedInputIndexes,
       });
-      observeTurnTraceEventBatch({
+      const turnTraceBatch = {
         committedAt,
         events: postableEvents,
         notifiedAt: performance.now(),
         receivedAt,
-      });
+      };
+      observeTurnTraceEventBatch(turnTraceBatch);
+      observeStreamTraceEventBatch(deps, turnTraceBatch);
 
       const followUps = await applyEventEffects(
         deps,

@@ -121,12 +121,18 @@ export function registerPluginCatalogRoutes(
     const json: unknown = await context.req.json().catch(() => null);
     const body = pluginMarketplaceAddRequestSchema.safeParse(json);
     if (!body.success) {
-      return context.json({ error: 'expected { "source": string }' }, 422);
+      return context.json(
+        { error: 'expected { "source": string, "subdirectory"?: string }' },
+        422,
+      );
     }
     try {
       return context.json({
         ok: true as const,
-        marketplace: await catalog.addMarketplace(body.data.source),
+        marketplace: await catalog.addMarketplace({
+          source: body.data.source,
+          subdirectory: body.data.subdirectory ?? null,
+        }),
       });
     } catch (error) {
       return context.json({ error: errorMessage(error) }, 422);

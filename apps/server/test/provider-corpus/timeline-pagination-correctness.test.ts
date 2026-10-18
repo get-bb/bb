@@ -13,6 +13,7 @@ import {
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
 } from "@bb/thread-view";
 import {
+  mapTimelineRowTree,
   threadTimelineResponseSchema,
   type TimelineRow,
 } from "@bb/server-contract";
@@ -25,12 +26,12 @@ import {
 import { createTestAppHarness } from "../helpers/test-app.js";
 import { loadCorpusThreadIntoDb } from "./corpus-harness.js";
 import {
-  applyRetainedOutputPreviews,
   buildThreadTimelineWithProfile,
+  retainedOutputPreviewsByCallId,
   toThreadEventWithMeta,
+  withRetainedOutputPreview,
 } from "../../src/services/threads/timeline.js";
-import { truncateTimelineResponseOutputs } from "../../src/services/threads/timeline-output-truncation.js";
-import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";
+import { shortenTimelineResponseOutputs } from "../../src/services/threads/timeline-output-shortening.js";
 
 const threadIds = [
   "thr_cdfq9maj8q",
@@ -92,6 +93,7 @@ describe.skipIf(!corpusAvailable())(
             options: {
               completedTurnDisplay: "collapse",
               includeDiagnosticOperations: false,
+              summarizeShellCommands: true,
               includeNestedRows: false,
               isLatestPage: true,
               providerId: thread.providerId,
@@ -129,18 +131,19 @@ describe.skipIf(!corpusAvailable())(
             });
             durations.push(performance.now() - start);
             if (page === 0) {
-              expected = previewTimelineResponseOutputs(
-                truncateTimelineResponseOutputs(
-                  {
-                    ...timeline,
-                    rows: applyRetainedOutputPreviews(
-                      canonical.rows,
-                      events,
-                      "available",
-                    ),
-                  },
-                  32_000,
-                ),
+              const retainedOutputPreviews = retainedOutputPreviewsByCallId(
+                events,
+                "available",
+                Date.now(),
+              );
+              expected = shortenTimelineResponseOutputs(
+                {
+                  ...timeline,
+                  rows: mapTimelineRowTree(canonical.rows, (row) =>
+                    withRetainedOutputPreview(row, retainedOutputPreviews),
+                  ),
+                },
+                { maxInlineOutputChars: 32_000, preview: true },
               ).rows;
             }
             const cursor = timeline.timelinePage.olderCursor;
@@ -170,6 +173,8 @@ describe.skipIf(!corpusAvailable())(
             eventBudget: 1_500,
             includeClearedContextHistory: false,
             includeDiagnosticOperations: false,
+            compactionOfferEnabled: false,
+            summarizeShellCommands: true,
             maxInlineOutputChars: 32_000,
             maxSeq: getLatestThreadSequence(db, { threadId }),
             page: { kind: "latest", segmentLimit: 20 },

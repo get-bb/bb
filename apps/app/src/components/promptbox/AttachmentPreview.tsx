@@ -1,3 +1,5 @@
+import { isVideoAttachment } from "@/lib/video-attachments";
+import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { useEffect, useState } from "react";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
@@ -45,7 +47,10 @@ interface AttachmentPreviewProps {
 }
 
 function isImageUpload(upload: PendingAttachmentUpload): boolean {
-  return upload.file.type.startsWith("image/");
+  return (
+    upload.file.type.startsWith("image/") ||
+    isVideoAttachment({ path: upload.file.name, mimeType: upload.file.type })
+  );
 }
 
 function ImageUploadPreview({ file }: { file: File }) {
@@ -63,10 +68,23 @@ function ImageUploadPreview({ file }: { file: File }) {
       className="relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
     >
       <span className="block h-16 w-24">
-        {previewUrl ? <img src={previewUrl} alt="" className="size-full object-cover opacity-50" /> : null}
+        {previewUrl ? (
+          isVideoAttachment({ path: file.name, mimeType: file.type }) ? (
+            <VideoThumbnail src={previewUrl} className="opacity-50" />
+          ) : (
+            <img
+              src={previewUrl}
+              alt=""
+              className="size-full object-cover opacity-50"
+            />
+          )
+        ) : null}
       </span>
       <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
-        <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
+        <Icon
+          name="Loading"
+          className="size-3 animate-spin motion-reduce:animate-none"
+        />
         Uploading
       </span>
     </div>
@@ -107,7 +125,10 @@ function FileUploadPreview({ file }: { file: File }) {
     >
       <span className="truncate">{file.name}</span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center">
-        <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
+        <Icon
+          name="Loading"
+          className="size-3 animate-spin motion-reduce:animate-none"
+        />
       </span>
     </span>
   );
@@ -122,13 +143,20 @@ export function AttachmentPreview({
   onExpandedImageIndexChange,
   onRemoveAttachment,
 }: AttachmentPreviewProps) {
-  const imageAttachments = attachments.filter(isImageAttachment);
+  const imageAttachments = attachments.filter(
+    (attachment) =>
+      isImageAttachment(attachment) || isVideoAttachment(attachment),
+  );
   const nonImageAttachments = attachments.filter(
-    (attachment) => !isImageAttachment(attachment),
+    (attachment) =>
+      !isImageAttachment(attachment) && !isVideoAttachment(attachment),
   );
   const imageUploads = pendingUploads.filter(isImageUpload);
   const fileUploads = pendingUploads.filter((upload) => !isImageUpload(upload));
   const attachmentImageItems = imageAttachments.map((attachment) => ({
+    mediaType: isVideoAttachment(attachment)
+      ? ("video" as const)
+      : ("image" as const),
     alt: attachment.name,
     src: resolveAttachmentPreviewSrc(
       attachment.path,
@@ -160,15 +188,22 @@ export function AttachmentPreview({
           data-promptbox-attachments=""
           role={uploadingCount > 0 ? "status" : "img"}
           aria-label={[
-            attachmentCount > 0 ? `${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}` : null,
+            attachmentCount > 0
+              ? `${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}`
+              : null,
             uploadingCount > 0 ? `${uploadingCount} uploading` : null,
-          ].filter(Boolean).join(", ")}
+          ]
+            .filter(Boolean)
+            .join(", ")}
           className="ml-3 inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-surface-recessed px-1.5 text-xs text-muted-foreground"
         >
           <Icon name="Paperclip" className="size-3.5" />
           <span aria-hidden="true">{attachmentCount + uploadingCount}</span>
           {uploadingCount > 0 ? (
-            <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" />
+            <Icon
+              name="Loading"
+              className="size-3.5 animate-spin motion-reduce:animate-none"
+            />
           ) : null}
         </span>
       ) : (
@@ -181,15 +216,19 @@ export function AttachmentPreview({
                     type="button"
                     className="block cursor-zoom-in overflow-hidden rounded-md border border-border bg-surface-recessed"
                     onClick={() => onExpandedImageIndexChange(index)}
-                    title={attachment.name}
+                    aria-label={attachment.name}
                   >
-                    <img
-                      src={attachmentImageItems[index]?.src}
-                      alt={attachment.name}
-                      className="h-16 w-24 object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
+                    {isVideoAttachment(attachment) ? (
+                      <VideoThumbnail src={attachmentImageItems[index]!.src} />
+                    ) : (
+                      <img
+                        src={attachmentImageItems[index]?.src}
+                        alt={attachment.name}
+                        className="h-16 w-24 object-cover"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    )}
                   </button>
                   {onRemoveAttachment ? (
                     <button
@@ -210,7 +249,9 @@ export function AttachmentPreview({
                   ) : null}
                 </div>
               ))}
-              {imageUploads.map((upload) => <ImageUploadPreview key={upload.id} file={upload.file} />)}
+              {imageUploads.map((upload) => (
+                <ImageUploadPreview key={upload.id} file={upload.file} />
+              ))}
             </div>
           ) : null}
 
@@ -224,7 +265,9 @@ export function AttachmentPreview({
                   <FileAttachmentName
                     name={attachment.name}
                     path={attachment.path}
-                    projectId={attachment.sourceProjectId ?? attachmentProjectId}
+                    projectId={
+                      attachment.sourceProjectId ?? attachmentProjectId
+                    }
                   />
                   {onRemoveAttachment ? (
                     <span className="relative size-4 shrink-0">
@@ -246,7 +289,9 @@ export function AttachmentPreview({
                   ) : null}
                 </span>
               ))}
-              {fileUploads.map((upload) => <FileUploadPreview key={upload.id} file={upload.file} />)}
+              {fileUploads.map((upload) => (
+                <FileUploadPreview key={upload.id} file={upload.file} />
+              ))}
             </div>
           ) : null}
         </div>
@@ -255,7 +300,8 @@ export function AttachmentPreview({
       <ImageLightbox
         imageSrc={currentAttachmentImage?.src ?? null}
         imageAlt={currentAttachmentImage?.alt ?? "Attached image"}
-        title="Attached image preview"
+        title="Attached media preview"
+        mediaType={currentAttachmentImage?.mediaType}
         hasMultipleImages={hasMultipleAttachmentImages}
         onPrevious={() => {
           onExpandedImageIndexChange(

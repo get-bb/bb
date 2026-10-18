@@ -6,6 +6,7 @@ import {
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
+import { useSidebarNavigationPlacement } from "./sidebarNavigationProvider";
 
 export const sidebarFooterOrderAtom = createSyncedPreferenceAtom(
   "sidebar.footerOrder",
@@ -43,11 +44,19 @@ export function useMeasureSidebarFooterCapacity(
   }, [rowRef, moreRef, setCapacity]);
 }
 
-export type BuiltinFooterId = "mobile" | "report-bug";
+export type BuiltinFooterId = "settings" | "mobile" | "report-bug";
 export type FooterItem = { key: string; label: string; icon: string } & (
   | { kind: "builtin"; id: BuiltinFooterId }
   | { kind: "plugin"; slot: PluginSidebarFooterItemSlot }
 );
+const SETTINGS_FOOTER_ITEM: FooterItem = {
+  kind: "builtin",
+  id: "settings",
+  key: "builtin:settings",
+  label: "Settings",
+  icon: "Settings",
+};
+
 export function footerPreferenceKey(item: {
   pluginId: string;
   id: string;
@@ -60,7 +69,9 @@ export function useSidebarFooterPreferences() {
   const [order, setOrder] = useAtom(sidebarFooterOrderAtom);
   const [hidden, setHidden] = useAtom(sidebarFooterHiddenAtom);
   const capacity = useAtomValue(sidebarFooterCapacityAtom);
+  const hasRail = useSidebarNavigationPlacement() === "rail";
   const items: FooterItem[] = [
+    ...(hasRail ? [] : [SETTINGS_FOOTER_ITEM]),
     {
       kind: "builtin",
       id: "mobile",

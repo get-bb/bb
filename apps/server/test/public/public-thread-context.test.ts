@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { insertEvents } from "@bb/db";
+import { insertEvents, setExperiments } from "@bb/db";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
   threadScope,
@@ -123,6 +123,91 @@ describe("recorded thread context API", () => {
         },
       ]);
       expect(await read()).toEqual({ usage: null });
+    });
+  });
+
+  it("offers compaction once a large context's prompt cache expires", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { providerId: "pi" },
+      });
+      const read = async () => {
+        const context = await harness.app.request(
+          `/api/v1/threads/${thread.id}/context`,
+        );
+        const timeline = await harness.app.request(
+          `/api/v1/threads/${thread.id}/timeline`,
+        );
+        const contextUsage = (await context.json()).usage;
+        const timelineUsage = (await timeline.json()).contextWindowUsage;
+        expect(timelineUsage?.compactionOfferAt).toEqual(
+          contextUsage?.compactionOfferAt,
+        );
+        return contextUsage?.compactionOfferAt;
+      };
+      const base = {
+        threadId: thread.id,
+        providerThreadId: "pi-session",
+        scope: turnScope("turn-1"),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+      };
+      const usage = {
+        totalTokens: 150_000,
+        inputTokens: 10,
+        cachedInputTokens: 149_990,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+      };
+      const insertUsage = (
+        sequence: number,
+        usedTokens: number,
+        cache: { promptCacheTtlMs?: number },
+      ) =>
+        insertEvents(harness.db, harness.hub, [
+          {
+            ...base,
+            sequence,
+            type: "thread/contextWindowUsage/updated",
+            data: JSON.stringify({
+              contextWindowUsage: {
+                usedTokens,
+                modelContextWindow: 200_000,
+                estimated: false,
+              },
+            }),
+          },
+          {
+            ...base,
+            sequence: sequence + 1,
+            type: "thread/tokenUsage/updated",
+            data: JSON.stringify({
+              tokenUsage: {
+                total: usage,
+                last: usage,
+                modelContextWindow: 200_000,
+                ...cache,
+              },
+            }),
+          },
+        ]);
+
+      const before = Date.now();
+      insertUsage(1, 150_000, { promptCacheTtlMs: 3_600_000 });
+      const after = Date.now();
+      expect(await read()).toBeUndefined();
+
+      setExperiments(harness.db, { compactExpiredCache: true });
+      const offerAt = Date.parse(await read());
+      expect(offerAt).toBeGreaterThanOrEqual(before + 3_600_000);
+      expect(offerAt).toBeLessThanOrEqual(after + 3_600_000);
+
+      insertUsage(3, 150_000, {});
+      expect(await read()).toBeUndefined();
+
+      insertUsage(5, 99_999, { promptCacheTtlMs: 300_000 });
+      expect(await read()).toBeUndefined();
     });
   });
 

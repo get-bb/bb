@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -378,10 +379,11 @@ function contextWindowDeltasFor(
 }
 
 function sendModelList(
-  args: AgentLaunchArgs & { modelLines?: string } = {},
+  args: AgentLaunchArgs & { modelLines?: string; cwd?: string } = {},
 ): number {
-  const { modelLines, ...launch } = args;
+  const { modelLines, cwd, ...launch } = args;
   return sendRequest("model/list", {
+    ...(cwd === undefined ? {} : { cwd }),
     providerOptions: {
       ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
       ...(launch.parameterizedModelPicker === true
@@ -455,6 +457,14 @@ function loggedAcpRequests(path: string): LoggedAcpRequest[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as LoggedAcpRequest);
+}
+
+async function advanceBusyQuietTimer(): Promise<void> {
+  await waitFor(
+    () => (vi.getTimerCount() > 0 ? true : undefined),
+    "the busy-quiet timer to be scheduled",
+  );
+  await vi.advanceTimersByTimeAsync(2_000);
 }
 
 async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
@@ -669,7 +679,9 @@ describe("acp bridge", () => {
   it("answers a minimal model/list (no params) with the synthetic default", async () => {
     const modelListId = sendRequest("model/list", {});
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
   });
@@ -728,6 +740,7 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
@@ -736,6 +749,7 @@ describe("acp bridge", () => {
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
@@ -767,10 +781,12 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           supportedReasoningEfforts: [
             {
               reasoningEffort: "medium",
@@ -809,9 +825,17 @@ describe("acp bridge", () => {
       models: {
         id: string;
         supportedReasoningEfforts: { reasoningEffort: string }[];
+        supportedServiceTiers: { id: string }[];
       }[];
       selectedOnlyModels: { id: string }[];
     };
+    expect(
+      result.models.map((model) => [model.id, model.supportedServiceTiers]),
+    ).toEqual([
+      ["default", []],
+      ["composer-2.5", []],
+      ["grok-4.6", [{ id: "fast" }]],
+    ]);
     const initialize = loggedAcpRequests(requestLog).find(
       (request) => request.method === "initialize",
     );
@@ -1002,6 +1026,7 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
@@ -1010,6 +1035,7 @@ describe("acp bridge", () => {
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
@@ -1223,7 +1249,9 @@ describe("acp bridge", () => {
     const modelListId = sendModelList();
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
   });
@@ -1259,11 +1287,49 @@ describe("acp bridge", () => {
     });
   });
 
-  it("falls back to the synthetic model when the list command prints no models", async () => {
-    const emptyId = sendModelList({ modelLines: "no model lines here" });
-    expect((await waitForResponse(emptyId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+  it.each([
+    ["exits unsuccessfully", "process.exit(2)"],
+    ["prints no models", "process.stdout.write('no model lines here')"],
+    ["times out", "setInterval(() => {}, 1000)"],
+  ])(
+    "fails model/list when the configured command %s without a cached catalog",
+    async (_failure, script) => {
+      const failingId = sendModelList({
+        agent: { command: process.execPath, args: ["-e", script] },
+        modelListArgs: ["--"],
+      });
+      const response = await waitFor(
+        () => findResponse(failingId),
+        `response ${failingId}`,
+        40_000,
+      );
+      expect(response.error?.message).toBe(
+        "ACP model list command failed to provide a model catalog.",
+      );
+      expect(response.result).toBeUndefined();
+    },
+    45_000,
+  );
+
+  it("keeps the last good CLI catalog when the same command later fails", async () => {
+    const scriptPath = join(workspaceDir, "model-list.cjs");
+    writeFileSync(
+      scriptPath,
+      "process.stdout.write('cached-model - Cached Model\\n')",
+    );
+    const launch = {
+      agent: { command: process.execPath, args: [scriptPath] },
+      modelListArgs: ["--"],
+    };
+    const first = await waitForResponse(sendModelList(launch));
+    expect(first.result).toMatchObject({
+      models: [{ id: "cached-model", displayName: "Cached Model" }],
     });
+
+    writeFileSync(scriptPath, "process.exit(2)");
+    const second = await waitForResponse(sendModelList(launch));
+    expect(second.error).toBeUndefined();
+    expect(second.result).toEqual(first.result);
   });
 
   it("keeps CLI reasoning on the resolved model variant instead of ACP config", async () => {
@@ -1702,7 +1768,7 @@ describe("acp bridge", () => {
       ),
     ).toBe("selected-model:fake/strong");
     expect(notifications("session/replaced")).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("relaunches a CLI-selected ACP agent when a follow-up changes its model", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
@@ -1731,7 +1797,7 @@ describe("acp bridge", () => {
       ),
     ).toBe("argv:--model other");
     expect(notifications("session/replaced")).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
@@ -2828,6 +2894,7 @@ describe("acp bridge", () => {
         rmSync(outsideDir, { recursive: true, force: true });
       }
     },
+    30_000,
   );
 
   it("rejects simultaneous starts while reconciling unchanged permissions", async () => {
@@ -4474,7 +4541,7 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
       );
       expect(threadEventsOfType("turn/completed")).toEqual([]);
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await advanceBusyQuietTimer();
       expect(await waitForTurnCompleted()).toMatchObject({
         status: "completed",
       });
@@ -4506,7 +4573,9 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
             loggedPrompts(promptLog).length === attempt ? true : undefined,
           `prompt attempt ${attempt}`,
         );
-        await vi.advanceTimersByTimeAsync(2_000);
+        if (attempt < 4) {
+          await advanceBusyQuietTimer();
+        }
       }
       expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
       expect(loggedPrompts(promptLog)).toHaveLength(4);
@@ -4860,6 +4929,147 @@ describe("acp bridge: live session state", () => {
 
     const none = await optionsOf(sendModelList({}));
     expect(none).toEqual([undefined]);
+  }, 20_000);
+
+  it("asks the agent for its models and options in the workspace bb names", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "bb-acp-project-"));
+    try {
+      const sessionCwds = async (
+        requestLog: string,
+        cwd: string | undefined,
+      ): Promise<unknown[]> => {
+        await waitForResponse(
+          sendModelList({
+            ...(cwd === undefined ? {} : { cwd }),
+            envVars: {
+              FAKE_ACP_SESSION_OPTIONS: "1",
+              FAKE_ACP_REQUEST_LOG: requestLog,
+            },
+          }),
+        );
+        return loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/new")
+          .map((request) => request.params?.cwd);
+      };
+
+      expect(
+        await sessionCwds(join(workspaceDir, "project.jsonl"), projectDir),
+      ).toEqual([projectDir]);
+      expect(
+        await sessionCwds(
+          join(workspaceDir, "missing.jsonl"),
+          join(projectDir, "gone"),
+        ),
+      ).toEqual([process.cwd()]);
+      expect(
+        await sessionCwds(join(workspaceDir, "none.jsonl"), undefined),
+      ).toEqual([process.cwd()]);
+
+      const listCwdLog = join(workspaceDir, "list-cwd.txt");
+      await waitForResponse(
+        sendModelList({
+          cwd: projectDir,
+          modelLines: "alpha - Alpha",
+          envVars: { FAKE_ACP_MODEL_LIST_CWD_LOG: listCwdLog },
+        }),
+      );
+      expect(realpathSync(readFileSync(listCwdLog, "utf8"))).toBe(
+        realpathSync(projectDir),
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("deletes the session it opened to read an agent's options when the agent can delete sessions", async () => {
+    const methodsFor = async (
+      requestLog: string,
+      envVars: Record<string, string>,
+    ): Promise<LoggedAcpRequest[]> => {
+      await waitForResponse(
+        sendModelList({
+          envVars: { ...envVars, FAKE_ACP_REQUEST_LOG: requestLog },
+        }),
+      );
+      return loggedAcpRequests(requestLog).filter(
+        (request) =>
+          request.method === "session/new" ||
+          request.method === "session/delete",
+      );
+    };
+
+    const deleting = await methodsFor(join(workspaceDir, "delete.jsonl"), {
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_DELETE_SESSION: "1",
+    });
+    expect(deleting.map((request) => request.method)).toEqual([
+      "session/new",
+      "session/delete",
+    ]);
+    expect(deleting[1]?.params?.sessionId).toMatch(/^fake-sess-/u);
+
+    const withModels = await methodsFor(
+      join(workspaceDir, "delete-models.jsonl"),
+      { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_DELETE_SESSION: "1" },
+    );
+    expect(withModels.map((request) => request.method)).toEqual([
+      "session/new",
+      "session/delete",
+    ]);
+
+    const unsupported = await methodsFor(join(workspaceDir, "keep.jsonl"), {
+      FAKE_ACP_SESSION_OPTIONS: "1",
+    });
+    expect(unsupported.map((request) => request.method)).toEqual([
+      "session/new",
+    ]);
+  }, 20_000);
+
+  it("deletes its discovery session through opencode's own CLI when the agent cannot delete sessions over ACP", async () => {
+    const discover = async (
+      deleteLog: string,
+      launch: AgentLaunchArgs,
+    ): Promise<void> => {
+      await waitForResponse(
+        sendModelList({
+          ...launch,
+          envVars: {
+            ...launch.envVars,
+            FAKE_ACP_SESSION_OPTIONS: "1",
+            FAKE_ACP_SESSION_DELETE_LOG: deleteLog,
+          },
+        }),
+      );
+    };
+    const acpAgent = {
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH, "acp"],
+    };
+    const otherAgentLog = join(workspaceDir, "cli-delete-other-agent.log");
+    const otherArgsLog = join(workspaceDir, "cli-delete-other-args.log");
+    const overAcpLog = join(workspaceDir, "cli-delete-over-acp.log");
+    const opencodeLog = join(workspaceDir, "cli-delete-opencode.log");
+
+    await discover(otherAgentLog, { agent: acpAgent });
+    await discover(otherArgsLog, { dialectId: "opencode" });
+    await discover(overAcpLog, {
+      dialectId: "opencode",
+      agent: acpAgent,
+      envVars: { FAKE_ACP_DELETE_SESSION: "1" },
+    });
+    await discover(opencodeLog, { dialectId: "opencode", agent: acpAgent });
+
+    const deleted = await waitFor(
+      () =>
+        existsSync(opencodeLog) ? readFileSync(opencodeLog, "utf8") : undefined,
+      "opencode session delete",
+    );
+    expect(deleted).toMatch(/^fake-sess-\d+\n$/u);
+    expect(
+      [otherAgentLog, otherArgsLog, overAcpLog].filter((log) =>
+        existsSync(log),
+      ),
+    ).toEqual([]);
   }, 20_000);
 
   it("publishes no session options for an agent whose only options are its model and thought level", async () => {

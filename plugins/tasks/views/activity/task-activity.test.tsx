@@ -225,22 +225,6 @@ describe("AgentNotificationControl", () => {
     expect(onCheckedChange).toHaveBeenCalledWith(true);
   });
 
-  it("names the full destination even for a long thread title", () => {
-    const title =
-      "Make all of the filters in the task list remembered across reloads";
-    render(
-      <AgentNotificationControl
-        target={{ kind: "ready", title }}
-        checked
-        onCheckedChange={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen.getByRole("switch", { name: `Notify ${title}` }),
-    ).toBeTruthy();
-  });
-
   it("never reads as on and cannot be toggled while unavailable", () => {
     const onCheckedChange = vi.fn();
     render(

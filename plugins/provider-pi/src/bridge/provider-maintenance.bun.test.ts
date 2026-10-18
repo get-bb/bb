@@ -31,6 +31,10 @@ vi.mock("@get-bb/plugin-sdk/provider-bridge", async (importOriginal) => {
 
 vi.mock("./rpc-child.js", () => ({
   resolvePiLaunch: () => ({ command: probeState.executablePath, args: [] }),
+  resolvePiProcessLaunch: () => ({
+    command: probeState.executablePath,
+    args: [],
+  }),
 }));
 
 import {

@@ -293,6 +293,8 @@ describe("internal event append ownership", () => {
           eventBudget: 1_000_000,
           includeClearedContextHistory: false,
           includeDiagnosticOperations: true,
+          compactionOfferEnabled: false,
+          summarizeShellCommands: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
           page: {
@@ -1103,6 +1105,8 @@ describe("interaction lifecycle records from the daemon", () => {
         eventBudget: 1_000_000,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: true,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         maxInlineOutputChars: null,
         maxSeq,
         page: { kind: "latest", segmentLimit: Number.MAX_SAFE_INTEGER },

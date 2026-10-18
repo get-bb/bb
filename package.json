@@ -95,7 +95,8 @@
       "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch",
       "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch",
       "@better-auth/api-key@1.6.23": "patches/@better-auth__api-key@1.6.23.patch",
-      "@tanstack/virtual-core@3.17.1": "patches/@tanstack__virtual-core@3.17.1.patch"
+      "@tanstack/virtual-core@3.17.1": "patches/@tanstack__virtual-core@3.17.1.patch",
+      "mermaid@11.15.0": "patches/mermaid@11.15.0.patch"
     }
   }
 }

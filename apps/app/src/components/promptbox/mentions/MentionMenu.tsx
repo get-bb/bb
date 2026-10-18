@@ -32,6 +32,7 @@ import {
   type ThreadMentionRelation,
   type TypeaheadMenuState,
 } from "@bb/client-core";
+import { CHILD_THREAD_NOUN } from "@/lib/child-thread-copy";
 
 export type TypeaheadSuggestion =
   | PromptMentionSuggestion
@@ -47,6 +48,7 @@ interface MentionMenuProps {
 
 interface MentionResultsProps {
   results: OrderedMentionSuggestions;
+  refreshing: boolean;
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
   onDismiss?: () => void;
@@ -108,7 +110,7 @@ function getPathSectionLabel(item: PathMentionSuggestion): string {
 
 const THREAD_MENTION_RELATION_LABEL: Record<ThreadMentionRelation, string> = {
   parent: "parent",
-  child: "child",
+  child: CHILD_THREAD_NOUN,
   "same-parent": "same parent",
   "same-environment": "same environment",
 };
@@ -118,7 +120,7 @@ const THREAD_MENTION_RELATION_COMPACT_LABEL: Record<
   string
 > = {
   parent: "parent",
-  child: "child",
+  child: CHILD_THREAD_NOUN,
   "same-parent": "same parent",
   "same-environment": "same env",
 };
@@ -382,9 +384,11 @@ function MenuStatusRow({
 
 function MenuSectionHeader({
   label,
+  refreshing = false,
   onDismiss,
 }: {
   label: string;
+  refreshing?: boolean;
   onDismiss?: () => void;
 }) {
   return (
@@ -393,10 +397,19 @@ function MenuSectionHeader({
         "sticky top-0 z-10 bg-background text-xs text-muted-foreground",
         onDismiss
           ? "flex h-11 items-center justify-between pl-3 pr-1"
-          : "px-3 pb-1 pt-1.5",
+          : "flex items-center px-3 pb-1 pt-1.5",
       )}
     >
-      <span>{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span>{label}</span>
+        <span
+          role="status"
+          aria-label={refreshing ? "Updating results" : undefined}
+          className={cn("flex", !refreshing && "invisible")}
+        >
+          <Icon name="Spinner" className="size-3 animate-spin" aria-hidden />
+        </span>
+      </span>
       {onDismiss ? <CloseSuggestionsButton onDismiss={onDismiss} /> : null}
     </div>
   );
@@ -404,6 +417,7 @@ function MenuSectionHeader({
 
 function MentionResults({
   results,
+  refreshing,
   selectedIndex,
   onApply,
   onDismiss,
@@ -423,6 +437,7 @@ function MentionResults({
         <div key={group.key}>
           <MenuSectionHeader
             label={group.label}
+            refreshing={groupIndex === 0 && refreshing}
             onDismiss={groupIndex === 0 ? onDismiss : undefined}
           />
           <div className="flex flex-col gap-px px-1">
@@ -578,6 +593,14 @@ function mentionResults(state: TypeaheadMenuState): OrderedMentionSuggestions {
     : EMPTY_ORDERED_MENTION_SUGGESTIONS;
 }
 
+function mentionResultsRefreshing(state: TypeaheadMenuState): boolean {
+  return (
+    state.trigger === "mention" &&
+    state.state.kind === "results" &&
+    state.state.refreshing
+  );
+}
+
 function commandSuggestions(
   state: TypeaheadMenuState,
 ): readonly ProviderCommandSuggestion[] {
@@ -667,6 +690,7 @@ export function MentionMenu({
         ) : (
           <MentionResults
             results={mentionResults(state)}
+            refreshing={mentionResultsRefreshing(state)}
             selectedIndex={selectedIndex}
             onApply={onApply}
             itemRefs={itemRefs}

@@ -6,6 +6,7 @@ import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import PackageIcon from "@hugeicons/core-free-icons/PackageIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
 import {
   createContext,
   type ReactNode,
@@ -264,6 +265,34 @@ function categoryLabel(
   );
 }
 
+function PluginTitle({
+  displayName,
+  heading = false,
+}: {
+  displayName: string;
+  heading?: boolean;
+}) {
+  const { name, tag } = splitPluginDisplayName(displayName);
+  const badge = tag ? (
+    <span
+      className={`marketplace-plugin-tag marketplace-plugin-tag-${tag.tone}`}
+    >
+      {tag.label}
+    </span>
+  ) : null;
+  return heading ? (
+    <div className="marketplace-plugin-title">
+      <h1>{name}</h1>
+      {badge}
+    </div>
+  ) : (
+    <span className="marketplace-plugin-title">
+      <strong>{name}</strong>
+      {badge}
+    </span>
+  );
+}
+
 function PluginCard({
   manifest,
   entry,
@@ -283,7 +312,7 @@ function PluginCard({
       >
         <span className="marketplace-card-topline">
           <PluginArtwork entry={entry} />
-          <strong>{entry.displayName}</strong>
+          <PluginTitle displayName={entry.displayName} />
         </span>
         <span className="marketplace-card-description">
           {entry.description}
@@ -861,7 +890,7 @@ function MoreFromAuthor({
           >
             <PluginArtwork entry={candidate} />
             <span>
-              <strong>{candidate.displayName}</strong>
+              <PluginTitle displayName={candidate.displayName} />
               <small>{candidate.description}</small>
             </span>
             <InstallCount entry={candidate} stats={stats} />
@@ -957,12 +986,12 @@ export function PublicMarketplaceDetailPage({
             {category}
           </MarketplaceLink>
           <span aria-hidden>/</span>
-          <strong>{entry.displayName}</strong>
+          <strong>{splitPluginDisplayName(entry.displayName).name}</strong>
         </nav>
         <header className="marketplace-detail-head">
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
-            <h1>{entry.displayName}</h1>
+            <PluginTitle displayName={entry.displayName} heading />
             <div className="marketplace-detail-attribution">
               {authorPath === undefined ? (
                 <span className="marketplace-detail-author">

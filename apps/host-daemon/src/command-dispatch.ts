@@ -152,6 +152,7 @@ type OnlineRpcHandlerMap = {
   [TType in HostDaemonOnlineRpcCommandType]: (
     command: Extract<HostDaemonOnlineRpcCommand, { type: TType }>,
     options: CommandDispatchOptions,
+    signal: AbortSignal,
   ) => Promise<HostDaemonOnlineRpcResult<TType>>;
 };
 
@@ -620,8 +621,10 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     }
     return options.ensureConnectTunnelIdentity();
   },
-  "host.list_files": listHostFiles,
-  "host.list_paths": listHostPaths,
+  "host.list_files": (command, _options, signal) =>
+    listHostFiles(command, signal),
+  "host.list_paths": (command, _options, signal) =>
+    listHostPaths(command, signal),
   "host.mkdir": mkdirHostPath,
   "host.move_path": moveHostPath,
   "host.remove_path": removeHostPath,
@@ -696,6 +699,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     readAvailableWorkspace(command, options, async (workspace) => ({
       workspaceStatus: await workspace.getStatus({
         mergeBaseBranch: command.mergeBaseBranch,
+        maxFiles: command.maxFiles,
         maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
         maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
       }),
@@ -780,9 +784,10 @@ export async function dispatchOnlineRpcCommand<
 >(
   command: Extract<HostDaemonOnlineRpcCommand, { type: TType }>,
   options: CommandDispatchOptions,
+  signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<TType>> {
   try {
-    return await onlineRpcHandlers[command.type](command, options);
+    return await onlineRpcHandlers[command.type](command, options, signal);
   } catch (error) {
     throwExpectedWorkspacePathNotFoundOrRethrow(error);
   }

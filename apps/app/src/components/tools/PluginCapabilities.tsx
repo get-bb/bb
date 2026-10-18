@@ -231,6 +231,13 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.experimentalSidebarNavigations,
+      "sidebar-navigation",
+      "Can draw the sidebar navigation; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.sourceCodeRenderers,
       "source-code-renderer",
       "Replaces how source code is displayed everywhere in the app.",
@@ -364,6 +371,14 @@ function pluginAppSurfaceItems(
         key: `directive:${slot.id}`,
         label: `::${slot.id}`,
         detail: "Renders plugin-provided content inside thread messages.",
+        mono: true,
+      })),
+    ...slots.codeFenceRenderers
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) => ({
+        key: `code-fence:${slot.id}`,
+        label: slot.languages.map((language) => `\`\`\`${language}`).join(", "),
+        detail: "Renders these fenced code blocks inside assistant messages.",
         mono: true,
       })),
   ];

@@ -14,6 +14,13 @@ import {
   threadQueryKey,
 } from "../queries/query-keys";
 import {
+  applyThreadReadStateResult,
+  applyThreadUpdateResult,
+  applyThreadPinStateResult,
+  applyPinnedThreadOrderResult,
+  applyThreadMetadataBatchResult,
+  beginThreadMetadataBatchTransaction,
+  rollbackThreadMetadataBatchTransaction,
   beginArchiveThreadAndChildrenTransaction,
   beginDeleteThreadTransaction,
   rollbackArchiveThreadsTransaction,
@@ -23,6 +30,12 @@ import {
   rollbackThreadListMutationTransaction,
   rollbackThreadReadStateTransaction,
 } from "./thread-state-cache-owner";
+
+import {
+  updateCachedThreadStatusState,
+  updateCachedThreadListStatusState,
+} from "./query-cache";
+import { beginSendThreadMessageTransaction } from "./thread-runtime-cache-owner";
 
 function makeThreadWithRuntime(
   thread: Partial<ThreadWithRuntime> = {},
@@ -74,6 +87,83 @@ function makeSidebarNavigation(
 }
 
 describe("thread state cache owner", () => {
+  it.each([null, 100])(
+    "preserves a follow-up's active state when a delayed read acknowledgement arrives (%s)",
+    async (lastReadAt) => {
+      const { queryClient } = createQueryClientTestHarness();
+      const original = makeThreadListEntry({
+        status: "idle",
+        runtime: { displayStatus: "idle" },
+        lastReadAt: 10,
+      });
+      const listKey = threadListQueryKey({
+        projectId: "project-1",
+        archived: false,
+      });
+      queryClient.setQueryData(
+        threadQueryKey(original.id),
+        makeThreadWithRuntime(original),
+      );
+      queryClient.setQueryData(listKey, [original]);
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([original]),
+      );
+      await beginThreadReadStateTransaction({
+        queryClient,
+        threadId: original.id,
+        lastReadAt,
+      });
+      await beginSendThreadMessageTransaction({
+        queryClient,
+        request: {
+          id: original.id,
+          input: [{ type: "text", text: "Follow up", mentions: [] }],
+          mode: "auto",
+        },
+      });
+      const activeThread = queryClient.getQueryData<ThreadWithRuntime>(
+        threadQueryKey(original.id),
+      );
+      const activeEntry = makeThreadListEntry({
+        ...original,
+        ...activeThread,
+        title: "Updated title",
+        latestAttentionAt: 200,
+      });
+      queryClient.setQueryData(listKey, [activeEntry]);
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([activeEntry]),
+      );
+      const activeList = queryClient.getQueryData<ThreadListEntry[]>(listKey);
+      const activeSidebar = queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      );
+      expect(activeThread?.runtime.displayStatus).toBe("active");
+      applyThreadReadStateResult({
+        queryClient,
+        thread: makeThreadWithRuntime({ ...original, lastReadAt }),
+      });
+      expect(queryClient.getQueryData(threadQueryKey(original.id))).toEqual({
+        ...activeThread,
+        lastReadAt,
+      });
+      expect(queryClient.getQueryData(listKey)).toEqual(
+        activeList?.map((thread) => ({ ...thread, lastReadAt })),
+      );
+      expect(
+        queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )?.projects[0]?.threads,
+      ).toEqual(
+        activeSidebar?.projects[0]?.threads.map((thread) => ({
+          ...thread,
+          lastReadAt,
+        })),
+      );
+    },
+  );
   it.each(["archive", "delete"])(
     "optimistically removes a whole thread family on %s and restores it without losing unrelated changes",
     async (operation) => {
@@ -415,3 +505,182 @@ it.each([null, 80, 100])(
     ).toEqual([expect.objectContaining(expected), sibling]);
   },
 );
+
+function seedConcurrentThreadCaches() {
+  const { queryClient } = createQueryClientTestHarness();
+  const listKey = threadListQueryKey({
+    archived: false,
+    projectId: "project-1",
+  });
+  const original = makeThreadListEntry({
+    status: "idle",
+    runtime: { displayStatus: "idle" },
+    title: "Original",
+    sectionId: "old",
+    updatedAt: 10,
+  });
+  const seed = (thread: ThreadListEntry, siblings: ThreadListEntry[] = []) => {
+    queryClient.setQueryData(
+      threadQueryKey(thread.id),
+      makeThreadWithRuntime(thread),
+    );
+    queryClient.setQueryData(listKey, [thread, ...siblings]);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([thread, ...siblings]),
+    );
+  };
+  const read = () => [
+    queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(original.id)),
+    queryClient.getQueryData<ThreadListEntry[]>(listKey)?.[0],
+    queryClient.getQueryData<SidebarBootstrapResponse>(
+      sidebarNavigationQueryKey(),
+    )?.projects[0]?.threads[0],
+  ];
+  seed(original);
+  return { queryClient, listKey, original, seed, read };
+}
+
+it.each(["rename", "pin", "reorder", "batch"])(
+  "preserves concurrent state on a delayed %s response",
+  (operation) => {
+    const { queryClient, original, seed, read } = seedConcurrentThreadCaches();
+    const current = makeThreadListEntry({
+      ...original,
+      status: "active",
+      runtime: { displayStatus: "active" },
+      updatedAt: 30,
+      sectionId: "new",
+      lastReadAt: 25,
+    });
+    seed(current);
+    const response = makeThreadListEntry({
+      ...original,
+      title: "Renamed",
+      pinnedAt: 20,
+      pinSortKey: "a",
+    });
+    if (operation === "rename")
+      applyThreadUpdateResult({
+        queryClient,
+        thread: response,
+        request: { title: "Renamed" },
+      });
+    if (operation === "pin")
+      applyThreadPinStateResult({
+        queryClient,
+        thread: response,
+        pinSortKey: null,
+      });
+    if (operation === "reorder")
+      applyPinnedThreadOrderResult({ queryClient, orderedRoots: [response] });
+    if (operation === "batch")
+      applyThreadMetadataBatchResult({
+        queryClient,
+        updates: [{ thread: response, request: { title: "Renamed" } }],
+      });
+    for (const thread of read()) {
+      expect(thread).toMatchObject({
+        status: "active",
+        runtime: { displayStatus: "active" },
+        updatedAt: 30,
+        sectionId: "new",
+        lastReadAt: 25,
+      });
+      expect(thread?.title).toBe(
+        operation === "rename" || operation === "batch"
+          ? "Renamed"
+          : "Original",
+      );
+    }
+    if (operation === "pin") expect(read()[0]?.pinnedAt).toBe(20);
+    if (operation === "reorder")
+      expect(read()[1]).toMatchObject({ pinnedAt: 20, pinSortKey: "a" });
+  },
+);
+
+it.each(["single", "batch"])(
+  "preserves concurrent state on a failed %s metadata operation",
+  async (operation) => {
+    const { queryClient, original, seed, read, listKey } =
+      seedConcurrentThreadCaches();
+    const transaction =
+      operation === "single"
+        ? await beginThreadMetadataTransaction({
+            queryClient,
+            threadId: original.id,
+            title: "Pending",
+            sectionId: "pending",
+          })
+        : await beginThreadMetadataBatchTransaction({
+            queryClient,
+            updates: [
+              { threadId: original.id, title: "Pending", sectionId: "pending" },
+            ],
+          });
+    const sibling = makeThreadListEntry({ id: "new-sibling" });
+    seed(
+      makeThreadListEntry({
+        ...original,
+        title: "Pending",
+        sectionId: "later-edit",
+        status: "active",
+        runtime: { displayStatus: "active" },
+        updatedAt: 30,
+      }),
+      [sibling],
+    );
+    transaction.releasePendingPatches();
+    if ("previousThreads" in transaction)
+      rollbackThreadMetadataBatchTransaction({ queryClient, transaction });
+    else
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId: original.id,
+        transaction,
+      });
+    for (const thread of read())
+      expect(thread).toMatchObject({
+        title: "Original",
+        sectionId: "later-edit",
+        status: "active",
+        runtime: { displayStatus: "active" },
+        updatedAt: 30,
+      });
+    expect(queryClient.getQueryData<ThreadListEntry[]>(listKey)?.[1]).toEqual(
+      sibling,
+    );
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[1],
+    ).toEqual(sibling);
+  },
+);
+
+it("preserves concurrent state when an older status event reaches detail and sidebar", () => {
+  const { queryClient, original, seed, read } = seedConcurrentThreadCaches();
+  seed(
+    makeThreadListEntry({
+      ...original,
+      status: "active",
+      runtime: { displayStatus: "active" },
+      updatedAt: 30,
+    }),
+  );
+  const stale = {
+    status: "idle" as const,
+    runtime: { displayStatus: "idle" as const },
+    latestAttentionAt: 20,
+    activity: original.activity,
+    updatedAt: 20,
+  };
+  updateCachedThreadStatusState(queryClient, original.id, stale);
+  updateCachedThreadListStatusState(queryClient, original.id, stale);
+  for (const thread of read())
+    expect(thread).toMatchObject({
+      status: "active",
+      runtime: { displayStatus: "active" },
+      updatedAt: 30,
+    });
+});

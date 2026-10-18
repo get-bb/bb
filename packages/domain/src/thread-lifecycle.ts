@@ -58,6 +58,7 @@ export const THREAD_LIFECYCLE: Record<
     "run.succeeded": "idle",
     "run.failed": "error",
     "stop.requested": "stopping",
+    "stop.settled": "idle",
   },
   stopping: {
     "stop.settled": "idle",

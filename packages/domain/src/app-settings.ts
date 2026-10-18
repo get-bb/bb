@@ -21,6 +21,7 @@ export const appSettingsSchema = z
     confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
     keepHistoryAfterContextClear: z.boolean(),
+    summarizeShellCommands: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     providerCompletedTurnDisplay: z.record(
@@ -46,6 +47,7 @@ export const appSettingsSchema = z
     machineGitCredentialsEnabled: z.boolean(),
     defaultMachineAccess: z.string().min(1).nullable(),
     onboardingCompletedAt: z.string().min(1).nullable(),
+    earlyAdopter: z.boolean(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -57,6 +59,7 @@ export const defaultAppSettings: AppSettings = {
   confirmThreadArchive: true,
   showDiagnosticEvents: false,
   keepHistoryAfterContextClear: false,
+  summarizeShellCommands: true,
   providerOrder: [],
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
@@ -68,6 +71,7 @@ export const defaultAppSettings: AppSettings = {
   defaultMachineAccess: null,
   machineGitCredentialsEnabled: true,
   onboardingCompletedAt: null,
+  earlyAdopter: false,
 };
 
 export const disabledProviderIdsSchema = z.array(z.string().min(1));
@@ -79,8 +83,10 @@ export const appSettingsUpdateSchema = z.union([
     confirmThreadArchive: z.boolean().optional(),
     showGitChanges: z.boolean().optional(),
     keepHistoryAfterContextClear: z.boolean().optional(),
+    summarizeShellCommands: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
     onboardingCompletedAt: z.string().min(1).nullable().optional(),
+    earlyAdopter: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
     allowFastServiceTier: z.boolean().optional(),
@@ -88,8 +94,10 @@ export const appSettingsUpdateSchema = z.union([
     confirmThreadArchive: z.boolean().optional(),
     showGitChanges: z.boolean().optional(),
     keepHistoryAfterContextClear: z.boolean().optional(),
+    summarizeShellCommands: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
     onboardingCompletedAt: z.string().min(1).nullable().optional(),
+    earlyAdopter: z.boolean().optional(),
   }),
 ]);
 export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;

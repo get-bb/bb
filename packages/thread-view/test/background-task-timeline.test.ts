@@ -38,6 +38,7 @@ function buildTimeline(
       completedTurnDisplay: "collapse",
       includeNestedRows: options.includeNestedRows ?? true,
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
@@ -80,6 +81,7 @@ function taskItem(args: {
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: args.skipTranscript ?? false,
+    foreground: false,
     workflowName: args.workflowName ?? "fixture-mini",
     ...(args.workflow ? { workflow: args.workflow } : {}),
     ...(args.summary ? { summary: args.summary } : {}),
@@ -104,6 +106,7 @@ function bashTaskItem(args: {
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: false,
+    foreground: false,
     ...(args.summary ? { summary: args.summary } : {}),
     ...(args.parentToolCallId
       ? { parentToolCallId: args.parentToolCallId }
@@ -118,6 +121,7 @@ function agentTaskItem(args: {
   familyId?: string;
   description?: string;
   parentToolCallId?: string;
+  foreground?: boolean;
 }): ThreadEventBackgroundTaskItem {
   return {
     type: "backgroundTask",
@@ -128,6 +132,7 @@ function agentTaskItem(args: {
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: false,
+    foreground: args.foreground ?? false,
     ...(args.parentToolCallId
       ? { parentToolCallId: args.parentToolCallId }
       : {}),
@@ -736,6 +741,53 @@ describe("background task timeline projection", () => {
       "task:cmd-late",
       "task:cmd-early",
     ]);
+  });
+
+  it("lists a foreground agent only once it moves to the background", () => {
+    const started = withMeta(
+      {
+        type: "item/started",
+        threadId: "thread-1",
+        providerThreadId: "provider-1",
+        scope: turnScope("turn-1"),
+        item: agentTaskItem({
+          status: "pending",
+          taskStatus: "running",
+          foreground: true,
+        }),
+      },
+      2,
+    );
+    const whileForeground = buildTimeline(
+      [turnStarted("turn-1", 1), started],
+      { includeNestedRows: false },
+    );
+    expect(whileForeground.activeBackgroundCommands).toEqual([]);
+
+    const afterBackgrounding = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        started,
+        withMeta(
+          {
+            type: "item/backgroundTask/progress",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: agentTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              foreground: false,
+            }),
+          },
+          3,
+        ),
+      ],
+      { includeNestedRows: false },
+    );
+    expect(
+      afterBackgrounding.activeBackgroundCommands.map((row) => row.itemId),
+    ).toEqual(["task:agent-1"]);
   });
 
   it("projects the spawning delegation model onto an active background agent", () => {

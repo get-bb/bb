@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { AppPageHeader } from "@/components/layout/AppPageHeader";
 import { SettingsSidebarContent } from "@/components/settings/SettingsSidebar";
+import type { SettingsSearchCondition } from "@/components/settings/settings-search";
 import {
   SETTINGS_NAV_SECTIONS,
   type SettingsSectionId,
@@ -43,6 +44,13 @@ export function useSettingsStoryRoute(): SettingsStoryRoute {
   return { kind: "section", id: section?.id ?? "general" };
 }
 
+const STORY_SEARCH_CONDITIONS: ReadonlySet<SettingsSearchCondition> = new Set([
+  "cliCommand",
+  "desktopBrowser",
+  "filePreferences",
+  "performanceDiagnostics",
+]);
+
 export function SettingsStoryChrome({
   activeSection,
   children,
@@ -68,6 +76,7 @@ export function SettingsStoryChrome({
     >
       <Sidebar>
         <SettingsSidebarContent
+          backTo={null}
           isResizing={false}
           navigation={{
             activePluginId: null,
@@ -76,6 +85,12 @@ export function SettingsStoryChrome({
             sections: SETTINGS_NAV_SECTIONS,
           }}
           onResizeMouseDown={() => {}}
+          pluginSettingSearch={{
+            entries: [],
+            isLoading: false,
+            onActivate: () => {},
+          }}
+          searchConditions={STORY_SEARCH_CONDITIONS}
           testIdPrefix="settings-story"
         />
       </Sidebar>

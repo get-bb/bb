@@ -174,6 +174,14 @@
       "type": "registry:ui"
     },
     {
+      "name": "overflow-fade",
+      "type": "registry:ui"
+    },
+    {
+      "name": "overlay-anchor",
+      "type": "registry:ui"
+    },
+    {
       "name": "overlay-trigger",
       "type": "registry:ui"
     },
@@ -290,6 +298,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "shortcut-pill",
+      "type": "registry:ui"
+    },
+    {
       "name": "sidebar-customize-panel",
       "type": "registry:ui"
     },
@@ -315,6 +327,10 @@
     },
     {
       "name": "sortable-motion",
+      "type": "registry:ui"
+    },
+    {
+      "name": "split-pane-mini-map",
       "type": "registry:ui"
     },
     {

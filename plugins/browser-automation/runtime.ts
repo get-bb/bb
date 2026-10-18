@@ -205,11 +205,15 @@ export async function createRuntime(args: {
     closed = true;
     stopped.abort();
     preview?.close();
-    closing = (async () => {
+    const attempt = (async () => {
       await Promise.all(processes.map((child) => child.close()));
       await rm(home, { recursive: true, force: true });
-    })();
-    return closing;
+    })().catch((error: unknown) => {
+      if (closing === attempt) closing = null;
+      throw error;
+    });
+    closing = attempt;
+    return attempt;
   };
   const startup = AbortSignal.any([args.signal, AbortSignal.timeout(30_000)]);
   async function waitForFile(path: string): Promise<string> {

@@ -55,6 +55,7 @@ import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
   beginPluginSlotBatch,
   removePluginSlotRegistrations,
+  setBuiltinPluginIds,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "./plugin-slots";
@@ -294,6 +295,11 @@ export async function fetchFrontendCandidates(
   }
   setPluginLogoUrls(logoUrls);
   setPluginAssetIcons(assetIcons);
+  setBuiltinPluginIds(
+    plugins.flatMap((plugin) =>
+      plugin.provenance === "builtin" ? [plugin.id] : [],
+    ),
+  );
   return candidates;
 }
 
@@ -738,10 +744,8 @@ async function reconcileCandidates(
             "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
           );
         }
-        collected = collectPluginAppRegistrations(definition, (reason) => {
-          deps.warn(
-            `[plugin:${pluginId}] composer customization rejected: ${reason}`,
-          );
+        collected = collectPluginAppRegistrations(definition, (message) => {
+          deps.warn(`[plugin:${pluginId}] ${message}`);
         });
       } catch (error) {
         const message = errorMessage(error);

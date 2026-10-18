@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-index 80c6803..cc9dd10 100644
+index 80c6803..856c03f 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 @@ -9,6 +9,9 @@ import android.view.Menu;
@@ -119,7 +119,7 @@ index 0287e1c..5c9db56 100644
          final RNCWebView rncWebView = (RNCWebView) view;
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java
 new file mode 100644
-index 0000000..973f675
+index 0000000..ef1e4d8
 --- /dev/null
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java
 @@ -0,0 +1,215 @@
@@ -659,3 +659,334 @@ index aba5f56..7ee0a5e 100644
    <external-path
      name="shared"
      path="." />
+diff --git a/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewModule.java b/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewModule.java
+index 4df0aae..35c91fd 100644
+--- a/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewModule.java
++++ b/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewModule.java
+@@ -19,6 +19,11 @@ public class RNCWebViewModule extends NativeRNCWebViewModuleSpec {
+         mRNCWebViewModuleImpl = new RNCWebViewModuleImpl(reactContext);
+     }
+
++    @Override
++    public boolean nativeDownloadsSupported() {
++        return false;
++    }
++
+     @Override
+     public void isFileUploadSupported(final Promise promise) {
+         promise.resolve(mRNCWebViewModuleImpl.isFileUploadSupported());
+diff --git a/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewModule.java b/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewModule.java
+index 526cc16..81f2a2e 100644
+--- a/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewModule.java
++++ b/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewModule.java
+@@ -21,6 +21,11 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule {
+         mRNCWebViewModuleImpl = new RNCWebViewModuleImpl(reactContext);
+     }
+
++    @ReactMethod(isBlockingSynchronousMethod = true)
++    public boolean nativeDownloadsSupported() {
++        return false;
++    }
++
+     @ReactMethod
+     public void isFileUploadSupported(final Promise promise) {
+         promise.resolve(mRNCWebViewModuleImpl.isFileUploadSupported());
+diff --git a/apple/RNCWebView.mm b/apple/RNCWebView.mm
+index c0816b6..7efecf2 100644
+--- a/apple/RNCWebView.mm
++++ b/apple/RNCWebView.mm
+@@ -427,7 +427,9 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
+                 if (_eventEmitter) {
+                     auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
+                     facebook::react::RNCWebViewEventEmitter::OnFileDownload data = {
+-                        .downloadUrl = nullSafeString([dictionary valueForKey:@"downloadUrl"])
++                        .downloadUrl = nullSafeString([dictionary valueForKey:@"downloadUrl"]),
++                        .filePath = nullSafeString([dictionary valueForKey:@"filePath"]),
++                        .error = nullSafeString([dictionary valueForKey:@"error"])
+                     };
+                     webViewEventEmitter->onFileDownload(data);
+                 }
+diff --git a/apple/RNCWebViewImpl.m b/apple/RNCWebViewImpl.m
+index 7f5c24d..6dbad89 100644
+--- a/apple/RNCWebViewImpl.m
++++ b/apple/RNCWebViewImpl.m
+@@ -118,6 +118,7 @@ @interface RNCWebViewImpl () <WKUIDelegate, WKNavigationDelegate, WKScriptMessag
+ #if !TARGET_OS_OSX
+ UIScrollViewDelegate,
+ UIGestureRecognizerDelegate,
++WKDownloadDelegate,
+ #endif // !TARGET_OS_OSX
+ RCTAutoInsetsProtocol>
+
+@@ -126,6 +127,9 @@ @interface RNCWebViewImpl () <WKUIDelegate, WKNavigationDelegate, WKScriptMessag
+ @property (nonatomic, strong) WKUserScript *injectedObjectJsonScript;
+ @property (nonatomic, strong) WKUserScript *atStartScript;
+ @property (nonatomic, strong) WKUserScript *atEndScript;
++#if TARGET_OS_IOS
++@property (nonatomic, strong) NSMapTable<WKDownload *, NSURL *> *fileDownloads;
++#endif
+ @end
+
+ @implementation RNCWebViewImpl
+@@ -613,6 +617,9 @@ - (void)destroyWebView
+ - (void)removeFromSuperview
+ #endif
+ {
++#if TARGET_OS_IOS
++  if (@available(iOS 14.5, *)) [self cancelFileDownloads];
++#endif
+   if (_webView) {
+     [_webView.configuration.userContentController removeScriptMessageHandlerForName:HistoryShimName];
+     [_webView.configuration.userContentController removeScriptMessageHandlerForName:MessageHandlerName];
+@@ -1348,6 +1355,16 @@ - (void)                  webView:(WKWebView *)webView
+     BOOL isTopFrame = [request.URL isEqual:request.mainDocumentURL];
+     BOOL hasTargetFrame = navigationAction.targetFrame != nil;
+
++#if TARGET_OS_IOS
++    if (@available(iOS 14.5, *)) {
++      if (navigationType == WKNavigationTypeReload) [self cancelFileDownloads];
++      if (_onFileDownload && navigationAction.shouldPerformDownload && [self permitsFileDownload:request.URL]) {
++        decisionHandler(WKNavigationActionPolicyDownload);
++        return;
++      }
++    }
++#endif
++
+     if (_onOpenWindow && !hasTargetFrame) {
+       // When OnOpenWindow should be called, we want to prevent the navigation
+       // If not prevented, the `decisionHandler` is called first and after that `createWebViewWithConfiguration` is called
+@@ -1420,6 +1437,115 @@ - (void)                  webView:(WKWebView *)webView
+     decisionHandler(WKNavigationActionPolicyAllow);
+ }
+
++#if TARGET_OS_IOS
++- (void)cancelFileDownloads API_AVAILABLE(ios(14.5))
++{
++  for (WKDownload *download in self.fileDownloads.keyEnumerator.allObjects) {
++    download.delegate = nil;
++    [download cancel:nil];
++    [[NSFileManager defaultManager] removeItemAtURL:[self.fileDownloads objectForKey:download] error:nil];
++  }
++  [self.fileDownloads removeAllObjects];
++}
++
++- (BOOL)permitsFileDownload:(NSURL *)url
++{
++  if ([url.scheme.lowercaseString isEqualToString:@"data"]) return YES;
++  if ([url.scheme.lowercaseString isEqualToString:@"blob"]) {
++    url = [NSURL URLWithString:[url.absoluteString substringFromIndex:5]];
++  }
++  NSURL *page = _webView.URL;
++  return url != nil && page != nil && url.user.length == 0 && url.password.length == 0 &&
++    [url.scheme.lowercaseString isEqualToString:page.scheme.lowercaseString] &&
++    [url.host.lowercaseString isEqualToString:page.host.lowercaseString] &&
++    ((url.port == nil && page.port == nil) || [url.port isEqual:page.port]);
++}
++
++- (void)emitFileDownload:(NSURL *)url file:(NSURL *)file error:(NSString *)error
++{
++  if (!_onFileDownload) return;
++  NSMutableDictionary *event = [self baseEvent];
++  [event addEntriesFromDictionary:@{
++    @"downloadUrl": url.absoluteString ?: @"",
++    @"filePath": file.absoluteString ?: @"",
++    @"error": error ?: @""
++  }];
++  _onFileDownload(event);
++}
++
++- (void)webView:(WKWebView *)webView navigationAction:(WKNavigationAction *)navigationAction didBecomeDownload:(WKDownload *)download API_AVAILABLE(ios(14.5))
++{
++  [self attachFileDownload:download];
++}
++
++- (void)webView:(WKWebView *)webView navigationResponse:(WKNavigationResponse *)navigationResponse didBecomeDownload:(WKDownload *)download API_AVAILABLE(ios(14.5))
++{
++  [self attachFileDownload:download];
++}
++
++- (void)attachFileDownload:(WKDownload *)download API_AVAILABLE(ios(14.5))
++{
++  if (self.fileDownloads == nil) self.fileDownloads = [NSMapTable strongToStrongObjectsMapTable];
++  NSURL *root = [[[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"bb-webkit-downloads" isDirectory:YES];
++  static dispatch_once_t cleanDownloads;
++  dispatch_once(&cleanDownloads, ^{
++    [[NSFileManager defaultManager] removeItemAtURL:root error:nil];
++  });
++  NSURL *directory = [root URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
++  NSError *error = nil;
++  if (self.fileDownloads.count >= 4 || ![[NSFileManager defaultManager] createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error]) {
++    [download cancel:nil];
++    [self emitFileDownload:download.originalRequest.URL file:nil error:error.localizedDescription ?: @"Too many downloads are in progress"];
++    return;
++  }
++  [self.fileDownloads setObject:directory forKey:download];
++  download.delegate = self;
++}
++
++- (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)suggestedFilename completionHandler:(void (^)(NSURL *))completionHandler API_AVAILABLE(ios(14.5))
++{
++  NSURL *directory = [self.fileDownloads objectForKey:download];
++  if (directory == nil) {
++    completionHandler(nil);
++    return;
++  }
++  if ([response isKindOfClass:NSHTTPURLResponse.class] && ((NSHTTPURLResponse *)response).statusCode >= 400) {
++    [self emitFileDownload:download.originalRequest.URL file:nil error:[NSString stringWithFormat:@"The server answered %ld.", (long)((NSHTTPURLResponse *)response).statusCode]];
++    [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
++    [self.fileDownloads removeObjectForKey:download];
++    completionHandler(nil);
++    return;
++  }
++  NSString *name = suggestedFilename.lastPathComponent;
++  if (name.length == 0 || [name isEqualToString:@"."] || [name isEqualToString:@".."]) name = @"download";
++  completionHandler([directory URLByAppendingPathComponent:name]);
++}
++
++- (void)downloadDidFinish:(WKDownload *)download API_AVAILABLE(ios(14.5))
++{
++  NSURL *directory = [self.fileDownloads objectForKey:download];
++  [self.fileDownloads removeObjectForKey:download];
++  if (directory == nil) return;
++  download.delegate = nil;
++  NSURL *file = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:directory includingPropertiesForKeys:nil options:0 error:nil].firstObject;
++  if (file == nil || !_onFileDownload) {
++    [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
++    [self emitFileDownload:download.originalRequest.URL file:nil error:@"The downloaded file is unavailable"];
++    return;
++  }
++  [self emitFileDownload:download.originalRequest.URL file:file error:nil];
++}
++
++- (void)download:(WKDownload *)download didFailWithError:(NSError *)error resumeData:(NSData *)resumeData API_AVAILABLE(ios(14.5))
++{
++  NSURL *directory = [self.fileDownloads objectForKey:download];
++  if (directory == nil) return;
++  [self.fileDownloads removeObjectForKey:download];
++  [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
++  [self emitFileDownload:download.originalRequest.URL file:nil error:error.localizedDescription];
++}
++#endif
++
+ /**
+  * Called when the web view's content process is terminated.
+  * @see https://developer.apple.com/documentation/webkit/wknavigationdelegate/1455639-webviewwebcontentprocessdidtermi?language=objc
+@@ -1445,6 +1571,24 @@ - (void)                    webView:(WKWebView *)webView
+   if ([navigationResponse.response isKindOfClass:[NSHTTPURLResponse class]]) {
+     NSHTTPURLResponse *response = (NSHTTPURLResponse *)navigationResponse.response;
+     NSInteger statusCode = response.statusCode;
++    NSString *disposition = nil;
++    if (@available(iOS 13, macOS 10.15, *)) {
++      disposition = [response valueForHTTPHeaderField:@"Content-Disposition"];
++    }
++    BOOL isAttachment = disposition != nil && [disposition hasPrefix:@"attachment"];
++#if TARGET_OS_IOS
++    if (@available(iOS 14.5, *)) {
++      if (_onFileDownload && (isAttachment || !navigationResponse.canShowMIMEType)) {
++        if (statusCode >= 400) {
++          [self emitFileDownload:response.URL file:nil error:[NSString stringWithFormat:@"The server answered %ld.", (long)statusCode]];
++          decisionHandler(WKNavigationResponsePolicyCancel);
++        } else {
++          decisionHandler(WKNavigationResponsePolicyDownload);
++        }
++        return;
++      }
++    }
++#endif
+     if (_onHttpError && navigationResponse.forMainFrame) {
+       if (statusCode >= 400) {
+         NSMutableDictionary<NSString *, id> *httpErrorEvent = [self baseEvent];
+@@ -1456,11 +1600,6 @@ - (void)                    webView:(WKWebView *)webView
+         _onHttpError(httpErrorEvent);
+       }
+     }
+-    NSString *disposition = nil;
+-    if (@available(iOS 13, macOS 10.15, *)) {
+-      disposition = [response valueForHTTPHeaderField:@"Content-Disposition"];
+-    }
+-    BOOL isAttachment = disposition != nil && [disposition hasPrefix:@"attachment"];
+     if (isAttachment || !navigationResponse.canShowMIMEType) {
+       if (_onFileDownload) {
+         policy = WKNavigationResponsePolicyCancel;
+diff --git a/apple/RNCWebViewModule.mm b/apple/RNCWebViewModule.mm
+index 547b95f..3aa9583 100644
+--- a/apple/RNCWebViewModule.mm
++++ b/apple/RNCWebViewModule.mm
+@@ -10,6 +10,14 @@ @implementation RNCWebViewModule
+
+ RCT_EXPORT_MODULE(RNCWebViewModule)
+
++RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(nativeDownloadsSupported)
++{
++#if TARGET_OS_IOS
++  if (@available(iOS 14.5, *)) return @YES;
++#endif
++  return @NO;
++}
++
+ RCT_EXPORT_METHOD(isFileUploadSupported:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     if (resolve) {
+         resolve(@(YES));
+diff --git a/lib/NativeRNCWebViewModule.d.ts b/lib/NativeRNCWebViewModule.d.ts
+index 0174988..eb91cf9 100644
+--- a/lib/NativeRNCWebViewModule.d.ts
++++ b/lib/NativeRNCWebViewModule.d.ts
+@@ -1,6 +1,7 @@
+ import type { TurboModule } from 'react-native';
+ import { Double } from 'react-native/Libraries/Types/CodegenTypes';
+ export interface Spec extends TurboModule {
++  nativeDownloadsSupported(): boolean;
+     isFileUploadSupported(): Promise<boolean>;
+     shouldStartLoadWithLockIdentifier(shouldStart: boolean, lockIdentifier: Double): void;
+ }
+diff --git a/lib/WebViewTypes.d.ts b/lib/WebViewTypes.d.ts
+index 998cc88..f39a956 100644
+--- a/lib/WebViewTypes.d.ts
++++ b/lib/WebViewTypes.d.ts
+@@ -64,6 +64,8 @@ export interface ShouldStartLoadRequest extends WebViewNavigation {
+ }
+ export interface FileDownload {
+     downloadUrl: string;
++    filePath?: string;
++    error?: string;
+ }
+ export type DecelerationRateConstant = 'normal' | 'fast';
+ export interface WebViewMessage extends WebViewNativeEvent {
+diff --git a/src/NativeRNCWebViewModule.ts b/src/NativeRNCWebViewModule.ts
+index 220d239..627824e 100644
+--- a/src/NativeRNCWebViewModule.ts
++++ b/src/NativeRNCWebViewModule.ts
+@@ -3,6 +3,7 @@ import { TurboModuleRegistry } from 'react-native';
+ import { Double } from 'react-native/Libraries/Types/CodegenTypes';
+
+ export interface Spec extends TurboModule {
++  nativeDownloadsSupported(): boolean;
+   isFileUploadSupported(): Promise<boolean>;
+   shouldStartLoadWithLockIdentifier(
+     shouldStart: boolean,
+diff --git a/src/RNCWebViewNativeComponent.ts b/src/RNCWebViewNativeComponent.ts
+index 7f4e6c4..0b9eef7 100644
+--- a/src/RNCWebViewNativeComponent.ts
++++ b/src/RNCWebViewNativeComponent.ts
+@@ -138,6 +138,8 @@ type WebViewRenderProcessGoneEvent = Readonly<{
+
+ type WebViewDownloadEvent = Readonly<{
+   downloadUrl: string;
++  filePath?: string;
++  error?: string;
+ }>;
+
+ // type MenuItem = Readonly<{label: string, key: string}>;
+diff --git a/src/WebViewTypes.ts b/src/WebViewTypes.ts
+index eca8141..21e9966 100644
+--- a/src/WebViewTypes.ts
++++ b/src/WebViewTypes.ts
+@@ -104,6 +104,8 @@ export interface ShouldStartLoadRequest extends WebViewNavigation {
+
+ export interface FileDownload {
+   downloadUrl: string;
++  filePath?: string;
++  error?: string;
+ }
+
+ export type DecelerationRateConstant = 'normal' | 'fast';

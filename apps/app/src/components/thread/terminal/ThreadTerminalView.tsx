@@ -47,6 +47,7 @@ import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
 import { TerminalMobileControls } from "./TerminalMobileControls";
+import { attachTerminalCopyShortcut } from "./terminal-copy-shortcut";
 import {
   applyTerminalControl,
   encodeTerminalArrow,
@@ -952,6 +953,12 @@ export function ThreadTerminalView({
         theme: buildTerminalTheme(),
       });
       terminalRef.current = terminal;
+      attachTerminalCopyShortcut({
+        copy: (text) => {
+          void copyToClipboardWithToast(text, { successMessage: null });
+        },
+        terminal,
+      });
       fitAddon = new LoadedFitAddon();
       terminal.loadAddon(fitAddon);
       terminal.loadAddon(new Unicode11Addon());

@@ -1,3 +1,4 @@
+import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import type { ComposerAttachment } from "@get-bb/plugin-sdk";
@@ -50,7 +51,6 @@ import {
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
-import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
   SecondaryPanelPaneRenderContext,
@@ -62,6 +62,7 @@ import {
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -120,8 +121,8 @@ import {
 import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
-  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
+  useRootComposePinnedPanelToggleBoxClassName,
 } from "./RootComposeSecondaryContent";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import {
@@ -859,7 +860,7 @@ function RootComposeSurface({
     terminalSessions: loadedTerminalSessions,
   });
   const panelBrowser = usePanelBrowser({
-    available: isDesktopBrowserAvailable() && rootPanelThreadId !== null,
+    available: isDesktopBrowserAvailable(),
     browserTabs,
     isFocused: isFocusedPane,
     openTab,
@@ -1024,9 +1025,6 @@ function RootComposeSurface({
       canShowNativeBrowserView: boolean;
       onNativeFocus: () => void;
     }) => {
-      if (rootPanelThreadId === null) {
-        return null;
-      }
       return (
         <LazyBrowserTabDeck
           browserTabs={browserTabs}
@@ -1035,12 +1033,13 @@ function RootComposeSurface({
           onAddressFocusRequestConsumed={
             panelBrowser.handleAddressFocusRequestConsumed
           }
-          environmentId={rootPanelEnvironmentId}
+          environmentId={null}
           canShowNativeBrowserView={canShowNativeBrowserView}
           canHandleBrowserCommands={canHandleBrowserCommands}
           onNativeFocus={onNativeFocus}
-          threadId={rootPanelThreadId}
+          threadId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
           onUpdate={updateBrowserTab}
+          onOpenInNewTab={panelBrowser.open}
         />
       );
     },
@@ -1048,8 +1047,7 @@ function RootComposeSurface({
       panelBrowser.addressFocusRequest,
       browserTabs,
       panelBrowser.handleAddressFocusRequestConsumed,
-      rootPanelEnvironmentId,
-      rootPanelThreadId,
+      panelBrowser.open,
       updateBrowserTab,
     ],
   );
@@ -1084,7 +1082,15 @@ function RootComposeSurface({
   });
   useAppCommandHandler("file.quickOpen", () => {
     if (!isFocusedPane) return false;
-    handleOpenNewTab();
+    if (
+      isSecondaryPanelOpen &&
+      pluginDetails.activePluginId === null &&
+      activeFixedSecondaryTab?.kind === "new-tab"
+    ) {
+      closeSecondaryPanel();
+    } else {
+      handleOpenNewTab();
+    }
     return true;
   });
   const handleToggleSecondaryPanel = useCallback(() => {
@@ -1245,10 +1251,9 @@ function RootComposeSurface({
               ...shared,
               label: browserLabel.length > 0 ? browserLabel : "Browser",
               leadingVisual: (
-                <Icon
-                  name="Globe"
+                <BrowserTabIcon
+                  tabId={tab.id}
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
                 />
               ),
               statusLabel: null,
@@ -1370,17 +1375,18 @@ function RootComposeSurface({
     },
     [openWorkspaceFile],
   );
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
+  const pinnedPanelToggleBoxClassName =
+    useRootComposePinnedPanelToggleBoxClassName();
   const showPinnedToggle =
-    !titleBarHostsRightPanelToggle &&
     (paneContext?.secondaryPanelHost ?? null) === null &&
     (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
     <div
-      className={`fixed z-40 mt-(--bb-window-frame-top) mr-(--bb-window-frame-lip) ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS} ${
-        isSecondaryPanelOpen ? "pointer-events-none invisible" : ""
-      }`}
+      className={cn(
+        "z-40",
+        pinnedPanelToggleBoxClassName,
+        isSecondaryPanelOpen && "pointer-events-none invisible",
+      )}
     >
       <RootComposeRightPanelToggle
         isOpen={isSecondaryPanelOpen}

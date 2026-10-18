@@ -1,0 +1,74 @@
+.post-body .brand-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 32px;
+  padding: 0;
+  list-style: none;
+}
+
+.post-body .brand-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.post-body .brand-card::before {
+  content: none;
+}
+
+.brand-tile {
+  padding: 15% 20%;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
+.brand-tile-light {
+  background: white;
+}
+
+.brand-tile-dark {
+  background: black;
+}
+
+.brand-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+
+.brand-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  white-space: nowrap;
+}
+
+.article .post-body .brand-meta h2 {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+.brand-downloads {
+  display: flex;
+  gap: 12px;
+  font-size: 13.5px;
+}
+
+.post-body .brand-downloads a {
+  color: var(--dim);
+  text-decoration: none;
+}
+
+.post-body .brand-downloads a:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .post-body .brand-grid {
+    grid-template-columns: 1fr;
+  }
+}

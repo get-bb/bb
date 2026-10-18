@@ -15,21 +15,31 @@ export function buildDesktopServerChoices(
   connectServers: readonly ConnectServerRef[],
 ): BbDesktopServerChoice[] {
   const target = store?.getTarget() ?? { kind: "builtin" };
+  const customUrls = store?.getCustomServerUrls() ?? [];
+  const showBuiltin =
+    (store?.getShowBuiltinServer() ?? true) ||
+    target.kind === "builtin" ||
+    (connectServers.length === 0 && customUrls.length === 0);
   return [
-    {
-      id: "builtin",
-      name: BUILTIN_SERVER_NAME,
-      active: target.kind === "builtin",
-    },
+    ...(showBuiltin
+      ? [
+          {
+            id: "builtin",
+            name: BUILTIN_SERVER_NAME,
+            active: target.kind === "builtin",
+          },
+        ]
+      : []),
     ...connectServers.map((server) => ({
       id: `connect:${server.handle}`,
-      name: server.name,
+      name:
+        store?.getConnectServerName(server.handle) ?? new URL(server.url).host,
       active:
         target.kind === "connect" && target.server.handle === server.handle,
     })),
-    ...(store?.getCustomServerUrls() ?? []).map((url) => ({
+    ...(store?.getCustomServers() ?? []).map(({ url, name }) => ({
       id: customServerId(url),
-      name: new URL(url).host,
+      name: name ?? new URL(url).host,
       active: target.kind === "custom" && target.url === url,
     })),
   ];

@@ -1,8 +1,13 @@
-import { isStandaloneBuiltinClearCommand, type Thread } from "@bb/domain";
+import {
+  isStandaloneBuiltinClearCommand,
+  isStandaloneBuiltinCompactCommand,
+  type Thread,
+} from "@bb/domain";
 import type {
   SendMessageRequest,
   SendMessageResponse,
 } from "@bb/server-contract";
+import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
@@ -20,18 +25,35 @@ export async function acceptThreadSendRequest(
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
   assertThreadHostAcceptsWork(deps.db, args.thread);
-  if (isStandaloneBuiltinClearCommand(args.payload.input)) {
+  const { compactFirst, ...request } = args.payload;
+  if (isStandaloneBuiltinClearCommand(request.input)) {
+    if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,
     });
     await sendThreadMessage(deps, {
       environment,
-      payload: args.payload,
+      payload: request,
       thread: args.thread,
       trigger: "user",
     });
     return { ok: true, delivery: "sent" };
   }
+
+  if (compactFirst) {
+    if (isStandaloneBuiltinCompactCommand(request.input)) {
+      throwInvalidCompactFirst("needs a message to send after compacting");
+    }
+    if (request.sendAt !== undefined) {
+      throwInvalidCompactFirst("cannot be scheduled with sendAt");
+    }
+    if (request.mode === "steer") {
+      throwInvalidCompactFirst("cannot steer a turn");
+    }
+  }
+  const payload: SendMessageRequest = compactFirst
+    ? { ...request, mode: "queue-if-active", compactFirst }
+    : request;
 
   const outcome = await runWithTurnTrace(
     deps,
@@ -39,10 +61,10 @@ export async function acceptThreadSendRequest(
     () =>
       attemptDispatch(deps, {
         thread: args.thread,
-        payload: args.payload,
+        payload,
         source: { kind: "inline" },
         queuePayload: { kind: "inline" },
-        pluginSubmission: args.payload.pluginSubmission ?? null,
+        pluginSubmission: payload.pluginSubmission ?? null,
         origin: null,
         originPluginId: null,
         startedOnBehalfOf: null,
@@ -57,4 +79,8 @@ export async function acceptThreadSendRequest(
     delivery: "queued",
     queuedMessage: outcome.entry,
   };
+}
+
+function throwInvalidCompactFirst(reason: string): never {
+  throw new ApiError(400, "invalid_request", `compactFirst ${reason}`);
 }

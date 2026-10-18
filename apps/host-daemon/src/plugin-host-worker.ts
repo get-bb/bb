@@ -135,6 +135,7 @@ type ParentMessage =
       readonly envVars: Record<string, string>;
     }
   | { readonly type: "cancel"; readonly callId: string }
+  | { readonly type: "abandon"; readonly callId: string }
   | { readonly type: "dispose" }
   | { readonly type: "watch-ready"; readonly watchId: string }
   | {
@@ -261,6 +262,9 @@ function parseParentMessage(value: unknown): ParentMessage | null {
   if (value.type === "cancel" && typeof value.callId === "string") {
     return { type: "cancel", callId: value.callId };
   }
+  if (value.type === "abandon" && typeof value.callId === "string") {
+    return { type: "abandon", callId: value.callId };
+  }
   if (
     value.type === "call" &&
     typeof value.callId === "string" &&
@@ -378,6 +382,7 @@ if (
 
 const lifecycleController = new AbortController();
 const activeCalls = new Map<string, AbortController>();
+const callEnvironmentReleases = new Map<string, () => void>();
 const watches = new Map<string, WorkerWatchState>();
 let nextWatchId = 1;
 let nextLeaseId = 1;
@@ -528,8 +533,15 @@ async function handleCall(
   activeCalls.set(message.callId, controller);
   let contextOpen = true;
   let releaseEnvironment: (() => void) | undefined;
+  const releaseCallEnvironment = (): void => {
+    callEnvironmentReleases.delete(message.callId);
+    const release = releaseEnvironment;
+    releaseEnvironment = undefined;
+    release?.();
+  };
   try {
     releaseEnvironment = acquireEnvironment(message.envVars);
+    callEnvironmentReleases.set(message.callId, releaseCallEnvironment);
     controller.signal.throwIfAborted();
     const input = await validate(method.input, message.input);
     const result = await handler(input, {
@@ -586,7 +598,7 @@ async function handleCall(
   } finally {
     contextOpen = false;
     activeCalls.delete(message.callId);
-    releaseEnvironment?.();
+    releaseCallEnvironment();
   }
 }
 
@@ -604,6 +616,9 @@ try {
       void handleCall(message);
     } else if (message.type === "cancel") {
       activeCalls.get(message.callId)?.abort();
+    } else if (message.type === "abandon") {
+      activeCalls.get(message.callId)?.abort();
+      callEnvironmentReleases.get(message.callId)?.();
     } else if (message.type === "watch-ready") {
       handleWatchReady(message.watchId);
     } else if (message.type === "watch-start-error") {

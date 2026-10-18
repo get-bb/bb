@@ -55,7 +55,12 @@ const longProjectPath = `/home/winter/${longProjectName}`;
 const longFileName = `${"appdata-buzz-pre-sandbox-migration-".repeat(8)}.tar.gz`;
 const longFolderName = "long-folder-name-without-natural-breaks-".repeat(8);
 
-function createLongNamesQueryClient() {
+const windowsMachine = makeHost({
+  id: "host_windows_drives",
+  name: "Sawyer's PC",
+});
+
+function createBrowsedFoldersQueryClient() {
   const queryClient = createAppQueryClient({
     showMutationErrorToasts: false,
     defaultOptions: {
@@ -89,13 +94,29 @@ function createLongNamesQueryClient() {
           path: `${longProjectPath}/src`,
         },
       ],
+      roots: ["/"],
+    },
+  );
+  queryClient.setQueryData<HostDirectoryListing>(
+    hostDirectoryQueryKey(windowsMachine.id, null),
+    {
+      directory: "C:\\Users\\sawyer",
+      parent: "C:\\Users",
+      entries: [
+        {
+          kind: "directory",
+          name: "Projects",
+          path: "C:\\Users\\sawyer\\Projects",
+        },
+      ],
+      roots: ["C:\\", "G:\\", "H:\\"],
     },
   );
   return queryClient;
 }
 
 export function Overview() {
-  const queryClient = useMemo(() => createLongNamesQueryClient(), []);
+  const queryClient = useMemo(() => createBrowsedFoldersQueryClient(), []);
   return (
     <StoryCard>
       <StoryRow
@@ -202,6 +223,24 @@ export function Overview() {
               hostId={longNamesMachine.id}
               hostName={longNamesMachine.name}
               hosts={[longNamesMachine, offlineMachine]}
+              onSubmit={noop}
+            />
+          </DialogStage>
+        </QueryClientProvider>
+      </StoryRow>
+      <StoryRow
+        label="windows drives"
+        hint="regression for #5358 — the drive crumb opens a menu of every mounted drive"
+      >
+        <QueryClientProvider client={queryClient}>
+          <DialogStage>
+            <ProjectPathDialogContent
+              target={createTarget}
+              pending={false}
+              platform="win32"
+              hostId={windowsMachine.id}
+              hostName={windowsMachine.name}
+              hosts={[windowsMachine]}
               onSubmit={noop}
             />
           </DialogStage>

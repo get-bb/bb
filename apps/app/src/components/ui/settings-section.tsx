@@ -4,6 +4,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 interface SettingsSectionProps {
   action?: ReactNode;
   actionPlacement?: "inline" | "responsive";
+  banner?: ReactNode;
   children: ReactNode;
   description?: string;
   title: ReactNode;
@@ -13,13 +14,17 @@ interface SettingsSectionProps {
 export function SettingsSection({
   action,
   actionPlacement = "responsive",
+  banner,
   children,
   description,
   title,
   bodyClassName,
 }: SettingsSectionProps) {
   return (
-    <section className="@container/settings space-y-3">
+    <section
+      data-settings-anchor={typeof title === "string" ? title : undefined}
+      className="@container/settings scroll-mt-4 space-y-3"
+    >
       <div
         className={cn(
           actionPlacement === "inline"
@@ -48,6 +53,7 @@ export function SettingsSection({
         </div>
         {action ? <div className="shrink-0 self-start">{action}</div> : null}
       </div>
+      {banner}
       <div
         className={cn(
           "rounded-lg border border-border bg-card px-4 py-3.5",
@@ -138,7 +144,10 @@ export function SettingsWithControl({
   const inline = controlPlacement === "inline";
   const trailing = controlPlacement === "trailing";
   return (
-    <div className="@container/settings w-full min-w-0">
+    <div
+      data-settings-anchor={label}
+      className="@container/settings w-full min-w-0"
+    >
       <div
         data-control-placement={controlPlacement}
         className={cn(

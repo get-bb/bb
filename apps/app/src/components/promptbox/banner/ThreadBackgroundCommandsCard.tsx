@@ -239,7 +239,7 @@ export function ThreadBackgroundCommandsCard({
             ) : (
               <>
                 <BackgroundActivitySummary row={primary} showDuration={false} />
-                <PromptStackCountSlot count={others.length} />
+                <PromptStackCountSlot count={commands.length} />
               </>
             )}
           </button>

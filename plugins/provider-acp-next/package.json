@@ -9,7 +9,7 @@
     "bbPluginSdk": ">=0.4.90"
   },
   "bb": {
-    "name": "ACP providers (new adapter)",
+    "name": "ACP providers [New adapter]",
     "description": "Preview of the rebuilt ACP adapter. Turning it on turns ACP providers off.",
     "branding": {
       "icon": "./icons/acp.svg",

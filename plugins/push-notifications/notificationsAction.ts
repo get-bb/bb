@@ -203,7 +203,8 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
     id: "notifications",
     title: "Notifications",
     icon: "BellDot",
-    group: experimental_THREAD_ACTION_GROUPS.settings,
+    group: experimental_THREAD_ACTION_GROUPS.state,
+    order: 50,
     useData: useThreadNotificationsData,
     item: ({ thread, data }) => {
       if (thread.archivedAt !== null) return null;
@@ -211,34 +212,23 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
       const resolved =
         data.defaults === null
           ? null
-          : {
-              row: resolveThreadNotifications(
-                stored,
-                { parentThreadId: thread.parentThreadId },
-                data.defaults,
-              ),
-              fallback: resolveThreadNotifications(
-                UNSET_THREAD_NOTIFICATIONS,
-                { parentThreadId: thread.parentThreadId },
-                data.defaults,
-              ).effective,
-            };
-      const hint = resolved === null ? undefined : capHint(resolved.row);
+          : resolveThreadNotifications(
+              stored,
+              { parentThreadId: thread.parentThreadId },
+              data.defaults,
+            );
+      const hint = resolved === null ? undefined : capHint(resolved);
       return {
         label: "Notifications",
         ...(resolved === null
           ? {}
-          : { detail: NOTIFICATION_LEVEL_LABELS[resolved.row.effective] }),
-        icon:
-          resolved === null ? "BellDot" : LEVEL_ICONS[resolved.row.effective],
+          : { detail: NOTIFICATION_LEVEL_LABELS[resolved.effective] }),
+        icon: resolved === null ? "BellDot" : LEVEL_ICONS[resolved.effective],
         choices: {
           ...(hint === undefined ? {} : { hint }),
           items: ownNotificationLevelSchema.options.map((id) => ({
             id,
-            label:
-              id === "inherit" && resolved !== null
-                ? `${NOTIFICATION_LEVEL_LABELS.inherit} (${NOTIFICATION_LEVEL_LABELS[resolved.fallback]})`
-                : NOTIFICATION_LEVEL_LABELS[id],
+            label: NOTIFICATION_LEVEL_LABELS[id],
             selected: id === stored.own,
           })),
         },

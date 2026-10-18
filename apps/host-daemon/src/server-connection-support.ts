@@ -3,6 +3,7 @@ import {
   type HostDaemonActiveThread,
   type HostDaemonLoadedEnvironment,
   type HostDaemonConnectSharesReplaceMessage,
+  type HostDaemonOnlineRpcCancelMessage,
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonServerWsMessage,
   type HostDaemonSessionOpenResponse,
@@ -48,6 +49,7 @@ export type HostDaemonServerTerminalMessage = Exclude<
   | { type: "heartbeat-ack" }
   | { type: "machine-environment.replace" }
   | HostDaemonOnlineRpcRequestMessage
+  | HostDaemonOnlineRpcCancelMessage
   | HostDaemonWatchSetReplaceMessage
   | HostDaemonConnectSharesReplaceMessage
 >;
@@ -93,6 +95,7 @@ export interface ServerConnectionOptions {
   onHostRpcRequest?: (
     message: HostDaemonOnlineRpcRequestMessage,
   ) => void | Promise<void>;
+  onHostRpcCancel?: (message: HostDaemonOnlineRpcCancelMessage) => void;
   onWatchSetReplace?: (
     message: HostDaemonWatchSetReplaceMessage,
   ) => void | Promise<void>;

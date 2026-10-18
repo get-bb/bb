@@ -1,3 +1,4 @@
+import { BrowserTabIcon } from "../secondary-panel/BrowserTabIcon";
 import {
   getPanelTabHistoryKey,
   forgetClosedPanelTab,
@@ -21,6 +22,7 @@ import type { PluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -28,10 +30,6 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
-import {
-  useWindowRightPanel,
-  useWindowTitleBarHostsRightPanelToggle,
-} from "@/components/layout/WindowRightPanelToggle";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
@@ -71,7 +69,11 @@ import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  isDesktopBrowserAvailable,
+  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+} from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -565,9 +567,6 @@ export function PluginPanelRightPanelHost({
     togglePanel();
     return true;
   });
-  useWindowRightPanel({ isOpen, enabled: isFocused && panel !== null });
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused || panel === null) return false;
     openNewTab();
@@ -606,6 +605,7 @@ export function PluginPanelRightPanelHost({
     return true;
   });
 
+  const isSidebarFramed = useIsSidebarFramed();
   const [togglePortalTarget, setTogglePortalTarget] =
     useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -905,7 +905,7 @@ export function PluginPanelRightPanelHost({
               {
                 ...shared,
                 label: label || "Browser",
-                leadingVisual: <Icon name="Globe" className="size-3.5" />,
+                leadingVisual: <BrowserTabIcon tabId={tab.id} />,
                 statusLabel: null,
                 onClose: () => closeTab(tab.id),
               },
@@ -1035,6 +1035,7 @@ export function PluginPanelRightPanelHost({
             onNativeFocus={onNativeFocus}
             threadId={panelStateId}
             onUpdate={updateBrowserTab}
+            onOpenInNewTab={panelBrowser.open}
           />
         );
       const drawerFallback = renderDeck(
@@ -1082,6 +1083,7 @@ export function PluginPanelRightPanelHost({
       browserTabs,
       fixedTabs,
       panelBrowser.handleAddressFocusRequestConsumed,
+      panelBrowser.open,
       hidePanel,
       isOpen,
       openNewTab,
@@ -1105,6 +1107,7 @@ export function PluginPanelRightPanelHost({
       <SecondaryPanelLayout
         open={isOpen}
         onToggle={togglePanel}
+        onSwipeOpen={togglePanel}
         onClose={hidePanel}
         panelGroupKey={`plugin-panel-host:${panelHostId}`}
         resetKey={panelStateId}
@@ -1127,7 +1130,6 @@ export function PluginPanelRightPanelHost({
     <>
       {panel !== null &&
       togglePortalTarget !== null &&
-      !titleBarHostsRightPanelToggle &&
       !isOpen &&
       !isHostedBySplitWorkspace
         ? createPortal(
@@ -1137,7 +1139,10 @@ export function PluginPanelRightPanelHost({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className={RIGHT_PANEL_TOGGLE_CLASS}
+                  className={cn(
+                    RIGHT_PANEL_TOGGLE_CLASS,
+                    isSidebarFramed && MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+                  )}
                   aria-label={toggleLabel}
                   aria-pressed={isOpen}
                   onPointerEnter={preloadThreadSecondaryPanel}

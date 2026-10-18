@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { selectionClipboard } from "@/lib/markdown-clipboard";
 import {
   anchorPointFromMouseEvent,
   firstClientRect,
@@ -18,6 +19,7 @@ import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSele
 
 interface SecondaryPanelSelectionActionsProps {
   children: ReactNode;
+  markdown?: boolean;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -49,12 +51,22 @@ function selectionRangeTouchesNode(range: Range, node: HTMLElement): boolean {
   return false;
 }
 
+function markdownWithinNode(range: Range, node: HTMLElement): string {
+  const clipped = range.cloneRange();
+  if (!node.contains(range.startContainer)) clipped.setStart(node, 0);
+  if (!node.contains(range.endContainer))
+    clipped.setEnd(node, node.childNodes.length);
+  return selectionClipboard(clipped, node).text;
+}
+
 function readSelectionWithinPanel({
   anchor,
+  markdown,
   node,
   pointerStartedInNode,
 }: {
   anchor: SelectionAnchor | null;
+  markdown: boolean;
   node: HTMLElement | null;
   pointerStartedInNode: boolean;
 }): MessageProseSelection | null {
@@ -85,7 +97,10 @@ function readSelectionWithinPanel({
     (selectionAnchor === null
       ? node.getBoundingClientRect()
       : new DOMRect(selectionAnchor.point.x, selectionAnchor.point.y, 0, 0));
-  const nextSelection: MessageProseSelection = { text, rect };
+  const nextSelection: MessageProseSelection = {
+    text: markdown ? markdownWithinNode(range, node) : text,
+    rect,
+  };
   if (selectionAnchor !== null) {
     nextSelection.anchorPoint = selectionAnchor.point;
     nextSelection.anchorSide = selectionAnchor.side;
@@ -95,6 +110,7 @@ function readSelectionWithinPanel({
 
 export function SecondaryPanelSelectionActions({
   children,
+  markdown = false,
   onSelectionAddToChat,
 }: SecondaryPanelSelectionActionsProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -112,15 +128,19 @@ export function SecondaryPanelSelectionActions({
     setSelection(null);
   }, []);
 
-  const reportSelection = useCallback((anchor: SelectionAnchor | null) => {
-    setSelection(
-      readSelectionWithinPanel({
-        anchor,
-        node: nodeRef.current,
-        pointerStartedInNode: pointerStartedInNodeRef.current,
-      }),
-    );
-  }, []);
+  const reportSelection = useCallback(
+    (anchor: SelectionAnchor | null) => {
+      setSelection(
+        readSelectionWithinPanel({
+          anchor,
+          markdown,
+          node: nodeRef.current,
+          pointerStartedInNode: pointerStartedInNodeRef.current,
+        }),
+      );
+    },
+    [markdown],
+  );
 
   useEffect(() => {
     if (!isEnabled || typeof window === "undefined") return;
@@ -193,6 +213,36 @@ export function SecondaryPanelSelectionActions({
     };
   }, [isEnabled, reportSelection]);
 
+  useEffect(() => {
+    if (!markdown) return;
+    const handleCopy = (event: ClipboardEvent) => {
+      const node = nodeRef.current;
+      const selection = window.getSelection();
+      if (
+        event.defaultPrevented ||
+        event.clipboardData === null ||
+        node === null ||
+        selection === null ||
+        selection.isCollapsed ||
+        selection.rangeCount !== 1
+      )
+        return;
+      const range = selection.getRangeAt(0);
+      if (
+        !node.contains(range.startContainer) ||
+        !node.contains(range.endContainer)
+      )
+        return;
+      const payload = selectionClipboard(range, node);
+      if (!payload.text) return;
+      event.clipboardData.setData("text/plain", payload.text);
+      event.clipboardData.setData("text/html", payload.html);
+      event.preventDefault();
+    };
+    document.addEventListener("copy", handleCopy);
+    return () => document.removeEventListener("copy", handleCopy);
+  }, [markdown]);
+
   const handleAddToChat = useCallback(
     (text: string) => {
       onSelectionAddToChat?.(text);
@@ -201,22 +251,20 @@ export function SecondaryPanelSelectionActions({
     [onSelectionAddToChat],
   );
 
-  if (!isEnabled) {
-    return <>{children}</>;
-  }
-
   return (
     <>
       <div ref={nodeRef} className="contents">
         {children}
       </div>
-      <TimelineSelectionMenu
-        selection={selection}
-        onAddToChat={
-          onSelectionAddToChat === undefined ? undefined : handleAddToChat
-        }
-        onDismiss={dismissSelection}
-      />
+      {isEnabled ? (
+        <TimelineSelectionMenu
+          selection={selection}
+          onAddToChat={
+            onSelectionAddToChat === undefined ? undefined : handleAddToChat
+          }
+          onDismiss={dismissSelection}
+        />
+      ) : null}
     </>
   );
 }

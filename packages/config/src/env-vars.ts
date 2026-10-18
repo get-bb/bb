@@ -16,6 +16,7 @@ import {
   type AppInstallKind,
   type AppSourceOrigin,
 } from "./app-install.js";
+import { CLI_LAUNCHER_ENV_NAME } from "./cli-command.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
@@ -218,6 +219,13 @@ export const BB_APP_UPDATE_MODE_ENV = defineEnvVar<AppUpdateMode>({
   parse: parseAppUpdateModeEnvValue,
 });
 
+export const BB_CLI_LAUNCHER_ENV = defineEnvVar<string>({
+  description:
+    "Internal path the bb-app launcher hands its server child: the bb command launcher it wrote in the data directory for this install. The server offers to put the bb command on PATH only when it is set.",
+  name: CLI_LAUNCHER_ENV_NAME,
+  parse: parseNonEmptyStringEnvValue,
+});
+
 export const BB_APP_INSTALL_KIND_ENV = defineEnvVar<AppInstallKind>({
   description:
     "Internal marker the bb-app launcher hands its server child for telemetry attribution: desktop for the desktop app, npm for package installs, source for pnpm start checkouts. Absent when the server runs without the launcher.",
@@ -227,7 +235,7 @@ export const BB_APP_INSTALL_KIND_ENV = defineEnvVar<AppInstallKind>({
 
 export const BB_APP_SOURCE_ORIGIN_ENV = defineEnvVar<AppSourceOrigin>({
   description:
-    "Internal marker the bb-app launcher hands its server child for source checkouts: official when the origin remote is github.com/get-bb/bb, fork for any other origin, none without one.",
+    "Internal marker the bb-app launcher hands its server child for source checkouts: official when the origin remote is github.com/get-bb/bb or github.com/ymichael/bb, fork for any other origin, none without one.",
   name: APP_SOURCE_ORIGIN_ENV_NAME,
   parse: parseAppSourceOriginEnvValue,
 });
@@ -278,6 +286,13 @@ export const BB_PERF_DIAGNOSTICS_ENV = defineEnvVar<boolean>({
   description:
     "Permit server performance diagnostics when the performanceDiagnostics experiment is on. Requires restart.",
   name: "BB_PERF_DIAGNOSTICS",
+  parse: parseBooleanEnvValue,
+});
+
+export const BB_SKIP_ONBOARDING_ENV = defineEnvVar<boolean>({
+  description:
+    "Mark first-run setup as completed at server startup so the setup screen is skipped. Settings can still replay it.",
+  name: "BB_SKIP_ONBOARDING",
   parse: parseBooleanEnvValue,
 });
 

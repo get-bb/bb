@@ -1,13 +1,10 @@
 # Releasing BB Official plugins
 
 Official plugins ship **bundled inside the BB app**. There is no separate
-publish pipeline. Each plugin runs the internal `bb-plugin-build prepare-bundled`
-command through its Turbo-cached `prepare:bundled` task. The shared tool compiles
-one plugin into its `.bundled-runtime` directory. `@bb/bundled-plugins` assembles
-the registered plugins, and app packaging copies the collection into
-`<server dist>/builtin-plugins/<name>`. The app in
-Plugins → Browse plugins installs official plugins from that local bundled copy;
-no network is involved.
+publish pipeline: app packaging builds each plugin through its Turbo-cached
+`prepare:bundled` task and copies the collection into
+`<server dist>/builtin-plugins/<name>`. Plugins → Browse plugins installs
+official plugins from that local bundled copy; no network is involved.
 
 Every bundled plugin lives in `plugins/<name>`. The directory does not record
 the install policy. `autoInstall` in the registry does: `BUILTIN_PLUGINS`

@@ -25,6 +25,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
+import { runSettlementError } from "./bridge/run-settlement.js";
 
 export interface PiContextWindowModel {
   contextWindow?: number;
@@ -78,6 +79,7 @@ const piAssistantUsageSchema = z
     output: z.number().optional(),
     cacheRead: z.number().nonnegative().optional().catch(undefined),
     cacheWrite: z.number().nonnegative().optional().catch(undefined),
+    cacheWrite1h: z.number().nonnegative().optional().catch(undefined),
     totalTokens: z.number().optional(),
   })
   .passthrough();
@@ -120,6 +122,11 @@ const piAgentEndEventSchema = z
     messages: z.array(piConversationMessageSchema),
     providerCheckpointId: z.string().min(1).optional(),
     willRetry: z.boolean().default(false),
+    deferSettlement: z.boolean().optional(),
+    settlementOnly: z.boolean().optional(),
+    settlementError: z.string().optional(),
+    settlementErrorReported: z.boolean().optional(),
+    settlementSuperseded: z.boolean().optional(),
   })
   .passthrough();
 
@@ -283,9 +290,7 @@ function classifyPiToolUse(
     }
     const path = parsed.data.path;
     const parsedEdits = piFileEditBatchSchema.safeParse(parsed.data.edits);
-    if (
-      parsedEdits.success && parsedEdits.data.length > 0
-    ) {
+    if (parsedEdits.success && parsedEdits.data.length > 0) {
       return {
         type: "fileChange",
         changes: parsedEdits.data.map((edit) => ({
@@ -442,9 +447,11 @@ export function createPiDeltaTranslator(
     string,
     ThreadEventTokenUsageBreakdown
   >();
+  const promptCacheTtlMsByThreadId = new Map<string, number>();
 
   function resetThread(threadId: string): void {
     cumulativeTokensByThreadId.delete(threadId);
+    promptCacheTtlMsByThreadId.delete(threadId);
     clearThreadToolShapes({ threadId });
   }
 
@@ -754,7 +761,7 @@ export function createPiDeltaTranslator(
           return unexpectedSdkEventDeltas(event, context);
         }
         const lastAssistant = findLastAssistantMessage(piEvent.data.messages);
-        if (piEvent.data.willRetry) {
+        if (piEvent.data.willRetry && !piEvent.data.deferSettlement) {
           if (lastAssistant && isPiAssistantError(lastAssistant)) {
             return [
               {
@@ -767,26 +774,43 @@ export function createPiDeltaTranslator(
           }
           return [];
         }
-        if (lastAssistant && isPiAssistantError(lastAssistant)) {
+        const settlementError =
+          piEvent.data.settlementError ??
+          runSettlementError(piEvent.data, piEvent.data.messages);
+        if (settlementError && !piEvent.data.deferSettlement) {
           clearThreadToolShapes(context);
-          return [
-            {
+          const failure: ThreadDelta[] = [];
+          if (!piEvent.data.settlementErrorReported) {
+            failure.push({
               kind: "provider.error",
               message: "Provider error",
-              detail: lastAssistant.errorMessage,
-            },
-            {
-              kind: "turn.boundary",
-              status: "failed",
-              ...(piEvent.data.providerCheckpointId !== undefined
-                ? { providerCheckpointId: piEvent.data.providerCheckpointId }
-                : {}),
-            },
-          ];
+              detail: settlementError,
+            });
+          }
+          failure.push({
+            kind: "turn.boundary",
+            status: "failed",
+            ...(piEvent.data.providerCheckpointId !== undefined
+              ? { providerCheckpointId: piEvent.data.providerCheckpointId }
+              : {}),
+          });
+          return failure;
         }
-        clearThreadToolShapes(context);
+        if (!piEvent.data.deferSettlement) clearThreadToolShapes(context);
         const deltas: ThreadDelta[] = [];
-        if (lastAssistant) {
+        if (
+          settlementError &&
+          piEvent.data.deferSettlement &&
+          (piEvent.data.willRetry || piEvent.data.settlementSuperseded)
+        ) {
+          deltas.push({
+            kind: "provider.error",
+            message: "Provider error",
+            detail: settlementError,
+            ...(piEvent.data.willRetry ? { willRetry: true } : {}),
+          });
+        }
+        if (lastAssistant && !piEvent.data.settlementOnly && !settlementError) {
           const text = extractAssistantText(lastAssistant);
           if (text) {
             deltas.push({
@@ -797,21 +821,30 @@ export function createPiDeltaTranslator(
             });
           }
         }
-        const usage = toAssistantUsageBreakdown(lastAssistant);
-        if (usage) {
+        const usage = piEvent.data.settlementOnly
+          ? undefined
+          : toAssistantUsageBreakdown(lastAssistant);
+        if (usage && !(settlementError && usage.totalTokens === 0)) {
           const threadKey = context?.threadId ?? "";
           const total = addTokenUsage(
             cumulativeTokensByThreadId.get(threadKey) ?? ZERO_TOKEN_USAGE,
             usage,
           );
           cumulativeTokensByThreadId.set(threadKey, total);
+          const reportedTtlMs = toPromptCacheTtlMs(lastAssistant);
+          if (reportedTtlMs !== undefined) {
+            promptCacheTtlMsByThreadId.set(threadKey, reportedTtlMs);
+          }
+          const promptCacheTtlMs = promptCacheTtlMsByThreadId.get(threadKey);
           deltas.push({
             kind: "usage",
             total,
             last: usage,
             modelContextWindow: resolveModelContextWindow(lastAssistant),
+            ...(promptCacheTtlMs === undefined ? {} : { promptCacheTtlMs }),
           });
         }
+        if (piEvent.data.deferSettlement) return deltas;
         deltas.push({
           kind: "turn.boundary",
           status: "completed",
@@ -1082,6 +1115,21 @@ function extractPiCommandExecutionOutput(content: unknown): string | undefined {
 function extractPiToolProgressText(event: PiToolExecutionUpdateEvent): string {
   const text = extractResultText(event.partialResult).trim();
   return text.length > 0 ? text : `${event.toolName} progress update`;
+}
+
+const PI_ONE_HOUR_CACHE_TTL_MS = 60 * 60_000;
+const PI_FIVE_MINUTE_CACHE_TTL_MS = 5 * 60_000;
+
+function toPromptCacheTtlMs(
+  lastAssistant: PiAssistantMessage | undefined,
+): number | undefined {
+  const usage = lastAssistant?.usage;
+  if (usage?.cacheWrite1h === undefined) return undefined;
+  if (usage.cacheWrite1h > 0) return PI_ONE_HOUR_CACHE_TTL_MS;
+  if (toNonNegativeNumber(usage.cacheWrite) > 0) {
+    return PI_FIVE_MINUTE_CACHE_TTL_MS;
+  }
+  return undefined;
 }
 
 function toAssistantUsageBreakdown(

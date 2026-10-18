@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { relayDesktopAppUpdates } from "@bb/config/desktop-app-update";
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnLoggedProcess } from "./logged-process.js";
@@ -99,8 +100,15 @@ import {
   appInstallEnv,
   type AppInstall,
 } from "@bb/config/app-install";
+import { CLI_LAUNCHER_ENV_NAME } from "@bb/config/cli-command";
 import { z } from "zod";
 import { resolveAppInstall } from "./app-install.js";
+import {
+  formatCliLauncherPath,
+  renderCliLauncher,
+  resolveCliLauncherTarget,
+  writeCliLauncher,
+} from "./cli-launcher.js";
 import {
   createLauncherAppUpdateController,
   type LauncherAppUpdateController,
@@ -614,6 +622,7 @@ interface CreateSharedEnvArgs {
 }
 
 interface CreateServerEnvArgs {
+  cliLauncherPath: string | null;
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
   install: AppInstall;
@@ -2013,6 +2022,38 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
   await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
 }
 
+async function writeOwnCliLauncher(
+  context: BbAppStartContext,
+): Promise<string | null> {
+  const launcherPath = formatCliLauncherPath({
+    dataDir: context.dataDir,
+    platform: process.platform,
+  });
+  try {
+    const written = await writeCliLauncher({
+      content: renderCliLauncher({
+        dataDir: context.dataDir,
+        platform: process.platform,
+        target: resolveCliLauncherTarget({
+          electron: process.versions.electron !== undefined,
+          env: process.env,
+          execPath: process.execPath,
+          packageRoot: context.packageRoot,
+          platform: process.platform,
+        }),
+      }),
+      launcherPath,
+    });
+    return written === "foreign" ? null : launcherPath;
+  } catch (error) {
+    log(
+      yellow("!"),
+      `Could not write the bb command launcher at ${launcherPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
 async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
   const commandArgs = args.args;
   if (
@@ -2514,9 +2555,13 @@ export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   delete inheritedEnv[APP_INSTALL_KIND_ENV_NAME];
   delete inheritedEnv[APP_SOURCE_COMMIT_ENV_NAME];
   delete inheritedEnv[APP_SOURCE_ORIGIN_ENV_NAME];
+  delete inheritedEnv[CLI_LAUNCHER_ENV_NAME];
   return {
     ...inheritedEnv,
     ...appInstallEnv(args.install),
+    ...(args.cliLauncherPath === null
+      ? {}
+      : { [CLI_LAUNCHER_ENV_NAME]: args.cliLauncherPath }),
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
     BB_CLI: join(args.context.daemonBundleDir, "bb"),
@@ -2668,7 +2713,8 @@ export async function createHostDaemonJoinEnv(
 
 interface ResolveBundledCliLaunchArgs {
   args: string[];
-  cliPath: string;
+  bundledCliPath: string;
+  cliOverride: string | null;
   nodePath: string;
   platform: NodeJS.Platform;
 }
@@ -2677,19 +2723,24 @@ export function resolveBundledCliLaunch(args: ResolveBundledCliLaunchArgs): {
   command: string;
   args: string[];
 } {
-  return args.platform === "win32" && win32.extname(args.cliPath) === ""
-    ? { command: args.nodePath, args: [args.cliPath, ...args.args] }
-    : { command: args.cliPath, args: args.args };
+  if (args.cliOverride === null) {
+    return {
+      command: args.nodePath,
+      args: [args.bundledCliPath, ...args.args],
+    };
+  }
+  return args.platform === "win32" && win32.extname(args.cliOverride) === ""
+    ? { command: args.nodePath, args: [args.cliOverride, ...args.args] }
+    : { command: args.cliOverride, args: args.args };
 }
 
 export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
-  const bbCliOverride = toOptionalString(args.env.BB_CLI);
-  const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
   const launch = resolveBundledCliLaunch({
     args: args.args,
-    cliPath,
+    bundledCliPath: join(args.context.daemonBundleDir, "bb"),
+    cliOverride: toOptionalString(args.env.BB_CLI) ?? null,
     nodePath: process.execPath,
     platform: process.platform,
   });
@@ -2793,6 +2844,7 @@ Exits with code 3 without starting when the server on this data directory moved 
     logDir: runtime.context.logDir,
     logName: "server",
     env: createServerEnv({
+      cliLauncherPath: null,
       context: runtime.context,
       env: runtime.serverEnv,
       install: await resolveOwnAppInstall({
@@ -3059,6 +3111,8 @@ Usage:
 
 CLI:
   npx --package bb-app bb <command>
+  Settings → General → bb CLI, or bb settings cli-command install,
+  installs the bb CLI for use outside bb.
 `);
 }
 
@@ -4129,7 +4183,19 @@ export async function runBbApp(
   });
   if (!runtimeRecordOwned) {
     warnExistingRuntimeRecord(context.dataDir);
+    if (await isHealthyServerAnswering(`${serverListenerUrl}/health`)) {
+      log(
+        red("✗"),
+        `bb already serves ${serverListenerUrl} from this data directory`,
+      );
+      process.exitCode = 1;
+      return;
+    }
   }
+  const cliLauncherPath =
+    options.worktreePolicy === null && !runsFromSourceCheckout(import.meta.url)
+      ? await writeOwnCliLauncher(context)
+      : null;
 
   const processes: ManagedFullStackProcesses = {
     daemonRun: null,
@@ -4200,6 +4266,7 @@ export async function runBbApp(
       prepareFullStack: async (entry) => {
         const fullStackRuntime = await resolveFullStackRuntime(entry);
         const serverEnv = createServerEnv({
+          cliLauncherPath,
           context,
           env:
             appUpdateController === null || appUpdateMode === null
@@ -4244,12 +4311,15 @@ export async function runBbApp(
                 : { beforeStart: options.beforeServerStart }),
               context,
               env: serverEnv,
-              ...(appUpdateController === null
-                ? {}
-                : {
-                    onSpawned: (childProcess: ChildProcess) =>
-                      appUpdateController.attachServer(childProcess),
-                  }),
+              ...(parseAppSurface(serverEnv[APP_SURFACE_ENV_NAME]) ===
+                APP_SURFACE_DESKTOP && process.send !== undefined
+                ? { onSpawned: relayDesktopAppUpdates }
+                : appUpdateController === null
+                  ? {}
+                  : {
+                      onSpawned: (childProcess: ChildProcess) =>
+                        appUpdateController.attachServer(childProcess),
+                    }),
               processes,
             }),
         };

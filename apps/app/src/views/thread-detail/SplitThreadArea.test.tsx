@@ -52,6 +52,7 @@ import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { LocationProbe } from "@/test/location-probe";
 
 const threadStore = vi.hoisted(
   () =>
@@ -198,6 +199,7 @@ vi.mock("react-resizable-panels", async () => {
 
 vi.mock("@/components/ui/sidebar.js", () => ({
   useIsSidebarShowing: () => sidebarState.showing,
+  useOptionalIsSidebarShowing: () => sidebarState.showing,
   useSidebarKeepsCollapsedRail: () => false,
   useIsSidebarFramed: () => false,
 }));
@@ -641,11 +643,6 @@ function registerDocsPanel() {
       ],
     }),
   );
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
 }
 
 function ExternalNav({ to }: { to: string }) {
@@ -2544,9 +2541,13 @@ describe("SplitThreadArea", () => {
       (await screen.findByText(path))
         .closest("header")
         ?.querySelector('[data-testid="app-page-header-content-row"]');
-    expect((await contentRow("top-left"))?.className).toContain("pl-[104px]");
+    expect((await contentRow("top-left"))?.className).toContain(
+      "pl-(--bb-macos-collapsed-top-left-reserve)",
+    );
     for (const path of ["top-right", "bottom-left", "bottom-right"]) {
-      expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
+      expect((await contentRow(path))?.className).not.toContain(
+        "pl-(--bb-macos-collapsed-top-left-reserve)",
+      );
     }
 
     expect(screen.getAllByRole("button", { name: /Full Screen/ })).toHaveLength(

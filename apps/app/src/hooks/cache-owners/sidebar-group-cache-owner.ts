@@ -1,3 +1,4 @@
+import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
 import type { Host, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import type {
   ProjectResponse,
@@ -73,7 +74,7 @@ export async function beginSidebarGroupTransaction({
             : []),
         ];
   await Promise.all(
-    keys.map((queryKey) => queryClient.cancelQueries({ queryKey })),
+    keys.map((queryKey) => cancelOptimisticQueries(queryClient, { queryKey })),
   );
   const sidebarKey = sidebarNavigationQueryKey();
   const sidebar =

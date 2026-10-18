@@ -27,9 +27,11 @@ import { WebView, type WebViewProps } from "react-native-webview";
 import { revealApp, useProfiles } from "@/app-shell";
 import { nativeSessionCache } from "@/lib/native";
 import {
+  allowsSubframeLoad,
   buildShellUrl,
   isExternallyOpenable,
   isShellNavigation,
+  resolveOpenWindowAction,
   resolveShellLoadPath,
   resolveShellScreenState,
   revealsShellFailure,
@@ -43,6 +45,10 @@ import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
+import {
+  SHELL_NATIVE_DOWNLOADS_SUPPORTED,
+  useShellFileSaver,
+} from "./useShellFileSaver";
 
 const APP_VERSION =
   nativeApplicationVersion ?? String(Constants.expoConfig?.version ?? "0.0.0");
@@ -130,6 +136,8 @@ export function ProfileWebViewScreen() {
   const openDeviceSettings = useCallback(() => {
     router.push(settingsSectionHref("device"));
   }, [router]);
+
+  const onFileDownload = useShellFileSaver();
 
   const bridge = useShellBridge(webViewRef, {
     onReady: (path) => {
@@ -219,6 +227,9 @@ export function ProfileWebViewScreen() {
         "safe-area",
         "open-native",
       ],
+      ...(SHELL_NATIVE_DOWNLOADS_SUPPORTED
+        ? { nativeDownloads: true as const }
+        : {}),
     };
   }, [profile, safeArea, sourceUrl]);
 
@@ -340,12 +351,45 @@ export function ProfileWebViewScreen() {
           bridge.onMessage(event);
         }}
         onShouldStartLoadWithRequest={(request) => {
+          if (
+            request.isTopFrame === false &&
+            allowsSubframeLoad(request.url, profile.serverUrl)
+          ) {
+            return true;
+          }
           if (isShellNavigation(request.url, profile.serverUrl)) return true;
           if (isExternallyOpenable(request.url)) {
             void Linking.openURL(request.url).catch(() => undefined);
           }
           return false;
         }}
+        onFileDownload={
+          SHELL_NATIVE_DOWNLOADS_SUPPORTED ? onFileDownload : undefined
+        }
+        onOpenWindow={
+          !SHELL_NATIVE_DOWNLOADS_SUPPORTED
+            ? undefined
+            : (event) => {
+                const { targetUrl } = event.nativeEvent;
+                switch (resolveOpenWindowAction(targetUrl, profile.serverUrl)) {
+                  case "save":
+                    webViewRef.current?.injectJavaScript(
+                      `var link = document.createElement("a");link.href = ${JSON.stringify(targetUrl)};link.download = "";document.body.append(link);link.click();link.remove();true;`,
+                    );
+                    return;
+                  case "navigate":
+                    webViewRef.current?.injectJavaScript(
+                      `window.location.assign(${JSON.stringify(targetUrl)});true;`,
+                    );
+                    return;
+                  case "external":
+                    void Linking.openURL(targetUrl).catch(() => undefined);
+                    return;
+                  case "ignore":
+                    return;
+                }
+              }
+        }
         onNavigationStateChange={(state) => {
           canGoBack.current = state.canGoBack;
           const path = shellPathFromUrl(state.url, profile.serverUrl);

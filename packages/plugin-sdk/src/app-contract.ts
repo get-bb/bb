@@ -160,11 +160,10 @@ export interface ExperimentalQuestionFormHost {
  * the host adds room for its microphone controls when voice input is
  * available.
  */
-export interface ExperimentalVoiceInputTextareaProps
-  extends Omit<
-    ComponentPropsWithRef<"textarea">,
-    "value" | "defaultValue" | "onChange" | "children"
-  > {
+export interface ExperimentalVoiceInputTextareaProps extends Omit<
+  ComponentPropsWithRef<"textarea">,
+  "value" | "defaultValue" | "onChange" | "children"
+> {
   value: string;
   /**
    * Receives typed edits and finished transcripts, which the host appends to
@@ -188,6 +187,228 @@ export interface PluginSidebarFooterActionProps {}
 export interface ExperimentalSidebarFooterDisclosureProps {
   /** Hide this disclosure without affecting another plugin's open disclosure. */
   dismiss(): void;
+}
+
+/** Display and accessibility metadata for a host-owned sidebar shortcut. */
+export interface ExperimentalSidebarNavigationShortcut {
+  label: string;
+  ariaKeyShortcuts: string;
+}
+
+/** Host-owned behavior represented by one sidebar navigation item. */
+export type ExperimentalSidebarNavigationAction =
+  | { kind: "new-thread" }
+  | { kind: "search-threads" }
+  | { kind: "open-extensions" }
+  | { kind: "open-skills" }
+  | {
+      kind: "open-plugin-panel";
+      pluginId: string;
+      panelId: string;
+    };
+
+/**
+ * Semantic icon identity for one sidebar navigation item. Render it with
+ * {@link PluginSdkApp.experimental_SidebarNavigationIcon} to match bb's
+ * artwork, including panel icons with plugin branding as their fallback.
+ */
+export type ExperimentalSidebarNavigationIcon =
+  | { kind: "host"; name: "new-thread" | "search" | "extensions" | "skills" }
+  | { kind: "plugin"; pluginId: string; icon: string | null };
+
+/** One host-owned destination or action a navigation provider arranges. */
+export interface ExperimentalSidebarNavigationItem {
+  /**
+   * Arrangement key, stable across reloads: `__bb__/new-thread`,
+   * `__bb__/search-threads`, `__bb__/extensions`, `__bb__/skills`,
+   * `__bb__/automations`, or `<pluginId>/<panelId>`. The same keys appear in
+   * the `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
+   * settings.
+   */
+  id: string;
+  label: string;
+  icon: ExperimentalSidebarNavigationIcon;
+  action: ExperimentalSidebarNavigationAction;
+  isDisabled: boolean;
+  /**
+   * False when the user hid the item. Draw hidden items in an overflow menu
+   * rather than dropping them, so they stay reachable. New thread is always
+   * visible.
+   */
+  isVisible: boolean;
+  /**
+   * A plugin panel remembered from the last session whose bundle has not
+   * registered yet. Activating it does nothing until it loads.
+   */
+  isLoading: boolean;
+  /**
+   * The plugin that contributed this panel; null for bb's own items. Gates
+   * `openDetails` and `disablePlugin`.
+   */
+  pluginId: string | null;
+  shortcut: ExperimentalSidebarNavigationShortcut | null;
+  /**
+   * The panel's current {@link PluginNavPanelRegistration.experimental_useBadge}
+   * value, or null. Add `label` to the item's accessible name when you draw
+   * it.
+   */
+  badge: ExperimentalBadge | null;
+}
+
+/** How the host should activate a sidebar navigation item. */
+export interface ExperimentalSidebarNavigationActivationOptions {
+  openInSplit: boolean;
+}
+
+/**
+ * Host behavior for sidebar navigation items (see
+ * {@link ExperimentalSidebarNavigationState}). Unknown item ids are ignored.
+ * Calls made after the calling component unmounts do nothing.
+ */
+export interface ExperimentalSidebarNavigationActions {
+  /**
+   * Run the item's host behavior. Plugin panels close the mobile sidebar
+   * drawer; Plugins and Skills swap the list beside the navigation.
+   * `openInSplit` is ignored where splits are unavailable, and disabled or
+   * loading items do nothing.
+   */
+  activate(
+    itemId: string,
+    options: ExperimentalSidebarNavigationActivationOptions,
+  ): void;
+  /**
+   * Return to the thread list and the last thread or new thread screen the
+   * user had open before visiting Settings, Plugins, Skills, or a plugin
+   * panel.
+   */
+  goHome(): void;
+  /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
+  setVisible(itemId: string, isVisible: boolean): void;
+  /**
+   * Save a new order. Pass item ids in the order you want; unknown ids are
+   * dropped and ids you leave out keep their relative order after the ones
+   * you pass. Persists to `sidebar.pluginPanelOrder`.
+   */
+  setOrder(itemIds: readonly string[]): void;
+  /**
+   * Open bb's customize editor, which reorders and hides items, beside the
+   * navigation. It waits for an open menu to close and returns focus to the
+   * control that opened it.
+   */
+  openCustomize(): void;
+  /** Open the owning plugin's details. Does nothing when `pluginId` is null. */
+  openDetails(itemId: string): void;
+  /**
+   * Disable the owning plugin, leave its panel if it is open, and show a
+   * toast. Rejects after the host's error toast when disabling fails. Does
+   * nothing when `pluginId` is null.
+   */
+  disablePlugin(itemId: string): Promise<void>;
+}
+
+/** What {@link PluginSdkApp.experimental_useSidebarNavigation} returns. */
+export interface ExperimentalSidebarNavigationState {
+  /** Every item in the user's saved order, visible and hidden. */
+  items: readonly ExperimentalSidebarNavigationItem[];
+  /** The item whose destination the route currently shows, or null. */
+  activeItemId: string | null;
+  /**
+   * True on the thread list's routes: a thread, the new thread screen, or a
+   * project page. Settings, Plugins, Skills, and plugin panels are not home.
+   */
+  isHomeActive: boolean;
+  /**
+   * True while the user holds the app command modifier, when bb's own
+   * navigation reveals its `shortcut` labels. Show yours at the same time.
+   */
+  isShortcutModifierHeld: boolean;
+  actions: ExperimentalSidebarNavigationActions;
+}
+
+/**
+ * Per-item drag-to-split support (see
+ * {@link PluginSdkApp.experimental_useSidebarNavigationSplit}). Same contract
+ * as {@link PluginSidebarThreadSplit}.
+ */
+export interface ExperimentalSidebarNavigationSplit {
+  /**
+   * Spread onto the item's interactive element. Empty when the item cannot
+   * open in a pane, so spreading it is always safe.
+   */
+  splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+  /**
+   * False for items that cannot open in a pane (Search, Plugins, Skills), on
+   * compact viewports, and when splits are unavailable.
+   */
+  isAvailable: boolean;
+  /** Where this item's destination sits in the split layout, or null. */
+  layout: { panes: readonly PluginSidebarSplitPane[] } | null;
+}
+
+/** Options for {@link PluginSdkApp.experimental_useSidebarNavigationSplit}. */
+export interface ExperimentalSidebarNavigationSplitOptions {
+  /**
+   * `sidebar` (the default) engages the drag once the pointer leaves the
+   * sidebar, so a row list with its own drag-to-reorder keeps working.
+   * `distance` engages after a short movement in any direction; use it for
+   * rows inside a menu or popover that covers the main area.
+   */
+  activation?: "sidebar" | "distance";
+  /** Called when the drag engages, for example to close the menu the row is in. */
+  onDragStart?: () => void;
+}
+
+/** Props for {@link PluginSdkApp.experimental_SidebarNavigationIcon}. */
+export interface ExperimentalSidebarNavigationIconProps {
+  icon: ExperimentalSidebarNavigationIcon;
+  className?: string;
+}
+
+/**
+ * Where a sidebar navigation provider draws (see
+ * {@link ExperimentalSidebarNavigationRegistration.placement}).
+ */
+export type ExperimentalSidebarNavigationPlacement = "rail" | "list";
+
+/**
+ * Props passed to an `experimental_sidebarNavigation` component. Read the
+ * items and their actions with
+ * {@link PluginSdkApp.experimental_useSidebarNavigation}.
+ */
+export interface ExperimentalSidebarNavigationProps {
+  isCompactViewport: boolean;
+  placement: ExperimentalSidebarNavigationPlacement;
+  /**
+   * Renders the bundled Navigation plugin's provider for the same placement,
+   * Rail or Top list, or nothing when that plugin is disabled. Kept for
+   * plugins written before `experimental_useSidebarNavigation`; render items
+   * from that hook instead. Scheduled for removal.
+   *
+   * @deprecated
+   */
+  experimental_Original: ComponentType;
+}
+
+/**
+ * Props passed to a navigation's `headerComponent`, rendered in the sidebar's
+ * header row between the sidebar toggle (and the macOS window controls) and
+ * bb's back and forward buttons.
+ */
+export interface ExperimentalSidebarHeaderProps {
+  /**
+   * Width in px of the space the component may use, updated when the sidebar
+   * resizes or the window chrome changes. It can be smaller than
+   * `controlSize` in a narrow sidebar.
+   */
+  width: number;
+  /**
+   * Width and height in px of the header's own buttons, equal to the
+   * `--bb-sidebar-control-size` CSS variable. Size your controls to match.
+   */
+  controlSize: number;
+  isCompactViewport: boolean;
 }
 
 /**
@@ -494,6 +715,51 @@ export interface PluginMessageDirectiveProps {
   openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
 }
 
+/**
+ * Where a fenced code block stands while its message is written.
+ *
+ * - `"streaming"`: the closing delimiter has not arrived and the message is
+ *   still being written; `code` is a prefix of the final body.
+ * - `"closed"`: the closing delimiter is present; `code` is final.
+ * - `"unclosed"`: the message ended without a closing delimiter (for example
+ *   an interrupted reply); `code` will not grow.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export type ExperimentalCodeFenceStatus = "streaming" | "closed" | "unclosed";
+
+/**
+ * Props passed to an `experimental_codeFenceRenderer` component — one fenced
+ * code block whose info-string language the plugin claimed, inside assistant
+ * (or nested agent) message Markdown. BB mounts the component once per fence
+ * and keeps that instance for as long as the message stays on screen, so
+ * component state survives the whole stream, including the moment the fence
+ * closes and the moment the reply finishes.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export interface ExperimentalCodeFenceRendererProps {
+  /** The fence body received so far, without the fence delimiters. */
+  code: string;
+  /** The matched lowercase info-string language (e.g. `"ui"`). */
+  language: string;
+  status: ExperimentalCodeFenceStatus;
+  /**
+   * Zero-based ordinal of this fence among the fences of the same language in
+   * the same message. It does not change while the message streams, so
+   * `${message.id}#${language}#${index}` keys state that must outlive the
+   * mounted component (a reload, or the message scrolling out of the rendered
+   * window).
+   */
+  index: number;
+  message: PluginMessageDirectiveMessage;
+  /**
+   * BB's own code block for this fence. Render it to show the source, for
+   * example while `status` is `"streaming"` or when `code` does not parse.
+   */
+  Original: ComponentType;
+}
+
 // ---------------------------------------------------------------------------
 // Slot registrations (the arguments to `app.slots.*`).
 // ---------------------------------------------------------------------------
@@ -597,6 +863,43 @@ export type PluginFixedTabDeclaration =
   | PluginFixedTabRegistration
   | PluginFixedTabRegistration<JsonValue>;
 
+/**
+ * How urgent an {@link ExperimentalBadge} is. bb picks the colors: `neutral`
+ * (the default) for counts and new items, `warning` for something due or
+ * degraded, and `critical` for something failing or waiting on the user.
+ *
+ * Experimental: see docs/api_to_audit.md.
+ */
+export type ExperimentalBadgeTone = "neutral" | "warning" | "critical";
+
+/**
+ * A live value the host draws on a nav panel's navigation entry. Set at most
+ * one of `count` and `text`; with neither, bb draws a dot.
+ *
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalBadge {
+  /**
+   * Positive integer drawn on the entry, shown as `9+` above 9 on the rail and
+   * `99+` above 99 in lists.
+   */
+  count?: number;
+  /**
+   * A short visible value, at most 8 characters, such as "NEW", "73%", or
+   * "3/5". Lists draw it; the icon-only rail draws a dot and puts `label` in
+   * the tooltip.
+   */
+  text?: string;
+  /** Defaults to `neutral`. */
+  tone?: ExperimentalBadgeTone;
+  /**
+   * Text for the destination's tooltip and accessible name, such as
+   * "3 open tasks". Required because the drawn badge is hidden from assistive
+   * technology.
+   */
+  label: string;
+}
+
 export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -618,16 +921,19 @@ export interface PluginNavPanelRegistration {
    */
   fixedTabs?: readonly PluginFixedTabDeclaration[];
   /**
-   * Optional presentational component for a narrow live value next to this
-   * panel's entry in the sidebar. It receives no props so it can own that
-   * value through the ordinary SDK hooks without coupling its state to the
-   * host sidebar. The host still validates it, but no host surface currently
-   * mounts it. Keep it to a small, single-line box; do not render controls or
-   * rely on unbounded content here.
+   * Optional React hook that returns this panel's navigation badge, or `null`
+   * for none. The host calls it once in your plugin's scope for every
+   * registered panel, including ones hidden under More, so it can own an RPC
+   * query and realtime subscription through the ordinary SDK hooks. The value
+   * reaches every navigation provider as the item's `badge`; bb's draw a
+   * count or a dot on the entry, a dot on More while the panel is hidden
+   * there, and `label` in the tooltip and accessible name. A hook that throws
+   * or returns an invalid badge is treated as a crashed slot and shows no
+   * badge.
    *
    * Experimental: see docs/api_to_audit.md.
    */
-  experimental_sidebarAccessory?: ComponentType;
+  experimental_useBadge?: () => ExperimentalBadge | null;
   /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
@@ -1182,6 +1488,23 @@ export interface ExperimentalClipboardContent {
 }
 
 /**
+ * What {@link PluginSdkApp.experimental_saveFile} saves: a URL on the bb
+ * server (such as one of the plugin's own HTTP routes), or bytes already in
+ * the page, plus the file name the user sees.
+ */
+export type ExperimentalSaveFileRequest =
+  | { fileName: string; url: string }
+  | { fileName: string; blob: Blob };
+
+/**
+ * How {@link PluginSdkApp.experimental_saveFile} started. `started` means
+ * the browser or native shell took over the download; completion and share
+ * cancellation are not reported to the page. `failed` means the download
+ * could not start; bb already showed an error toast.
+ */
+export type ExperimentalSaveFileOutcome = "started" | "failed";
+
+/**
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
  * with the calling plugin's identity filled in. `spawn` and `fork` stamp
  * `origin: "plugin"` and `originPluginId` unless the call names another
@@ -1190,7 +1513,9 @@ export interface ExperimentalClipboardContent {
  */
 export type PluginBoundThreadsArea = Omit<
   BbSdkAreas["threads"],
-  "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
+  | "getPluginMetadata"
+  | "updatePluginMetadata"
+  | "experimental_listPluginMetadata"
 > & {
   getPluginMetadata(
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
@@ -1453,8 +1778,9 @@ export interface PluginThreadActionRunInput {
 export interface PluginThreadAction {
   label: string;
   /**
-   * Short secondary text on a muted second line under the label, e.g. the
-   * current value of a choice list.
+   * Short secondary text, e.g. the current value of a choice list. Shown on
+   * a muted second line under the label, except on rows with `choices`,
+   * where only tooltips and screen readers include it.
    */
   detail?: string;
   icon: BbIconName;
@@ -1500,7 +1826,7 @@ export interface PluginThreadActionItemInput<Data> {
  * Add an action to every thread actions menu: the thread header's menu, the
  * sidebar row's menu and right-click menu, the compact long-press drawer, and,
  * when the user picks it, a sidebar row's quick-action buttons. bb's own
- * actions (Open in split, Copy thread link, Mark read, Pin, Rename, Archive,
+ * actions (Open in split, Copy link, Mark read, Pin, Rename, Archive,
  * Delete, …) are registrations of this same shape.
  *
  * `useData` is a React hook the host calls once for the whole app, never per
@@ -1716,6 +2042,51 @@ export interface PluginThreadListRegistration {
 }
 
 /**
+ * Draw the sidebar's navigation: New thread, Plugins, Skills, Automations,
+ * plugin panels, and More, plus optional controls in the sidebar header.
+ * Exclusive: bb's bundled Navigation plugin registers Rail
+ * (`navigation/rail`, the default) and Top list (`navigation/top-list`)
+ * through this slot. By default the first provider from another plugin is
+ * active, falling back to Rail; the user can pin one provider under Settings →
+ * Appearance → Navigation. A pinned provider that is disabled or removed falls
+ * back the same way, and a crashing provider is replaced by the Navigation
+ * plugin's provider for the same placement.
+ *
+ * `placement` decides the layout around the component, so bb can lay out the
+ * sidebar before the plugin loads:
+ *
+ * - `rail`: a fixed-width column on the sidebar's left edge that stays when
+ *   the sidebar collapses. bb draws Settings at the bottom of the column;
+ *   draw Home with `actions.goHome()`. On macOS, wide windows frame the
+ *   sidebar and page below a title bar.
+ * - `list` (the default): the area above the thread list. Settings is a
+ *   footer action, the Settings, Plugins, and Skills lists start with a Back
+ *   to app row, and collapsing hides the whole sidebar.
+ *
+ * Draw New thread yourself, in `component` or `headerComponent`. bb's Rail
+ * puts it in its header; Top list draws it as a row.
+ */
+export interface ExperimentalSidebarNavigationRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Settings → Appearance and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  placement?: ExperimentalSidebarNavigationPlacement;
+  component: ComponentType<ExperimentalSidebarNavigationProps>;
+  /**
+   * Rendered in the sidebar's header row while this navigation is active,
+   * between the sidebar toggle and bb's back and forward buttons. Content is
+   * clipped to the row, so it cannot move the thread list or bb's controls.
+   * On macOS the empty space keeps dragging the window; buttons, links, and
+   * inputs do not. A crashing header is replaced by the header of the
+   * bundled Navigation plugin's provider for the same placement.
+   */
+  headerComponent?: ComponentType<ExperimentalSidebarHeaderProps>;
+}
+
+/**
  * Register this plugin as a viewer/editor for file extensions. By default,
  * matching files render the first applicable opener in deterministic slot
  * order. The user can pin BB's preview or a specific opener per extension
@@ -1740,8 +2111,9 @@ export interface PluginFileOpenerRegistration {
  * text — the native file preview and every plugin that calls
  * `experimental_SourceCode`. Like `experimental_threadList` this slot is
  * **exclusive**: one renderer at a time. Registering activates it while the
- * plugin is enabled; if several are registered the first in deterministic slot
- * order wins. A missing, disabled, or crashing replacement falls back to BB's
+ * plugin is enabled; if several are registered, one from a plugin the user
+ * installed wins over one bundled with bb, then the first in deterministic
+ * slot order. A missing, disabled, or crashing replacement falls back to BB's
  * renderer, and a replacement can render `Original` to delegate
  * per call (behind its own setting, by language, by size — whatever it needs).
  */
@@ -1783,6 +2155,31 @@ export interface PluginMessageDirectiveRegistration {
    */
   id: string;
   component: ComponentType<PluginMessageDirectiveProps>;
+}
+
+/**
+ * Render fenced code blocks of chosen languages inside assistant (and nested
+ * agent) message Markdown. ` ```ui ` matches a registration whose `languages`
+ * include `"ui"`. Fences elsewhere (user messages, file previews, plugin
+ * Markdown) keep BB's code block.
+ *
+ * BB's code block also renders when two plugins claim the same language (BB
+ * logs a warning naming them), when the plugin is disabled, and for a fence
+ * whose component throws. A throw affects that fence only, and BB tries the
+ * component again when the fence's `code` or `status` changes.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export interface ExperimentalCodeFenceRendererRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Lowercase info-string languages, e.g. `["ui", "app"]`. Each starts with a
+   * letter or digit and contains only `a-z`, `0-9`, `+`, `#`, `.`, `_`, `-`.
+   * A language may be claimed once per plugin.
+   */
+  languages: readonly string[];
+  component: ComponentType<ExperimentalCodeFenceRendererProps>;
 }
 
 /**
@@ -2174,6 +2571,14 @@ export interface PluginAppSlots {
    */
   experimental_threadList(registration: PluginThreadListRegistration): void;
   /**
+   * Draw the sidebar navigation and its header controls (see
+   * {@link ExperimentalSidebarNavigationRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_sidebarNavigation(
+    registration: ExperimentalSidebarNavigationRegistration,
+  ): void;
+  /**
    * Render a component in the thread header's action row (see
    * {@link PluginThreadHeaderActionRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -2209,6 +2614,14 @@ export interface PluginAppSlots {
    */
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
+  /**
+   * Render fenced code blocks of chosen languages in assistant messages (see
+   * {@link ExperimentalCodeFenceRendererRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_codeFenceRenderer(
+    registration: ExperimentalCodeFenceRendererRegistration,
+  ): void;
   messageAction(registration: PluginMessageActionRegistration): void;
   /**
    * @deprecated Use `app.commands.register` with the same registration.
@@ -3637,11 +4050,13 @@ export interface PluginSdkApp {
   experimental_ThreadActionsContextMenu: ComponentType<PluginThreadActionsContextMenuProps>;
   /**
    * bb's thread menu groups, for a registration that joins one:
-   * `open` (split), `organize` (copy, read, pin, move, rename), `settings`,
-   * and `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
+   * `open` (split, copy link, new thread in environment), `state` (pin,
+   * read, notifications), `organize` (rename, move), `settings`, and
+   * `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
    */
   experimental_THREAD_ACTION_GROUPS: {
     readonly open: "1_open";
+    readonly state: "1_state";
     readonly organize: "2_organize";
     readonly settings: "3_settings";
     readonly lifecycle: "4_lifecycle";
@@ -3668,6 +4083,30 @@ export interface PluginSdkApp {
   experimental_useSidebarThreadSplit(
     threadId: string,
   ): PluginSidebarThreadSplit;
+  /**
+   * The sidebar navigation items in the user's saved order, the active item,
+   * and the host actions that activate, hide, reorder, and customize them
+   * (see {@link ExperimentalSidebarNavigationState}). One model shared by
+   * every navigation provider, bb's included. Items keep their identity while
+   * unchanged. Outside the sidebar it returns no items and actions that do
+   * nothing. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState;
+  /**
+   * Per-item drag-to-split support for navigation items (see
+   * {@link ExperimentalSidebarNavigationSplit}). Call it once per rendered
+   * item. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarNavigationSplit(
+    itemId: string,
+    options?: ExperimentalSidebarNavigationSplitOptions,
+  ): ExperimentalSidebarNavigationSplit;
+  /**
+   * bb's artwork for a navigation item's icon: bb's glyphs for its own items,
+   * and the panel's explicit icon, falling back to plugin branding, for
+   * plugin panels. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_SidebarNavigationIcon: ComponentType<ExperimentalSidebarNavigationIconProps>;
   /**
    * Whether the composer holds an unsent draft for one thread (see
    * {@link PluginSidebarThreadDraftState}). Per row, because a draft is
@@ -3782,6 +4221,21 @@ export interface PluginSdkApp {
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
   ): Promise<boolean>;
+  /**
+   * Saves a file through bb's own download path, the one bb's file preview
+   * and attachment downloads use. Browsers and bb Desktop start an ordinary
+   * download. In the bb iOS app, where a download link would otherwise
+   * replace the app, the file goes to the system share sheet (Save to Files,
+   * AirDrop, other apps). A plain function: call it from a click handler and
+   * keep a real `href` on the link for copy-link and accessibility. Resolves
+   * with `started` or `failed` and never rejects. Completion and share-sheet
+   * cancellation are not reported. The native shell shows download errors;
+   * bb shows an error toast when the download cannot start.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_saveFile(
+    request: ExperimentalSaveFileRequest,
+  ): Promise<ExperimentalSaveFileOutcome>;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

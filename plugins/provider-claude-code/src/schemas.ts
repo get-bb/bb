@@ -75,6 +75,14 @@ export const sdkUsageSchema = z
     output_tokens: z.number().optional(),
     cache_read_input_tokens: z.number().nonnegative().optional(),
     cache_creation_input_tokens: z.number().nonnegative().optional(),
+    cache_creation: z
+      .object({
+        ephemeral_5m_input_tokens: z.number().nonnegative().optional(),
+        ephemeral_1h_input_tokens: z.number().nonnegative().optional(),
+      })
+      .nullable()
+      .optional()
+      .catch(undefined),
   })
   .passthrough();
 export type ClaudeSdkUsage = z.infer<typeof sdkUsageSchema>;
@@ -237,6 +245,7 @@ export const claudeTaskStartedMessageSchema = claudeSystemMessageSchema
     workflow_name: z.string().optional(),
     prompt: z.string().optional(),
     skip_transcript: z.boolean().optional(),
+    is_backgrounded: z.boolean().optional(),
   })
   .passthrough();
 

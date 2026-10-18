@@ -15,6 +15,10 @@ function Component() {
   return null;
 }
 
+function useNoBadge() {
+  return null;
+}
+
 describe("definePluginApp", () => {
   it("brands the setup for host detection", () => {
     const definition = definePluginApp(() => {});
@@ -443,7 +447,7 @@ describe("collectPluginAppRegistrations", () => {
         icon: "Columns",
         path: "panel",
         component: Component,
-        experimental_sidebarAccessory: Component,
+        experimental_useBadge: useNoBadge,
         headerContent: Component,
       });
       app.slots.threadPanelAction({
@@ -671,6 +675,37 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.contentScripts).toEqual([
       { id: "editor-enhancement", mount },
+    ]);
+  });
+
+  it("keeps loading a pre-0.6.53 nav panel that passes experimental_sidebarAccessory and warns", () => {
+    const warned = vi.fn<(message: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+        experimental_sidebarAccessory: Component,
+      } as never);
+    });
+
+    const registrations = collectPluginAppRegistrations(definition, warned);
+
+    expect(registrations.navPanels).toEqual([
+      {
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+      },
+    ]);
+    expect(warned.mock.calls).toEqual([
+      [
+        'slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
+      ],
     ]);
   });
 
@@ -1040,7 +1075,7 @@ describe("collectPluginAppRegistrations", () => {
       'slots.navPanel: unknown field "experimental_badge"',
     ],
     [
-      "nav panel with a non-component experimental sidebar accessory",
+      "nav panel with a non-function experimental badge hook",
       () =>
         definePluginApp((app) => {
           app.slots.navPanel({
@@ -1049,10 +1084,10 @@ describe("collectPluginAppRegistrations", () => {
             icon: "columns",
             path: "x",
             component: Component,
-            experimental_sidebarAccessory: "nope" as never,
+            experimental_useBadge: "nope" as never,
           });
         }),
-      /"experimental_sidebarAccessory" must be a React component/,
+      /"experimental_useBadge" must be a React hook function/,
     ],
     [
       "message directive with uppercase id",
@@ -1138,9 +1173,9 @@ describe("collectPluginAppRegistrations", () => {
     });
   });
 
-  it("keeps an experimental_sidebarAccessory registration", () => {
-    function SidebarAccessory() {
-      return null;
+  it("keeps an experimental_useBadge registration", () => {
+    function useBadge() {
+      return { count: 3, label: "3 open tasks" };
     }
     const definition = definePluginApp((app) => {
       app.slots.navPanel({
@@ -1149,13 +1184,13 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
-        experimental_sidebarAccessory: SidebarAccessory,
+        experimental_useBadge: useBadge,
       });
     });
     expect(
       collectPluginAppRegistrations(definition).navPanels[0],
     ).toMatchObject({
-      experimental_sidebarAccessory: SidebarAccessory,
+      experimental_useBadge: useBadge,
     });
   });
 });

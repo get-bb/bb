@@ -13,11 +13,11 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
 });
 
-function gh(email: string | null = null) {
+function gh(email: string | null = null, login = "octocat") {
   return vi.fn(async (args: string[]) =>
     args[0] === "auth"
       ? "test-private-token\n"
-      : JSON.stringify({ login: "octocat", id: 123, email }),
+      : JSON.stringify({ login, id: 123, email }),
   );
 }
 
@@ -79,15 +79,19 @@ describe("machine Git environment", () => {
   });
 
   it("derives login identity and public or noreply email", async () => {
-    for (const email of [null, "public@example.com"]) {
-      const entries = await resolveGitCredentials(gh(email));
+    for (const [login, email] of [
+      ["octocat", null],
+      ["octo-cat", "public@example.com"],
+      ["octocat_enterprise", null],
+    ] as const) {
+      const entries = await resolveGitCredentials(gh(email, login));
       const env = Object.fromEntries(
         entries.map((entry) => [entry.name, entry.value]),
       );
-      expect(env.GIT_AUTHOR_NAME).toBe("octocat");
-      expect(env.GIT_COMMITTER_NAME).toBe("octocat");
+      expect(env.GIT_AUTHOR_NAME).toBe(login);
+      expect(env.GIT_COMMITTER_NAME).toBe(login);
       expect(env.GIT_AUTHOR_EMAIL).toBe(
-        email ?? "123+octocat@users.noreply.github.com",
+        email ?? `123+${login}@users.noreply.github.com`,
       );
       expect(env.GIT_COMMITTER_EMAIL).toBe(env.GIT_AUTHOR_EMAIL);
       expect(

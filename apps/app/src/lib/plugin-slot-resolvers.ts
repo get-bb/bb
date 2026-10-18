@@ -4,6 +4,7 @@ import type {
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
 import type {
+  PluginCodeFenceRendererSlot,
   PluginComposerCustomizationSlot,
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
@@ -269,6 +270,43 @@ export function resolveMessageDirectiveRegistry(
   for (const [id, claimants] of claimantsById) {
     const directive = resolveMessageDirectiveClaimants(claimants);
     if (directive !== null) resolved.set(id, directive);
+  }
+  return resolved;
+}
+
+export type ResolvedCodeFenceRenderer =
+  | { status: "ok"; slot: PluginCodeFenceRendererSlot }
+  | { status: "collision"; pluginIds: readonly string[] };
+
+export function resolveCodeFenceRendererRegistry(
+  registrations: readonly PluginCodeFenceRendererSlot[],
+): ReadonlyMap<string, ResolvedCodeFenceRenderer> {
+  const claimantsByLanguage = new Map<string, PluginCodeFenceRendererSlot[]>();
+  for (const registration of registrations) {
+    for (const language of registration.languages) {
+      const claimants = claimantsByLanguage.get(language);
+      if (claimants === undefined) {
+        claimantsByLanguage.set(language, [registration]);
+      } else {
+        claimants.push(registration);
+      }
+    }
+  }
+  const resolved = new Map<string, ResolvedCodeFenceRenderer>();
+  for (const [language, claimants] of claimantsByLanguage) {
+    const [first] = claimants;
+    if (first === undefined) continue;
+    resolved.set(
+      language,
+      claimants.length === 1
+        ? { status: "ok", slot: first }
+        : {
+            status: "collision",
+            pluginIds: [
+              ...new Set(claimants.map((claimant) => claimant.pluginId)),
+            ].sort(),
+          },
+    );
   }
   return resolved;
 }

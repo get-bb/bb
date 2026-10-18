@@ -6,6 +6,7 @@ import {
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
   threadPaneActionSignalLenientSchema,
+  threadTimelineSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
@@ -15,6 +16,7 @@ import type {
   ThreadOpenFile,
   ThreadOpenSignal,
   ThreadPaneActionSignal,
+  ThreadTimelineSignal,
 } from "@bb/server-contract";
 import { buildBrowserWebSocketUrl } from "./dev-websocket-url";
 import {
@@ -26,6 +28,7 @@ type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
+type ThreadTimelineCallback = (signal: ThreadTimelineSignal) => void;
 export type WebSocketConnectedEvent =
   | { reconnected: false }
   | {
@@ -81,6 +84,7 @@ export class WebSocketManager {
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
+  private threadTimelineCallbacks = new Set<ThreadTimelineCallback>();
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -340,6 +344,14 @@ export class WebSocketManager {
       return;
     }
 
+    const threadTimeline = threadTimelineSignalLenientSchema.safeParse(parsed);
+    if (threadTimeline.success) {
+      for (const cb of this.threadTimelineCallbacks) {
+        cb(threadTimeline.data);
+      }
+      return;
+    }
+
     const threadOpen = threadOpenSignalLenientSchema.safeParse(parsed);
     if (threadOpen.success) {
       if (threadOpen.data.file !== null) {
@@ -433,6 +445,13 @@ export class WebSocketManager {
     this.callbacks.add(callback);
     return () => {
       this.callbacks.delete(callback);
+    };
+  }
+
+  onThreadTimeline(callback: ThreadTimelineCallback): () => void {
+    this.threadTimelineCallbacks.add(callback);
+    return () => {
+      this.threadTimelineCallbacks.delete(callback);
     };
   }
 

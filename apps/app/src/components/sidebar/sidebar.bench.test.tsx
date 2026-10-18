@@ -50,6 +50,7 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { PluginThreadList } from "./PluginThreadList";
+import { SidebarThreadEntriesTestProvider } from "@/test/sidebarThreadEntriesTestProvider";
 
 const BENCH_ENABLED = process.env.BB_SIDEBAR_BENCH === "1";
 const THREAD_COUNT = Number(process.env.BB_SIDEBAR_BENCH_THREADS ?? 3000);
@@ -383,13 +384,15 @@ async function runScenario(
     <TooltipProvider>
       <JotaiProvider store={createStore()}>
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <SidebarProvider>
-              <Sidebar>
-                <SidebarContent>{body}</SidebarContent>
-              </Sidebar>
-            </SidebarProvider>
-          </MemoryRouter>
+          <SidebarThreadEntriesTestProvider>
+            <MemoryRouter>
+              <SidebarProvider>
+                <Sidebar>
+                  <SidebarContent>{body}</SidebarContent>
+                </Sidebar>
+              </SidebarProvider>
+            </MemoryRouter>
+          </SidebarThreadEntriesTestProvider>
         </QueryClientProvider>
       </JotaiProvider>
     </TooltipProvider>
@@ -609,24 +612,26 @@ describe("hidden sidebar thread list", () => {
       <TooltipProvider>
         <JotaiProvider store={createStore()}>
           <QueryClientProvider client={seedQueryClient(250)}>
-            <MemoryRouter>
-              <SidebarProvider>
-                <Sidebar>
-                  <SidebarContent>
-                    <ThreadActionCollectors
-                      coreRegistrations={CORE_THREAD_ACTIONS}
-                      requestRename={() => {}}
-                    />
-                    <ThreadActionSurfaceVisibility visible={false}>
-                      <PluginThreadList
-                        replacement={replacement}
-                        onNavigate={() => {}}
+            <SidebarThreadEntriesTestProvider>
+              <MemoryRouter>
+                <SidebarProvider>
+                  <Sidebar>
+                    <SidebarContent>
+                      <ThreadActionCollectors
+                        coreRegistrations={CORE_THREAD_ACTIONS}
+                        requestRename={() => {}}
                       />
-                    </ThreadActionSurfaceVisibility>
-                  </SidebarContent>
-                </Sidebar>
-              </SidebarProvider>
-            </MemoryRouter>
+                      <ThreadActionSurfaceVisibility visible={false}>
+                        <PluginThreadList
+                          replacement={replacement}
+                          onNavigate={() => {}}
+                        />
+                      </ThreadActionSurfaceVisibility>
+                    </SidebarContent>
+                  </Sidebar>
+                </SidebarProvider>
+              </MemoryRouter>
+            </SidebarThreadEntriesTestProvider>
           </QueryClientProvider>
         </JotaiProvider>
       </TooltipProvider>,

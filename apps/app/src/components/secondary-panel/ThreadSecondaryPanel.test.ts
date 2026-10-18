@@ -7,6 +7,7 @@ import {
 import {
   CHROME_ROW_HEIGHT_CLASS,
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
+  MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
 } from "@/lib/bb-desktop";
 
 describe("secondary panel native browser bounds settling", () => {
@@ -31,6 +32,7 @@ describe("getSecondaryPanelChromeStackClassName", () => {
 describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
   const base = {
     isConversationCollapsed: true,
+    isPanelInFrame: false,
     renderAsDrawer: false,
     isSidebarShowing: false as boolean | null,
     sidebarKeepsCollapsedRail: false,
@@ -50,6 +52,35 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
         sidebarKeepsCollapsedRail: true,
       }),
     ).toBe(false);
+  });
+
+  it("clears the title bar controls when a full-width framed panel sits beside a collapsed rail", () => {
+    expect(
+      resolveCollapsedPanelTrafficLightReserveClassName({
+        ...base,
+        isPanelInFrame: true,
+        sidebarKeepsCollapsedRail: true,
+      }),
+    ).toBe(MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS);
+    expect(
+      resolveCollapsedPanelTrafficLightReserveClassName({
+        ...base,
+        isPanelInFrame: true,
+        sidebarKeepsCollapsedRail: true,
+        isSidebarShowing: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("still clears the title bar controls in full screen, where the lights hide but the controls stay", () => {
+    expect(
+      resolveCollapsedPanelTrafficLightReserveClassName({
+        ...base,
+        isPanelInFrame: true,
+        sidebarKeepsCollapsedRail: true,
+        reserveMacosTrafficLights: false,
+      }),
+    ).toBe(MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS);
   });
 
   it("does not reserve when the main sidebar is showing (it hosts the lights)", () => {

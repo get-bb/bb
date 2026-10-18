@@ -40,6 +40,7 @@ import {
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
   type ResolveThreadMentionsResponse,
+  parseThreadListThreadIds,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../../types.js";
@@ -324,6 +325,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
       ...(query.originPluginId ? { originPluginId: query.originPluginId } : {}),
+      ...(query.threadIds === undefined
+        ? {}
+        : { threadIds: parseThreadListThreadIds(query.threadIds) }),
       includeHidden: query.includeHidden === "true",
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
@@ -475,6 +479,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     if ("visibility" in payload) {
       metadataUpdate.visibility = payload.visibility;
+    }
+    if ("parentNotifications" in payload) {
+      metadataUpdate.parentNotifications = payload.parentNotifications;
     }
     const updated =
       Object.keys(metadataUpdate).length > 0

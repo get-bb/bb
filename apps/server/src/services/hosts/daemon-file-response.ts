@@ -1,3 +1,4 @@
+import { requestMatchesEntityTag } from "../files/entity-tag.js";
 import { Buffer } from "node:buffer";
 import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
@@ -17,21 +18,6 @@ interface CreateDaemonFileContentResponseOptions {
 
 function daemonFileEntityTag(result: DaemonFileReadResult): string {
   return `"${result.sha256}"`;
-}
-
-export function requestMatchesEntityTag(
-  ifNoneMatch: string | undefined,
-  entityTag: string,
-): boolean {
-  if (ifNoneMatch === undefined) {
-    return false;
-  }
-  const trimmed = ifNoneMatch.trim();
-  if (trimmed === "*") {
-    return true;
-  }
-  const opaque = (tag: string): string => tag.trim().replace(/^W\//u, "");
-  return trimmed.split(",").map(opaque).includes(opaque(entityTag));
 }
 
 export function requireDaemonFileContentResult(

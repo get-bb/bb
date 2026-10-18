@@ -4,7 +4,10 @@ import type {
   ChildToParentMessage,
   ParentToChildMessage,
 } from "../src/parcel-subprocess/messages.js";
-import { createParcelChildHandler } from "../src/parcel-subprocess/parcel-child-handler.js";
+import {
+  createParcelChildHandler,
+  disposeThenExit,
+} from "../src/parcel-subprocess/parcel-child-handler.js";
 import {
   createParcelWatcherProxy,
   type ChildChannel,
@@ -626,6 +629,47 @@ describe("createParcelWatcherProxy", () => {
     }
   });
 
+  it("reports an oversized event batch as dropped events without resubscribing", async () => {
+    vi.spyOn(pathExistsModule, "pathExists").mockResolvedValue(true);
+    const { proxy, children, current } = createHarness();
+    setParcelWatcherBackend(proxy);
+    const deliveredBatchSizes: number[] = [];
+    let droppedEventReports = 0;
+    const subscription = new RootSubscription({
+      rootPath: "/root",
+      retryDelayMs: 250,
+      maxRetryDelayMs: 30_000,
+      onEvents: (events) => deliveredBatchSizes.push(events.length),
+      onDroppedEvents: () => {
+        droppedEventReports += 1;
+      },
+      onWatchError: () => {},
+    });
+    const batch = (size: number): ParcelWatcherEventBatch =>
+      Array.from({ length: size }, (_unused, index) => ({
+        path: `/root/build/${index}.js`,
+        type: "update" as const,
+      }));
+    try {
+      subscription.start();
+      await flush(20);
+
+      current().parcel.emit("/root", batch(10_000));
+      current().parcel.emit("/root", batch(10_001));
+      await flush(20);
+
+      expect(deliveredBatchSizes).toEqual([10_000]);
+      expect(droppedEventReports).toBe(1);
+      expect(children).toHaveLength(1);
+      expect(current().parcel.subscribeAttempts).toEqual(["/root"]);
+      expect(current().parcel.activeDirs()).toEqual(["/root"]);
+    } finally {
+      await subscription.dispose();
+      disposeParcelWatcherBackend();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("resolves unsubscribe only after the child released the native subscription", async () => {
     const { proxy, current } = createHarness();
     const subscription = await proxy.subscribe("/root", () => {});
@@ -755,5 +799,37 @@ describe("createParcelWatcherProxy", () => {
         .filter((d) => d === "/root"),
     ).toEqual(["/root"]);
     proxy.dispose();
+  });
+});
+
+describe("disposeThenExit", () => {
+  it("exits by the deadline when a native unsubscribe never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const parcel = new FakeParcel();
+      parcel.unsubscribeGate = new Promise<void>(() => {});
+      const handler = createParcelChildHandler({
+        parcel,
+        send: () => {},
+        listEntries: async () => [],
+      });
+      handler.handleMessage({ kind: "subscribe", id: "sub_1", dir: "/root" });
+      await flush();
+      expect(parcel.activeDirs()).toEqual(["/root"]);
+      const exit = vi.fn();
+
+      disposeThenExit({
+        deadlineMs: 2_000,
+        dispose: () => handler.dispose(),
+        exit,
+      });
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(exit).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(exit).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

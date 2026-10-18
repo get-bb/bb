@@ -33,6 +33,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { arePluginSettingsAvailable } from "@/lib/plugin-settings-availability";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { PluginMachineServerAccessNotice } from "@/components/machines/MachineServerAccessNotice";
 import { invalidateMachineProviders } from "@/hooks/cache-owners/system-cache-effects";
@@ -453,12 +454,6 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   );
 }
 
-const PLUGIN_STATUSES_WITH_SETTINGS = [
-  "running",
-  "needs-configuration",
-  "degraded",
-];
-
 function PluginSettingsFieldSkeleton() {
   return (
     <div className="min-w-0 space-y-2">
@@ -652,8 +647,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
   );
-  const settingsAvailable =
-    plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
+  const settingsAvailable = arePluginSettingsAvailable(plugin);
   if (!plugin.hasSettings && !hasSettingsSections) return null;
 
   return (

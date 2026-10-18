@@ -21,6 +21,7 @@ import {
   type ScrollAnchor,
 } from "@/lib/thread-timeline-scroll-anchor.js";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
+import { TitleBarScrollFade } from "./title-bar-scroll-fade.js";
 
 export interface BottomAnchorContextValue {
   getScrollElement: () => HTMLElement | null;
@@ -1015,7 +1016,8 @@ export function BottomAnchoredScrollBody({
       <TimelineScrollRestoreRowIdContext.Provider
         value={initialScrollRestoreRowId}
       >
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(auto,1fr)] overflow-hidden">
+        <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(auto,1fr)] overflow-hidden">
+          <TitleBarScrollFade tone="background" />
           <div
             ref={scrollAreaRef}
             data-page-scroll-viewport=""

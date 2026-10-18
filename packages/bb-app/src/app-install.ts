@@ -2,7 +2,7 @@ import type { AppInstall } from "@bb/config/app-install";
 import type { RunCommand } from "./app-update/run-command.js";
 
 const OFFICIAL_SOURCE_REMOTE_PATTERN =
-  /^(?:(?:https?|ssh|git):\/\/)?(?:[^@/]+@)?github\.com[:/]get-bb\/bb(?:\.git)?\/?$/iu;
+  /^(?:(?:https?|ssh|git):\/\/)?(?:[^@/]+@)?github\.com[:/](?:get-bb|ymichael)\/bb(?:\.git)?\/?$/iu;
 
 export function isOfficialSourceRemote(url: string): boolean {
   return OFFICIAL_SOURCE_REMOTE_PATTERN.test(url.trim());

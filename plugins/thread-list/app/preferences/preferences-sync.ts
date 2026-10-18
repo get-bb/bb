@@ -31,7 +31,11 @@ interface SyncState {
   readyAtom: PrimitiveAtom<boolean>;
   pendingWrites: Map<
     PreferenceKey,
-    { timer: number | null; inFlight: boolean; value: unknown }
+    {
+      timer: ReturnType<typeof setTimeout> | null;
+      inFlight: boolean;
+      value: unknown;
+    }
   >;
   rpc: PreferencesRpc | null;
   store: PreferencesStore | null;
@@ -252,14 +256,14 @@ export function schedulePreferenceWrite(
     state.pendingWrites.set(key, pending);
   }
   pending.value = value;
-  if (pending.timer !== null) window.clearTimeout(pending.timer);
-  pending.timer = window.setTimeout(() => flushWrite(key), WRITE_DEBOUNCE_MS);
+  if (pending.timer !== null) clearTimeout(pending.timer);
+  pending.timer = setTimeout(() => flushWrite(key), WRITE_DEBOUNCE_MS);
 }
 
 export async function flushPreferenceWritesForTest(): Promise<void> {
   for (const [key, pending] of [...state.pendingWrites]) {
     if (pending.timer !== null) {
-      window.clearTimeout(pending.timer);
+      clearTimeout(pending.timer);
       flushWrite(key);
     }
   }
@@ -269,7 +273,7 @@ export async function flushPreferenceWritesForTest(): Promise<void> {
 
 export function resetPreferencesSyncForTest(): void {
   for (const pending of state.pendingWrites.values()) {
-    if (pending.timer !== null) window.clearTimeout(pending.timer);
+    if (pending.timer !== null) clearTimeout(pending.timer);
   }
   state.pendingWrites.clear();
   state.rpc = null;

@@ -1,3 +1,10 @@
+import type {
+  ExperimentalBadge,
+  ExperimentalSidebarNavigationAction,
+  ExperimentalSidebarNavigationIcon,
+  ExperimentalSidebarNavigationItem,
+  ExperimentalSidebarNavigationShortcut,
+} from "@get-bb/plugin-sdk";
 import type { PluginNavPanelChromeEntry } from "@/lib/plugin-nav-panel-chrome";
 import {
   AUTOMATIONS_PLUGIN_ID,
@@ -12,52 +19,6 @@ import {
   DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER,
   getPluginNavPanelKey,
 } from "@/components/plugin/pluginNavSidebarOrder";
-
-export interface SidebarNavigationShortcut {
-  label: string;
-  ariaKeyShortcuts: string;
-}
-
-export type SidebarNavigationAction =
-  | { kind: "new-thread" }
-  | { kind: "search-threads" }
-  | { kind: "open-extensions" }
-  | { kind: "open-skills" }
-  | {
-      kind: "open-plugin-panel";
-      pluginId: string;
-      panelId: string;
-    };
-
-export type SidebarNavigationItemIcon =
-  | { kind: "host"; name: "new-thread" | "search" | "extensions" | "skills" }
-  | { kind: "plugin"; pluginId: string; icon: string | null };
-
-export interface SidebarNavigationItem {
-  id: string;
-  label: string;
-  icon: SidebarNavigationItemIcon;
-  action: SidebarNavigationAction;
-  isDisabled: boolean;
-  isVisible: boolean;
-  isLoading: boolean;
-  pluginId: string | null;
-  shortcut: SidebarNavigationShortcut | null;
-}
-
-export interface SidebarNavigationActions {
-  activate(itemId: string, options: { openInSplit: boolean }): void;
-  setVisible(itemId: string, isVisible: boolean): void;
-  openDetails(itemId: string): void;
-  disablePlugin(itemId: string): Promise<void>;
-}
-
-export interface SidebarNavigationState {
-  items: readonly SidebarNavigationItem[];
-  activeItemId: string | null;
-  isShortcutModifierHeld: boolean;
-  actions: SidebarNavigationActions;
-}
 
 export const NEW_THREAD_NAVIGATION_ITEM_ID =
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread;
@@ -75,8 +36,8 @@ export interface SidebarNavigationRow {
   pluginId: string;
   id: string;
   label: string;
-  icon: SidebarNavigationItemIcon;
-  action: SidebarNavigationAction;
+  icon: ExperimentalSidebarNavigationIcon;
+  action: ExperimentalSidebarNavigationAction;
   ownerPluginId: string | null;
   panelEntry: PluginNavPanelChromeEntry | null;
 }
@@ -86,8 +47,8 @@ const NEW_THREAD_CONTENT = { kind: "new-thread" } as const;
 function hostRow(
   key: string,
   label: string,
-  icon: Extract<SidebarNavigationItemIcon, { kind: "host" }>["name"],
-  action: SidebarNavigationAction,
+  icon: Extract<ExperimentalSidebarNavigationIcon, { kind: "host" }>["name"],
+  action: ExperimentalSidebarNavigationAction,
 ): SidebarNavigationRow {
   const [pluginId = "", id = ""] = key.split("/");
   return {
@@ -160,13 +121,14 @@ export function getSidebarNavigationRowContent(
 export interface SidebarNavigationItemState {
   isDisabled: boolean;
   isVisible: boolean;
-  shortcut: SidebarNavigationShortcut | null;
+  shortcut: ExperimentalSidebarNavigationShortcut | null;
+  badge: ExperimentalBadge | null;
 }
 
 export function toSidebarNavigationItem(
   row: SidebarNavigationRow,
   state: SidebarNavigationItemState,
-): SidebarNavigationItem {
+): ExperimentalSidebarNavigationItem {
   return {
     id: getPluginNavPanelKey(row),
     label: row.label,
@@ -177,12 +139,13 @@ export function toSidebarNavigationItem(
     isLoading: row.panelEntry !== null && row.panelEntry.panel === null,
     pluginId: row.ownerPluginId,
     shortcut: state.shortcut,
+    badge: state.badge,
   };
 }
 
 function sameIcon(
-  left: SidebarNavigationItemIcon,
-  right: SidebarNavigationItemIcon,
+  left: ExperimentalSidebarNavigationIcon,
+  right: ExperimentalSidebarNavigationIcon,
 ): boolean {
   if (left.kind === "host" || right.kind === "host") {
     return (
@@ -196,8 +159,8 @@ function sameIcon(
 }
 
 function sameAction(
-  left: SidebarNavigationAction,
-  right: SidebarNavigationAction,
+  left: ExperimentalSidebarNavigationAction,
+  right: ExperimentalSidebarNavigationAction,
 ): boolean {
   if (left.kind !== right.kind) return false;
   if (left.kind !== "open-plugin-panel" || right.kind !== "open-plugin-panel") {
@@ -207,8 +170,8 @@ function sameAction(
 }
 
 export function isSameSidebarNavigationItem(
-  left: SidebarNavigationItem,
-  right: SidebarNavigationItem,
+  left: ExperimentalSidebarNavigationItem,
+  right: ExperimentalSidebarNavigationItem,
 ): boolean {
   return (
     left.id === right.id &&
@@ -220,7 +183,11 @@ export function isSameSidebarNavigationItem(
     left.isLoading === right.isLoading &&
     left.pluginId === right.pluginId &&
     left.shortcut?.label === right.shortcut?.label &&
-    left.shortcut?.ariaKeyShortcuts === right.shortcut?.ariaKeyShortcuts
+    left.shortcut?.ariaKeyShortcuts === right.shortcut?.ariaKeyShortcuts &&
+    left.badge?.count === right.badge?.count &&
+    left.badge?.text === right.badge?.text &&
+    left.badge?.tone === right.badge?.tone &&
+    left.badge?.label === right.badge?.label
   );
 }
 
@@ -253,7 +220,7 @@ export function resolveActiveSidebarNavigationItemId({
 }
 
 export function getResourceNavigationRoutePath(
-  action: SidebarNavigationAction,
+  action: ExperimentalSidebarNavigationAction,
 ): string | null {
   if (action.kind === "open-extensions") return getPluginsRoutePath();
   if (action.kind === "open-skills") return getSkillsRoutePath();

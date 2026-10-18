@@ -9,4 +9,6 @@ export const SIDEBAR_HOVER_ACTIONS_INSET_CLASS =
 
 export const SIDEBAR_HOVER_ACTIONS_FADE_CLASS = "bb-sidebar-hover-actions-fade";
 
+export const SIDEBAR_HOVER_ACTIONS_MASK_CLASS = "bb-sidebar-hover-actions-mask";
+
 export const SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE = "always";

@@ -15,25 +15,76 @@ that need the singleton personal project use
 
 **Area map.** Every area below is reachable from `bb.sdk`. This lists the
 methods, not their arguments — read the bundled `bb-plugin-sdk.d.ts` for exact
-signatures (see "Looking up the exact API").
+signatures (see "Looking up the exact API" in distribution.md).
 
-| Area                         | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `threads`                    | `list` `get` `search` `spawn` `fork` `getPluginMetadata` `updatePluginMetadata` `send` `editMessage` `resolveMentions` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storageLocation` `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
-| `threadSections`             | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `projects`                   | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory` `sidebarBootstrap`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `experimental_promptHistory` | `list`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `environments`               | `list` `listProviders` `get` `update` `delete` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest`                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `hosts`                      | `create` `list` `listProviders` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` (deprecated; use `experimental_create` and `experimental_getEnrollmentCommand`) `suspend` `resume` `retryCleanup` `retryUpdate` `providerCliStatus` `installProviderCli`                                                                                                                                                                                                                                                                                                                                                                                                |
-| `files`                      | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `terminals`                  | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `providers`                  | `list` `models`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `skills`                     | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `entries` `get` `detail` `install` `repositoryStars`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `plugins`                    | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `installPlan` `install`); sub-area `marketplaces` (`add` `list` `refresh` `remove`)                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `theme`                      | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `status`                     | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `system`                     | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `providerStates` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `appUpdate` `applyAppUpdate` `acknowledgeAppUpdate`                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `guide`                      | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+- `threads`: `list` `listRunning` `count` `get` `search` `spawn` `fork`
+  `send` `retry` `message` `editMessage` `resolveMentions` `update` `delete`
+  `stop` `compact` `clearContext` `wait` `open` `output` `timeline` `context`
+  `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive`
+  `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary`
+  `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storageLocation`
+  `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
+  `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
+  `experimental_listPluginMetadata` `experimental_listAncestors`
+  `experimental_listDescendants`; sub-areas `events` (`list` `wait`),
+  `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
+  (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
+  `reorder` `setGroupBoundary` `experimental_holdForEdit`
+  `experimental_releaseEditHold`), `tabs` (`get` `update`)
+- `threadSections`: `list` `create` `update` `delete`
+- `projects`: `list` `get` `create` `update` `delete` `reorder` `paths`
+  `files` `fileContent` `branches` `commands` `defaultExecutionOptions`
+  `promptHistory` `sidebarBootstrap` `machineEnvironment`
+  `replaceMachineEnvironment` `setMachineEnvironmentVariable`
+  `deleteMachineEnvironmentVariable`; sub-areas `attachments` (`upload` `read`
+  `copy`), `sources` (`add` `update` `delete`)
+- `experimental_promptHistory`: `list`
+- `environments`: `list` `listProviders` `get` `update` `delete` `status`
+  `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles`
+  `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft`
+  `markPullRequestReady` `mergePullRequest` `experimental_cleanup`
+- `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
+  `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
+  `retryUpdate` `experimental_listProviders` `experimental_create`
+  `experimental_getEnrollmentCommand` `experimental_reconnect`
+  `experimental_suspend` `experimental_resume` `experimental_retryCleanup`
+  `experimental_reconcile` `experimental_deleteOldServerCopy`
+  `experimental_discoverRepos`, and the
+  deprecated `createJoinCode` (machine creation and suspension are in
+  backend-machines.md)
+- `files`: `read` `write` `list` `listPaths` `mkdir` `move` `remove`
+  `createPreview`
+- `terminals`: `list` `create` `get` `input` `output` `resize` `rename`
+  `restart` `close`
+- `providers`: `list` `models` `catalog` `setEnabled`
+- `skills`: `list` `listFiles` `getContent` `update` `remove`; sub-area
+  `registry` (`search` `entries` `get` `detail` `install` `repositoryStars`)
+- `plugins`: `list` `install` `remove` `enable` `disable` `reload` `token`
+  `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates`
+  `listUpdateResults` `applyUpdate` `experimental_startUpdate`
+  `experimental_discoverRpc` `experimental_getSafeMode`
+  `experimental_setSafeMode` `experimental_pruneCache`; sub-areas `catalog`
+  (`search` `status` `installPlan` `install`), `marketplaces` (`add` `list`
+  `refresh` `remove`), `experimental_updateJobs` (`list` `get`)
+- `theme`: `get` `catalog` `resolve` `set`
+- `status`: `get`
+- `system`: `version` `config` `reloadConfig` `attention` `usageLimits`
+  `executionOptions` `providerStates` `transcribeVoice` `aiServices`
+  `setAiServiceSelection` `testAiService` `updateGeneralSettings`
+  `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus`
+  `installCliSkills` `machineEnvironment` `replaceMachineEnvironment`
+  `setMachineEnvironmentVariable` `deleteMachineEnvironmentVariable`
+  `mobileAppDownloads` `mobileAppReleases` `appUpdate` `applyAppUpdate`
+  `acknowledgeAppUpdate` `experimental_cliCommand`
+  `experimental_installCliCommand` `experimental_removeCliCommand`
+  `experimental_recordTelemetryEvent`; sub-area `uiPreferences` (`list` `set` `reset`)
+- `experimental_desktopBrowsers`: `listInstances` `listTabs` `createTab`
+  `acquireControl` `openConnection` `releaseControl` `revealTab` `closeTab`
+  `captureTab` `listImportSources` `importCookies` `subscribe`
+- `experimental_server`: `checkMove` `startMove` `moveStatus` `cancelMove`
+  `export`
+- `subscribe` — realtime entity-change subscriptions (below)
+- `guide`: `render` (the `bb guide` text; local, no request)
 
 Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
@@ -90,8 +141,9 @@ const child = await bb.sdk.threads.fork({
 });
 ```
 
-`PluginBbSdk` is the plugin-bound SDK type. Its `getPluginMetadata` and
-`updatePluginMetadata` calls default to the current plugin's ID. Pass `pluginId`
+`PluginBbSdk` is the plugin-bound SDK type. Its `getPluginMetadata`,
+`updatePluginMetadata`, and `experimental_listPluginMetadata` calls default to
+the current plugin's ID. Pass `pluginId`
 explicitly to read or update another namespace. It must be a plugin ID:
 lowercase letters, digits, and dashes. Namespace IDs are not ownership or
 authorization boundaries.
@@ -102,6 +154,9 @@ values must be plain JSON objects. The SDK rejects invalid input before sending
 any request, including a seed or `set` that is over 256 KiB on its own; raw
 HTTP clients get HTTP 400 for it. A patch whose merged namespace would exceed
 the limit fails with HTTP 413 and leaves the namespace unchanged.
+`threads.experimental_listPluginMetadata({ threadIds })` reads one namespace
+for 1–200 threads in one request, archived and deleted threads included, and
+omits threads without it.
 
 ### Thread trees
 
@@ -172,9 +227,12 @@ const timeline = await bb.sdk.threads.timeline({ threadId });
 await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 ```
 
-`threads.list` filters on `projectId`, `environmentId`, `parentThreadId`, `sourceThreadId`,
-`sectionId`, `originKind`, `originPluginId`, `archived`, `unsectioned`,
-`hasParent`, and `includeHidden`, and it pages with `limit` and `offset`.
+`threads.list` filters on `projectId`, `environmentId`, `hostId`,
+`parentThreadId`, `sourceThreadId`, `sectionId`, `originKind`,
+`originPluginId`, `archived`, `unsectioned`, `hasParent`, and `includeHidden`,
+and it pages with `limit` and `offset`. `threadIds` (at most 200) narrows it to
+those threads and leaves out unknown or deleted IDs, so it also answers which
+of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
@@ -250,9 +308,11 @@ if (saved.outcome === "conflict") {
 }
 ```
 
-For `bb.sdk.files`, `hostId` is optional and defaults to the server machine
-(`primaryHostId` from `bb.sdk.system.config()`).
-Other SDK areas define their own routing rules.
+For `bb.sdk.files`, `hostId` is optional and defaults to the server machine:
+`primaryHostId` from `bb.sdk.system.config()`, the server's local enrolled
+host. It is `null` when that identity is not initialized or its host record is
+missing or destroyed, and it never falls back to a remote machine. Other SDK
+areas define their own routing rules.
 `bb.sdk.files.list({ path, query?, limit? })` is a recursive fuzzy file
 listing under a directory. Writes cap at 25 MB and return
 `{ outcome: "written", sha256, sizeBytes }`.
@@ -292,21 +352,3 @@ path-shaped `baseUrl`. Append individually encoded relative path segments to
 serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
-
-## Standalone machines
-
-`bb.sdk.hosts.experimental_listProviders({ projectId? })` discovers machine providers and their
-input schemas; its optional `projectId` only resolves the environment row shown
-for a project. `bb.sdk.hosts.experimental_create({ machineProviderId, inputs, key?, wait?, signal? })`
-returns a public Host; a machine belongs to no project, and `inputs: null` is
-for a provider that accepts no inputs. Supply a stable key for
-idempotent retries. The default waits until active; `wait: false` returns the
-creating host for polling with `get`. Creation does not create an environment or a thread.
-`bb.sdk.hosts.experimental_suspend({ hostId })` and `resume({ hostId })` require the provider's
-paired suspend/resume operations. They return the updated public Host with HTTP
-202 once the tracked operation starts; read its lifecycle state for completion.
-`retryCleanup({ hostId })` retries failed
-provider teardown. `get({ hostId })` additionally returns nullable
-`connectMachineId` from trusted gate metadata for legacy access revocation;
-Connect now persists its revocation identity during acquire, before enrollment.
-Host lists do not expose that detail.

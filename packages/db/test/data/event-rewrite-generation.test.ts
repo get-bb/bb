@@ -19,7 +19,7 @@ import { createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../../src/retained-event-output.js";
 import { events } from "../../src/schema.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 interface RewriteCase {
   between?: (threadId: string) => InsertEventInput[];
@@ -120,6 +120,7 @@ function taskProgress(threadId: string, sequence: number): InsertEventInput {
         description: "fixture workflow",
         id: "task:wf-1",
         skipTranscript: false,
+        foreground: false,
         status: "pending",
         taskStatus: "running",
         taskType: "local_workflow",

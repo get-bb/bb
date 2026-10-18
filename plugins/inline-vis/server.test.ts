@@ -234,7 +234,7 @@ describe("preparePreview rpc", () => {
     ).rejects.toThrow(/no workspace path/);
   });
 
-  it("reads through bb.sdk.files with hostId + rootPath confinement", async () => {
+  it("reads through bb.sdk.files with hostId + rootPath confinement and returns the page with its content hash", async () => {
     const { harness } = await load({
       threads: {
         get: (args) => {
@@ -277,6 +277,9 @@ describe("preparePreview rpc", () => {
         path: "charts/demo.html",
       },
       url: "/api/v1/environments/env_1/files/charts/demo.html",
+      content: "<html><body>ok</body></html>",
+      sha256:
+        "43906c1e3783f6cd8c0276141ea59b04ee0a176b818eea6b28fe178ac4978992",
     });
     expect(harness.sdk.callsTo("files.read")).toHaveLength(1);
   });
@@ -298,9 +301,9 @@ describe("preparePreview rpc", () => {
             hostId: HOST_ID,
           });
           return {
-            content: "<html><body>ok</body></html>",
+            content: "<p>héllo ✓</p>",
             contentEncoding: "utf8",
-            sizeBytes: 32,
+            sizeBytes: 18,
             sha256: "abc",
           };
         },
@@ -322,6 +325,9 @@ describe("preparePreview rpc", () => {
         path: "reports/result.html",
       },
       url: "/api/v1/threads/thr_1/thread-storage/files/reports/result.html",
+      content: "<p>héllo ✓</p>",
+      sha256:
+        "ad344ed9c56c098c1c6ca20793a161ddde1618a84c6a051d71fcfdf6f3a5f7ff",
     });
     expect(harness.sdk.callsTo("threads.storageLocation")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);

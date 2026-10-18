@@ -12,7 +12,6 @@ import { Button } from "@bb/shared-ui/button";
 import { useAtomValue } from "jotai";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
-import { Pill } from "@bb/shared-ui/pill";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
@@ -22,9 +21,11 @@ import {
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
   getBbDesktopInfo,
+  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   useAppCommandHandler,
@@ -37,7 +38,6 @@ import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useDefaultRequestRename } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
-import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
@@ -63,7 +63,6 @@ export interface ThreadDetailHeaderActionsMenuArgs {
 
 interface ThreadDetailHeaderProps {
   actionsMenu: ((args: ThreadDetailHeaderActionsMenuArgs) => ReactNode) | null;
-  childPillLabel: "child" | null;
   isSecondaryPanelOpen: boolean;
   onClosePane?: () => void;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
@@ -77,7 +76,6 @@ interface ThreadDetailHeaderProps {
 
 export function ThreadDetailHeader({
   actionsMenu,
-  childPillLabel,
   isSecondaryPanelOpen,
   onClosePane,
   onOpenThreadGitAction,
@@ -122,6 +120,7 @@ export function ThreadDetailHeader({
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isSidebarFramed = useIsSidebarFramed();
   const headerRef = useRef<HTMLElement>(null!);
   const {
     beginPaneDrag,
@@ -182,12 +181,8 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
   const showRightPanelToggle =
-    !titleBarHostsRightPanelToggle &&
-    secondaryPanelHost === null &&
-    (!isSecondaryPanelOpen || isCompactViewport);
+    secondaryPanelHost === null && (!isSecondaryPanelOpen || isCompactViewport);
 
   const center = (
     <>
@@ -218,11 +213,6 @@ export function ThreadDetailHeader({
           {isEditing ? editor : <ThreadTitle title={threadTitle} />}
         </p>
       </div>
-      {childPillLabel ? (
-        <Pill variant="outline" size="sm">
-          {childPillLabel}
-        </Pill>
-      ) : null}
       {actionsMenu == null ? null : (
         <span
           className={cn(
@@ -310,6 +300,9 @@ export function ThreadDetailHeader({
               className={cn(
                 HEADER_ICON_BUTTON_CLASS,
                 CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+                isTopRow &&
+                  isSidebarFramed &&
+                  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
               )}
               aria-label={
                 panelShortcut
@@ -327,10 +320,16 @@ export function ThreadDetailHeader({
             </Button>
           </span>
         ) : null}
-        {reservesWindowPanelToggle &&
-        !isWindowPanelOpen &&
-        !titleBarHostsRightPanelToggle ? (
-          <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
+        {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+          <span
+            aria-hidden
+            className={cn(
+              HEADER_ICON_BUTTON_CLASS,
+              isTopRow &&
+                isSidebarFramed &&
+                MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+            )}
+          />
         ) : null}
       </div>
     </>

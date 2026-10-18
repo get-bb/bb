@@ -56,7 +56,11 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   const active = new Map<string, RecordEntry>();
   const busy = new Map<string, number>();
   const pending = new Set<Promise<void>>();
-  const cleanup = new Map<string, Promise<Session>>();
+  const cleanup = new Map<
+    string,
+    { state: "stopped" | "closed"; work: Promise<Session> }
+  >();
+  const opening = new Map<string, AbortController>();
   const subscriptions = new Map<string, { dispose(): void }>();
   const lifecycle = new AbortController();
   const threadLifecycles = new Map<string, AbortController>();
@@ -85,30 +89,70 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       throw new Error("Session does not belong to this thread");
     return active.get(sessionId) ?? record;
   }
-  async function finish(record: RecordEntry, state: "stopped" | "closed") {
+  async function releaseDesktop(
+    target: DesktopTarget,
+    state: "stopped" | "closed",
+  ): Promise<PromiseSettledResult<unknown>[]> {
+    const scope = {
+      hostId: target.hostId,
+      instanceId: target.instanceId,
+      generation: target.generation,
+      threadId: target.threadId,
+    };
+    await desktop.listTabs(scope).then(
+      ({ tabs }) => trackLeasedTabs(target, tabs),
+      () => {},
+    );
+    const results: PromiseSettledResult<unknown>[] = await Promise.allSettled([
+      desktop.releaseControl({ ...scope, leaseId: target.leaseId }),
+    ]);
+    const createdTabIds = new Set(target.leasedTabIds);
+    if (target.owned) createdTabIds.add(target.tabId);
+    else createdTabIds.delete(target.tabId);
+    if (state === "closed" && createdTabIds.size > 0)
+      results.push(
+        ...(await desktop.listTabs(scope).then(
+          ({ tabs }) =>
+            Promise.allSettled(
+              tabs
+                .filter((tab) => createdTabIds.has(tab.tabId))
+                .map((tab) => desktop.closeTab({ ...scope, tabId: tab.tabId })),
+            ),
+          (reason: unknown) => [{ status: "rejected" as const, reason }],
+        )),
+      );
+    return results;
+  }
+  async function finish(
+    record: RecordEntry,
+    requested: "stopped" | "closed",
+  ): Promise<Session> {
     const existing = cleanup.get(record.session.id);
     if (existing) {
-      await existing;
-      return finish(record, state);
+      if (existing.state === "closed" || existing.state === requested)
+        return existing.work;
+      await existing.work.catch(() => {});
+      return finish(record, requested);
     }
     const previous = recordSchema.safeParse(
       await bb.storage.kv.get(
         keyFor(record.session.threadId, record.session.id),
       ),
     );
-    const concurrent = cleanup.get(record.session.id);
-    if (concurrent) {
-      await concurrent;
-      return finish(record, state);
-    }
+    if (cleanup.has(record.session.id)) return finish(record, requested);
+    const closed =
+      record.session.state === "closed" ||
+      (previous.success && previous.data.session.state === "closed");
     if (
       previous.success &&
       previous.data.session.state === "closed" &&
       !previous.data.cleanupPending
     )
       return previous.data.session;
+    const state = closed ? "closed" : requested;
     const work = (async () => {
       const { session } = record;
+      opening.get(session.id)?.abort();
       if (state === "closed") active.delete(session.id);
       else active.set(session.id, record);
       subscriptions.get(session.id)?.dispose();
@@ -116,74 +160,63 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       session.state = state;
       record.cleanupPending = true;
       await save(record);
-      const target = record.desktop;
-      const scope = target
-        ? {
-            hostId: target.hostId,
-            instanceId: target.instanceId,
-            generation: target.generation,
-            threadId: target.threadId,
-          }
-        : null;
-      if (target && scope)
-        await desktop.listTabs(scope).then(
-          ({ tabs }) => trackLeasedTabs(target, tabs),
-          () => {},
-        );
-      const results = await Promise.allSettled([
-        host.call(
-          "close",
-          { sessionId: session.id },
-          { hostId: session.hostId, signal: AbortSignal.timeout(10_000) },
-        ),
-        ...(target && scope
-          ? [desktop.releaseControl({ ...scope, leaseId: target.leaseId })]
-          : []),
-      ]);
-      const createdTabIds = new Set(target?.leasedTabIds);
-      if (target?.owned) createdTabIds.add(target.tabId);
-      else if (target) createdTabIds.delete(target.tabId);
-      if (state === "closed" && scope && createdTabIds.size > 0) {
-        const tabs = await desktop.listTabs(scope);
-        const ownedTabs = tabs.tabs.filter((tab) =>
-          createdTabIds.has(tab.tabId),
-        );
-        results.push(
-          ...(await Promise.allSettled(
-            ownedTabs.map((tab) =>
-              desktop.closeTab({ ...scope, tabId: tab.tabId }),
+      const results = (
+        await Promise.all([
+          Promise.allSettled([
+            host.call(
+              "close",
+              { sessionId: session.id },
+              { hostId: session.hostId, signal: AbortSignal.timeout(10_000) },
             ),
-          )),
+          ]),
+          record.desktop ? releaseDesktop(record.desktop, state) : [],
+        ])
+      ).flat();
+      const failures = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
+      );
+      record.cleanupPending = failures.length > 0;
+      await save(record);
+      if (failures.length > 0) {
+        const reasons = failures
+          .map((reason) =>
+            reason instanceof Error ? reason.message : String(reason),
+          )
+          .join("; ");
+        bb.log.warn(
+          `Browser Automation cleanup on host ${session.hostId} failed: ${reasons}`,
+        );
+        throw new Error(
+          `Browser session ${state}, but cleanup on host ${session.hostId} failed: ${reasons}. Run close to retry.`,
         );
       }
-      record.cleanupPending = results.some(
-        (result) => result.status === "rejected",
-      );
-      await save(record);
-      if (record.cleanupPending)
-        bb.log.warn(
-          `Browser Automation cleanup on host ${session.hostId} incomplete; host expiry and lease revocation remain active.`,
-        );
       return session;
     })();
-    cleanup.set(record.session.id, work);
+    cleanup.set(record.session.id, { state, work });
     try {
       return await work;
     } finally {
       cleanup.delete(record.session.id);
     }
   }
+  const unfinished: RecordEntry[] = [];
   for (const key of await bb.storage.kv.list("sessions/")) {
     const parsed = recordSchema.safeParse(await bb.storage.kv.get(key));
     if (!parsed.success) continue;
     if (parsed.data.session.state === "closed" && !parsed.data.cleanupPending)
       continue;
-    await finish(parsed.data, "closed").catch(() =>
-      bb.log.warn(
-        "Browser Automation restart cleanup will need the owning desktop to reconnect",
-      ),
-    );
+    unfinished.push(parsed.data);
   }
+  bb.background.service("restart-cleanup", {
+    async start() {
+      for (const record of unfinished.splice(0))
+        await finish(record, "closed").catch(() =>
+          bb.log.warn(
+            "Browser Automation restart cleanup will need the owning desktop to reconnect",
+          ),
+        );
+    },
+  });
   async function open(
     input: z.output<typeof rpcContract.open.input>,
     signal: AbortSignal,
@@ -216,6 +249,9 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       lastUsed: now,
       cleanupPending: false,
     };
+    const retirement = new AbortController();
+    opening.set(session.id, retirement);
+    signal = AbortSignal.any([signal, retirement.signal]);
     let connectionUrl: string | undefined;
     let created: {
       hostId: string;
@@ -336,6 +372,8 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       if (created && !record.desktop)
         await desktop.closeTab(created).catch(() => {});
       throw error;
+    } finally {
+      opening.delete(session.id);
     }
   }
   async function run(
@@ -359,10 +397,11 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
         },
         { hostId: record.session.hostId, signal },
       );
-      if (result.exitCode === 124) await finish(record, "stopped");
+      if (result.exitCode === 124)
+        await finish(record, "stopped").catch(() => {});
       return result;
     } catch (error) {
-      await finish(record, "stopped");
+      await finish(record, "stopped").catch(() => {});
       throw error;
     } finally {
       const remaining = (busy.get(input.sessionId) ?? 1) - 1;
@@ -608,7 +647,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   }, 1000);
   timer.unref();
   host.experimental_onWorkerExit(async ({ hostId }) => {
-    await Promise.all(
+    await Promise.allSettled(
       [...active.values()]
         .filter((record) => record.session.hostId === hostId)
         .map((record) => finish(record, "closed")),

@@ -9,7 +9,7 @@ import {
   searchThreadsWithPendingInteractionState,
   upsertThreadSearchSegments,
 } from "../../src/data/threads.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 interface FixtureThread {
   title: string | null;

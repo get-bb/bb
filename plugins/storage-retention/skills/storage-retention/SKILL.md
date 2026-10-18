@@ -5,7 +5,7 @@ description: Inspect machine storage, clean up files, and configure automatic th
 
 # Storage & retention
 
-Enable `bb plugin enable storage-retention`. Both policies default to Never.
+Enable `bb plugin enable bb--storage-retention`. Both policies default to Never.
 Open the plugin's sidebar panel for machine reports and retention settings.
 All settings in the panel save immediately when changed.
 All commands return JSON. Use the owning server's normal SDK/plugin RPC transport.

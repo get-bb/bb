@@ -8,6 +8,7 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessagePayloadKind,
+  QueuedMessageState,
   QueuedMessageWaitingOn,
   StartedOnBehalfOf,
   StartedOnBehalfOfInitiator,
@@ -21,7 +22,6 @@ import { resolveDispatchAuthor } from "./dispatch-author.js";
 interface StoredQueuedThreadMessageRow {
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
-  claimedAt: number | null;
   content: string;
   createdAt: number;
   failureReason: string | null;
@@ -37,6 +37,7 @@ interface StoredQueuedThreadMessageRow {
   sendAt: number | null;
   serviceTier: string;
   senderThreadId: string | null;
+  state: QueuedMessageState;
   requestedByInitiator: StartedOnBehalfOfInitiator | null;
   requestedByThreadId: string | null;
   systemNotice: string | null;
@@ -181,12 +182,13 @@ export function toThreadQueuedMessage(
     serviceTier: row.serviceTier,
     groupWithNext: row.groupWithNext,
     sendAt: row.sendAt,
+    state: row.state,
     waitingOn: parseStoredQueuedThreadMessageWaitingOn(row),
     failureReason: row.failureReason,
     payload: toQueuedMessagePayload(row),
     // An `inline` draft stops being editable the moment the drain claims it:
     // the row is on its way to a provider and a rewrite would be lost.
-    editable: row.payloadKind === "inline" && row.claimedAt === null,
+    editable: row.payloadKind === "inline" && row.state !== "claimed",
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

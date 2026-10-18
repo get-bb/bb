@@ -50,6 +50,11 @@ export type ProviderRecoveryHint = Omit<
   "providerId"
 >;
 
+export type DeferredThreadEventsListener = (
+  sourceThreadId: string,
+  events: ThreadEvent[],
+) => void;
+
 export interface BridgeProtocolAdapter {
   id: string;
   capabilities: BridgeEnforcedCapabilities;
@@ -62,6 +67,7 @@ export interface BridgeProtocolAdapter {
     selectedOnlyModels: AvailableModel[];
   };
   translateEvent(event: ProviderRuntimeEvent): ThreadEvent[];
+  onDeferredEvents(listener: DeferredThreadEventsListener): void;
   decodeRecoveryHint(event: ProviderRuntimeEvent): ProviderRecoveryHint | null;
   decodeToolCallRequest(
     request: ProviderInboundRequest,
@@ -153,7 +159,13 @@ export function createBridgeProtocolAdapter(
       ? handshake.fork
       : declaredFork;
   }
-  const deltaAssembler = createDeltaAssembler({ providerId: options.id });
+  let deferredEventsListener: DeferredThreadEventsListener | null = null;
+  const deltaAssembler = createDeltaAssembler({
+    providerId: options.id,
+    onDeferredEvents: (threadId, events) => {
+      deferredEventsListener?.(threadId, events);
+    },
+  });
 
   function gate(
     capability: keyof BridgeCapabilities & string,
@@ -462,6 +474,10 @@ export function createBridgeProtocolAdapter(
     },
 
     parseModelListResult: parseAvailableModelList,
+
+    onDeferredEvents(listener: DeferredThreadEventsListener): void {
+      deferredEventsListener = listener;
+    },
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
       const method = event.method;

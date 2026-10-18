@@ -31,6 +31,26 @@ section are bb core state: use `bb thread section` and `bb thread update`.
 On first load the plugin copies any non-default `sidebar.*` values from
 `bb settings ui` once; after that the two are independent.
 
+`environmentGrouping` decides whether sibling threads sharing one worktree
+collapse into a single row: `"auto"` (default) groups them in every
+organization except chronological, `false` never groups, and `true` always
+groups. Children sharing their parent’s worktree stay directly beneath the
+parent without another worktree header. `sortDirection` is `default` (each field's natural order: newest first
+for dates, A–Z for titles), `ascending`, or `descending`.
+
+`hiddenGroups` (default `[]`) moves groups into More, the same as a group
+menu's Hide from list. Keys are `threads`, `project:<projectId>`,
+`section:<sectionId>`, and `machine:<hostId>` (`machine:no-machine` for the
+unassigned group); `threads` applies in every organization. Pinned cannot be
+hidden, hiding keeps a group's threads, order, and collapse state, and IDs that
+no longer exist stay saved without producing rows. `set` replaces the whole
+list across organizations, so include existing keys to keep them hidden;
+`reset` shows every group:
+
+```sh
+bb thread-list prefs set hiddenGroups '["threads","project:proj_example"]'
+```
+
 The header's Filter menu selects Active, Archived, or both; at least one must
 remain selected. `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both. The default
@@ -47,7 +67,7 @@ keys still work. The default is `'["bb--core/archive"]'` and `'[]'` leaves
 only the menu. For example,
 `bb thread-list prefs set rowActions '["bb--core/pin","bb--core/archive"]'`.
 In the app, a thread
-row's actions menu has Customize row actions, which turns that row's quick
+row's actions menu has Customize actions, which turns that row's quick
 actions into three editable slots in place; each slot picks an action, a filled
 slot can Hide, and filled slots drag to reorder. Done, Escape, or a click
 elsewhere finishes.

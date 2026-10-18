@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as UninstallRouteImport } from "./routes/uninstall";
 import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
 import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
@@ -17,9 +18,13 @@ import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
 import { Route as LinkRouteImport } from "./routes/link";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
+import { Route as BrandRouteImport } from "./routes/brand";
 import { Route as BlogRouteImport } from "./routes/blog";
 import { Route as SlugRouteImport } from "./routes/$slug";
 import { Route as IndexRouteImport } from "./routes/index";
+import { Route as OauthTokenRouteImport } from "./routes/oauth.token";
+import { Route as OauthRevokeRouteImport } from "./routes/oauth.revoke";
+import { Route as OauthAuthorizeRouteImport } from "./routes/oauth.authorize";
 import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
 import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
 import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
@@ -28,6 +33,7 @@ import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
+import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from "./routes/[.]well-known.oauth-authorization-server";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from "./routes/[.]well-known.apple-app-site-association";
 import { Route as MarketplaceAuthorGithubRouteImport } from "./routes/marketplace_.author.$github";
@@ -35,6 +41,7 @@ import { Route as MarketplaceV2SplatRouteImport } from "./routes/marketplace.v2.
 import { Route as MarketplaceV1SplatRouteImport } from "./routes/marketplace.v1.$";
 import { Route as MarketplaceOgPluginIdRouteImport } from "./routes/marketplace.og.$pluginId";
 import { Route as MarketplaceBuiltinPluginRouteImport } from "./routes/marketplace.builtin.$plugin";
+import { Route as ApiMcpGrantsRouteImport } from "./routes/api.mcp.grants";
 import { Route as ApiConnectRevokeMachineRouteImport } from "./routes/api.connect.revoke-machine";
 import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connect.redeem-machine";
 import { Route as ApiConnectRedeemRouteImport } from "./routes/api.connect.redeem";
@@ -42,9 +49,15 @@ import { Route as ApiConnectMachineCodeLookupRouteImport } from "./routes/api.co
 import { Route as ApiConnectMachineCodeRouteImport } from "./routes/api.connect.machine-code";
 import { Route as ApiAuthSplatRouteImport } from "./routes/api.auth.$";
 import { Route as ApiAccountMeRouteImport } from "./routes/api.account.me";
+import { Route as ApiMcpGrantsRevokeRouteImport } from "./routes/api.mcp.grants_.revoke";
 import { Route as ApiAccountLinkStartRouteImport } from "./routes/api.account.link.start";
 import { Route as ApiAccountLinkPollRouteImport } from "./routes/api.account.link.poll";
 
+const UninstallRoute = UninstallRouteImport.update({
+  id: "/uninstall",
+  path: "/uninstall",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: "/sitemap.xml",
   path: "/sitemap.xml",
@@ -85,6 +98,11 @@ const ChangelogRoute = ChangelogRouteImport.update({
   path: "/changelog",
   getParentRoute: () => rootRouteImport,
 } as any);
+const BrandRoute = BrandRouteImport.update({
+  id: "/brand",
+  path: "/brand",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const BlogRoute = BlogRouteImport.update({
   id: "/blog",
   path: "/blog",
@@ -98,6 +116,21 @@ const SlugRoute = SlugRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const OauthTokenRoute = OauthTokenRouteImport.update({
+  id: "/oauth/token",
+  path: "/oauth/token",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const OauthRevokeRoute = OauthRevokeRouteImport.update({
+  id: "/oauth/revoke",
+  path: "/oauth/revoke",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: "/oauth/authorize",
+  path: "/oauth/authorize",
   getParentRoute: () => rootRouteImport,
 } as any);
 const MarketplacePluginIdRoute = MarketplacePluginIdRouteImport.update({
@@ -140,6 +173,12 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: "/api/subscribe",
   getParentRoute: () => rootRouteImport,
 } as any);
+const DotwellKnownOauthAuthorizationServerRoute =
+  DotwellKnownOauthAuthorizationServerRouteImport.update({
+    id: "/.well-known/oauth-authorization-server",
+    path: "/.well-known/oauth-authorization-server",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const DotwellKnownAssetlinksDotjsonRoute =
   DotwellKnownAssetlinksDotjsonRouteImport.update({
     id: "/.well-known/assetlinks.json",
@@ -178,6 +217,11 @@ const MarketplaceBuiltinPluginRoute =
     path: "/marketplace/builtin/$plugin",
     getParentRoute: () => rootRouteImport,
   } as any);
+const ApiMcpGrantsRoute = ApiMcpGrantsRouteImport.update({
+  id: "/api/mcp/grants",
+  path: "/api/mcp/grants",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
   id: "/api/connect/revoke-machine",
   path: "/api/connect/revoke-machine",
@@ -214,6 +258,11 @@ const ApiAccountMeRoute = ApiAccountMeRouteImport.update({
   path: "/api/account/me",
   getParentRoute: () => rootRouteImport,
 } as any);
+const ApiMcpGrantsRevokeRoute = ApiMcpGrantsRevokeRouteImport.update({
+  id: "/api/mcp/grants_/revoke",
+  path: "/api/mcp/grants/revoke",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const ApiAccountLinkStartRoute = ApiAccountLinkStartRouteImport.update({
   id: "/api/account/link/start",
   path: "/api/account/link/start",
@@ -229,6 +278,7 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/$slug": typeof SlugRoute;
   "/blog": typeof BlogRoute;
+  "/brand": typeof BrandRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
@@ -237,8 +287,10 @@ export interface FileRoutesByFullPath {
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
+  "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
+  "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -247,6 +299,9 @@ export interface FileRoutesByFullPath {
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
+  "/oauth/authorize": typeof OauthAuthorizeRoute;
+  "/oauth/revoke": typeof OauthRevokeRoute;
+  "/oauth/token": typeof OauthTokenRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -254,6 +309,7 @@ export interface FileRoutesByFullPath {
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
+  "/api/mcp/grants": typeof ApiMcpGrantsRoute;
   "/marketplace/builtin/$plugin": typeof MarketplaceBuiltinPluginRoute;
   "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
@@ -261,11 +317,13 @@ export interface FileRoutesByFullPath {
   "/marketplace/author/$github": typeof MarketplaceAuthorGithubRoute;
   "/api/account/link/poll": typeof ApiAccountLinkPollRoute;
   "/api/account/link/start": typeof ApiAccountLinkStartRoute;
+  "/api/mcp/grants/revoke": typeof ApiMcpGrantsRevokeRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/$slug": typeof SlugRoute;
   "/blog": typeof BlogRoute;
+  "/brand": typeof BrandRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
@@ -274,8 +332,10 @@ export interface FileRoutesByTo {
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
+  "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
+  "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -284,6 +344,9 @@ export interface FileRoutesByTo {
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
+  "/oauth/authorize": typeof OauthAuthorizeRoute;
+  "/oauth/revoke": typeof OauthRevokeRoute;
+  "/oauth/token": typeof OauthTokenRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -291,6 +354,7 @@ export interface FileRoutesByTo {
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
+  "/api/mcp/grants": typeof ApiMcpGrantsRoute;
   "/marketplace/builtin/$plugin": typeof MarketplaceBuiltinPluginRoute;
   "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
@@ -298,12 +362,14 @@ export interface FileRoutesByTo {
   "/marketplace/author/$github": typeof MarketplaceAuthorGithubRoute;
   "/api/account/link/poll": typeof ApiAccountLinkPollRoute;
   "/api/account/link/start": typeof ApiAccountLinkStartRoute;
+  "/api/mcp/grants/revoke": typeof ApiMcpGrantsRevokeRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
   "/$slug": typeof SlugRoute;
   "/blog": typeof BlogRoute;
+  "/brand": typeof BrandRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
@@ -312,8 +378,10 @@ export interface FileRoutesById {
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
+  "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
+  "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -322,6 +390,9 @@ export interface FileRoutesById {
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace_/$pluginId": typeof MarketplacePluginIdRoute;
+  "/oauth/authorize": typeof OauthAuthorizeRoute;
+  "/oauth/revoke": typeof OauthRevokeRoute;
+  "/oauth/token": typeof OauthTokenRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -329,6 +400,7 @@ export interface FileRoutesById {
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
+  "/api/mcp/grants": typeof ApiMcpGrantsRoute;
   "/marketplace/builtin/$plugin": typeof MarketplaceBuiltinPluginRoute;
   "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
@@ -336,6 +408,7 @@ export interface FileRoutesById {
   "/marketplace_/author/$github": typeof MarketplaceAuthorGithubRoute;
   "/api/account/link/poll": typeof ApiAccountLinkPollRoute;
   "/api/account/link/start": typeof ApiAccountLinkStartRoute;
+  "/api/mcp/grants_/revoke": typeof ApiMcpGrantsRevokeRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -343,6 +416,7 @@ export interface FileRouteTypes {
     | "/"
     | "/$slug"
     | "/blog"
+    | "/brand"
     | "/changelog"
     | "/dashboard"
     | "/link"
@@ -351,8 +425,10 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
+    | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
+    | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
@@ -361,6 +437,9 @@ export interface FileRouteTypes {
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace/$pluginId"
+    | "/oauth/authorize"
+    | "/oauth/revoke"
+    | "/oauth/token"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -368,18 +447,21 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
+    | "/api/mcp/grants"
     | "/marketplace/builtin/$plugin"
     | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
     | "/marketplace/v2/$"
     | "/marketplace/author/$github"
     | "/api/account/link/poll"
-    | "/api/account/link/start";
+    | "/api/account/link/start"
+    | "/api/mcp/grants/revoke";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/$slug"
     | "/blog"
+    | "/brand"
     | "/changelog"
     | "/dashboard"
     | "/link"
@@ -388,8 +470,10 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
+    | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
+    | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
@@ -398,6 +482,9 @@ export interface FileRouteTypes {
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace/$pluginId"
+    | "/oauth/authorize"
+    | "/oauth/revoke"
+    | "/oauth/token"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -405,18 +492,21 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
+    | "/api/mcp/grants"
     | "/marketplace/builtin/$plugin"
     | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
     | "/marketplace/v2/$"
     | "/marketplace/author/$github"
     | "/api/account/link/poll"
-    | "/api/account/link/start";
+    | "/api/account/link/start"
+    | "/api/mcp/grants/revoke";
   id:
     | "__root__"
     | "/"
     | "/$slug"
     | "/blog"
+    | "/brand"
     | "/changelog"
     | "/dashboard"
     | "/link"
@@ -425,8 +515,10 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
+    | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
+    | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog_/$slug"
     | "/compare/$slug"
@@ -435,6 +527,9 @@ export interface FileRouteTypes {
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace_/$pluginId"
+    | "/oauth/authorize"
+    | "/oauth/revoke"
+    | "/oauth/token"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -442,19 +537,22 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
+    | "/api/mcp/grants"
     | "/marketplace/builtin/$plugin"
     | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
     | "/marketplace/v2/$"
     | "/marketplace_/author/$github"
     | "/api/account/link/poll"
-    | "/api/account/link/start";
+    | "/api/account/link/start"
+    | "/api/mcp/grants_/revoke";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   SlugRoute: typeof SlugRoute;
   BlogRoute: typeof BlogRoute;
+  BrandRoute: typeof BrandRoute;
   ChangelogRoute: typeof ChangelogRoute;
   DashboardRoute: typeof DashboardRoute;
   LinkRoute: typeof LinkRoute;
@@ -463,8 +561,10 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute;
   RobotsDottxtRoute: typeof RobotsDottxtRoute;
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute;
+  UninstallRoute: typeof UninstallRoute;
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute;
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
+  DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
@@ -472,6 +572,9 @@ export interface RootRouteChildren {
   DownloadMacosRoute: typeof DownloadMacosRoute;
   DownloadWindowsRoute: typeof DownloadWindowsRoute;
   GuidesSlugRoute: typeof GuidesSlugRoute;
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute;
+  OauthRevokeRoute: typeof OauthRevokeRoute;
+  OauthTokenRoute: typeof OauthTokenRoute;
   ApiAccountMeRoute: typeof ApiAccountMeRoute;
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute;
@@ -479,16 +582,25 @@ export interface RootRouteChildren {
   ApiConnectRedeemRoute: typeof ApiConnectRedeemRoute;
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute;
   ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute;
+  ApiMcpGrantsRoute: typeof ApiMcpGrantsRoute;
   MarketplaceBuiltinPluginRoute: typeof MarketplaceBuiltinPluginRoute;
   MarketplaceOgPluginIdRoute: typeof MarketplaceOgPluginIdRoute;
   MarketplaceV1SplatRoute: typeof MarketplaceV1SplatRoute;
   MarketplaceV2SplatRoute: typeof MarketplaceV2SplatRoute;
   ApiAccountLinkPollRoute: typeof ApiAccountLinkPollRoute;
   ApiAccountLinkStartRoute: typeof ApiAccountLinkStartRoute;
+  ApiMcpGrantsRevokeRoute: typeof ApiMcpGrantsRevokeRoute;
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/uninstall": {
+      id: "/uninstall";
+      path: "/uninstall";
+      fullPath: "/uninstall";
+      preLoaderRoute: typeof UninstallRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/sitemap.xml": {
       id: "/sitemap.xml";
       path: "/sitemap.xml";
@@ -545,6 +657,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ChangelogRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/brand": {
+      id: "/brand";
+      path: "/brand";
+      fullPath: "/brand";
+      preLoaderRoute: typeof BrandRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/blog": {
       id: "/blog";
       path: "/blog";
@@ -564,6 +683,27 @@ declare module "@tanstack/react-router" {
       path: "/";
       fullPath: "/";
       preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/oauth/token": {
+      id: "/oauth/token";
+      path: "/oauth/token";
+      fullPath: "/oauth/token";
+      preLoaderRoute: typeof OauthTokenRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/oauth/revoke": {
+      id: "/oauth/revoke";
+      path: "/oauth/revoke";
+      fullPath: "/oauth/revoke";
+      preLoaderRoute: typeof OauthRevokeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/oauth/authorize": {
+      id: "/oauth/authorize";
+      path: "/oauth/authorize";
+      fullPath: "/oauth/authorize";
+      preLoaderRoute: typeof OauthAuthorizeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/marketplace_/$pluginId": {
@@ -622,6 +762,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiSubscribeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/.well-known/oauth-authorization-server": {
+      id: "/.well-known/oauth-authorization-server";
+      path: "/.well-known/oauth-authorization-server";
+      fullPath: "/.well-known/oauth-authorization-server";
+      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/.well-known/assetlinks.json": {
       id: "/.well-known/assetlinks.json";
       path: "/.well-known/assetlinks.json";
@@ -669,6 +816,13 @@ declare module "@tanstack/react-router" {
       path: "/marketplace/builtin/$plugin";
       fullPath: "/marketplace/builtin/$plugin";
       preLoaderRoute: typeof MarketplaceBuiltinPluginRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/mcp/grants": {
+      id: "/api/mcp/grants";
+      path: "/api/mcp/grants";
+      fullPath: "/api/mcp/grants";
+      preLoaderRoute: typeof ApiMcpGrantsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/api/connect/revoke-machine": {
@@ -720,6 +874,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiAccountMeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/api/mcp/grants_/revoke": {
+      id: "/api/mcp/grants_/revoke";
+      path: "/api/mcp/grants/revoke";
+      fullPath: "/api/mcp/grants/revoke";
+      preLoaderRoute: typeof ApiMcpGrantsRevokeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/api/account/link/start": {
       id: "/api/account/link/start";
       path: "/api/account/link/start";
@@ -755,6 +916,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SlugRoute: SlugRoute,
   BlogRoute: BlogRoute,
+  BrandRoute: BrandRoute,
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,
   LinkRoute: LinkRoute,
@@ -763,9 +925,12 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  UninstallRoute: UninstallRoute,
   DotwellKnownAppleAppSiteAssociationRoute:
     DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
+  DotwellKnownOauthAuthorizationServerRoute:
+    DotwellKnownOauthAuthorizationServerRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
   CompareSlugRoute: CompareSlugRoute,
@@ -773,6 +938,9 @@ const rootRouteChildren: RootRouteChildren = {
   DownloadMacosRoute: DownloadMacosRoute,
   DownloadWindowsRoute: DownloadWindowsRoute,
   GuidesSlugRoute: GuidesSlugRoute,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
+  OauthRevokeRoute: OauthRevokeRoute,
+  OauthTokenRoute: OauthTokenRoute,
   ApiAccountMeRoute: ApiAccountMeRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
@@ -780,12 +948,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectRedeemRoute: ApiConnectRedeemRoute,
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
   ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
+  ApiMcpGrantsRoute: ApiMcpGrantsRoute,
   MarketplaceBuiltinPluginRoute: MarketplaceBuiltinPluginRoute,
   MarketplaceOgPluginIdRoute: MarketplaceOgPluginIdRoute,
   MarketplaceV1SplatRoute: MarketplaceV1SplatRoute,
   MarketplaceV2SplatRoute: MarketplaceV2SplatRoute,
   ApiAccountLinkPollRoute: ApiAccountLinkPollRoute,
   ApiAccountLinkStartRoute: ApiAccountLinkStartRoute,
+  ApiMcpGrantsRevokeRoute: ApiMcpGrantsRevokeRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

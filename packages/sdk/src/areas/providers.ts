@@ -19,7 +19,11 @@ export type ProviderListArgs = ProviderHostRoutingArgs & {
   capability?: SystemProvidersQuery["capability"];
   signal?: AbortSignal;
 };
-export type ProviderModelsArgs = ProviderHostRoutingArgs & {
+export type ProviderModelsArgs = (
+  | { environmentId: string; hostId?: never; projectId?: never }
+  | { environmentId?: never; hostId: string; projectId?: string }
+  | { environmentId?: never; hostId?: never; projectId?: string }
+) & {
   providerId?: string;
   signal?: AbortSignal;
 };

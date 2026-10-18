@@ -55,6 +55,7 @@ interface ReadFileForTransportArgs {
 }
 
 interface ReadRootRelativeFileForTransportArgs {
+  followRootSymlink: boolean;
   rootPath: string;
   relativePath: string;
   dotfiles: HostReadFileRelativeDotfilePolicy;
@@ -348,6 +349,12 @@ export async function readFileForTransport(
       "Path is a directory, not a file",
     );
   }
+  if (!stat.isFile()) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "Path is not a regular file",
+    );
+  }
 
   const mimeType = mimeTypes.lookup(args.resultPath) || undefined;
   const fileSizeLimitBytes = getFileSizeLimitBytes(mimeType);
@@ -382,11 +389,19 @@ export async function readRootRelativeFileForTransport(
     relativePath: args.relativePath,
     dotfiles: args.dotfiles,
   });
-  const resolvedPath = path.join(args.rootPath, ...relativePath.segments);
+  const rootPath = args.followRootSymlink
+    ? await fs.realpath(args.rootPath).catch((error: unknown) => {
+        if (isFsErrorWithCode(error, "ENOENT")) {
+          throw createMissingTargetError(relativePath.resultPath);
+        }
+        throw error;
+      })
+    : args.rootPath;
+  const resolvedPath = path.join(rootPath, ...relativePath.segments);
   const readArgs: ReadFileForTransportArgs = {
     resolvedPath,
     resultPath: relativePath.resultPath,
-    rootPath: args.rootPath,
+    rootPath,
   };
   const readablePath = await resolveReadablePath(readArgs);
   const stat = await fs
@@ -396,6 +411,12 @@ export async function readRootRelativeFileForTransport(
     throw new CommandDispatchError(
       "invalid_path",
       "Path is a directory, not a file",
+    );
+  }
+  if (!stat.isFile()) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "Path is not a regular file",
     );
   }
 

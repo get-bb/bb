@@ -45,6 +45,38 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
       {
+        id: "sidebar-navigation",
+        title: "Sidebar navigation",
+        summary:
+          "Replace the sidebar's navigation, as a rail or as rows above the thread list. With this, a plugin can:",
+        bullets: [
+          "Arrange New thread, Search, Plugins, Skills, and plugin pages in any layout",
+          "Choose the rail or list placement, and get bb's layout around it",
+          "Keep the user's saved order, hidden items, badges, and split-view behavior",
+          "Add controls to the header row beside the sidebar toggle",
+        ],
+        apiSymbols: [
+          "ExperimentalSidebarNavigationRegistration",
+          "ExperimentalSidebarNavigationPlacement",
+          "ExperimentalSidebarNavigationProps",
+          "experimental_useSidebarNavigation",
+          "ExperimentalSidebarNavigationState",
+          "ExperimentalSidebarNavigationItem",
+          "ExperimentalSidebarNavigationAction",
+          "ExperimentalSidebarNavigationActions",
+          "ExperimentalSidebarNavigationIcon",
+          "experimental_SidebarNavigationIcon",
+          "ExperimentalSidebarNavigationIconProps",
+          "ExperimentalSidebarNavigationShortcut",
+          "ExperimentalSidebarNavigationActivationOptions",
+          "experimental_useSidebarNavigationSplit",
+          "ExperimentalSidebarNavigationSplit",
+          "ExperimentalSidebarNavigationSplitOptions",
+          "ExperimentalSidebarHeaderProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "nav-panel",
         title: "Full-page panels",
         summary:
@@ -53,10 +85,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Build a whole page, such as a dashboard, a board, or an inbox",
           "Give the page a URL that can be shared and works with back and forward",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
+          "Show a live count or dot on its navigation entry",
         ],
         apiSymbols: [
           "PluginNavPanelRegistration",
           "PluginNavPanelProps",
+          "ExperimentalBadge",
+          "ExperimentalBadgeTone",
           "PluginFixedTabRegistration",
           "PluginFixedTabDeclaration",
           "ExperimentalPluginFixedTabReference",
@@ -250,6 +285,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Tasks",
           "Workflows",
         ],
+      },
+      {
+        id: "code-fence-renderers",
+        title: "Inline code-block renderers",
+        summary:
+          "Replace fenced code blocks in an agent's reply with live UI. With this, a plugin can:",
+        bullets: [
+          "Let an agent write a fenced ```ui block that your component renders live as the reply streams",
+          "Keep one component, with its state, per block for the whole reply",
+          "Tell a block that is still streaming from one that closed or was cut off",
+          "Fall back to BB's code block when the plugin is off or a block's component throws",
+        ],
+        apiSymbols: [
+          "ExperimentalCodeFenceRendererRegistration",
+          "ExperimentalCodeFenceRendererProps",
+          "ExperimentalCodeFenceStatus",
+        ],
+        experimental: true,
       },
       {
         id: "message-actions",
@@ -638,6 +691,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Declare text, number, toggle, choice, or project fields as data",
           "Get validation and autosave without extra code",
+          "Have each field found by Settings search through its label, key, or description",
           "Keep secret values on the server, never sent to the browser",
         ],
         apiSymbols: [
@@ -1360,7 +1414,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use bb's own chat, prompt box, and pickers inside plugin pages. With this, a plugin can:",
         bullets: [
           "Embed a thread, a new-thread prompt box, or a textarea with editable voice input",
-          "Render Markdown, code, diffs, and file links, and copy text, the way bb does",
+          "Render Markdown, code, diffs, and file links, and copy text and save files, the way bb does",
           "Add or override app icons",
           "Match bb's styling with no extra work",
         ],
@@ -1390,6 +1444,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginCodeThemeState",
           "experimental_copyToClipboard",
           "ExperimentalClipboardContent",
+          "experimental_saveFile",
+          "ExperimentalSaveFileRequest",
+          "ExperimentalSaveFileOutcome",
           "UrlLink",
           "UrlLinkProps",
           "experimental_FileLink",

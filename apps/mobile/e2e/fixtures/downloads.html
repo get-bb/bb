@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Native download fixture</title>
+  <style>
+    body {
+      font: 20px system-ui;
+      padding: 20px;
+    }
+    a,
+    button {
+      display: block;
+      margin: 20px 0;
+      padding: 14px;
+      font-size: 18px;
+    }
+  </style>
+  <h1>Native download fixture</h1>
+  <a href="/api/v1/download-fixture/file" download="authenticated.bin"
+    >Authenticated file</a
+  >
+  <button id="blob">Download blob</button>
+  <a href="/api/v1/download-fixture/missing" download="missing.bin"
+    >Missing file</a
+  >
+  <a href="/api/v1/download-fixture/file" target="_blank" rel="noopener"
+    >Open attachment tab</a
+  >
+  <a href="/api/v1/download-fixture/slow" download="slow.bin">Slow download</a>
+  <a href="/api/v1/download-fixture/redirect" download="redirect.bin"
+    >Redirect download</a
+  >
+  <a href="/api/v1/download-fixture/attachment">Attachment response</a>
+  <a href="/api/v1/download-fixture/attachment-missing"
+    >Missing attachment response</a
+  >
+  <button id="reload">Reload page</button>
+  <script>
+    window.bb?.native?.post({ type: "ready", path: location.pathname });
+    document.getElementById("reload").onclick = () => location.reload();
+    document.getElementById("blob").onclick = () => {
+      const bytes = new Uint8Array(1_536_000);
+      for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+      const url = URL.createObjectURL(
+        new Blob([bytes], { type: "application/octet-stream" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "generated.bin";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    };
+  </script>
+</html>

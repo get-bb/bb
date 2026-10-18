@@ -5,7 +5,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import type { ThreadWithRuntime } from "@bb/domain";
 import { makeThreadWithRuntime } from "@bb/test-helpers/domain-fixtures";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -19,6 +19,10 @@ import { useThreadReadTracking } from "./useThreadReadTracking";
 vi.mock("@/lib/sdk", () => ({
   sdk: { threads: { markRead: vi.fn(), markUnread: vi.fn() } },
 }));
+
+beforeEach(() => {
+  window.dispatchEvent(new KeyboardEvent("keydown"));
+});
 
 afterEach(() => {
   cleanup();

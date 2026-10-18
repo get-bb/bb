@@ -8,6 +8,7 @@ import type {
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import { permissionModeValues } from "@bb/domain";
 import type {
+  SystemCliCommandStatus,
   SystemCliSkillsStatusResponse,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
@@ -35,6 +36,7 @@ import {
   allSystemExecutionOptionsQueryKeyPrefix,
   allSystemProvidersQueryKeyPrefix,
   hostProviderCliStatusQueryKey,
+  systemCliCommandQueryKey,
   systemCliSkillsQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
@@ -57,12 +59,14 @@ interface UseSystemExecutionOptionsArgs {
   environmentId?: string;
   hostId?: string;
   providerId?: string;
+  projectId?: string;
 }
 
 interface SystemExecutionOptionsQueryArgs {
   environmentId: string | null;
   hostId: string | null;
   providerId: string | null;
+  projectId: string | null;
   writeLastKnown: boolean;
 }
 
@@ -108,6 +112,7 @@ function resolveExecutionOptionsPlaceholder({
   hostId,
   providerId,
   catalogCacheKey,
+  machineCatalogCacheKey,
   providersCacheKey,
 }: {
   previousData: SystemExecutionOptionsResponse | undefined;
@@ -116,6 +121,7 @@ function resolveExecutionOptionsPlaceholder({
   hostId: string | null;
   providerId: string | null;
   catalogCacheKey: string;
+  machineCatalogCacheKey: string;
   providersCacheKey: string;
 }): SystemExecutionOptionsResponse | undefined {
   const previousProviders = isSameExecutionOptionsRoute(
@@ -125,7 +131,9 @@ function resolveExecutionOptionsPlaceholder({
   )
     ? previousData?.providers
     : undefined;
-  const cached = readCachedModelCatalog(catalogCacheKey);
+  const cached =
+    readCachedModelCatalog(catalogCacheKey) ??
+    readCachedModelCatalog(machineCatalogCacheKey);
   const remembered = readCachedProviderList(providersCacheKey);
   const providers =
     previousProviders ??
@@ -212,14 +220,12 @@ export function useKnownProviderModelCatalogScope(
   return undefined;
 }
 
-export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+export function systemProvidersQueryOptions(args: UseSystemProvidersArgs = {}) {
   const capability = args.capability ?? null;
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
-  const enabled = args.enabled ?? true;
-  useSystemRealtimeSubscription({ enabled });
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
-  return useQuery<ProviderInfo[]>({
+  return queryOptions<ProviderInfo[]>({
     queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
     queryFn: async ({ signal }) => {
       const capabilityFilter =
@@ -242,7 +248,7 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
       }
       return providers;
     },
-    enabled,
+    enabled: args.enabled ?? true,
     staleTime: 60_000,
     placeholderData: () => {
       const remembered = readCachedProviderList(providersCacheKey);
@@ -256,6 +262,28 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
   });
 }
 
+export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+  useSystemRealtimeSubscription({ enabled: args.enabled ?? true });
+  return useQuery(systemProvidersQueryOptions(args));
+}
+
+export function resolveSystemProviderInfo({
+  providers,
+  providerId,
+  queryClient,
+}: {
+  providers: readonly ProviderInfo[] | undefined;
+  providerId: string | undefined;
+  queryClient: QueryClient;
+}): ProviderInfo | null {
+  return (
+    providers?.find((provider) => provider.id === providerId) ??
+    (providerId === undefined
+      ? null
+      : findCachedProviderInfo(queryClient, providerId))
+  );
+}
+
 export function useSystemProviderInfo({
   providerId,
   ...args
@@ -265,18 +293,18 @@ export function useSystemProviderInfo({
     ...args,
     enabled: (args.enabled ?? true) && providerId !== undefined,
   });
-  return (
-    providersQuery.data?.find((provider) => provider.id === providerId) ??
-    (providerId === undefined
-      ? null
-      : findCachedProviderInfo(queryClient, providerId))
-  );
+  return resolveSystemProviderInfo({
+    providers: providersQuery.data,
+    providerId,
+    queryClient,
+  });
 }
 
 async function requestOfferedProviderExecutionOptions({
   environmentId,
   hostId,
   providerId,
+  projectId,
   signal,
 }: Omit<SystemExecutionOptionsQueryArgs, "writeLastKnown"> & {
   signal: AbortSignal;
@@ -289,6 +317,7 @@ async function requestOfferedProviderExecutionOptions({
       environmentId: environmentId ?? undefined,
       hostId: hostId ?? undefined,
       providerId: requestedProviderId ?? undefined,
+      projectId: projectId ?? undefined,
       signal,
     });
   const response = await request(providerId);
@@ -310,6 +339,7 @@ function systemExecutionOptionsQueryOptions({
   environmentId,
   hostId,
   providerId,
+  projectId,
   writeLastKnown,
 }: SystemExecutionOptionsQueryArgs) {
   return queryOptions<SystemExecutionOptionsResponse>({
@@ -317,6 +347,7 @@ function systemExecutionOptionsQueryOptions({
       environmentId,
       hostId,
       providerId,
+      projectId,
     }),
     queryFn: async ({ signal }) => {
       const { response, loadedProviderId } =
@@ -324,6 +355,7 @@ function systemExecutionOptionsQueryOptions({
           environmentId,
           hostId,
           providerId,
+          projectId,
           signal,
         });
       const modelsProviderId =
@@ -343,6 +375,7 @@ function systemExecutionOptionsQueryOptions({
               environmentId,
               hostId,
               providerId: loadedProviderId,
+              projectId,
             }),
             catalog,
           );
@@ -352,6 +385,7 @@ function systemExecutionOptionsQueryOptions({
                 environmentId,
                 hostId,
                 providerId: modelsProviderId,
+                projectId,
               }),
               catalog,
             );
@@ -371,6 +405,7 @@ function systemExecutionOptionsQueryOptions({
             environmentId,
             hostId,
             providerId: modelsProviderId,
+            projectId,
           }),
         );
         if (
@@ -398,35 +433,41 @@ export function prefetchSystemExecutionOptions(
         environmentId: args.routing.environmentId ?? null,
         hostId: args.routing.hostId ?? null,
         providerId,
+        projectId: null,
         writeLastKnown: false,
       }),
     );
   }
 }
 
-export function useSystemExecutionOptions(
+export function liveSystemExecutionOptionsQueryOptions(
   args: UseSystemExecutionOptionsArgs = {},
 ) {
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
   const providerId = args.providerId ?? null;
-  const enabled = args.enabled ?? true;
-  useSystemRealtimeSubscription({ enabled });
-  useHostListRealtimeSubscription({ enabled });
+  const projectId = args.projectId ?? null;
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
-  const catalogCacheKey = modelCatalogCacheKey({
+  const machineCatalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
     providerId,
   });
-  return useQuery({
+  const catalogCacheKey = modelCatalogCacheKey({
+    environmentId,
+    hostId,
+    providerId,
+    projectId,
+  });
+  return queryOptions({
     ...systemExecutionOptionsQueryOptions({
       environmentId,
       hostId,
       providerId,
+      projectId,
       writeLastKnown: true,
     }),
-    enabled,
+    enabled: args.enabled ?? true,
     placeholderData: (previousData, previousQuery) =>
       resolveExecutionOptionsPlaceholder({
         previousData,
@@ -435,9 +476,19 @@ export function useSystemExecutionOptions(
         hostId,
         providerId,
         catalogCacheKey,
+        machineCatalogCacheKey,
         providersCacheKey,
       }),
   });
+}
+
+export function useSystemExecutionOptions(
+  args: UseSystemExecutionOptionsArgs = {},
+) {
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+  useHostListRealtimeSubscription({ enabled });
+  return useQuery(liveSystemExecutionOptionsQueryOptions(args));
 }
 
 export function systemConfigQueryOptions() {
@@ -511,6 +562,15 @@ export function useCliSkillsStatus(options?: QueryOptions) {
   });
 }
 
+export function useCliCommandStatus(options?: QueryOptions) {
+  return useQuery<SystemCliCommandStatus>({
+    queryKey: systemCliCommandQueryKey(),
+    queryFn: ({ signal }) => sdk.system.experimental_cliCommand({ signal }),
+    enabled: options?.enabled ?? true,
+    staleTime: 30_000,
+  });
+}
+
 export function useSystemVersion(options?: QueryOptions) {
   return useQuery<SystemVersionResponse>({
     queryKey: systemVersionQueryKey(),
@@ -525,11 +585,11 @@ interface UseHostProviderCliStatusArgs {
   enabled?: boolean;
 }
 
-export function useHostProviderCliStatus({
+export function hostProviderCliStatusQueryOptions({
   hostId,
   enabled,
 }: UseHostProviderCliStatusArgs) {
-  return useQuery<ProviderCliStatusResponse>({
+  return queryOptions<ProviderCliStatusResponse>({
     queryKey: hostProviderCliStatusQueryKey(hostId),
     queryFn: ({ signal }) =>
       sdk.hosts.providerCliStatus({
@@ -545,12 +605,16 @@ export function useHostProviderCliStatus({
   });
 }
 
-export function useSystemProviderStates(
+export function useHostProviderCliStatus(args: UseHostProviderCliStatusArgs) {
+  return useQuery(hostProviderCliStatusQueryOptions(args));
+}
+
+export function systemProviderStatesQueryOptions(
   options: UseSystemProviderStatesOptions = {},
 ) {
   const environmentId = options.environmentId ?? null;
   const hostId = options.hostId ?? null;
-  return useQuery<SystemProviderStatesResponse>({
+  return queryOptions<SystemProviderStatesResponse>({
     queryKey: systemProviderStatesQueryKey({ environmentId, hostId }),
     queryFn: ({ signal }) =>
       sdk.system.providerStates({
@@ -563,6 +627,12 @@ export function useSystemProviderStates(
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
   });
+}
+
+export function useSystemProviderStates(
+  options: UseSystemProviderStatesOptions = {},
+) {
+  return useQuery(systemProviderStatesQueryOptions(options));
 }
 
 export function useSystemProviderCatalog() {

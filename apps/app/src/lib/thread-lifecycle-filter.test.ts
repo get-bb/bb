@@ -1,15 +1,19 @@
-// @vitest-environment jsdom
-
+import { createMemoryStorage } from "@bb/test-helpers";
 import { createStore } from "jotai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createThreadArchiveFilterAtom } from "./thread-lifecycle-filter";
 
 const sidebarKey = "test.sidebar.archiveFilter";
 const paletteKey = "test.palette.archiveFilter";
+const localStorage = createMemoryStorage();
+vi.stubGlobal("window", { localStorage });
 
 afterEach(() => {
-  window.localStorage.removeItem(sidebarKey);
-  window.localStorage.removeItem(paletteKey);
+  localStorage.clear();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("browser-local thread filters", () => {
@@ -41,10 +45,10 @@ describe("browser-local thread filters", () => {
       '["active","active"]',
       '["active","archived","unknown"]',
     ]) {
-      window.localStorage.setItem(sidebarKey, value);
-      expect(createStore().get(createThreadArchiveFilterAtom(sidebarKey))).toEqual([
-        "active",
-      ]);
+      localStorage.setItem(sidebarKey, value);
+      expect(
+        createStore().get(createThreadArchiveFilterAtom(sidebarKey)),
+      ).toEqual(["active"]);
     }
   });
 });

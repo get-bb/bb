@@ -844,6 +844,40 @@ describe("reconcilePluginFrontends", () => {
     });
   });
 
+  it("activates a plugin that still passes experimental_sidebarAccessory and warns about it", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    function Panel() {
+      return null;
+    }
+    deps.importModule.mockResolvedValueOnce({
+      default: definePluginApp((app) => {
+        app.slots.navPanel({
+          id: "board",
+          title: "Board",
+          icon: "Columns",
+          path: "board",
+          component: Panel,
+          experimental_sidebarAccessory: Panel,
+        } as never);
+      }),
+    });
+
+    await reconcilePluginFrontends(state, deps);
+
+    expect(state.appliedHashes.has("hello")).toBe(true);
+    expect(state.diagnostics.get("hello")?.lastFailure).toBeNull();
+    expect(deps.setRegistrations).toHaveBeenCalledWith(
+      "hello",
+      expect.objectContaining({
+        navPanels: [expect.objectContaining({ id: "board" })],
+      }),
+    );
+    expect(deps.warn).toHaveBeenCalledWith(
+      '[plugin:hello] slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
+    );
+  });
+
   it("contains a throwing replacement setup and deactivates the stale generation", async () => {
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps([candidate("hello", "v1")]);

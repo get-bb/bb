@@ -235,6 +235,84 @@ export function noteTurnTraceCommandFailed(command: HostDaemonCommand): void {
   }
 }
 
+type StreamTextEvent = Extract<
+  ThreadEvent,
+  {
+    type:
+      | "item/agentMessage/delta"
+      | "item/reasoning/summaryTextDelta"
+      | "item/reasoning/textDelta"
+      | "item/plan/delta";
+  }
+>;
+
+function asStreamTextEvent(event: ThreadEvent): StreamTextEvent | undefined {
+  switch (event.type) {
+    case "item/agentMessage/delta":
+    case "item/reasoning/summaryTextDelta":
+    case "item/reasoning/textDelta":
+    case "item/plan/delta":
+      return event;
+    default:
+      return undefined;
+  }
+}
+
+function epochMs(at: number): number {
+  return Math.round((performance.timeOrigin + at) * 10) / 10;
+}
+
+interface StreamTraceThreadBatch {
+  events: number;
+  textChars: number;
+  textEvents: number;
+}
+
+export function observeStreamTraceEventBatch(
+  deps: Pick<AppDeps, "config" | "db" | "hub" | "logger">,
+  batch: TurnTraceEventBatch,
+): void {
+  if (!isTurnTraceEnabled(deps)) {
+    return;
+  }
+  const byThreadId = new Map<string, StreamTraceThreadBatch>();
+  for (const { event, threadId } of batch.events) {
+    const entry = byThreadId.get(threadId) ?? {
+      events: 0,
+      textChars: 0,
+      textEvents: 0,
+    };
+    entry.events += 1;
+    const text = asStreamTextEvent(event);
+    if (text !== undefined) {
+      entry.textEvents += 1;
+      entry.textChars += text.delta.length;
+    }
+    byThreadId.set(threadId, entry);
+  }
+  for (const [threadId, entry] of byThreadId) {
+    if (entry.textEvents === 0) {
+      continue;
+    }
+    deps.logger.info(
+      {
+        streamTrace: {
+          threadId,
+          receivedAt: epochMs(batch.receivedAt),
+          committedAt: epochMs(batch.committedAt),
+          notifiedAt: epochMs(batch.notifiedAt),
+          ...entry,
+          served:
+            deps.hub.listThreadTimelineTargets(threadId).length > 0
+              ? "push"
+              : "refetch",
+        },
+      },
+      "Stream trace",
+    );
+  }
+}
+
 export function observeTurnTraceEventBatch(batch: TurnTraceEventBatch): void {
   if (tracesAwaitingOutput.size === 0) {
     return;
@@ -253,4 +331,34 @@ export function observeTurnTraceEventBatch(batch: TurnTraceEventBatch): void {
       logTurnTrace(trace, "completed-without-output");
     }
   }
+}
+
+export function observeTimelinePushTrace(
+  deps: Pick<AppDeps, "config" | "db" | "logger">,
+  push: {
+    builtAt: number;
+    bytes: number;
+    maxSeq: number;
+    sentAt: number;
+    startedAt: number;
+    threadId: string;
+    withDelta: boolean;
+  },
+): void {
+  if (!isTurnTraceEnabled(deps)) {
+    return;
+  }
+  deps.logger.info(
+    {
+      timelinePushTrace: {
+        threadId: push.threadId,
+        maxSeq: push.maxSeq,
+        withDelta: push.withDelta,
+        bytes: push.bytes,
+        buildMs: roundDurationMs(push.builtAt - push.startedAt),
+        sentAt: epochMs(push.sentAt),
+      },
+    },
+    "Timeline push trace",
+  );
 }

@@ -7,11 +7,6 @@ import {
   startUiPreferencesSync,
 } from "./ui-preferences-sync";
 
-export function useUiPreferencesReady(): boolean {
-  const { data, isError } = useUiPreferences();
-  return data !== undefined || isError;
-}
-
 export function UiPreferencesSync() {
   const queryClient = useQueryClient();
   const store = useStore();

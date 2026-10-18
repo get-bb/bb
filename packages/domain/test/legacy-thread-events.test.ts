@@ -168,6 +168,42 @@ describe("legacy thread event conversion", () => {
     });
   });
 
+  it("reads a background task row stored before the foreground flag as background work", () => {
+    const legacyItem = {
+      type: "backgroundTask",
+      id: "task-1",
+      familyId: "task-1",
+      taskType: "local_agent",
+      description: "Review",
+      status: "completed",
+      taskStatus: "completed",
+      skipTranscript: false,
+    };
+    for (const [type, scope] of [
+      ["item/started", turnScope("turn-1")],
+      ["item/backgroundTask/progress", threadScope()],
+      ["item/backgroundTask/completed", threadScope()],
+    ] as const) {
+      const event = parseStoredThreadEvent({
+        type,
+        threadId: "thread-1",
+        providerThreadId: "provider-1",
+        scope,
+        data: { item: legacyItem },
+      });
+      expect("item" in event && event.item).toEqual({
+        ...legacyItem,
+        foreground: false,
+      });
+    }
+
+    const current = {
+      type: "item/backgroundTask/progress" as const,
+      data: { item: { ...legacyItem, foreground: true } },
+    };
+    expect(convertLegacyStoredThreadEvent(current)).toBe(current);
+  });
+
   it("passes every other type through untouched", () => {
     const stored = {
       type: "thread/name/updated" as const,

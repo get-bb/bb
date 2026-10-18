@@ -174,8 +174,16 @@ The host supervises Chrome and the DevBrowser daemon as separate children. Each
 child owns a process group. Closing the worker pipe also stops those groups, so
 a worker crash does not leave browsers running. Stop sends TERM then KILL after
 1.5 seconds. The plugin does not discover or kill processes from PID files.
+`stop` and `close` retire the session before cleanup starts, so it accepts no
+more commands and an `open` still starting is aborted. They succeed only once
+the host has released the browser processes and session directory and the
+desktop lease and tabs are released. Otherwise they fail with the reason,
+including a host that does not answer within 10 seconds. Concurrent closes
+share one outcome, and closing again retries cleanup. A host worker repeats a
+session's close outcome until that worker exits, and refuses to reopen a
+session it already closed.
 Server metadata persists ownership and cleanup needs; restart reconciles active
-sessions and revokes their desktop leases. Unreachable desktop cleanup remains
+sessions, retries unfinished cleanup, and revokes their desktop leases. Unreachable desktop cleanup remains
 recorded for reconciliation on a later plugin load. Desktop lease loss is
 observed using the public SDK subscription; core revokes the CDP endpoint
 immediately, and the plugin stops its worker session when notified.

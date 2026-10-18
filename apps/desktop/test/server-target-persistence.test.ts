@@ -75,6 +75,7 @@ it.each([
     );
     await store.setCustomServerUrl(thirdUrl);
     expect(JSON.parse(await readFile(storagePath, "utf8"))).toEqual({
+      ...("futureSetting" in settings ? { futureSetting: true } : {}),
       connectServer: connect,
       customServerUrl: thirdUrl,
       customServerUrls: urls,
@@ -181,3 +182,246 @@ it.each(["none", "mkdir", "writeFile"] as const)(
     expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
   },
 );
+
+it("keeps names through selection, restart, renaming, and clearing without changing the active target", async () => {
+  const storagePath = await createStoragePath();
+  await writeFile(
+    storagePath,
+    JSON.stringify({ customServerUrl: firstUrl, target: "custom" }),
+    "utf8",
+  );
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  expect(store.getCustomServers()).toEqual([{ url: firstUrl, name: null }]);
+  await store.setCustomServerName(firstUrl, "  Office   Mac  ");
+  await store.setCustomServerUrl(secondUrl, { name: "Lab" });
+  await store.setCustomServerUrl(firstUrl);
+  await store.setTarget("builtin");
+  await store.setCustomServerName(firstUrl, "Renamed");
+  expect(store.getTarget()).toEqual({ kind: "builtin" });
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getCustomServers()).toEqual([
+    { url: firstUrl, name: "Renamed" },
+    { url: secondUrl, name: "Lab" },
+  ]);
+  expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  await reloaded.setCustomServerUrl(secondUrl);
+  await reloaded.setCustomServerName(firstUrl, " ");
+  expect(reloaded.getTarget()).toEqual({ kind: "custom", url: secondUrl });
+  await reloaded.setCustomServerName(secondUrl, null);
+  const final = createServerTargetStore({ storagePath });
+  await final.load();
+  expect(final.getCustomServers()).toEqual([
+    { url: firstUrl, name: null },
+    { url: secondUrl, name: null },
+  ]);
+  expect(final.getTarget()).toEqual({ kind: "custom", url: secondUrl });
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).toEqual({
+    connectServer: null,
+    customServerUrl: secondUrl,
+    customServerUrls: [firstUrl, secondUrl],
+    target: "custom",
+  });
+});
+
+it("keeps URL edits in place and merges into the destination's name and position", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setCustomServerUrl(firstUrl, { name: "First" });
+  await store.setCustomServerUrl(secondUrl, { name: "Second" });
+  await store.setCustomServerUrl(thirdUrl, { name: "Third" });
+  const editedUrl = "http://localhost:4004";
+  await store.setCustomServerUrl(editedUrl, { replacedUrl: firstUrl });
+  expect(store.getCustomServers()).toEqual([
+    { url: editedUrl, name: "First" },
+    { url: secondUrl, name: "Second" },
+    { url: thirdUrl, name: "Third" },
+  ]);
+  await store.setCustomServerUrl(`${thirdUrl}/#hash`, {
+    replacedUrl: editedUrl,
+    name: "Ignored on merge",
+  });
+  expect(store.getCustomServers()).toEqual([
+    { url: secondUrl, name: "Second" },
+    { url: thirdUrl, name: "Third" },
+  ]);
+  await store.setCustomServerUrl(thirdUrl, { name: "Added existing" });
+  await store.setCustomServerUrl(thirdUrl);
+  expect(store.getCustomServers()).toEqual([
+    { url: secondUrl, name: "Second" },
+    { url: thirdUrl, name: "Added existing" },
+  ]);
+  await store.setCustomServerUrl(null);
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getCustomServers()).toEqual([
+    { url: secondUrl, name: "Second" },
+  ]);
+  expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).toMatchObject({
+    customServerNames: { [secondUrl]: "Second" },
+  });
+});
+
+it.each([
+  { name: "invalid map", names: 42, expectedName: null },
+  {
+    name: "invalid names",
+    names: { [firstUrl]: 42, [secondUrl]: "Dangling" },
+    expectedName: null,
+  },
+  {
+    name: "normalized names",
+    names: { [`${firstUrl}/#hash`]: "  Office  Mac ", [secondUrl]: "Dangling" },
+    expectedName: "Office Mac",
+  },
+])("preserves saved URLs with $name", async ({ names, expectedName }) => {
+  const storagePath = await createStoragePath();
+  await writeFile(
+    storagePath,
+    JSON.stringify({
+      customServerUrl: firstUrl,
+      target: "custom",
+      customServerNames: names,
+    }),
+    "utf8",
+  );
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  expect(store.getCustomServers()).toEqual([
+    { url: firstUrl, name: expectedName },
+  ]);
+  expect(store.getTarget()).toEqual({ kind: "custom", url: firstUrl });
+});
+
+it("persists Connect server names by handle and drops invalid ones on load", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setConnectServer(connectServer);
+  await store.setConnectServerName(connectServer.handle, "Work laptop");
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).toMatchObject({
+    connectServerNames: { laptop: "Work laptop" },
+  });
+
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getConnectServerName("laptop")).toBe("Work laptop");
+  await reloaded.setConnectServerName("laptop", "   ");
+  expect(reloaded.getConnectServerName("laptop")).toBeNull();
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).not.toHaveProperty(
+    "connectServerNames",
+  );
+
+  await writeFile(
+    storagePath,
+    JSON.stringify({
+      connectServer,
+      customServerUrl: null,
+      target: "connect",
+      connectServerNames: { laptop: 42, desk: "  Desk  " },
+    }),
+    "utf8",
+  );
+  const invalid = createServerTargetStore({ storagePath });
+  await invalid.load();
+  expect(invalid.getTarget()).toEqual({
+    kind: "connect",
+    server: connectServer,
+  });
+  expect(invalid.getConnectServerName("laptop")).toBeNull();
+  expect(invalid.getConnectServerName("desk")).toBe("Desk");
+});
+
+it("keeps an existing Connect server name when adopting a named custom URL", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setConnectServerName(connectServer.handle, "Chosen");
+  await store.setCustomServerUrl(connectServer.url, { name: "Custom" });
+
+  expect(await store.adoptConnectServers([connectServer])).toBe(true);
+  expect(store.getConnectServerName(connectServer.handle)).toBe("Chosen");
+  expect(store.getCustomServers()).toEqual([]);
+});
+
+it("persists hidden visibility without changing the active target and preserves sibling metadata", async () => {
+  const storagePath = await createStoragePath();
+  await writeFile(
+    storagePath,
+    JSON.stringify({
+      customServerUrl: firstUrl,
+      customServerUrls: [firstUrl],
+      target: "custom",
+      customServerNames: { [firstUrl]: "Work" },
+    }),
+  );
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  expect(store.getShowBuiltinServer()).toBe(true);
+  await store.setShowBuiltinServer(false);
+  expect(store.getTarget()).toEqual({ kind: "custom", url: firstUrl });
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getShowBuiltinServer()).toBe(false);
+  expect(reloaded.getTarget()).toEqual({ kind: "custom", url: firstUrl });
+  await reloaded.setTarget("builtin");
+  await reloaded.setShowBuiltinServer(true);
+  expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  const saved = JSON.parse(await readFile(storagePath, "utf8"));
+  expect(saved.customServerNames).toEqual({ [firstUrl]: "Work" });
+  expect(saved).not.toHaveProperty("showBuiltinServer");
+});
+
+it.each([
+  { show: false, custom: true, connect: true, expected: "custom" },
+  { show: false, custom: false, connect: true, expected: "connect" },
+  { show: false, custom: true, connect: false, expected: "custom" },
+  { show: false, custom: false, connect: false, expected: "builtin" },
+  { show: true, custom: true, connect: true, expected: "builtin" },
+  { show: true, custom: false, connect: true, expected: "builtin" },
+])(
+  "persists the removal fallback: %j",
+  async ({ show, custom, connect, expected }) => {
+    const storagePath = await createStoragePath();
+    const store = createServerTargetStore({ storagePath });
+    await store.load();
+    if (connect) await store.setConnectServer(connectServer);
+    if (custom) await store.setCustomServerUrl(firstUrl);
+    await store.setCustomServerUrl(secondUrl);
+    await store.setShowBuiltinServer(show);
+    await store.setCustomServerUrl(null);
+    const reloaded = createServerTargetStore({ storagePath });
+    await reloaded.load();
+    expect(reloaded.getShowBuiltinServer()).toBe(show);
+    expect(reloaded.getCustomServerUrls()).toEqual(custom ? [firstUrl] : []);
+    expect(reloaded.getTarget()).toEqual(
+      expected === "connect"
+        ? { kind: "connect", server: connectServer }
+        : expected === "custom"
+          ? { kind: "custom", url: firstUrl }
+          : { kind: "builtin" },
+    );
+  },
+);
+
+it("falls back to discovered Connect servers in handle order when none is saved", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setCustomServerUrl(firstUrl);
+  await store.setShowBuiltinServer(false);
+  const discovered = [
+    { ...connectServer, handle: "z-last" },
+    { ...connectServer, handle: "a-first" },
+  ];
+  await store.setCustomServerUrl(null, { availableConnectServers: discovered });
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getTarget()).toEqual({
+    kind: "connect",
+    server: discovered[1],
+  });
+});

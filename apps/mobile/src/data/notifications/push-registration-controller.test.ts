@@ -3,18 +3,11 @@ import { createPushRegistrationController } from "./push-registration-controller
 import type { PushNotificationsModule } from "./push-registration";
 import { createMemoryPushStorage, createPushStore } from "./push-store";
 import type { PushSubscriptionsApi } from "./push-subscriptions-api";
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
+import { createDeferredPromise } from "@bb/test-helpers";
 
 function setup() {
   const store = createPushStore(createMemoryPushStorage());
-  const tokenGate = deferred<string>();
+  const tokenGate = createDeferredPromise<string>();
   let tokenListener: ((deviceToken: string) => void) | null = null;
   const notifications: PushNotificationsModule = {
     projectId: "eas",
@@ -140,7 +133,7 @@ describe("createPushRegistrationController", () => {
     await tokenEvents.at(-1);
     expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(2);
 
-    const activeTokenGate = deferred<string>();
+    const activeTokenGate = createDeferredPromise<string>();
     vi.mocked(notifications.getExpoPushToken).mockImplementationOnce(
       () => activeTokenGate.promise,
     );
@@ -199,7 +192,7 @@ describe("device push token consent", () => {
     const { controller, notifications, tokenGate } = setup();
     tokenGate.resolve("old-token");
     await controller.setEnabled(profile, true);
-    const deletion = deferred<void>();
+    const deletion = createDeferredPromise<void>();
     vi.mocked(notifications.unregisterDevicePushToken).mockImplementationOnce(
       () => deletion.promise,
     );

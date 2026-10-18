@@ -387,6 +387,7 @@ interface HeldSkillOpen {
 interface ClaudeThreadDialectState {
   mirror: ClaudeTurnMirror;
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
+  promptCacheTtlMs: number | undefined;
   latestRequestContextTokens: number | undefined;
   latestProviderCheckpointId: string | undefined;
   lastModelFallback:
@@ -406,6 +407,7 @@ function createThreadState(): ClaudeThreadDialectState {
   return {
     mirror: { turnOpen: false, responseStarted: false, segment: 0 },
     cumulativeTokens: ZERO_TOKEN_USAGE,
+    promptCacheTtlMs: undefined,
     latestRequestContextTokens: undefined,
     latestProviderCheckpointId: undefined,
     lastModelFallback: undefined,
@@ -1079,11 +1081,16 @@ export function createClaudeDeltaTranslator(
         state.cumulativeTokens,
         tokenUsage.last,
       );
+      state.promptCacheTtlMs =
+        tokenUsage.promptCacheTtlMs ?? state.promptCacheTtlMs;
       deltas.push({
         kind: "usage",
         total: state.cumulativeTokens,
         last: tokenUsage.last,
         modelContextWindow: tokenUsage.modelContextWindow,
+        ...(state.promptCacheTtlMs === undefined
+          ? {}
+          : { promptCacheTtlMs: state.promptCacheTtlMs }),
       });
     }
 

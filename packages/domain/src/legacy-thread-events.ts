@@ -39,8 +39,12 @@ export function convertLegacyStoredThreadEvent(
 ): StoredThreadEventShape {
   switch (stored.type) {
     case "item/started":
-    case "item/completed": {
-      const upgraded = upgradeLegacyToolItem(stored.data.item);
+    case "item/completed":
+    case "item/backgroundTask/progress":
+    case "item/backgroundTask/completed": {
+      const upgraded = upgradeLegacyBackgroundTaskItem(
+        upgradeLegacyToolItem(stored.data.item),
+      );
       return upgraded === stored.data.item
         ? stored
         : { type: stored.type, data: { ...stored.data, item: upgraded } };
@@ -264,6 +268,17 @@ export function isLegacyDelegationToolCall(call: {
     call.presentation === undefined &&
     LEGACY_DELEGATION_TOOL_NAMES.has(legacyBaseToolName(call.tool))
   );
+}
+
+function upgradeLegacyBackgroundTaskItem(item: unknown): unknown {
+  if (
+    !isRecord(item) ||
+    item.type !== "backgroundTask" ||
+    item.foreground !== undefined
+  ) {
+    return item;
+  }
+  return { ...item, foreground: false };
 }
 
 export function upgradeLegacyToolItem(item: unknown): unknown {

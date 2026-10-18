@@ -83,6 +83,7 @@ function buildEmptyLoadedTimelineState(
   surfaceKey: string,
 ): LoadedTimelineState {
   return buildLoadedTimelineState({
+    historySnapshot: null,
     latestWindowEndSequence: null,
     latestRows: [],
     olderCursor: null,

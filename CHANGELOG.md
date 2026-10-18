@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.46.1
+
+Connect MCP clients to bb, install the bb CLI from Settings, search Settings, and answer child threads' questions without leaving the parent.
+
+### Highlights
+
+- **MCP server (Experimental):** the new MCP plugin lets MCP clients find and run bb commands over bb Connect, with OAuth sign-in through your bb account. Off by default; enable it in Settings → Plugins and manage access with `bb mcp clients` and `bb mcp revoke`.
+- **Install the bb CLI:** Settings → General → Command line can add `bb` to your PATH, and remove it again, so you can use it outside bb. Also available as `bb settings cli-command install`.
+- **Search Settings:** find pages, individual settings, and plugin settings from the Settings sidebar. Press **/** to focus the search.
+- **Child threads at a glance:** one banner lists waiting and working child threads, and you can answer their questions right there. The Info panel also lists a thread's child threads.
+- **New ACP adapter (Experimental):** an opt-in rebuilt adapter adds agent options in the model picker, live slash commands, agent questions, and the official ACP registry (`bb acp add <agent-id>`). Enable "ACP providers (new adapter)" in Settings → Plugins.
+
+### Improvements
+
+- **Agents:** turn Codex Daybreak on or off per thread from the model picker, pick OpenCode project agents from the mode menu, and keep the composer's service tier per provider. Pi finds nested and linked skills, and agents can transcribe audio attachments with `bb voice transcribe`.
+- **Desktop:** name and edit saved servers, see each bb Connect server once in the Server menu, and update desktop-hosted servers from Settings → Updates or the CLI. Updates now shows the hosting server's version.
+- **Sidebar and menus:** compact banners explain offline machines and plugin warnings, the thread menu is grouped by job, and clicking another thread while a menu is open goes straight to it.
+- **Files, terminal, and Browser:** HTML files open in bb's rendered preview by default, Ctrl+Shift+C copies the terminal selection, and Docs keeps raw HTML when saving. Browser pages survive server switches and go quiet on inactive servers.
+- **Mobile:** message queues start collapsed, and iOS downloads use the system download sheet.
+
+### Fixes
+
+- Fix scheduled follow-ups to pending threads, @ mentions of threads beyond the first 200, threads marked read too early, the reading position jumping while scrolling up, and toasts hidden beneath drawers.
+- Fix Pi on Windows, Pi turns after recovery, ACP agent cleanup and model lists when discovery fails, and Account Pooler sessions switching accounts before Claude's one-hour prompt cache expires.
+- Fix macOS update retries, a second server starting from duplicate launchers, path search on huge workspaces disconnecting the machine, and New thread overlapping the macOS window controls.
+
+### Plugins
+
+- The experimental `codeFenceRenderer` slot lets plugins render fenced code blocks by language; Inline Visualizations now uses it. Git marketplaces can keep `marketplace.json` in a subdirectory, plugins named with `[Experimental]` show a badge, and scoped plugin styles recalculate faster.
+
+### Thanks
+
+Thank you to [@ComicBit](https://github.com/ComicBit), [@MayankBansal12](https://github.com/MayankBansal12), [@alanagoyal](https://github.com/alanagoyal), [@ariofrio](https://github.com/ariofrio), [@dyc3](https://github.com/dyc3), and [@yteruel31](https://github.com/yteruel31) for contributions to this release.
+
 ## 0.46.0
 
 A new navigation rail, better thread search, reusable prompts, and more control over notifications and storage.

@@ -1,12 +1,14 @@
 import { MobileAppSection } from "@/components/settings/MobileAppSection";
+import { CliCommandSettingsSectionContent } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSectionContent } from "@/components/settings/CliSkillsSettingsSection";
 import { useEffect, useRef, useState } from "react";
 import { Route, Routes, useNavigate } from "react-router-dom";
 import {
   defaultAppTheme,
   defaultExperiments,
+  earlyAdopterExperiments,
   type AppTheme,
-  type Experiments,
+  type ExperimentUpdates,
   defaultAppSettings,
   type AppSettings,
 } from "@bb/domain";
@@ -15,8 +17,10 @@ import type {
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
+import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
+import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
@@ -124,6 +128,7 @@ function useSettingsStoryState() {
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
   const [keepHistoryAfterContextClear, setKeepHistoryAfterContextClear] =
     useState(false);
+  const [summarizeShellCommands, setSummarizeShellCommands] = useState(true);
   const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
@@ -135,13 +140,10 @@ function useSettingsStoryState() {
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
     useState<StoredTargetId>("default-app");
-  const [experiments, setExperiments] =
-    useState<Experiments>(defaultExperiments);
 
   return {
     appearance,
     directoryTargetId,
-    experiments,
     fileTargetId,
     managedBranchPrefix,
     navigateToThreadAfterCreate,
@@ -154,13 +156,14 @@ function useSettingsStoryState() {
     setConfirmThreadArchive,
     keepHistoryAfterContextClear,
     setKeepHistoryAfterContextClear,
+    summarizeShellCommands,
+    setSummarizeShellCommands,
     streamerMode,
     telemetryEnabled,
     setTelemetryEnabled,
     showDiagnosticEvents,
     setAppearance,
     setDirectoryTargetId,
-    setExperiments,
     setFileTargetId,
     setManagedBranchPrefix,
     setNavigateToThreadAfterCreate,
@@ -207,6 +210,8 @@ function GeneralSettingsStory({
         onKeepHistoryAfterContextClearChange={
           state.setKeepHistoryAfterContextClear
         }
+        summarizeShellCommands={state.summarizeShellCommands}
+        onSummarizeShellCommandsChange={state.setSummarizeShellCommands}
         desktopBrowserAvailable={desktopBrowserAvailable}
         generalSettingsDisabled={false}
         managedBranchPrefix={state.managedBranchPrefix}
@@ -222,6 +227,16 @@ function GeneralSettingsStory({
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
+      />
+      <CliCommandSettingsSectionContent
+        onChange={() => {}}
+        pending={false}
+        status={{
+          installedPath: null,
+          onPath: false,
+          shadowedBy: null,
+          supported: true,
+        }}
       />
       <CliSkillsSettingsSectionContent
         hasConnectedMachine={false}
@@ -280,29 +295,38 @@ function FilePreferencesStory() {
   }
 
   return (
-    <LocalOpenTargetSettingsSection
-      accessState="available"
-      directoryTargetId={state.directoryTargetId}
-      fileTargetId={state.fileTargetId}
-      hasDaemon={true}
-      onDirectoryTargetChange={handleDirectoryTargetChange}
-      onFileTargetChange={handleFileTargetChange}
-      onRequestAccess={async () => true}
-      targets={connectedTargets}
-    />
+    <>
+      <LocalOpenTargetSettingsSection
+        accessState="available"
+        directoryTargetId={state.directoryTargetId}
+        fileTargetId={state.fileTargetId}
+        hasDaemon={true}
+        onDirectoryTargetChange={handleDirectoryTargetChange}
+        onFileTargetChange={handleFileTargetChange}
+        onRequestAccess={async () => true}
+        targets={connectedTargets}
+      />
+      <FileOpenersSettingsSection />
+    </>
   );
 }
 
 function ExperimentsStory() {
-  const state = useSettingsStoryState();
+  const [earlyAdopter, setEarlyAdopter] = useState(false);
+  const [overrides, setOverrides] = useState<ExperimentUpdates>({});
 
   return (
     <ExperimentsSettingsSection
       disabled={false}
-      experiments={state.experiments}
+      earlyAdopter={earlyAdopter}
+      onEarlyAdopterChange={setEarlyAdopter}
+      experiments={{
+        ...(earlyAdopter ? earlyAdopterExperiments : defaultExperiments),
+        ...overrides,
+      }}
       performanceDiagnosticsAvailable={true}
       onExperimentChange={(key, enabled) =>
-        state.setExperiments((current) => ({ ...current, [key]: enabled }))
+        setOverrides((current) => ({ ...current, [key]: enabled }))
       }
     />
   );
@@ -347,6 +371,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
   switch (route.id) {
     case "providers":
       return <ProvidersSettingsStory />;
+    case "ai-services":
+      return <AiServicesSettingsSection />;
     case "appearance":
       return <AppearanceSettingsStory />;
     case "keyboard":

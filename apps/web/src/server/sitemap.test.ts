@@ -26,6 +26,7 @@ describe("sitemapXml", () => {
       "/changelog",
       "/plugin-guide",
       "/privacy",
+      "/brand",
       "/compare/a-b",
       "/marketplace",
       "/marketplace?category=thread-content",

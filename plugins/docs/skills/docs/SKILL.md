@@ -62,9 +62,11 @@ bb docs pull --all --vault personal --into ./docs-work
 
 Always edit the pulled files with ordinary workspace tools, then run `status`
 before `push`. The manifest in `.bb-docs-state.json` records stable vault paths
-and remote SHA-256 versions; do not edit it. Pull and push fail closed when both
-the local and vault copies changed. Resolve the content manually, then pull or
-push again. `push --dry-run --diff` previews without writing.
+and remote SHA-256 versions; do not edit it. Pull and push fail closed with
+exit 3 when both the local and vault copies changed. Resolve the content
+manually, then pull or push again. `push --dry-run --diff` previews without
+writing. Inside a thread the workspace is on the thread's host; a standalone
+CLI call targets the server machine unless it passes `--workspace-host <id>`.
 
 Local file and empty-directory deletions are ignored by default. Only use
 `push --delete` when the user explicitly asked to delete the corresponding
@@ -123,5 +125,13 @@ current file and proposal metadata to support this workflow.
 
 Return the usual `::docs` directive. The user can accept, reject, edit the
 candidate, or ask for further changes. Do not run `accept` on the user's behalf
-unless explicitly asked. Existing pull/edit/push remains available for direct
+unless explicitly asked.
+
+```sh
+bb docs proposal-update <path> --content <markdown> --version N [--vault <id>] [--json]
+bb docs accept|reject|undo|redo <path> --version N [--vault <id>] [--json]
+```
+
+`proposal-update` replaces only the pending candidate. The resolution commands
+perform the same actions as the card's buttons. Existing pull/edit/push remains available for direct
 changes the user requested without proposal review.

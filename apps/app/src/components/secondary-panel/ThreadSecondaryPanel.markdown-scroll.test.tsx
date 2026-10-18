@@ -46,8 +46,12 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
 const noop = () => {};
 
 function Harness({
+  panelStateId,
+  browserOnly = false,
   contentFillsRegion = false,
 }: {
+  panelStateId?: string;
+  browserOnly?: boolean;
   contentFillsRegion?: boolean;
 }) {
   const documents = ["reading.md", "short.md"].map((path) =>
@@ -68,7 +72,9 @@ function Harness({
   const [activeId, setActiveId] = useState(documents[0].id);
   const [closed, setClosed] = useState(false);
   const tabs: SecondaryPanelRenderableTab[] = documents
-    .filter((document) => !closed || document.path !== "reading.md")
+    .filter(
+      (document) => !browserOnly && (!closed || document.path !== "reading.md"),
+    )
     .map((document) => ({
       tab: document,
       contentFillsRegion,
@@ -126,6 +132,7 @@ function Harness({
       </button>
       <PanelGroup direction="horizontal">
         <ThreadSecondaryPanel
+          splitPanelStateId={panelStateId}
           activeTab={tabs.find((tab) => tab.tab.id === activeId)?.tab ?? null}
           canUseGitUi={false}
           fixedTabs={[]}
@@ -149,12 +156,12 @@ function Harness({
   );
 }
 
-function renderHarness(contentFillsRegion = false) {
+function renderHarness(props: Parameters<typeof Harness>[0] = {}) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
-  const content = () => (
+  const content = (nextProps = props) => (
     <Wrapper>
       <TooltipProvider>
-        <Harness contentFillsRegion={contentFillsRegion} />
+        <Harness {...nextProps} />
       </TooltipProvider>
     </Wrapper>
   );
@@ -175,6 +182,22 @@ function scrollTo(position: number) {
   fireEvent.scroll(scrollContainer());
 }
 
+function clampScrollTopToContent(container: HTMLElement) {
+  let scrollTop = 0;
+  const maxScrollTop = () =>
+    container.querySelector("a") === null ? 0 : Number.MAX_SAFE_INTEGER;
+  Object.defineProperty(container, "scrollTop", {
+    configurable: true,
+    get: () => {
+      scrollTop = Math.min(scrollTop, maxScrollTop());
+      return scrollTop;
+    },
+    set: (value: number) => {
+      scrollTop = Math.min(value, maxScrollTop());
+    },
+  });
+}
+
 function selectTab(name: string) {
   fireEvent.click(screen.getByRole("button", { name }));
 }
@@ -187,7 +210,7 @@ afterEach(() => {
 
 describe("Markdown reading position in open secondary-panel tabs", () => {
   it("provides a bounded scroll container inside a full-height file opener", () => {
-    renderHarness(true);
+    renderHarness({ contentFillsRegion: true });
     const container = scrollContainer();
     expect(container.classList.contains("overflow-y-auto")).toBe(true);
     expect(container.classList.contains("h-full")).toBe(true);
@@ -197,6 +220,36 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
     selectTab("reading.md");
     expect(scrollContainer().scrollTop).toBe(780);
   });
+
+  it.each(["different tabs", "shared tab ids", "panel remount"])(
+    "restores the originating thread after %s",
+    (transition) => {
+      const panelStateId = `reading-origin-${transition}`;
+      const harness = renderHarness({ panelStateId });
+      scrollTo(640);
+      if (transition === "panel remount") {
+        harness.unmount();
+        renderHarness({ panelStateId });
+      } else {
+        harness.rerender(
+          harness.content({
+            panelStateId: `reading-other-${transition}`,
+            browserOnly: transition === "different tabs",
+          }),
+        );
+        if (transition === "shared tab ids") {
+          expect(scrollContainer().scrollTop).toBe(0);
+          scrollTo(160);
+        } else {
+          expect(
+            document.querySelector("[data-file-preview-scroll-container]"),
+          ).toBeNull();
+        }
+        harness.rerender(harness.content());
+      }
+      expect(scrollContainer().scrollTop).toBe(640);
+    },
+  );
 
   it.each(["tab", "hyperlink"])(
     "retains position after leaving through a %s",
@@ -215,6 +268,7 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
 
   it("retains separate document positions when the outgoing layout clamps", () => {
     renderHarness();
+    clampScrollTopToContent(scrollContainer());
     scrollTo(780);
     selectTab("short.md");
     scrollTo(0);
@@ -239,11 +293,14 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
     expect(scrollContainer().scrollTop).toBe(780);
   });
 
-  it("forgets a closed document even when reopening uses the same tab id", () => {
-    renderHarness();
-    scrollTo(780);
-    fireEvent.click(screen.getByRole("button", { name: "Close document" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reopen document" }));
-    expect(scrollContainer().scrollTop).toBe(0);
-  });
+  it.each([undefined, "reading-close"])(
+    "forgets a closed document even when reopening uses the same tab id (%s)",
+    (panelStateId) => {
+      renderHarness({ panelStateId });
+      scrollTo(780);
+      fireEvent.click(screen.getByRole("button", { name: "Close document" }));
+      fireEvent.click(screen.getByRole("button", { name: "Reopen document" }));
+      expect(scrollContainer().scrollTop).toBe(0);
+    },
+  );
 });

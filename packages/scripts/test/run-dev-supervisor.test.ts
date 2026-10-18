@@ -17,11 +17,7 @@ import type {
   ProcessExitResult,
 } from "../src/lib/process-helpers.js";
 import type { WritePidFileRequest } from "../src/lib/pid-file.js";
-
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve(value: T): void;
-}
+import { createDeferredPromise } from "@bb/test-helpers";
 
 interface FakeRuntimeWaiter {
   predicate(): boolean;
@@ -54,23 +50,6 @@ interface CreateSupervisorOptionsArgs {
 }
 
 const SERVICE_NAME = "scripts-test-dev-supervisor";
-
-function createDeferred<T>(): Deferred<T> {
-  let resolvePromise: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
-    resolvePromise = resolve;
-  });
-
-  return {
-    promise,
-    resolve(value: T): void {
-      if (!resolvePromise) {
-        throw new Error("Deferred promise was not initialized");
-      }
-      resolvePromise(value);
-    },
-  };
-}
 
 function createUnexpectedExitPlan(runtimeMs: number): ExitingFakeChildPlan {
   return {
@@ -132,7 +111,7 @@ class FakeTimer implements DevSupervisorTimer {
 class FakeChildProcess implements DevSupervisorChildProcess {
   exitCode: number | null = null;
   signalCode: NodeJS.Signals | null = null;
-  private readonly exitDeferred = createDeferred<ProcessExitResult>();
+  private readonly exitDeferred = createDeferredPromise<ProcessExitResult>();
 
   constructor(
     private readonly runtime: FakeDevSupervisorRuntime,
@@ -308,7 +287,7 @@ class FakeDevSupervisorRuntime implements DevSupervisorRuntime {
       return Promise.resolve();
     }
 
-    const deferred = createDeferred<void>();
+    const deferred = createDeferredPromise<void>();
     this.waiters.push({
       predicate,
       resolve: () => {

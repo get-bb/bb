@@ -20,6 +20,18 @@ export interface AcpNativeReasoningSupport {
   defaultReasoningEffort: ReasoningLevel;
 }
 
+export interface AcpNativeModelSupport extends AcpNativeReasoningSupport {
+  supportedServiceTiers: NonNullable<AvailableModel["supportedServiceTiers"]>;
+}
+
+export function findAcpFastConfigOption(
+  configOptions: readonly AcpConfigOption[] | undefined,
+): AcpConfigOption | undefined {
+  return (configOptions ?? []).find(
+    (option) => option.id === "fast" && option.type === "select",
+  );
+}
+
 interface AgentModelVariant extends RawAgentModel {
   effort: ReasoningLevel;
   effortToken: string | undefined;
@@ -204,7 +216,7 @@ export function buildAcpNativeReasoningSupport(
 
 export function buildModelCatalogFromConfigOptions(
   modelOption: AcpConfigOption | undefined,
-  reasoningByModel?: ReadonlyMap<string, AcpNativeReasoningSupport>,
+  supportByModel?: ReadonlyMap<string, AcpNativeModelSupport>,
 ): AvailableModel[] {
   const options = modelOption?.options ?? [];
   if (options.length === 0) {
@@ -214,7 +226,7 @@ export function buildModelCatalogFromConfigOptions(
   const models = options.map((option, index): AvailableModel => {
     const isDefault =
       currentValue !== undefined ? option.value === currentValue : index === 0;
-    const reasoning = reasoningByModel?.get(option.value) ?? {
+    const reasoning = supportByModel?.get(option.value) ?? {
       supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
       defaultReasoningEffort: "medium" as ReasoningLevel,
     };
@@ -225,6 +237,8 @@ export function buildModelCatalogFromConfigOptions(
       description: "",
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
       defaultReasoningEffort: reasoning.defaultReasoningEffort,
+      supportedServiceTiers:
+        supportByModel?.get(option.value)?.supportedServiceTiers ?? [],
       isDefault,
     };
   });
@@ -255,6 +269,7 @@ export function buildModelCatalogFromSessionModels(
       description: model.description ?? "",
       supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
       defaultReasoningEffort: "medium",
+      supportedServiceTiers: [],
       isDefault,
     };
   });

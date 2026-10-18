@@ -36,16 +36,20 @@ import {
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import {
-  useWindowRightPanel,
-  useWindowTitleBarHostsRightPanelToggle,
-} from "@/components/layout/WindowRightPanelToggle";
-import {
   getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "@/components/secondary-panel/panelTransitionTokens";
-import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import {
+  getBbDesktopInfo,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import { usePanelResizeSnap } from "@/components/secondary-panel/usePanelResizeSnap";
 import {
@@ -150,9 +154,9 @@ export function SplitWorkspaceSecondaryPanelHost({
     toggleWindowPanel();
     return true;
   });
-  useWindowRightPanel({ isOpen, enabled: model === null });
-  const titleBarHostsRightPanelToggle =
-    useWindowTitleBarHostsRightPanelToggle();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isSidebarFramed = useIsSidebarFramed();
 
   const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
@@ -184,10 +188,7 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   const toggleIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
-  const showsCornerToggle =
-    !titleBarHostsRightPanelToggle &&
-    !isPaneMaximized &&
-    !(isOpen && model !== null);
+  const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
   const pinsCornerToggle = showsCornerToggle && !isOpen;
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
     () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),
@@ -207,6 +208,12 @@ export function SplitWorkspaceSecondaryPanelHost({
             "absolute right-4 top-2.5 z-40",
             !showsCornerToggle && "hidden",
             MACOS_APP_REGION_NO_DRAG_CLASS,
+            usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
+            usesDesktopChrome && [
+              "flex h-7 items-center",
+              MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+            ],
+            isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
           )}
         >
           <AppCommandShortcutHint
@@ -272,7 +279,8 @@ export function SplitWorkspaceSecondaryPanelHost({
                   hitAreaMargins={{ coarse: 0, fine: 0 }}
                   tabIndex={-1}
                   className={cn(
-                    "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
+                    "relative shrink-0 overflow-visible transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
+                    isSidebarFramed ? "bg-border" : "bg-border-seam",
                     PANEL_RESIZE_HANDLE_LAYER_CLASS,
                     PANEL_COLLAPSE_TRANSITION_CLASS,
                     isOpen

@@ -4,6 +4,10 @@ import { join } from "node:path";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  MACOS_TRAFFIC_LIGHT_INSET_PX,
+  MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
+} from "@bb/desktop-contract";
+import {
   createDesktopWindowFactory,
   type DesktopBrowserWindow,
   type DesktopBrowserWindowCreator,
@@ -327,8 +331,8 @@ describe("desktop window factory", () => {
       true,
     ]);
     expect(createdWindows[0]?.options.trafficLightPosition).toEqual({
-      x: 18,
-      y: 18,
+      x: MACOS_TRAFFIC_LIGHT_INSET_PX,
+      y: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
     });
     expect(createdWindows[0]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(createdWindows[1]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);

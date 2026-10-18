@@ -76,7 +76,7 @@ import {
 } from "@bb/shared-ui/confirm-delete-dialog";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
-import { OverflowFade } from "@/components/ui/overflow-fade";
+import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateAppUpdateStatus } from "@/hooks/cache-owners/app-update-cache-owner";
@@ -930,7 +930,11 @@ export function BbAppUpdateRows({
     return row(name, settledStatus);
   }
 
-  if (appUpdate !== undefined && appUpdate.support.kind === "supported") {
+  if (
+    appUpdate !== undefined &&
+    (appUpdate.support.kind === "supported" ||
+      appUpdate.desktopUpdateSupported === true)
+  ) {
     return (
       <InAppUpdateRow
         name={rowName}
@@ -973,11 +977,14 @@ export function BbAppUpdateRows({
     );
   }
 
+  const desktopHostedServer =
+    systemVersion.installKind === "desktop" ||
+    (appUpdate !== undefined && isDesktopOwnedServer(appUpdate));
   const name = (
     <RowName
       name={rowName}
       detail={
-        systemVersion.updateAvailable ? (
+        systemVersion.updateAvailable && !desktopHostedServer ? (
           <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
             {systemVersion.upgradeCommand}
           </span>
@@ -991,6 +998,9 @@ export function BbAppUpdateRows({
   );
 
   if (systemVersion.updateAvailable) {
+    if (desktopHostedServer) {
+      return row(name, <RowStateControl state="update-available" />);
+    }
     return row(
       name,
       <RowStateControl
@@ -1114,8 +1124,8 @@ function InAppUpdateRow({
   if (status.blocked !== null) {
     return row(
       name,
-      status.support.kind === "supported" &&
-        status.support.mode === "npm" &&
+      ((status.support.kind === "supported" && status.support.mode === "npm") ||
+        status.desktopUpdateSupported === true) &&
         status.blocked.reason === "fetch-failed"
         ? unavailableCheckControl
         : null,
@@ -2043,20 +2053,22 @@ export function UpdatesSettingsSection({
 
   function handleCheckForUpdates(): void {
     startAppUpdateCheck(async () => {
-      const [appCheck, appUpdateCheck] = await Promise.allSettled([
-        desktopApi !== null
-          ? desktopApi.checkForUpdates().then(() => null)
-          : sdk.system.version({ force: true }),
-        sdk.system.appUpdate({ force: true }),
-      ]);
+      const [appCheck, appUpdateCheck, desktopCheck] = await Promise.allSettled(
+        [
+          sdk.system.version({ force: true }),
+          sdk.system.appUpdate({ force: true }),
+          desktopApi?.checkForUpdates(),
+        ],
+      );
       if (appUpdateCheck.status === "fulfilled") {
         hydrateAppUpdateStatus({ queryClient, status: appUpdateCheck.value });
       }
       if (appCheck.status === "rejected") {
         throw appCheck.reason;
       }
-      if (appCheck.value !== null) {
-        hydrateSystemVersionCache({ queryClient, version: appCheck.value });
+      hydrateSystemVersionCache({ queryClient, version: appCheck.value });
+      if (desktopCheck.status === "rejected") {
+        throw desktopCheck.reason;
       }
       await Promise.all(
         connectedHostIds.map((hostId) =>
@@ -2081,7 +2093,8 @@ export function UpdatesSettingsSection({
     desktopInfo?.updateAvailable === true ||
     inventory.systemVersion?.updateAvailable === true ||
     inventory.appUpdateAvailable ||
-    (appUpdate?.support.kind === "supported" &&
+    ((appUpdate?.support.kind === "supported" ||
+      appUpdate?.desktopUpdateSupported === true) &&
       (appUpdate.available !== null ||
         appUpdate.activity.phase !== "idle" ||
         pendingAppUpdateResult(appUpdate) !== null));
@@ -2095,7 +2108,13 @@ export function UpdatesSettingsSection({
     (machine) => visibleProviderUpdateIssues(machine).length > 0,
   );
   const serverRunsSeparately =
-    isDesktop && appUpdate !== undefined && !isDesktopOwnedServer(appUpdate);
+    isDesktop &&
+    !(
+      appUpdate !== undefined &&
+      isDesktopOwnedServer(appUpdate) &&
+      localDaemonHostId !== null &&
+      localDaemonHostId === serverPrimaryHostId
+    );
   const hasUpdateWork =
     appUpdateVisible || hasProviderUpdates || hasStalledMachine;
   const fleetIsHealthy = relevantFleetMachines.length === 0;
@@ -2122,36 +2141,22 @@ export function UpdatesSettingsSection({
             });
           });
         };
-  const appRow = (
-    <BbAppUpdateRows
-      name={isDesktop ? "Desktop" : "Server"}
-      systemVersion={inventory.systemVersion}
-      appUpdate={desktopInfo === null ? appUpdate : undefined}
-      applyPending={applyAppUpdate.isPending}
-      desktopInfo={desktopInfo}
-      isDesktop={isDesktop}
-      isChecking={isChecking}
-      onApplyAppUpdate={startAppUpdate}
-      onRetryAppCheck={handleCheckForUpdates}
-      onShowAppUpdateResult={openAppUpdateResultDetails}
-      onRelaunchDesktop={relaunchDesktop}
-      onRetryDesktop={retryDesktop}
-    />
-  );
+  const useServerUpdate =
+    serverRunsSeparately || appUpdate?.desktopUpdateSupported === true;
   const serverAppRow = (
     <BbAppUpdateRows
       name="Server"
       systemVersion={inventory.systemVersion}
-      appUpdate={appUpdate}
+      appUpdate={useServerUpdate || desktopInfo === null ? appUpdate : undefined}
       applyPending={applyAppUpdate.isPending}
-      desktopInfo={null}
-      isDesktop={false}
+      desktopInfo={useServerUpdate ? null : desktopInfo}
+      isDesktop={!useServerUpdate && isDesktop}
       isChecking={isChecking}
       onApplyAppUpdate={startAppUpdate}
       onRetryAppCheck={handleCheckForUpdates}
       onShowAppUpdateResult={openAppUpdateResultDetails}
-      onRelaunchDesktop={null}
-      onRetryDesktop={null}
+      onRelaunchDesktop={useServerUpdate ? null : relaunchDesktop}
+      onRetryDesktop={useServerUpdate ? null : retryDesktop}
     />
   );
   const desktopClientRow = (
@@ -2192,7 +2197,7 @@ export function UpdatesSettingsSection({
       {showChangelogPreview ? <ChangelogPreviewCard /> : null}
 
       <BbUpdatesCard>
-        {serverRunsSeparately ? serverAppRow : appRow}
+        {serverAppRow}
         {serverRunsSeparately && desktopRowNeedsAttention(desktopInfo)
           ? desktopClientRow
           : null}

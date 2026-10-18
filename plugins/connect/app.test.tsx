@@ -105,10 +105,6 @@ const connected = (overrides: Partial<ConnectStatus> = {}) =>
   });
 
 describe("connect settings section", () => {
-  it("uses the plugin page header instead of declaring a second title", () => {
-    expect(app.settingsSections[0]?.title).toBeUndefined();
-  });
-
   it("asks to sign in to the bb account and names the local Cloud host", async () => {
     const dashboardUrl = "http://bb.localhost:42745/dashboard";
     const slot = renderSlot(

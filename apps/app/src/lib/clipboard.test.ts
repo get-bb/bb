@@ -63,8 +63,12 @@ describe("copyToClipboard", () => {
   it("writes through the desktop clipboard before the browser APIs", async () => {
     const writeClipboard = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("bbDesktop", { writeClipboard });
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    installClipboard(writeText);
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+    vi.stubGlobal("ClipboardItem", class {});
     const editingCopy = installEditingCommand(() => true);
 
     await expect(
@@ -75,7 +79,7 @@ describe("copyToClipboard", () => {
       text: "link",
       html: "<a>link</a>",
     });
-    expect(writeText).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
     expect(editingCopy).not.toHaveBeenCalled();
   });
 
@@ -124,9 +128,7 @@ describe("copyToClipboard", () => {
 
     expect(write).toHaveBeenCalledOnce();
     await expect(items[0]?.["text/plain"]?.text()).resolves.toBe("plain");
-    await expect(items[0]?.["text/html"]?.text()).resolves.toBe(
-      "<b>rich</b>",
-    );
+    await expect(items[0]?.["text/html"]?.text()).resolves.toBe("<b>rich</b>");
   });
 
   it.each([

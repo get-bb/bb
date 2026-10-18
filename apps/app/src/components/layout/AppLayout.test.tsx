@@ -123,6 +123,9 @@ vi.mock("@/lib/bb-desktop", () => ({
   DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   MACOS_CHROME_CONTROL_AXIS_CLASS: "",
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS: "",
+  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS: "",
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS: "",
+  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS: "",
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS: "",
   MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS: "",
   MACOS_WINDOW_DRAG_CLASS: "",
@@ -172,6 +175,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
+  useArchivedThreads: () => ({ data: undefined }),
   didThreadDetailBootstrapRefreshAfterMount: () => true,
   useThread: () => ({ data: undefined }),
   useThreadDetailBootstrap: useThreadDetailBootstrapMock,

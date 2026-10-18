@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { makeTempDir } from "@bb/test-helpers";
 import {
   parseTarget,
   readRunningSupervisorPid,
@@ -19,24 +20,12 @@ import {
   expectedDevPorts,
 } from "./dev-instance-expectations.js";
 
-const tempDirs: string[] = [];
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "..", "..", "..");
 
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 describe("request-dev-restart", () => {

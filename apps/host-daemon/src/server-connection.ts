@@ -681,6 +681,11 @@ export class ServerConnection {
       return;
     }
 
+    if (message.data.type === "host-rpc.cancel") {
+      this.options.onHostRpcCancel?.(message.data);
+      return;
+    }
+
     if (message.data.type === "watch-set.replace") {
       const watchSetMessage = message.data;
       void Promise.resolve(

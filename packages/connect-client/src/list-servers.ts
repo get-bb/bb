@@ -24,28 +24,20 @@ export type ListAccountServersResult = {
   selfHandle: string;
 };
 
-function withAccountServerUrls(
-  servers: AccountServer[],
-  credential: ConnectCredential,
-): AccountServerWithUrl[] {
-  const base = deriveConnectBaseUrl(credential.serverUrl);
-  return servers.map((server) => ({
-    ...server,
-    url: serverUrlForHandle(base, server.handle),
-  }));
-}
+export type ConnectAccountSession = {
+  serverUrl: string;
+  cookie: { name: string; value: string };
+};
 
 async function fetchAccountServers(
-  credential: ConnectCredential,
-  fetchImpl: typeof fetch = globalThis.fetch,
-): Promise<AccountServer[]> {
-  const url = `${credential.serverUrl.replace(/\/$/, "")}/api/connect/servers`;
+  serverUrl: string,
+  headers: Record<string, string>,
+  fetchImpl: typeof fetch,
+): Promise<AccountServerWithUrl[]> {
+  const url = `${serverUrl.replace(/\/$/, "")}/api/connect/servers`;
   let res: Response;
   try {
-    res = await fetchImpl(url, {
-      method: "GET",
-      headers: { "x-bb-connect-machine": credential.credential },
-    });
+    res = await fetchImpl(url, { method: "GET", headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new ConnectListError("network", message);
@@ -81,16 +73,32 @@ async function fetchAccountServers(
       "List servers response failed schema validation",
     );
   }
-  return parsed.data.servers;
+  const base = deriveConnectBaseUrl(serverUrl);
+  return parsed.data.servers.map((server) => ({
+    ...server,
+    url: serverUrlForHandle(base, server.handle),
+  }));
 }
 
 export async function listAccountServers(
   credential: ConnectCredential,
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<ListAccountServersResult> {
-  const servers = withAccountServerUrls(
-    await fetchAccountServers(credential, fetchImpl),
-    credential,
+  const servers = await fetchAccountServers(
+    credential.serverUrl,
+    { "x-bb-connect-machine": credential.credential },
+    fetchImpl,
   );
   return { servers, selfHandle: credential.handle };
+}
+
+export function listAccountServersWithSession(
+  session: ConnectAccountSession,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<AccountServerWithUrl[]> {
+  return fetchAccountServers(
+    session.serverUrl,
+    { cookie: `${session.cookie.name}=${session.cookie.value}` },
+    fetchImpl,
+  );
 }

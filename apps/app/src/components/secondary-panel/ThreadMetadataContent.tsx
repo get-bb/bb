@@ -9,7 +9,10 @@ import {
 } from "react";
 import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
-import { ForksSection } from "./info/RelatedThreadsSection";
+import {
+  ForksSection,
+  ChildThreadsSection,
+} from "./info/RelatedThreadsSection";
 import {
   ThreadStorageSection,
   type ThreadStorageSectionProps,
@@ -20,6 +23,7 @@ import type {
   GitBranchRefClassification,
   Thread,
   ThreadListEntry,
+  ThreadParentNotifications,
   ThreadPullRequest,
   WorkspaceStatus,
 } from "@bb/domain";
@@ -62,7 +66,14 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
-import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
+import {
+  useUnarchiveThread,
+  useUpdateThread,
+} from "../../hooks/mutations/thread-state-mutations";
+import {
+  OptionPicker,
+  type PickerOption,
+} from "@/components/pickers/OptionPicker";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -187,6 +198,55 @@ export function ParentSelectorRow({
           defaultOpen={defaultOpen}
         />
       )}
+    </DetailRow>
+  );
+}
+
+const PARENT_NOTIFICATIONS_OPTIONS: readonly PickerOption<ThreadParentNotifications>[] =
+  [
+    {
+      value: "auto",
+      label: "Auto",
+      description: "Every finished turn, failure, and blocker",
+    },
+    {
+      value: "stuck",
+      label: "When stuck",
+      description: "Only failures, interruptions, and blockers",
+    },
+    { value: "off", label: "Off", description: "Never" },
+  ];
+
+interface ParentNotificationsRowProps {
+  thread: Thread;
+}
+
+export function ParentNotificationsRow({
+  thread,
+}: ParentNotificationsRowProps) {
+  const updateThread = useUpdateThread({
+    errorMessage: "Failed to change parent notifications.",
+  });
+  if (thread.parentThreadId === null) return null;
+  return (
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="BellDot">Notify parent</DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
+      <OptionPicker
+        label="Notify parent"
+        value={thread.parentNotifications}
+        options={PARENT_NOTIFICATIONS_OPTIONS}
+        className="-mx-1 h-5 rounded-sm font-normal text-foreground hover:bg-state-hover data-[state=open]:bg-state-hover"
+        caretClassName="size-3"
+        disabled={updateThread.isPending}
+        showChevronWhenDisabled
+        onChange={(parentNotifications) => {
+          updateThread.mutate({ id: thread.id, parentNotifications });
+        }}
+      />
     </DetailRow>
   );
 }
@@ -939,6 +999,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             onParentSelectorOpenChange={onParentSelectorOpenChange}
             onRetryParentThreads={onRetryParentThreads}
           />
+          <ParentNotificationsRow thread={thread} />
           <ProjectRow projectId={projectId} />
           <EnvironmentRow
             thread={thread}
@@ -979,6 +1040,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
           <PullRequestRow pullRequest={pullRequest} />
           <ArchivedRow thread={thread} />
         </div>
+        <ChildThreadsSection thread={thread} />
         <ForksSection thread={thread} />
         {isHostActive ? (
           <>

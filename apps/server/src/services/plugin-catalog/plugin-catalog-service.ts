@@ -138,7 +138,10 @@ export interface PluginCatalogService {
     entryId: string,
   ): Promise<PluginCatalogIcon | undefined>;
   listMarketplaces(): PluginMarketplace[];
-  addMarketplace(source: string): Promise<PluginMarketplace>;
+  addMarketplace(input: {
+    source: string;
+    subdirectory: string | null;
+  }): Promise<PluginMarketplace>;
   removeMarketplace(name: string): Promise<{ convertedPluginIds: string[] }>;
   startPeriodicRefresh(): void;
   stopPeriodicRefresh(): void;
@@ -209,6 +212,7 @@ export function createPluginCatalogService(deps: {
       sourceKind: "path",
       manifestUrl: bundled.directory,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       manifestJson: bundled.manifestJson,
       statsJson: null,
@@ -245,6 +249,7 @@ export function createPluginCatalogService(deps: {
             sourceKind: "https",
             manifestUrl: curatedManifestUrls.primary,
             sourceGitRef: null,
+            sourceGitSubdirectory: null,
             sourceGitCommit: null,
             manifestJson: existing.manifestJson,
             statsJson: existing.statsJson,
@@ -267,6 +272,7 @@ export function createPluginCatalogService(deps: {
       sourceKind: "https",
       manifestUrl: curatedManifestUrls.primary,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
       statsJson: existing?.statsJson ?? null,
@@ -310,6 +316,7 @@ export function createPluginCatalogService(deps: {
       official: isReservedMarketplace(row.name),
       sourceKind: row.sourceKind,
       source: marketplaceSourceDisplay(marketplaceSourceFromRow(row)),
+      subdirectory: row.sourceGitSubdirectory,
       resolvedCommit: row.sourceGitCommit,
       entryCount: catalog?.plugins.length ?? 0,
       lastRefreshAt: row.lastSuccessfulRefreshAt,
@@ -1018,9 +1025,9 @@ export function createPluginCatalogService(deps: {
       return [...reservedCollections.categories];
     },
 
-    async addMarketplace(rawSource) {
+    async addMarketplace(input) {
       return withLock(ADD_LOCK_KEY, async () => {
-        const source = parseMarketplaceSource(rawSource);
+        const source = parseMarketplaceSource(input.source, input.subdirectory);
         if (source.kind === "git") await prepareMarketplaceStaging();
         const materialized = await materializeMarketplace({
           source,

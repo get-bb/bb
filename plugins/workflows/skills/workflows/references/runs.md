@@ -106,6 +106,20 @@ so no parent notification applies; a hidden thread that does have a parent
 still reports its turns and blockers to it. Workflows does not create a
 temporary Workflow folder.
 
+## Settings
+
+Change limits with `bb plugin config workflows set <key> <value>`; no plugin
+reload is needed.
+
+| Key                    | Default  | Range           |
+| ---------------------- | -------- | --------------- |
+| `maxActiveRuns`        | 4        | 1–32            |
+| `maxConcurrentAgents`  | 8        | 1–64            |
+| `maxAgentCalls`        | 100      | 1–1000          |
+| `totalRunTimeoutMs`    | 86400000 | 60000–604800000 |
+| `retentionDays`        | 7        | 1–3650          |
+| `maxNotificationBytes` | 16384    | 1024–262144     |
+
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent
 concurrency and call count, total run timeout, retention, and UTF-8
 completion-message size are snapshotted per run. `status` is bounded

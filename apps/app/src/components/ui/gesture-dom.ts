@@ -1,3 +1,11 @@
+import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
+
+const BROWSER_NAVIGATION_EDGE_PX = 24;
+
+export function browserNavigationEdgeGuardPx(): number {
+  return isInsideNativeShell() ? 0 : BROWSER_NAVIGATION_EDGE_PX;
+}
+
 export function findTouchById(touches: TouchList, id: number): Touch | null {
   for (let index = 0; index < touches.length; index += 1) {
     const touch = touches.item(index);

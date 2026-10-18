@@ -24,7 +24,6 @@ import {
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
 import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
-import { useCreateProject } from "@/hooks/mutations/project-mutations";
 import {
   useHostDiscoveredRepos,
   useHosts,
@@ -88,6 +87,11 @@ import {
   shortRemoteName,
   type OnboardingStepId,
 } from "./onboarding-model";
+import {
+  recordTelemetryEvent,
+  type OnboardingEntry,
+} from "./onboarding-telemetry";
+import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 
 const SIGN_IN_POLL_INTERVAL_MS = 3_000;
 const SIGN_IN_TERMINAL_COLS = 200;
@@ -251,11 +255,13 @@ interface SignInSession {
 
 function AgentStepContainer({
   chrome,
+  entry,
   hostId,
   hostName,
   onContinue,
 }: {
   chrome: StepChrome;
+  entry: OnboardingEntry;
   hostId: string | null;
   hostName: string | null;
   onContinue: () => void;
@@ -281,14 +287,21 @@ function AgentStepContainer({
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
 
-  const endSignIn = useCallback(() => {
-    const current = signInRef.current;
-    if (current === null) return;
-    signInRef.current = null;
-    setSignIn(null);
-    closeTerminalMutate({ mode: "force", terminalId: current.session.id });
-    void refetchStates();
-  }, [closeTerminalMutate, refetchStates]);
+  const endSignIn = useCallback(
+    (outcome: "ready" | "exited" | "failed" | "cancelled" = "cancelled") => {
+      const current = signInRef.current;
+      if (current === null) return;
+      signInRef.current = null;
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome },
+      });
+      setSignIn(null);
+      closeTerminalMutate({ mode: "force", terminalId: current.session.id });
+      void refetchStates();
+    },
+    [closeTerminalMutate, entry, refetchStates],
+  );
 
   const signInRequestRef = useRef(0);
   useEffect(
@@ -305,7 +318,7 @@ function AgentStepContainer({
       if (current !== null && exitCode !== 0) {
         setSignInFailedProviderId(current.providerId);
       }
-      endSignIn();
+      endSignIn(exitCode === 0 ? "exited" : "failed");
     },
     [endSignIn],
   );
@@ -325,7 +338,7 @@ function AgentStepContainer({
     states?.find((state) => state.providerId === signingInProviderId)
       ?.status === "ready";
   useEffect(() => {
-    if (signingInProviderReady) endSignIn();
+    if (signingInProviderReady) endSignIn("ready");
   }, [endSignIn, signingInProviderReady]);
 
   const { runningJobKey } = installRunner;
@@ -347,6 +360,10 @@ function AgentStepContainer({
     setSignInFailedProviderId(null);
     signInRequestRef.current += 1;
     const request = signInRequestRef.current;
+    recordTelemetryEvent({
+      name: "onboarding_sign_in",
+      properties: { entry, outcome: "started" },
+    });
     const title = `Sign in to ${state.displayName}`;
     await closeAbandonedSignInTerminals({ hostId, title });
     let session: TerminalSession;
@@ -359,9 +376,17 @@ function AgentStepContainer({
         target: { kind: "host_path", hostId, cwd: null },
       });
     } catch {
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome: "failed" },
+      });
       return;
     }
     if (signInRequestRef.current !== request) {
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome: "cancelled" },
+      });
       void sdk.terminals
         .close({ mode: "force", terminalId: session.id })
         .catch(() => null);
@@ -474,7 +499,7 @@ function AgentStepContainer({
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={startInstall}
         onViewInstallLog={viewInstallLog}
-        onCancelSignIn={endSignIn}
+        onCancelSignIn={() => endSignIn()}
         onRecheck={() => {
           void refetchStates();
           void cliStatusQuery.refetch();
@@ -486,27 +511,34 @@ function AgentStepContainer({
 
 function ProjectsStepContainer({
   chrome,
+  entry,
   hostId,
   projectIdsAtOpen,
   onBack,
   onContinue,
+  onSkip,
 }: {
   chrome: StepChrome;
+  entry: OnboardingEntry;
   hostId: string | null;
   projectIdsAtOpen: ReadonlySet<string> | null;
   onBack: () => void;
   onContinue: () => void;
+  onSkip: () => void;
 }) {
   const reposQuery = useHostDiscoveredRepos(hostId);
-  const createProject = useCreateProject();
   const quickCreateProject = useQuickCreateProjectController();
   const navigationQuery = useSidebarNavigation();
   const [selection, setSelection] = useState<ReadonlySet<string> | null>(null);
-  const [importing, setImporting] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const [now] = useState(() => Date.now());
 
   const { refetch: refetchRepos } = reposQuery;
+  const { importing, importProjects } = useOnboardingProjectImport({
+    entry,
+    onContinue,
+    onSettled: () => void refetchRepos(),
+  });
   const navigationProjects = navigationQuery.data?.projects;
   const hostProjects = useMemo(
     () =>
@@ -581,26 +613,12 @@ function ProjectsStepContainer({
     ];
   }, [discovered, hostProjects, now, projectIdsAtOpen]);
 
-  const importSelected = async () => {
+  const importSelected = () => {
     if (hostId === null || discovered === undefined) return;
     const chosen = discovered.filter(
       (repo) => repo.projectId === null && selectedPaths.has(repo.path),
     );
-    setImporting(true);
-    try {
-      for (const repo of chosen) {
-        await createProject.mutateAsync({
-          name: repo.name,
-          source: { type: "local_path", hostId, path: repo.path },
-        });
-      }
-    } catch {
-      return;
-    } finally {
-      setImporting(false);
-      void refetchRepos();
-    }
-    onContinue();
+    void importProjects(hostId, chosen);
   };
 
   const scanning = hostId === null || reposQuery.isPending || rescanning;
@@ -622,7 +640,7 @@ function ProjectsStepContainer({
         if (selectedPaths.size === 0) onContinue();
         else void importSelected();
       }}
-      onSecondary={onContinue}
+      onSecondary={onSkip}
       onBack={onBack}
     >
       <ProjectsStep
@@ -753,10 +771,12 @@ function PluginsStepContainer({
   chrome,
   onBack,
   onContinue,
+  onSkip,
 }: {
   chrome: StepChrome;
   onBack: () => void;
   onContinue: () => void;
+  onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const listQuery = usePluginList({ enabled: true });
@@ -794,7 +814,7 @@ function PluginsStepContainer({
       primaryLabel="Continue"
       secondaryLabel="Skip"
       onPrimary={onContinue}
-      onSecondary={onContinue}
+      onSecondary={onSkip}
       onBack={onBack}
     >
       <OnboardingPluginGrid compact={chrome.compact}>
@@ -826,11 +846,13 @@ function DevicesStepContainer({
   hostId,
   onBack,
   onFinish,
+  onLeave,
 }: {
   chrome: StepChrome;
   hostId: string | null;
   onBack: () => void;
   onFinish: () => void;
+  onLeave: () => void;
 }) {
   const configQuery = useSystemConfig();
   const hostsQuery = useHosts();
@@ -840,8 +862,8 @@ function DevicesStepContainer({
   const [initialPathname] = useState(location.pathname);
   const navigatedAway = location.pathname !== initialPathname;
   useEffect(() => {
-    if (navigatedAway) onFinish();
-  }, [navigatedAway, onFinish]);
+    if (navigatedAway) onLeave();
+  }, [navigatedAway, onLeave]);
   const otherMachineCount = (hostsQuery.data ?? []).filter(
     (host) => host.id !== hostId,
   ).length;
@@ -883,9 +905,11 @@ const STEP_ORDER: readonly OnboardingStepId[] = [
 
 export function OnboardingFlow({
   initialStep,
+  entry,
   onClose,
 }: {
   initialStep: OnboardingStepId;
+  entry: OnboardingEntry;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(initialStep);
@@ -900,6 +924,82 @@ export function OnboardingFlow({
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
   useHostDiscoveredRepos(hostId);
+  const agentStatesQuery = useSystemProviderStates({
+    enabled: hostId !== null,
+    poll: false,
+    ...(hostId === null ? {} : { hostId }),
+  });
+  const agentStates = agentStatesQuery.data?.providers;
+  const agentStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (agentStates === undefined && !agentStatesQuery.isError) return;
+    const knownStates = agentStatesQuery.isError ? undefined : agentStates;
+    const hasUnknown =
+      knownStates?.some((state) => state.status === "unknown") ?? true;
+    const installed =
+      knownStates?.some(
+        (state) =>
+          state.status !== "not_installed" && state.status !== "unknown",
+      ) ?? false;
+    const properties = {
+      entry,
+      agent_installed: installed ? true : hasUnknown ? null : false,
+      agent_ready: hasReadyAgent(knownStates)
+        ? true
+        : hasUnknown
+          ? null
+          : false,
+    };
+    const key = JSON.stringify(properties);
+    if (agentStateRef.current === key) return;
+    agentStateRef.current = key;
+    recordTelemetryEvent({ name: "onboarding_agent_state", properties });
+  }, [agentStates, agentStatesQuery.isError, entry]);
+  const startReportedRef = useRef(entry !== "first_run");
+  useEffect(() => {
+    if (startReportedRef.current || agentStates === undefined) return;
+    startReportedRef.current = true;
+    recordTelemetryEvent({
+      name: "onboarding_started",
+      properties: {
+        agent_installed: agentStates.some(
+          (state) =>
+            state.status !== "not_installed" && state.status !== "unknown",
+        ),
+        agent_ready: hasReadyAgent(agentStates),
+      },
+    });
+  }, [agentStates]);
+  const reachedStepsRef = useRef(new Set<OnboardingStepId>());
+  useEffect(() => {
+    if (reachedStepsRef.current.has(step)) return;
+    reachedStepsRef.current.add(step);
+    recordTelemetryEvent({
+      name: "onboarding_step_reached",
+      properties: { step, entry },
+    });
+  }, [entry, step]);
+  const finishedRef = useRef(false);
+  const close = (outcome: "completed" | "skipped") => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    if (outcome === "skipped") {
+      recordTelemetryEvent({
+        name: "onboarding_step_skipped",
+        properties: { step, entry },
+      });
+    } else {
+      recordTelemetryEvent({
+        name: "onboarding_step_completed",
+        properties: { step, entry },
+      });
+    }
+    recordTelemetryEvent({
+      name: "onboarding_finished",
+      properties: { outcome, entry, last_step: step },
+    });
+    onClose();
+  };
   const compact = useMediaQuery("(max-width: 640px)");
   const [desktopInfo] = useState(getBbDesktopInfo);
   const windowState = useDesktopWindowState();
@@ -910,11 +1010,21 @@ export function OnboardingFlow({
       windowState,
     }),
     onSelectStep: setStep,
-    onSkipAll: onClose,
+    onSkipAll: () => close("skipped"),
   };
   const goTo = (offset: number) => () => {
     const next = STEP_ORDER[STEP_ORDER.indexOf(step) + offset];
     if (next !== undefined) setStep(next);
+  };
+  const advance = (outcome: "completed" | "skipped") => () => {
+    recordTelemetryEvent({
+      name:
+        outcome === "completed"
+          ? "onboarding_step_completed"
+          : "onboarding_step_skipped",
+      properties: { step, entry },
+    });
+    goTo(1)();
   };
 
   switch (step) {
@@ -922,19 +1032,24 @@ export function OnboardingFlow({
       return (
         <AgentStepContainer
           chrome={chrome}
+          entry={entry}
           hostId={hostId}
           hostName={primaryHost?.name ?? null}
-          onContinue={goTo(1)}
+          onContinue={advance(
+            hasReadyAgent(agentStates) ? "completed" : "skipped",
+          )}
         />
       );
     case "projects":
       return (
         <ProjectsStepContainer
           chrome={chrome}
+          entry={entry}
           hostId={hostId}
           projectIdsAtOpen={projectIdsAtOpen}
           onBack={goTo(-1)}
-          onContinue={goTo(1)}
+          onContinue={advance("completed")}
+          onSkip={advance("skipped")}
         />
       );
     case "plugins":
@@ -942,7 +1057,8 @@ export function OnboardingFlow({
         <PluginsStepContainer
           chrome={chrome}
           onBack={goTo(-1)}
-          onContinue={goTo(1)}
+          onContinue={advance("completed")}
+          onSkip={advance("skipped")}
         />
       );
     case "devices":
@@ -951,7 +1067,8 @@ export function OnboardingFlow({
           chrome={chrome}
           hostId={hostId}
           onBack={goTo(-1)}
-          onFinish={onClose}
+          onFinish={() => close("completed")}
+          onLeave={() => close("skipped")}
         />
       );
   }

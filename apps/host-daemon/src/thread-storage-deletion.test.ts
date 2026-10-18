@@ -80,6 +80,7 @@ it.for(["thread deletion", "orphan removal"] as const)(
             recursive: true,
           },
           options,
+          new AbortController().signal,
         );
       }
       await expect(fs.stat(storagePath)).rejects.toMatchObject({

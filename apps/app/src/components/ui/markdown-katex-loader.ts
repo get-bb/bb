@@ -3,9 +3,12 @@ import { useEffect, useSyncExternalStore } from "react";
 export type RehypeKatex = typeof import("./markdown-katex.js").default;
 
 const MATH_DELIMITER = "$$";
+const INLINE_DOLLAR_MATH_PATTERN = /\$(?![\s$])[^$]*(?<!\s)\$(?!\d)/u;
 
 export function markdownMayContainMath(content: string): boolean {
-  return content.includes(MATH_DELIMITER);
+  return (
+    content.includes(MATH_DELIMITER) || INLINE_DOLLAR_MATH_PATTERN.test(content)
+  );
 }
 
 let loadedRehypeKatex: RehypeKatex | null = null;

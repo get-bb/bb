@@ -93,6 +93,7 @@ import {
   getThreadCompactedHistoryInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
+import { isCachedThreadTimelinePushEnabled } from "./thread-timeline-push-owner";
 
 interface CollectCachedThreadIdsForEnvironmentArgs {
   environmentId: string;
@@ -355,7 +356,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueriesForBackgroundActivity,
       dirtyThreadDetailQueriesForBackgroundActivity,
       dirtyThreadSearchQueriesForCompletedTurn,
-      dirtyThreadTimelineQueries,
+      dirtyThreadTimelineQueriesForAppendedEvents,
       dirtyThreadPullRequestQueryForCompletedTurn,
       dirtyThreadTurnRequestQueries,
     ],
@@ -427,7 +428,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "read-state-changed": {
     flush: "debounced",
-    dirty: [markThreadDetailQueryStale, markThreadListQueriesStale],
+    dirty: [markThreadDetailQueryStale, dirtyActiveThreadListQueries],
   },
   "tabs-changed": {
     flush: "immediate",
@@ -921,6 +922,37 @@ function dirtyThreadTimelineQueries({
   }
 }
 
+function dirtyThreadTimelineQueriesForAppendedEvents(
+  context: ThreadRealtimeDirtyContext,
+): void {
+  const { eventTypes, queryClient, threadId, timelineSequence } = context;
+  if (
+    threadId === undefined ||
+    !isCachedThreadTimelinePushEnabled(queryClient) ||
+    !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
+  ) {
+    dirtyThreadTimelineQueries(context);
+    return;
+  }
+  if (timelineSequence !== undefined) {
+    markThreadTimelineUnseenEvents(queryClient, threadId, timelineSequence);
+  }
+  const outlineQueryKeys = getThreadConversationOutlineInvalidationQueryKeys({
+    threadId,
+  });
+  if (eventTypes === undefined) {
+    invalidateQueryKeysWithoutCancelingActiveFetches({
+      queryClient,
+      queryKeys: outlineQueryKeys,
+    });
+  } else if (eventTypes.includes("turn/completed")) {
+    invalidateTerminalTimelineQueryKeys({
+      queryClient,
+      queryKeys: outlineQueryKeys,
+    });
+  }
+}
+
 function dirtyThreadTurnRequestQueries({
   eventTypes,
   queryClient,
@@ -992,41 +1024,6 @@ function markThreadDetailQueryStale({
     queryKey: threadQueryKey(threadId),
     refetchType: "none",
   });
-}
-
-function markThreadListQueriesStale({
-  projectId,
-  queryClient,
-}: ThreadRealtimeDirtyContext): void {
-  queryClient.invalidateQueries({
-    queryKey: sidebarNavigationQueryKey(),
-    refetchType: "none",
-  });
-  if (!projectId) {
-    queryClient.invalidateQueries({
-      queryKey: threadsQueryKey(),
-      refetchType: "none",
-    });
-    return;
-  }
-  for (const queryKey of getCachedProjectThreadListInvalidationQueryKeys({
-    projectId,
-    queryClient,
-  })) {
-    queryClient.invalidateQueries({
-      queryKey,
-      refetchType: "none",
-    });
-  }
-  for (const queryKey of getCachedGlobalThreadListInvalidationQueryKeys({
-    queryClient,
-  })) {
-    queryClient.invalidateQueries({
-      exact: true,
-      queryKey,
-      refetchType: "none",
-    });
-  }
 }
 
 function patchThreadListPendingInteractionState({

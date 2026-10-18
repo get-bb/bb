@@ -46,6 +46,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.hiddenFooterItems",
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
+  "sidebar.navigationProvider",
   "sidebar.threadListProvider",
   "infoPanel.collapsedSections",
 ] as const;
@@ -124,12 +125,21 @@ export const uiPreferenceDefinitions = {
   "sidebar.pluginPanelOrder": defineUiPreference(
     uiPreferenceStringListSchema,
     [],
-    "Order of navigation entries in the sidebar navigation strip.",
+    "Order of sidebar navigation destinations.",
   ),
   "sidebar.visiblePluginPanels": defineUiPreference(
     uiPreferenceStringListSchema.nullable(),
     null,
-    "Navigation entries shown in the sidebar navigation strip; null shows every entry.",
+    "Sidebar navigation destinations shown; null shows every destination.",
+  ),
+  "sidebar.navigationProvider": defineUiPreference(
+    uiPreferenceStringSchema.transform((value) =>
+      value === "__builtin__" || value === "navigation/navigation"
+        ? "__automatic__"
+        : value,
+    ),
+    "__automatic__",
+    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>

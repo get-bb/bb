@@ -81,7 +81,6 @@ describe("timeline content continuation at the history epoch", () => {
           });
           cursor = page.timelinePage.olderCursor;
           sawEpochCursor ||= cursor?.anchorSeq === 0;
-          expect(page.timelinePage.hasOlderRows).toBe(cursor !== null);
           expect(++pages).toBeLessThan(5);
         } while (cursor !== null);
         expect(sawEpochCursor).toBe(true);

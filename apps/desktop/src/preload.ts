@@ -1,5 +1,7 @@
 import {
   bbDesktopServerChoicesSchema,
+  MACOS_TRAFFIC_LIGHT_INSET_PX,
+  MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   type BbDesktopServerChoice,
 } from "@bb/desktop-contract";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
@@ -37,6 +39,7 @@ import {
   type BbDesktopBrowserFocusHandler,
   type BbDesktopBrowserSnapshotHandler,
   type BbDesktopBrowserStateHandler,
+  type BbDesktopBrowserState,
   type BbDesktopBrowserUnsubscribe,
   type BbDesktopBrowserViewBounds,
   type BbDesktopCloseWindowRequestHandler,
@@ -204,6 +207,15 @@ async function invokeInstallUpdate(): Promise<void> {
 }
 
 const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
+const browserStates = new Map<string, BbDesktopBrowserState>();
+browserStateListeners.add((state) => {
+  browserStates.delete(state.tabId);
+  browserStates.set(state.tabId, state);
+  if (browserStates.size > 100) {
+    const oldest = browserStates.keys().next().value;
+    if (oldest !== undefined) browserStates.delete(oldest);
+  }
+});
 const browserControlListeners = new Set<
   (state: BbDesktopBrowserControlState) => void
 >();
@@ -351,7 +363,9 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     );
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
-    return addListener(browserStateListeners, listener);
+    const unsubscribe = addListener(browserStateListeners, listener);
+    for (const state of browserStates.values()) listener(state);
+    return unsubscribe;
   },
   onOpenTab(listener): BbDesktopBrowserUnsubscribe {
     return addListener(browserOpenTabListeners, listener);
@@ -416,6 +430,8 @@ const bbDesktopApi: BbDesktopApi = {
   get pendingVersion() {
     return currentInfo.pendingVersion;
   },
+  macosTrafficLightInset: MACOS_TRAFFIC_LIGHT_INSET_PX,
+  macosTrafficLightTopInset: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   platform: resolveBbDesktopPlatform(process.platform),
   get serverDaemonLogsAvailable() {
     return currentInfo.serverDaemonLogsAvailable;

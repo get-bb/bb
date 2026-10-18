@@ -7,13 +7,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hasTextSelectionWithin } from "@/components/ui/gesture-dom";
 import { useHorizontalDismissDrag } from "@/components/ui/use-horizontal-dismiss-drag";
-import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+import {
+  setCompactSecondaryPanelPresentation,
+  setCompactSecondaryPanelSwipeOpening,
+} from "@/components/ui/secondary-panel-shelf-visibility";
+import { isCompactSidebarDrawerShowing } from "@/components/ui/sidebar-mobile-drawer-visibility";
 
 const SHELF_TRANSITION_CLASS =
   "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none!";
@@ -25,6 +29,7 @@ interface CompactSecondaryPanelShelfProps {
   children: ReactNode;
   onClose: () => void;
   onContentAnimationEnd?: (open: boolean) => void;
+  onOpen?: () => void;
   open: boolean;
   srLabel: string;
 }
@@ -33,6 +38,7 @@ export function CompactSecondaryPanelShelf({
   children,
   onClose,
   onContentAnimationEnd,
+  onOpen,
   open,
   srLabel,
 }: CompactSecondaryPanelShelfProps) {
@@ -45,6 +51,12 @@ export function CompactSecondaryPanelShelf({
     onCloseRef.current = onClose;
   }, [onClose]);
   const requestClose = useCallback(() => onCloseRef.current(), []);
+  const onOpenRef = useRef(onOpen);
+  useLayoutEffect(() => {
+    onOpenRef.current = onOpen;
+  }, [onOpen]);
+  const openDraggedInsetRef = useRef<HTMLElement | null>(null);
+  const canSwipeOpen = onOpen !== undefined && !open;
 
   const clearDragStyles = useCallback(() => {
     const inset = draggedInsetRef.current;
@@ -89,13 +101,120 @@ export function CompactSecondaryPanelShelf({
     onDismiss: requestClose,
     onProgress: applyDragProgress,
     resetKey: state,
+    shouldBeginDrag: () => true,
     suppressClick: false,
+  });
+
+  const clearOpenDragStyles = useCallback(() => {
+    setCompactSecondaryPanelSwipeOpening(false);
+    const inset = openDraggedInsetRef.current;
+    if (inset === null) {
+      return;
+    }
+    inset.style.translate = "";
+    inset.style.transition = "";
+    openDraggedInsetRef.current = null;
+    const panel = panelRef.current;
+    if (panel !== null) {
+      panel.style.visibility = "";
+      panel.style.width = "";
+      panel.style.transition = "";
+    }
+  }, []);
+
+  const applyOpenDragProgress = useCallback(
+    ({
+      progress,
+      width,
+      settling,
+    }: {
+      progress: number;
+      width: number;
+      settling: boolean;
+    }) => {
+      const panel = panelRef.current;
+      if (panel === null) {
+        return;
+      }
+      const inset = panel.ownerDocument.querySelector('[data-sidebar="inset"]');
+      if (!(inset instanceof HTMLElement)) {
+        return;
+      }
+      openDraggedInsetRef.current = inset;
+      setCompactSecondaryPanelSwipeOpening(true);
+      inset.style.translate = `${-width * (1 - progress)}px`;
+      inset.style.transition = settling ? SHELF_DRAG_SETTLE_TRANSITION : "none";
+      panel.style.visibility = "visible";
+      panel.style.width = "100%";
+      panel.style.transition = "none";
+    },
+    [],
+  );
+
+  const canBeginOpenDrag = useCallback(() => {
+    const inset = panelRef.current?.ownerDocument.querySelector(
+      '[data-sidebar="inset"]',
+    );
+    return (
+      !isCompactSidebarDrawerShowing() &&
+      inset?.getAttribute("data-sidebar-shelf") !== "open"
+    );
+  }, []);
+
+  const requestOpen = useCallback(() => {
+    flushSync(() => onOpenRef.current?.());
+    clearOpenDragStyles();
+  }, [clearOpenDragStyles]);
+
+  const {
+    beginNativePointerDrag: beginOpenPointerDrag,
+    beginNativeTouchDrag: beginOpenTouchDrag,
+  } = useHorizontalDismissDrag({
+    direction: "left",
+    dismissTiming: "settled",
+    enabled: canSwipeOpen,
+    getWidth: () =>
+      panelRef.current?.ownerDocument.documentElement.clientWidth ?? 0,
+    onClear: clearOpenDragStyles,
+    onDismiss: requestOpen,
+    onProgress: applyOpenDragProgress,
+    resetKey: state,
+    shouldBeginDrag: canBeginOpenDrag,
+    suppressClick: true,
   });
 
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
     setPortalTarget(document.body);
   }, []);
+
+  useEffect(() => {
+    if (!canSwipeOpen || portalTarget === null) {
+      return;
+    }
+    const inset = portalTarget.ownerDocument.querySelector(
+      '[data-sidebar="inset"]',
+    );
+    if (!(inset instanceof HTMLElement)) {
+      return;
+    }
+    const startPointer = (event: PointerEvent) => {
+      if (!isCompactSidebarDrawerShowing()) {
+        beginOpenPointerDrag(event, inset);
+      }
+    };
+    const startTouch = (event: TouchEvent) => {
+      if (!isCompactSidebarDrawerShowing()) {
+        beginOpenTouchDrag(event, inset);
+      }
+    };
+    inset.addEventListener("pointerdown", startPointer, { passive: true });
+    inset.addEventListener("touchstart", startTouch, { passive: true });
+    return () => {
+      inset.removeEventListener("pointerdown", startPointer);
+      inset.removeEventListener("touchstart", startTouch);
+    };
+  }, [beginOpenPointerDrag, beginOpenTouchDrag, canSwipeOpen, portalTarget]);
 
   usePersistentOverlayFocus({
     open: open && portalTarget !== null,

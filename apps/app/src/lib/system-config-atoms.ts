@@ -14,6 +14,7 @@ import {
   resolveLocalHostDaemonProbePorts,
   type LocalHostDaemonAccessState,
 } from "./local-host-daemon-access";
+import { setStreamTraceEnabled } from "./stream-trace";
 import { wsManager } from "./ws";
 
 const unavailableSystemConfig: SystemConfigResponse = {
@@ -30,8 +31,10 @@ const unavailableSystemConfig: SystemConfigResponse = {
   performanceDiagnosticsAvailable: false,
   experiments: {
     changelogPreview: false,
+    compactExpiredCache: false,
     serverMove: false,
     performanceDiagnostics: false,
+    timelinePush: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
@@ -82,6 +85,10 @@ async function loadSystemConfig(): Promise<SystemConfigResponse> {
   try {
     const config = await appQueryClient.fetchQuery(systemConfigQueryOptions());
     markSystemConfigLoadSucceeded();
+    setStreamTraceEnabled(
+      config.performanceDiagnosticsAvailable &&
+        config.experiments.performanceDiagnostics,
+    );
     return config;
   } catch {
     markSystemConfigLoadFailed();

@@ -51,6 +51,7 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(<SiteFooter />);
     expect(footer).toContain('href="/changelog">Changelog');
     expect(footer).toContain('href="/plugin-guide">Building plugins');
+    expect(footer).toContain('href="/brand">Brand assets');
   });
 
   it("groups footer links and marks the current page", () => {

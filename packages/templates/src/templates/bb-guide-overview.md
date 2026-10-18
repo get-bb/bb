@@ -25,6 +25,9 @@ Context variables set automatically inside a thread environment:
 - BB_ENVIRONMENT_ID — current environment
 - BB_CLI — absolute path to the daemon-managed `bb` executable (prefer this if bare `bb` is wrong; official entrypoints also re-exec to it)
 
+Outside a thread the CLI targets http://127.0.0.1:38886; set BB_SERVER_URL (and
+BB_HOST_DAEMON_PORT) only for a deliberate non-default target.
+
 Run `bb status` to see your current context (resolved project and thread IDs).
 It also warns when an enabled plugin is not running (incompatible after a bb
 upgrade, failed to load, or missing); run `bb plugin list` for the detail.
@@ -38,10 +41,16 @@ Pass long or multi-line text from a file, not inline: `bb thread tell <id>
 stdin). Inside double quotes the shell runs `backticks` and `$(...)` before bb
 sees the message.
 
+Transcribe audio files, such as attached voice memos, with `bb voice transcribe
+<path>`. It uses the voice service chosen with `bb settings ai-services`;
+`bb guide customization` lists its size limits.
+
 When a command fails, read the whole error: bb prints the nearest command or
 option, the flag to add with the current project, thread, or machine ID filled
 in, and the usage line. `bb guide commands <group>` lists every command in a
-group with its options on one page.
+group with its options on one page. Failures are logged without argument values
+to <dataDir>/logs/cli-errors.jsonl; `bb diagnostics cli-errors [--since 7d]
+[--clear]` tallies or deletes it, and BB_CLI_ERROR_LOG=0 turns logging off.
 
 To make a repo work with bb worktrees, run `bb guide environments` for the
 repo-level `.bb-env-setup.sh` and `.bb-env-teardown.sh` hooks. Run `bb guide
@@ -50,7 +59,10 @@ behavior.
 
 Run `bb guide <chapter>` for command details:
 
-  threads              Spawning, inspecting, messaging, and managing threads
+  threads              Spawning, handing off, forking, and editing threads
+  thread-inspection    Listing, inspecting, waiting on, and opening threads
+  thread-messaging     Messages, interactions, and queued messages
+  thread-lifecycle     Stopping, clearing, retrying, archiving, and deleting
   environments         Environment lifecycle hooks, operations, commits, and merges
   agent-configuration  AGENTS.md and skills files that shape agents
   providers            Discovering providers and models
@@ -59,10 +71,9 @@ Run `bb guide <chapter>` for command details:
                        server
   terminals            Persistent PTY sessions across all supported scopes
   browser              Experimental built-in browser tabs and control leases
-  customization        Theming the app palette, settings, mobile push
-                       notifications
-  plugins              Installing plugins, plugin marketplaces, and their
-                       contributed bb commands
-  automations          Scheduling and editing recurring or one-shot work
+  customization        Theme, server-backed settings, keyboard shortcuts,
+                       sidebar preferences, host files, voice
+  plugins              Installing plugins, plugin marketplaces, bundled
+                       plugins, and their contributed bb commands
   json                 The --json contract: output shapes and the error envelope
   commands [group]     Every core command on one page; add a group for options

@@ -7,7 +7,7 @@ import {
   setAppSettings,
   type DbConnection,
 } from "../../src/index.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 describe("app settings data", () => {
   let db: DbConnection;

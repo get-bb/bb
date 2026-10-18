@@ -40,6 +40,7 @@ import { resourceRouteLabelAtom } from "./resourceRouteLabelAtom";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
   useThread,
@@ -75,6 +76,8 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
@@ -104,8 +107,8 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
-import { WindowRightPanelToggle } from "./WindowRightPanelToggle";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
+import { useSidebarNavigationPlacement } from "@/components/sidebar/sidebarNavigationProvider";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import {
   useAppCommandHandler,
@@ -178,15 +181,19 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 );
 
 interface SidebarStateBridgeProps {
-  framed: boolean;
+  usesDesktopChrome: boolean;
   children: ReactNode;
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
-function SidebarStateBridge({ framed, children }: SidebarStateBridgeProps) {
+function SidebarStateBridge({
+  usesDesktopChrome,
+  children,
+}: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
+  const hasRail = useSidebarNavigationPlacement() === "rail";
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
@@ -203,8 +210,10 @@ function SidebarStateBridge({ framed, children }: SidebarStateBridgeProps) {
   return (
     <SidebarProvider
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
-      collapsedRailWidth={NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH}
-      framed={framed}
+      collapsedRailWidth={
+        hasRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
+      }
+      framed={usesDesktopChrome}
       data-testid="app-layout-root"
       open={open}
       onOpenChange={handleOpenChange}
@@ -250,33 +259,30 @@ function SidebarTriggerOverlay({
         data-testid="app-window-title-bar"
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed inset-x-0 top-0 gap-1 pr-3",
-          CHROME_ROW_CLASS,
+          "pointer-events-none fixed top-0 left-0",
+          "flex h-(--bb-window-title-bar-height) items-center",
+          MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+          MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS
             : BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
-          MACOS_WINDOW_DRAG_CLASS,
         )}
       >
-        <SidebarHistoryNavigationControls
-          className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-        />
-        <div className="relative flex items-center">
-          <SidebarTrigger
-            className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-            {...triggerProps}
-          />
-          <AppCommandShortcutHint
-            shortcut={shortcut}
-            className={cn(
-              "absolute left-full ml-1",
-              MACOS_CHROME_CONTROL_AXIS_CLASS,
-            )}
-          />
+        <div
+          className={cn(
+            "pointer-events-auto flex items-center gap-(--bb-title-bar-sidebar-toggle-gap)",
+            MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+          )}
+        >
+          <SidebarHistoryNavigationControls className="gap-0" />
+          <div className="relative flex items-center">
+            <SidebarTrigger {...triggerProps} />
+            <AppCommandShortcutHint
+              shortcut={shortcut}
+              className="absolute left-full ml-1"
+            />
+          </div>
         </div>
-        <WindowRightPanelToggle
-          className={cn("ml-auto", MACOS_CHROME_CONTROL_NO_DRAG_CLASS)}
-        />
       </div>
     );
   }
@@ -295,6 +301,7 @@ function SidebarTriggerOverlay({
             ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
             : ["left-0", BROWSER_SIDEBAR_TRIGGER_INSET_CLASS],
           MACOS_WINDOW_DRAG_CLASS,
+          MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
         )}
       >
         <SidebarTrigger
@@ -817,81 +824,84 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <TooltipProvider delayDuration={300} disableHoverableContent>
-      <ProjectActionsProvider>
-        <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
-          <ThreadActionsProvider>
-            <SidebarStateBridge framed={usesDesktopChrome}>
-              {backToAppRoutePath !== null && !isSidebarResizing ? (
-                <BackToAppCommandHandler routePath={backToAppRoutePath} />
-              ) : null}
-              <HistoryCommandHandlers />
-              <AppLayoutSidebar
-                mode={
-                  isGlobalSettingsView
-                    ? "settings"
-                    : isPluginsWorkspace
-                      ? "plugins"
-                      : isSkillsWorkspace
-                        ? "skills"
-                        : "app"
-                }
-                onResizeMouseDown={handleResizeMouseDown}
-                isResizing={isSidebarResizing}
-                settingsRoutePath={settingsRoutePath}
+    <SidebarThreadEntriesProvider navigation={sidebarNavigationQuery.data}>
+      <TooltipProvider delayDuration={300} disableHoverableContent>
+        <ProjectActionsProvider>
+          <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
+            <ThreadActionsProvider>
+              <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
+                {backToAppRoutePath !== null && !isSidebarResizing ? (
+                  <BackToAppCommandHandler routePath={backToAppRoutePath} />
+                ) : null}
+                <HistoryCommandHandlers />
+                <AppLayoutSidebar
+                  mode={
+                    isGlobalSettingsView
+                      ? "settings"
+                      : isPluginsWorkspace
+                        ? "plugins"
+                        : isSkillsWorkspace
+                          ? "skills"
+                          : "app"
+                  }
+                  onResizeMouseDown={handleResizeMouseDown}
+                  isResizing={isSidebarResizing}
+                  settingsRoutePath={settingsRoutePath}
+                  backToAppRoutePath={backToAppRoutePath}
+                />
+                <SidebarInset>
+                  <div
+                    ref={setContentShell}
+                    data-testid="app-layout-content-shell"
+                    data-app-content-shell=""
+                    className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
+                  >
+                    {showHeader ? (
+                      <AppHeader
+                        usesDesktopChrome={usesDesktopChrome}
+                        usesProjectChromeStyle={isRootView || isArchivedView}
+                        projectId={projectId}
+                        project={project}
+                        pluginPanel={pluginPanel}
+                        pluginPanelChrome={pluginPanelChrome}
+                        pluginPanelSubPath={pluginPanelSubPath}
+                        meta={meta}
+                      />
+                    ) : null}
+                    <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                      {children}
+                    </main>
+                  </div>
+                </SidebarInset>
+                <SidebarTriggerOverlay
+                  reserveMacosTrafficLights={reserveMacosTrafficLights}
+                  usesDesktopChrome={usesDesktopChrome}
+                />
+              </SidebarStateBridge>
+              <PluginAppOverlays />
+              <IframeDragGuardOverlay
+                active={isSidebarResizing}
+                cursor="col-resize"
               />
-              <SidebarInset>
-                <div
-                  ref={setContentShell}
-                  data-testid="app-layout-content-shell"
-                  data-app-content-shell=""
-                  className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
-                >
-                  {showHeader ? (
-                    <AppHeader
-                      usesDesktopChrome={usesDesktopChrome}
-                      usesProjectChromeStyle={isRootView || isArchivedView}
-                      projectId={projectId}
-                      project={project}
-                      pluginPanel={pluginPanel}
-                      pluginPanelChrome={pluginPanelChrome}
-                      pluginPanelSubPath={pluginPanelSubPath}
-                      meta={meta}
-                    />
-                  ) : null}
-                  <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
-                    {children}
-                  </main>
-                </div>
-              </SidebarInset>
-              <SidebarTriggerOverlay
-                reserveMacosTrafficLights={reserveMacosTrafficLights}
-                usesDesktopChrome={usesDesktopChrome}
+              <CommandPalette
+                threadId={threadId ?? null}
+                projectId={projectId ?? null}
               />
-            </SidebarStateBridge>
-            <PluginAppOverlays />
-            <IframeDragGuardOverlay
-              active={isSidebarResizing}
-              cursor="col-resize"
-            />
-            <CommandPalette
-              threadId={threadId ?? null}
-              projectId={projectId ?? null}
-            />
-            <NotificationCenter />
-            <ProjectPathDialog
-              target={quickCreateProject.projectPathDialog.target}
-              pending={quickCreateProject.isCreating}
-              platform={quickCreateProject.platform}
-              hostId={quickCreateProject.hostId}
-              hostName={quickCreateProject.hostName}
-              hosts={quickCreateProject.hosts}
-              onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
-              onSubmit={quickCreateProject.submitProjectPath}
-            />
-          </ThreadActionsProvider>
-        </ThreadTitleMentionResourcesProvider>
-      </ProjectActionsProvider>
-    </TooltipProvider>
+              <NotificationCenter />
+              <ProjectPathDialog
+                target={quickCreateProject.projectPathDialog.target}
+                pending={quickCreateProject.isCreating}
+                platform={quickCreateProject.platform}
+                hostId={quickCreateProject.hostId}
+                hostName={quickCreateProject.hostName}
+                hosts={quickCreateProject.hosts}
+                onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
+                onSubmit={quickCreateProject.submitProjectPath}
+              />
+            </ThreadActionsProvider>
+          </ThreadTitleMentionResourcesProvider>
+        </ProjectActionsProvider>
+      </TooltipProvider>
+    </SidebarThreadEntriesProvider>
   );
 }

@@ -8,6 +8,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -15,6 +16,13 @@ import {
   SidebarTrigger,
   useCloseMobileSidebar,
 } from "@/components/ui/sidebar";
+import {
+  sidebarNavigationPlacement,
+  sidebarNavigationProviderAtom,
+  type ResolvedSidebarNavigation,
+} from "@/components/sidebar/sidebarNavigationProvider";
+import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
 import {
   AppLayoutSidebar,
   type AppLayoutSidebarMode,
@@ -34,57 +42,59 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   return {
     AppSidebar: ({
       isBodyHidden,
-      renderRail,
+      isSettingsActive,
+      navigation,
       alternateBody,
     }: {
       isBodyHidden: boolean;
-      renderRail: (customize: {
-        isOpen: boolean;
-        onOpenChange: (isOpen: boolean) => void;
-      }) => ReactNode;
+      isSettingsActive: boolean;
+      navigation: ResolvedSidebarNavigation;
       alternateBody: ReactNode;
     }) => {
       useEffect(() => {
         mountCounts.appSidebar += 1;
       }, []);
+      const placement = sidebarNavigationPlacement(navigation);
       return (
         <Sidebar>
-          {renderRail({ isOpen: false, onOpenChange: () => {} })}
-          <div data-testid="app-sidebar-body" hidden={isBodyHidden}>
+          {placement === "rail" ? <div data-testid="app-nav-rail" /> : null}
+          <div
+            data-testid="app-sidebar-body"
+            data-navigation-placement={placement}
+            hidden={isBodyHidden}
+          >
             App sidebar
           </div>
           {alternateBody}
+          {placement === "rail" ? (
+            <button
+              data-testid="settings-footer"
+              data-settings-active={isSettingsActive}
+            />
+          ) : null}
         </Sidebar>
       );
     },
   };
 });
 
-vi.mock("@/components/sidebar/AppNavRail", () => ({
-  AppNavRail: ({
-    isAppMode,
-    isSettingsActive,
-  }: {
-    isAppMode: boolean;
-    isSettingsActive: boolean;
-  }) => (
-    <div
-      data-testid="app-nav-rail"
-      data-app-mode={isAppMode}
-      data-settings-active={isSettingsActive}
-    />
-  ),
-}));
-
 vi.mock("@/components/settings/SettingsSidebar", () => ({
-  SettingsSidebar: () => (
-    <div data-testid="settings-sidebar-body">Settings sidebar</div>
+  SettingsSidebar: ({ backTo }: { backTo: string | null }) => (
+    <div data-testid="settings-sidebar-body" data-back-to={backTo ?? ""}>
+      Settings sidebar
+    </div>
   ),
 }));
 
 vi.mock("@/components/tools/ResourceSidebar", () => ({
-  ResourceSidebar: ({ workspace }: { workspace: "plugins" | "skills" }) => (
-    <div data-testid={`${workspace}-sidebar-body`}>
+  ResourceSidebar: ({
+    workspace,
+    backTo,
+  }: {
+    workspace: "plugins" | "skills";
+    backTo: string | null;
+  }) => (
+    <div data-testid={`${workspace}-sidebar-body`} data-back-to={backTo ?? ""}>
       {workspace === "plugins" ? "Plugins sidebar" : "Skills sidebar"}
     </div>
   ),
@@ -148,6 +158,7 @@ function SidebarModeHarness() {
         onResizeMouseDown={() => {}}
         isResizing={false}
         settingsRoutePath="/settings"
+        backToAppRoutePath={mode === "app" ? null : "/"}
       />
       <SidebarTrigger />
     </>
@@ -157,7 +168,9 @@ function SidebarModeHarness() {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  resetPluginSlotStoreForTest();
   mountCounts.appSidebar = 0;
+  window.localStorage.clear();
 });
 
 function getRail(): HTMLElement {
@@ -182,7 +195,6 @@ describe("AppLayoutSidebar", () => {
     const rail = getRail();
     expect(panel.dataset.state).toBe("open");
     expect(panel.contains(rail)).toBe(true);
-    expect(rail.dataset.appMode).toBe("true");
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
     expect(mountCounts.appSidebar).toBe(1);
@@ -192,8 +204,9 @@ describe("AppLayoutSidebar", () => {
     );
 
     expect(getMobilePanel()).toBe(panel);
-    expect(rail.dataset.appMode).toBe("false");
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
     expect(getShelfRevealTranslate()).toBe("0px");
@@ -203,7 +216,9 @@ describe("AppLayoutSidebar", () => {
     expect(getMobilePanel()).toBe(panel);
     expect(panel.dataset.state).toBe("closed");
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(screen.getByTestId("settings-sidebar-body").textContent).toBe(
       "Settings sidebar",
@@ -266,7 +281,9 @@ describe("AppLayoutSidebar", () => {
     expect(getMobilePanel()).toBe(panel);
     expect(panel.dataset.state).toBe("open");
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(screen.getByTestId("settings-sidebar-body")).toBeTruthy();
   });
@@ -281,16 +298,18 @@ describe("AppLayoutSidebar", () => {
     );
 
     const rail = getRail();
-    expect(rail.dataset.appMode).toBe("true");
-    expect(rail.dataset.settingsActive).toBe("false");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "false",
+    );
     expect(getAppSidebarBody().hidden).toBe(false);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Change route without closing" }),
     );
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.appMode).toBe("false");
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(screen.getByTestId("settings-sidebar-body")).toBeTruthy();
 
@@ -298,7 +317,9 @@ describe("AppLayoutSidebar", () => {
       screen.getByRole("button", { name: "Navigate to plugins" }),
     );
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.settingsActive).toBe("false");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "false",
+    );
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
     expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
 
@@ -314,5 +335,33 @@ describe("AppLayoutSidebar", () => {
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(mountCounts.appSidebar).toBe(1);
     expect(document.querySelectorAll('[data-sidebar="panel"]')).toHaveLength(1);
+  });
+
+  it("drops the rail in the top list layout and gives Settings a row back to the app", async () => {
+    await registerNavigationPlugin();
+    const store = createStore();
+    store.set(sidebarNavigationProviderAtom, "navigation/top-list");
+    render(
+      <Provider store={store}>
+        <CompactViewportOverrideProvider isCompactViewport={false}>
+          <SidebarProvider>
+            <SidebarModeHarness />
+          </SidebarProvider>
+        </CompactViewportOverrideProvider>
+      </Provider>,
+    );
+
+    expect(screen.queryByTestId("app-nav-rail")).toBeNull();
+    expect(screen.queryByTestId("settings-footer")).toBeNull();
+    expect(getAppSidebarBody().dataset.navigationPlacement).toBe("list");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change route without closing" }),
+    );
+
+    expect(getAppSidebarBody().hidden).toBe(true);
+    expect(screen.getByTestId("settings-sidebar-body").dataset.backTo).toBe(
+      "/",
+    );
   });
 });

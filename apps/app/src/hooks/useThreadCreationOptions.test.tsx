@@ -743,6 +743,124 @@ describe("useThreadCreationOptions", () => {
     expect(result.current.serviceTier).toBe("default");
   });
 
+  it("remembers the new-thread service tier per provider", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, unmount } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(result.current.supportsServiceTier).toBe(true);
+    });
+
+    act(() => result.current.setServiceTier("fast"));
+    expect(result.current.serviceTier).toBe("fast");
+    act(() => {
+      result.current.setProviderModelReasoning({
+        providerId: PROJECT_PROVIDER_ID,
+        model: "project-default",
+        reasoningLevel: "high",
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("project-default");
+    });
+    expect(result.current.serviceTier).toBeUndefined();
+    expect(result.current.executionInputSources.serviceTier).toBeUndefined();
+
+    act(() => result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID));
+    await waitFor(() =>
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID),
+    );
+    expect(result.current.serviceTier).toBe("fast");
+
+    unmount();
+    const reloaded = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    await waitFor(() =>
+      expect(reloaded.result.current.serviceTier).toBe("fast"),
+    );
+    act(() =>
+      reloaded.result.current.setSelectedProviderId(PROJECT_PROVIDER_ID),
+    );
+    await waitFor(() =>
+      expect(reloaded.result.current.selectedProviderId).toBe(
+        PROJECT_PROVIDER_ID,
+      ),
+    );
+    expect(reloaded.result.current.serviceTier).toBeUndefined();
+  });
+
+  it("applies the initial service tier only to the initial provider", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialServiceTier: "fast",
+        }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.serviceTier).toBe("fast"));
+
+    act(() => result.current.setSelectedProviderId(PROJECT_PROVIDER_ID));
+    await waitFor(() =>
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID),
+    );
+    expect(result.current.serviceTier).toBeUndefined();
+    expect(result.current.executionInputSources.serviceTier).toBeUndefined();
+  });
+
+  it("remembers the component-local service tier per provider", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("global-default"),
+    );
+
+    act(() => result.current.setServiceTier("fast"));
+    act(() => result.current.setSelectedProviderId(PROJECT_PROVIDER_ID));
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("project-default"),
+    );
+    expect(result.current.serviceTier).toBeUndefined();
+    expect(result.current.executionInputSources.serviceTier).toBeUndefined();
+
+    act(() => {
+      result.current.setProviderModelReasoning({
+        providerId: GLOBAL_PROVIDER_ID,
+        model: "global-default",
+        reasoningLevel: "low",
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID),
+    );
+    expect(result.current.serviceTier).toBe("fast");
+  });
+
   it("offers each model's own tiers and keeps the chosen tier for the models that have it", async () => {
     const base = executionOptionsResponse();
     const [tiered, untiered] = base.models;
@@ -905,7 +1023,10 @@ describe("useThreadCreationOptions", () => {
       `bb.promptbox.model-${GLOBAL_PROVIDER_ID}-1`,
       "global-model",
     );
-    window.localStorage.setItem("bb.promptbox.service-tier", "default");
+    window.localStorage.setItem(
+      `bb.promptbox.service-tier-${GLOBAL_PROVIDER_ID}-1`,
+      "default",
+    );
     window.localStorage.setItem(
       `bb.promptbox.reasoning-${GLOBAL_PROVIDER_ID}-1`,
       "high",
@@ -1200,6 +1321,54 @@ describe("useThreadCreationOptions", () => {
         }),
       );
     });
+  });
+
+  it("names a new thread's project only for a provider that reads its catalog from the workspace", async () => {
+    const requestedProjectIds = async (
+      modelCatalogScope: ProviderModelCatalogScope,
+      routing: { environmentId: string } | { hostId: string },
+    ): Promise<unknown[]> => {
+      vi.mocked(sdk.system.executionOptions).mockClear();
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      seedDeclaredCatalogScope(queryClient, "pi", modelCatalogScope);
+      const { unmount } = renderHook(
+        () =>
+          useThreadCreationOptions({
+            scope: "new-thread",
+            preferenceProjectId: PROJECT_ID,
+            catalogProjectId: PROJECT_ID,
+            resolveProviderRouting: () => routing,
+            initialProviderId: "pi",
+            initialModel: "anthropic/opus",
+            initialReasoningLevel: "medium",
+            initialPermissionMode: "full",
+          }),
+        { wrapper },
+      );
+      await waitFor(() => {
+        expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+          expect.objectContaining({ ...routing, providerId: "pi" }),
+        );
+      });
+      unmount();
+      return [
+        ...new Set(
+          vi
+            .mocked(sdk.system.executionOptions)
+            .mock.calls.map(([args]) => args?.projectId),
+        ),
+      ];
+    };
+
+    expect(
+      await requestedProjectIds("workspace", { hostId: "project-host" }),
+    ).toEqual([PROJECT_ID]);
+    expect(
+      await requestedProjectIds("host", { hostId: "project-host" }),
+    ).toEqual([undefined]);
+    expect(
+      await requestedProjectIds("workspace", { environmentId: "env_reuse" }),
+    ).toEqual([undefined]);
   });
 
   it("keeps a workspace-scoped component-local catalog routed by environment", async () => {

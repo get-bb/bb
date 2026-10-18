@@ -313,6 +313,7 @@ interface ResultsStateConfig {
 function makeResultsState(args: ResultsStateConfig): MentionMenuState {
   return {
     kind: "results",
+    refreshing: false,
     results: orderPromptMentionSuggestions({
       query: "",
       suggestions: args.suggestions,
@@ -400,7 +401,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="thread relations"
-        hint="relation pill: parent, child, same parent, same environment; unrelated rows keep only a project name"
+        hint="relation pill: parent, child thread, same parent, same environment; unrelated rows keep only a project name"
       >
         <MentionRow
           state={makeResultsState({ suggestions: relatedThreadSuggestions })}

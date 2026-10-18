@@ -105,7 +105,7 @@ import {
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpcForWork } from "./services/hosts/online-rpc.js";
-import { requestMatchesEntityTag } from "./services/hosts/daemon-file-response.js";
+import { requestMatchesEntityTag } from "./services/files/entity-tag.js";
 import {
   allowedAppOrigins,
   browserRequestProblem,

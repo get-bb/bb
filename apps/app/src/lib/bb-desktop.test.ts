@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { BbDesktopInfo } from "@bb/desktop-contract";
+import {
+  MACOS_TRAFFIC_LIGHT_INSET_PX,
+  MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
+  RAIL_PADDING_PX,
+  WINDOW_CARD_RADIUS_PX,
+  type BbDesktopInfo,
+} from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
-  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
-  MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
-  MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
+  DEFAULT_WINDOW_FIND_TOP_OFFSET,
+  applyAppFrameGeometry,
+  resolveWindowFindTopOffset,
   shouldReserveMacosTrafficLights,
 } from "./bb-desktop";
 
@@ -18,27 +24,35 @@ const desktopInfo: BbDesktopInfo = {
   version: "0.0.0-test",
 };
 
-const px = (className: string): number => {
-  const match = /\[(\d+)px\]/.exec(className);
-  if (match === null) {
-    throw new Error(`no px token in "${className}"`);
-  }
-  return Number(match[1]);
-};
+const macosDesktopApi = createBbDesktopApi(desktopInfo);
+
+function applyGeometry(
+  desktopApi: Parameters<typeof applyAppFrameGeometry>[1],
+): Map<string, string> {
+  const properties = new Map<string, string>();
+  applyAppFrameGeometry(
+    {
+      style: {
+        setProperty: (name: string, value: string) =>
+          properties.set(name, value),
+      },
+    },
+    desktopApi,
+  );
+  return properties;
+}
 
 describe("desktop chrome geometry", () => {
   it("reserves macOS traffic-light space only when lights are visible", () => {
-    const desktopApi = createBbDesktopApi(desktopInfo);
-
     expect(
       shouldReserveMacosTrafficLights({
-        desktopInfo: desktopApi,
+        desktopInfo: macosDesktopApi,
         windowState: { isFullScreen: false },
       }),
     ).toBe(true);
     expect(
       shouldReserveMacosTrafficLights({
-        desktopInfo: desktopApi,
+        desktopInfo: macosDesktopApi,
         windowState: { isFullScreen: true },
       }),
     ).toBe(false);
@@ -50,22 +64,63 @@ describe("desktop chrome geometry", () => {
     ).toBe(false);
   });
 
-  it("lands the collapsed reserve at the traffic-light-clearing target", () => {
-    const TRIGGER_OFFSET = px(MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS);
-    const TRIGGER_BUTTON = 28;
-    const TRIGGER_GAP = 8;
-    const TARGET = TRIGGER_OFFSET + TRIGGER_BUTTON + TRIGGER_GAP;
+  it("sizes the title bar around the lights the desktop shell reports", () => {
+    const properties = applyGeometry({
+      ...macosDesktopApi,
+      macosTrafficLightInset: 20,
+      macosTrafficLightTopInset: 21,
+    });
 
-    const BASE_INSET = 16;
-
-    expect(BASE_INSET + px(MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS)).toBe(
-      TARGET,
+    expect(properties.get("--bb-macos-traffic-light-center-y")).toBe("28px");
+    expect(properties.get("--bb-window-title-bar-height")).toBe("56px");
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("92px");
+    expect(
+      decodeURIComponent(properties.get("--bb-window-card-mask") ?? ""),
+    ).toContain(
+      `<rect y='56' width='100%' height='100%' rx='${WINDOW_CARD_RADIUS_PX}'/>`,
     );
   });
 
-  it("starts the framed title bar controls where the lone trigger sits", () => {
-    expect(px(MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS)).toBe(
-      px(MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS),
+  it("assumes the current light position when the shell reports none", () => {
+    const properties = applyGeometry(macosDesktopApi);
+
+    expect(properties.get("--bb-window-title-bar-height")).toBe(
+      `${2 * (MACOS_TRAFFIC_LIGHT_TOP_INSET_PX + 7)}px`,
+    );
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe(
+      `${MACOS_TRAFFIC_LIGHT_INSET_PX + 72}px`,
     );
   });
+
+  it("writes the frame sizes everywhere but the title bar only on macOS", () => {
+    const properties = applyGeometry(null);
+
+    expect(properties.get("--bb-frame-rail-padding")).toBe(
+      `${RAIL_PADDING_PX}px`,
+    );
+    expect(properties.has("--bb-window-title-bar-height")).toBe(false);
+  });
+});
+
+describe("resolveWindowFindTopOffset", () => {
+  it.each([
+    { chromeRowHeight: "3rem", rootFontSize: "20px", expected: 60 },
+    {
+      chromeRowHeight: "",
+      rootFontSize: "16px",
+      expected: DEFAULT_WINDOW_FIND_TOP_OFFSET,
+    },
+    {
+      chromeRowHeight: "4vh",
+      rootFontSize: "16px",
+      expected: DEFAULT_WINDOW_FIND_TOP_OFFSET,
+    },
+  ])(
+    "resolves $chromeRowHeight against a $rootFontSize root to $expected",
+    ({ chromeRowHeight, rootFontSize, expected }) => {
+      expect(resolveWindowFindTopOffset(chromeRowHeight, rootFontSize)).toBe(
+        expected,
+      );
+    },
+  );
 });

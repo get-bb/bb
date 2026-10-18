@@ -5,6 +5,7 @@ import {
 import path from "node:path";
 
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+const USES_PROCESS_GROUPS = process.platform !== "win32";
 
 export class WorkspaceError extends Error {
   readonly code: string;
@@ -143,11 +144,22 @@ export function runGit(
       command: "git",
       args,
       cwd: options.cwd,
+      detached: USES_PROCESS_GROUPS,
       env: resolveGitProcessEnv(options),
     });
 
+    const signalGit = (signal: NodeJS.Signals): void => {
+      if (USES_PROCESS_GROUPS && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {}
+      }
+      child.kill(signal);
+    };
+
     const onAbort = (): void => {
-      child.kill("SIGTERM");
+      signalGit("SIGTERM");
     };
 
     const release = (): void => {
@@ -180,7 +192,7 @@ export function runGit(
       return (chunk: Buffer): void => {
         if (!buffer.append(chunk)) {
           overflowed = true;
-          child.kill("SIGKILL");
+          signalGit("SIGKILL");
         }
       };
     };
@@ -238,7 +250,7 @@ export function runGit(
     if (options.timeoutMs !== undefined) {
       timer = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGTERM");
+        signalGit("SIGTERM");
       }, options.timeoutMs);
     }
     options.signal?.addEventListener("abort", onAbort, { once: true });

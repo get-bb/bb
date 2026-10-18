@@ -8,6 +8,7 @@ import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { transcribeVoiceInput } from "@/lib/api";
 import { WaveformVisualizer } from "./WaveformVisualizer";
 import { VoiceInputButton } from "./VoiceInputButton";
+import { FailedVoiceRecordings } from "./FailedVoiceRecordings";
 
 function appendTranscript(value: string, transcript: string): string {
   return value && !/\s$/.test(value)
@@ -37,6 +38,7 @@ export function VoiceInputTextarea({
   }, []);
 
   const voice = useVoiceInput({
+    recordingKey: null,
     onTranscribe: async ({ file, signal }) => {
       if (!mountedRef.current)
         throw new DOMException("Cancelled", "AbortError");
@@ -58,6 +60,16 @@ export function VoiceInputTextarea({
 
   return (
     <div className="relative">
+      {voice.failedRecordings.length > 0 ? (
+        <FailedVoiceRecordings
+          recordings={voice.failedRecordings}
+          className="mb-2"
+          retryDisabled={disabled === true}
+          onRetry={voice.retry}
+          onDownload={voice.download}
+          onDiscard={voice.discard}
+        />
+      ) : null}
       <textarea
         {...props}
         value={value}
@@ -69,7 +81,7 @@ export function VoiceInputTextarea({
         )}
       />
       {voice.isSupported ? (
-        <div className="absolute inset-x-1 bottom-1 flex items-center justify-end gap-2">
+        <div className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center justify-end gap-2 *:pointer-events-auto">
           {voice.isListening ? (
             <>
               <Button
@@ -107,7 +119,7 @@ export function VoiceInputTextarea({
                 }
                 className="size-8 rounded-md p-0 max-md:pointer-coarse:size-10"
                 disabled={disabled || voice.isProcessing}
-                onClick={voice.stop}
+                onClick={() => voice.stop("insert")}
               >
                 <Icon
                   name={voice.isProcessing ? "Spinner" : "Square"}

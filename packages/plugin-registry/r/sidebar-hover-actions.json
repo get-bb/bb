@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "registry/components/ui/sidebar-hover-actions.ts",
-      "content": "export const SIDEBAR_HOVER_ACTIONS_ROW_CLASS = \"bb-sidebar-hover-actions-row\";\n\nexport const SIDEBAR_HOVER_ACTIONS_CLASS = \"bb-sidebar-hover-actions\";\n\nexport const SIDEBAR_HOVER_ACTIONS_GAP_CLASS = \"gap-0.5\";\n\nexport const SIDEBAR_HOVER_ACTIONS_INSET_CLASS =\n  \"bb-sidebar-hover-actions-inset\";\n\nexport const SIDEBAR_HOVER_ACTIONS_FADE_CLASS = \"bb-sidebar-hover-actions-fade\";\n\nexport const SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE = \"always\";\n",
+      "content": "export const SIDEBAR_HOVER_ACTIONS_ROW_CLASS = \"bb-sidebar-hover-actions-row\";\n\nexport const SIDEBAR_HOVER_ACTIONS_CLASS = \"bb-sidebar-hover-actions\";\n\nexport const SIDEBAR_HOVER_ACTIONS_GAP_CLASS = \"gap-0.5\";\n\nexport const SIDEBAR_HOVER_ACTIONS_INSET_CLASS =\n  \"bb-sidebar-hover-actions-inset\";\n\nexport const SIDEBAR_HOVER_ACTIONS_FADE_CLASS = \"bb-sidebar-hover-actions-fade\";\n\nexport const SIDEBAR_HOVER_ACTIONS_MASK_CLASS = \"bb-sidebar-hover-actions-mask\";\n\nexport const SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE = \"always\";\n",
       "type": "registry:ui",
       "target": "components/ui/sidebar-hover-actions.ts"
     }
