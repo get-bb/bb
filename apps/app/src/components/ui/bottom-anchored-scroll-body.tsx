@@ -234,6 +234,8 @@ export function BottomAnchoredScrollBody({
   const isPointerCoarse = usePointerCoarse();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
+  const scrollFooterRef = useRef<HTMLDivElement>(null);
+  const hasFooter = Boolean(footer);
   const shouldStickToBottomRef = useRef(true);
   const scrollToTopInProgressRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
@@ -934,6 +936,28 @@ export function BottomAnchoredScrollBody({
     };
   }, [flushScrollAnchorCapture]);
 
+  useLayoutEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    const scrollFooter = scrollFooterRef.current;
+    if (!scrollArea || !scrollFooter) return;
+
+    const updateScrollPadding = () => {
+      scrollArea.style.scrollPaddingBottom = `${scrollFooter.getBoundingClientRect().height}px`;
+    };
+    updateScrollPadding();
+
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateScrollPadding);
+    observer?.observe(scrollFooter);
+
+    return () => {
+      observer?.disconnect();
+      scrollArea.style.removeProperty("scroll-padding-bottom");
+    };
+  }, [hasFooter]);
+
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
     const scrollContent = scrollContentRef.current;
@@ -1047,6 +1071,7 @@ export function BottomAnchoredScrollBody({
               <div className="scroll-bottom-anchor" aria-hidden />
               {footer ? (
                 <div
+                  ref={scrollFooterRef}
                   data-scroll-footer=""
                   className="sticky bottom-0 z-20 shrink-0 [overflow-anchor:none]"
                 >
