@@ -138,6 +138,21 @@ export function createHostEntry(
     if (closes.size > 1024) closes.delete(closes.keys().next().value!);
     return entry.outcome;
   }
+  async function available(sessionId: string) {
+    const session = sessions.get(sessionId);
+    if (
+      !session ||
+      Date.now() >= session.expiresAt ||
+      (session.active === 0 &&
+        Date.now() - session.lastUsed >= session.idleTimeoutMs)
+    ) {
+      if (session) await close(sessionId);
+      throw new Error(
+        "Session stopped, expired, or worker restarted; open a new session",
+      );
+    }
+    return session;
+  }
   async function start(
     context: ExperimentalHostRpcContext,
     signal: AbortSignal,
@@ -200,6 +215,8 @@ export function createHostEntry(
       },
       async open(input, context) {
         context.signal.throwIfAborted();
+        if (Date.now() >= input.expiresAt)
+          throw new Error("Session expired; open a new session");
         if (sessions.has(input.sessionId))
           throw new Error("Session already exists");
         if (closes.has(input.sessionId))
@@ -233,12 +250,9 @@ export function createHostEntry(
         return null;
       },
       async run(input, context) {
-        const session = sessions.get(input.sessionId);
-        if (!session)
-          throw new Error(
-            "Session stopped, expired, or worker restarted; open a new session",
-          );
+        const session = await available(input.sessionId);
         session.active++;
+        session.lastUsed = Date.now();
         try {
           const runtime = await session.runtime;
           const result = await runtime.run(
@@ -262,11 +276,7 @@ export function createHostEntry(
         }
       },
       async preview(input, context) {
-        const session = sessions.get(input.sessionId);
-        if (!session)
-          throw new Error(
-            "Session stopped, expired, or worker restarted; open a new session",
-          );
+        const session = await available(input.sessionId);
         const runtime = await session.runtime;
         if (!runtime.preview)
           throw new Error(

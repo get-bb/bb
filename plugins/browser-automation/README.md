@@ -142,8 +142,12 @@ fresh `DEV_BROWSER_HOME` and socket under the worker's temporary directory.
 Pages and cookies persist between runs in that session. `stop`, timeout, or
 cancellation terminates that local session; open another session to resume.
 `close` disposes its processes and session directory. Tabs taken over with
-`--tab` remain open. Sessions expire after 30 minutes, with five-minute idle cleanup;
-active scripts do not count as idle. Archiving, deleting, or failing a thread
+`--tab` remain open. Sessions close after 30 minutes without `run`, `pages`, or `screenshot` activity.
+Each operation renews expiry at its start and completion, up to eight hours from
+creation; active scripts do not count as idle. The hard deadline also stops running
+work. Desktop control leases and connections cannot be renewed through the current
+API, so desktop sessions retain their earlier deadline (at most 30 minutes from
+creation). `list` and live preview do not renew expiry. Archiving, deleting, or failing a thread
 closes its sessions; normal idle turns preserve them. Externally invoked CLI
 runs remain subject to the same per-run timeout and absolute session expiry. Run timeouts default to 30 seconds and are
 bounded to 1–120 seconds. Runs are serialized per session.
@@ -223,7 +227,7 @@ only while the window is visible and it is expanded and scrolled into view, so
 cards left behind in the chat history cost nothing. The lightbox opens from the
 card's current frame and then runs its own poller; the card pauses its poller
 while its session's lightbox is open. Preview requests are not
-session activity: watching a preview does not postpone the five-minute idle
+session activity: watching a preview does not postpone the 30-minute idle
 cleanup. When the session stops, closes, or expires, the card keeps its last
 frame dimmed for as long as it stays mounted; a card first viewed after that
 shows only its Ended header. A card whose session it can never read, such as a
