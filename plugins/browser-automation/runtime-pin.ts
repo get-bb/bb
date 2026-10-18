@@ -7,18 +7,18 @@ import {
 
 export const runtimeRelease: RuntimeRelease = {
   package: "dev-browser",
-  version: "1.0.0-rc.3",
+  version: "1.0.0-rc.4",
   registry: "https://registry.npmjs.org",
   repository: "SawyerHood/dev-browser",
   artifacts: {
     "linux-x64":
-      "390dd08f8321807bca2e1e060ec031511adb0af002e871dfde3b1f6c8feac914",
+      "fa6cec3f84463e171bd7b307e2e1f0243df59c70c38f96d790dc41b160db921a",
     "linux-arm64":
-      "8a1d7c80c3bede69809996848526b5ed43cf6f0965d87f99e4349b775f76042e",
+      "578db7f1e502cf6b9e43ac09e6adc5720f5397fa3e6d6b7b9ba8377708fe040e",
     "darwin-x64":
-      "76f70f6e8a48c5caf546003e09d9daa4a0cb756d191c4f7fc3c300c2e2935522",
+      "7cfad83f7f9e16dc5acbc94553430bcd1be24adc4304c0f534805969bfa6d2ba",
     "darwin-arm64":
-      "d68887f7df149915811bf362b208377c2d0d7d500297d4d5977dab129db5b5eb",
+      "f0a7e7d10ab8be0fee1ee8ac2ca33d3efc46b493e5e998b29ea75c79479a2e8d",
   },
 };
 
