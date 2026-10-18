@@ -1,4 +1,6 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import {
   sidebarNavigationPlacement,
@@ -13,6 +15,7 @@ export type AppLayoutSidebarMode = "app" | "settings" | "plugins" | "skills";
 
 interface AppLayoutSidebarProps {
   mode: AppLayoutSidebarMode;
+  pluginSidebar?: { panel: PluginNavPanelSlot; subPath: string };
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   settingsRoutePath: string;
@@ -21,6 +24,7 @@ interface AppLayoutSidebarProps {
 
 export function AppLayoutSidebar({
   mode,
+  pluginSidebar,
   onResizeMouseDown,
   isResizing,
   settingsRoutePath,
@@ -30,25 +34,47 @@ export function AppLayoutSidebar({
   const navigation = useResolvedSidebarNavigation();
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
   const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
-  const [lastVisible, setLastVisible] = useState({ mode, backToAppRoutePath });
+  const [lastVisible, setLastVisible] = useState({
+    mode,
+    backToAppRoutePath,
+    pluginSidebar,
+  });
+  const [crashedSidebars, setCrashedSidebars] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   if (
     !holdCurrentMode &&
     (lastVisible.mode !== mode ||
-      lastVisible.backToAppRoutePath !== backToAppRoutePath)
+      lastVisible.backToAppRoutePath !== backToAppRoutePath ||
+      lastVisible.pluginSidebar !== pluginSidebar)
   ) {
-    setLastVisible({ mode, backToAppRoutePath });
+    setLastVisible({ mode, backToAppRoutePath, pluginSidebar });
   }
-  const rendered = holdCurrentMode ? lastVisible : { mode, backToAppRoutePath };
+  const rendered = holdCurrentMode
+    ? lastVisible
+    : { mode, backToAppRoutePath, pluginSidebar };
   const backTo =
     sidebarNavigationPlacement(navigation) === "list"
       ? rendered.backToAppRoutePath
       : null;
 
+  const target = rendered.mode === "app" ? rendered.pluginSidebar : undefined;
+  const panel = target?.panel;
+  const SidebarComponent = panel?.experimental_sidebar;
+  const sidebarKey =
+    panel && target
+      ? `${panel.pluginId}/${panel.id}/${panel.generation}/${target.subPath}`
+      : null;
+  const showPluginSidebar =
+    SidebarComponent !== undefined &&
+    sidebarKey !== null &&
+    !crashedSidebars.has(sidebarKey);
+
   return (
     <AppSidebar
       onResizeMouseDown={onResizeMouseDown}
       isResizing={isResizing}
-      isBodyHidden={rendered.mode !== "app"}
+      isBodyHidden={rendered.mode !== "app" || showPluginSidebar}
       navigation={navigation}
       settingsRoutePath={settingsRoutePath}
       isSettingsActive={mode === "settings"}
@@ -67,6 +93,25 @@ export function AppLayoutSidebar({
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
           />
+        ) : showPluginSidebar && panel && target && SidebarComponent ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+            <PluginSlotMount
+              key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
+              pluginId={panel.pluginId}
+              slotKind="navPanelSidebar"
+              slotId={panel.id}
+              crashResetKey={sidebarKey ?? undefined}
+              crashFallback={null}
+              onCrash={() => {
+                if (sidebarKey !== null)
+                  setCrashedSidebars((current) =>
+                    new Set(current).add(sidebarKey),
+                  );
+              }}
+            >
+              <SidebarComponent subPath={target.subPath} />
+            </PluginSlotMount>
+          </div>
         ) : null
       }
     />

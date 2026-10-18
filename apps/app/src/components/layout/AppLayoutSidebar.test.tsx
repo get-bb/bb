@@ -8,6 +8,9 @@ import {
   screen,
 } from "@testing-library/react";
 import { startTransition, useState, type ReactNode } from "react";
+import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
+import { usePluginId } from "@/components/plugin/plugin-context";
+import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -171,6 +174,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
   mountCounts.appSidebar = 0;
   window.localStorage.clear();
 });
@@ -365,5 +369,141 @@ describe("AppLayoutSidebar", () => {
     expect(screen.getByTestId("settings-sidebar-body").dataset.backTo).toBe(
       "/",
     );
+  });
+});
+
+function panelSidebar(
+  subPath: string,
+  component = ScopedHomeNavigation,
+  generation = 1,
+) {
+  const panel: PluginNavPanelSlot = {
+    pluginId: "home",
+    id: "home",
+    title: "Home",
+    path: "home",
+    icon: "House",
+    component: () => null,
+    generation,
+    experimental_sidebar: component,
+  };
+  return { panel, subPath };
+}
+function ScopedHomeNavigation({ subPath }: { subPath: string }) {
+  const pluginId = usePluginId();
+  return (
+    <nav aria-label="Home navigation">
+      {pluginId}:{subPath}
+    </nav>
+  );
+}
+function routeSidebar(
+  target?: ReturnType<typeof panelSidebar>,
+  mode: AppLayoutSidebarMode = "app",
+  compact = false,
+) {
+  return (
+    <CompactViewportOverrideProvider isCompactViewport={compact}>
+      <SidebarProvider>
+        <AppLayoutSidebar
+          mode={mode}
+          pluginSidebar={target}
+          onResizeMouseDown={() => {}}
+          isResizing={false}
+          settingsRoutePath="/settings"
+          backToAppRoutePath={null}
+        />
+        <SidebarTrigger />
+      </SidebarProvider>
+    </CompactViewportOverrideProvider>
+  );
+}
+describe("navigation panel sidebar composition", () => {
+  it("keeps the scoped body during compact drawer closing and restores native navigation after settling", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      routeSidebar(panelSidebar("inbox"), "app", true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+    const panel = getMobilePanel();
+    const rail = getRail();
+    expect(panel.dataset.state).toBe("open");
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    rerender(routeSidebar(undefined, "app", true));
+    expect(
+      screen.getByRole("navigation", { name: "Home navigation" }),
+    ).toBeTruthy();
+    expect(getAppSidebarBody().hidden).toBe(true);
+    settleMobileToggle();
+    expect(
+      screen.queryByRole("navigation", { name: "Home navigation" }),
+    ).toBeNull();
+    expect(getAppSidebarBody().hidden).toBe(false);
+    expect(getMobilePanel()).toBe(panel);
+    expect(panel.dataset.state).toBe("closed");
+    expect(getRail()).toBe(rail);
+    expect(mountCounts.appSidebar).toBe(1);
+  });
+  it("uses the exact plugin scope/subpath and restores the same native rail/body on leaving or disabling the panel", () => {
+    const { rerender } = render(routeSidebar(panelSidebar("inbox")));
+    const rail = getRail();
+    const native = getAppSidebarBody();
+    expect(native.hidden).toBe(true);
+    expect(
+      screen.getByRole("navigation", { name: "Home navigation" }).textContent,
+    ).toBe("home:inbox");
+    rerender(routeSidebar(panelSidebar("dashboard")));
+    expect(
+      screen.getByRole("navigation", { name: "Home navigation" }).textContent,
+    ).toBe("home:dashboard");
+    expect(getRail()).toBe(rail);
+    rerender(routeSidebar());
+    expect(
+      screen.queryByRole("navigation", { name: "Home navigation" }),
+    ).toBeNull();
+    expect(getAppSidebarBody()).toBe(native);
+    expect(native.hidden).toBe(false);
+    expect(getRail()).toBe(rail);
+    expect(mountCounts.appSidebar).toBe(1);
+  });
+  it("keeps settings/resources authoritative even if a stale plugin target is supplied", () => {
+    const { rerender } = render(
+      routeSidebar(panelSidebar("inbox"), "settings"),
+    );
+    expect(screen.getByTestId("settings-sidebar-body")).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", { name: "Home navigation" }),
+    ).toBeNull();
+    rerender(routeSidebar(panelSidebar("inbox"), "plugins"));
+    expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", { name: "Home navigation" }),
+    ).toBeNull();
+  });
+  it("restores native navigation on a crash, isolates a repeated failed route and retries new input/generation", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const Broken = () => {
+      throw new Error("Synthetic sidebar crash");
+    };
+    try {
+      const { rerender } = render(routeSidebar(panelSidebar("inbox", Broken)));
+      expect(getAppSidebarBody().hidden).toBe(false);
+      rerender(routeSidebar(panelSidebar("dashboard")));
+      expect(
+        screen.getByRole("navigation", { name: "Home navigation" }),
+      ).toBeTruthy();
+      rerender(routeSidebar(panelSidebar("inbox", Broken)));
+      expect(getAppSidebarBody().hidden).toBe(false);
+      rerender(routeSidebar(panelSidebar("inbox", ScopedHomeNavigation, 2)));
+      expect(getAppSidebarBody().hidden).toBe(true);
+      expect(
+        screen.getByRole("navigation", { name: "Home navigation" }).textContent,
+      ).toBe("home:inbox");
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });

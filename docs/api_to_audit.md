@@ -3139,3 +3139,19 @@ classification should cover more network commands (for example `git lfs`), and
 whether work that escapes an admitted operation's async context should regain
 admission. Verify that every caller holds permits until its last admitted child
 exits, including pipelines.
+
+## Navigation-panel route sidebar
+
+`PluginNavPanelRegistration.experimental_sidebar` is an optional component receiving
+`PluginNavPanelProps`. `AppLayout` resolves only the active live panel registration;
+`AppLayoutSidebar` mounts it in the existing alternate sidebar body, retaining the
+native rail and thread sidebar state. Missing/disabled/crashed components restore
+the native thread body. Compact dismissal retains the outgoing body until closure.
+Changed subPath or registration generation can retry a crashed mount. No setting,
+thread, draft or execution action is performed by registration or route switching.
+
+Docs: Plugin Guide Full-page panels surface. Stabilization requires exact route,
+back/forward, disable/reload/crash, compact focus and single-sidebar replay with
+real plugin CSS and native rail. The API is generic; no plugin-id special case
+exists in core. CLI navigation uses the existing panel URL; this field introduces
+no separate backend or headless side effect.

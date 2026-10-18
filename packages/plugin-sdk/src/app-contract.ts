@@ -914,6 +914,16 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
+   * Replace the thread-list body only while this exact navigation panel route
+   * is active. Receives the page's current subPath in this plugin's scope.
+   * The native navigation rail remains. Other routes keep their usual sidebar.
+   * Missing/disabled registrations or a throwing sidebar restore the thread
+   * sidebar; a changed subPath or plugin generation may retry a crashed mount.
+   * No sidebar preference, thread, composer or execution state is changed.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sidebar?: ComponentType<PluginNavPanelProps>;
+  /**
    * Ordered, non-closable tabs shown in this page's host-owned right panel.
    * BB owns selection and persistence and always includes its native Browser
    * and Terminal tools beside them. One tab is active in each visible split

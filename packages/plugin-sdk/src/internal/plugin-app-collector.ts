@@ -262,6 +262,7 @@ const NAV_PANEL_REGISTRATION_KEYS: ReadonlySet<string> = new Set(
     component: true,
     fixedTabs: true,
     experimental_useBadge: true,
+    experimental_sidebar: true,
     headerContent: true,
   } satisfies Record<keyof PluginNavPanelRegistration, true>),
 );
@@ -695,6 +696,14 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_useBadge" must be a React hook function when set`,
           );
         }
+        if (
+          registration.experimental_sidebar !== undefined &&
+          typeof registration.experimental_sidebar !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_sidebar" must be a React component function when set`,
+          );
+        }
         const fixedTabs: PluginNavPanelFixedTabRegistration[] = (() => {
           if (registration.fixedTabs === undefined) return [];
           if (!Array.isArray(registration.fixedTabs)) {
@@ -771,6 +780,9 @@ export function collectPluginAppRegistrations(
             ? {
                 experimental_useBadge: registration.experimental_useBadge,
               }
+            : {}),
+          ...(registration.experimental_sidebar !== undefined
+            ? { experimental_sidebar: registration.experimental_sidebar }
             : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }

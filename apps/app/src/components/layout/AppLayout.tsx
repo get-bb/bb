@@ -546,6 +546,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   const pluginPanel = pluginPanelEntry?.panel ?? undefined;
   const pluginPanelChrome = pluginPanelEntry?.chrome;
   const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
+  const pluginSidebar = useMemo(
+    () =>
+      pluginPanel?.experimental_sidebar === undefined
+        ? undefined
+        : { panel: pluginPanel, subPath: pluginPanelSubPath },
+    [pluginPanel, pluginPanelSubPath],
+  );
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -818,6 +825,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 ) : null}
                 <HistoryCommandHandlers />
                 <AppLayoutSidebar
+                  pluginSidebar={pluginSidebar}
                   mode={
                     isGlobalSettingsView
                       ? "settings"
