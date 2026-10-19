@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import { CustomizeBuild } from "../../landing/landing-visuals";
 import { BB_ROWS, FAQ_GET_STARTED, cell, linkedCell } from "../compare-content";
 import { agentsSection } from "../compare-sections";
@@ -162,6 +163,7 @@ export const comparison: Comparison = {
     {
       title: "Trying bb",
       items: [
+        FAQ_PLUGIN_TRUST,
         FAQ_GET_STARTED,
         {
           question: "Do I need to move all my work out of Orca?",
