@@ -23,7 +23,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
   macos: {
     label: "macOS",
     buttonLabel: "Download for macOS",
-    note: "Apple Silicon",
+    note: "For Apple Silicon",
     installerExtension: ".dmg",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version.json`,
     redirectPath: "/download/macos",
