@@ -124,6 +124,14 @@ jobs:
         shell: bash
         run: pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --continue --concurrency=2 --output-logs=new-only --summarize
 
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-windows-foundation-${{ github.run_attempt }}
+
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
 
@@ -177,13 +185,21 @@ jobs:
 
       - name: Build bb-app and boot it
         shell: bash
-        run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
+        run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
 
       - name: Smoke test the bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+        run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only --summarize
+
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-windows-app-smoke-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
 
   windows-desktop-smoke:
     needs: plan
@@ -237,14 +253,22 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         shell: bash
-        run: pnpm exec turbo run package:win --filter=@bb/desktop --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
+        run: pnpm exec turbo run package:win --filter=@bb/desktop --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
 
       - name: Smoke test the packaged desktop app
         shell: bash
-        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
+        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
+
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-windows-desktop-smoke-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
 
   windows-tests:
     name: Windows tests (${{ matrix.shard }}, Node 22.x)
@@ -327,17 +351,13 @@ jobs:
           if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
           pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }}
 
-      - name: Upload test timings
+      - name: Report task cache and timings
         if: ${{ !cancelled() }}
         continue-on-error: true
-        timeout-minutes: 1
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
         with:
-          name: test-timings-windows-${{ matrix.shard }}-${{ github.run_attempt }}
-          path: .turbo/runs/*.json
-          include-hidden-files: true
-          retention-days: 7
-          if-no-files-found: ignore
+          name: ci-timings-windows-tests-${{ matrix.shard }}-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
@@ -387,6 +407,14 @@ jobs:
 
       - name: Lint and typecheck
         run: pnpm exec turbo run lint typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-static-checks-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs
@@ -445,7 +473,7 @@ jobs:
       # default vs 90 s / 58 s at four.
       - name: Build plugin SDK for version validation
         if: ${{ fromJSON(needs.plan.outputs.selection).sdkBuild }}
-        run: pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --concurrency=4
+        run: pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --concurrency=4 --summarize
 
       # A published version whose packed files or consumer-facing manifest
       # fields changed is a hard failure; an unreachable registry or a failed
@@ -483,6 +511,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/check-actions-cache-usage.mjs
+
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-checks-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
@@ -566,17 +602,13 @@ jobs:
           VITEST_MAX_WORKERS: "2"
         run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
-      - name: Upload test timings
+      - name: Report task cache and timings
         if: ${{ !cancelled() }}
         continue-on-error: true
-        timeout-minutes: 1
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
         with:
-          name: test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
-          path: .turbo/runs/*.json
-          include-hidden-files: true
-          retention-days: 7
-          if-no-files-found: ignore
+          name: ci-timings-tests-${{ matrix.shard }}-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
@@ -816,7 +848,15 @@ jobs:
 
       - name: Smoke Linux AppImage mount lifecycle
         if: ${{ runner.os == 'Linux' }}
-        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
+        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
+
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-package-smoke-${{ runner.os }}-${{ matrix.node-version }}-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb ${{ runner.os == 'macOS' && '256' || '1024' }} --keep-run-summaries .turbo/runs
@@ -875,6 +915,14 @@ jobs:
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+
+      - name: Report task cache and timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/report-ci-timings
+        with:
+          name: ci-timings-node-compat-smoke-${{ runner.os }}-${{ matrix.node-version }}-${{ github.run_attempt }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb ${{ runner.os == 'macOS' && '256' || '1024' }} --keep-run-summaries .turbo/runs

@@ -77,8 +77,13 @@ resolution.
 
 ## Setup budgets
 
-CI installs Node and the checksum-verified pnpm executable before restoring
-caches. Turbo restores have a one-minute step budget. Linux and Windows skip
+CI restores a version, OS, architecture, and checksum-keyed cache of the pnpm
+executable, verifies its bytes, and installs Node before restoring workspace
+caches. A missing or corrupt executable falls back to the bounded release
+download; partial downloads are removed and never installed. Cache failures
+remain optional. This small executable cache is independent of the dependency
+store and Turbo archives. Turbo restores have a one-minute step budget.
+Linux and Windows skip
 pnpm store archives; macOS restores pnpm separately with its own one-minute
 budget. On Linux and Windows, extracting the full store archive could exhaust
 the shared restore budget before Turbo outputs were restored, and the fallback
@@ -105,8 +110,8 @@ and before successful jobs save them:
 - Linux jobs keep at most 1,024 MB.
 - Windows jobs and macOS package and Node compatibility smokes keep at most
   256 MB to bound transfer and storage costs.
-- Windows test shards, Windows host packages, Linux lint/typecheck, and the
-  package and Node compatibility smokes also drop every entry their own Turbo
+- Windows test shards, Windows host packages, Windows packaging smokes, Linux
+  lint/typecheck, and the package and Node compatibility smokes also drop every entry their own Turbo
   run summary does not name (`--keep-run-summaries`). A first restore after a
   lockfile change can fall back to another job's cache; without this filter
   those foreign entries filled the budget and were never evicted.
@@ -167,7 +172,7 @@ only when the selected tests include `@bb/desktop`. Electron setup queries
 dpkg first and runs apt only for missing packages, then starts Electron to
 verify the runtime.
 
-Every test job uploads `.turbo/runs/*.json` as a `test-timings-<shard>-<attempt>`
+Every test job uploads `.turbo/runs/*.json` as a `ci-timings-<job>-<shard>-<attempt>`
 artifact retained for seven days. Use execution durations and cache status to
 compare cold jobs separately from warm jobs. Compare workflow attempts
 separately: a rerun can reuse earlier successful jobs, making the span between
@@ -285,9 +290,35 @@ of six runs checkpoints the evidence and rendered report. Incomplete collections
 are prominently marked, exclude partially fetched runs from timings and recovery
 counts, and fail the reporting step while still uploading diagnostics.
 
+The report also groups runs by trigger and the exact selected first-attempt job
+names, assigning a stable cohort ID. Compare matching IDs across reports;
+package selection within a job, source changes, and cache warmth can still differ.
+Eventual-green latency includes the wait for manual retries and their execution;
+it excludes runs still red or pending at collection time.
+
+With `checks: read`, the collector fetches the first 100 annotations for up to
+100 failed jobs per report. Failure signatures normalize numeric values and UUIDs,
+deduplicate by run, and link an example. Annotation coverage, truncation, and
+errors are reported separately from job inventory completeness; these are diagnostic
+signatures, not root-cause classifications or a measured test-flake rate.
+
+Build, static, foundation, test, and packaging jobs now publish task-cache reports
+through `.github/actions/report-ci-timings`. The raw Turbo summaries and
+`.ci-task-timings/report.json` and `report.md` are retained in `ci-timings-*`
+artifacts for seven days. The Markdown also appears in each job's summary.
+Only explicit Turbo HIT/MISS statuses count; missing timing intervals remain
+unknown. Repeated task/hash misses across invocations are highlighted, including
+intentionally uncached tasks. Copied summaries are deduplicated. Caches restore
+only `.turbo/cache`, so prior job summaries are not included.
+
 Compare several daily artifacts, separating changes in selected work from runtime
-gains. Cache transfer time is not a cache hit rate; inspect Turbo summaries or
-logs for task cache hits.
+gains. For Windows provisioning, compare start-delay distributions within the same
+cohort before changing shard count or runner size. For packaging, inspect repeated
+misses and shared prerequisite hashes across the app and desktop artifacts before
+introducing a shared build job: its artifact transfer and serial dependency could
+increase the critical path. The current change keeps both packaging checks
+independent and prunes their caches to outputs named by their own summaries.
+Cache transfer time is not a cache hit rate.
 
 ## Avoiding repeated setup
 

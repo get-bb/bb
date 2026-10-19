@@ -1,0 +1,22 @@
+name: Report CI task timings
+description: Summarize task cache reuse and retain execution evidence.
+inputs:
+  name:
+    required: true
+    description: Unique artifact name for this job and attempt
+runs:
+  using: composite
+  steps:
+    - name: Summarize Turbo tasks
+      shell: bash
+      run: node scripts/report-ci-task-timings.mjs
+    - name: Upload task timings
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: ${{ inputs.name }}
+        path: |
+          .turbo/runs/*.json
+          .ci-task-timings/
+        include-hidden-files: true
+        retention-days: 7
+        if-no-files-found: ignore

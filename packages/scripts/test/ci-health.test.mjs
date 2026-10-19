@@ -73,6 +73,11 @@ it("separates first-attempt latency from retries and counts failure incidents by
     run(5, 1, null, []),
   ]);
   expect(report.durationSeconds).toEqual({ count: 1, median: 150, p90: 150 });
+  expect(report.eventualGreenSeconds).toEqual({
+    count: 2,
+    median: 600,
+    p90: 1_050,
+  });
   expect(report.runnerMinutes.median).toBe(3.5);
   expect(report.rerunRuns).toBe(2);
   expect(report.recoveredRuns).toBe(1);
@@ -225,4 +230,93 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
       ...report,
     }),
   ).toContain("INCOMPLETE COLLECTION");
+});
+
+it("keeps cohort identity stable across job ordering while separating triggers and selected work", () => {
+  const jobs = [
+    job(1, "Windows", 1, "success", 10, 100),
+    job(2, "Linux", 1, "success", 10, 80),
+  ];
+  const report = summarizeCiHealth([
+    run(1, 1, "success", jobs),
+    run(2, 1, "success", [...jobs].reverse()),
+    { ...run(3, 1, "success", jobs), event: "push" },
+    run(4, 1, "success", [jobs[0], job(3, "Linux", 1, "skipped", 0, 0)]),
+  ]);
+  expect(report.cohorts).toHaveLength(3);
+  expect(report.cohorts[0]).toMatchObject({
+    event: "pull_request",
+    jobs: ["Linux", "Windows"],
+    runs: 2,
+    durationSeconds: { count: 2, median: 100, p90: 100 },
+  });
+  expect(new Set(report.cohorts.map((cohort) => cohort.id)).size).toBe(3);
+  expect(
+    summarizeCiHealth([run(5, 1, "success", [...jobs].reverse())]).cohorts[0]
+      .id,
+  ).toBe(report.cohorts[0].id);
+});
+
+it("collects bounded failure annotations without losing timing evidence when annotations fail", async () => {
+  const evidence = await collectCiHealth(
+    async (path) => {
+      if (path.startsWith("actions/workflows/"))
+        return { total_count: 1, workflow_runs: [run(1, 3, "success", [])] };
+      if (path.startsWith("actions/runs/"))
+        return {
+          jobs: [
+            {
+              ...job(1, "Windows", 1, "failure", 0, 10),
+              check_run_url:
+                "https://api.github.com/repos/get-bb/bb/check-runs/11",
+            },
+            {
+              ...job(2, "Windows", 2, "failure", 20, 30),
+              check_run_url:
+                "https://api.github.com/repos/get-bb/bb/check-runs/12",
+            },
+            {
+              ...job(3, "Linux", 1, "failure", 0, 10),
+              check_run_url:
+                "https://api.github.com/repos/get-bb/bb/check-runs/13",
+            },
+            job(4, "Windows", 3, "success", 50, 60),
+            job(5, "Linux", 3, "success", 50, 60),
+          ],
+        };
+      if (path.startsWith("check-runs/13/"))
+        throw new Error("permission denied");
+      return Array.from({ length: 100 }, (_, index) => ({
+        title: "Test timeout",
+        message: `Exceeded ${path.startsWith("check-runs/11/") ? 5000 : 6000} ms`,
+        annotation_level: index === 99 ? "warning" : "failure",
+      }));
+    },
+    time(0),
+    time(3_600),
+    () => {},
+  );
+  expect(evidence.errors).toEqual([]);
+  expect(evidence.runs[0].jobsComplete).toBe(true);
+  expect(evidence.annotations).toEqual({
+    eligibleJobs: 3,
+    fetchedJobs: 2,
+    truncatedJobs: 2,
+    unavailableJobs: 1,
+    errors: [{ scope: "job 3", message: "permission denied" }],
+  });
+  const report = summarizeCiHealth(evidence.runs);
+  expect(report.eventualGreenSeconds).toEqual({
+    count: 1,
+    median: 60,
+    p90: 60,
+  });
+  expect(report.failureSignatures).toEqual([
+    {
+      job: "Windows",
+      signature: "Test timeout: Exceeded <n> ms",
+      runs: 1,
+      url: "https://github.com/get-bb/bb/actions/runs/1",
+    },
+  ]);
 });

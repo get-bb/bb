@@ -44,9 +44,11 @@ const FAKE_AGENT_PATH = resolve(
 let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
 let nextThreadSerial = 0;
-const startedProviderThreadIds: string[] = [];
 let nextRequestId = 1;
 const realSetTimeout = setTimeout;
+let testSignal: AbortSignal;
+const sentRequestIds = new Set<number>();
+const threadStartRequests = new Map<number, string>();
 
 function requestId(): number {
   nextRequestId += 1;
@@ -55,6 +57,16 @@ function requestId(): number {
 
 function sendRequest(method: string, params: object): number {
   const id = requestId();
+  sentRequestIds.add(id);
+  if (
+    (method === "thread/start" ||
+      method === "thread/resume" ||
+      method === "thread/fork") &&
+    "threadId" in params &&
+    typeof params.threadId === "string"
+  ) {
+    threadStartRequests.set(id, params.threadId);
+  }
   handleLine(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   return id;
 }
@@ -63,9 +75,11 @@ async function waitFor<T>(
   resolveValue: () => T | undefined,
   description: string,
   timeoutMs = 15_000,
+  signal: AbortSignal | null = testSignal,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    signal?.throwIfAborted();
     const value = resolveValue();
     if (value !== undefined) {
       return value;
@@ -78,7 +92,9 @@ async function waitFor<T>(
 }
 
 async function waitForFileWithRealTimer(path: string): Promise<void> {
+  const signal = testSignal;
   for (let attempt = 0; attempt < 100; attempt += 1) {
+    signal.throwIfAborted();
     if (existsSync(path)) {
       return;
     }
@@ -297,7 +313,6 @@ async function startThread(args?: StartThreadArgs): Promise<{
   ) {
     throw new Error("thread/start did not return a providerThreadId");
   }
-  startedProviderThreadIds.push(result.providerThreadId);
   bbThreadIdByProviderThreadId.set(result.providerThreadId, bbThreadId);
   return { bbThreadId, providerThreadId: result.providerThreadId };
 }
@@ -621,20 +636,60 @@ async function waitForAgentExit(readyFile: string): Promise<void> {
   );
 }
 
-beforeEach(() => {
+beforeEach(({ signal }) => {
+  testSignal = signal;
   bbThreadIdByProviderThreadId.clear();
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
   output = captureBridgeJsonRpcOutput();
 });
 
 afterEach(async () => {
-  for (const providerThreadId of startedProviderThreadIds.splice(0)) {
-    await stopThread(providerThreadId);
+  try {
+    await waitFor(
+      () =>
+        [...threadStartRequests.keys()].every(
+          (id) => findResponse(id) !== undefined,
+        )
+          ? true
+          : undefined,
+      "pending thread starts before cleanup",
+      20_000,
+      null,
+    );
+    for (const [startId, threadId] of threadStartRequests) {
+      const started = findResponse(startId);
+      if (!started || started.error) continue;
+      const id = sendRequest("thread/stop", {
+        threadId,
+        providerThreadId: providerThreadIdOf(started),
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      const response = await waitFor(
+        () => findResponse(id),
+        `cleanup response ${id}`,
+        15_000,
+        null,
+      );
+      expect(response.error).toBeUndefined();
+    }
+    await waitFor(
+      () =>
+        [...sentRequestIds].every((id) => findResponse(id) !== undefined)
+          ? true
+          : undefined,
+      "pending bridge requests after cleanup",
+      20_000,
+      null,
+    );
+  } finally {
+    sentRequestIds.clear();
+    threadStartRequests.clear();
+    vi.unstubAllEnvs();
+    output.restore();
+    rmSync(workspaceDir, { recursive: true, force: true });
   }
-  vi.unstubAllEnvs();
-  output.restore();
-  rmSync(workspaceDir, { recursive: true, force: true });
-});
+}, 30_000);
 
 describe("acp bridge", () => {
   it("answers initialize and lists grouped models without spawning an agent", async () => {
@@ -979,7 +1034,6 @@ describe("acp bridge", () => {
         selectedModel === "default" ? [] : [selectedModel, "high", "true"],
       );
       const providerThreadId = providerThreadIdOf(response);
-      startedProviderThreadIds.push(providerThreadId);
       bbThreadIdByProviderThreadId.set(providerThreadId, threadId);
     },
   );
@@ -1481,7 +1535,7 @@ describe("acp bridge", () => {
         (text) => text === "argv:--model pinme --reasoning-effort high",
       ),
     ).toBe(true);
-  });
+  }, 20_000);
 
   it.each<{ label: string; env: Record<string, string> }>([
     { label: "model config option", env: { FAKE_ACP_MODEL_CONFIG: "1" } },
@@ -2561,7 +2615,6 @@ describe("acp bridge", () => {
       typeof startResponse.result.providerThreadId === "string"
         ? startResponse.result.providerThreadId
         : "";
-    startedProviderThreadIds.push(providerThreadId);
 
     const turnId = sendRequest("turn/start", {
       threadId,
@@ -3056,7 +3109,6 @@ describe("acp bridge", () => {
         typeof startResponse.result.providerThreadId === "string"
           ? startResponse.result.providerThreadId
           : "";
-      startedProviderThreadIds.push(providerThreadId);
 
       const turnId = sendRequest("turn/start", {
         threadId,
@@ -3392,7 +3444,6 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
-    startedProviderThreadIds.pop();
   });
 
   it("rejects steers when no turn is active", async () => {
@@ -3424,7 +3475,6 @@ describe("acp bridge", () => {
 
     const completed = await waitForTurnCompleted();
     expect(completed).toMatchObject({ status: "interrupted" });
-    startedProviderThreadIds.pop();
   });
 
   it("settles the interrupted turn itself when the agent ignores session/cancel", async () => {
@@ -3458,7 +3508,6 @@ describe("acp bridge", () => {
     await new Promise((resolveTick) => realSetTimeout(resolveTick, 200));
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
     expect(notifications("error")).toEqual([]);
-    startedProviderThreadIds.pop();
   }, 15_000);
 
   it("forks an advertised ACP session with the target cwd and MCP servers", async () => {
@@ -3498,7 +3547,6 @@ describe("acp bridge", () => {
     ) {
       throw new Error("thread/fork did not return a providerThreadId");
     }
-    startedProviderThreadIds.push(result.providerThreadId);
     expect(result.providerThreadId).toMatch(/^fake-fork-/u);
 
     await waitForFileWithRealTimer(forkLog);
@@ -3644,7 +3692,6 @@ describe("acp bridge", () => {
     expect(resetIndexesFor(first.bbThreadId)).toHaveLength(1);
 
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
       cwd: workspaceDir,
@@ -3660,7 +3707,6 @@ describe("acp bridge", () => {
     });
     const resumeResponse = await waitForResponse(resumeId);
     expect(resumeResponse.error).toBeUndefined();
-    startedProviderThreadIds.push(first.providerThreadId);
     const resets = resetIndexesFor(first.bbThreadId);
     const identities = identityIndexesFor(first.bbThreadId);
     expect(resets).toHaveLength(2);
@@ -3691,7 +3737,6 @@ describe("acp bridge", () => {
     ) {
       throw new Error("thread/fork did not return a providerThreadId");
     }
-    startedProviderThreadIds.push(forkResult.providerThreadId);
     bbThreadIdByProviderThreadId.set(
       forkResult.providerThreadId,
       "thread-fork-reset",
@@ -3785,7 +3830,6 @@ describe("acp bridge", () => {
     const forkedProviderThreadId = providerThreadIdOf(
       await waitForResponse(forkId),
     );
-    startedProviderThreadIds.push(forkedProviderThreadId);
     bbThreadIdByProviderThreadId.set(forkedProviderThreadId, forkThreadId);
 
     const wire = messagesForThread(forkThreadId);
@@ -3807,7 +3851,6 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3840,7 +3883,6 @@ describe("acp bridge", () => {
       },
     });
     expect(threadEventsOfType("provider/warning")).toHaveLength(0);
-    startedProviderThreadIds.push(first.providerThreadId);
   });
 
   it("ignores load-time context usage for a different session", async () => {
@@ -3848,7 +3890,6 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3873,7 +3914,6 @@ describe("acp bridge", () => {
       sessionRestorable: true,
     });
     expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
-    startedProviderThreadIds.push(first.providerThreadId);
   });
 
   it("discards load-time context usage when session/load fails", async () => {
@@ -3881,7 +3921,6 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3912,7 +3951,6 @@ describe("acp bridge", () => {
     expect(result.providerThreadId).not.toBe(first.providerThreadId);
     expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
-    startedProviderThreadIds.push(result.providerThreadId);
   });
 
   it("re-applies ACP-native reasoning after session/load resume", async () => {
@@ -3924,7 +3962,6 @@ describe("acp bridge", () => {
       },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3950,7 +3987,6 @@ describe("acp bridge", () => {
       providerThreadId: first.providerThreadId,
       sessionRestorable: true,
     });
-    startedProviderThreadIds.push(first.providerThreadId);
 
     sendTurnRequest("turn/start", first.providerThreadId, {
       input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
@@ -3983,7 +4019,6 @@ describe("acp bridge", () => {
       throw new Error("thread/resume did not return a providerThreadId");
     }
     expect(result.providerThreadId).not.toBe("fake-sess-stale");
-    startedProviderThreadIds.push(result.providerThreadId);
 
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
   });
@@ -4263,7 +4298,6 @@ describe("acp bridge", () => {
     const liveProviderThreadId = providerThreadIdOf(
       await waitForResponse(secondStartId),
     );
-    startedProviderThreadIds.push(liveProviderThreadId);
     bbThreadIdByProviderThreadId.set(liveProviderThreadId, threadId);
 
     const first = await waitForResponse(firstStartId);
@@ -4596,7 +4630,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     };
     const first = await startThread({ envVars });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -4611,7 +4644,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
       providerThreadId: first.providerThreadId,
       sessionRestorable: true,
     });
-    startedProviderThreadIds.push(first.providerThreadId);
 
     const methods = loggedAcpRequests(requestLog).map(
       (request) => request.method,
@@ -4625,7 +4657,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     const response = await startThreadResponse({
       FAKE_ACP_RESUME_SESSION: "1",
     });
-    startedProviderThreadIds.push(providerThreadIdOf(response));
     expect(response.result).toMatchObject({ sessionRestorable: true });
   });
 
@@ -4642,7 +4673,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
       executionOptions({}),
     );
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -4655,7 +4685,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
       providerThreadId: first.providerThreadId,
     });
     expect((await waitForResponse(resumeId)).error).toBeUndefined();
-    startedProviderThreadIds.push(first.providerThreadId);
     await completeTurnWith(
       first.providerThreadId,
       "second",
@@ -4673,7 +4702,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     const envVars = { FAKE_ACP_PROMPT_LOG: promptLog };
     const first = await startThread({ envVars, instructions: "Be terse." });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -4688,7 +4716,6 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     const resumed = await waitForResponse(resumeId);
     const resumedProviderThreadId = providerThreadIdOf(resumed);
     bbThreadIdByProviderThreadId.set(resumedProviderThreadId, first.bbThreadId);
-    startedProviderThreadIds.push(resumedProviderThreadId);
     await completeTurnWith(
       resumedProviderThreadId,
       "second",
@@ -4825,7 +4852,6 @@ describe("acp bridge: questions the agent asks", () => {
     );
 
     await stopThread(providerThreadId);
-    startedProviderThreadIds.pop();
     await waitFor(
       () =>
         readFileSync(requestLog, "utf8").includes(

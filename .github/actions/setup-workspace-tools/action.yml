@@ -1,5 +1,5 @@
 name: Setup workspace tools
-description: Install pinned pnpm and Node without waiting for optional caches.
+description: Install Node and reuse the checksum-verified pinned pnpm executable.
 inputs:
   node-version:
     required: true
@@ -10,6 +10,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Restore pnpm executable
+      continue-on-error: true
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: ${{ runner.temp }}/pnpm-${{ inputs.pnpm-version }}/bin/pnpm
+        key: pnpm-executable-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.pnpm-version }}-${{ hashFiles('.github/actions/setup-workspace/pnpm-*.sha256') }}
     - name: Set up pnpm
       shell: bash
       env:

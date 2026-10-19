@@ -109,7 +109,7 @@ pnpm exec turbo run test --filter=@bb/server --continue --output-logs=new-only
 ```
 
 Each shard uploads `.turbo/runs/*.json` as a
-`test-timings-windows-<shard>-<attempt>` artifact. With nothing restored from
+`ci-timings-windows-tests-<shard>-<attempt>` artifact. With nothing restored from
 the Turbo cache, a shard finishes in about three to four minutes. Setup
 (checkout, cache restore, install) is one and a half to two minutes of that,
 against under one minute on Linux: unpacking the pnpm store and linking
@@ -191,3 +191,18 @@ Native Windows is an alpha host (see [platform-support.md](platform-support.md))
   process-heavy suite; the cause is unexplained.
 - Windows 11 installation, interactive terminals, updates, and real provider
   sessions still need verification beyond Windows Server CI.
+
+## Timing and failure diagnosis
+
+Windows foundation, test, app-smoke, and desktop-smoke jobs retain raw Turbo
+summaries plus a task-cache and execution report in `ci-timings-*` artifacts.
+The packaging jobs summarize each invocation and preserve only their own task
+outputs when pruning the saved cache. Use these reports to compare prerequisite
+cache misses before changing shard count or adding a shared packaging build job.
+
+ACP-next bridge tests cancel polling when Vitest aborts a test and drain requests
+and stop sessions before restoring captured output or removing the workspace.
+The multi-process model-selection case has a 20-second budget. CI-selection
+fixture tests run real Git and Turbo processes and use a 30-second budget, with
+60 seconds for the longer merge-history case. These budgets do not retry failed
+assertions or alter provider runtime timeouts.

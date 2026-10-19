@@ -99,3 +99,4 @@ provider-recordings/raw/
 /plugins/*/.bundled-runtime/
 
 .ci-health/
+.ci-task-timings/
