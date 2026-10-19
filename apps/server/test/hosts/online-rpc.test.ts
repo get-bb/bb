@@ -97,6 +97,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -156,6 +157,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -209,6 +211,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -264,6 +267,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -288,6 +292,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -318,6 +323,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -382,6 +388,7 @@ describe("host online RPC retry semantics", () => {
             timeoutMs: 10,
             command: {
               type: "provider.list_models",
+              contributedEnv: [],
               providerId: "codex",
               bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
             },
@@ -425,6 +432,7 @@ describe("host online RPC retry semantics", () => {
             timeoutMs: 10,
             command: {
               type: "provider.list_models",
+              contributedEnv: [],
               providerId: "codex",
               bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
             },
@@ -471,6 +479,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 10,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },
@@ -526,6 +535,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "provider.list_models",
+            contributedEnv: [],
             providerId: "codex",
             bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
           },

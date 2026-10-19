@@ -905,6 +905,42 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(row).not.toHaveProperty("statusLabels");
   });
 
+  it("builds the same timeline with or without held-turn main-run updates", () => {
+    const build = (withMainRun: boolean) => {
+      const event = createTimelineEventFactory({ threadId: "thread-1" });
+      const rows = [
+        event.turnStarted({ turnId: "turn-1" }),
+        event.assistantCompleted({ itemId: "msg-1", text: "Waiting." }),
+        ...(withMainRun
+          ? [
+              event.turnMainRunUpdated({ state: "idle" }),
+              event.turnMainRunUpdated({ state: "running" }),
+            ]
+          : []),
+        event.assistantCompleted({ itemId: "msg-2", seq: 5, text: "Done." }),
+      ];
+      return buildThreadTimelineFromEvents({
+        acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+        contextWindowEvents: [],
+        events: fromRows(rows),
+        options: {
+          completedTurnDisplay: "collapse",
+          includeDiagnosticOperations: true,
+          includeNestedRows: true,
+          isLatestPage: true,
+          summarizeShellCommands: true,
+          threadName: "",
+          threadStatus: "active",
+          workspaceRoot: null,
+        },
+      });
+    };
+
+    const withMainRun = build(true);
+    expect(JSON.stringify(withMainRun.rows)).not.toContain("mainRun");
+    expect(withMainRun.rows).toEqual(build(false).rows);
+  });
+
   it("shows a shell command as run when shell command summaries are off", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const command =

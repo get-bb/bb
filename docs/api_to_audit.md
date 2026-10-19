@@ -208,7 +208,8 @@ Docs: `providers.md`.
 ## `bb.providers.experimental_contributeEnv`
 
 Registers one resolver per provider per plugin that returns up to 32
-environment entries for each session and turn. Each entry is a literal or a
+environment entries for each session and turn, and for model catalog listing
+with a `null` thread and project. Each entry is a literal or a
 server-relative path the host expands. Conflicts resolve in plugin load
 order, and the values override the shell environment.
 

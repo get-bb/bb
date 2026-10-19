@@ -664,7 +664,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.write_file": writeHostFile,
   "provider.list_models": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
-      options.listModels(args),
+      options.listModels({ ...args, contributedEnv: command.contributedEnv }),
     ),
   "provider.health": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
