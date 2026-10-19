@@ -91,8 +91,13 @@ then discarded both caches and forced a cold build. A failed pnpm restore
 selects a fresh store without discarding healthy Turbo outputs. A failed Turbo
 restore clears incomplete archives in the saved cache directory without
 discarding the dependency store. Individual download segments also have a
-one-minute limit. Bun downloads directly instead of waiting for its executable
-cache.
+one-minute limit. Bun restores a separate archive cache keyed by platform,
+version, and committed release checksums. A cache miss downloads directly from
+GitHub Releases with bounded retries; the archive is verified before extraction.
+The setup step has a four-minute budget, including restoration, and uses the
+portable x64 baseline build on x64 runners. Archive digests come from the official
+release asset metadata. This avoids an unbounded download through the Bun
+redirect service becoming the workflow's final job.
 
 Dependency installation has a five-minute step budget in CI. Individual package
 fetches have a 30-second timeout with two retries and 1–5-second backoff. pnpm

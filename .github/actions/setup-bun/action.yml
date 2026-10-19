@@ -1,0 +1,22 @@
+name: Setup Bun
+description: Restore and verify a pinned Bun archive before installing it.
+inputs:
+  version:
+    required: true
+    description: Bun release with committed archive checksums
+runs:
+  using: composite
+  steps:
+    - name: Restore Bun archive
+      continue-on-error: true
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: ${{ runner.temp }}/bb-bun-${{ inputs.version }}/archive.zip
+        key: bun-archive-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles('.github/actions/setup-bun/*.sha256') }}
+    - name: Install verified Bun
+      shell: bash
+      env:
+        BUN_VERSION: ${{ inputs.version }}
+      run: bash .github/actions/setup-bun/install.sh
