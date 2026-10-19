@@ -23,11 +23,14 @@ describe("download attribution privacy", () => {
         "/?utm_source=qa&utm_campaign=privacy&gclid=landing&gbraid=gb&wbraid=wb",
       );
       const stopLanding = carryUtmToDownloadLinks();
+      expect(new URL(window.location.href).searchParams.get("gclid")).toBe(
+        globalPrivacyControl === true ? null : "landing",
+      );
       stopLanding();
       history.replaceState(null, "", "/compare/cursor-alternative");
       const link = document.createElement("a");
       link.href = "/download/windows?placement=hero";
-      document.body.append(link);
+      document.body.appendChild(link);
       const stop = carryUtmToDownloadLinks();
       try {
         link.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
@@ -64,12 +67,20 @@ describe("download attribution privacy", () => {
     vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
       throw new DOMException("Storage blocked", "SecurityError");
     });
+    history.replaceState(
+      { review: true },
+      "",
+      "/?gclid=landing&utm_source=qa#download",
+    );
     const link = document.createElement("a");
     link.href = "/download/macos?placement=hero&gclid=direct&utm_campaign=own";
-    document.body.append(link);
+    document.body.appendChild(link);
     const stop = carryUtmToDownloadLinks();
     try {
       link.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+      expect(window.location.search).toBe("?utm_source=qa");
+      expect(window.location.hash).toBe("#download");
+      expect(window.history.state).toEqual({ review: true });
       expect(new URL(link.href).searchParams.get("gclid")).toBeNull();
       expect(new URL(link.href).searchParams.get("utm_campaign")).toBe("own");
     } finally {

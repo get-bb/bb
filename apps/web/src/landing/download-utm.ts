@@ -47,6 +47,13 @@ export function carryUtmToDownloadLinks(): () => void {
   const globalPrivacyControl =
     "globalPrivacyControl" in navigator &&
     navigator.globalPrivacyControl === true;
+  if (globalPrivacyControl) {
+    const landingUrl = new URL(window.location.href);
+    if (landingUrl.searchParams.has("gclid")) {
+      landingUrl.searchParams.delete("gclid");
+      window.history.replaceState(window.history.state, "", landingUrl.href);
+    }
+  }
   let storage: UtmStorage | null = null;
   try {
     storage = window.sessionStorage;
