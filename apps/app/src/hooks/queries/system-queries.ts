@@ -1,3 +1,4 @@
+import { useTaggedQuery } from "@bb/query-tags";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
@@ -539,7 +540,7 @@ export function useUiPreferences(options?: QueryOptions) {
   const enabled = options?.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
 
-  return useQuery({
+  return useTaggedQuery({
     ...uiPreferencesQueryOptions(client),
     enabled,
   });

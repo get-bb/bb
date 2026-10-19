@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo } from "react";
 import {
-  useQuery,
   useIsFetching,
   type QueryClient,
 } from "@tanstack/react-query";
 import {
   invalidateTags,
+  useTaggedQuery,
   pluginTagScope,
   runTaggedRead,
   taggedQueryOptions,
@@ -108,7 +108,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     const input = jsonValueSchema.parse(options.input ?? null);
     const queryKey = rpcQueryKey(pluginId, options.method, input);
     useSubscription(host, pluginId, options.enabled ?? true);
-    const query = useQuery(
+    const query = useTaggedQuery(
       {
         queryKey,
         enabled: options.enabled,

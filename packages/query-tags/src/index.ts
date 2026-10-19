@@ -8,6 +8,10 @@ import {
 } from "react";
 import {
   QueryObserver,
+  useQuery,
+  useQueryClient,
+  type DefaultError,
+  type UseQueryOptions,
   useMutation,
   useMutationState,
   replaceEqualDeep,
@@ -18,6 +22,7 @@ import {
 
 import {
   beginOptimisticMutation,
+  subscribeOptimisticQuery,
   getTaggedReadData,
   taggedReadReceipt,
   taggedStructuralSharing,
@@ -27,6 +32,28 @@ export {
   optimisticQueryUpdate,
   type TaggedOptimisticUpdate,
 } from "./optimistic.js";
+
+export function useTaggedQuery<
+  QueryData = unknown,
+  Error = DefaultError,
+  Data = QueryData,
+  Key extends QueryKey = QueryKey,
+>(options: UseQueryOptions<QueryData, Error, Data, Key>, client?: QueryClient) {
+  const queryClient = useQueryClient(client);
+  const result = useQuery(options, queryClient);
+  const query = queryClient
+    .getQueryCache()
+    .get(queryClient.defaultQueryOptions(options).queryHash);
+  const subscribed = options.subscribed !== false;
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      subscribed ? subscribeOptimisticQuery(query, listener) : () => {},
+    [query, subscribed],
+  );
+  const snapshot = useCallback(() => query?.state.data, [query]);
+  useSyncExternalStore(subscribe, snapshot, snapshot);
+  return result;
+}
 
 export const CORE_TAG_SCOPE = "core";
 

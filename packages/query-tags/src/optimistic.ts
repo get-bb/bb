@@ -140,11 +140,31 @@ function projected(state: PredictionState): unknown {
   }, state.base);
 }
 
+const predictionListeners = new WeakMap<Query, Set<() => void>>();
+
+export function subscribeOptimisticQuery(
+  query: Query | undefined,
+  listener: () => void,
+) {
+  if (query === undefined) return () => {};
+  let listeners = predictionListeners.get(query);
+  if (listeners === undefined) {
+    listeners = new Set();
+    predictionListeners.set(query, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) predictionListeners.delete(query);
+  };
+}
+
 function publish(query: Query, state: PredictionState): void {
   query.setState({
     data: replaceEqualDeep(query.state.data, projected(state)),
   });
   if (state.layers.length === 0) predictions.delete(query);
+  for (const listener of predictionListeners.get(query) ?? []) listener();
 }
 
 export function taggedReadReceipt(query: Query) {
