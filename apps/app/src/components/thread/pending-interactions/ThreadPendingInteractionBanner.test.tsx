@@ -389,7 +389,7 @@ describe("ThreadPendingInteractionBanner request family", () => {
     expect(screen.getByTestId("secret-form").textContent).toBe(
       'Add a token:{"fields":["TOKEN"]}',
     );
-    expect(screen.queryByText(/Requested by/)).toBeNull();
+    expect(screen.getByText(/Asked by the agent through/)).toBeTruthy();
   });
 
   it("backs out of a provider's request by stopping the turn, never by cancelling", () => {
