@@ -39,7 +39,7 @@ export type AdapterCommand =
       type: "skills/configure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
-  | { type: "model/list"; cwd?: string }
+  | { type: "model/list"; cwd?: string; envVars: Record<string, string> }
   | { type: "provider/health"; cwd?: string }
   | { type: "provider/usage"; cwd?: string }
   | {

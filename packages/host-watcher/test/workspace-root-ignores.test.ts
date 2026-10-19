@@ -41,9 +41,14 @@ async function buildUmbrellaRoot(args: {
     const child = path.join(root, "apps", `child-${i}`);
     await fs.mkdir(child, { recursive: true });
     await initRepo(child);
-    await fs.writeFile(path.join(child, ".gitignore"), "node_modules/\n");
+    await fs.writeFile(
+      path.join(child, ".gitignore"),
+      "node_modules/\ndist/\n",
+    );
     await git(child, "add", ".gitignore");
-    await git(child, "commit", "-q", "-m", "ignore node_modules");
+    await git(child, "commit", "-q", "-m", "ignore build output");
+    await fs.mkdir(path.join(child, "dist"), { recursive: true });
+    await fs.writeFile(path.join(child, "dist", "bundle.js"), "bundle\n");
     await Promise.all(
       Array.from({ length: packagesPerNestedRepo }, async (_unused, p) => {
         const pkgLib = path.join(child, "node_modules", `pkg-${p}`, "lib");
@@ -127,6 +132,7 @@ describe.skipIf(process.platform !== "linux")(
         expect(nestedDirCount).toBeGreaterThan(MAX_EXPECTED_WATCHES);
         expect(ignore).toContain(".git");
         expect(ignore).toContain("**/node_modules/**");
+        expect(ignore).toContain("apps/child-0/dist");
         expect(watches).toBeLessThan(MAX_EXPECTED_WATCHES);
       },
       TEST_TIMEOUT_MS,
@@ -142,6 +148,7 @@ describe.skipIf(process.platform !== "linux")(
         expect(nestedDirCount).toBeGreaterThan(MAX_EXPECTED_WATCHES);
         expect(ignore).not.toContain(".git");
         expect(ignore).toContain("**/node_modules/**");
+        expect(ignore).toContain("apps/child-0/dist");
         expect(watches).toBeLessThan(MAX_EXPECTED_WATCHES);
       },
       TEST_TIMEOUT_MS,
@@ -150,11 +157,14 @@ describe.skipIf(process.platform !== "linux")(
 );
 
 describe("workspace root watch events inside nested heavy directories (#1779)", () => {
-  it(
-    "does not report changes inside nested node_modules or nested .git",
-    async () => {
+  it.each([
+    { gitRoot: true, rootKind: "git" },
+    { gitRoot: false, rootKind: "non-git" },
+  ])(
+    "does not report changes inside nested Git-ignored directories or nested .git under a $rootKind root",
+    async ({ gitRoot }) => {
       const { root } = await buildUmbrellaRoot({
-        gitRoot: true,
+        gitRoot,
         nestedRepos: 1,
         packagesPerNestedRepo: 1,
       });
@@ -167,6 +177,13 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         "pkg-0",
         "lib",
         "index.js",
+      );
+      const nestedBuildFile = path.join(
+        realRoot,
+        "apps",
+        "child-0",
+        "dist",
+        "bundle.js",
       );
       const nestedGitFile = path.join(
         realRoot,
@@ -208,6 +225,7 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
           nestedPackageFile,
           "module.exports={changed:true}\n",
         );
+        await fs.writeFile(nestedBuildFile, "rebuilt\n");
         await fs.writeFile(nestedGitFile, "marker\n");
         await fs.writeFile(visibleFile, "visible\n");
         await Promise.race([
@@ -229,12 +247,14 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         const changedPaths = events.flatMap((event) => event.changedPaths);
         expect(changedPaths).toContain(visibleFile);
         expect(changedPaths).not.toContain(nestedPackageFile);
+        expect(changedPaths).not.toContain(nestedBuildFile);
         expect(changedPaths).not.toContain(nestedGitFile);
         expect(
           changedPaths.filter(
             (changedPath) =>
               changedPath.startsWith(path.join(realRoot, "apps")) &&
               (changedPath.includes(`${path.sep}node_modules${path.sep}`) ||
+                changedPath.includes(`${path.sep}dist${path.sep}`) ||
                 changedPath.includes(`${path.sep}.git${path.sep}`)),
           ),
         ).toEqual([]);

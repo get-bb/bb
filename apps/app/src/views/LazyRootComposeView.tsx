@@ -4,7 +4,12 @@ import { usePaneContext } from "./thread-detail/PaneContext";
 
 function RootComposeViewLoading() {
   const { isBoundedPane } = usePaneContext();
-  return <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />;
+  return (
+    <RouteLoadingSkeleton
+      isBoundedPane={isBoundedPane}
+      variant="root-compose"
+    />
+  );
 }
 
 export const LazyRootComposeView = defineSplit({

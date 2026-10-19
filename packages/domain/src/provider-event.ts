@@ -629,6 +629,12 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     explanation: z.string().optional(),
   }),
   z.object({
+    type: z.literal("turn/mainRun/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    state: z.enum(["idle", "running"]),
+  }),
+  z.object({
     type: z.literal("turn/diff/updated"),
     threadId: z.string(),
     providerThreadId: z.string(),

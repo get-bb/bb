@@ -51,13 +51,27 @@ describe("detectDesktopPlatform", () => {
     ).toBeNull();
   });
 
-  it("returns null for Windows so the default platform stays in place", () => {
+  it.each([
+    {
+      platform: "Win32",
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/155.0",
+    },
+    { platform: "MacIntel", userAgentData: { platform: "Windows" } },
+    { platform: "Win32", userAgentData: { platform: "" } },
+  ])("detects Windows desktops from browser platform data: %j", (source) => {
+    expect(detectDesktopPlatform(source)).toBe("windows");
+  });
+
+  it("does not treat Windows phones as Windows desktops", () => {
     expect(
       detectDesktopPlatform({
         platform: "Win32",
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0",
+        userAgent: "Mozilla/5.0 (Windows Phone 10.0; Android 6.0.1)",
       }),
     ).toBeNull();
+  });
+
+  it("keeps the default for unknown platforms", () => {
     expect(detectDesktopPlatform({})).toBeNull();
   });
 });

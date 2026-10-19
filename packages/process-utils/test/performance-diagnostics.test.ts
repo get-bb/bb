@@ -31,8 +31,11 @@ describe("performance diagnostics", () => {
       },
     });
     try {
-      const until = performance.now() + 40;
-      while (performance.now() < until) Math.sqrt(performance.now());
+      function mainThreadWork() {
+        const until = performance.now() + 80;
+        while (performance.now() < until) Math.sqrt(performance.now());
+      }
+      mainThreadWork();
       await Promise.all([monitor.stop(), monitor.stop()]);
       const directory = join(dataDir, "logs", "performance");
       const files = await readdir(directory);
@@ -40,7 +43,15 @@ describe("performance diagnostics", () => {
       expect(files[0]).toMatch(/^profile-\d+-[0-9a-f-]+\.cpuprofile$/);
       const path = join(directory, files[0]!);
       const profile = JSON.parse(await readFile(path, "utf8"));
-      expect(profile.nodes.length).toBeGreaterThan(0);
+      expect(profile.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            callFrame: expect.objectContaining({
+              functionName: "mainThreadWork",
+            }),
+          }),
+        ]),
+      );
       expect(profile.samples.length).toBeGreaterThan(0);
       expect(profile.endTime).toBeGreaterThan(profile.startTime);
       if (process.platform !== "win32")
@@ -52,7 +63,65 @@ describe("performance diagnostics", () => {
     }
   });
 
-  it("rotates continuous bounded windows and ignores unrelated console captures", async () => {
+  it("logs the sampled blocker without attributing an adjacent short callback", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-stall-attribution-"));
+    const records: object[] = [];
+    const warnings: object[] = [];
+    const monitor = await startPerformanceDiagnostics({
+      dataDir,
+      logger: {
+        info: (fields, message) => {
+          if (message === "Event loop stall attribution") records.push(fields);
+        },
+        warn: (fields) => {
+          warnings.push(fields);
+        },
+      },
+    });
+    function unwrappedPluginBlocker() {
+      const until = performance.now() + 200;
+      while (performance.now() < until) Math.sqrt(performance.now());
+    }
+    function shortHeartbeat() {
+      return 1;
+    }
+    try {
+      await delay(40);
+      unwrappedPluginBlocker();
+      shortHeartbeat();
+      await delay(40);
+      await monitor.stop();
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stallAttribution: "sampled",
+            stacks: expect.arrayContaining([
+              expect.objectContaining({
+                frames: expect.arrayContaining([
+                  expect.objectContaining({
+                    functionName: "unwrappedPluginBlocker",
+                  }),
+                ]),
+                sampledMs: expect.any(Number),
+              }),
+            ]),
+          }),
+        ]),
+      );
+      const files = await readdir(join(dataDir, "logs", "performance"));
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatch(/\.cpuprofile$/);
+      expect(warnings).toEqual([]);
+      expect(JSON.stringify(records)).not.toContain(
+        '"functionName":"shortHeartbeat"',
+      );
+    } finally {
+      await monitor.stop();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rotates bounded main-thread windows and ignores unrelated console captures", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-rotation-"));
     const savedPaths: string[] = [];
     const warnings: unknown[] = [];
@@ -167,6 +236,31 @@ describe("performance diagnostics", () => {
       );
       expect(warnings).toEqual([]);
     } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stops cleanly when saving a capture fails", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-save-failure-"));
+    const warnings: unknown[] = [];
+    const monitor = await startPerformanceDiagnostics({
+      dataDir,
+      logger: {
+        info: () => {},
+        warn: (fields) => {
+          warnings.push(fields);
+        },
+      },
+    });
+    try {
+      await rm(join(dataDir, "logs", "performance"), {
+        recursive: true,
+        force: true,
+      });
+      await Promise.all([monitor.stop(), monitor.stop()]);
+      expect(warnings).toHaveLength(1);
+    } finally {
+      await monitor.stop();
       await rm(dataDir, { recursive: true, force: true });
     }
   });

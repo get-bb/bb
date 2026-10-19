@@ -234,6 +234,11 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   z.object({
+    kind: z.literal("turn.mainRun"),
+    state: z.enum(["idle", "running"]),
+  }),
+
+  z.object({
     kind: z.literal("turn.boundary"),
     status: threadEventTurnStatusSchema,
     error: deltaErrorSchema.optional(),

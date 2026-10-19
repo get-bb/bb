@@ -225,6 +225,18 @@ for the command surface.
 | `earlyAdopter`                                                             | `false`                             | Settings → Experiments → Become an early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                     |
 | `machineServerUrl`, `defaultMachineAccess`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
+**Terminal clipboard.** Settings → General → Terminals → Copy on select
+(`terminalCopyOnSelect`, default `true`) copies completed terminal selections
+exactly and shows a "Selection copied" notification. Selections in messages,
+files, and prompt editors are unchanged. Disable it with
+`bb settings general terminalCopyOnSelect off` or SDK
+`system.updateGeneralSettings`, preserving the other general settings.
+The server persists it across windows and restarts; older clients that omit it
+preserve the saved value. Explicit Copy/Paste remain available when it is off.
+On Linux browsers with native primary-selection support, middle-click focuses
+the terminal and pastes the primary selection independently of this setting.
+Unsupported browsers never substitute unrelated regular clipboard contents.
+
 Older clients that omit `showGitChanges`, `keepHistoryAfterContextClear`,
 `summarizeShellCommands`, or `earlyAdopter` preserve the saved value. For older SDK callers, the
 general-settings API still accepts and returns `showUnhandledProviderEvents` as

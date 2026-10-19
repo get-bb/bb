@@ -144,11 +144,15 @@ describe("provider registry", () => {
       provider.buildCommandPlan({
         type: "model/list",
         cwd: "/tmp/project",
+        envVars: { CODEX_OPENAI_BASE_URL: "http://pool.test/v1" },
       }),
     ).toEqual({
       kind: "request",
       method: "model/list",
-      params: { cwd: "/tmp/project" },
+      params: {
+        cwd: "/tmp/project",
+        envVars: { CODEX_OPENAI_BASE_URL: "http://pool.test/v1" },
+      },
     });
   });
 
@@ -162,7 +166,9 @@ describe("provider registry", () => {
     });
 
     expect(provider.id).toBe("acp-custom");
-    expect(provider.buildCommandPlan({ type: "model/list" })).toMatchObject({
+    expect(
+      provider.buildCommandPlan({ type: "model/list", envVars: {} }),
+    ).toMatchObject({
       kind: "request",
       method: "model/list",
       params: {

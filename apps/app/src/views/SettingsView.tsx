@@ -187,6 +187,8 @@ interface GeneralSettingsSectionProps {
   onReplaySetupGuide: () => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
+  onTerminalCopyOnSelectChange: (enabled: boolean) => void;
+  terminalCopyOnSelect: boolean;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   steerActiveThreadOnEnter: boolean;
@@ -876,6 +878,8 @@ export function GeneralSettingsSection({
   onReplaySetupGuide,
   onRewriteLocalhostLinksChange,
   onSteerActiveThreadOnEnterChange,
+  onTerminalCopyOnSelectChange,
+  terminalCopyOnSelect,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   steerActiveThreadOnEnter,
@@ -1049,6 +1053,19 @@ export function GeneralSettingsSection({
           </div>
         </SettingsSection>
       ) : null}
+      <SettingsSection title="Terminals">
+        <SettingsWithControl
+          label="Copy on select"
+          description="Automatically copy selected terminal text and show a notification. Does not affect text elsewhere in the app. Linux middle-click paste uses the primary selection independently."
+        >
+          <Switch
+            checked={terminalCopyOnSelect}
+            disabled={generalSettingsDisabled}
+            onCheckedChange={onTerminalCopyOnSelectChange}
+            aria-label="Copy on select"
+          />
+        </SettingsWithControl>
+      </SettingsSection>
       <SettingsSection title="Git">
         <div className="space-y-5">
           <ManagedBranchPrefixSetting
@@ -1452,6 +1469,13 @@ export function SettingsView() {
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
+          terminalCopyOnSelect={generalSettings.terminalCopyOnSelect}
+          onTerminalCopyOnSelectChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              terminalCopyOnSelect: enabled,
+            })
+          }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}

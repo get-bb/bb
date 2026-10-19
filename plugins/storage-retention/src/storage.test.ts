@@ -1720,14 +1720,6 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
       "--yes",
     ]);
     expect(saved.exitCode).toBe(0);
-    const recent = threads.get("thr_recent")!;
-    recent.archivedAt = Date.now();
-    await host.harness.behavior.emitThreadEvent("thread.archived", {
-      thread: recent,
-    });
-    expect(await fs.readdir(path.join(root, recent.id))).toEqual([
-      "artifact.txt",
-    ]);
     for (const id of ["thr_wait", "thr_restore", "thr_pin"]) {
       const thread = threads.get(id)!;
       thread.status = "active";
@@ -1749,10 +1741,25 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
       "artifact.txt",
     ]);
     online = true;
-    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    const retryClock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.now() + 60_000);
+    try {
+      await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    } finally {
+      retryClock.mockRestore();
+    }
     expect(await fs.readdir(path.join(root, "thr_wait"))).toEqual([]);
     for (const id of ids.filter((id) => id !== "thr_wait"))
       expect(await fs.readdir(path.join(root, id))).toEqual(["artifact.txt"]);
+    const recent = threads.get("thr_recent")!;
+    recent.archivedAt = Date.now();
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: recent,
+    });
+    expect(await fs.readdir(path.join(root, recent.id))).toEqual([
+      "artifact.txt",
+    ]);
     const clock = vi.spyOn(Date, "now");
     try {
       clock.mockReturnValue(recent.archivedAt! + 29_999);
@@ -1775,6 +1782,92 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
       .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
       .toBe(0);
     await worker.experimental_dispose();
+  }
+});
+
+it("waits for storage inventory for detached archives and persists backoff for failed cleanup", async () => {
+  const thread = makeThreadResponse({
+    id: "thr_detached",
+    status: "idle",
+    environmentId: null,
+    archivedAt: 1,
+  });
+  let now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  let failing = true;
+  const discard = vi.fn(async () => {
+    if (failing) throw new Error("host unavailable");
+    return { removed: [thread.id] };
+  });
+  let host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "discard") return discard();
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      threads: { get: async () => thread },
+      environments: { list: async () => [] },
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+    },
+  });
+  try {
+    await host.bb.storage.kv.set("policy", {
+      archiveAfterDays: null,
+      deleteAfterDays: null,
+      deleteStorageOnArchive: true,
+      deleteDevDataOnCheckoutRemoval: false,
+    });
+    plugin(host.bb);
+    await host.harness.behavior.emitThreadEvent("thread.archived", { thread });
+    const calls = host.harness.inspection.sdk.callsTo("threads.get").length;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(
+      calls,
+    );
+    host.bb.storage
+      .database()
+      .prepare("INSERT INTO scans (host_id, result_json) VALUES (?, ?)")
+      .run(
+        "host_test",
+        JSON.stringify({
+          scannedAt: now,
+          entries: [{ name: thread.id, sizeBytes: 1 }],
+          worktrees: [],
+        }),
+      );
+    now += 3_600_000;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(discard).toHaveBeenCalledTimes(1);
+    for (const delay of [
+      60_000, 120_000, 240_000, 480_000, 960_000, 1_920_000, 3_600_000,
+      3_600_000,
+    ]) {
+      host = await host.harness.lifecycle.reload(plugin);
+      const attempts = discard.mock.calls.length;
+      now += delay - 1;
+      await host.harness.behavior.runSchedule("archive-storage-cleanup");
+      expect(discard).toHaveBeenCalledTimes(attempts);
+      now++;
+      await host.harness.behavior.runSchedule("archive-storage-cleanup");
+      expect(discard).toHaveBeenCalledTimes(attempts + 1);
+    }
+    failing = false;
+    now += 3_600_000;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    const attempts = discard.mock.calls.length;
+    now += 3_600_000;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(discard).toHaveBeenCalledTimes(attempts);
+  } finally {
+    clock.mockRestore();
+    await host.harness.lifecycle.dispose();
   }
 });
 

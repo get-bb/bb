@@ -1,5 +1,9 @@
 import { execa } from "execa";
-import { extname } from "node:path";
+import {
+  runVcsProcess,
+  type VcsProcessPriority,
+} from "./vcs-process-scheduler.js";
+import { basename, extname } from "node:path";
 import { whichCommandSync } from "which-command";
 import { createProcessStop } from "./managed-process.js";
 import {
@@ -8,6 +12,7 @@ import {
 } from "./process-group.js";
 
 interface ExecPortableFileOptions {
+  priority?: VcsProcessPriority;
   cwd: string;
   env: NodeJS.ProcessEnv;
   maxBuffer: number;
@@ -18,6 +23,28 @@ interface ExecPortableFileOptions {
 }
 
 export async function execPortableFile(
+  command: string,
+  args: string[],
+  options: ExecPortableFileOptions,
+): Promise<{ stdout: string; stderr: string }> {
+  const executable = basename(command)
+    .toLowerCase()
+    .replace(/\.(exe|cmd|bat)$/u, "");
+  if (executable === "git" || executable === "gh") {
+    return runVcsProcess(
+      executable,
+      args,
+      () => execPortableFileUnbounded(command, args, options),
+      {
+        priority: options.priority,
+        signal: options.signal,
+      },
+    );
+  }
+  return execPortableFileUnbounded(command, args, options);
+}
+
+async function execPortableFileUnbounded(
   command: string,
   args: string[],
   options: ExecPortableFileOptions,

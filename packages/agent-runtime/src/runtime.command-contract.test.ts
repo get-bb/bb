@@ -27,6 +27,7 @@ interface CreateContractRuntimeArgs {
   launch?: CreateScriptedEchoLaunchOptions;
   onEvent?: (event: ThreadEvent) => void;
   onStderr?: (line: string) => void;
+  shellEnv?: Record<string, string>;
 }
 
 interface ContractRuntime {
@@ -89,6 +90,7 @@ describe("createAgentRuntime command contracts", () => {
           : {}),
         onEvent: args.onEvent ?? (() => {}),
         ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
+        ...(args.shellEnv !== undefined ? { shellEnv: args.shellEnv } : {}),
         onToolCall: async () => ({
           contentItems: [{ type: "inputText", text: "ok" }],
           success: true,
@@ -119,11 +121,47 @@ describe("createAgentRuntime command contracts", () => {
       });
       expect(record.last("model/list")?.params).toEqual({
         providerOptions: { additionalWorkspaceWriteRoots },
+        envVars: {},
       });
       expect(record.last("thread/start")?.params).toMatchObject({
         threadId: "t1",
         cwd: tmpDir,
         options: { providerOptions: { additionalWorkspaceWriteRoots } },
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("expands contributed provider environment for model list against the server URL", async () => {
+    const { record, runtime } = createContractRuntime({
+      shellEnv: { BB_SERVER_URL: "http://server.test" },
+    });
+
+    try {
+      await runtime.listModels({
+        providerId: "fake",
+        contributedEnv: [
+          {
+            name: "CODEX_OPENAI_BASE_URL",
+            value: { serverPath: "/pool/v1" },
+            source: { plugin: "account-pool" },
+            reason: "pooled",
+          },
+          {
+            name: "CODEX_POOL_AUTH_TOKEN",
+            value: "machine-token",
+            source: { plugin: "account-pool" },
+            reason: "pooled",
+          },
+        ],
+      });
+
+      expect(record.last("model/list")?.params).toMatchObject({
+        envVars: {
+          CODEX_OPENAI_BASE_URL: "http://server.test/pool/v1",
+          CODEX_POOL_AUTH_TOKEN: "machine-token",
+        },
       });
     } finally {
       await runtime.shutdown();
@@ -158,6 +196,7 @@ describe("createAgentRuntime command contracts", () => {
 
       expect(record.last("model/list")?.params).toEqual({
         providerOptions: { acpLaunchSpec },
+        envVars: {},
       });
       expect(record.last("thread/start")?.params).toMatchObject({
         threadId: "t-start",
@@ -253,6 +292,7 @@ describe("createAgentRuntime command contracts", () => {
           providerOptions: {
             acpLaunchSpec: { ...acpLaunchSpec, env: { CACHE_MARKER: "first" } },
           },
+          envVars: {},
         },
         {
           providerOptions: {
@@ -261,6 +301,7 @@ describe("createAgentRuntime command contracts", () => {
               env: { CACHE_MARKER: "second" },
             },
           },
+          envVars: {},
         },
       ]);
     } finally {

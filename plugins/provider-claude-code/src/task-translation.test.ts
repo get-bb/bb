@@ -941,8 +941,29 @@ describe("claude-code background task translation", () => {
     expect(intermediateResult).not.toContainEqual(
       expect.objectContaining({ type: "turn/completed" }),
     );
+    expect(intermediateResult).toContainEqual(
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(TURN_1),
+        state: "idle",
+      }),
+    );
+    expect(
+      harness.translate(
+        { type: "result", subtype: "end_turn", session_id: "sess-1" },
+        context,
+      ),
+    ).not.toContainEqual(
+      expect.objectContaining({ type: "turn/mainRun/updated" }),
+    );
 
-    harness.translate(loadFixture("task-notification-subagent.json"), context);
+    const notification = harness.translate(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    expect(notification).not.toContainEqual(
+      expect.objectContaining({ type: "turn/mainRun/updated" }),
+    );
     const resumed = harness.translate(
       {
         type: "assistant",
@@ -957,6 +978,11 @@ describe("claude-code background task translation", () => {
     expect(resumed).not.toContainEqual(
       expect.objectContaining({ type: "turn/started" }),
     );
+    expect(resumed[0]).toMatchObject({
+      type: "turn/mainRun/updated",
+      scope: turnScope(TURN_1),
+      state: "running",
+    });
     expect(resumed).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
@@ -983,6 +1009,113 @@ describe("claude-code background task translation", () => {
         status: "completed",
       }),
     );
+    expect(finalResult).not.toContainEqual(
+      expect.objectContaining({ type: "turn/mainRun/updated" }),
+    );
+  });
+
+  it("keeps a held turn's main run idle while only a sub-agent streams", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-1" };
+    const subagentToolUseId = "toolu_01W1cLr7AsTRvbya9LM5LSAV";
+    const sdkMessage = (message: Record<string, unknown>) => ({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: { threadId: "bb-thread-1", message },
+    });
+
+    harness.translate(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "I will wait for the agent." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-subagent.json")),
+      context,
+    );
+    harness.translate(loadFixture("task-started-subagent.json"), context);
+    expect(
+      harness.translate(
+        { type: "result", subtype: "end_turn", session_id: "sess-1" },
+        context,
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        state: "idle",
+      }),
+    );
+
+    const subagentAssistant = harness.translate(
+      sdkMessage({
+        type: "assistant",
+        parent_tool_use_id: subagentToolUseId,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "beta" }],
+        },
+        session_id: "sess-1",
+      }),
+      context,
+    );
+    const subagentStream = harness.translate(
+      sdkMessage({
+        type: "stream_event",
+        parent_tool_use_id: subagentToolUseId,
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "beta" },
+        },
+        session_id: "sess-1",
+      }),
+      context,
+    );
+    const contextScopedStream = harness.translate(
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "beta" },
+        },
+        session_id: "sess-1",
+      },
+      { ...context, parentToolCallId: subagentToolUseId },
+    );
+    for (const events of [
+      subagentAssistant,
+      subagentStream,
+      contextScopedStream,
+    ]) {
+      expect(events).not.toContainEqual(
+        expect.objectContaining({ type: "turn/mainRun/updated" }),
+      );
+    }
+
+    const resumed = harness.translate(
+      sdkMessage({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "The agent finished." }],
+        },
+        session_id: "sess-1",
+      }),
+      context,
+    );
+    expect(resumed[0]).toMatchObject({
+      type: "turn/mainRun/updated",
+      scope: turnScope(TURN_1),
+      state: "running",
+    });
   });
 
   it("treats legacy subagents as completion-blocking", () => {

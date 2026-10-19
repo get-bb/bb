@@ -1,6 +1,7 @@
 import type { MachineExecutor } from "@get-bb/plugin-sdk";
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { Status } from "nice-grpc-common";
 import { ensureModalImage, type ModalImageRequest } from "./image.js";
 import { ModalClient, NotFoundError, type Sandbox } from "modal";
 
@@ -238,7 +239,14 @@ export const createModalSandboxClient: ModalSandboxClientFactory = (
         const sandbox = await client.sandboxes.fromId(sandboxId);
         return (await sandbox.poll()) === null ? wrapSandbox(sandbox) : null;
       } catch (error) {
-        if (error instanceof NotFoundError) return null;
+        if (
+          error instanceof NotFoundError ||
+          (error instanceof Error &&
+            error.name === "ClientError" &&
+            "code" in error &&
+            error.code === Status.NOT_FOUND)
+        )
+          return null;
         throw error;
       }
     },

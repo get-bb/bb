@@ -48,9 +48,11 @@ const noop = () => {};
 function Harness({
   panelStateId,
   browserOnly = false,
+  contentFillsRegion = false,
 }: {
   panelStateId?: string;
   browserOnly?: boolean;
+  contentFillsRegion?: boolean;
 }) {
   const documents = ["reading.md", "short.md"].map((path) =>
     createWorkspaceFilePreviewFixedPanelTab({
@@ -75,6 +77,7 @@ function Harness({
     )
     .map((document) => ({
       tab: document,
+      contentFillsRegion,
       label: document.path,
       leadingVisual: null,
       statusLabel: null,
@@ -166,9 +169,10 @@ function renderHarness(props: Parameters<typeof Harness>[0] = {}) {
 }
 
 function scrollContainer() {
-  const container = document.querySelector<HTMLDivElement>(
+  const containers = document.querySelectorAll<HTMLDivElement>(
     "[data-file-preview-scroll-container]",
   );
+  const container = containers[containers.length - 1];
   if (!container) throw new Error("Missing file scroll container");
   return container;
 }
@@ -205,6 +209,18 @@ afterEach(() => {
 });
 
 describe("Markdown reading position in open secondary-panel tabs", () => {
+  it("provides a bounded scroll container inside a full-height file opener", () => {
+    renderHarness({ contentFillsRegion: true });
+    const container = scrollContainer();
+    expect(container.classList.contains("overflow-y-auto")).toBe(true);
+    expect(container.classList.contains("h-full")).toBe(true);
+    expect(container.classList.contains("min-h-0")).toBe(true);
+    scrollTo(780);
+    selectTab("short.md");
+    selectTab("reading.md");
+    expect(scrollContainer().scrollTop).toBe(780);
+  });
+
   it.each(["different tabs", "shared tab ids", "panel remount"])(
     "restores the originating thread after %s",
     (transition) => {

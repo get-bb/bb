@@ -138,6 +138,140 @@ describe("host long-poll abandonment", () => {
   });
 });
 describe("host session lifetime", () => {
+  it("renews activity at run start and completion while preserving the absolute deadline", async () => {
+    vi.useFakeTimers();
+    const close = vi.fn(async () => {});
+    const output = { text: "done", images: [], exitCode: 0 };
+    const harness = experimental_createHostEntryHarness(
+      createHostEntry(
+        async () => ({
+          close,
+          preview: null,
+          run: async () => {
+            await vi.advanceTimersByTimeAsync(2 * 60_000);
+            return output;
+          },
+        }),
+        resolver,
+      ),
+    );
+    try {
+      const id = randomUUID();
+      await harness.experimental_call("open", {
+        sessionId: id,
+        expiresAt: Date.now() + 8 * 60 * 60_000,
+        idleTimeoutMs: 30 * 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(29 * 60_000);
+      expect(
+        await harness.experimental_call("run", {
+          sessionId: id,
+          script: "1",
+          timeoutMs: 120_000,
+        }),
+      ).toEqual(output);
+      await vi.advanceTimersByTimeAsync(29 * 60_000);
+      expect(close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      await harness.experimental_dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["run", "preview"] as const)(
+    "rejects idle %s before the cleanup timer runs",
+    async (method) => {
+      vi.useFakeTimers();
+      const close = vi.fn(async () => {});
+      const run = vi.fn();
+      const next = vi.fn();
+      const harness = experimental_createHostEntryHarness(
+        createHostEntry(
+          async () => ({ close, run, preview: { next, close() {} } }),
+          resolver,
+        ),
+      );
+      try {
+        const id = randomUUID();
+        await harness.experimental_call("open", {
+          sessionId: id,
+          expiresAt: Date.now() + 8 * 60 * 60_000,
+          idleTimeoutMs: 30 * 60_000,
+        });
+        vi.setSystemTime(Date.now() + 30 * 60_000);
+        const operation =
+          method === "run"
+            ? harness.experimental_call("run", {
+                sessionId: id,
+                script: "1",
+                timeoutMs: 1000,
+              })
+            : harness.experimental_call("preview", {
+                sessionId: id,
+                afterSequence: 0,
+                waitMs: 0,
+                size: "full",
+              });
+        await expect(operation).rejects.toThrow("expired");
+        expect(run).not.toHaveBeenCalled();
+        expect(next).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledOnce();
+      } finally {
+        await harness.experimental_dispose();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("aborts active work at the hard cap even without the server cleanup timer", async () => {
+    vi.useFakeTimers();
+    const close = vi.fn(async () => {});
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const harness = experimental_createHostEntryHarness(
+      createHostEntry(
+        async () => ({
+          close,
+          preview: null,
+          run: async (_script, _timeout, signal) =>
+            new Promise((_resolve, reject) => {
+              started();
+              signal.addEventListener(
+                "abort",
+                () => reject(new Error("expired")),
+                { once: true },
+              );
+            }),
+        }),
+        resolver,
+      ),
+    );
+    try {
+      const id = randomUUID();
+      await harness.experimental_call("open", {
+        sessionId: id,
+        expiresAt: Date.now() + 60_000,
+        idleTimeoutMs: 30 * 60_000,
+      });
+      const result = harness.experimental_call("run", {
+        sessionId: id,
+        script: "1",
+        timeoutMs: 120_000,
+      });
+      const rejected = expect(result).rejects.toThrow("expired");
+      await running;
+      await vi.advanceTimersByTimeAsync(60_000);
+      await rejected;
+      expect(close).toHaveBeenCalledOnce();
+      expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(0);
+    } finally {
+      await harness.experimental_dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("close disposes only the selected runtime and reload disposes the rest", async () => {
     const firstClose = vi.fn(async () => {});
     const secondClose = vi.fn(async () => {});

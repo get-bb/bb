@@ -1,0 +1,46 @@
+{
+  "method": "mcpServer/elicitation/request",
+  "id": 0,
+  "params": {
+    "threadId": "01900000-0000-7000-8000-000000000001",
+    "turnId": "01900000-0000-7000-8000-000000000002",
+    "serverName": "cua_repl",
+    "mode": "form",
+    "_meta": {
+      "codex_approval_kind": "mcp_tool_call",
+      "connector_id": "computer-use",
+      "connector_name": "Computer Use",
+      "persist": ["session", "always"],
+      "x-codex-turn-metadata": {
+        "auto_review_enabled": true,
+        "model": "gpt-5.6-sol",
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "reasoning_effort": "high",
+        "sandbox": "seatbelt",
+        "sandbox_mode": "read-only",
+        "session_id": "01900000-0000-7000-8000-000000000001",
+        "thread_id": "01900000-0000-7000-8000-000000000001",
+        "turn_id": "01900000-0000-7000-8000-000000000002",
+        "turn_started_at_unix_ms": 1788583491168
+      },
+      "riskLevel": "low",
+      "tool_name": "get_app_state",
+      "tool_params": {
+        "app": "com.apple.calculator"
+      },
+      "tool_params_display": [
+        {
+          "display_name": "App",
+          "name": "app",
+          "value": "Calculator"
+        }
+      ]
+    },
+    "message": "Allow Computer Use to use \"Calculator\"?",
+    "requestedSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  }
+}
