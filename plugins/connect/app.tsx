@@ -1,3 +1,4 @@
+import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
@@ -1429,9 +1430,12 @@ function ReconnectingContent({
         <span className="shrink-0 text-sm font-semibold text-warning-text">
           Reconnecting…
         </span>
-        <span className="min-w-0 truncate text-xs text-warning-text/80">
+        <ExpandableText
+          expandLabel="Show details"
+          className="min-w-0 text-xs text-warning-text/80"
+        >
           {why}
-        </span>
+        </ExpandableText>
       </div>
 
       <div className="space-y-2 pointer-events-none opacity-60 saturate-[0.85]">

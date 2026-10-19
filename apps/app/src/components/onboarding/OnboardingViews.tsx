@@ -1,3 +1,4 @@
+import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import type { ReactNode } from "react";
 import type { ExperimentalProviderIconProps } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
@@ -25,7 +26,8 @@ import {
 } from "./onboarding-model";
 import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
-const CONTENT_COLUMN_CLASS = "mx-auto w-full max-w-[600px] px-6";
+const CONTENT_COLUMN_CLASS =
+  "mx-auto w-full max-w-[600px] px-4 @min-[36rem]/onboarding:px-6";
 
 interface OnboardingLayoutProps {
   step: OnboardingStepId;
@@ -68,11 +70,11 @@ export function OnboardingLayout({
   return (
     <div
       data-testid="onboarding"
-      className="flex min-h-0 flex-1 flex-col bg-background text-foreground"
+      className="@container/onboarding flex min-h-0 flex-1 flex-col bg-background text-foreground"
     >
       <header
         className={cn(
-          "flex h-14 shrink-0 items-center gap-3 pr-4",
+          "grid h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 pr-4 @min-[36rem]/onboarding:gap-3",
           reserveMacosTrafficLights
             ? cn(
                 MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
@@ -89,7 +91,7 @@ export function OnboardingLayout({
         />
         <nav
           aria-label="Setup steps"
-          className="flex min-w-0 flex-1 items-center justify-center gap-1"
+          className="col-start-2 row-start-1 flex min-w-0 items-center justify-center gap-1"
         >
           {ONBOARDING_STEPS.map((entry, index) => {
             const done = index < activeIndex;
@@ -100,9 +102,10 @@ export function OnboardingLayout({
                 type="button"
                 disabled={!done}
                 aria-current={active ? "step" : undefined}
+                aria-label={entry.label}
                 onClick={() => onSelectStep(entry.id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-1 py-1 text-xs font-medium transition-colors @min-[36rem]/onboarding:px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                   MACOS_APP_REGION_NO_DRAG_CLASS,
                   active && "text-foreground",
                   done && "text-subtle-foreground hover:bg-state-hover",
@@ -123,7 +126,13 @@ export function OnboardingLayout({
                     index + 1
                   )}
                 </span>
-                {compact && !active ? null : <span>{entry.label}</span>}
+                <span
+                  className={cn(
+                    !active && "sr-only @min-[36rem]/onboarding:not-sr-only",
+                  )}
+                >
+                  {entry.label}
+                </span>
               </button>
             );
           })}
@@ -132,12 +141,15 @@ export function OnboardingLayout({
           variant="ghost"
           size="sm"
           className={cn(
-            "shrink-0 text-muted-foreground",
+            "col-start-3 row-start-1 shrink-0 text-muted-foreground",
             MACOS_APP_REGION_NO_DRAG_CLASS,
           )}
           onClick={onSkipAll}
         >
-          Skip setup
+          <span className="@min-[36rem]/onboarding:hidden">Skip</span>
+          <span className="hidden @min-[36rem]/onboarding:inline">
+            Skip setup
+          </span>
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -157,7 +169,10 @@ export function OnboardingLayout({
       </div>
       <footer className="shrink-0 border-t border-border-hairline">
         <div
-          className={cn(CONTENT_COLUMN_CLASS, "flex items-center gap-2 py-3")}
+          className={cn(
+            CONTENT_COLUMN_CLASS,
+            "flex items-center gap-1 py-3 @min-[36rem]/onboarding:gap-2",
+          )}
         >
           {onBack ? (
             <Button variant="ghost" size="sm" onClick={onBack}>
@@ -242,7 +257,14 @@ function AgentRow({
   const { state } = agent;
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
-      <div className="flex items-center gap-3">
+      <div
+        className={cn(
+          "items-center gap-3",
+          state.status === "installFailed"
+            ? "grid grid-cols-[1.5rem_minmax(0,1fr)] @min-[36rem]/onboarding:flex"
+            : "flex",
+        )}
+      >
         <ProviderIcon
           providerKind="agent"
           provider={agent.provider}
@@ -253,68 +275,71 @@ function AgentRow({
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium">{agent.name}</span>
-          <span
+          <ExpandableText
+            expandLabel="Show details"
             className={cn(
-              "truncate text-xs text-muted-foreground",
+              "text-xs text-muted-foreground",
               state.status === "installFailed" && "text-destructive-text",
             )}
           >
             {agentSubline(state)}
-          </span>
+          </ExpandableText>
         </div>
-        {state.status === "checking" || state.status === "installing" ? (
-          <Icon
-            name="Spinner"
-            aria-hidden
-            className="size-4 animate-spin text-muted-foreground"
-          />
-        ) : null}
-        {state.status === "ready" ? (
-          <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-            <Icon name="CircleCheck" aria-hidden className="size-4" />
-            Ready
-          </span>
-        ) : null}
-        {state.status === "signIn" && state.canSignIn ? (
-          <Button size="sm" onClick={() => onSignIn(agent.id)}>
-            Sign in
-          </Button>
-        ) : null}
-        {state.status === "installFailed" ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onViewInstallLog(agent.id)}
-          >
-            View log
-          </Button>
-        ) : null}
-        {(state.status === "install" ||
-          state.status === "update" ||
-          state.status === "installFailed") &&
-        state.canInstall ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onInstall(agent.id)}
-          >
-            <Icon name="Download" aria-hidden />
-            {state.status === "installFailed"
-              ? "Retry"
-              : state.status === "update"
-                ? "Update"
-                : "Install"}
-          </Button>
-        ) : null}
-        {state.status === "signingIn" ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onCancelSignIn(agent.id)}
-          >
-            Cancel
-          </Button>
-        ) : null}
+        <div className="col-start-2 flex shrink-0 items-center justify-end gap-2">
+          {state.status === "checking" || state.status === "installing" ? (
+            <Icon
+              name="Spinner"
+              aria-hidden
+              className="size-4 animate-spin text-muted-foreground"
+            />
+          ) : null}
+          {state.status === "ready" ? (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-success">
+              <Icon name="CircleCheck" aria-hidden className="size-4" />
+              Ready
+            </span>
+          ) : null}
+          {state.status === "signIn" && state.canSignIn ? (
+            <Button size="sm" onClick={() => onSignIn(agent.id)}>
+              Sign in
+            </Button>
+          ) : null}
+          {state.status === "installFailed" ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onViewInstallLog(agent.id)}
+            >
+              View log
+            </Button>
+          ) : null}
+          {(state.status === "install" ||
+            state.status === "update" ||
+            state.status === "installFailed") &&
+          state.canInstall ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onInstall(agent.id)}
+            >
+              <Icon name="Download" aria-hidden />
+              {state.status === "installFailed"
+                ? "Retry"
+                : state.status === "update"
+                  ? "Update"
+                  : "Install"}
+            </Button>
+          ) : null}
+          {state.status === "signingIn" ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onCancelSignIn(agent.id)}
+            >
+              Cancel
+            </Button>
+          ) : null}
+        </div>
       </div>
       {agent.expanded}
     </li>
@@ -709,7 +734,12 @@ export function OnboardingPluginGrid({
   return (
     <div className="flex flex-col gap-4">
       <ResourceBrowseGrid
-        className={cn("w-full gap-2", compact ? "grid-cols-1" : "grid-cols-2")}
+        className={cn(
+          "w-full gap-2",
+          compact
+            ? "grid-cols-1"
+            : "grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))]",
+        )}
       >
         {children}
       </ResourceBrowseGrid>
@@ -766,6 +796,7 @@ export function OnboardingPluginCard({
       }
       title={name}
       description={unavailableReason ?? description}
+      descriptionLines="expandable"
       byline={
         <PluginAuthorByline name="BB Official" github={null} official>
           BB Official

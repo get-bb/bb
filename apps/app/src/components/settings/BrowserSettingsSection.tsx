@@ -1,3 +1,4 @@
+import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { useCallback, useEffect, useState } from "react";
 import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import {
@@ -101,9 +102,13 @@ function BrowserRow({
               {presentation.status}
             </span>
             {presentation.details.map((detail) => (
-              <span key={detail} className="min-w-0 truncate">
+              <ExpandableText
+                key={detail}
+                expandLabel="Show details"
+                className="min-w-0"
+              >
                 {detail}
-              </span>
+              </ExpandableText>
             ))}
           </div>
         </div>

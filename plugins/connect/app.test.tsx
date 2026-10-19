@@ -7,6 +7,14 @@ import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
 const app = await loadPluginApp(() => import("./app"));
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn((query: string) => ({
@@ -24,6 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
