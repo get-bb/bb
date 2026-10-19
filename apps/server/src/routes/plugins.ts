@@ -388,7 +388,7 @@ export function registerPluginRoutes(
     MAX_CACHED_APP_ASSETS,
   );
   const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
-    const id = context.req.param("id");
+    const id = context.req.param("id") ?? "";
     const subPath = pluginHttpSubPath(context, id);
     const lookup = plugins.getWebSocketRoute(id, subPath);
     if (lookup.outcome === "unknown-plugin") {

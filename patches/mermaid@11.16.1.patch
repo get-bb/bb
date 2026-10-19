@@ -1,0 +1,39 @@
+diff --git a/dist/chunks/mermaid.core/chunk-WRU74C26.mjs b/dist/chunks/mermaid.core/chunk-WRU74C26.mjs
+index 271fe5ccaa644e1bdfcf4150d7e2d1867a72f033..364855bcec2ca9010373188c14ecadd9e502e416 100644
+--- a/dist/chunks/mermaid.core/chunk-WRU74C26.mjs
++++ b/dist/chunks/mermaid.core/chunk-WRU74C26.mjs
+@@ -233,7 +233,7 @@ async function addHtmlSpan(element, node, width, classes, addBackground = false,
+     div.attr("class", "labelBkg");
+   }
+   let bbox = div.node().getBoundingClientRect();
+-  if (bbox.width === width) {
++  if (bbox.width >= width - 1) {
+     div.style("display", "table");
+     div.style("white-space", "break-spaces");
+     div.style("width", width + "px");
+diff --git a/dist/chunks/mermaid.esm/chunk-2V3FENDJ.mjs b/dist/chunks/mermaid.esm/chunk-2V3FENDJ.mjs
+index 3929cad227d9ea20eb15be086e375ff87326c7d3..3f8dbb8615c8ff4437f84f61132d4e001dffc0d1 100644
+--- a/dist/chunks/mermaid.esm/chunk-2V3FENDJ.mjs
++++ b/dist/chunks/mermaid.esm/chunk-2V3FENDJ.mjs
+@@ -1440,7 +1440,7 @@ async function addHtmlSpan(element, node, width, classes, addBackground = false,
+     div.attr("class", "labelBkg");
+   }
+   let bbox = div.node().getBoundingClientRect();
+-  if (bbox.width === width) {
++  if (bbox.width >= width - 1) {
+     div.style("display", "table");
+     div.style("white-space", "break-spaces");
+     div.style("width", width + "px");
+diff --git a/dist/mermaid.js b/dist/mermaid.js
+index ac2da1334d1eef44888f5f13bf80a326059ba3ac..3913dafc4281640b63309bb05dcfb7237234a686 100644
+--- a/dist/mermaid.js
++++ b/dist/mermaid.js
+@@ -39661,7 +39661,7 @@ Please report this to https://github.com/markedjs/marked.`, e3) {
+       div.attr("class", "labelBkg");
+     }
+     let bbox = div.node().getBoundingClientRect();
+-    if (bbox.width === width3) {
++    if (bbox.width >= width3 - 1) {
+       div.style("display", "table");
+       div.style("white-space", "break-spaces");
+       div.style("width", width3 + "px");
