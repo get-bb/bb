@@ -18,10 +18,10 @@ import {
   CODEX_MCP_ELICITATION_KIND,
   normalizeCodexMcpElicitation,
   buildCodexMcpElicitationResponse,
-  codexMcpElicitationTitle,
   type CodexComputerUsePermission,
   type CodexMcpToolApproval,
 } from "./mcp-elicitation.js";
+import { codexMcpElicitationTitle } from "./mcp-elicitation-title.js";
 
 const capturedParams = computerUseElicitation.params;
 const permission: CodexComputerUsePermission = {
@@ -323,6 +323,28 @@ describe("MCP tool-call approval decoding", () => {
       label: "arg_1",
       value: '{"nested":[1]}',
     });
+  });
+
+  it("keeps the shown arguments within a byte budget the interaction limit allows", () => {
+    const { elicitation } = normalizeCodexMcpElicitation({
+      ...mcpToolApprovalElicitation.params,
+      _meta: {
+        codex_approval_kind: "mcp_tool_call",
+        tool_params: Object.fromEntries(
+          Array.from({ length: 40 }, (_, index) => [
+            `arg_${index}`,
+            "界".repeat(3000),
+          ]),
+        ),
+      },
+    });
+    if (elicitation.kind !== "tool_approval")
+      throw new Error("Expected a tool approval");
+    expect(elicitation.params.length).toBeGreaterThan(0);
+    expect(elicitation.params.length + elicitation.omittedParamCount).toBe(40);
+    expect(
+      new TextEncoder().encode(JSON.stringify(elicitation)).length,
+    ).toBeLessThanOrEqual(32 * 1024 + 1024);
   });
 
   it("keeps an approval-tagged form with fields as a normal form", () => {

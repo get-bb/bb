@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   codexMcpFormContentSchema,
   codexMcpFormFieldSchema,
@@ -20,6 +19,7 @@ export const CODEX_COMPUTER_USE_SERVER_NAME = "cua_repl";
 
 const TOOL_APPROVAL_MAX_PARAMS = 50;
 const TOOL_APPROVAL_MAX_TEXT_LENGTH = 2000;
+const TOOL_APPROVAL_PARAMS_BYTE_BUDGET = 32 * 1024;
 
 export function truncateCodePoints(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -29,16 +29,6 @@ export function truncateCodePoints(text: string, maxLength: number): string {
     truncated += codePoint;
   }
   return `${truncated.trimEnd()}…`;
-}
-
-export function codexMcpElicitationTitle(
-  elicitation: CodexMcpElicitation,
-): string {
-  const title =
-    elicitation.kind === "computer_use"
-      ? `Allow Codex to use ${elicitation.app.name}?`
-      : elicitation.message;
-  return truncateCodePoints(title.trim(), PLUGIN_INTERACTION_MAX_TITLE_LENGTH);
 }
 
 const scopeSchema = z.enum(["session", "always"]);
@@ -233,6 +223,14 @@ function normalizeToolApproval(
       label: name,
       value: displayToolParamValue(value),
     }));
+  const encoder = new TextEncoder();
+  const shownParams: CodexMcpToolApproval["params"] = [];
+  let usedBytes = 0;
+  for (const param of allParams.slice(0, TOOL_APPROVAL_MAX_PARAMS)) {
+    usedBytes += encoder.encode(JSON.stringify(param)).length;
+    if (usedBytes > TOOL_APPROVAL_PARAMS_BYTE_BUDGET) break;
+    shownParams.push(param);
+  }
   return {
     ...base,
     kind: "tool_approval",
@@ -244,8 +242,8 @@ function normalizeToolApproval(
             metadata.tool_description,
             TOOL_APPROVAL_MAX_TEXT_LENGTH,
           ),
-    params: allParams.slice(0, TOOL_APPROVAL_MAX_PARAMS),
-    omittedParamCount: Math.max(0, allParams.length - TOOL_APPROVAL_MAX_PARAMS),
+    params: shownParams,
+    omittedParamCount: allParams.length - shownParams.length,
     scopes: metadata.persist,
   };
 }

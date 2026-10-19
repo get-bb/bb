@@ -24,13 +24,13 @@ import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-s
 import {
   CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
   CODEX_MCP_ELICITATION_KIND,
-  codexMcpElicitationTitle,
   normalizeCodexMcpElicitation,
   codexMcpElicitationSchema,
   codexMcpElicitationResponseSchema,
   buildCodexMcpElicitationResponse,
   type CodexNativeMcpElicitationResponse,
 } from "./mcp-elicitation.js";
+import { codexMcpElicitationTitle } from "./mcp-elicitation-title.js";
 import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
