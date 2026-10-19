@@ -193,6 +193,28 @@ describe("BrowserTabContent persistent navigation", () => {
     },
   );
 
+  it("cancels address edits with Escape without navigating", async () => {
+    const harness = createBrowserChromeHarness();
+    const navigate = vi.spyOn(harness.api, "navigate");
+    renderBrowserChrome(harness, "https://example.com/docs");
+    const address = screen.getByRole<HTMLInputElement>("textbox", {
+      name: /Address and search bar/,
+    });
+    act(() => address.focus());
+    fireEvent.change(address, { target: { value: "unfinished address" } });
+    fireEvent.keyDown(address, { key: "Escape" });
+
+    expect(address.value).toBe("https://example.com/docs");
+    await waitFor(() =>
+      expect([address.selectionStart, address.selectionEnd]).toEqual([
+        0,
+        address.value.length,
+      ]),
+    );
+    expect(document.activeElement).toBe(address);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it.each([
     { platform: "MacIntel", modifiers: { metaKey: true }, opensNewTab: true },
     { platform: "MacIntel", modifiers: { ctrlKey: true }, opensNewTab: false },
