@@ -42,6 +42,18 @@ describe("tool-call shell parsing", () => {
     ]);
   });
 
+  it.each([
+    ["rg pre'quoted'\"tail\" src", "prequotedtail"],
+    [String.raw`rg 'a\b|c;d' src`, String.raw`a\b|c;d`],
+    [String.raw`rg "a\qb\"c" src`, String.raw`a\qb"c`],
+    [String.raw`rg a\ b\|c src`, "a b|c"],
+    ["rg ''needle src", "needle"],
+  ])("preserves mixed quoted and escaped token runs: %s", (command, query) => {
+    expect(parseShellCommandIntents(command)).toEqual([
+      { type: "search", cmd: command, query, path: "src" },
+    ]);
+  });
+
   it("disqualifies commands with unquoted write redirects", () => {
     expect(parseShellCommandIntents("cat src/app.ts > /tmp/out.txt")).toEqual(
       [],
