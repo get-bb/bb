@@ -9,6 +9,7 @@ import {
   type QueryDiagnosticsLogFields,
 } from "./query-diagnostics.js";
 import * as schema from "./schema.js";
+import { startBackgroundCheckpoint } from "./background-checkpoint.js";
 
 export interface SlowDbQueryLogFields {
   bindingArgumentCount: number;
@@ -25,6 +26,7 @@ export interface SlowDbQueryLogger {
 }
 
 export interface CreateConnectionOptions {
+  backgroundCheckpoint?: { onError: (error: Error) => void };
   slowQueryLogger?: SlowDbQueryLogger;
   slowQueryThresholdMs?: number | (() => number);
   slowQueryDiagnosticsEnabled?: () => boolean;
@@ -297,10 +299,14 @@ export function createConnection(
       compiledQueries.set(tx, queries);
       return work(tx);
     }, config);
+  const stopCheckpoint = options.backgroundCheckpoint
+    ? startBackgroundCheckpoint(sqlite, options.backgroundCheckpoint.onError)
+    : () => {};
   const originalClose = sqlite.close.bind(sqlite);
   sqlite.close = () => {
     const result = originalClose();
     queries.clear();
+    stopCheckpoint();
     return result;
   };
 
