@@ -274,6 +274,16 @@ function FooterLinks({
 
 export function SiteFooter({ current }: { current?: string }) {
   const platform = useDesktopPlatform();
+  const preserveWaveOneFooter = [
+    "/",
+    "/compare/cursor-alternative",
+    "/claude-code-parallel-agents",
+    "/claude-code-and-codex",
+  ].includes(current ?? "");
+  const comparisons = compareLinks().filter(
+    (link) =>
+      !preserveWaveOneFooter || link.href !== "/compare/orca-alternative",
+  );
   return (
     <footer className="footer">
       <div className="footer-brand">
@@ -317,7 +327,7 @@ export function SiteFooter({ current }: { current?: string }) {
         <FooterLinks links={guideFooterLinks()} current={current} />
       </FooterColumn>
       <FooterColumn title="Compare">
-        <FooterLinks links={compareLinks()} current={current} />
+        <FooterLinks links={comparisons} current={current} />
       </FooterColumn>
       <FooterColumn title="Community">
         <li>
