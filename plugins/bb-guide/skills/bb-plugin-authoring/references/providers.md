@@ -231,7 +231,8 @@ catalog, tool, and dialect contracts. It ships the `acp` (generic), `cursor`,
 channels, call `experimental_registerAcpDialect({ id, ...hooks })` at module
 load in the host artifact and name that id as `acpDialect`; a built-in id
 cannot be replaced. `@get-bb/plugin-sdk/provider-bridge/acp-next` is a
-deprecated alias of the same entrypoint.
+deprecated alias of the same entrypoint; import every member from one subpath,
+since a dialect registered through one is not seen by the other's bridge.
 
 ### Testing a bridge
 

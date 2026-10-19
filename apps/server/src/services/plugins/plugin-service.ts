@@ -70,6 +70,7 @@ import {
   forgetPluginProviders,
   getDisabledPluginProviderCatalog,
   getInstalledPlugin,
+  getInstalledPluginRegistration,
   getPluginSafeMode,
   getThread,
   getLatestThreadSequence,
@@ -81,6 +82,7 @@ import {
   listThreadPluginMetadataRows,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
+  restoreRemovedInstalledPlugin,
   setDisabledPluginProviderCatalog,
   getPluginSettingsValues,
   setInstalledPluginEnabled,
@@ -1283,8 +1285,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     for (const retired of retiredBundledPlugins) {
       const row = getInstalledPlugin(deps.db, retired.pluginId);
       if (row === undefined || !isOrphanedBuiltinRow(row)) continue;
-      const successor = getInstalledPlugin(deps.db, retired.successorPluginId);
-      if (row.enabled && successor !== undefined) {
+      if (row.enabled) {
         const stored = getPluginSettingsValues(deps.db, row.id);
         const carried = Object.fromEntries(
           retired.carriedSettings.flatMap((key) =>
@@ -1292,17 +1293,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ),
         );
         if (Object.keys(carried).length > 0) {
-          setPluginSettingsValues(deps.db, successor.id, carried);
+          setPluginSettingsValues(deps.db, retired.successorPluginId, carried);
         }
-        if (!successor.enabled) {
+        const successor = getInstalledPluginRegistration(
+          deps.db,
+          retired.successorPluginId,
+        );
+        if (successor?.removedAt !== null && successor?.removedAt !== undefined) {
+          restoreRemovedInstalledPlugin(deps.db, successor.id);
+        } else if (successor !== undefined && !successor.enabled) {
           setInstalledPluginEnabled(deps.db, successor.id, true);
         }
       }
       await deleteRemovedPluginData(row, new Set());
       deleteInstalledPlugin(deps.db, row.id);
       logger.info(
-        row.enabled && successor !== undefined
-          ? `plugin ${row.id} retired; its settings moved to ${successor.id}, which is now enabled`
+        row.enabled
+          ? `plugin ${row.id} retired; its settings moved to ${retired.successorPluginId}, which is now enabled`
           : `plugin ${row.id} retired because bb no longer bundles ${row.source}`,
       );
     }
@@ -1488,8 +1495,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           }
           await recoverIncompletePluginRollbacks();
         });
-        await reconcileBundled();
         await handOverRetiredBuiltins();
+        await reconcileBundled();
         await removeUnbundledBuiltins();
         await loadAll();
       } finally {

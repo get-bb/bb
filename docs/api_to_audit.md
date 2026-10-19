@@ -646,7 +646,9 @@ through the same registry (`resolveAcpDialect`).
 
 `@get-bb/plugin-sdk/provider-bridge/acp-next`, the subpath the kit was
 previewed under (2026-10-09), re-exports this kit unchanged and is
-deprecated. Remove it at the next major.
+deprecated. Each subpath is bundled with its own dialect registry, so a
+plugin must import every member from one of them. Remove it at the next
+major.
 
 Docs: `providers.md` (ACP agents), `provider-bridge-api-index.md`. No doc
 covers the probe or launch-spec contracts.

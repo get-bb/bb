@@ -155,6 +155,7 @@ export {
   listUnnormalizedPluginRegistrations,
   markInstalledPluginRemoved,
   normalizeInstalledPluginRegistration,
+  restoreRemovedInstalledPlugin,
   setInstalledPluginDirectProvenance,
   setInstalledPluginEnabled,
   setInstalledPluginUpdateState,

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -465,6 +465,25 @@ export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   const result = db
     .delete(installedPlugins)
     .where(eq(installedPlugins.id, id))
+    .run();
+  return result.changes > 0;
+}
+
+export function restoreRemovedInstalledPlugin(
+  db: DbConnection,
+  id: string,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      enabled: true,
+      enabledFollowsDefault: false,
+      removedAt: null,
+      updatedAt: Date.now(),
+    })
+    .where(
+      and(eq(installedPlugins.id, id), isNotNull(installedPlugins.removedAt)),
+    )
     .run();
   return result.changes > 0;
 }

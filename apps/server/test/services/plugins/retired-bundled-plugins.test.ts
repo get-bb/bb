@@ -6,6 +6,7 @@ import {
   getDisabledProviderIds,
   getInstalledPluginRegistration,
   getPluginSettingsValues,
+  markInstalledPluginRemoved,
   setDisabledPluginProviderCatalog,
   setDisabledProviderIds,
   setPluginSettingsValues,
@@ -15,6 +16,10 @@ import {
 import { createMigratedConnection } from "@bb/db/testing";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
+import {
+  BUNDLED_PLUGINS,
+  RETIRED_BUNDLED_PLUGINS,
+} from "../../../src/services/plugins/builtin-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -181,20 +186,50 @@ describe("retired bundled plugins", () => {
     expect(getDisabledProviderIds(db)).toEqual(["shared"]);
   });
 
-  it("removes the retired plugin when its successor is not installed", async () => {
+  it("restores a removed successor and hands it the retired plugin's settings", async () => {
+    markInstalledPluginRemoved(db, "successor");
+    insertRetiredBuiltin(db, {
+      rootDir: join(workDir, "gone"),
+      enabled: true,
+    });
+    setPluginSettingsValues(db, "retired", {
+      agents: JSON.stringify("[kept]"),
+    });
+
+    await restart();
+
+    expect(state("successor")).toEqual({ enabled: true, status: "running" });
+    expect(getPluginSettingsValues(db, "successor")).toEqual({
+      agents: JSON.stringify("[kept]"),
+    });
+    expect(getInstalledPluginRegistration(db, "retired")).toBeUndefined();
+  });
+
+  it("keeps the handed-over settings for a successor that is not installed yet", async () => {
     expect(await service.remove("successor")).toBe(true);
     insertRetiredBuiltin(db, {
       rootDir: join(workDir, "gone"),
       enabled: true,
     });
     setPluginSettingsValues(db, "retired", {
-      agents: JSON.stringify("[orphan]"),
+      agents: JSON.stringify("[waiting]"),
     });
 
     await restart();
 
     expect(getInstalledPluginRegistration(db, "retired")).toBeUndefined();
     expect(getPluginSettingsValues(db, "retired")).toEqual({});
-    expect(state("successor")).toBeNull();
+    expect(getPluginSettingsValues(db, "successor")).toEqual({
+      agents: JSON.stringify("[waiting]"),
+    });
+  });
+
+  it("retires only plugins bb no longer bundles, into successors it does", () => {
+    const bundledIds = BUNDLED_PLUGINS.map((plugin) => plugin.pluginId);
+    expect(RETIRED_BUNDLED_PLUGINS.length).toBeGreaterThan(0);
+    for (const retired of RETIRED_BUNDLED_PLUGINS) {
+      expect(bundledIds).not.toContain(retired.pluginId);
+      expect(bundledIds).toContain(retired.successorPluginId);
+    }
   });
 });
