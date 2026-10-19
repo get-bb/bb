@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import type { Comparison } from "../compare-types";
 import {
   BB_ROWS,
@@ -195,6 +196,7 @@ export const comparison: Comparison = {
           ),
         },
         FAQ_CUSTOMIZE,
+        FAQ_PLUGIN_TRUST,
         faqScript(
           " T3 Code’s CLI mostly installs and runs its server, and outside agents can start and message threads through its MCP server.",
         ),

@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import type { Comparison } from "../compare-types";
 import {
   BB_ROWS,
@@ -319,6 +320,7 @@ export const comparison: Comparison = {
         ),
         FAQ_PERMISSIONS,
         FAQ_CUSTOMIZE,
+        FAQ_PLUGIN_TRUST,
         faqScript(null),
       ],
     },

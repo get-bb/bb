@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
 import {
   BB_ROWS,
@@ -292,6 +293,7 @@ export const comparison: Comparison = {
       title: "Working in bb",
       items: [
         FAQ_CUSTOMIZE,
+        FAQ_PLUGIN_TRUST,
         faqScript(null),
         FAQ_REVIEW,
         faqSchedule("Superset’s automations only repeat and need Pro."),

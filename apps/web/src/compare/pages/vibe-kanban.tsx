@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import type { CompareHighlight, Comparison } from "../compare-types";
 import {
   BB_ROWS,
@@ -163,6 +164,7 @@ export const comparison: Comparison = {
             </ol>
           ),
         },
+        FAQ_PLUGIN_TRUST,
         FAQ_REVIEW,
         FAQ_AGENTS,
       ],
