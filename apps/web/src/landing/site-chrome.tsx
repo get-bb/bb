@@ -282,7 +282,10 @@ export function SiteFooter({ current }: { current?: string }) {
   ].includes(current ?? "");
   const comparisons = compareLinks().filter(
     (link) =>
-      !preserveWaveOneFooter || link.href !== "/compare/orca-alternative",
+      !preserveWaveOneFooter ||
+      !["/compare/devin-alternative", "/compare/orca-alternative"].includes(
+        link.href,
+      ),
   );
   return (
     <footer className="footer">
