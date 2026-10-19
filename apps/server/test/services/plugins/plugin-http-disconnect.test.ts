@@ -90,7 +90,7 @@ describe("plugin HTTP disconnect cleanup", () => {
           await disconnected;
           await finish();
           await expect.poll(readState).toMatchObject({ returned: true });
-          expect.soft(await readState()).toMatchObject({ aborted: true });
+          expect(await readState()).toMatchObject({ aborted: true });
           await expect
             .poll(readState, { timeout: 1_000 })
             .toMatchObject({ cancelled: true });
