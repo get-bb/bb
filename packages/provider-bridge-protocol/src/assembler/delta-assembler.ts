@@ -876,6 +876,12 @@ export function createDeltaAssembler(
     delegationSummary?: string;
   }
 
+  function fileChangeErrorField(close: CloseFields): { error?: string } {
+    return close.status === "failed" && close.resultText?.trim()
+      ? { error: close.resultText }
+      : {};
+  }
+
   function completeStartedItem(
     started: ThreadEventItem,
     close: CloseFields,
@@ -909,6 +915,7 @@ export function createDeltaAssembler(
             changes: started.changes,
             status: close.status,
             approvalStatus: started.approvalStatus,
+            ...fileChangeErrorField(close),
           },
           parent,
         );
@@ -1018,6 +1025,7 @@ export function createDeltaAssembler(
             changes: buildFileChanges(shape),
             status: close.status,
             approvalStatus: close.approvalStatus ?? null,
+            ...fileChangeErrorField(close),
           },
           parentToolCallId,
         );

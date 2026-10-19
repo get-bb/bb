@@ -49,6 +49,7 @@ interface ContextWindowUsageEventArgs {
 
 interface FileChangeItemEventArgs {
   changes: ThreadEventFileChange[];
+  error?: string;
   itemId?: string;
   seq: number;
   status?: ThreadEventItemStatus;
@@ -268,6 +269,7 @@ function contextWindowUsageEvent({
 
 function fileChangeItemEvent({
   changes,
+  error,
   itemId = "file-edit-1",
   seq,
   status,
@@ -285,6 +287,7 @@ function fileChangeItemEvent({
         changes,
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         approvalStatus: null,
+        ...(error === undefined ? {} : { error }),
       },
     },
     meta: {
@@ -2860,6 +2863,31 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(fileChangeRowIdByPath(finalRows)).toEqual(
       fileChangeRowIdByPath(initialRows),
     );
+  });
+
+  it("projects a failed file change's error onto each of its rows", () => {
+    const changes: ThreadEventFileChange[] = [
+      { path: "src/a.ts", kind: "update" },
+      { path: "src/b.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" },
+    ];
+    const rows = collectFileChangeRows(
+      buildTimelineRows([
+        turnStartedEvent({ seq: 0 }),
+        fileChangeItemEvent({ changes, seq: 1, type: "item/started" }),
+        fileChangeItemEvent({
+          changes,
+          error: "Could not find the exact text in src/a.ts.",
+          seq: 2,
+          status: "failed",
+          type: "item/completed",
+        }),
+      ]),
+    );
+
+    expect(rows.map((row) => [row.status, row.stderr])).toEqual([
+      ["error", "Could not find the exact text in src/a.ts."],
+      ["error", "Could not find the exact text in src/a.ts."],
+    ]);
   });
 
   it("drops stale file-change rows that are missing from later provider changes", () => {

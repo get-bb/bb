@@ -213,6 +213,9 @@ function formatWorkBody(
       if (row.approvalStatus !== null) {
         lines.push(`  ${workStatusLabel(row, context.color)}`);
       }
+      if (context.verbose && row.stderr?.trim()) {
+        lines.push(red(indentBlock(row.stderr.trimEnd(), "  "), context.color));
+      }
       if (context.verbose && row.change.diff) {
         lines.push(
           dim(indentBlock(row.change.diff.trimEnd(), "  "), context.color),

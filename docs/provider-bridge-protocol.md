@@ -150,7 +150,9 @@ deltas and owns every timeline invariant:
   `item.close` always carries the full terminal item shape and is applied
   uniformly (paired close, reclassifying dual-settle, or bare
   close-without-open); repeated closes for a settled provider-identified
-  key are deduped and an explicit reopen reuses the same bb id.
+  key are deduped and an explicit reopen reuses the same bb id. A failed
+  `fileChange` close keeps its non-blank `resultText` as the item's
+  `error`, which the timeline shows before any proposed diff.
 - **Accumulation.** Streamed text, cumulative output snapshots (diffed into
   deltas/resets), and progress-event throttling.
 - **One streaming dialect.** Every text stream is an item keyed like every

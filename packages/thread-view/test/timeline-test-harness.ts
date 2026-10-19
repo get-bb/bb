@@ -246,6 +246,7 @@ interface FileChangeCompletedArgs extends ProviderTurnEventOptions {
     kind: "add" | "delete" | "update";
     path: string;
   }>;
+  error?: string;
   itemId?: string;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
@@ -830,6 +831,7 @@ export function createTimelineEventFactory(
             changes: args.changes,
             status: args.status ?? "completed",
             approvalStatus: args.approvalStatus ?? null,
+            ...(args.error === undefined ? {} : { error: args.error }),
           },
         },
       };

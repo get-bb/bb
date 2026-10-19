@@ -42,6 +42,7 @@ interface FileEditChangesPartial extends FileEditPartialBase {
   changes: EventProjectionFileEditChange[];
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   status: FileEditStatus;
+  stderr?: string;
   presentation?: ThreadEventItemPresentation;
 }
 
@@ -81,6 +82,7 @@ export function parseFileEditFromItemEvent(
     changes,
     approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
     status: itemStatusToExecStatus(decoded.item.status),
+    ...(decoded.item.error ? { stderr: decoded.item.error } : {}),
     ...(decoded.item.presentation
       ? { presentation: decoded.item.presentation }
       : {}),
