@@ -1071,10 +1071,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return true;
   }
 
-  async function isMutableAppBundleStale(rootDir: string): Promise<boolean> {
+  async function isMutableArtifactStale(
+    rootDir: string,
+    artifact: "app" | "host",
+  ): Promise<boolean> {
     let artifactMtimeMs: number;
     try {
-      artifactMtimeMs = (await stat(join(rootDir, "dist", "app.js"))).mtimeMs;
+      artifactMtimeMs = (await stat(join(rootDir, "dist", `${artifact}.js`)))
+        .mtimeMs;
     } catch {
       return true;
     }
@@ -1246,7 +1250,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
       const sdkChanged = meta?.sdkVersion !== PLUGIN_SDK_VERSION;
       const sourceChanged =
-        !sdkChanged && (await isMutableAppBundleStale(row.rootDir));
+        !sdkChanged && (await isMutableArtifactStale(row.rootDir, "app"));
       if (sdkChanged || sourceChanged) {
         const reason = sdkChanged
           ? `built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}`
@@ -1293,12 +1297,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         artifact: "host",
       })
     ) {
-      await buildPluginHost(
-        row.rootDir,
-        deps.appVersion,
-        await getPluginBuildToolchain(deps),
-      );
-      setDevBuildProblem(row.id, "host", null);
+      let meta: { sdkVersion: string } | null = null;
+      try {
+        meta = parsePluginAppBundleMeta(
+          await readFile(join(row.rootDir, "dist", "host.meta.json"), "utf8"),
+        );
+      } catch {}
+      if (
+        meta?.sdkVersion !== PLUGIN_SDK_VERSION ||
+        (await isMutableArtifactStale(row.rootDir, "host"))
+      ) {
+        await buildPluginHost(
+          row.rootDir,
+          deps.appVersion,
+          await getPluginBuildToolchain(deps),
+        );
+        setDevBuildProblem(row.id, "host", null);
+      }
     }
     const jsPath = join(row.rootDir, "dist", "host.js");
     const metaPath = join(row.rootDir, "dist", "host.meta.json");
