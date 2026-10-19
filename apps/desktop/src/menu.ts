@@ -317,6 +317,8 @@ export function buildApplicationMenuTemplate(
             args.zoomFocusedPage("out");
           },
         },
+        { type: "separator" },
+        { role: "togglefullscreen" },
         ...createServerDaemonLogsMenuItems(args),
       ],
     },
