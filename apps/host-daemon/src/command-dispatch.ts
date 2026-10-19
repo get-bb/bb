@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import { withVcsProcessPriority } from "@bb/process-utils";
 import { operationEnvironment } from "./operation-environment.js";
 import {
@@ -667,6 +669,21 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     withResolvedBridgeLaunch(command, options, (args) =>
       options.listModels({ ...args, contributedEnv: command.contributedEnv }),
     ),
+  "provider.list_commands": async (command, options) => {
+    const cwd =
+      command.cwd ?? path.join(options.dataDir, "provider-command-catalog");
+    if (command.cwd === null) {
+      await mkdir(cwd, { recursive: true });
+    }
+    return options.listCommands({
+      providerId: command.providerId,
+      bridgeLaunch: await resolveRuntimeBridgeLaunch(
+        command.bridgeLaunch,
+        options,
+      ),
+      cwd,
+    });
+  },
   "provider.health": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
       options.providerHealth(args),

@@ -89,6 +89,8 @@ export {
   threadDeltaNotificationParamsSchema,
   threadDeltaSchema,
   initializeParamsSchema,
+  commandListParamsSchema,
+  commandListResultSchema,
   modelListParamsSchema,
   providerHealthResultSchema,
   providerHealthSchema,

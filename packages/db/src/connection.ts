@@ -5,6 +5,7 @@ import { resourceUsage, threadCpuUsage } from "node:process";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { registerHostPathSqlFunctions } from "./data/host-path-sql.js";
 import {
+  createWalSampler,
   finishQueryDiagnostics,
   type QueryDiagnosticsLogFields,
 } from "./query-diagnostics.js";
@@ -65,7 +66,7 @@ export function prepareCachedQuery<TQuery>(
 interface SlowDbQueryConfig {
   logger: SlowDbQueryLogger;
   thresholdMs: number | (() => number);
-  walPath: string | null;
+  sampleWal: () => QueryDiagnosticsLogFields["wal"];
   diagnosticsEnabled: () => boolean;
 }
 
@@ -134,7 +135,7 @@ function runTimedStatementOperation<TValue>(
                 diagnostics: finishQueryDiagnostics(
                   startedUsage,
                   finishedUsage,
-                  args.config.walPath,
+                  args.config.sampleWal(),
                 ),
               }
             : {}),
@@ -194,7 +195,9 @@ function instrumentSqliteClient(
     logger: options.slowQueryLogger,
     thresholdMs:
       options.slowQueryThresholdMs ?? DEFAULT_SLOW_DB_QUERY_LOG_THRESHOLD_MS,
-    walPath: sqlite.memory ? null : `${resolve(sqlite.name)}-wal`,
+    sampleWal: createWalSampler(
+      sqlite.memory ? null : `${resolve(sqlite.name)}-wal`,
+    ),
     diagnosticsEnabled: options.slowQueryDiagnosticsEnabled ?? (() => false),
   };
   const originalExec = sqlite.exec.bind(sqlite);

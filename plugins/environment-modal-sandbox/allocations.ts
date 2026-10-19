@@ -8,6 +8,11 @@ import type {
 } from "./providers/modal/client.js";
 
 const prefix = "allocations/";
+const retrySchema = z.object({
+  failures: z.number().int().min(0).max(7),
+  nextAttemptAt: z.number().finite(),
+});
+const retryKey = (key: string) => `allocation-retries/${key}`;
 const allocationSchema = z.object({
   accountIdentity: z.string().min(1),
   appName: z.string().min(1),
@@ -24,10 +29,22 @@ export function modalAllocations(
   const allocating = new Set<string>();
   const keyForId = (id: string) => `${prefix}sandbox/${id}`;
   async function remember(allocation: ModalAllocation & { sandboxId: string }) {
-    await bb.storage.kv.set(keyForId(allocation.sandboxId), allocation);
+    const key = keyForId(allocation.sandboxId);
+    await bb.storage.kv.set(key, allocation);
+    return key;
+  }
+  async function remove(key: string) {
+    await bb.storage.kv.delete(key);
+    await bb.storage.kv.delete(retryKey(key));
   }
   async function forget(sandboxId: string) {
-    await bb.storage.kv.delete(keyForId(sandboxId));
+    await remove(keyForId(sandboxId));
+  }
+  async function readRetry(key: string) {
+    const value = await bb.storage.kv.get<unknown>(retryKey(key));
+    return value === undefined
+      ? { failures: 0, nextAttemptAt: 0 }
+      : retrySchema.parse(value);
   }
   return {
     remember,
@@ -37,7 +54,22 @@ export function modalAllocations(
       const value = await bb.storage.kv.get<unknown>(key);
       return value === undefined ? null : allocationSchema.parse(value);
     },
-    remove: (key: string) => bb.storage.kv.delete(key),
+    remove,
+    async ready(key: string, at: number) {
+      return (await readRetry(key)).nextAttemptAt <= at;
+    },
+    async failed(key: string, at: number) {
+      const retry = await readRetry(key);
+      await bb.storage.kv.set(retryKey(key), {
+        failures: Math.min(retry.failures + 1, 7),
+        nextAttemptAt:
+          at + Math.min(3_600_000, 60_000 * 2 ** Math.min(retry.failures, 6)),
+      });
+    },
+    async succeeded(key: string) {
+      if ((await readRetry(key)).failures > 0)
+        await bb.storage.kv.delete(retryKey(key));
+    },
     isAllocating: (key: string) => allocating.has(key),
     wrap(client: ModalSandboxClient): ModalSandboxClient {
       function wrapHandle(sandbox: ModalSandboxHandle): ModalSandboxHandle {
@@ -79,7 +111,7 @@ export function modalAllocations(
             await bb.storage.kv.set(key, allocation);
             const sandbox = await client.create(request);
             await remember({ ...allocation, sandboxId: sandbox.sandboxId });
-            await bb.storage.kv.delete(key);
+            await remove(key);
             return wrapHandle(sandbox);
           } finally {
             allocating.delete(key);

@@ -143,7 +143,7 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
       closed = true;
       wake();
     }),
-    initializationResult: vi.fn(),
+    initializationResult: vi.fn(async () => ({ commands: [] })),
     interrupt: vi.fn(async () => {}),
     setModel: vi.fn(async () => {}),
     setPermissionMode: vi.fn(async () => {}),
@@ -203,6 +203,7 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
     "skills/configure-declared": "pass",
+    "commands/list-declared": "pass",
     "session/start-identity": "pass",
     "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",

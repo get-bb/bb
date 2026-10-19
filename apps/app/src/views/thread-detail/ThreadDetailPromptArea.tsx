@@ -195,7 +195,6 @@ const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
 const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
 
 interface ThreadDetailPromptAreaProps {
-  activeBackgroundAgentCount: number;
   canRestoreEnvironment: boolean;
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
@@ -411,7 +410,6 @@ async function runWhileFollowUpShortcutSending(
 }
 
 export function ThreadDetailPromptArea({
-  activeBackgroundAgentCount,
   canRestoreEnvironment,
   canUseGitUi,
   contextWindowUsage,
@@ -1635,10 +1633,7 @@ export function ThreadDetailPromptArea({
     !isAttachingSentMessageFiles &&
     !isFollowUpSubmitting &&
     !isQueueMutationPending &&
-    !sentMessageEdit.isSubmitting &&
-    activeBackgroundAgentCount === 0 &&
-    activeWorkflows.length === 0 &&
-    activeBackgroundCommands.length === 0;
+    !sentMessageEdit.isSubmitting;
   const sentMessageEditSubmitMode = useMemo<FollowUpSubmitMode>(
     () =>
       canSubmitSentMessageEdit || sentMessageEditInput.length === 0

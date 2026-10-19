@@ -460,6 +460,47 @@ describe("delta assembler", () => {
     });
   });
 
+  it("keeps result text as the error only on failed file changes", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const editShape: DeltaItemShape = {
+      type: "fileChange",
+      changes: [{ path: "src/app.ts", kind: "update" }],
+    };
+    const settle = (
+      providerItemId: string,
+      status: "completed" | "failed",
+      resultText: string,
+    ) => {
+      assemble(assembler, {
+        kind: "item.open",
+        key: { providerItemId },
+        item: editShape,
+      });
+      return itemOf(
+        assemble(assembler, {
+          kind: "item.close",
+          key: { providerItemId },
+          status,
+          resultText,
+          item: editShape,
+        })[0],
+      );
+    };
+
+    expect(
+      settle("tc-failed", "failed", "Could not find the exact text"),
+    ).toMatchObject({
+      type: "fileChange",
+      status: "failed",
+      error: "Could not find the exact text",
+    });
+    expect(
+      settle("tc-ok", "completed", "Successfully replaced text"),
+    ).not.toHaveProperty("error");
+    expect(settle("tc-blank", "failed", "  \n")).not.toHaveProperty("error");
+  });
+
   it("maps parentRef through the provider→bb id map for nested items", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });

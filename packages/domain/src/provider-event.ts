@@ -422,6 +422,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     changes: z.array(threadEventFileChangeSchema),
     status: threadEventItemStatusSchema,
     approvalStatus: threadEventItemApprovalStatusSchema,
+    error: z.string().optional(),
     ...itemPresentationField,
     parentToolCallId: z.string().optional(),
   }),

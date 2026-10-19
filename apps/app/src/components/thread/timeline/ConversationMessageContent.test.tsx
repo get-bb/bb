@@ -3,7 +3,7 @@
 import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
-import { beforeAll, afterEach, describe, expect, it } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -18,7 +18,11 @@ import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-help
 
 beforeAll(() => LazyMarkdownHtml.preload());
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function threadListEntry(
   overrides: Partial<ThreadListEntry> = {},
@@ -564,4 +568,55 @@ describe("ConversationMessageContent undelivered automation messages", () => {
 
     expect(screen.getByText("Steer failed")).toBeTruthy();
   });
+});
+
+describe("user message overflow", () => {
+  it.each([
+    { label: "horizontal", width: 500, height: 40, expandable: false },
+    { label: "vertical", width: 100, height: 400, expandable: true },
+  ])(
+    "uses vertical clipping to decide expansion ($label overflow)",
+    ({ width, height, expandable }) => {
+      vi.stubGlobal("ResizeObserver", undefined);
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
+        100,
+      );
+      vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(
+        width,
+      );
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(
+        40,
+      );
+      vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(
+        height,
+      );
+      render(
+        <MemoryRouter>
+          <RouteNavigationProvider>
+            <ConversationMessageContent
+              role="user"
+              initiator="user"
+              attachments={null}
+              mentions={[]}
+              senderThreadId={null}
+              senderThreadTitle={null}
+              senderIsPluginSideChat={false}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text="What does this mean?"
+              timestamp={0}
+              turnRequest={{
+                isGrouped: false,
+                kind: "message",
+                status: "accepted",
+              }}
+            />
+          </RouteNavigationProvider>
+        </MemoryRouter>,
+      );
+      expect(screen.queryByRole("button", { name: "Show more" }) !== null).toBe(
+        expandable,
+      );
+    },
+  );
 });

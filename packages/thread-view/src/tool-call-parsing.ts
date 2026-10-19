@@ -61,6 +61,10 @@ export function extractShellCommandFromString(
 
 const DOUBLE_QUOTE_ESCAPABLE = new Set(["$", "`", '"', "\\", "\n"]);
 
+const SHELL_UNQUOTED_RUN = /[^\\'"\s|&;<>]+/y;
+const SHELL_SINGLE_QUOTED_RUN = /[^']+/y;
+const SHELL_DOUBLE_QUOTED_RUN = /[^"\\]+/y;
+
 interface ShellToken {
   readonly value: string;
   readonly quoted: boolean;
@@ -109,6 +113,23 @@ function visitShellCommandSegments(
   };
 
   for (let index = 0; index < command.length; index += 1) {
+    if (!escaping) {
+      const pattern =
+        quote === "'"
+          ? SHELL_SINGLE_QUOTED_RUN
+          : quote === '"'
+            ? SHELL_DOUBLE_QUOTED_RUN
+            : SHELL_UNQUOTED_RUN;
+      pattern.lastIndex = index;
+      const run = pattern.exec(command);
+      if (run !== null) {
+        current += run[0];
+        if (quote !== null) recordQuoted();
+        else recordUnquoted();
+        index = pattern.lastIndex - 1;
+        continue;
+      }
+    }
     const character = command[index];
     if (!character) continue;
 
@@ -543,10 +564,23 @@ function classifyShellSegment(
   }
 }
 
+const SHELL_INTENT_MAX_COMMAND_CHARS = 2_048;
+const SHELL_INTENT_CACHE_MAX_ENTRIES = 4_096;
+const SHELL_INTENT_CACHE_MAX_COMMAND_CHARS = 2_000_000;
+const shellIntentCache = new Map<string, EventProjectionToolParsedIntent[]>();
+let shellIntentCacheCommandChars = 0;
+
 export function parseShellCommandIntents(
   command: string | undefined,
 ): EventProjectionToolParsedIntent[] {
-  if (!command) return [];
+  if (!command || command.length > SHELL_INTENT_MAX_COMMAND_CHARS) return [];
+
+  const cached = shellIntentCache.get(command);
+  if (cached !== undefined) {
+    shellIntentCache.delete(command);
+    shellIntentCache.set(command, cached);
+    return cached.map((intent) => ({ ...intent }));
+  }
 
   let intents: EventProjectionToolParsedIntent[] = [];
   visitShellCommandSegments(command, (segment) => {
@@ -560,7 +594,19 @@ export function parseShellCommandIntents(
     }
     return true;
   });
-  return intents;
+  while (
+    shellIntentCache.size >= SHELL_INTENT_CACHE_MAX_ENTRIES ||
+    shellIntentCacheCommandChars + command.length >
+      SHELL_INTENT_CACHE_MAX_COMMAND_CHARS
+  ) {
+    const oldest = shellIntentCache.keys().next().value;
+    if (oldest === undefined) break;
+    shellIntentCache.delete(oldest);
+    shellIntentCacheCommandChars -= oldest.length;
+  }
+  shellIntentCache.set(command, intents);
+  shellIntentCacheCommandChars += command.length;
+  return intents.map((intent) => ({ ...intent }));
 }
 
 const THREAD_TELL_VALUE_FLAGS: ReadonlySet<string> = new Set([

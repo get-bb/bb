@@ -12,8 +12,11 @@ type PlatformSource = {
 export function detectDesktopPlatform(
   source: PlatformSource,
 ): DesktopPlatform | null {
-  const hint = source.userAgentData?.platform ?? source.platform ?? "";
+  const hint = source.userAgentData?.platform || source.platform || "";
   const userAgent = source.userAgent ?? "";
+  if (/^win/i.test(hint) && !/windows phone/i.test(userAgent)) {
+    return "windows";
+  }
   if (/mac/i.test(hint) && !/iphone|ipad|ipod/i.test(userAgent)) {
     return "macos";
   }

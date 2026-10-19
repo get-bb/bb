@@ -233,10 +233,6 @@ export function WorkRowBody({
     case "file-change":
       return (
         <div className="space-y-2">
-          <LazyTimelineFileDiffBlock
-            change={row.change}
-            workspaceRootPath={workspaceRootPath}
-          />
           {row.stderr ? (
             <TimelineDetailScroll
               size="base"
@@ -251,6 +247,12 @@ export function WorkRowBody({
               </EventCodeBlock>
             </TimelineDetailScroll>
           ) : null}
+          {row.stderr && !row.change.diff?.trim() ? null : (
+            <LazyTimelineFileDiffBlock
+              change={row.change}
+              workspaceRootPath={workspaceRootPath}
+            />
+          )}
         </div>
       );
     case "delegation":

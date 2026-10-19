@@ -2179,6 +2179,44 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("shows a failed file change's error before its proposed diff", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.fileChangeCompleted({
+        itemId: "edit-1",
+        status: "failed",
+        error: "Could not find the exact text in src/a.ts.",
+        changes: [
+          {
+            path: "/repo/src/a.ts",
+            kind: "update",
+            diff: "@@ -1 +1 @@\n-missing\n+replacement",
+          },
+        ],
+      }),
+      event.fileChangeCompleted({
+        itemId: "edit-2",
+        status: "failed",
+        error: "No changes made to src/b.ts.",
+        changes: [{ path: "/repo/src/b.ts", kind: "update" }],
+      }),
+      event.turnCompleted(),
+    ]);
+
+    expect(timeline.text).toMatchInlineSnapshot(`
+      "── Worked for (3ms) ────────────────────────────────────────
+        ── Edited 2 files
+          ── Failed to edit /repo/src/a.ts (error)
+            Could not find the exact text in src/a.ts.
+            @@ -1 +1 @@
+            -missing
+            +replacement
+          ── Failed to edit /repo/src/b.ts (error)
+            No changes made to src/b.ts."
+    `);
+  });
+
   it("computes file-change stats from raw created and deleted file bodies", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([

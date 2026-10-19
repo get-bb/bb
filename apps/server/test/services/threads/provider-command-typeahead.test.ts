@@ -16,6 +16,34 @@ function skill(
 }
 
 describe("buildCommandListResponse", () => {
+  it("adds the provider's live commands that the scan does not offer", () => {
+    const response = buildCommandListResponse({
+      commands: [skill("grilling")],
+      liveCommands: [
+        { name: "grilling", description: "Live copy of a scanned skill" },
+        {
+          name: "simplify",
+          description: "Simplify the changed code",
+          inputHint: "[<target>]",
+        },
+        { name: "clear", description: "Provider clear" },
+      ],
+      includeBuiltinCompact: false,
+      skillCatalog: [],
+    });
+
+    expect(
+      response.commands.map((command) => [command.name, command.description]),
+    ).toEqual([
+      ["clear", "Start fresh context in this thread"],
+      ["simplify", "Simplify the changed code"],
+      ["grilling", null],
+    ]);
+    expect(
+      response.commands.find((command) => command.name === "simplify"),
+    ).toMatchObject({ source: "command", argumentHint: "[<target>]" });
+  });
+
   it("keeps canonical built-ins when project commands collide", () => {
     const response = buildCommandListResponse({
       commands: [
@@ -34,6 +62,7 @@ describe("buildCommandListResponse", () => {
           argumentHint: "<target>",
         },
       ],
+      liveCommands: [],
       includeBuiltinCompact: true,
       skillCatalog: [],
     });
@@ -59,6 +88,7 @@ describe("buildCommandListResponse", () => {
   it("includes plugin provenance on canonical skill rows", () => {
     const response = buildCommandListResponse({
       commands: [],
+      liveCommands: [],
       includeBuiltinCompact: true,
       skillCatalog: [
         {
@@ -91,6 +121,7 @@ describe("buildCommandListResponse", () => {
         skill("bb-cli", { description: "Data-dir override" }),
         skill("bb-cli", { description: "Built-in default" }),
       ],
+      liveCommands: [],
       includeBuiltinCompact: true,
       skillCatalog: [],
     });
@@ -111,6 +142,7 @@ describe("buildCommandListResponse", () => {
   it("omits the built-in compact row for unsupported providers", () => {
     const response = buildCommandListResponse({
       commands: [],
+      liveCommands: [],
       includeBuiltinCompact: false,
       skillCatalog: [],
     });

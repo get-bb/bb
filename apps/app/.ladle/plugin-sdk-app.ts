@@ -3,6 +3,7 @@ import { pluginSdkAppImplementation } from "../src/lib/plugin-sdk-app-impl";
 export type * from "@get-bb/plugin-sdk";
 
 export const {
+  experimental_ThreadStatusGlyph,
   experimental_Icon,
   experimental_ProviderIcon,
   definePluginApp,

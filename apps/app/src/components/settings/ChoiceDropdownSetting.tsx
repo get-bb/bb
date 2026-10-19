@@ -66,7 +66,7 @@ export function ChoiceDropdownSetting({
               >
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate">{option.title}</span>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="whitespace-normal break-words text-xs text-muted-foreground">
                     {option.description}
                   </span>
                 </span>

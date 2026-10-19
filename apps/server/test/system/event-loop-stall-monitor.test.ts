@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { console as inspectorConsole } from "node:inspector";
 import { setExperiments } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import { startGatedPerformanceDiagnostics } from "../../src/services/system/performance-diagnostics.js";
@@ -400,76 +399,45 @@ describe("event loop stall monitor", () => {
     }
   });
 
-  it.each(["start", "finish", "serialize"] as const)(
-    "identifies a slow CPU profile %s as a candidate in stall logs",
-    async (phase) => {
-      installHistogram({ maxDelayMs: 2_000, meanDelayMs: 25, p99DelayMs: 450 });
-      const db = createMigratedConnection();
-      setExperiments(db, { performanceDiagnostics: true });
-      const dataDir = await mkdtemp(join(tmpdir(), "bb-profile-attribution-"));
-      const logger = { info: vi.fn(), warn: vi.fn() };
-      const monitor = startEventLoopStallMonitor({ logger });
-      let clock = 0;
-      const nowSpy = vi
-        .spyOn(nodePerformance, "now")
-        .mockImplementation(() => clock);
-      const start = inspectorConsole.profile;
-      const finish = inspectorConsole.profileEnd;
-      const stringify = JSON.stringify;
-      const startSpy = vi
-        .spyOn(inspectorConsole, "profile")
-        .mockImplementation((title) => {
-          start(title);
-          if (phase === "start") clock += 2_000;
-        });
-      const finishSpy = vi
-        .spyOn(inspectorConsole, "profileEnd")
-        .mockImplementation((title) => {
-          finish(title);
-          if (phase === "finish") clock += 2_000;
-        });
-      const stringifySpy = vi
-        .spyOn(JSON, "stringify")
-        .mockImplementation((value, replacer, space) => {
-          const result = stringify(value, replacer, space);
-          if (phase === "serialize" && value && Array.isArray(value.nodes))
-            clock += 2_000;
-          return result;
-        });
-      let recorder:
-        | Awaited<ReturnType<typeof startGatedPerformanceDiagnostics>>
-        | undefined;
-      try {
-        recorder = await startGatedPerformanceDiagnostics({
-          allowed: true,
-          dataDir,
-          db,
-          hub: new NotificationHub(),
-          logger,
-        });
-        await recorder.stop();
-        vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
-        expect(logger.warn).not.toHaveBeenCalled();
-        expect(logger.info).toHaveBeenCalledWith(
-          expect.objectContaining({
-            maxDelayMs: 2_000,
-            longestSynchronousWork: `cpu-profile:${phase}`,
-            longestSynchronousWorkWallMs: 2_000,
-            stallAttribution: "candidate",
-            stallCauseCandidate: `cpu-profile:${phase}`,
-          }),
-          "Event loop stalled",
-        );
-      } finally {
-        await recorder?.stop();
-        monitor.stop();
-        nowSpy.mockRestore();
-        startSpy.mockRestore();
-        finishSpy.mockRestore();
-        stringifySpy.mockRestore();
-        db.$client.close();
-        await rm(dataDir, { recursive: true, force: true });
-      }
-    },
-  );
+  it("serializes CPU profiles outside the server thread", async () => {
+    installHistogram({ maxDelayMs: 0, meanDelayMs: 0, p99DelayMs: 0 });
+    const db = createMigratedConnection();
+    setExperiments(db, { performanceDiagnostics: true });
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-profile-attribution-"));
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const stringify = JSON.stringify;
+    const serializedProfiles: unknown[] = [];
+    const stringifySpy = vi
+      .spyOn(JSON, "stringify")
+      .mockImplementation((value, replacer, space) => {
+        if (value && Array.isArray(value.nodes)) serializedProfiles.push(value);
+        return stringify(value, replacer, space);
+      });
+    let recorder:
+      | Awaited<ReturnType<typeof startGatedPerformanceDiagnostics>>
+      | undefined;
+    try {
+      recorder = await startGatedPerformanceDiagnostics({
+        allowed: true,
+        dataDir,
+        db,
+        hub: new NotificationHub(),
+        logger,
+      });
+      await recorder.stop();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: expect.stringMatching(/\.cpuprofile$/),
+        }),
+        "Server CPU profile saved",
+      );
+      expect(serializedProfiles).toEqual([]);
+    } finally {
+      await recorder?.stop();
+      stringifySpy.mockRestore();
+      db.$client.close();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
 });

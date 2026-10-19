@@ -30,9 +30,10 @@ export async function sweepModalAllocations(
       );
     }
   }
-  for (const key of keys) {
+  for (let key of keys) {
     try {
-      if (allocations.isAllocating(key)) continue;
+      if (allocations.isAllocating(key) || !(await allocations.ready(key, now)))
+        continue;
       const allocation = await allocations.read(key);
       if (allocation === null || allocation.accountIdentity !== accountIdentity)
         continue;
@@ -43,19 +44,22 @@ export async function sweepModalAllocations(
       if (sandbox === null) {
         if (allocation.sandboxId !== null || now >= allocation.expiresAt)
           await allocations.remove(key);
+        else await allocations.succeeded(key);
         continue;
       }
       if (allocation.sandboxId === null) {
-        await allocations.remember({
+        const trackedKey = await allocations.remember({
           ...allocation,
           sandboxId: sandbox.sandboxId,
         });
         await allocations.remove(key);
+        key = trackedKey;
       }
       const owner = owners.get(
         JSON.stringify([allocation.appName, allocation.name]),
       );
       if (owner === undefined) {
+        await allocations.succeeded(key);
         bb.log.warn(
           `Tracked Modal sandbox ${sandbox.sandboxId} has no matching machine; retaining it for inspection`,
         );
@@ -63,7 +67,9 @@ export async function sweepModalAllocations(
       }
       if (owner.lifecycle.phase === "suspended")
         await bb.sdk.hosts.experimental_reconcile({ hostId: owner.id });
+      await allocations.succeeded(key);
     } catch (error) {
+      await allocations.failed(key, now);
       bb.log.warn(
         `Modal allocation sweep failed for ${key}: ${errorMessage(error)}`,
       );

@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import type { Comparison } from "../compare-types";
 import {
   BB_ROWS,
@@ -121,6 +122,17 @@ export const comparison: Comparison = {
       title: "Switching from T3 Code",
       items: [
         {
+          question: "When is T3 Code a better fit?",
+          answer: (
+            <p>
+              T3 Code may suit you better if you want a built-in button to
+              commit, push and open a pull request with a generated title and
+              description.{" "}
+              <a href="https://t3.codes/">T3 Code’s pull request workflow</a>.
+            </p>
+          ),
+        },
+        {
           question: "What’s the difference between bb and T3 Code?",
           answer: (
             <p>
@@ -184,6 +196,7 @@ export const comparison: Comparison = {
           ),
         },
         FAQ_CUSTOMIZE,
+        FAQ_PLUGIN_TRUST,
         faqScript(
           " T3 Code’s CLI mostly installs and runs its server, and outside agents can start and message threads through its MCP server.",
         ),

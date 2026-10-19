@@ -161,6 +161,7 @@ function TabPillCloseButton({
   const button = (
     <button
       type="button"
+      onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       onClick={closeAction.onClose}

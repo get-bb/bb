@@ -164,6 +164,7 @@ function createRuntime(): FakeDispatchRuntime {
       models: [],
       selectedOnlyModels: [],
     })),
+    listCommands: vi.fn(async () => ({ commands: [] })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {
@@ -407,6 +408,44 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
 }
 
 describe("dispatchCommand", () => {
+  it("probes projectless commands in a stable empty directory and preserves selected workspaces", async () => {
+    const dataDir = await makeTempDir("bb-command-catalog-");
+    const workspace = path.join(dataDir, "workspace");
+    await fs.mkdir(workspace);
+    await fs.writeFile(path.join(workspace, "project-file"), "project");
+    const directories: string[] = [];
+    const options = makeDispatchOptions({
+      dataDir,
+      runtimeManager: new RuntimeManager({
+        createRuntime,
+        provisionWorkspace: async () => createWorkspace(),
+      }),
+      listCommands: async ({ cwd }) => {
+        directories.push(cwd);
+        const files = await fs.readdir(cwd);
+        return { commands: files.map((name) => ({ name, description: "" })) };
+      },
+    });
+    for (const cwd of [null, null, workspace]) {
+      const result = await dispatchOnlineRpcCommand(
+        {
+          type: "provider.list_commands",
+          providerId: "pi",
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          cwd,
+        },
+        options,
+        new AbortController().signal,
+      );
+      expect(result).toEqual({
+        commands:
+          cwd === null ? [] : [{ name: "project-file", description: "" }],
+      });
+    }
+    expect(directories[0]).toBe(directories[1]);
+    expect(directories[2]).toBe(workspace);
+  });
+
   it("steers an auto submit when the active turn appears after the server snapshot", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({

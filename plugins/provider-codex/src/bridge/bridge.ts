@@ -1628,6 +1628,7 @@ function handleInitialize(id: string | number): void {
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
       skills: { configure: true },
+      commands: { list: false },
     },
   };
   sendResult(id, result);

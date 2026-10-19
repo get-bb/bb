@@ -899,6 +899,14 @@ export function Step3Plugins() {
         </StoryWindow>
       </Captioned>
       <Captioned
+        label="Compact plugins"
+        hint="Full descriptions in a single column, with compact setup navigation."
+      >
+        <StoryWindow compact>
+          <PluginsFrame compact />
+        </StoryWindow>
+      </Captioned>
+      <Captioned
         label="Two on, one installing"
         hint="Browser Automation is installed from the catalog; the others are enabled in place."
       >
