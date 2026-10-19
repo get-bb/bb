@@ -1989,4 +1989,54 @@ describe("turn held open for background work", () => {
       });
     });
   });
+
+  it("delivers a message queued while only background work holds the turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { sessionId, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 40,
+      });
+      const idleWake = vi
+        .spyOn(queuedDispatch, "runQueuedMessageDispatch")
+        .mockResolvedValue(undefined);
+      await postTurnEvents(harness, {
+        sessionId,
+        threadId: thread.id,
+        events: [
+          {
+            type: "turn/started",
+            threadId: thread.id,
+            providerThreadId: "provider-send-dispatch-40",
+            scope: turnScope("turn-held"),
+          },
+          mainRunEvent(thread.id, "idle"),
+        ],
+      });
+      await vi.waitFor(() => {
+        expect(idleWake).toHaveBeenCalledWith(expect.anything(), {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
+      });
+      idleWake.mockRestore();
+
+      const queued = await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: { input: textInput("queued while held") },
+      });
+      expect(queued.waitingOn).toEqual({ kind: "thread-busy" });
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toEqual([
+          expect.objectContaining({
+            input: textInput("queued while held"),
+            target: { mode: "auto", expectedTurnId: "turn-held" },
+          }),
+        ]);
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
 });

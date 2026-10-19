@@ -291,7 +291,10 @@ export async function createQueuedMessageForThread(
       providerId: thread.providerId,
     });
   }
-  if (currentThread.status === "idle" && hasProviderSession) {
+  if (
+    (currentThread.status === "idle" && hasProviderSession) ||
+    isActiveTurnMainRunIdle(deps, currentThread)
+  ) {
     requestQueuedMessageDispatch(deps, {
       kind: "thread-ready",
       threadId: thread.id,
