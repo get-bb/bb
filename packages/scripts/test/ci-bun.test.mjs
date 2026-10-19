@@ -17,7 +17,7 @@ import { expect, it, onTestFinished } from "vitest";
 it.skipIf(process.platform === "win32").each(["cached", "download", "invalid"])(
   "verifies the Bun archive before extraction: %s",
   (mode) => {
-    const root = mkdtempSync(join(tmpdir(), "bb-bun-bootstrap-"));
+    const root = mkdtempSync(join(tmpdir(), "bb-bun-bootstrap-\\windows-"));
     onTestFinished(() => rmSync(root, { recursive: true, force: true }));
     const platform = process.platform === "darwin" ? "darwin" : "linux";
     const arch = process.arch === "arm64" ? "aarch64" : "x64-baseline";
