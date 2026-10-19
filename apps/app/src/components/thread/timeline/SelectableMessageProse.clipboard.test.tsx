@@ -148,16 +148,17 @@ it("copies a whitespace boundary spill as markdown without changing the live sel
   expect(window.getSelection()!.toString()).toBe(before);
 });
 
-it("retains the number when copying a later ordered list item", () => {
+it("retains the numbers when copying later ordered list items", () => {
   const { container } = render(
     <SelectableMessageProse>
       <MarkdownPreview content={"3. Three\n4. Four\n5. Five"} />
     </SelectableMessageProse>,
   );
-  const item = container.querySelectorAll("li")[1]!;
+  const items = container.querySelectorAll("li");
   const range = document.createRange();
-  range.selectNodeContents(item);
-  expect(copyRange(range).data.get("text/plain")).toBe("4. Four");
+  range.setStart(items[1]!, 0);
+  range.setEnd(items[2]!, 1);
+  expect(copyRange(range).data.get("text/plain")).toBe("4. Four\n5. Five");
 });
 
 it("copies selected tables as Markdown with links, emphasis, code and escaped pipes", () => {
@@ -206,4 +207,155 @@ it("copies rendered math as TeX text and MathML without KaTeX's duplicate layout
   expect(html.querySelectorAll("math")).toHaveLength(2);
   expect(html.querySelector('math[display="block"]')).not.toBeNull();
   expect(html.textContent).toBe("E=mc2 is big.\nα1<β");
+});
+
+function renderBlocks() {
+  return render(
+    <SelectableMessageProse>
+      <MarkdownPreview
+        content={
+          "## Hello **bold** words\n\n3. Three\n4. Four\n   1. [x] Nested item\n   2. Other\n\n> Quoted *emphasis* phrase\n>\n> Second\n\n| Name | Value |\n| --- | --- |\n| some cell text | other |"
+        }
+      />
+    </SelectableMessageProse>,
+  ).container;
+}
+
+function textNode(container: Element, text: string): Text {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode())
+    if (node instanceof Text && node.data.includes(text)) return node;
+  throw new Error(`No text node contains ${text}`);
+}
+
+function selectText(container: Element, from: string, to = from): Range {
+  const start = textNode(container, from);
+  const end = textNode(container, to);
+  const range = document.createRange();
+  range.setStart(start, start.data.indexOf(from));
+  range.setEnd(end, end.data.indexOf(to) + to.length);
+  return range;
+}
+
+it.each([
+  [
+    "inside heading emphasis",
+    "bold",
+    "bold",
+    "**bold**",
+    "<strong>bold</strong>",
+  ],
+  [
+    "across heading emphasis",
+    "llo ",
+    " wo",
+    "llo **bold** wo",
+    "llo <strong>bold</strong> wo",
+  ],
+  [
+    "of a whole heading",
+    "Hello",
+    " words",
+    "Hello **bold** words",
+    "Hello <strong>bold</strong> words",
+  ],
+  ["in a list item", "Thr", "Thr", "Thr", "Thr"],
+  ["of a whole list item", "Four", "Four", "Four", "Four"],
+  [
+    "of a whole nested task item",
+    "Nested item",
+    "Nested item",
+    "Nested item",
+    "Nested item",
+  ],
+  ["in a quote", "emphasis", "emphasis", "*emphasis*", "<em>emphasis</em>"],
+  [
+    "of a whole quoted paragraph",
+    "Quoted",
+    "phrase",
+    "Quoted *emphasis* phrase",
+    "Quoted <em>emphasis</em> phrase",
+  ],
+  [
+    "of a whole table cell",
+    "some cell text",
+    "some cell text",
+    "some cell text",
+    "some cell text",
+  ],
+])(
+  "copies a selection %s without enclosing block markdown",
+  (_, from, to, text, html) => {
+    const { data } = copyRange(selectText(renderBlocks(), from, to));
+    expect(data.get("text/plain")).toBe(text);
+    expect(data.get("text/html")).toBe(html);
+  },
+);
+
+it.each([
+  ["a heading and a list", "bold", "Three", "## **bold** words\n\n3. Three"],
+  ["list items", "Three", "Four", "3. Three\n4. Four"],
+  ["nested task items", "item", "Oth", "1. [x] item\n2. Oth"],
+  [
+    "quoted paragraphs",
+    "Quoted",
+    "Second",
+    "> Quoted *emphasis* phrase\n> \n> Second",
+  ],
+  ["table cells", "cell text", "other", "| cell text | other |\n| --- | --- |"],
+])(
+  "copies a selection spanning %s with its block structure",
+  (_, from, to, text) => {
+    expect(
+      copyRange(selectText(renderBlocks(), from, to)).data.get("text/plain"),
+    ).toBe(text);
+  },
+);
+
+it.each([
+  [
+    "Hello",
+    "Three",
+    "Hello **bold** words",
+    "Hello <strong>bold</strong> words",
+  ],
+  ["Four", "Nested item", "Four", "Four"],
+  [
+    "Quoted",
+    "Second",
+    "Quoted *emphasis* phrase",
+    "Quoted <em>emphasis</em> phrase",
+  ],
+])(
+  "ignores the empty next-block boundary a triple-click on %s leaves",
+  (from, next, text, html) => {
+    const container = renderBlocks();
+    const range = selectText(container, from);
+    range.setEnd(textNode(container, next), 0);
+    const { data } = copyRange(range);
+    expect(data.get("text/plain")).toBe(text);
+    expect(data.get("text/html")).toBe(html);
+  },
+);
+
+it.each([
+  ["a bare URL", "https://example.com/a_b?x=1", "https://example.com/a_b?x=1"],
+  ["part of a bare URL", "example.com/a_b", "example.com/a_b"],
+  ["a www link", "www.example.net/x", "www.example.net/x"],
+  ["an email link", "me@example.com", "me@example.com"],
+  ["a named link", "docs", "[docs](https://docs.example.com)"],
+  ["a URL filling a list item", "https://github.com", "https://github.com"],
+])("copies %s as pasteable text", (_, selected, text) => {
+  const { container } = render(
+    <SelectableMessageProse>
+      <MarkdownPreview
+        content={
+          "- See https://example.com/a_b?x=1, www.example.net/x, me@example.com and [docs](https://docs.example.com).\n- https://github.com"
+        }
+      />
+    </SelectableMessageProse>,
+  );
+  const { data } = copyRange(selectText(container, selected));
+  expect(data.get("text/plain")).toBe(text);
+  expect(data.get("text/html")).toContain("<a href=");
 });
