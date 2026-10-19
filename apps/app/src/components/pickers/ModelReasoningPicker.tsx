@@ -293,7 +293,9 @@ export function ModelReasoningPicker({
   const selectedModelOption = modelOptions.find((m) => m.value === modelValue);
   const selectedModelLabel =
     selectedModelOption?.label ??
-    (formatModelLabel ?? formatFallbackModelLabel)(modelValue);
+    (modelIsLoading
+      ? (formatModelLabel ?? formatFallbackModelLabel)(modelValue)
+      : modelValue);
   const hasSelectedModel = selectedModelLabel.trim().length > 0;
   const showLoadingTrigger = modelIsLoading && !hasSelectedModel;
   const selectedProviderLabel = selectedProvider?.label ?? selectedProviderId;
