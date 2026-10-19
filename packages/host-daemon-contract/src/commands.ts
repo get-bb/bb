@@ -914,7 +914,7 @@ const providerListCommandsCommandSchema = z
     type: z.literal("provider.list_commands"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
-    cwd: z.string().min(1),
+    cwd: z.string().min(1).nullable(),
   })
   .strict();
 

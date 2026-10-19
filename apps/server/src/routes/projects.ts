@@ -337,7 +337,7 @@ async function listProviderLiveCommandsBestEffort(
   args: { hostId: string; providerId: string; cwd: string | null },
 ): Promise<ThreadProviderCommand[]> {
   const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, args.providerId);
-  if (args.cwd === null || bridgeLaunch === null) {
+  if (bridgeLaunch === null) {
     return [];
   }
   try {

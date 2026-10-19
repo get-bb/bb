@@ -33,8 +33,10 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 - Claude Code's own slash commands, including bundled skills such as
   `/simplify` and `/code-review`, appear in the composer's `/` menu,
   `bb project commands`, and `bb thread commands`. The provider reads them from
-  Claude Code for the project folder without sending a prompt, and each thread
-  refreshes them when a turn starts. Commands for settings bb manages (such as
+  Claude Code for the project folder without sending a prompt. With **No project**
+  selected, it uses an empty catalog folder on the selected machine so global
+  commands appear before a workspace exists. Each thread refreshes them when a
+  turn starts. Commands for settings bb manages (such as
   `/model`, `/config`, `/fast`), terminal-only commands (such as `/doctor`),
   and bb's own skills are left out.
 - Structured plan, message editing, and compaction are supported through the
