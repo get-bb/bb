@@ -60,6 +60,10 @@ import {
   stopThreadForCurrentState,
 } from "./thread-lifecycle.js";
 import { getLeadingAgentOnlyInput } from "./deferred-first-turn-context.js";
+import {
+  resolveThreadMessageEditRefusal,
+  type ThreadMessageEditPolicyDeps,
+} from "./thread-message-edit-policy.js";
 
 type ThreadRewindPrepareCommand = Extract<
   HostDaemonCommand,
@@ -339,11 +343,13 @@ function resolveEditableTurnCandidate(
 
 function resolveEditableTurn(
   db: DbQueryConnection,
+  policyDeps: ThreadMessageEditPolicyDeps,
   thread: Thread,
   requestSequence?: number,
 ): EditableTurn {
-  if (thread.archivedAt !== null || thread.deletedAt !== null) {
-    conflict("The thread is not writable");
+  const refusal = resolveThreadMessageEditRefusal(policyDeps, thread);
+  if (refusal !== null) {
+    conflict(refusal);
   }
 
   if (requestSequence !== undefined) {
@@ -473,9 +479,6 @@ export async function editThreadMessage(
     thread: Thread;
   },
 ): Promise<EditMessageResponse> {
-  if (!deps.providerRegistry.supportsSessionRewind(args.thread.providerId)) {
-    conflict(`Editing messages is not supported for ${args.thread.providerId}`);
-  }
   const fingerprint = requestFingerprint(args.payload);
   const committed = findCommittedOperation(deps.db, {
     operationId: args.payload.operationId,
@@ -515,6 +518,7 @@ export async function editThreadMessage(
 
   const initialTarget = resolveEditableTurn(
     deps.db,
+    deps,
     initialThread,
     args.payload.expectedRequestSequence,
   );
@@ -539,6 +543,7 @@ export async function editThreadMessage(
   }
   const target = resolveEditableTurn(
     deps.db,
+    deps,
     editableThread,
     initialTarget.requestSequence,
   );
@@ -633,6 +638,7 @@ export async function editThreadMessage(
         }
         const currentTarget = resolveEditableTurn(
           tx,
+          deps,
           currentThread,
           target.requestSequence,
         );

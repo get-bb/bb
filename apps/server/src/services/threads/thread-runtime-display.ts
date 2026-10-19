@@ -37,6 +37,10 @@ import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
 import { resolveEnvironmentWorkspaceDisplayKind } from "../environments/environment-response.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
 import { canRestoreThreadEnvironment } from "./thread-environment-restore.js";
+import {
+  canThreadEditMessages,
+  type ThreadMessageEditPolicyDeps,
+} from "./thread-message-edit-policy.js";
 import { toThreadEventWithMeta } from "./timeline.js";
 import { intendedThreadHostId } from "./dispatch-attempt.js";
 
@@ -325,7 +329,7 @@ function toThreadResponseWithHost(
 }
 
 export function toThreadResponseFromThread(
-  deps: ThreadRuntimeDisplayDeps,
+  deps: ThreadRuntimeDisplayDeps & ThreadMessageEditPolicyDeps,
   args: ToThreadResponseFromThreadArgs,
 ): ThreadResponse {
   const threadWithRuntime = toThreadResponseWithHost(deps, {
@@ -341,6 +345,7 @@ export function toThreadResponseFromThread(
     canRestoreEnvironment: canRestoreThreadEnvironment(deps, {
       thread: args.thread,
     }),
+    canEditMessages: canThreadEditMessages(deps, args.thread),
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
     queuedMessageCount:
       listQueuedThreadMessageCountsByThreadIds(deps.db, {

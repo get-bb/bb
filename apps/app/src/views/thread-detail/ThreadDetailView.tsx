@@ -950,9 +950,7 @@ function ThreadDetailViewInternal(
       : null;
   const canEditSentMessages =
     thread !== undefined &&
-    (threadProviderInfo?.capabilities.supportsSessionRewind ?? false) &&
-    thread.archivedAt === null &&
-    thread.deletedAt === null &&
+    thread.canEditMessages &&
     !hasPendingInteraction &&
     sentMessageEditSession === null &&
     !sendMessage.isPending &&

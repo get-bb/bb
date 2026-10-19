@@ -19,6 +19,7 @@ import {
   type ThreadEventTurnStatus,
   type ThreadStatus,
 } from "@bb/domain";
+import { threadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import { editThreadMessage } from "../../src/services/threads/thread-edit-message.js";
 import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
@@ -37,6 +38,7 @@ import {
   seedStoredEvent,
   seedThread,
 } from "../helpers/seed.js";
+import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const MESSAGE_EDIT_PROVIDERS = ["codex", "pi", "claude-code"] as const;
@@ -1915,23 +1917,52 @@ describe("editThreadMessage", () => {
     },
   );
 
-  it("rejects an edit on a provider that declares no session rewind", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedEditableThread(harness, {
-        providerId: "acp-cursor",
-      });
+  it.each([
+    {
+      name: "a provider that declares no session rewind",
+      providerId: "acp-cursor",
+      archived: false,
+      refusal: "Editing messages is not supported for acp-cursor",
+    },
+    {
+      name: "an archived thread",
+      providerId: "codex",
+      archived: true,
+      refusal: "The thread is not writable",
+    },
+  ])(
+    "reports and enforces the same refusal for $name",
+    async ({ providerId, archived, refusal }) => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedEditableThread(harness, {
+          providerId,
+        });
+        const canEditMessages = async () =>
+          threadResponseSchema.parse(
+            await readJson(
+              await harness.app.request(`/api/v1/threads/${thread.id}`),
+            ),
+          ).canEditMessages;
+        if (archived) {
+          expect(await canEditMessages()).toBe(true);
+          harness.db.$client
+            .prepare("UPDATE threads SET archived_at = 1 WHERE id = ?")
+            .run(thread.id);
+        }
 
-      await expect(
-        editThreadMessage(harness.deps, {
-          environment,
-          thread,
-          payload: {
-            operationId: "edit-op-no-rewind",
-            expectedRequestSequence: 7,
-            input: [{ type: "text", text: "Replacement", mentions: [] }],
-          },
-        }),
-      ).rejects.toThrow("Editing messages is not supported for acp-cursor");
-    });
-  });
+        expect(await canEditMessages()).toBe(false);
+        await expect(
+          editThreadMessage(harness.deps, {
+            environment,
+            thread,
+            payload: {
+              operationId: "edit-op-refused",
+              expectedRequestSequence: 7,
+              input: [{ type: "text", text: "Replacement", mentions: [] }],
+            },
+          }),
+        ).rejects.toThrow(refusal);
+      });
+    },
+  );
 });
