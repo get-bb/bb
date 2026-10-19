@@ -53,6 +53,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Arrange New thread, Search, Plugins, Skills, and plugin pages in any layout",
           "Choose the rail or list placement, and get bb's layout around it",
           "Keep the user's saved order, hidden items, badges, and split-view behavior",
+          "Pass Cmd/Ctrl-click as openInSplit: true: Plugins and Skills open a browser tab, while New thread and plugin pages keep their split behavior. Search stays a command. Call activation directly from the user gesture",
           "Add controls to the header row beside the sidebar toggle",
         ],
         apiSymbols: [

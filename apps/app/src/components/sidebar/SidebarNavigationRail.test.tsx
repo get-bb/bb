@@ -346,6 +346,23 @@ afterEach(() => {
 });
 
 describe("Rail", () => {
+  it.each([{ metaKey: true }, { ctrlKey: true }])(
+    "opens Settings in a browser tab with %j even when already active",
+    (modifier) => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      renderRail(SETTINGS_ROUTE_PATH);
+
+      fireEvent.click(railButton("Settings"), modifier);
+
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        SETTINGS_ROUTE_PATH,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
+    },
+  );
+
   it("lists Home, the visible destinations, More, and Settings, with New thread left to the header", () => {
     renderRail(THREAD_PATH);
 

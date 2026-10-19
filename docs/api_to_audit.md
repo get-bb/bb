@@ -1356,7 +1356,11 @@ their identity while unchanged. `actions` covers
 ids are dropped and omitted ids keep their relative order at the end),
 `openCustomize()` (bb's editor in a popover beside the navigation, after open
 menus close, returning focus to the opener), `openDetails`, and
-`disablePlugin`. Calls after the caller unmounts do nothing; outside the
+`disablePlugin`. `activate(id, { openInSplit: true })` opens Plugins and Skills
+in a browser tab synchronously from the user gesture; New thread and plugin
+panels retain their existing split, compact-screen and pane-limit rules.
+Search remains a command. Native shells retain their window-open policy.
+Calls after the caller unmounts do nothing; outside the
 sidebar the hook returns no items and inert actions.
 `experimental_useSidebarNavigationSplit(id, options?)` mirrors
 `experimental_useSidebarThreadSplit` and accepts `activation: "distance"` and

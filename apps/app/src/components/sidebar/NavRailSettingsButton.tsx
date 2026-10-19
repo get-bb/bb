@@ -32,7 +32,11 @@ export function NavRailSettingsButton({
             SIDEBAR_RAIL_BUTTON_CLASS,
             "my-1 max-md:pointer-coarse:my-0",
           )}
-          onClick={() => {
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) {
+              window.open(settingsRoutePath, "_blank", "noopener,noreferrer");
+              return;
+            }
             if (!isSettingsActive) void navigate(settingsRoutePath);
           }}
         >
