@@ -28,7 +28,8 @@
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
     "test": "install-electron && vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
-    "smoke:browser-broker": "node scripts/smoke-browser-broker.mjs"
+    "smoke:browser-broker": "node scripts/smoke-browser-broker.mjs",
+    "smoke:browser-address": "node scripts/smoke-browser-address.mjs"
   },
   "dependencies": {
     "@bb/connect-client": "workspace:*",

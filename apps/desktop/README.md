@@ -4,6 +4,16 @@ macOS, Linux, and Windows Electron shell for bb. The desktop app loads the exist
 web UI and uses the packaged `bb-app` launcher for server and host-daemon
 lifecycle.
 
+## Browser address interaction checks
+
+Run `pnpm exec turbo run smoke:browser-address --filter=@bb/desktop` from the
+repository root. On Linux, run it under `xvfb-run -a` or an active display.
+The smoke test mounts the production address input beside a real Electron
+`WebContentsView`, checks repeated focus transfers, first and second clicks,
+drag selection, keyboard focus, and replacing the selected URL by typing.
+It uses a temporary profile and removes it when finished. It needs no running
+BB server or user data. CI runs it alongside the desktop tests.
+
 ## Development
 
 From the repo root, run `pnpm dev` in one terminal for the source server and
