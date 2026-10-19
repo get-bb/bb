@@ -15,6 +15,7 @@ import {
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
   BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
+  BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
@@ -28,7 +29,10 @@ import {
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import { registerDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
-import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
+import type {
+  DesktopBrowserNativeTab,
+  DesktopBrowserViewManager,
+} from "../src/desktop-browser-view.js";
 
 const electronMock = vi.hoisted(() => {
   interface FakeWebContents {
@@ -119,8 +123,14 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     throw new Error("Not used by renderer IPC");
   }
 
-  listTabs(): [] {
-    return [];
+  public readonly tabsByHost = new Map<number, DesktopBrowserNativeTab[]>();
+
+  listTabs(
+    args: Parameters<DesktopBrowserViewManager["listTabs"]>[0],
+  ): DesktopBrowserNativeTab[] {
+    return (this.tabsByHost.get(args.hostWebContentsId) ?? []).filter(
+      (tab) => args.threadId === null || tab.threadId === args.threadId,
+    );
   }
 
   closeTab(): void {}
@@ -397,6 +407,47 @@ describe("registerDesktopBrowserIpc", () => {
         request: { threadId: "thread-1", discarded: false },
       },
     ]);
+  });
+
+  it("lists the distinct threads with pages in the calling window only", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const otherRenderer = createTrustedRenderer("other-window");
+    const tab = (tabId: string, threadId: string): DesktopBrowserNativeTab => ({
+      tabId,
+      threadId,
+      generation: "gen-1",
+      presentation: "hidden",
+      url: "https://example.com/",
+      title: null,
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      errorText: null,
+    });
+    manager.tabsByHost.set(renderer.sender.id, [
+      tab("browser:a", "thread-1"),
+      tab("browser:b", "thread-2"),
+      tab("browser:c", "thread-1"),
+    ]);
+    manager.tabsByHost.set(otherRenderer.sender.id, [
+      tab("browser:d", "thread-3"),
+    ]);
+    const handler = electronMock.handlers.get(
+      BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
+    );
+    if (handler === undefined) {
+      throw new Error("Expected a list-threads-with-tabs handler.");
+    }
+
+    expect(await handler({ sender: renderer.sender }, undefined)).toEqual([
+      "thread-1",
+      "thread-2",
+    ]);
+    expect(
+      await handler({ sender: createUntrustedSender() }, undefined),
+    ).toEqual([]);
   });
 
   it("dispatches validated find-in-page requests and rejects malformed ones", () => {

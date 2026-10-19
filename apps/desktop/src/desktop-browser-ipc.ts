@@ -9,6 +9,8 @@ export const BB_DESKTOP_BROWSER_REVEAL_CHANNEL = "bb-desktop:browser:reveal";
 export const BB_DESKTOP_BROWSER_DETACH_CHANNEL = "bb-desktop:browser:detach";
 export const BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL =
   "bb-desktop:browser:set-thread-discarded";
+export const BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL =
+  "bb-desktop:browser:list-threads-with-tabs";
 export const BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL =
   "bb-desktop:browser:navigate";
 export const BB_DESKTOP_BROWSER_GO_BACK_CHANNEL = "bb-desktop:browser:go-back";

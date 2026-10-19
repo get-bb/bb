@@ -69,6 +69,7 @@ import {
   BB_DESKTOP_BROWSER_RELEASE_CONTROL_CHANNEL,
   BB_DESKTOP_BROWSER_REVEAL_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
@@ -332,6 +333,15 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   setThreadDiscarded(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL, request);
+  },
+  async listThreadIdsWithTabs() {
+    return z
+      .array(z.string().min(1))
+      .parse(
+        await ipcRenderer.invoke(
+          BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
+        ),
+      );
   },
   navigate(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, request);

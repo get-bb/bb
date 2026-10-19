@@ -360,6 +360,7 @@ export interface BbDesktopBrowserApi {
   attach(request: BbDesktopBrowserAttachRequest): void;
   detach(tabId: string): void;
   setThreadDiscarded?(request: BbDesktopBrowserSetThreadDiscardedRequest): void;
+  listThreadIdsWithTabs?(): Promise<string[]>;
   navigate(request: BbDesktopBrowserNavigateRequest): void;
   goBack(tabId: string): void;
   goForward(tabId: string): void;

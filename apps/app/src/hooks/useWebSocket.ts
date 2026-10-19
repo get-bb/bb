@@ -26,6 +26,9 @@ export function useWebSocket(): void {
     const unsubscribeConnected = wsManager.onConnected(
       cacheEffects.handleConnected,
     );
+    const unsubscribeArchivedThreadBrowsers = wsManager.onConnected(
+      handleArchivedThreadBrowsers.handleConnected,
+    );
     const unsubscribeResumed = wsManager.onResumed(cacheEffects.handleResumed);
     const unsubscribeThreadTimeline = wsManager.onThreadTimeline((signal) => {
       applyThreadTimelineSignal(queryClient, signal);
@@ -33,7 +36,7 @@ export function useWebSocket(): void {
     const unsubscribe = wsManager.onChanged((message) => {
       cacheEffects.handleChanged(message);
       deletedResourceRouteChangeRef.current(message);
-      handleArchivedThreadBrowsers(message);
+      handleArchivedThreadBrowsers.handleChanged(message);
     });
 
     wsManager.connect();
@@ -41,6 +44,7 @@ export function useWebSocket(): void {
     return () => {
       cacheEffects.dispose();
       unsubscribeConnected();
+      unsubscribeArchivedThreadBrowsers();
       unsubscribeResumed();
       unsubscribeThreadTimeline();
       unsubscribe();

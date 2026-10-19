@@ -117,6 +117,9 @@ const electronMock = vi.hoisted(() => {
           return Promise.resolve([
             { id: "builtin", name: "Local", active: true },
           ]);
+        if (channel === "bb-desktop:browser:list-threads-with-tabs") {
+          return Promise.resolve(["thread-1", "thread-2"]);
+        }
         if (channel === "bb-desktop:get-window-state") {
           return Promise.resolve(desktopWindowState);
         }
@@ -255,6 +258,7 @@ describe("desktop preload browser API", () => {
       "goForward",
       "importCookies",
       "listImportSources",
+      "listThreadIdsWithTabs",
       "navigate",
       "onControl",
       "onFindResult",
@@ -281,6 +285,10 @@ describe("desktop preload browser API", () => {
     api.browser.attach(attachRequest);
     api.browser.detach("browser:a");
     api.browser.setThreadDiscarded?.({ threadId: "thread-1", discarded: true });
+    await expect(api.browser.listThreadIdsWithTabs?.()).resolves.toEqual([
+      "thread-1",
+      "thread-2",
+    ]);
     api.browser.navigate(navigateRequest);
     api.browser.goBack("browser:a");
     api.browser.goForward("browser:a");

@@ -49,6 +49,10 @@ evicted once it is hidden. Control leases, attached debuggers, open popups, and
 in-flight evaluations or captures still keep a page until they end. Evicted
 tabs keep their saved tabs and restore like any cold tab. Unarchiving stops the
 immediate eviction and leaves the thread's pages to the idle rules above.
+Archive state reaches the window as realtime thread changes, so each time the
+window's realtime connection opens, including after a reconnect or a server
+switch, it re-reads the archive state of every thread with pages in that window.
+An archive or unarchive made while the window was disconnected applies then.
 
 Switching servers hides each server's native pages and popups, pauses media,
 and revokes automation leases. Returning to the same server origin reattaches

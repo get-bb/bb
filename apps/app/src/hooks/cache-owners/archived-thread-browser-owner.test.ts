@@ -13,13 +13,16 @@ function threadChanged(
   return { type: "changed", entity: "thread", id, changes };
 }
 
-function createDesktopBrowser() {
+function createDesktopBrowser(threadIdsWithTabs: string[] = []) {
   const setThreadDiscarded =
     vi.fn<(request: BbDesktopBrowserSetThreadDiscardedRequest) => void>();
+  const listThreadIdsWithTabs = vi.fn(async () => threadIdsWithTabs);
   return {
     desktopBrowser: {
       setThreadDiscarded,
+      listThreadIdsWithTabs,
     } as Partial<BbDesktopBrowserApi> as BbDesktopBrowserApi,
+    listThreadIdsWithTabs,
     setThreadDiscarded,
   };
 }
@@ -42,7 +45,7 @@ describe("createArchivedThreadBrowserOwner", () => {
     const handle = createArchivedThreadBrowserOwner({
       desktopBrowser,
       readArchivedAt: async (threadId) => archivedAt.get(threadId) ?? null,
-    });
+    }).handleChanged;
 
     handle(threadChanged("thr_archived"));
     handle(threadChanged("thr_restored"));
@@ -64,7 +67,7 @@ describe("createArchivedThreadBrowserOwner", () => {
     const handle = createArchivedThreadBrowserOwner({
       desktopBrowser,
       readArchivedAt: () => reads[nextRead++]!.promise,
-    });
+    }).handleChanged;
 
     handle(threadChanged("thr_undo"));
     handle(threadChanged("thr_undo"));
@@ -87,7 +90,7 @@ describe("createArchivedThreadBrowserOwner", () => {
     const handle = createArchivedThreadBrowserOwner({
       desktopBrowser,
       readArchivedAt,
-    });
+    }).handleChanged;
 
     handle(threadChanged("thr_title", ["title-changed"]));
     handle({
@@ -101,14 +104,40 @@ describe("createArchivedThreadBrowserOwner", () => {
     expect(setThreadDiscarded).not.toHaveBeenCalled();
 
     const olderReadArchivedAt = vi.fn(async () => 1_000);
-    createArchivedThreadBrowserOwner({
-      desktopBrowser: {} as BbDesktopBrowserApi,
-      readArchivedAt: olderReadArchivedAt,
-    })(threadChanged("thr_archived"));
-    createArchivedThreadBrowserOwner({
-      desktopBrowser: null,
-      readArchivedAt: olderReadArchivedAt,
-    })(threadChanged("thr_archived"));
+    for (const shell of [{} as BbDesktopBrowserApi, null]) {
+      const owner = createArchivedThreadBrowserOwner({
+        desktopBrowser: shell,
+        readArchivedAt: olderReadArchivedAt,
+      });
+      owner.handleChanged(threadChanged("thr_archived"));
+      owner.handleConnected();
+    }
     expect(olderReadArchivedAt).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the archive state of every thread with pages when the socket connects", async () => {
+    const { desktopBrowser, listThreadIdsWithTabs, setThreadDiscarded } =
+      createDesktopBrowser(["thr_archived_offline", "thr_unarchived_offline"]);
+    const archivedAt = new Map<string, number | null>([
+      ["thr_archived_offline", 1_000],
+      ["thr_unarchived_offline", null],
+    ]);
+    const owner = createArchivedThreadBrowserOwner({
+      desktopBrowser,
+      readArchivedAt: async (threadId) => archivedAt.get(threadId) ?? null,
+    });
+
+    owner.handleConnected();
+
+    await vi.waitFor(() => expect(setThreadDiscarded).toHaveBeenCalledTimes(2));
+    expect(listThreadIdsWithTabs).toHaveBeenCalledTimes(1);
+    expect(setThreadDiscarded).toHaveBeenCalledWith({
+      threadId: "thr_archived_offline",
+      discarded: true,
+    });
+    expect(setThreadDiscarded).toHaveBeenCalledWith({
+      threadId: "thr_unarchived_offline",
+      discarded: false,
+    });
   });
 });

@@ -6,22 +6,20 @@ interface ArchivedThreadBrowserOwnerArgs {
   readArchivedAt: (threadId: string) => Promise<number | null>;
 }
 
+interface ArchivedThreadBrowserOwner {
+  handleChanged: (message: ChangedMessage) => void;
+  handleConnected: () => void;
+}
+
 export function createArchivedThreadBrowserOwner({
   desktopBrowser,
   readArchivedAt,
-}: ArchivedThreadBrowserOwnerArgs): (message: ChangedMessage) => void {
+}: ArchivedThreadBrowserOwnerArgs): ArchivedThreadBrowserOwner {
   const latestReads = new Map<string, symbol>();
-  return (message) => {
-    if (
-      message.entity !== "thread" ||
-      message.id === undefined ||
-      !message.changes.includes("archived-changed")
-    ) {
-      return;
-    }
-    const setThreadDiscarded = desktopBrowser?.setThreadDiscarded;
+  const setThreadDiscarded = desktopBrowser?.setThreadDiscarded;
+
+  function syncThread(threadId: string): void {
     if (setThreadDiscarded === undefined) return;
-    const threadId = message.id;
     const read = Symbol(threadId);
     latestReads.set(threadId, read);
     void readArchivedAt(threadId).then(
@@ -34,5 +32,29 @@ export function createArchivedThreadBrowserOwner({
         if (latestReads.get(threadId) === read) latestReads.delete(threadId);
       },
     );
+  }
+
+  return {
+    handleChanged(message) {
+      if (
+        message.entity === "thread" &&
+        message.id !== undefined &&
+        message.changes.includes("archived-changed")
+      ) {
+        syncThread(message.id);
+      }
+    },
+    handleConnected() {
+      const listThreadIdsWithTabs = desktopBrowser?.listThreadIdsWithTabs;
+      if (
+        setThreadDiscarded === undefined ||
+        listThreadIdsWithTabs === undefined
+      )
+        return;
+      void listThreadIdsWithTabs().then(
+        (threadIds) => threadIds.forEach(syncThread),
+        () => {},
+      );
+    },
   };
 }
