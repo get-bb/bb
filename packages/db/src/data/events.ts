@@ -1307,6 +1307,11 @@ export interface HasStoredTurnStartedArgs {
   turnId: string;
 }
 
+export interface IsStoredTurnMainRunIdleArgs {
+  threadId: string;
+  turnId: string;
+}
+
 export interface ThreadTurnKey {
   threadId: string;
   turnId: string;
@@ -3675,10 +3680,12 @@ export function getActiveStoredTurnId(
 
 export function isStoredTurnMainRunIdle(
   db: DbQueryConnection,
-  args: { threadId: string; turnId: string },
+  args: IsStoredTurnMainRunIdleArgs,
 ): boolean {
   const latest = db
-    .select({ data: events.data })
+    .select({
+      idle: sql<number>`json_extract(${events.data}, '$.state') = 'idle'`,
+    })
     .from(events)
     .where(
       and(
@@ -3690,16 +3697,7 @@ export function isStoredTurnMainRunIdle(
     .orderBy(desc(events.sequence))
     .limit(1)
     .get();
-  if (!latest) {
-    return false;
-  }
-  const data: unknown = JSON.parse(latest.data);
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "state" in data &&
-    data.state === "idle"
-  );
+  return latest?.idle === 1;
 }
 
 export function getLatestCompletedThreadContextClearSequence(
