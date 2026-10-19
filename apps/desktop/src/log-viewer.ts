@@ -532,9 +532,14 @@ export async function resolveCurrentLogFile(
     } catch {}
   }
 
+  const activeFileName = `${args.component}.log`;
   candidates.sort((left, right) => {
     if (left.timestampMs !== right.timestampMs) {
       return right.timestampMs - left.timestampMs;
+    }
+    const leftActive = left.fileName === activeFileName;
+    if (leftActive !== (right.fileName === activeFileName)) {
+      return leftActive ? -1 : 1;
     }
     if (left.sequence !== right.sequence) {
       return right.sequence - left.sequence;
