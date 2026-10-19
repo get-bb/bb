@@ -172,10 +172,11 @@ runners that do not accept Vitest's shard arguments:
 
 The `plugins` group runs `bb-plugin-*`. All Linux groups run four concurrent
 Turbo tasks and cap Vitest at two workers with `VITEST_MAX_WORKERS`, which
-Turbo hashes for test tasks. Electron's runtime libraries and Xvfb are set up
-only when the selected tests include `@bb/desktop`. Electron setup queries
-dpkg first and runs apt only for missing packages, then starts Electron to
-verify the runtime.
+Turbo hashes for test tasks. The desktop test task owns Electron installation and, on GitHub Linux runners,
+the runtime libraries and Xvfb. A Turbo cache hit skips that entire setup along
+with the already-verified tests. On a miss, the task queries dpkg, installs missing
+libraries, installs Electron, and executes Vitest under Xvfb. Local and Windows
+test commands retain their existing Electron setup without running apt or Xvfb.
 
 Every test job uploads `.turbo/runs/*.json` as a `ci-timings-<job>-<shard>-<attempt>`
 artifact retained for seven days. Use execution durations and cache status to

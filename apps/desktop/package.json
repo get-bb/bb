@@ -26,7 +26,7 @@
     "smoke:packaged-npm": "node scripts/smoke-packaged-npm.mjs",
     "smoke:browser-cdp": "node scripts/smoke-browser-cdp.mjs",
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
-    "test": "install-electron && vitest run --config vitest.config.ts",
+    "test": "node scripts/test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke:browser-broker": "node scripts/smoke-browser-broker.mjs"
   },
