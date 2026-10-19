@@ -101,9 +101,18 @@ const snippetSchema = z
   .strict();
 export type PromptSnippet = z.infer<typeof snippetSchema>;
 
+export const promptTitleSchema = z
+  .string()
+  .trim()
+  .max(120)
+  .transform((title) => title || null)
+  .nullable();
+
 const starredPromptSchema = z
   .object({
     kind: z.literal("starred"),
+    title: z.string().nullable(),
+    titleSnippet: snippetSchema.nullable(),
     id: z.string(),
     prompt: promptSchema,
     snippet: snippetSchema,
@@ -141,6 +150,8 @@ export const searchPromptsInputSchema = z
     projectId: z.string().min(1).nullable(),
     threadId: z.string().min(1).nullable(),
     composer: z.enum(["new-thread", "follow-up"]),
+    waitForHistory: z.boolean().optional().default(true),
+    refreshHistory: z.boolean().optional().default(true),
   })
   .strict();
 export type SearchPromptsInput = z.infer<typeof searchPromptsInputSchema>;
@@ -151,12 +162,15 @@ export const promptLibraryRpcContract = defineRpcContract({
     output: z
       .object({
         prompts: z.array(promptRowSchema),
+        loading: z.boolean(),
+        historyError: z.string().nullable(),
       })
       .strict(),
   },
   star: {
     input: z
       .object({
+        title: promptTitleSchema.optional().default(null),
         prompt: draftSchema.refine(
           validMentionRanges,
           "Mention range must be within prompt text",
@@ -164,6 +178,12 @@ export const promptLibraryRpcContract = defineRpcContract({
       })
       .strict(),
     output: z.object({ id: z.string() }).strict(),
+  },
+  setTitle: {
+    input: z
+      .object({ id: z.string().min(1), title: promptTitleSchema })
+      .strict(),
+    output: z.object({ id: z.string(), title: z.string().nullable() }).strict(),
   },
   unstar: {
     input: z.object({ id: z.string().min(1) }).strict(),

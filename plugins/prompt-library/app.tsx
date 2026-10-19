@@ -150,6 +150,109 @@ function SectionHeader({ children }: { children: string }) {
   );
 }
 
+function PromptTitleEditor({
+  id,
+  title,
+  editing,
+  onEditingChange,
+  onSaved,
+}: {
+  id: string;
+  title: string | null;
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
+  onSaved: () => void;
+}) {
+  const rpc = useRpc<typeof promptLibraryRpcContract>();
+  const [value, setValue] = useState(title ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cancel = () => {
+    setValue(title ?? "");
+    setError(null);
+    onEditingChange(false);
+  };
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await rpc.call("setTitle", { id, title: value });
+      onEditingChange(false);
+      onSaved();
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (title === null && !editing) return null;
+  return (
+    <div className="border-b border-border px-3 py-2">
+      {editing ? (
+        <div>
+          <input
+            autoFocus
+            aria-label="Prompt title"
+            maxLength={120}
+            placeholder="Add title"
+            value={value}
+            disabled={saving}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void save();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                if (!saving) cancel();
+              }
+            }}
+            className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm text-foreground outline-none focus:border-ring"
+          />
+          <div className="mt-1 flex gap-2">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="rounded px-2 py-1 text-xs hover:bg-state-hover"
+            >
+              {saving ? "Saving…" : "Save title"}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={cancel}
+              className="rounded px-2 py-1 text-xs hover:bg-state-hover"
+            >
+              Cancel
+            </button>
+          </div>
+          {error === null ? null : (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          aria-label="Edit title"
+          onClick={() => onEditingChange(true)}
+          className="flex w-full items-center gap-2 rounded text-left text-sm font-medium text-foreground hover:bg-state-hover"
+        >
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <Icon
+            name="Edit"
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PromptLibraryPopup() {
   const composer = useComposer();
   const rpc = useRpc<typeof promptLibraryRpcContract>();
@@ -171,10 +274,27 @@ function PromptLibraryPopup() {
     : "global";
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const retryHistoryRef = useRef(false);
+  const pendingHistoryQueryRef = useRef<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
+  const [isSearching, setIsSearching] = useState(true);
   const [isSlowSearch, setIsSlowSearch] = useState(false);
+  const isLoading = error === null && (isSearching || result?.loading === true);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setIsSlowSearch(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setIsSlowSearch(true),
+      SLOW_SEARCH_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [isLoading]);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
+  const [editingTitleKey, setEditingTitleKey] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [twoPane, setTwoPane] = useState(true);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -194,19 +314,18 @@ function PromptLibraryPopup() {
   useEffect(() => {
     let pending = true;
     let timeout: number | undefined;
-    let slow: number | undefined;
+    let poll: number | undefined;
     const finish = (apply: () => void) => {
       if (!pending) return;
       pending = false;
       window.clearTimeout(timeout);
-      window.clearTimeout(slow);
-      setIsSlowSearch(false);
+      setIsSearching(false);
       apply();
     };
     const handle = window.setTimeout(
       async () => {
         setError(null);
-        slow = window.setTimeout(() => setIsSlowSearch(true), SLOW_SEARCH_MS);
+        setIsSearching(true);
         timeout = window.setTimeout(
           () => finish(() => setError("Loading prompts timed out. Try again.")),
           SEARCH_TIMEOUT_MS,
@@ -218,8 +337,23 @@ function PromptLibraryPopup() {
             projectId: targets.projectId,
             threadId: targets.threadId,
             composer: kind,
+            waitForHistory: false,
+            refreshHistory:
+              retryHistoryRef.current ||
+              pendingHistoryQueryRef.current !== query,
           });
-          finish(() => setResult({ ...next, query }));
+          finish(() => {
+            retryHistoryRef.current = false;
+            pendingHistoryQueryRef.current = next.loading ? query : null;
+            setResult({ ...next, query });
+            if (next.historyError !== null)
+              setError(`History unavailable: ${next.historyError}`);
+            if (next.loading)
+              poll = window.setTimeout(
+                () => setReloadCount((count) => count + 1),
+                250,
+              );
+          });
         } catch (cause: unknown) {
           finish(() =>
             setError(cause instanceof Error ? cause.message : String(cause)),
@@ -232,7 +366,7 @@ function PromptLibraryPopup() {
       pending = false;
       window.clearTimeout(handle);
       window.clearTimeout(timeout);
-      window.clearTimeout(slow);
+      window.clearTimeout(poll);
     };
   }, [
     kind,
@@ -269,7 +403,10 @@ function PromptLibraryPopup() {
   );
   const activeRow = rows[activeIndex];
   const activeKey = activeRow?.key ?? null;
-  if (highlightedKey !== activeKey) setHighlightedKey(activeKey);
+  if (highlightedKey !== activeKey) {
+    setHighlightedKey(activeKey);
+    setEditingTitleKey(null);
+  }
   const previewRow = twoPane
     ? activeRow
     : rows.find((row) => row.key === previewKey);
@@ -428,7 +565,14 @@ function PromptLibraryPopup() {
               Star current draft
             </span>
           ) : (
-            <Snippet snippet={row.row.snippet} />
+            <>
+              {row.kind === "starred" && row.row.titleSnippet !== null ? (
+                <span className="w-full truncate font-medium">
+                  <Snippet snippet={row.row.titleSnippet} />
+                </span>
+              ) : null}
+              <Snippet snippet={row.row.snippet} />
+            </>
           )}
           {meta === null ? null : (
             <span className="w-full truncate text-2xs text-subtle-foreground">
@@ -474,6 +618,9 @@ function PromptLibraryPopup() {
     const content =
       row.kind === "star-draft" ? composer.draft.text : row.row.prompt.text;
     const meta = metaFor(row);
+    const titleKey =
+      row.kind === "starred" ? `${row.row.id}:${row.row.title}` : null;
+    const editingTitle = titleKey !== null && editingTitleKey === titleKey;
     return (
       <div
         className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -493,6 +640,18 @@ function PromptLibraryPopup() {
             </button>
           </div>
         )}
+        {row.kind === "starred" ? (
+          <PromptTitleEditor
+            key={`${row.row.id}:${row.row.title}`}
+            id={row.row.id}
+            title={row.row.title}
+            editing={editingTitle}
+            onEditingChange={(editing) =>
+              setEditingTitleKey(editing ? titleKey : null)
+            }
+            onSaved={reload}
+          />
+        ) : null}
         <div key={row.key} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           <Markdown content={content} className="text-sm" />
         </div>
@@ -500,6 +659,15 @@ function PromptLibraryPopup() {
           <span className="min-w-0 flex-1 truncate text-xs text-subtle-foreground">
             {meta ?? `${content.length.toLocaleString()} characters`}
           </span>
+          {row.kind === "starred" && row.row.title === null && !editingTitle ? (
+            <button
+              type="button"
+              className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+              onClick={() => setEditingTitleKey(titleKey)}
+            >
+              Add title
+            </button>
+          ) : null}
           {row.kind === "star-draft" ? (
             <button
               type="button"
@@ -597,7 +765,10 @@ function PromptLibraryPopup() {
             type="button"
             className="rounded px-2 py-1 text-foreground hover:bg-state-hover"
             onMouseDown={(event) => event.preventDefault()}
-            onClick={reload}
+            onClick={() => {
+              retryHistoryRef.current = true;
+              reload();
+            }}
           >
             Retry
           </button>
@@ -609,24 +780,18 @@ function PromptLibraryPopup() {
             id="prompt-library-results"
             role="listbox"
             aria-label="Prompts"
+            aria-busy={isLoading}
             className={cn(
               "min-h-0 overflow-y-auto p-1",
               twoPane ? "w-2/5 shrink-0 border-r border-border" : "flex-1",
             )}
           >
-            {result === null ? (
-              error === null ? (
-                <div
-                  role="status"
-                  className="px-3 py-2 text-xs text-muted-foreground"
-                >
-                  Loading prompts…
+            {rows.length === 0 ? (
+              result !== null && !isLoading && error === null ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  No prompts found
                 </div>
               ) : null
-            ) : rows.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
-                No prompts found
-              </div>
             ) : (
               rows.map((row, index) => (
                 <Fragment key={row.key}>
