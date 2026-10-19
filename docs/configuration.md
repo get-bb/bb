@@ -509,12 +509,9 @@ code execution and only works with a co-located daemon. The `customAcpAgents`
 key in `config.json` is no longer read. Known agents, OpenCode launch settings,
 and OpenCode Go usage are covered by the `acp-provider` skill.
 
-The rebuilt adapter ships as the builtin plugin "ACP providers [New adapter]"
-(`bb--provider-acp-next`), off by default. It registers the same provider ids,
-and only one ACP plugin runs at a time: enabling it disables "ACP providers",
-disabling it re-enables that plugin, and `customAgents` follows the switch. It
-adds the official ACP registry (`bb acp registry`, `bb acp add <agent-id>`,
-`bb acp remove <agent-id>`); an added agent is a `customAgents` entry running
+Agents from the official ACP registry can be added in the same settings
+section or with `bb acp registry`, `bb acp add <agent-id>`, and
+`bb acp remove <agent-id>`. An added agent is a `customAgents` entry running
 the registry's `npx` or `uvx` package on the thread's host.
 
 ## Custom Models

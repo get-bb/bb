@@ -56,10 +56,10 @@ the current engine values and the entries for its generated surfaces.
   source of the plugin id. distribution.md covers how the store uses
   `bb.description`. To label a plugin's status, end `bb.name` (or a
   marketplace `displayName`) with one short bracketed tag, such as
-  `Account Pooler [Experimental]` or `ACP providers [New adapter]`. Plugin
+  `Account Pooler [Experimental]` or `Memory [Early access]`. Plugin
   cards and details show the bracketed text as a tag beside the name: gray by
   default, and colored for reserved tags (`[Experimental]`). Write the tag in
-  sentence case (`[New adapter]`, not `[New Adapter]`), keep it to 24
+  sentence case (`[Early access]`, not `[Early Access]`), keep it to 24
   characters or fewer, and use brackets, not parentheses; longer or other
   suffixes stay part of the name. Older bb versions show the full name as text.
 - `bb.branding` (required) — declare `bb.branding.icon` as either the plugin's

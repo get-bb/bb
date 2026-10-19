@@ -1,12 +1,16 @@
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   customAcpAgentDefinition,
   formatCustomAcpProviderId,
   parseCustomAcpAgents,
+  type AcpAgentDefinition,
   type CustomAcpAgent,
 } from "./agents.js";
 import { acpProviderDeclaration } from "./declaration.js";
 import { KNOWN_ACP_AGENTS, RESERVED_ACP_PROVIDER_IDS } from "./known-agents.js";
+import { REGISTRY_ICON_AGENT_IDS } from "./registry-icons.js";
 import { experimental_acpLaunchSpecSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
 
 const reserved = RESERVED_ACP_PROVIDER_IDS;
@@ -136,6 +140,51 @@ describe("parseCustomAcpAgents", () => {
   });
 });
 
+describe("custom agent icons", () => {
+  const iconFor = (id: string) => {
+    const [agent] = parseCustomAcpAgents({
+      entries: [{ id, displayName: id, command: id }],
+      reservedProviderIds: reserved,
+    }).agents;
+    if (agent === undefined) throw new Error(`agent ${id} did not parse`);
+    return customAcpAgentDefinition(agent).icon;
+  };
+
+  it("gives an agent from the ACP registry its registry icon and any other agent the toolbox", () => {
+    expect(iconFor("pi-acp")).toBe("provider-acp/registry-pi-acp");
+    expect(iconFor("my-own-agent")).toBe("Toolbox");
+  });
+
+  it("ships and declares an icon file for every registry agent it names", () => {
+    const manifest = z
+      .object({
+        bb: z.object({
+          branding: z.object({
+            experimental_icons: z.record(z.string(), z.string()),
+          }),
+        }),
+      })
+      .parse(
+        JSON.parse(
+          readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+        ),
+      );
+    const declared = manifest.bb.branding.experimental_icons;
+    for (const agentId of REGISTRY_ICON_AGENT_IDS) {
+      const path = declared[`registry-${agentId}`];
+      expect(path).toBe(`./icons/registry-${agentId}.svg`);
+      expect(
+        existsSync(
+          new URL(`../icons/registry-${agentId}.svg`, import.meta.url),
+        ),
+      ).toBe(true);
+    }
+    expect(
+      Object.keys(declared).filter((name) => name.startsWith("registry-")),
+    ).toHaveLength(REGISTRY_ICON_AGENT_IDS.length);
+  });
+});
+
 describe("customAcpAgentDefinition", () => {
   it("carries the launch spec and drops a model CLI with nothing to list", () => {
     const [agent] = parseCustomAcpAgents({
@@ -209,6 +258,30 @@ describe("custom agents that report usage", () => {
       acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance
         ?.usage,
     ).toBe(false);
+  });
+
+  it("reads an opencode agent's models and modes per workspace and any other agent's once per machine", () => {
+    const scopeOf = (agent: AcpAgentDefinition) =>
+      acpProviderDeclaration(agent).models?.scope;
+    const custom = (dialect: string | undefined) =>
+      customAcpAgentDefinition(
+        parse({
+          id: "routed",
+          displayName: "Routed",
+          command: "routed",
+          args: ["acp"],
+          ...(dialect === undefined ? {} : { dialect }),
+        }),
+      );
+
+    expect(
+      KNOWN_ACP_AGENTS.filter((agent) => scopeOf(agent) === "workspace").map(
+        (agent) => agent.id,
+      ),
+    ).toEqual(["acp-opencode"]);
+    expect(scopeOf(custom("opencode"))).toBe("workspace");
+    expect(scopeOf(custom("cursor"))).toBe("host");
+    expect(scopeOf(custom(undefined))).toBe("host");
   });
 });
 

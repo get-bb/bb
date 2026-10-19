@@ -32,6 +32,7 @@ const NORMALIZED_ACP_UPDATE_KINDS = new Set<string>([
   "tool_call_update",
   "plan",
   "usage_update",
+  "session_info_update",
 ]);
 
 const NOISE_ACP_UPDATE_KINDS = new Set<string>([
@@ -39,7 +40,6 @@ const NOISE_ACP_UPDATE_KINDS = new Set<string>([
   "available_commands_update",
   "current_mode_update",
   "config_option_update",
-  "session_info_update",
 ]);
 
 interface AcpMethodRawEvent {

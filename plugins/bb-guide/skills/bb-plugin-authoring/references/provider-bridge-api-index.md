@@ -399,6 +399,7 @@ Read the installed declarations for exact current signatures.
 - `experimental_acpLaunchSpecSchema`
 - `experimental_acpProviderBridge`
 - `experimental_probeAcpAgent`
+- `experimental_registerAcpDialect`
 - `AcpAgentModelCatalog`
 - `AcpAgentProbe`
 - `AcpAgentProbeRequest`
@@ -416,22 +417,5 @@ Read the installed declarations for exact current signatures.
 
 ## `@get-bb/plugin-sdk/provider-bridge/acp-next`
 
-- `experimental_acpAgentProbeSchema`
-- `experimental_acpLaunchSpecSchema`
-- `experimental_acpProviderBridge`
-- `experimental_probeAcpAgent`
-- `experimental_registerAcpDialect`
-- `AcpAgentModelCatalog`
-- `AcpAgentProbe`
-- `AcpAgentProbeRequest`
-- `AcpAgentProfile`
-- `AcpClassifiedToolCall`
-- `AcpClientRequestOutcome`
-- `AcpDelegationReport`
-- `AcpDialect`
-- `AcpLaunchSpec`
-- `AcpToolCallContent`
-- `AcpToolCallStatus`
-- `AcpToolCallUpdateEvent`
-- `AcpToolIdentity`
-- `AcpToolKind`
+Deprecated. The same exports as `provider-bridge/acp`, kept so plugins that
+imported the preview name keep building.

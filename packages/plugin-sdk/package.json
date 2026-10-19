@@ -147,7 +147,6 @@
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-acp": "workspace:*",
-    "@bb/provider-bridge-acp-next": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",

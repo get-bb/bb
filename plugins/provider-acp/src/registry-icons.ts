@@ -1,4 +1,4 @@
-const PLUGIN_ID = "bb--provider-acp-next";
+const PLUGIN_ID = "provider-acp";
 
 export const REGISTRY_ICON_AGENT_IDS: readonly string[] = [
   "agoragentic-acp",

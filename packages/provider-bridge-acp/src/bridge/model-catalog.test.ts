@@ -445,6 +445,9 @@ describe("acp configOptions model catalog", () => {
     expect(
       acpNativeReasoningLevelToValue("high", thoughtLevel),
     ).toBeUndefined();
+    expect(
+      acpNativeReasoningLevelToValue("think-hard", thoughtLevel),
+    ).toBeUndefined();
   });
 
   it("preserves an explicit empty thought_level option as no reasoning control", () => {
@@ -461,19 +464,36 @@ describe("acp configOptions model catalog", () => {
     });
   });
 
-  it("returns no reasoning control for declared values that bb cannot map", () => {
-    expect(
-      buildAcpNativeReasoningSupport({
-        id: "mode",
-        category: "thought_level",
-        type: "select",
-        currentValue: "smart",
-        options: [{ value: "smart" }, { value: "fast" }],
-      }),
-    ).toEqual({
-      supportedReasoningEfforts: [],
-      defaultReasoningEffort: "medium",
+  it("offers the agent's own thought levels under the ids and names the agent gave them", () => {
+    const thoughtLevel = {
+      id: "mode",
+      category: "thought_level",
+      type: "select",
+      currentValue: "smart",
+      options: [
+        { value: "fast", name: "Fast", description: "Answer quickly" },
+        { value: "smart", name: "Smart" },
+        { value: "smart", name: "Duplicate" },
+        { value: "deep" },
+      ],
+    };
+
+    expect(buildAcpNativeReasoningSupport(thoughtLevel)).toEqual({
+      supportedReasoningEfforts: [
+        {
+          reasoningEffort: "fast",
+          label: "Fast",
+          description: "Answer quickly",
+        },
+        { reasoningEffort: "smart", label: "Smart", description: "Smart" },
+        { reasoningEffort: "deep", description: "deep" },
+      ],
+      defaultReasoningEffort: "smart",
     });
+    expect(acpNativeReasoningLevelToValue("smart", thoughtLevel)).toBe("smart");
+    expect(
+      acpNativeReasoningLevelToValue("medium", thoughtLevel),
+    ).toBeUndefined();
   });
 
   it("maps Hermes-style ACP reasoning values", () => {
@@ -502,17 +522,21 @@ describe("acp configOptions model catalog", () => {
       ]),
     ).toEqual([
       ["none", "none"],
+      ["minimal", "Minimal"],
       ["low", "Low"],
       ["medium", "medium"],
       ["high", "high"],
       ["xhigh", "xhigh"],
       ["max", "max"],
     ]);
+    expect(acpNativeReasoningLevelToValue("minimal", thoughtLevel)).toBe(
+      "minimal",
+    );
     expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe("low");
     expect(acpNativeReasoningLevelToValue("max", thoughtLevel)).toBe("max");
   });
 
-  it("uses Hermes minimal as bb low when ACP does not advertise low", () => {
+  it("still sends Hermes minimal for a stored low when ACP does not advertise low", () => {
     const thoughtLevel = {
       id: "reasoning_effort",
       category: "thought_level",
@@ -526,7 +550,7 @@ describe("acp configOptions model catalog", () => {
     };
 
     const support = buildAcpNativeReasoningSupport(thoughtLevel);
-    expect(support.defaultReasoningEffort).toBe("low");
+    expect(support.defaultReasoningEffort).toBe("minimal");
     expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe("minimal");
   });
 

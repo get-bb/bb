@@ -140,11 +140,6 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
-    name: "provider-acp-next",
-    pluginId: "bb--provider-acp-next",
-    defaultEnabled: false,
-  },
-  {
     name: "keep-awake",
     pluginId: "keep-awake",
     defaultEnabled: true,
@@ -270,20 +265,19 @@ export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...OFFICIAL_PLUGINS,
 ];
 
-export interface BundledPluginReplacement {
+export interface RetiredBundledPlugin {
   pluginId: string;
-  replaces: string;
+  successorPluginId: string;
   carriedSettings: readonly string[];
 }
 
-export const BUNDLED_PLUGIN_REPLACEMENTS: readonly BundledPluginReplacement[] =
-  [
-    {
-      pluginId: "bb--provider-acp-next",
-      replaces: "provider-acp",
-      carriedSettings: ["customAgents"],
-    },
-  ];
+export const RETIRED_BUNDLED_PLUGINS: readonly RetiredBundledPlugin[] = [
+  {
+    pluginId: "bb--provider-acp-next",
+    successorPluginId: "provider-acp",
+    carriedSettings: ["customAgents"],
+  },
+];
 
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 
