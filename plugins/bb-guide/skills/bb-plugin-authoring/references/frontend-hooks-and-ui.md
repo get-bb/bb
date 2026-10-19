@@ -307,3 +307,18 @@ define custom `@theme` colors and never hand-set `oklch(...)`/gray
 literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
+
+
+## Optimistic RPC updates
+
+`experimental_useRpcMutation({ method, optimistic(input, cache) { ... } })`
+predicts loaded reads before sending the write. `cache.update(method, readInput,
+updater)` targets a plain read; `cache.updateKey(method, key, updater)` targets
+one keyed row. Failed writes remove their own prediction.
+
+The updater callbacks must be pure and synchronous: they may run many times
+as pending predictions replay over new confirmed data or after another write
+rolls back. Return a new value without mutating cached data or captured inputs,
+performing side effects, or generating IDs, timestamps, or random values.
+Generate any such values once before calling `mutate` and include them in the
+mutation input so every replay uses the same values.

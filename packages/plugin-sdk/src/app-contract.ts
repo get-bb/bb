@@ -3963,6 +3963,14 @@ export interface ExperimentalRpcQueryOptions<
   enabled?: boolean;
 }
 
+/**
+ * Predict loaded reads with pure, synchronous update callbacks. Callbacks passed
+ * to `update` and `updateKey` may run many times as pending predictions replay
+ * over a new confirmed base or another prediction rolls back. Return a new
+ * value without mutating `current` or captured inputs, performing side effects,
+ * or generating IDs, timestamps, or random values. Generate any such values
+ * once before calling `mutate` and include them in the mutation input.
+ */
 export interface ExperimentalRpcOptimisticCache<
   Contract extends PluginRpcContract,
 > {
