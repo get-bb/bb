@@ -88,7 +88,7 @@ describe("tunnel origin failures", () => {
         expect(warnings).toHaveLength(1);
         expect(warnings[0]).toContain(`http://127.0.0.1:${port}`);
         expect(warnings[0]).toContain("ECONNREFUSED");
-        now = 5000;
+        now = 1000;
         if (protocol === "http") ws(9);
         else http(9);
         await vi.waitFor(() =>
@@ -119,7 +119,7 @@ describe("tunnel origin failures", () => {
             }),
           ),
         );
-        now = 10000;
+        now = 2000;
         http(6);
         http(7);
         expect(tunnel.frames).toContainEqual(

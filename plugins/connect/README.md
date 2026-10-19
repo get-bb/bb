@@ -68,7 +68,7 @@ Release revokes the completed grant's device even if enrollment never finished.
 The record is deleted only after successful cleanup; failures keep it for retry.
 
 Exposed origins that refuse a connection are kept in a per-tunnel cooldown for
-five seconds. One warning identifies the origin when it enters cooldown; failed
+one second. One warning identifies the origin when it enters cooldown; failed
 recovery probes stay quiet until a successful connection clears the cooldown.
 HTTP and WebSocket requests share the cooldown; requests during
 that interval fail locally without opening another connection or logging a
