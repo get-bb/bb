@@ -1,0 +1,87 @@
+name: Close Stale Pull Requests
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Close eligible pull requests (otherwise preview only)
+        type: boolean
+        default: false
+permissions:
+  pull-requests: write
+concurrency:
+  group: close-stale-prs
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.repository == 'get-bb/bb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Close pull requests older than fourteen days
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import subprocess
+
+          def api(endpoint, *args):
+              result = subprocess.run(
+                  ["gh", "api", endpoint, *args],
+                  check=True, capture_output=True, text=True,
+              )
+              return json.loads(result.stdout)
+
+          def created_at(pull):
+              return datetime.datetime.fromisoformat(pull["created_at"].replace("Z", "+00:00"))
+
+          def protected(pull):
+              return any(label["name"] == "dont-close" for label in pull["labels"])
+
+          repo = os.environ["GH_REPO"]
+          apply = os.environ["APPLY"] == "true"
+          cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
+          notice = "This is an automated message. We have closed this pull request because it has been open for more than two weeks."
+          print(f"{'Cleanup' if apply else 'Preview'}; creation cutoff: {cutoff.isoformat()}")
+          pages = api(f"repos/{repo}/pulls?state=open&per_page=100", "--paginate", "--slurp")
+          candidates = [pull for page in pages for pull in page if created_at(pull) < cutoff]
+          failures = []
+          for candidate in candidates:
+              number = candidate["number"]
+              endpoint = f"repos/{repo}/pulls/{number}"
+              try:
+                  pull = api(endpoint)
+                  if pull["state"] != "open" or created_at(pull) >= cutoff:
+                      print(f"Skipped changed pull request: {pull['html_url']}")
+                      continue
+                  if protected(pull):
+                      print(f"Protected by dont-close: {pull['html_url']}")
+                      continue
+                  print(json.dumps({
+                      "url": pull["html_url"], "number": number, "title": pull["title"],
+                      "author": pull["user"]["login"], "created_at": pull["created_at"],
+                      "draft": pull["draft"],
+                  }))
+                  if not apply:
+                      continue
+                  closed = api(endpoint, "--method", "PATCH", "-f", "state=closed")
+                  if closed["state"] != "closed" or closed["merged_at"] is not None:
+                      raise RuntimeError("Pull request was not closed as requested")
+                  comment = api(f"repos/{repo}/issues/{number}/comments", "--method", "POST", "-f", f"body={notice}")
+                  final_pull = api(endpoint)
+                  final_comment = api(f"repos/{repo}/issues/comments/{comment['id']}")
+                  if final_pull["state"] != "closed" or final_comment["body"] != notice:
+                      raise RuntimeError("Final state or closure notice verification failed")
+                  print(f"Closed and verified: {pull['html_url']}")
+              except Exception as error:
+                  failures.append(number)
+                  print(f"Failed #{number}: {error}")
+          if failures:
+              raise RuntimeError(f"Failed pull requests: {failures}")
+          PY
