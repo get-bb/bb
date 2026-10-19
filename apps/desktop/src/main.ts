@@ -909,8 +909,8 @@ function refreshApplicationMenu(): void {
       }
       requestRendererWindowClose(browserWindow);
     },
-    openServerDaemonLogs() {
-      void openServerDaemonLogs();
+    openLocalLogs() {
+      void openLocalLogs();
     },
     onServerMenuWillShow() {
       connectServerSync?.onListRequested();
@@ -2165,7 +2165,7 @@ async function loadLogViewerWindow(
   await tailer.start();
 }
 
-async function openServerDaemonLogs(): Promise<void> {
+async function openLocalLogs(): Promise<void> {
   if (logViewerPreloadPath === null) {
     return;
   }
@@ -2218,7 +2218,11 @@ async function loadLoadingView(): Promise<void> {
 }
 
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
-  desktopLogger.error(`[desktop] ${args.title}: ${args.details}`);
+  desktopLogger.error(
+    args.logs.length === 0
+      ? `[desktop] ${args.title}: ${args.details}`
+      : `[desktop] ${args.title}: ${args.details}\nbb-app output:\n${args.logs}`,
+  );
   await loadActionView({
     ...args,
     details:
@@ -2386,7 +2390,7 @@ function registerDesktopUpdateIpc(): void {
     return getSenderDesktopWindowState(event);
   });
   ipcMain.handle(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL, async () => {
-    await openServerDaemonLogs();
+    await openLocalLogs();
   });
   ipcMain.handle(BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL, async () => {
     await openDataDirectory();

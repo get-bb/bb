@@ -413,16 +413,17 @@ BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/
 Desktop main-process logs are written immediately to `desktop.log` under
 `~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set, including
 updater, Connect, and startup failures from launches without a terminal.
-Logs append across launches and rotate at 10 MiB, retaining five files
-(`desktop.log` and `.1` through `.4`). Logging failures fall back to stderr
-without interrupting startup.
+Logs append across launches and rotate at 10 MiB into `desktop.1.log` through
+`desktop.4.log`. When bb-app exits, its captured output is saved
+with the error. Logging failures fall back to stderr without interrupting
+startup.
 
 **View → Local Logs** shows desktop, server, and daemon logs on macOS, Windows,
 and Linux, including when attached to an existing server or startup fails.
 These are files in this computer's selected data directory; connecting to a
 remote server does not fetch its logs. Use **Open Logs Folder** to inspect
 rotated files. Scripts and agents can read the same files from the data
-directory. The existing desktop bridge `openServerDaemonLogs()` opens this viewer.
+directory.
 
 To verify attach-if-found manually, start a compatible bb first, then launch the
 desktop app:

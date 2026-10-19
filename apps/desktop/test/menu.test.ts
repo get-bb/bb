@@ -41,7 +41,7 @@ function menuArgs(
     openAbout: () => {},
     openNewTab: () => {},
     openNewThread: () => {},
-    openServerDaemonLogs: () => {},
+    openLocalLogs: () => {},
     openSettings: () => {},
     reopenClosedTab: () => {},
     reloadWindow,
@@ -83,9 +83,9 @@ describe("application menu", () => {
   it.each([true, false])(
     "opens local logs independently of runtime ownership (isMac=%s)",
     (isMac) => {
-      const openServerDaemonLogs = vi.fn();
+      const openLocalLogs = vi.fn();
       const template = buildApplicationMenuTemplate(
-        menuArgs(() => {}, { isMac, openServerDaemonLogs }),
+        menuArgs(() => {}, { isMac, openLocalLogs }),
       );
       const view = template.find((item) => item.label === "View")
         ?.submenu as MenuItemConstructorOptions[];
@@ -93,7 +93,7 @@ describe("application menu", () => {
       expect(logs).toBeDefined();
       expect(logs?.enabled).not.toBe(false);
       if (logs?.click) logs.click({} as never, undefined, {} as never);
-      expect(openServerDaemonLogs).toHaveBeenCalledOnce();
+      expect(openLocalLogs).toHaveBeenCalledOnce();
     },
   );
 

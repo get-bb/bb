@@ -1,6 +1,12 @@
 const assert = require("node:assert/strict");
 const { createServer } = require("node:http");
-const { appendFile, mkdir, readFile, writeFile } = require("node:fs/promises");
+const {
+  appendFile,
+  chmod,
+  mkdir,
+  readFile,
+  writeFile,
+} = require("node:fs/promises");
 const { join } = require("node:path");
 const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 
@@ -71,14 +77,23 @@ async function run() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
   const serverUrl = `http://127.0.0.1:${port}`;
-  if (scenario === "custom") {
+  if (scenario === "custom" || scenario === "crashed") {
     await new Promise((resolve) => server.close(resolve));
+  }
+  if (scenario === "crashed") {
+    const crashingRuntime = join(app.getPath("userData"), "crashing-bb-app");
+    await writeFile(
+      crashingRuntime,
+      '#!/bin/sh\necho "bb-app native module failed to load" >&2\nexit 3\n',
+    );
+    await chmod(crashingRuntime, 0o755);
+    process.env.BB_DESKTOP_NODE_EXEC_PATH = crashingRuntime;
   }
   process.env.BB_SERVER_PORT = String(port);
   await writeFile(
     join(app.getPath("userData"), "server-target.json"),
     JSON.stringify(
-      scenario === "fatal" || scenario === "attached"
+      scenario === "fatal" || scenario === "attached" || scenario === "crashed"
         ? { target: "builtin", customServerUrl: null }
         : scenario === "connect"
           ? {
@@ -120,6 +135,20 @@ async function run() {
     await contents.executeJavaScript("window.bbDesktop.openServerDaemonLogs()");
     await verifyLocalLogs();
     server.close();
+    console.log("STARTUP_RETRY_SMOKE_OK");
+    app.exit(0);
+    return;
+  }
+  if (scenario === "crashed") {
+    const desktopLog = join(process.env.BB_DATA_DIR, "logs", "desktop.log");
+    await until(async () =>
+      (await readFile(desktopLog, "utf8")).includes("Could not start bb"),
+    );
+    const savedLogs = await readFile(desktopLog, "utf8");
+    assert.ok(
+      savedLogs.includes("bb-app native module failed to load"),
+      "bb-app output from a failed startup must be persisted",
+    );
     console.log("STARTUP_RETRY_SMOKE_OK");
     app.exit(0);
     return;

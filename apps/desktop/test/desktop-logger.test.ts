@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDesktopLogger } from "../src/desktop-logger.js";
+import { resolveCurrentLogFile } from "../src/log-viewer.js";
 
 const tempDirs: string[] = [];
 
@@ -85,20 +86,23 @@ it("rotates at the byte limit and retains only the four latest archives", async 
     logger.info("界".repeat(20));
   }
   expect((await readdir(logDir)).sort()).toEqual([
+    "desktop.1.log",
+    "desktop.2.log",
+    "desktop.3.log",
+    "desktop.4.log",
     "desktop.log",
-    "desktop.log.1",
-    "desktop.log.2",
-    "desktop.log.3",
-    "desktop.log.4",
   ]);
   for (let index = 1; index <= 4; index += 1) {
     expect(
-      (await readFile(join(logDir, `desktop.log.${index}`), "utf8"))[0],
+      (await readFile(join(logDir, `desktop.${index}.log`), "utf8"))[0],
     ).toBe(String(6 - index));
   }
   expect(
     JSON.parse(await readFile(join(logDir, "desktop.log"), "utf8")).msg,
   ).toBe("界".repeat(20));
+  expect(await resolveCurrentLogFile({ component: "desktop", logDir })).toBe(
+    join(logDir, "desktop.log"),
+  );
 });
 
 it("falls back to stderr on a filesystem failure and resumes persistence after recovery", async () => {
