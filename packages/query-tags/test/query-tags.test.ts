@@ -544,6 +544,72 @@ describe("optimistic tagged mutations", () => {
     expect(read.value()).toBe(1);
   });
 
+  it.each([0, 1])(
+    "rolls back only the rejected field when overlapping settings settle in order %s",
+    async (first) => {
+      const client = setup();
+      const queryKey = ["settings"];
+      type Settings = { archive: boolean; delete: boolean };
+      let settings = { archive: false, delete: false };
+      const observer = new QueryObserver(client, {
+        queryKey,
+        ...taggedQueryOptions<Settings>(client, queryKey, {
+          scope: CORE_TAG_SCOPE,
+          tagsOf: () => ["item:a"],
+        }),
+        queryFn: () => runTaggedRead(client, queryKey, async () => settings),
+      });
+      disposers.push(observer.subscribe(() => {}));
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().data).toEqual({
+          archive: false,
+          delete: false,
+        }),
+      );
+      const writes = [
+        deferred<ReturnType<typeof outcome>>(),
+        deferred<ReturnType<typeof outcome>>(),
+      ];
+      const mutations = writes.map((write, index) =>
+        runTaggedMutation(
+          (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+          () => write.promise,
+          {
+            client,
+            optimistic: [
+              optimisticQueryUpdate<Settings>(queryKey, (current) => ({
+                ...current,
+                [index === 0 ? "archive" : "delete"]: true,
+              })),
+            ],
+          },
+        ).catch(() => undefined),
+      );
+      expect(observer.getCurrentResult().data).toEqual({
+        archive: true,
+        delete: true,
+      });
+      const finish = async (index: number) => {
+        if (index === 0) writes[0]!.reject(new Error("archive rejected"));
+        else {
+          settings = { archive: false, delete: true };
+          writes[1]!.resolve(outcome());
+        }
+        await mutations[index];
+      };
+      await finish(first);
+      expect(observer.getCurrentResult().data).toEqual({
+        archive: first !== 0,
+        delete: true,
+      });
+      await finish(1 - first);
+      expect(observer.getCurrentResult().data).toEqual({
+        archive: false,
+        delete: true,
+      });
+    },
+  );
+
   it("keeps accepted predictions and a refresh error until Retry reads fresh server data", async () => {
     const client = setup();
     const read = observe(client, "a", async () => ({

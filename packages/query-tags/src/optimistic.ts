@@ -28,7 +28,8 @@ type Prediction = {
   owner: object;
   order: number;
   path: readonly string[];
-  value: unknown;
+  initial: unknown;
+  update(current: unknown): unknown;
   acceptedAt: number | null;
   fresh: boolean;
   settled: boolean;
@@ -90,11 +91,53 @@ function olderPending(state: PredictionState, layer: Prediction): boolean {
   );
 }
 
+function confirmedValue(
+  current: unknown,
+  predicted: unknown,
+  confirmed: unknown,
+): unknown {
+  if (Object.is(predicted, confirmed)) return current;
+  if (
+    typeof current !== "object" ||
+    current === null ||
+    typeof predicted !== "object" ||
+    predicted === null ||
+    typeof confirmed !== "object" ||
+    confirmed === null ||
+    Array.isArray(predicted) !== Array.isArray(confirmed) ||
+    (Array.isArray(predicted) &&
+      (!Array.isArray(confirmed) || predicted.length !== confirmed.length))
+  )
+    return confirmed;
+  const next = Array.isArray(current) ? [...current] : { ...current };
+  for (const key of new Set([
+    ...Object.keys(predicted),
+    ...Object.keys(confirmed),
+  ])) {
+    if (!Object.hasOwn(confirmed, key)) Reflect.deleteProperty(next, key);
+    else
+      Reflect.set(
+        next,
+        key,
+        confirmedValue(
+          Reflect.get(current, key),
+          Reflect.get(predicted, key),
+          Reflect.get(confirmed, key),
+        ),
+      );
+  }
+  return next;
+}
+
 function projected(state: PredictionState): unknown {
-  return state.layers.reduce(
-    (data, layer) => replaceAt(data, layer.path, layer.value),
-    state.base,
-  );
+  return state.layers.reduce((data, layer) => {
+    const current = valueAt(data, layer.path);
+    return replaceAt(
+      data,
+      layer.path,
+      layer.update(current === undefined ? layer.initial : current.value),
+    );
+  }, state.base);
 }
 
 function publish(query: Query, state: PredictionState): void {
@@ -211,12 +254,12 @@ export function beginOptimisticMutation(
         };
         const current = valueAt(projected(state), update.path);
         if (current === undefined) continue;
-        const value = update.update(current.value);
         state.layers.push({
           owner,
           order: mutationOrder,
           path: update.path,
-          value,
+          initial: current.value,
+          update: update.update,
           acceptedAt: null,
           fresh: false,
           settled: false,
@@ -247,7 +290,13 @@ export function beginOptimisticMutation(
             layer.settled = true;
             if (!layer.fresh) return true;
             if (!olderPending(state, layer)) return false;
-            layer.value = valueAt(state.base, layer.path)?.value ?? layer.value;
+            const current = valueAt(state.base, layer.path);
+            if (current !== undefined) {
+              const update = layer.update;
+              const predicted = update(current.value);
+              layer.update = (value) =>
+                confirmedValue(update(value), predicted, current.value);
+            }
             return true;
           });
           publish(query, state);
