@@ -361,6 +361,58 @@ export function seedThreadIdentity(
   });
 }
 
+export function seedTurnPermissionMode(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: {
+    environmentId: string | null;
+    permissionMode: RecordedPermissionMode;
+    providerThreadId: string;
+    threadId: string;
+    turnId: string;
+  },
+): void {
+  const sequence =
+    getLatestThreadSequence(deps.db, { threadId: args.threadId }) + 1;
+  const requestId = encodeClientTurnRequestIdNumber({ value: sequence });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: args.providerThreadId,
+    sequence,
+    type: "client/turn/requested",
+    scope: threadScope(),
+    data: {
+      direction: "outbound",
+      requestId,
+      input: [{ type: "text", text: "Move to the new worktree" }],
+      target: { kind: "new-turn" },
+      execution: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: args.permissionMode,
+        source: "client/turn/requested",
+      },
+      initiator: "user",
+      senderThreadId: null,
+      request: { method: "turn/start", params: {} },
+      source: "tell",
+    },
+  });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: args.providerThreadId,
+    sequence: sequence + 1,
+    type: "turn/input/accepted",
+    scope: turnScope(args.turnId),
+    data: {
+      providerThreadId: args.providerThreadId,
+      clientRequestId: requestId,
+    },
+  });
+}
+
 export function seedThreadRuntimeState(
   deps: Pick<AppDeps, "db" | "hub">,
   args: {

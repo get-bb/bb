@@ -44,12 +44,29 @@ export function readSavedUtm(storage: UtmStorage): URLSearchParams {
 }
 
 export function carryUtmToDownloadLinks(): () => void {
-  let storage: UtmStorage;
+  const globalPrivacyControl =
+    "globalPrivacyControl" in navigator &&
+    navigator.globalPrivacyControl === true;
+  if (globalPrivacyControl) {
+    const landingUrl = new URL(window.location.href);
+    if (landingUrl.searchParams.has("gclid")) {
+      landingUrl.searchParams.delete("gclid");
+      window.history.replaceState(window.history.state, "", landingUrl.href);
+    }
+  }
+  let storage: UtmStorage | null = null;
   try {
     storage = window.sessionStorage;
-    rememberLatestUtm(storage, window.location.search);
+    const landingParams = new URLSearchParams(window.location.search);
+    if (globalPrivacyControl) {
+      const saved = readSavedUtm(storage);
+      saved.delete("gclid");
+      storage.setItem(SAVED_UTM_KEY, saved.toString());
+      landingParams.delete("gclid");
+    }
+    rememberLatestUtm(storage, landingParams.toString());
   } catch {
-    return () => {};
+    storage = null;
   }
 
   const carry = (event: Event) => {
@@ -64,7 +81,23 @@ export function carryUtmToDownloadLinks(): () => void {
     ) {
       return;
     }
-    const search = addSavedUtmParams(link.search, readSavedUtm(storage));
+    let saved = new URLSearchParams();
+    try {
+      if (storage) {
+        saved = readSavedUtm(storage);
+      }
+    } catch {
+      storage = null;
+    }
+    let linkSearch = link.search;
+    if (globalPrivacyControl) {
+      saved.delete("gclid");
+      const params = new URLSearchParams(linkSearch);
+      params.delete("gclid");
+      const query = params.toString();
+      linkSearch = query ? `?${query}` : "";
+    }
+    const search = addSavedUtmParams(linkSearch, saved);
     if (search !== link.search) {
       link.search = search;
     }

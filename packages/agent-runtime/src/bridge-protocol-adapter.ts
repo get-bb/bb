@@ -218,6 +218,18 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.modelList,
+            params: {
+              ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
+            },
+          };
+        case "commands/list":
+          if (!handshake.commands.list) {
+            return { kind: "noop", reason: "commands.list not advertised" };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.commandList,
             params: cwdAndStaticProviderOptions(command.cwd),
           };
         case "provider/health":

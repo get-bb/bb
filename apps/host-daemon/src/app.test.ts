@@ -275,6 +275,9 @@ function createFakeRuntime(): AgentRuntime {
         selectedOnlyModels: [],
       };
     },
+    async listCommands() {
+      return { commands: [] };
+    },
     async providerHealth() {
       return { supported: false as const };
     },
@@ -558,6 +561,7 @@ describe("createHostDaemonApp", () => {
           type: "provider.list_models",
           providerId: "cursor",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          contributedEnv: [],
           cwd: "/tmp/worktree",
         },
       });
@@ -584,6 +588,7 @@ describe("createHostDaemonApp", () => {
       expect(listModels).toHaveBeenCalledWith({
         providerId: "cursor",
         cwd: "/tmp/worktree",
+        contributedEnv: [],
         bridgeLaunch: {
           ...dispatchTestRuntimeBridgeLaunch(dataDir),
         },
@@ -597,6 +602,7 @@ describe("createHostDaemonApp", () => {
             type: "provider.list_models",
             providerId: "cursor",
             bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+            contributedEnv: [],
           },
         }),
       ).resolves.toMatchObject({
@@ -665,6 +671,7 @@ describe("createHostDaemonApp", () => {
             type: "provider.list_models",
             providerId: "codex",
             bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+            contributedEnv: [],
           },
         }),
       ).resolves.toMatchObject({

@@ -80,8 +80,9 @@ Inspecting:
   it, `bb thread tell --compact-first` avoids re-reading the context uncached.
 
   `thread commands` lists the slash commands advertised for the current
-  session; ACP agents report these live, so the list is empty until the agent
-  sends one. `thread options --set` takes `true` or `false` for an on/off
+  session; ACP agents and Claude Code report these live, so the list is empty
+  until the agent sends one. `bb project commands` also lists Claude Code's
+  commands before a thread starts. `thread options --set` takes `true` or `false` for an on/off
   option; `bb provider models <provider>` lists the options a model declares.
 
   bb thread log [id]                       Show thread event log

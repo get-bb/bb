@@ -1111,11 +1111,8 @@ export function createDesktopBrowserViewManager(
     return entry;
   }
 
-  function loadIfNeeded(entry: BrowserViewEntry, url: string): void {
+  function loadBrowserUrl(entry: BrowserViewEntry, url: string): void {
     if (url.length === 0) {
-      return;
-    }
-    if (entry.webContents.getURL() === url) {
       return;
     }
     if (!isAllowedBrowserUrl(url)) {
@@ -1337,7 +1334,7 @@ export function createDesktopBrowserViewManager(
       });
       applyEntryDesiredBounds(entry, request.hostWindow);
       applyEntryVisibility(entry, request.hostWindow);
-      loadIfNeeded(entry, request.url);
+      loadBrowserUrl(entry, request.url);
       notifyAutomationTabs();
       pushState(request.hostWindow, request.tabId, entry);
       return nativeTab(request.tabId, entry);
@@ -1455,7 +1452,7 @@ export function createDesktopBrowserViewManager(
         focusEntryWithoutNotifying(entry);
       }
       if (existing === null) {
-        loadIfNeeded(entry, request.url);
+        loadBrowserUrl(entry, request.url);
         notifyAutomationTabs();
       }
       pushState(hostWindow, request.tabId, entry);
@@ -1498,7 +1495,7 @@ export function createDesktopBrowserViewManager(
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         resetEntryRendererRecovery(entry);
         applyEntryVisibility(entry, hostWindow);
-        loadIfNeeded(entry, request.url);
+        loadBrowserUrl(entry, request.url);
       });
     },
     goBack({ hostWindow, tabId }) {

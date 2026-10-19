@@ -3,6 +3,7 @@ import {
   type CommandListResponse,
   type ProviderCommand,
 } from "@bb/server-contract";
+import type { ThreadProviderCommand } from "@bb/domain";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import type { ProviderRegistration } from "../providers/provider-registry.js";
 import type { ResolvedSkillCatalogEntry } from "../skills/injected-skills.js";
@@ -90,8 +91,19 @@ function compareCommands(a: ProviderCommand, b: ProviderCommand): number {
   return a.name.localeCompare(b.name);
 }
 
+function toLiveCommand(command: ThreadProviderCommand): ProviderCommand {
+  return {
+    name: command.name,
+    source: "command",
+    origin: "builtin",
+    description: command.description === "" ? null : command.description,
+    argumentHint: command.inputHint ?? null,
+  };
+}
+
 interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
+  liveCommands: readonly ThreadProviderCommand[];
   includeBuiltinCompact: boolean;
   skillCatalog: readonly ResolvedSkillCatalogEntry[];
 }
@@ -99,13 +111,20 @@ interface BuildCommandListResponseArgs {
 export function buildCommandListResponse(
   args: BuildCommandListResponseArgs,
 ): CommandListResponse {
+  const scanned = dedupeBySourceAndName([
+    ...BUILT_IN_PROVIDER_COMMANDS.filter(
+      (command) => command.name !== "compact" || args.includeBuiltinCompact,
+    ),
+    ...args.skillCatalog.map(toSkillCommand),
+    ...args.commands.map(toProviderCommand),
+  ]);
+  const scannedNames = new Set(scanned.map((command) => command.name));
   return {
-    commands: dedupeBySourceAndName([
-      ...BUILT_IN_PROVIDER_COMMANDS.filter(
-        (command) => command.name !== "compact" || args.includeBuiltinCompact,
-      ),
-      ...args.skillCatalog.map(toSkillCommand),
-      ...args.commands.map(toProviderCommand),
-    ]).sort(compareCommands),
+    commands: [
+      ...scanned,
+      ...args.liveCommands
+        .filter((command) => !scannedNames.has(command.name))
+        .map(toLiveCommand),
+    ].sort(compareCommands),
   };
 }

@@ -44,8 +44,12 @@ const recordSchema = z
   .strict();
 type RecordEntry = z.infer<typeof recordSchema>;
 type DesktopTarget = z.infer<typeof desktopSchema>;
-const ttlMs = 30 * 60_000;
-const idleTimeoutMs = 5 * 60_000;
+const idleTimeoutMs = 30 * 60_000;
+const maxLifetimeMs = 8 * 60 * 60_000;
+const hardDeadline = (session: Session) =>
+  session.backend === "desktop"
+    ? Math.min(session.expiresAt, session.createdAt + maxLifetimeMs)
+    : session.createdAt + maxLifetimeMs;
 const previewWaitMs = 5_000;
 const keyFor = (threadId: string, sessionId: string) =>
   `sessions/${encodeURIComponent(threadId)}/${sessionId}`;
@@ -241,7 +245,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       backend: input.selection.backend,
       state: "ready",
       createdAt: now,
-      expiresAt: now + ttlMs,
+      expiresAt: now + idleTimeoutMs,
     };
     const record: RecordEntry = {
       session,
@@ -293,7 +297,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           ...scope,
           tabIds: [tabId],
           controllerLabel: "Browser Automation",
-          ttlMs,
+          ttlMs: idleTimeoutMs,
         });
         record.desktop = {
           ...scope,
@@ -335,7 +339,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
         {
           sessionId: session.id,
           ...(connectionUrl === undefined ? {} : { connectionUrl }),
-          expiresAt: session.expiresAt,
+          expiresAt: hardDeadline(session),
           idleTimeoutMs,
         },
         { hostId: session.hostId, signal },
@@ -376,6 +380,14 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       opening.delete(session.id);
     }
   }
+  async function touch(record: RecordEntry) {
+    record.lastUsed = Date.now();
+    record.session.expiresAt = Math.min(
+      record.lastUsed + idleTimeoutMs,
+      hardDeadline(record.session),
+    );
+    await save(record);
+  }
   async function run(
     input: z.output<typeof rpcContract.run.input>,
     signal: AbortSignal,
@@ -383,11 +395,13 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
     const record = await owned(input.threadId, input.sessionId);
     if (
       record.session.state !== "ready" ||
-      Date.now() >= record.session.expiresAt
+      Date.now() >= hardDeadline(record.session) ||
+      (!busy.get(input.sessionId) && Date.now() >= record.session.expiresAt)
     )
       throw new Error("Session stopped or expired; open a new session");
     busy.set(input.sessionId, (busy.get(input.sessionId) ?? 0) + 1);
     try {
+      await touch(record);
       const result = await host.call(
         "run",
         {
@@ -408,10 +422,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       if (remaining > 0) busy.set(input.sessionId, remaining);
       else busy.delete(input.sessionId);
       const current = active.get(input.sessionId);
-      if (current) {
-        current.lastUsed = Date.now();
-        await save(current);
-      }
+      if (current?.session.state === "ready") await touch(current);
     }
   }
   async function preview(
@@ -632,7 +643,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   const timer = setInterval(() => {
     for (const record of active.values()) {
       if (
-        Date.now() < record.session.expiresAt &&
+        Date.now() < hardDeadline(record.session) &&
         (busy.get(record.session.id) ||
           Date.now() - record.lastUsed < idleTimeoutMs)
       )

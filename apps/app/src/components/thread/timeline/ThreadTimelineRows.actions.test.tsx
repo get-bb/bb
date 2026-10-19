@@ -867,7 +867,7 @@ describe("ThreadTimelineRows actions", () => {
         const text = prose.querySelector("a")!.firstChild!;
         range.setStart(text, 1);
         range.setEnd(text, 3);
-        expected = "- [oc](https://example.com)";
+        expected = "[oc](https://example.com)";
       } else {
         range.selectNodeContents(prose);
         if (mode === "boundary-spill") range.setEndAfter(prose);

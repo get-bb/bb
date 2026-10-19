@@ -80,7 +80,12 @@ describe("threadProviderCommandSuggestions", () => {
 
   it("offers the agent's live commands under the slash trigger only", () => {
     expect(
-      threadProviderCommandSuggestions({ commands, query: "", trigger: "/" }),
+      threadProviderCommandSuggestions({
+        commands,
+        catalog: [],
+        query: "",
+        trigger: "/",
+      }),
     ).toEqual([
       {
         kind: "command",
@@ -100,11 +105,17 @@ describe("threadProviderCommandSuggestions", () => {
       },
     ]);
     expect(
-      threadProviderCommandSuggestions({ commands, query: "", trigger: "$" }),
+      threadProviderCommandSuggestions({
+        commands,
+        catalog: [],
+        query: "",
+        trigger: "$",
+      }),
     ).toEqual([]);
     expect(
       threadProviderCommandSuggestions({
         commands: null,
+        catalog: [],
         query: "",
         trigger: "/",
       }),
@@ -115,7 +126,27 @@ describe("threadProviderCommandSuggestions", () => {
     expect(
       threadProviderCommandSuggestions({
         commands,
+        catalog: [],
         query: "we",
+        trigger: "/",
+      }).map((suggestion) => suggestion.name),
+    ).toEqual(["web"]);
+  });
+
+  it("leaves names the scanned catalog already offers to the catalog", () => {
+    expect(
+      threadProviderCommandSuggestions({
+        commands,
+        catalog: [
+          {
+            name: "review",
+            source: "skill",
+            origin: "user",
+            description: "Review from the user's skill",
+            argumentHint: null,
+          },
+        ],
+        query: "",
         trigger: "/",
       }).map((suggestion) => suggestion.name),
     ).toEqual(["web"]);

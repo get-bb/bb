@@ -38,7 +38,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
   },
   windows: {
     label: "Windows (Alpha)",
-    buttonLabel: "Download for Windows",
+    buttonLabel: "Download for Windows (Alpha)",
     note: "x64, alpha",
     installerExtension: ".exe",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-windows.json`,

@@ -66,6 +66,7 @@ import {
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import {
   getActiveTurnId,
+  isActiveTurnMainRunIdle,
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "./thread-events.js";
@@ -151,6 +152,11 @@ export function createAutomaticQueuedMessageGroupEligibility(
         case "time":
           return member.sendAt !== null && member.sendAt <= args.now;
         case "thread-busy":
+          return (
+            args.thread.status === "idle" ||
+            args.thread.status === "pending" ||
+            isActiveTurnMainRunIdle(deps, args.thread)
+          );
         case "stopping":
           return (
             args.thread.status === "idle" || args.thread.status === "pending"
@@ -285,7 +291,10 @@ export async function createQueuedMessageForThread(
       providerId: thread.providerId,
     });
   }
-  if (currentThread.status === "idle" && hasProviderSession) {
+  if (
+    (currentThread.status === "idle" && hasProviderSession) ||
+    isActiveTurnMainRunIdle(deps, currentThread)
+  ) {
     requestQueuedMessageDispatch(deps, {
       kind: "thread-ready",
       threadId: thread.id,
@@ -926,6 +935,16 @@ export function releaseStaleQueuedMessageDispatchClaims(
 ): void {
   releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
     claimedBefore: now - STALE_QUEUED_MESSAGE_CLAIM_MS,
+    protectedClaimTokens: [...activeQueuedMessageClaimTokens],
+  });
+}
+
+export function releaseOrphanedQueuedMessageDispatchClaims(
+  deps: Pick<AppDeps, "db" | "hub">,
+  now: number,
+): number {
+  return releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
+    claimedBefore: now + 1,
     protectedClaimTokens: [...activeQueuedMessageClaimTokens],
   });
 }

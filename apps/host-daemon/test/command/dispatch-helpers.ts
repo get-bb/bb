@@ -44,6 +44,7 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
 export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
   | "listModels"
+  | "listCommands"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -52,6 +53,9 @@ export const unexpectedProviderMaintenance: Pick<
 > = {
   listModels: async () => {
     throw new Error("Unexpected provider.list_models call");
+  },
+  listCommands: async () => {
+    throw new Error("Unexpected provider.list_commands call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");
@@ -413,6 +417,9 @@ export function createFakeRuntime() {
         models: [] satisfies AvailableModel[],
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
+    },
+    async listCommands() {
+      return { commands: [] };
     },
     async providerHealth() {
       return { supported: false as const };

@@ -114,6 +114,13 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
 - `confirmThreadArchive` (default true): set false to archive parent and child
   threads in the app without the confirmation popup; the toast still offers
   Undo. CLI and SDK archive calls are always non-interactive.
+- `terminalCopyOnSelect` (default true; Settings → General → Terminals → Copy
+  on select) copies completed terminal selections exactly and shows "Selection
+  copied". Text elsewhere in the app is unchanged. Set it with
+  `bb settings general terminalCopyOnSelect <true|false|on|off>` or SDK
+  `system.updateGeneralSettings`. Explicit Copy/Paste work when off. Supported
+  Linux browsers use native primary selection for middle-click paste,
+  independently of this preference, never the regular clipboard as a fallback.
 - `streamerMode` (default false) hides every `customModels` entry from
   `~/.bb/config.json` in all model lists (pickers, `bb provider models`, and
   the SDK) during a screen share. The entries stay in the config file; a

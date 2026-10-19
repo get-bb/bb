@@ -163,6 +163,8 @@ export type OwnershipChangeOperationMetadata = z.infer<
 >;
 
 export const THREAD_CONTEXT_CLEAR_OPERATION = "context_clear";
+export const ENVIRONMENT_DIRECTORY_APPROVAL_OPERATION =
+  "environment_directory_approval";
 export const THREAD_CONTEXT_CLEARED_DETAIL =
   "New prompts won’t include messages above. Thread history and workspace are unchanged.";
 

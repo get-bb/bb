@@ -263,7 +263,7 @@ function PlanReviewRequestBanner({
             <MarkdownPreview content={plan} className="text-xs" />
           </div>
           {planFilePath ? (
-            <p className="truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
+            <p className="break-all border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
               {planFilePath}
             </p>
           ) : null}

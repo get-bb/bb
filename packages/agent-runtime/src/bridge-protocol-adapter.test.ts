@@ -297,6 +297,20 @@ describe("options mapping", () => {
   });
 });
 
+describe("commands/list", () => {
+  it("is a noop until the handshake declares commands.list", () => {
+    const adapter = makeAdapter();
+    const command = { type: "commands/list" as const, cwd: "/workspace" };
+    expect(adapter.buildCommandPlan(command)).toMatchObject({ kind: "noop" });
+    completeHandshake(adapter, { commands: { list: true } });
+    expect(adapter.buildCommandPlan(command)).toMatchObject({
+      kind: "request",
+      method: "commands/list",
+      params: { cwd: "/workspace" },
+    });
+  });
+});
+
 describe("skills/configure", () => {
   it("is a noop until the handshake declares skills.configure", () => {
     const adapter = makeAdapter();

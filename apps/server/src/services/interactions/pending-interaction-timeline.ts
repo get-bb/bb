@@ -3,12 +3,14 @@ import type {
   ApprovalPendingInteraction,
   PendingInteraction,
   PendingInteractionApprovalSubject,
+  ProviderApprovalPendingInteraction,
   ThreadEventItemApprovalStatus,
   ThreadEventItem,
   ThreadEventScope,
 } from "@bb/domain";
 import {
   isApprovalPendingInteraction,
+  isServerPendingInteraction,
   toInteractionLifecycle,
   turnScope,
   threadScope,
@@ -122,10 +124,13 @@ function approvalItemSubject(
 }
 
 function approvalItemWriteFor(interaction: PendingInteraction): {
-  interaction: ApprovalPendingInteraction;
+  interaction: ProviderApprovalPendingInteraction;
   item: ApprovalTimelineItem;
 } | null {
-  if (!isApprovalPendingInteraction(interaction)) {
+  if (
+    !isApprovalPendingInteraction(interaction) ||
+    isServerPendingInteraction(interaction)
+  ) {
     return null;
   }
   const subject = approvalItemSubject(interaction);

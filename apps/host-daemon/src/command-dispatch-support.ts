@@ -9,6 +9,7 @@ import {
   COMPETING_TURN_ERROR_CODE,
   type EnvironmentHookProgressMessage,
   type HostDaemonCommand,
+  type HostDaemonContributedEnvEntry,
   type ProviderHealthResult,
   type ProviderUsageResult,
   type HostDaemonBridgeLaunch,
@@ -19,6 +20,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import type {
+  CommandListResult,
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
@@ -58,10 +60,16 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  listCommands: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd: string;
+  }) => Promise<CommandListResult>;
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

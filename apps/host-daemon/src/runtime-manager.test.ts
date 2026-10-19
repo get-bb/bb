@@ -228,6 +228,7 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    listCommands: vi.fn(async () => ({ commands: [] })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {

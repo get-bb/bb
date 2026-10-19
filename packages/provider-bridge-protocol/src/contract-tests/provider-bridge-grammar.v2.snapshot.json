@@ -155,6 +155,10 @@
       "diff": "required",
       "providerTurnId": "optional"
     },
+    "turn.mainRun": {
+      "kind": "required",
+      "state": "required"
+    },
     "turn.open": {
       "kind": "required",
       "providerTurnId": "optional",
@@ -302,7 +306,8 @@
     "approvalEnforcedBy": "default",
     "grammarVersions": "default",
     "steerMode": "default",
-    "skills": "default"
+    "skills": "default",
+    "commands": "default"
   },
   "recoveryNotification": {
     "threadId": "optional",
@@ -311,6 +316,7 @@
     "retryable": "required"
   },
   "requestMethods": [
+    "commands/list",
     "initialize",
     "model/list",
     "provider/health",

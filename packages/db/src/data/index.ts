@@ -296,6 +296,7 @@ export {
   getHighWaterMarks,
   findStoredEventRow,
   getActiveStoredTurnId,
+  isStoredTurnMainRunIdle,
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
@@ -396,6 +397,7 @@ export type {
 } from "./events.js";
 
 export {
+  countTerminalSessions,
   createTerminalSession,
   getTerminalSession,
   listTerminalSessions,
@@ -414,6 +416,7 @@ export {
   getPendingInteraction,
   getPendingInteractionByProviderRequest,
   interruptPendingInteractionsForThreadIds,
+  interruptServerPendingInteractionsForThread,
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,

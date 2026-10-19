@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import type { HistoryEntry } from "./history-prompt.js";
 import plugin from "./server.js";
+import { promptLibraryRpcContract } from "./contract.js";
+import { STARRED_PROMPT_MIGRATIONS } from "./store.js";
 
 function text(value: string): HistoryEntry["input"] {
   return [{ type: "text", text: value, mentions: [] }];
@@ -47,9 +49,12 @@ function historyList(history: HistoryEntry[]) {
   });
 }
 
-async function setup(entries: readonly HistoryEntry[]) {
+async function setup(
+  entries: readonly HistoryEntry[],
+  override?: ReturnType<typeof historyList>,
+) {
   const history = [...entries];
-  const list = historyList(history);
+  const list = override ?? historyList(history);
   const fake = createFakePluginHost({
     pluginId: "prompt-library",
     sdk: {
@@ -79,7 +84,264 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("prompt library server", () => {
+  it("warms history without a browser and serves saved and recent prompts while older pages are blocked", async () => {
+    const first =
+      deferred<Awaited<ReturnType<ReturnType<typeof historyList>>>>();
+    const older =
+      deferred<Awaited<ReturnType<ReturnType<typeof historyList>>>>();
+    const list = historyList([])
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => older.promise);
+    const { call, harness } = await setup([], list);
+    const saved = promptLibraryRpcContract.star.output.parse(
+      await call("star", { prompt: draft("Saved review") }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(list).toHaveBeenCalledTimes(1);
+    const search = (query = "") =>
+      call("search", { ...GLOBAL, query, waitForHistory: false });
+    await expect(search()).resolves.toMatchObject({
+      prompts: [{ ...saved, kind: "starred" }],
+      loading: true,
+    });
+    await Promise.all([search(), search()]);
+    expect(list).toHaveBeenCalledTimes(1);
+    first.resolve({
+      entries: [entry("recent", 2, "Recent review")],
+      nextCursor: "older",
+    });
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    await expect(search()).resolves.toMatchObject({
+      prompts: [{ kind: "starred" }, { id: "recent" }],
+      loading: true,
+    });
+    await expect(search("ancient")).resolves.toMatchObject({
+      prompts: [],
+      loading: true,
+    });
+    older.resolve({
+      entries: [entry("old", 1, "Ancient review")],
+      nextCursor: null,
+    });
+    await vi.waitFor(async () =>
+      expect(await search("ancient")).toMatchObject({
+        prompts: [{ id: "old" }],
+        loading: false,
+        historyError: null,
+      }),
+    );
+    expect(list).toHaveBeenCalledTimes(2);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 10_000);
+    await expect(
+      call("search", {
+        ...GLOBAL,
+        query: "ancient",
+        waitForHistory: false,
+        refreshHistory: false,
+      }),
+    ).resolves.toMatchObject({ loading: false, prompts: [{ id: "old" }] });
+    expect(list).toHaveBeenCalledTimes(2);
+    await harness.lifecycle.dispose();
+  });
+
+  it("keeps available prompts on a failed older page and resumes that page on retry", async () => {
+    const list = historyList([])
+      .mockResolvedValueOnce({
+        entries: [entry("recent", 2, "Recent review")],
+        nextCursor: "older",
+      })
+      .mockRejectedValueOnce(new Error("History offline"))
+      .mockResolvedValueOnce({
+        entries: [entry("old", 1, "Ancient review")],
+        nextCursor: null,
+      });
+    const { call, harness } = await setup([], list);
+    await expect(call("search", { ...GLOBAL, query: "" })).rejects.toThrow(
+      "History offline",
+    );
+    await expect(
+      call("search", {
+        ...GLOBAL,
+        query: "",
+        waitForHistory: false,
+        refreshHistory: false,
+      }),
+    ).resolves.toMatchObject({
+      prompts: [{ id: "recent" }],
+      loading: false,
+      historyError: "History offline",
+    });
+    await call("search", {
+      ...GLOBAL,
+      query: "",
+      waitForHistory: false,
+      refreshHistory: true,
+    });
+    await vi.waitFor(async () =>
+      expect(
+        await call("search", {
+          ...GLOBAL,
+          query: "",
+          waitForHistory: false,
+          refreshHistory: false,
+        }),
+      ).toMatchObject({
+        prompts: [{ id: "recent" }, { id: "old" }],
+        loading: false,
+        historyError: null,
+      }),
+    );
+    expect(list.mock.calls[2]?.[0]?.cursor).toBe("older");
+    await harness.lifecycle.dispose();
+  });
+
+  it.each(["RPC", "CLI"] as const)(
+    "preserves prompt identity, content and usage when naming through %s",
+    async (surface) => {
+      const { call, harness } = await setup([]);
+      const saved = promptLibraryRpcContract.star.output.parse(
+        await call("star", {
+          prompt: draft("review this diff"),
+          title: "  Review  ",
+        }),
+      );
+      await call("markUsed", { id: saved.id });
+      const search = async () =>
+        promptLibraryRpcContract.search.output.parse(
+          await call("search", { ...GLOBAL, query: "" }),
+        );
+      const before = (await search()).prompts[0]!;
+      expect(before).toMatchObject({ title: "Review" });
+      const rename = async (id: string, title: string | null) => {
+        if (surface === "RPC") return call("setTitle", { id, title });
+        const result = await harness.behavior.runCli([
+          "title",
+          id,
+          ...(title === null ? ["--clear"] : [title]),
+          "--json",
+        ]);
+        if (result.exitCode !== 0)
+          throw new Error(result.stderr ?? result.stdout);
+        return JSON.parse(result.stdout ?? "");
+      };
+      await rename(saved.id, "  Inspect  ");
+      expect((await search()).prompts[0]).toEqual({
+        ...before,
+        title: "Inspect",
+        titleSnippet: { text: "Inspect", highlights: [] },
+      });
+      expect(
+        await call("star", {
+          prompt: draft("review this diff"),
+          title: "Ignored duplicate title",
+        }),
+      ).toEqual(saved);
+      expect((await search()).prompts[0]).toMatchObject({ title: "Inspect" });
+      await rename(saved.id, null);
+      expect((await search()).prompts[0]).toEqual({
+        ...before,
+        title: null,
+        titleSnippet: null,
+      });
+      await expect(rename("missing", "Title")).rejects.toThrow();
+      await expect(rename(saved.id, "x".repeat(121))).rejects.toThrow();
+      await rename(saved.id, "Persisted");
+      const replacement = await harness.lifecycle.reload(plugin);
+      const reloaded = promptLibraryRpcContract.search.output.parse(
+        await replacement.harness.behavior.callRpc("search", {
+          ...GLOBAL,
+          query: "",
+        }),
+      );
+      expect(reloaded.prompts[0]).toEqual({
+        ...before,
+        title: "Persisted",
+        titleSnippet: { text: "Persisted", highlights: [] },
+      });
+      await replacement.harness.lifecycle.dispose();
+    },
+  );
+
+  it("searches title and body, prefers exact titles, and immediately reflects renamed titles", async () => {
+    const { call } = await setup([
+      entry("body", Date.now(), "Ship this branch carefully"),
+    ]);
+    const saved = promptLibraryRpcContract.star.output.parse(
+      await call("star", {
+        prompt: draft("Open a pull request"),
+        title: "Ship this branch",
+      }),
+    );
+    const search = async (query: string) =>
+      promptLibraryRpcContract.search.output.parse(
+        await call("search", { ...GLOBAL, query }),
+      );
+    const result = await search("ship this branch");
+    expect(result.prompts.map((row) => row.id)).toEqual([saved.id, "body"]);
+    expect(result.prompts[0]).toMatchObject({
+      titleSnippet: {
+        text: "Ship this branch",
+        highlights: [
+          [0, 4],
+          [5, 9],
+          [10, 16],
+        ],
+      },
+    });
+    expect((await search("ship request")).prompts.map((row) => row.id)).toEqual(
+      [saved.id],
+    );
+    expect((await search("pull request")).prompts.map((row) => row.id)).toEqual(
+      [saved.id],
+    );
+    await call("setTitle", { id: saved.id, title: "Publish" });
+    expect((await search("ship")).prompts.map((row) => row.id)).toEqual([
+      "body",
+    ]);
+    expect((await search("publish")).prompts.map((row) => row.id)).toEqual([
+      saved.id,
+    ]);
+  });
+
+  it("upgrades existing saved prompts without changing their content or usage", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "prompt-library",
+    });
+    const db = bb.storage.database();
+    bb.storage.migrate(db, STARRED_PROMPT_MIGRATIONS.slice(0, 1));
+    db.prepare("INSERT INTO starred_prompts VALUES (?, ?, ?, ?, ?)").run(
+      "legacy",
+      JSON.stringify(draft("Original prompt")),
+      "Original prompt",
+      100,
+      200,
+    );
+    await plugin(bb);
+    const result = await harness.behavior.runCli(["list", "--json"]);
+    expect(JSON.parse(result.stdout ?? "")).toEqual([
+      {
+        id: "legacy",
+        title: null,
+        prompt: draft("Original prompt"),
+        createdAt: 100,
+        lastUsedAt: 200,
+      },
+    ]);
+    await harness.lifecycle.dispose();
+  });
+
   it("searches a full pasted prompt including text beyond 256 characters", async () => {
     const prefix =
       "Please verify the changes on this branch and explain the results. ".repeat(
@@ -290,6 +552,8 @@ describe("prompt library server", () => {
     }
     await expect(call("search", { ...GLOBAL, query: "" })).resolves.toEqual({
       prompts: [],
+      loading: false,
+      historyError: null,
     });
   });
 
@@ -377,7 +641,7 @@ describe("prompt library server", () => {
     };
 
     expect(result.prompts.map((row) => row.id)).toEqual(["old"]);
-    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenCalledTimes(3);
   });
 
   it("lists the 30 newest prompts without a query", async () => {
@@ -550,13 +814,15 @@ describe("prompt library server", () => {
       "review",
       "this",
       "diff",
+      "--title",
+      "Review",
       "--json",
     ]);
     expect(starred.exitCode).toBe(0);
     const { id } = JSON.parse(starred.stdout ?? "") as { id: string };
 
     const list = await harness.behavior.runCli(["list"]);
-    expect(list.stdout).toBe(`${id}  review this diff`);
+    expect(list.stdout).toBe(`${id}  Review — review this diff`);
 
     const search = await harness.behavior.runCli([
       "search",
@@ -565,6 +831,8 @@ describe("prompt library server", () => {
     ]);
     expect(JSON.parse(search.stdout ?? "")).toEqual({
       prompts: [expect.objectContaining({ kind: "recent", id: "h1" })],
+      loading: false,
+      historyError: null,
     });
 
     await expect(

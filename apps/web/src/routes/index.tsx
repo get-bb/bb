@@ -1318,7 +1318,7 @@ function LandingPage() {
         }
       />
 
-      <SiteFooter />
+      <SiteFooter current="/" />
     </div>
   );
 }

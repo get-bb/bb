@@ -146,11 +146,21 @@ deltas and owns every timeline invariant:
   (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
   turn; item/stream deltas never do. Accepted input queues until a turn
   opens and drains into it.
+- **Held turns.** A bridge that keeps a logical turn open after the
+  provider's main run ended (Claude Code holds it while background agents
+  or workflows run) sends `turn.mainRun { state: "idle" }`, and
+  `turn.mainRun { state: "running" }` when the main run starts again. The
+  assembler records it as `turn/mainRun/updated` on the open turn. The
+  thread stays active, but the server delivers `queue-if-active` messages
+  into the held turn as steers instead of queueing them until the turn
+  completes.
 - **Item lifecycle.** Delta-first streams get a synthesized `item/started`;
   `item.close` always carries the full terminal item shape and is applied
   uniformly (paired close, reclassifying dual-settle, or bare
   close-without-open); repeated closes for a settled provider-identified
-  key are deduped and an explicit reopen reuses the same bb id.
+  key are deduped and an explicit reopen reuses the same bb id. A failed
+  `fileChange` close keeps its non-blank `resultText` as the item's
+  `error`, which the timeline shows before any proposed diff.
 - **Accumulation.** Streamed text, cumulative output snapshots (diffed into
   deltas/resets), and progress-event throttling.
 - **One streaming dialect.** Every text stream is an item keyed like every
@@ -303,6 +313,26 @@ and runs without injected skills, so a bridge that answers unknown methods
 with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
 Conformance rule `skills/configure-declared` pins both directions: declared →
 the request must succeed; undeclared → the request must be refused.
+
+### Command catalog
+
+`commands/list { cwd }` returns `{ commands: [{ name, description, inputHint? }] }`,
+the same shape as the `bb/provider-commands` thread state: the slash commands
+the provider offers in `cwd` before any thread runs there. The server merges
+them into the project command catalog (the new-thread composer's `/` menu,
+`bb project commands`), adding only names the native-root scan does not
+already list. The runtime sends it **only to a bridge whose handshake declares
+`commands: { list: true }`** and answers an empty list for any other bridge.
+Answer from the provider's own report without starting a model turn, and
+filter it with the same rules the bridge applies to `bb/provider-commands`, so
+a thread's menu does not change when its first turn starts. Conformance rule
+`commands/list-declared` pins both directions, as for `skills/configure`.
+
+For a new thread without a project, the server sends `provider.list_commands`
+with `cwd: null`. The host daemon probes from a dedicated empty
+`provider-command-catalog` directory under its data directory. The bridge still
+receives an absolute working directory, so global provider commands are available
+before a personal workspace exists. Selected projects use their workspace path.
 
 ### Recovery hints
 

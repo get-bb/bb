@@ -369,6 +369,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     },
     originDefaultBranch: "origin/main",
   },
+  "host.resolve_directories": {
+    entries: [
+      {
+        path: "/home/user/code/app",
+        realPath: "/home/user/code/app",
+        gitCommonDir: "/home/user/code/app/.git",
+      },
+      { path: "/home/user/missing", realPath: null, gitCommonDir: null },
+    ],
+  },
   "host.list_branch_options": {
     branches: ["main"],
     branchesTruncated: false,
@@ -428,6 +438,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     selectedOnlyModels: [],
+  },
+  "provider.list_commands": {
+    commands: [
+      {
+        name: "simplify",
+        description: "Simplify the changed code",
+        inputHint: "[<target>]",
+      },
+    ],
   },
   "provider.health": {
     supported: true,
@@ -1256,7 +1275,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(241);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(244);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1826,6 +1845,7 @@ describe("host-daemon command schemas", () => {
       },
       {
         type: "provider.list_models",
+        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: BRIDGE_LAUNCH,
       },
@@ -2211,6 +2231,7 @@ describe("host-daemon command schemas", () => {
   it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
+      contributedEnv: [],
       bridgeLaunch: ACP_BRIDGE_LAUNCH,
       providerId: "acp-local",
       cwd: "/tmp/workspace",
@@ -2338,6 +2359,7 @@ describe("host-daemon command schemas", () => {
 
     const providerListModelsCommand = {
       type: "provider.list_models",
+      contributedEnv: [],
       providerId: "echo-agent",
       bridgeLaunch,
       cwd: "/tmp/workspace",

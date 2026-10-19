@@ -228,6 +228,14 @@ describe("CLI boundaries", () => {
     expect(top.exitCode).toBe(0);
     expect(top.stdout).toContain("bb browser-automation open");
     expect(top.stdout).toContain("bb browser-automation screenshot");
+    expect(top.stdout).toContain(
+      "run, pages, and screenshot renew expiry to 30 minutes",
+    );
+    expect(top.stdout).toContain("capped at 8 hours from creation");
+    expect(top.stdout).toContain(
+      "non-renewable control lease/connection deadline",
+    );
+    expect(top.stdout).toContain("list and live preview do not renew expiry");
 
     const runHelp = await invoke(["run", "--help"]);
     expect(runHelp.exitCode).toBe(0);

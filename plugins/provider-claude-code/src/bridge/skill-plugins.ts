@@ -36,6 +36,16 @@ function pluginDirectoryName(root: ClaudeSkillPluginRoot): string {
 
 export const CLAUDE_SKILL_PLUGIN_NAME = "bb-global-skills";
 
+const SUFFIXED_SKILL_PLUGIN_NAME = new RegExp(
+  `^${CLAUDE_SKILL_PLUGIN_NAME}-[0-9a-f]{8}$`,
+);
+
+export function isClaudeSkillPluginName(name: string): boolean {
+  return (
+    name === CLAUDE_SKILL_PLUGIN_NAME || SUFFIXED_SKILL_PLUGIN_NAME.test(name)
+  );
+}
+
 function pluginNameFor(
   root: ClaudeSkillPluginRoot,
   takenBy: ReadonlyMap<string, string>,

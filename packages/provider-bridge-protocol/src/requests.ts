@@ -3,6 +3,7 @@ import {
   dynamicToolSchema,
   instructionModeSchema,
   promptInputSchema,
+  threadProviderCommandsStateSchema,
 } from "@bb/domain";
 import { z } from "zod";
 import { bridgeExecutionOptionsSchema } from "./execution-options.js";
@@ -10,6 +11,7 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
+  commandList: "commands/list",
   providerHealth: "provider/health",
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
@@ -38,8 +40,18 @@ const sessionConstructionFields = {
 };
 
 export const modelListParamsSchema = z
-  .object({ cwd: z.string().min(1).optional() })
+  .object({
+    cwd: z.string().min(1).optional(),
+    envVars: z.record(z.string(), z.string()).optional(),
+  })
   .passthrough();
+
+export const commandListParamsSchema = z
+  .object({ cwd: z.string().min(1) })
+  .passthrough();
+
+export const commandListResultSchema = threadProviderCommandsStateSchema;
+export type CommandListResult = z.infer<typeof commandListResultSchema>;
 
 export const threadStartParamsSchema = z
   .object({

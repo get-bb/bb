@@ -70,13 +70,17 @@ export function resolveContainedPreviewPath(
   rootPath: string,
   relativeFile: string,
 ): string {
-  const root = path.resolve(rootPath);
-  const absolute = path.resolve(root, relativeFile);
-  const relative = path.relative(root, absolute);
+  const pathApi =
+    path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
+      ? path.win32
+      : path.posix;
+  const root = pathApi.resolve(rootPath);
+  const absolute = pathApi.resolve(root, relativeFile);
+  const relative = pathApi.relative(root, absolute);
   if (
     relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
+    relative.startsWith(`..${pathApi.sep}`) ||
+    pathApi.isAbsolute(relative)
   ) {
     throw new Error(`"file" must not escape its source: ${relativeFile}`);
   }

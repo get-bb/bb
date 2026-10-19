@@ -576,6 +576,20 @@ const pendingInteractionPluginOriginSchema = z.object({
   rendererId: z.string().min(1),
 });
 
+const pendingInteractionServerOriginSchema = z.object({
+  kind: z.literal("server"),
+});
+
+export const serverApprovalRequestSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("environment_directory_move"),
+    path: z.string().min(1),
+    fromEnvironmentId: z.string().min(1),
+    requestTurnId: z.string().min(1),
+  }),
+]);
+export type ServerApprovalRequest = z.infer<typeof serverApprovalRequestSchema>;
+
 export const pendingInteractionCreateSchema = z.object({
   threadId: z.string().min(1),
   turnId: z.string().min(1),
@@ -612,7 +626,7 @@ const approvalPendingInteractionSchema =
     payload: approvalPendingInteractionPayloadSchema,
     resolution: approvalPendingInteractionResolutionSchema.nullable(),
   });
-export type ApprovalPendingInteraction = z.infer<
+export type ProviderApprovalPendingInteraction = z.infer<
   typeof approvalPendingInteractionSchema
 >;
 
@@ -653,13 +667,37 @@ export type PluginPendingInteraction = z.infer<
   typeof pluginPendingInteractionSchema
 >;
 
+const serverApprovalPendingInteractionSchema =
+  pendingInteractionBaseSchema.extend({
+    turnId: z.null(),
+    origin: pendingInteractionServerOriginSchema,
+    request: serverApprovalRequestSchema,
+    payload: approvalPendingInteractionPayloadSchema,
+    resolution: approvalPendingInteractionResolutionSchema.nullable(),
+  });
+export type ServerApprovalPendingInteraction = z.infer<
+  typeof serverApprovalPendingInteractionSchema
+>;
+
+export type ApprovalPendingInteraction =
+  | ProviderApprovalPendingInteraction
+  | ServerApprovalPendingInteraction;
+
 export const pendingInteractionSchema = z.union([
   providerPendingInteractionSchema,
   pluginPendingInteractionSchema,
+  serverApprovalPendingInteractionSchema,
 ]);
 export type PendingInteraction =
   | ProviderPendingInteraction
-  | PluginPendingInteraction;
+  | PluginPendingInteraction
+  | ServerApprovalPendingInteraction;
+
+export function isServerPendingInteraction(
+  interaction: PendingInteraction,
+): interaction is ServerApprovalPendingInteraction {
+  return interaction.origin?.kind === "server";
+}
 
 export function isPluginPendingInteraction(
   interaction: PendingInteraction,
@@ -702,7 +740,10 @@ const approvalInteractionLifecycleRecordPayloadSchema =
 
 const approvalInteractionLifecycleSchema =
   interactionLifecycleRecordBaseSchema.extend({
-    origin: interactionLifecycleProviderOriginSchema,
+    origin: z.union([
+      interactionLifecycleProviderOriginSchema,
+      pendingInteractionServerOriginSchema,
+    ]),
     payload: approvalInteractionLifecycleRecordPayloadSchema,
     resolution: approvalPendingInteractionResolutionSchema.nullable(),
   });
@@ -777,6 +818,16 @@ export function toInteractionLifecycle(
   };
   if (isPluginPendingInteraction(interaction)) {
     const { data: _data, ...payload } = interaction.payload;
+    return {
+      ...base,
+      origin: interaction.origin,
+      payload,
+      resolution: interaction.resolution,
+    };
+  }
+  if (isServerPendingInteraction(interaction)) {
+    const { availableDecisions: _availableDecisions, ...payload } =
+      interaction.payload;
     return {
       ...base,
       origin: interaction.origin,

@@ -26,47 +26,71 @@ function candidate(entry: HistoryEntry): HistoryCandidate {
   };
 }
 
-export function createHistoryCache(list: ListHistory) {
+export function createHistoryCache(
+  list: ListHistory,
+  onEntries: (entries: readonly HistoryCandidate[]) => Promise<void>,
+  signal: AbortSignal,
+) {
   let candidates: HistoryCandidate[] = [];
   const knownIds = new Set<string>();
   let loaded = false;
-  let pending: Promise<unknown> = Promise.resolve();
+  let olderCursor: string | null = null;
 
-  async function loadUnknown(limit: string): Promise<HistoryCandidate[]> {
+  async function commit(entries: HistoryCandidate[], prepend: boolean) {
+    signal.throwIfAborted();
+    await onEntries(entries);
+    for (const entry of entries) knownIds.add(entry.id);
+    candidates = prepend
+      ? [...entries, ...candidates]
+      : [...candidates, ...entries];
+  }
+
+  async function load() {
+    if (!loaded) {
+      do {
+        signal.throwIfAborted();
+        const page = await list({
+          limit: olderCursor === null ? NEWER_PAGE_LIMIT : FULL_PAGE_LIMIT,
+          ...(olderCursor === null ? {} : { cursor: olderCursor }),
+          signal,
+        });
+        await commit(
+          page.entries
+            .filter((entry) => !knownIds.has(entry.id))
+            .map(candidate),
+          false,
+        );
+        olderCursor = page.nextCursor;
+        loaded = olderCursor === null;
+      } while (!loaded);
+      return;
+    }
     const entries: HistoryCandidate[] = [];
     const seen = new Set<string>();
     let cursor: string | null = null;
     do {
+      signal.throwIfAborted();
       const page = await list({
-        limit,
-        ...(cursor !== null ? { cursor } : {}),
+        limit: NEWER_PAGE_LIMIT,
+        ...(cursor === null ? {} : { cursor }),
+        signal,
       });
       for (const entry of page.entries) {
-        if (knownIds.has(entry.id)) return entries;
+        if (knownIds.has(entry.id)) {
+          await commit(entries, true);
+          return;
+        }
         if (seen.has(entry.id)) continue;
         seen.add(entry.id);
         entries.push(candidate(entry));
       }
       cursor = page.nextCursor;
     } while (cursor !== null);
-    return entries;
+    await commit(entries, true);
   }
 
   return {
-    refresh(): Promise<readonly HistoryCandidate[]> {
-      const next = pending
-        .catch(() => {})
-        .then(async () => {
-          const entries = await loadUnknown(
-            loaded ? NEWER_PAGE_LIMIT : FULL_PAGE_LIMIT,
-          );
-          for (const entry of entries) knownIds.add(entry.id);
-          candidates = [...entries, ...candidates];
-          loaded = true;
-          return candidates;
-        });
-      pending = next;
-      return next;
-    },
+    snapshot: (): readonly HistoryCandidate[] => candidates,
+    refresh: load,
   };
 }

@@ -331,10 +331,24 @@ type BuildDownloadEventPropertiesArgs = {
 function buildDownloadEventProperties(
   args: BuildDownloadEventPropertiesArgs,
 ): DownloadEventProperties {
-  const referrer = args.request.headers.get("referer");
+  const globalPrivacyControl = args.request.headers.get("Sec-GPC") === "1";
+  const requestUrl = new URL(args.requestUrl);
+  let referrer = args.request.headers.get("referer");
+  if (globalPrivacyControl) {
+    requestUrl.searchParams.delete("gclid");
+    if (referrer) {
+      try {
+        const referrerUrl = new URL(referrer);
+        referrerUrl.searchParams.delete("gclid");
+        referrer = referrerUrl.href;
+      } catch {
+        referrer = null;
+      }
+    }
+  }
   const referrerSearchParams = readReferrerSearchParams(referrer);
   const properties: DownloadEventProperties = {
-    $current_url: truncateProperty(args.requestUrl.href),
+    $current_url: truncateProperty(requestUrl.href),
     download_target: args.platform,
     placement: parseDownloadPlacement(args.requestUrl.searchParams),
     tracking_source: TRACKING_SOURCE,
@@ -347,7 +361,7 @@ function buildDownloadEventProperties(
   addUtmProperties({
     properties,
     referrerSearchParams,
-    requestSearchParams: args.requestUrl.searchParams,
+    requestSearchParams: requestUrl.searchParams,
   });
 
   return properties;

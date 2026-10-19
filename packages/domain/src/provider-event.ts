@@ -422,6 +422,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     changes: z.array(threadEventFileChangeSchema),
     status: threadEventItemStatusSchema,
     approvalStatus: threadEventItemApprovalStatusSchema,
+    error: z.string().optional(),
     ...itemPresentationField,
     parentToolCallId: z.string().optional(),
   }),
@@ -627,6 +628,12 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string(),
     plan: z.array(threadEventPlanStepSchema),
     explanation: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("turn/mainRun/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    state: z.enum(["idle", "running"]),
   }),
   z.object({
     type: z.literal("turn/diff/updated"),

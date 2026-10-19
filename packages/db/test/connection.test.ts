@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { resourceUsage } from "node:process";
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
@@ -12,6 +13,7 @@ import {
   type SlowDbQueryLogger,
   type SlowDbQueryLogFields,
 } from "../src/connection.js";
+import { createMigratedConnection } from "../src/testing.js";
 import { migrate } from "../src/migrate.js";
 import { hosts } from "../src/schema.js";
 
@@ -89,24 +91,26 @@ describe("createConnection", () => {
           outsideAfter[key] - outsideBefore[key],
         );
       }
-      expect(diagnostics.wal).toEqual({ sizeBytes: null });
+      expect(diagnostics.wal).toEqual({ sizeBytes: null, sampledAt: null });
     } finally {
       db.$client.close();
     }
   });
 
-  it("samples WAL size with the live diagnostic gate on already-prepared statements", () => {
-    const directory = mkdtempSync(join(tmpdir(), "bb-db-attribution-"));
-    const databasePath = join(directory, "bb.db");
+  it("samples WAL asynchronously and reuses timestamped samples across slow-query bursts", async () => {
     const logger = new CapturingSlowQueryLogger();
     let diagnosticsEnabled = false;
+    const directory = mkdtempSync(join(tmpdir(), "bb-wal-sampler-"));
+    const databasePath = join(directory, "bb.db");
+    const template = createMigratedConnection();
+    writeFileSync(databasePath, template.$client.serialize());
+    template.$client.close();
     const db = createConnection(databasePath, {
       slowQueryLogger: logger,
       slowQueryThresholdMs: 0,
       slowQueryDiagnosticsEnabled: () => diagnosticsEnabled,
     });
     try {
-      migrate(db);
       db.$client.exec("CREATE TABLE diagnostic_values (value INTEGER)");
       db.$client.exec("INSERT INTO diagnostic_values VALUES (0)");
       const update = db.$client.prepare(
@@ -115,29 +119,43 @@ describe("createConnection", () => {
       logger.clear();
       update.run();
       expect(getOnlyInfoLog(logger).fields).not.toHaveProperty("diagnostics");
-
-      for (let i = 0; i < 2; i++) {
-        diagnosticsEnabled = true;
-        logger.clear();
-        update.run();
-        expect(getOnlyInfoLog(logger).fields.diagnostics?.wal).toEqual({
-          sizeBytes: statSync(`${databasePath}-wal`).size,
-        });
-        expect(statSync(`${databasePath}-wal`).size).toBeGreaterThan(0);
-
-        diagnosticsEnabled = false;
-        logger.clear();
-        update.run();
-        expect(getOnlyInfoLog(logger).fields).not.toHaveProperty("diagnostics");
-      }
-
       diagnosticsEnabled = true;
-      db.$client.pragma("journal_mode = DELETE");
       logger.clear();
       update.run();
       expect(getOnlyInfoLog(logger).fields.diagnostics?.wal).toEqual({
         sizeBytes: null,
+        sampledAt: null,
       });
+      await expect
+        .poll(() => {
+          logger.clear();
+          update.run();
+          return getOnlyInfoLog(logger).fields.diagnostics?.wal.sizeBytes;
+        })
+        .toBeGreaterThan(0);
+      const sample = getOnlyInfoLog(logger).fields.diagnostics!.wal;
+      expect(sample.sampledAt).toEqual(expect.any(String));
+      for (let i = 0; i < 100; i++) update.run();
+      for (const log of logger.infoLogs) {
+        expect(log.fields.diagnostics?.wal).toEqual(sample);
+      }
+      expect(statSync(`${db.$client.name}-wal`).size).toBeGreaterThan(
+        sample.sizeBytes!,
+      );
+      diagnosticsEnabled = false;
+      logger.clear();
+      update.run();
+      expect(getOnlyInfoLog(logger).fields).not.toHaveProperty("diagnostics");
+      db.$client.pragma("journal_mode = DELETE");
+      await delay(1_050);
+      diagnosticsEnabled = true;
+      await expect
+        .poll(() => {
+          logger.clear();
+          update.run();
+          return getOnlyInfoLog(logger).fields.diagnostics?.wal;
+        })
+        .toEqual({ sizeBytes: null, sampledAt: expect.any(String) });
     } finally {
       db.$client.close();
       rmSync(directory, { recursive: true, force: true });

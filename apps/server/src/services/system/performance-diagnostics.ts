@@ -2,7 +2,6 @@ import { getExperiments, type DbConnection } from "@bb/db";
 import { startPerformanceDiagnostics } from "@bb/process-utils";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
-import { runEventLoopWorkSync } from "./event-loop-work.js";
 
 export async function startGatedPerformanceDiagnostics(options: {
   allowed: boolean;
@@ -27,7 +26,6 @@ export async function startGatedPerformanceDiagnostics(options: {
           recorder = await startPerformanceDiagnostics({
             dataDir: options.dataDir,
             logger: options.logger,
-            runSynchronousWork: runEventLoopWorkSync,
           });
         }
         if (!enabled && recorder !== null) {

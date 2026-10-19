@@ -18,6 +18,7 @@ export const appSettingsSchema = z
     showKeyboardHints: z.boolean(),
     showGitChanges: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
+    terminalCopyOnSelect: z.boolean(),
     confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
     keepHistoryAfterContextClear: z.boolean(),
@@ -56,6 +57,7 @@ export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
   showGitChanges: true,
   steerActiveThreadOnEnter: true,
+  terminalCopyOnSelect: true,
   confirmThreadArchive: true,
   showDiagnosticEvents: false,
   keepHistoryAfterContextClear: false,
@@ -78,6 +80,7 @@ export const disabledProviderIdsSchema = z.array(z.string().min(1));
 
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
+    terminalCopyOnSelect: z.boolean().optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
@@ -89,6 +92,7 @@ export const appSettingsUpdateSchema = z.union([
     earlyAdopter: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    terminalCopyOnSelect: z.boolean().optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),

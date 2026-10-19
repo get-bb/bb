@@ -1,7 +1,4 @@
-import {
-  getStoredProviderModelCatalog,
-  updateHost,
-} from "@bb/db";
+import { getStoredProviderModelCatalog, updateHost } from "@bb/db";
 import type { JsonValue, ProviderFork } from "@bb/domain";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -36,6 +33,7 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { setServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
+import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 
 const BASE_NOW = 1_800_000_000_000;
 const SECOND = 1_000;
@@ -218,6 +216,71 @@ describe("provider model catalog store", () => {
       });
       expect(modelIds(response)).toEqual([]);
       expect(host.listRequests()).toHaveLength(2);
+    });
+  });
+
+  it("lists models with the provider's plugin environment and refetches when that environment changes", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-catalog-env" });
+      const contexts: unknown[] = [];
+      let poolToken: string | null = "token-a";
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: () => undefined,
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+        invokeAgentTool: async () => ({ success: false, contentItems: [] }),
+        resolveProviderEnv: async ({ providerId, context }) => {
+          contexts.push(context);
+          return {
+            entries:
+              providerId !== "codex" || poolToken === null
+                ? []
+                : [
+                    {
+                      name: "CODEX_OPENAI_BASE_URL",
+                      value: { serverPath: "/pool/v1" },
+                      source: { plugin: "account-pool" },
+                      reason: "pooled",
+                    },
+                    {
+                      name: "CODEX_POOL_AUTH_TOKEN",
+                      value: poolToken,
+                      source: { plugin: "account-pool" },
+                      reason: "pooled",
+                    },
+                  ],
+          };
+        },
+      });
+      try {
+        await host.read("codex");
+        await host.read("codex");
+        poolToken = "token-b";
+        await host.read("codex");
+        poolToken = null;
+        await host.read("codex");
+
+        expect(contexts[0]).toEqual({
+          threadId: null,
+          projectId: null,
+          hostId: host.hostId,
+        });
+        expect(
+          host
+            .listRequests("codex")
+            .map((command) =>
+              command.contributedEnv.map((entry) => entry.value),
+            ),
+        ).toEqual([
+          [{ serverPath: "/pool/v1" }, "token-a"],
+          [{ serverPath: "/pool/v1" }, "token-b"],
+          [],
+        ]);
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
     });
   });
 

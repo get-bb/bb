@@ -49,6 +49,7 @@ interface ContextWindowUsageEventArgs {
 
 interface FileChangeItemEventArgs {
   changes: ThreadEventFileChange[];
+  error?: string;
   itemId?: string;
   seq: number;
   status?: ThreadEventItemStatus;
@@ -268,6 +269,7 @@ function contextWindowUsageEvent({
 
 function fileChangeItemEvent({
   changes,
+  error,
   itemId = "file-edit-1",
   seq,
   status,
@@ -285,6 +287,7 @@ function fileChangeItemEvent({
         changes,
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         approvalStatus: null,
+        ...(error === undefined ? {} : { error }),
       },
     },
     meta: {
@@ -903,6 +906,75 @@ describe("buildThreadTimelineFromEvents", () => {
       }),
     );
     expect(row).not.toHaveProperty("statusLabels");
+  });
+
+  it.each([2048, 2049])(
+    "preserves the full %i-character command while bounding inferred summaries",
+    (length) => {
+      const event = createTimelineEventFactory({ threadId: "thread-1" });
+      const prefix = "rg needle src; printf '%s' '";
+      const command = `${prefix}${"x".repeat(length - prefix.length - 1)}'`;
+      const [row] = workRowsOfKind(
+        buildTimelineRows(
+          fromRows([
+            event.turnStarted({ turnId: "turn-1" }),
+            event.commandStarted({ itemId: "bounded", command }),
+            event.commandCompleted({ itemId: "bounded", command, exitCode: 0 }),
+            event.turnCompleted({ turnId: "turn-1" }),
+          ]),
+        ),
+        "command",
+      );
+      if (row === undefined) throw new Error("Missing command row");
+      expect(row.command).toBe(command);
+      expect(row.activityIntents).toEqual(
+        length <= 2048
+          ? [{ type: "search", command, query: "needle", path: "src" }]
+          : [],
+      );
+      expect(
+        buildTimelineRowTitle(row, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).plain,
+      ).toMatch(length <= 2048 ? /^Searched for needle/ : /^Ran rg needle src/);
+    },
+  );
+
+  it("builds the same timeline with or without held-turn main-run updates", () => {
+    const build = (withMainRun: boolean) => {
+      const event = createTimelineEventFactory({ threadId: "thread-1" });
+      const rows = [
+        event.turnStarted({ turnId: "turn-1" }),
+        event.assistantCompleted({ itemId: "msg-1", text: "Waiting." }),
+        ...(withMainRun
+          ? [
+              event.turnMainRunUpdated({ state: "idle" }),
+              event.turnMainRunUpdated({ state: "running" }),
+            ]
+          : []),
+        event.assistantCompleted({ itemId: "msg-2", seq: 5, text: "Done." }),
+      ];
+      return buildThreadTimelineFromEvents({
+        acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+        contextWindowEvents: [],
+        events: fromRows(rows),
+        options: {
+          completedTurnDisplay: "collapse",
+          includeDiagnosticOperations: true,
+          includeNestedRows: true,
+          isLatestPage: true,
+          summarizeShellCommands: true,
+          threadName: "",
+          threadStatus: "active",
+          workspaceRoot: null,
+        },
+      });
+    };
+
+    const withMainRun = build(true);
+    expect(JSON.stringify(withMainRun.rows)).not.toContain("mainRun");
+    expect(withMainRun.rows).toEqual(build(false).rows);
   });
 
   it("shows a shell command as run when shell command summaries are off", () => {
@@ -2860,6 +2932,31 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(fileChangeRowIdByPath(finalRows)).toEqual(
       fileChangeRowIdByPath(initialRows),
     );
+  });
+
+  it("projects a failed file change's error onto each of its rows", () => {
+    const changes: ThreadEventFileChange[] = [
+      { path: "src/a.ts", kind: "update" },
+      { path: "src/b.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" },
+    ];
+    const rows = collectFileChangeRows(
+      buildTimelineRows([
+        turnStartedEvent({ seq: 0 }),
+        fileChangeItemEvent({ changes, seq: 1, type: "item/started" }),
+        fileChangeItemEvent({
+          changes,
+          error: "Could not find the exact text in src/a.ts.",
+          seq: 2,
+          status: "failed",
+          type: "item/completed",
+        }),
+      ]),
+    );
+
+    expect(rows.map((row) => [row.status, row.stderr])).toEqual([
+      ["error", "Could not find the exact text in src/a.ts."],
+      ["error", "Could not find the exact text in src/a.ts."],
+    ]);
   });
 
   it("drops stale file-change rows that are missing from later provider changes", () => {

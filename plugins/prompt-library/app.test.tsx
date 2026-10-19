@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import type { z } from "zod";
+
 import {
   act,
   cleanup,
@@ -14,7 +16,7 @@ import type {
   promptLibraryRpcContract,
   RecentPromptRow,
   StarredPromptRow,
-  SearchPromptsInput,
+  searchPromptsInputSchema,
 } from "./contract.js";
 
 let pickerWidth = 728;
@@ -63,6 +65,8 @@ function draft(value: string) {
 function starredRow(id: string, value: string): StarredPromptRow {
   return {
     kind: "starred",
+    title: null,
+    titleSnippet: null,
     id,
     prompt: draft(value),
     snippet: { text: value, highlights: [] },
@@ -97,14 +101,23 @@ function render(
     recent?: RecentPromptRow[];
   } = {},
 ) {
-  const search = vi.fn(async (_input: SearchPromptsInput) => ({
-    prompts: [
-      ...(options.starred ?? [starredRow("prompt_1", "starred prompt")]),
-      ...(options.recent ?? [recentRow("h1", "recent prompt")]),
-    ],
-  }));
+  const search = vi.fn(
+    async (
+      _input: z.input<typeof searchPromptsInputSchema>,
+    ): Promise<z.output<typeof promptLibraryRpcContract.search.output>> => ({
+      loading: false,
+      historyError: null,
+      prompts: [
+        ...(options.starred ?? [starredRow("prompt_1", "starred prompt")]),
+        ...(options.recent ?? [recentRow("h1", "recent prompt")]),
+      ],
+    }),
+  );
   const star = vi.fn(() => ({ id: "prompt_new" }));
   const unstar = vi.fn(() => ({ unstarred: true }));
+  const setTitle = vi.fn(
+    ({ id, title }: { id: string; title: string | null }) => ({ id, title }),
+  );
   const markUsed = vi.fn(() => null);
   const slot = renderSlot<object, typeof promptLibraryRpcContract>(
     popup,
@@ -116,10 +129,10 @@ function render(
         scope: options.scope ?? { kind: "thread", threadId: "thr_1" },
         text: options.draft ?? "",
       },
-      rpc: { search, star, unstar, markUsed },
+      rpc: { search, star, unstar, markUsed, setTitle },
     },
   );
-  return { slot, search, star, unstar, markUsed };
+  return { slot, search, star, unstar, markUsed, setTitle };
 }
 
 function searchBox(slot: ReturnType<typeof renderSlot>) {
@@ -139,6 +152,128 @@ afterEach(() => {
 });
 
 describe("prompt library popup", () => {
+  it("shows saved prompts during indexing, updates automatically and stops polling when complete", async () => {
+    vi.useFakeTimers();
+    const { slot, search } = render();
+    search.mockResolvedValueOnce({
+      prompts: [starredRow("saved", "Saved review")],
+      loading: true,
+      historyError: null,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(slot.getByRole("option", { name: /Saved review/ })).toBeTruthy();
+    expect(slot.getByRole("listbox").getAttribute("aria-busy")).toBe("true");
+    expect(slot.queryByRole("status")).toBeNull();
+    search.mockResolvedValue({
+      prompts: [recentRow("old", "Older review")],
+      loading: false,
+      historyError: null,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(260);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(slot.getByRole("option", { name: /Older review/ })).toBeTruthy();
+    expect(slot.queryByRole("status")).toBeNull();
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({ refreshHistory: false }),
+    );
+    const calls = search.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(search).toHaveBeenCalledTimes(calls);
+  });
+
+  it("keeps saved prompts usable when history fails and retries explicitly", async () => {
+    const { slot, search } = render();
+    search.mockResolvedValueOnce({
+      prompts: [starredRow("saved", "Saved review")],
+      loading: false,
+      historyError: "History offline",
+    });
+    await slot.findByRole("alert");
+    expect(slot.getByRole("option", { name: /Saved review/ })).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(search).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          refreshHistory: true,
+          waitForHistory: false,
+        }),
+      ),
+    );
+    await waitFor(() => expect(slot.queryByRole("alert")).toBeNull());
+  });
+
+  it.each([728, 360])(
+    "edits a title without inserting it at width %s",
+    async (width) => {
+      pickerWidth = width;
+      const { slot, setTitle, search } = render();
+      const option = await slot.findByRole("option", {
+        name: /starred prompt/,
+      });
+      if (width === 360)
+        fireEvent.click(within(option).getAllByRole("button")[0]!);
+      fireEvent.click(await slot.findByRole("button", { name: "Add title" }));
+      const input = slot.getByRole("textbox", { name: "Prompt title" });
+      fireEvent.change(input, { target: { value: "Review" } });
+      search.mockResolvedValue({
+        loading: false,
+        historyError: null,
+        prompts: [
+          {
+            ...starredRow("prompt_1", "starred prompt"),
+            title: "Review",
+            titleSnippet: { text: "Review", highlights: [] },
+          },
+        ],
+      });
+      if (width === 728) fireEvent.keyDown(input, { key: "Enter" });
+      else fireEvent.click(slot.getByRole("button", { name: "Save title" }));
+      await slot.findByRole("button", { name: "Edit title" });
+      expect(setTitle).toHaveBeenCalledWith({
+        id: "prompt_1",
+        title: "Review",
+      });
+      expect(slot.composer.draft.text).toBe("");
+      fireEvent.click(slot.getByRole("button", { name: "Edit title" }));
+      fireEvent.change(slot.getByRole("textbox", { name: "Prompt title" }), {
+        target: { value: "Discard" },
+      });
+      fireEvent.keyDown(slot.getByRole("textbox", { name: "Prompt title" }), {
+        key: "Escape",
+      });
+      expect(setTitle).toHaveBeenCalledTimes(1);
+      fireEvent.click(slot.getByRole("button", { name: "Insert" }));
+      expect(slot.composer.draft.text).toBe("starred prompt");
+    },
+  );
+
+  it("retains a failed title edit for retry", async () => {
+    const { slot, setTitle } = render();
+    setTitle.mockImplementationOnce(() => {
+      throw new Error("Unable to save");
+    });
+    fireEvent.click(await slot.findByRole("button", { name: "Add title" }));
+    fireEvent.change(slot.getByRole("textbox", { name: "Prompt title" }), {
+      target: { value: "Review" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Save title" }));
+    await slot.findByText("Unable to save");
+    expect(
+      slot.getByRole("textbox", { name: "Prompt title" }).getAttribute("value"),
+    ).toBe("Review");
+    fireEvent.click(slot.getByRole("button", { name: "Save title" }));
+    await waitFor(() => expect(setTitle).toHaveBeenCalledTimes(2));
+    expect(slot.composer.draft.text).toBe("");
+  });
+
   it("inserts the highlighted prompt and records use of a starred one", async () => {
     const { slot, markUsed } = render();
     await slot.findByRole("option", { name: /starred prompt/ });
@@ -212,6 +347,8 @@ describe("prompt library popup", () => {
       projectId: "proj_a",
       threadId: "thr_1",
       composer: "follow-up",
+      waitForHistory: false,
+      refreshHistory: true,
     });
 
     fireEvent.keyDown(searchBox(first.slot), { key: "Tab" });
@@ -245,6 +382,8 @@ describe("prompt library popup", () => {
       projectId: "proj_a",
       threadId: null,
       composer: "new-thread",
+      waitForHistory: false,
+      refreshHistory: true,
     });
     expect(
       within(newThread.slot.getByRole("radiogroup", { name: "Search scope" }))
@@ -265,7 +404,8 @@ describe("prompt library popup", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(slot.getByText("Loading prompts…")).toBeTruthy();
+    expect(slot.getByRole("listbox").getAttribute("aria-busy")).toBe("true");
+    expect(slot.queryByLabelText("Searching prompts")).toBeNull();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
@@ -279,6 +419,8 @@ describe("prompt library popup", () => {
 
     await act(async () =>
       resolveStale({
+        loading: false,
+        historyError: null,
         prompts: [recentRow("stale", "obsolete response")],
       }),
     );
@@ -425,6 +567,8 @@ describe("prompt library popup", () => {
     await slot.findByText("recent prompt");
     fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
     search.mockResolvedValue({
+      loading: false,
+      historyError: null,
       prompts: [
         starredRow("prompt_new", "recent prompt"),
         starredRow("prompt_1", "starred prompt"),
@@ -455,6 +599,8 @@ describe("prompt library popup", () => {
     const listbox = await slot.findByRole("listbox", { name: "Prompts" });
     expect(await within(listbox).findByText("Recent")).toBeTruthy();
     search.mockResolvedValue({
+      loading: false,
+      historyError: null,
       prompts: [
         recentRow("h2", "deploy later"),
         starredRow("prompt_1", "please deploy the docs"),
@@ -467,6 +613,8 @@ describe("prompt library popup", () => {
 
     fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
     search.mockResolvedValue({
+      loading: false,
+      historyError: null,
       prompts: [
         recentRow("h2", "deploy later"),
         recentRow("h4", "please deploy the docs"),

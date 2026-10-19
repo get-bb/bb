@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 const COLLAPSE_ROW_CLASS =
   "flex min-h-6 w-full cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground";
 
-const COUNT_PILL_CLASS =
+export const PROMPT_STACK_COUNT_PILL_CLASS =
   "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground";
 
 const PEEK_LAYER_CLASSES: Record<number, readonly string[]> = {
@@ -99,8 +99,8 @@ export function PromptStackPeekLayers({
 
 export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
 
-const TRAILING_SLOT_CLASS =
-  "-mr-3 ml-auto flex w-8 shrink-0 items-center justify-center";
+export const PROMPT_STACK_TRAILING_SLOT_CLASS =
+  "ml-auto mr-px flex w-6 shrink-0 items-center justify-center";
 const HOVER_CHEVRON_CLASS =
   "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden";
 
@@ -110,7 +110,7 @@ export function PromptStackHoverChevron({
   isExpanded: boolean;
 }) {
   return (
-    <span className={TRAILING_SLOT_CLASS}>
+    <span className={PROMPT_STACK_TRAILING_SLOT_CLASS}>
       {isExpanded ? null : (
         <Icon
           name="ChevronDown"
@@ -124,7 +124,7 @@ export function PromptStackHoverChevron({
 
 export function PromptStackChevron({ isExpanded }: { isExpanded: boolean }) {
   return (
-    <span className={TRAILING_SLOT_CLASS}>
+    <span className={PROMPT_STACK_TRAILING_SLOT_CLASS}>
       {isExpanded ? null : (
         <Icon
           name="ChevronDown"
@@ -144,8 +144,10 @@ export function PromptStackCountSlot({
   prefix?: "+" | "";
 }) {
   return (
-    <span className={TRAILING_SLOT_CLASS}>
-      <span className={COUNT_PILL_CLASS}>{`${prefix}${count}`}</span>
+    <span className={PROMPT_STACK_TRAILING_SLOT_CLASS}>
+      <span
+        className={PROMPT_STACK_COUNT_PILL_CLASS}
+      >{`${prefix}${count}`}</span>
     </span>
   );
 }

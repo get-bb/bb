@@ -307,6 +307,7 @@ function interruptPendingInteractionsForHostThreads(
   args: { hostId: string; reason: string },
 ): void {
   deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
+    includeServerOwned: false,
     threadIds: listHostThreadIds(deps.db, { hostId: args.hostId }),
     reason: args.reason,
   });

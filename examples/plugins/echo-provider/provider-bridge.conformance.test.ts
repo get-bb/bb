@@ -59,6 +59,7 @@ it("passes the canonical protocol suite", async () => {
     "session/resume-identity": "pass",
     "session/resume-id-uniqueness": "pass",
     "skills/configure-declared": "pass",
+    "commands/list-declared": "pass",
     "presentation/icon-namespaced-declared": "pass",
     "turn/settles-without-activity": "pass",
   });

@@ -83,18 +83,23 @@ export function promptActionCommandSuggestions({
 
 export function threadProviderCommandSuggestions({
   commands,
+  catalog,
   query,
   trigger,
 }: {
   commands: readonly ProviderCommand[] | null | undefined;
+  catalog: readonly ProviderCommand[];
   query: string;
   trigger: PromptMentionCommandTrigger | null;
 }): ProviderCommandSuggestion[] {
   if (trigger !== "/") {
     return [];
   }
+  const catalogNames = new Set(catalog.map((command) => command.name));
   return filterCommandSuggestions(
-    (commands ?? []).map(toProviderCommandSuggestion),
+    (commands ?? [])
+      .filter((command) => !catalogNames.has(command.name))
+      .map(toProviderCommandSuggestion),
     query,
   );
 }
@@ -259,8 +264,9 @@ export function useCommandSuggestions(
     if (!isActive) {
       return [];
     }
+    const catalog = commandsQuery.data?.commands ?? [];
     const discoveredSuggestions = discoveredCommandSuggestions({
-      commands: commandsQuery.data?.commands ?? [],
+      commands: catalog,
       trigger,
       commandScope: args.commandScope,
       query: trimmedQuery,
@@ -270,6 +276,7 @@ export function useCommandSuggestions(
         promptActionSuggestions,
         threadProviderCommandSuggestions({
           commands: args.threadProviderCommands,
+          catalog,
           query: trimmedQuery,
           trigger,
         }),

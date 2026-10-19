@@ -138,6 +138,7 @@ import {
   serverMoveWriteFreezeMiddleware,
 } from "./services/server-move/freeze.js";
 import { isServerMoveSnapshotFenced } from "./services/server-move/freeze-state.js";
+import { handleResolvedServerApproval } from "./services/threads/environment-directory-approval.js";
 import {
   createManualServerImportCompletion,
   type PendingServerMove,
@@ -489,6 +490,11 @@ export function createApp(
   const pendingServerMove = serverMoveOptions.pending;
 
   app.use("*", async (context, next) => {
+    const signal = context.req.raw.signal;
+    await next();
+    if (signal.aborted) await context.res.body?.cancel(signal.reason);
+  });
+  app.use("*", async (context, next) => {
     const problem = requestHostProblem(context, deps);
     if (problem !== null) {
       throw new ApiError(problem.status, "forbidden_host", problem.error);
@@ -795,6 +801,9 @@ export function createApp(
       kind: "interaction-settled",
       threadId,
     });
+  });
+  deps.pendingInteractions.setServerApprovalResolvedHandler((interaction) => {
+    handleResolvedServerApproval(deps, interaction);
   });
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge the dispatch pipeline to this service's hooks. Until this runs

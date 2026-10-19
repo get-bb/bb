@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Status } from "nice-grpc-common";
 import {
   createModalSandboxClient,
   createModalSandboxExecutor,
@@ -73,6 +74,26 @@ describe("Modal bootstrap executor", () => {
         "sandbox-1",
       ),
     ).resolves.toBeNull();
+  });
+
+  it("treats a missing sandbox reported by SandboxWait as absent but preserves other RPC failures", async () => {
+    const client = createModalSandboxClient({
+      tokenId: "id",
+      tokenSecret: "secret",
+    });
+    vendor.poll.mockRejectedValueOnce(
+      Object.assign(new Error("SandboxWait NOT_FOUND"), {
+        name: "ClientError",
+        code: Status.NOT_FOUND,
+      }),
+    );
+    await expect(client.fromId("sandbox-1")).resolves.toBeNull();
+    const unavailable = Object.assign(new Error("unavailable"), {
+      name: "ClientError",
+      code: Status.UNAVAILABLE,
+    });
+    vendor.poll.mockRejectedValueOnce(unavailable);
+    await expect(client.fromId("sandbox-1")).rejects.toBe(unavailable);
   });
 
   it("delivers stdin without putting credentials into command arguments and closes input", async () => {

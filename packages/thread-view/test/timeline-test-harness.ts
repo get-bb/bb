@@ -246,6 +246,7 @@ interface FileChangeCompletedArgs extends ProviderTurnEventOptions {
     kind: "add" | "delete" | "update";
     path: string;
   }>;
+  error?: string;
   itemId?: string;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
@@ -254,6 +255,10 @@ type FileChangeStartedArgs = FileChangeCompletedArgs;
 
 interface ContextCompactionArgs extends ProviderTurnEventOptions {
   itemId?: string;
+}
+
+interface TurnMainRunUpdatedArgs extends ProviderTurnEventOptions {
+  state: "idle" | "running";
 }
 
 interface TurnPlanUpdatedArgs extends ProviderTurnEventOptions {
@@ -443,6 +448,9 @@ export interface TimelineEventFactory {
       status?: "completed" | "failed" | "interrupted";
     },
   ): ThreadEventRowOfType<"turn/completed">;
+  turnMainRunUpdated(
+    args: TurnMainRunUpdatedArgs,
+  ): ThreadEventRowOfType<"turn/mainRun/updated">;
   turnPlanUpdated(
     args: TurnPlanUpdatedArgs,
   ): ThreadEventRowOfType<"turn/plan/updated">;
@@ -830,6 +838,7 @@ export function createTimelineEventFactory(
             changes: args.changes,
             status: args.status ?? "completed",
             approvalStatus: args.approvalStatus ?? null,
+            ...(args.error === undefined ? {} : { error: args.error }),
           },
         },
       };
@@ -1276,6 +1285,17 @@ export function createTimelineEventFactory(
         data: {
           ...providerFields(args),
           status: args?.status ?? "completed",
+        },
+      };
+    },
+    turnMainRunUpdated(args) {
+      const base = nextProviderTurnScopedRowBase("turn-main-run-updated", args);
+      return {
+        ...base,
+        type: "turn/mainRun/updated",
+        data: {
+          ...providerFields(args),
+          state: args.state,
         },
       };
     },

@@ -74,3 +74,10 @@ integration ships with this plugin.
 
 Consider general timestamp and lifecycle-owner filters if full enumeration
 becomes expensive. No retention-specific query or mutation API is required.
+
+Automatic archive storage cleanup persists retry deadlines across reloads. Failed
+attempts back off from one minute to one hour, independently per thread. Detached
+threads without a unique location in the saved machine scans remain queued and
+recheck the inventory hourly without warning on every thread event. Scan the
+relevant machine to make its storage discoverable; manual clearing still reports
+an unresolved location rather than guessing a machine.

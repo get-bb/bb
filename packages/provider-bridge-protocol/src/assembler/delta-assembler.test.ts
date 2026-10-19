@@ -122,6 +122,40 @@ describe("delta assembler", () => {
     expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
   });
 
+  it("records main-run state only on an open turn", () => {
+    const assembler = createAssembler();
+    expect(
+      assemble(assembler, { kind: "turn.mainRun", state: "idle" }),
+    ).toEqual([]);
+    expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
+
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    expect(
+      assemble(
+        assembler,
+        { kind: "turn.mainRun", state: "idle" },
+        { kind: "turn.mainRun", state: "running" },
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(turnId),
+        state: "idle",
+      }),
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(turnId),
+        state: "running",
+      }),
+    ]);
+
+    assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    expect(
+      assemble(assembler, { kind: "turn.mainRun", state: "running" }),
+    ).toEqual([]);
+  });
+
   it("mints a fresh turn id for every turn (never reuses across boundaries)", () => {
     const assembler = createAssembler();
     const first = assemble(assembler, { kind: "turn.open" });
@@ -424,6 +458,47 @@ describe("delta assembler", () => {
         changes: [expect.objectContaining({ path: "src/app.ts" })],
       },
     });
+  });
+
+  it("keeps result text as the error only on failed file changes", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const editShape: DeltaItemShape = {
+      type: "fileChange",
+      changes: [{ path: "src/app.ts", kind: "update" }],
+    };
+    const settle = (
+      providerItemId: string,
+      status: "completed" | "failed",
+      resultText: string,
+    ) => {
+      assemble(assembler, {
+        kind: "item.open",
+        key: { providerItemId },
+        item: editShape,
+      });
+      return itemOf(
+        assemble(assembler, {
+          kind: "item.close",
+          key: { providerItemId },
+          status,
+          resultText,
+          item: editShape,
+        })[0],
+      );
+    };
+
+    expect(
+      settle("tc-failed", "failed", "Could not find the exact text"),
+    ).toMatchObject({
+      type: "fileChange",
+      status: "failed",
+      error: "Could not find the exact text",
+    });
+    expect(
+      settle("tc-ok", "completed", "Successfully replaced text"),
+    ).not.toHaveProperty("error");
+    expect(settle("tc-blank", "failed", "  \n")).not.toHaveProperty("error");
   });
 
   it("maps parentRef through the provider→bb id map for nested items", () => {

@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./expandable-text": {
+      "source": "./src/components/ui/expandable-text.tsx",
+      "types": "./src/components/ui/expandable-text.tsx",
+      "default": "./src/components/ui/expandable-text.tsx"
+    },
     "./activity-row-styles": {
       "source": "./src/components/ui/activity-row-styles.ts",
       "types": "./src/components/ui/activity-row-styles.ts",

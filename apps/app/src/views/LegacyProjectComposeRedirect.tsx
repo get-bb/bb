@@ -33,5 +33,5 @@ export function LegacyProjectComposeRedirect({
     setPlacement,
   ]);
 
-  return <RouteLoadingSkeleton isBoundedPane={false} />;
+  return <RouteLoadingSkeleton isBoundedPane={false} variant="root-compose" />;
 }
