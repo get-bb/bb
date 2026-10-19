@@ -138,7 +138,6 @@ import {
   serverMoveWriteFreezeMiddleware,
 } from "./services/server-move/freeze.js";
 import { isServerMoveSnapshotFenced } from "./services/server-move/freeze-state.js";
-import { handleResolvedServerApproval } from "./services/threads/environment-directory-approval.js";
 import {
   createManualServerImportCompletion,
   type PendingServerMove,
@@ -801,9 +800,6 @@ export function createApp(
       kind: "interaction-settled",
       threadId,
     });
-  });
-  deps.pendingInteractions.setServerApprovalResolvedHandler((interaction) => {
-    handleResolvedServerApproval(deps, interaction);
   });
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge the dispatch pipeline to this service's hooks. Until this runs

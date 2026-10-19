@@ -69,7 +69,6 @@ import {
   seedProjectWithSource,
   seedThread,
   seedTurnStarted,
-  seedTurnPermissionMode,
 } from "../../helpers/seed.js";
 import {
   withTestHarness,
@@ -612,17 +611,9 @@ describe("core environment orchestration", () => {
             threadId: thread.id,
             turnId: "turn_admission",
           });
-          seedTurnPermissionMode(harness.deps, {
-            environmentId: current.id,
-            permissionMode: "full",
-            providerThreadId: "provider_admission",
-            threadId: thread.id,
-            turnId: "turn_admission",
-          });
           const result = await handleUpdateEnvironmentDirectoryToolCall(
             harness.deps,
             {
-              callId: "call_admission",
               currentEnvironment: current,
               thread,
               turnId: "turn_admission",
@@ -975,17 +966,9 @@ describe("core environment orchestration", () => {
         threadId: fixture.thread.id,
         turnId: "turn_directory",
       });
-      seedTurnPermissionMode(harness.deps, {
-        environmentId: currentId,
-        permissionMode: "full",
-        providerThreadId: "provider_directory",
-        threadId: fixture.thread.id,
-        turnId: "turn_directory",
-      });
       const result = await handleUpdateEnvironmentDirectoryToolCall(
         harness.deps,
         {
-          callId: "call_directory",
           currentEnvironment: current,
           thread: { ...fixture.thread, environmentId: currentId },
           turnId: "turn_directory",

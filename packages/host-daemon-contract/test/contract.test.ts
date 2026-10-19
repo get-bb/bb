@@ -369,16 +369,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     },
     originDefaultBranch: "origin/main",
   },
-  "host.resolve_directories": {
-    entries: [
-      {
-        path: "/home/user/code/app",
-        realPath: "/home/user/code/app",
-        gitCommonDir: "/home/user/code/app/.git",
-      },
-      { path: "/home/user/missing", realPath: null, gitCommonDir: null },
-    ],
-  },
   "host.list_branch_options": {
     branches: ["main"],
     branchesTruncated: false,
@@ -1275,7 +1265,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(245);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(244);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

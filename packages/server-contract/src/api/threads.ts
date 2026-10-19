@@ -525,6 +525,7 @@ export const threadResponseSchema = threadWithRuntimeSchema.extend({
    * the call.
    */
   canRestoreEnvironment: z.boolean(),
+  canEditMessages: z.boolean(),
   canSpawnChild: z.boolean(),
   // How many messages are waiting on this thread's queue right now — waiting on
   // the clock, on the running turn, on provisioning, on an interaction, or on

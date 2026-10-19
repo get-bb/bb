@@ -86,7 +86,6 @@ Spawning:
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
-  In accept-edits, an agent's update_environment_directory move to a directory outside the thread's project and its git worktrees waits for the user's approval (`bb thread interactions approve|deny`); auto and full move without asking.
   Subagents inherit the parent's permission mode by default, adapted to the child provider's supported modes. Explicit requests and a thread's recorded mode take precedence; nesting a thread does not cap its permissions. The host permission ceiling still applies.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
@@ -164,10 +163,15 @@ Editing a sent message:
 
   Without --expected-request-sequence, the latest eligible message is edited.
   Codex, Claude Code, and Pi threads are supported, including failed and
-  incomplete turns; grouped multi-message requests are not editable. The
+  incomplete turns; grouped multi-message requests are not editable.
+  `canEditMessages` on `bb thread show --json` reports whether the thread's
+  provider and archive state allow edits. The
   original conversation remains unchanged until the provider prepares the
   replacement history. If the thread is running,
-  submission stops the current turn and waits for it to settle. It then
+  submission stops the current turn and waits for it to settle. Provider-owned
+  background commands, agents, and workflows are stopped before replacing the
+  session, and retained task cards keep their terminal status. Durable runs
+  managed by the Workflows plugin continue independently. It then
   replaces the selected turn and every later turn while retaining workspace
   changes. Unsent queued messages remain in the queue and dispatch after the
   replacement turn when their waits clear. An already-sending queued message

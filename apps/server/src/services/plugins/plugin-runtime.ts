@@ -924,7 +924,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function buildThreadDto(thread: Thread) {
     return toThreadResponseFromThread(
-      { db: deps.db, hub: deps.hub },
+      {
+        db: deps.db,
+        hub: deps.hub,
+        providerRegistry: deps.providerRegistry ?? {
+          supportsSessionRewind: () => false,
+        },
+      },
       { thread },
     );
   }

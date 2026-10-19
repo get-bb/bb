@@ -9,7 +9,6 @@ import type {
   UserQuestionInteractionLifecycle,
 } from "@bb/domain";
 import {
-  ENVIRONMENT_DIRECTORY_APPROVAL_OPERATION,
   THREAD_CONTEXT_CLEAR_OPERATION,
   THREAD_CONTEXT_CLEARED_DETAIL,
   isApprovalInteractionLifecycle,
@@ -674,10 +673,7 @@ export function parseOperationMessage(
     }
 
     const threadOperation = createThreadOperationMetadata(decoded);
-    const title =
-      decoded.operation === ENVIRONMENT_DIRECTORY_APPROVAL_OPERATION
-        ? decoded.message
-        : threadOperationTitle(threadOperation, threadName);
+    const title = threadOperationTitle(threadOperation, threadName);
 
     const branch =
       typeof decoded.metadata?.branch === "string"

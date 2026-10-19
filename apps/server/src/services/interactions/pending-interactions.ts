@@ -1,7 +1,6 @@
 import {
   createPendingInteraction,
   getActivePendingInteractionForThread,
-  getActiveStoredTurnId,
   hasTurnBoundActivePendingInteractionForThread,
   getEnvironment,
   getPendingInteraction,
@@ -10,7 +9,6 @@ import {
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
-  interruptServerPendingInteractionsForThread,
   listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
@@ -26,7 +24,6 @@ import {
   isPluginExtensionInteractionRequestPayload,
   isPluginExtensionPendingInteraction,
   isPluginPendingInteraction,
-  isServerPendingInteraction,
   parseExtensionKind,
   pluginInteractionDescriptionSchema,
   type JsonValue,
@@ -35,9 +32,6 @@ import {
   type ThreadEventItemPresentation,
   type PendingInteractionCreate,
   type PendingInteractionResolution,
-  type ApprovalPendingInteractionPayload,
-  type ServerApprovalPendingInteraction,
-  type ServerApprovalRequest,
   type ThreadChangeMetadata,
 } from "@bb/domain";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
@@ -60,7 +54,6 @@ import {
 } from "./pending-interaction-timeline.js";
 import {
   PendingInteractionSerializationError,
-  serializeServerApprovalPayload,
   toPendingInteraction,
 } from "./pending-interaction-serialization.js";
 import {
@@ -242,7 +235,6 @@ interface InterruptPendingInteractionsForThreadsLifecycleArgs {
 }
 
 interface InterruptPendingInteractionsForThreadIdsLifecycleArgs {
-  includeServerOwned: boolean;
   reason: string;
   threadIds: readonly string[];
 }
@@ -289,9 +281,6 @@ function buildInteractiveResolveCommand(
   if (isPluginPendingInteraction(args.interaction)) {
     throw new Error("Plugin interactions do not produce host resolve commands");
   }
-  if (isServerPendingInteraction(args.interaction)) {
-    throw new Error("Server approvals do not produce host resolve commands");
-  }
   return {
     type: "interactive.resolve",
     environmentId: args.environmentId,
@@ -307,16 +296,6 @@ function buildInteractiveResolveCommand(
 type PendingInteractionLifecycleArgs = CreateLifecycleDeps;
 
 export type ThreadInteractionSettledListener = (threadId: string) => void;
-
-export type ServerApprovalResolvedHandler = (
-  interaction: ServerApprovalPendingInteraction,
-) => void;
-
-interface RequestServerApprovalArgs {
-  payload: ApprovalPendingInteractionPayload;
-  request: ServerApprovalRequest;
-  threadId: string;
-}
 
 function buildInteractionChangeMetadata({
   db,
@@ -354,8 +333,6 @@ export class PendingInteractionLifecycle {
   private started = false;
   private interactionSettledListener: ThreadInteractionSettledListener | null =
     null;
-  private serverApprovalResolvedHandler: ServerApprovalResolvedHandler | null =
-    null;
 
   constructor(args: PendingInteractionLifecycleArgs) {
     this.deps = {
@@ -376,51 +353,6 @@ export class PendingInteractionLifecycle {
 
   setPluginDirectory(directory: PendingInteractionPluginDirectory): void {
     this.pluginDirectory = directory;
-  }
-
-  setServerApprovalResolvedHandler(
-    handler: ServerApprovalResolvedHandler,
-  ): void {
-    this.serverApprovalResolvedHandler = handler;
-  }
-
-  requestServerApproval(
-    args: RequestServerApprovalArgs,
-  ): ServerApprovalPendingInteraction {
-    const thread = getThread(this.deps.db, args.threadId);
-    if (!thread || thread.deletedAt !== null) {
-      throw new ApiError(404, "invalid_request", "Thread does not exist");
-    }
-    const { created, superseded } = this.deps.db.transaction((tx) => ({
-      superseded: interruptServerPendingInteractionsForThread(tx, {
-        threadId: args.threadId,
-        statusReason: "superseded",
-      }),
-      created: createPendingInteraction(tx, {
-        originKind: "server",
-        threadId: args.threadId,
-        payload: serializeServerApprovalPayload(args),
-        expiresAt: null,
-      }),
-    }));
-    this.settleInterruptedRows(superseded);
-    const interaction = toPendingInteraction(created);
-    if (!isServerPendingInteraction(interaction)) {
-      throw new Error("Server approval row did not parse as a server approval");
-    }
-    appendPendingInteractionTimelineEvent(this.deps, interaction);
-    notifyInteractionChanged({ deps: this.deps, threadId: args.threadId });
-    emitPluginInteractionPending(thread, interaction);
-    return interaction;
-  }
-
-  cancelServerApprovals(args: { reason: string; threadId: string }): void {
-    this.settleInterruptedRows(
-      interruptServerPendingInteractionsForThread(this.deps.db, {
-        threadId: args.threadId,
-        statusReason: args.reason,
-      }),
-    );
   }
 
   start(): void {
@@ -806,9 +738,6 @@ export class PendingInteractionLifecycle {
       throw buildResolveConflictError(current);
     }
     validatePendingInteractionResolution(current, args.resolution);
-    if (isServerPendingInteraction(current)) {
-      return this.resolveServerApproval(current, args.resolution);
-    }
 
     const updated = this.queueInteractionResolutionCommand({
       interaction: current,
@@ -914,7 +843,6 @@ export class PendingInteractionLifecycle {
   ): PendingInteraction[] {
     return this.settleInterruptedRows(
       interruptPendingInteractionsForThreadIds(this.deps.db, {
-        includeServerOwned: args.includeServerOwned,
         threadIds: args.threadIds,
         statusReason: args.reason,
       }),
@@ -928,7 +856,6 @@ export class PendingInteractionLifecycle {
     return this.settleInterruptedRowsInTransaction(
       deps,
       interruptPendingInteractionsForThreadIds(deps.db, {
-        includeServerOwned: args.includeServerOwned,
         threadIds: args.threadIds,
         statusReason: args.reason,
       }),
@@ -960,35 +887,6 @@ export class PendingInteractionLifecycle {
       this.settleInterruptedPluginWaiterAfterTransaction(interaction);
     }
     return interactions;
-  }
-
-  private resolveServerApproval(
-    current: ServerApprovalPendingInteraction,
-    resolution: PendingInteractionResolution,
-  ): PendingInteraction {
-    if (
-      getActiveStoredTurnId(this.deps.db, current.threadId) ===
-      current.request.requestTurnId
-    ) {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "The turn that requested this approval is still running; it can be approved once that turn ends",
-      );
-    }
-    const updated = setPendingInteractionResolved(this.deps.db, {
-      id: current.id,
-      resolution: JSON.stringify(resolution),
-    });
-    if (!updated) {
-      throw buildResolveConflictError(this.requireInteraction(current.id));
-    }
-    const interaction = toPendingInteraction(updated);
-    this.settleInteractionTerminalState(interaction);
-    if (isServerPendingInteraction(interaction)) {
-      this.serverApprovalResolvedHandler?.(interaction);
-    }
-    return interaction;
   }
 
   private queueInteractionResolutionCommand(

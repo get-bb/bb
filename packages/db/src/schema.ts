@@ -1204,7 +1204,7 @@ export const pendingInteractions = sqliteTable(
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
     originKind: text("origin_kind")
-      .$type<"provider" | "plugin" | "server">()
+      .$type<"provider" | "plugin">()
       .notNull()
       .default("provider"),
     turnId: text("turn_id"),

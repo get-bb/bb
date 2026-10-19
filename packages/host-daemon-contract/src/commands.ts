@@ -894,18 +894,6 @@ const hostInspectGitSourceCommandSchema = z
   })
   .strict();
 
-export const HOST_RESOLVE_DIRECTORIES_MAX_PATHS = 512;
-
-const hostResolveDirectoriesCommandSchema = z
-  .object({
-    type: z.literal("host.resolve_directories"),
-    paths: z
-      .array(z.string().min(1))
-      .min(1)
-      .max(HOST_RESOLVE_DIRECTORIES_MAX_PATHS),
-  })
-  .strict();
-
 const hostListBranchOptionsCommandSchema = z
   .object({
     type: z.literal("host.list_branch_options"),
@@ -1272,23 +1260,6 @@ const globalSkillsStatusResultSchema = z
   .strict();
 export type HostGlobalSkillsStatusResult = z.infer<
   typeof globalSkillsStatusResultSchema
->;
-
-const resolveDirectoriesResultSchema = z
-  .object({
-    entries: z.array(
-      z
-        .object({
-          path: z.string(),
-          realPath: z.string().nullable(),
-          gitCommonDir: z.string().nullable(),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-export type HostResolveDirectoriesResult = z.infer<
-  typeof resolveDirectoriesResultSchema
 >;
 
 const writeSkillResultSchema = z.discriminatedUnion("outcome", [
@@ -1936,15 +1907,6 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
-  "host.resolve_directories": defineHostDaemonCommandDescriptor({
-    type: "host.resolve_directories",
-    schema: hostResolveDirectoriesCommandSchema,
-    resultSchema: resolveDirectoriesResultSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
   "host.list_branch_options": defineHostDaemonCommandDescriptor({
     type: "host.list_branch_options",
     schema: hostListBranchOptionsCommandSchema,
@@ -2176,7 +2138,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

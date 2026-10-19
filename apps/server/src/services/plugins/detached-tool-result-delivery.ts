@@ -9,7 +9,6 @@ import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { queueParentSystemMessage } from "../threads/parent-system-messages.js";
 
 interface DeliverDetachedToolResultArgs {
-  deliverFailureToIdleThread: boolean;
   threadId: string;
   toolName: string;
   presentation: PluginRowPresentation | null;
@@ -60,11 +59,7 @@ export async function deliverDetachedToolResult(
   if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
     return;
   }
-  if (
-    !args.response.success &&
-    !args.deliverFailureToIdleThread &&
-    thread.status !== "active"
-  ) {
+  if (!args.response.success && thread.status !== "active") {
     return;
   }
   await queueParentSystemMessage(deps, {

@@ -1,8 +1,4 @@
-import {
-  pendingInteractionSchema,
-  type PendingInteraction,
-  type ServerApprovalPendingInteraction,
-} from "@bb/domain";
+import { pendingInteractionSchema, type PendingInteraction } from "@bb/domain";
 import type { PendingInteractionRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
 
@@ -36,64 +32,14 @@ function parseStoredPendingInteractionJson(
   }
 }
 
-function splitServerPayload(payload: unknown): {
-  payload: unknown;
-  request: unknown;
-} {
-  if (payload === null || typeof payload !== "object") {
-    return { payload, request: undefined };
-  }
-  const { request, ...approvalPayload } = payload as Record<string, unknown>;
-  return { payload: approvalPayload, request };
-}
-
-export function serializeServerApprovalPayload(
-  interaction: Pick<ServerApprovalPendingInteraction, "payload" | "request">,
-): string {
-  return JSON.stringify({
-    ...interaction.payload,
-    request: interaction.request,
-  });
-}
-
-function serverApprovalFields(storedPayload: unknown): {
-  origin: { kind: "server" };
-  payload: unknown;
-  request: unknown;
-} {
-  return {
-    origin: { kind: "server" },
-    ...splitServerPayload(storedPayload),
-  };
-}
-
-function nonServerOrigin(row: PendingInteractionRow) {
-  return row.originKind === "provider"
-    ? {
-        kind: "provider",
-        providerId: row.providerId,
-        providerThreadId: row.providerThreadId,
-        providerRequestId: row.providerRequestId,
-      }
-    : {
-        kind: "plugin",
-        pluginId: row.pluginId,
-        rendererId: row.rendererId,
-      };
-}
-
 export function toPendingInteraction(
   row: PendingInteractionRow,
 ): PendingInteraction {
-  const storedPayload = parseStoredPendingInteractionJson(row, "payload");
+  const payload = parseStoredPendingInteractionJson(row, "payload");
   const resolution =
     row.resolution === null
       ? null
       : parseStoredPendingInteractionJson(row, "resolution");
-  const originFields =
-    row.originKind === "server"
-      ? serverApprovalFields(storedPayload)
-      : { origin: nonServerOrigin(row), payload: storedPayload };
 
   try {
     return pendingInteractionSchema.parse({
@@ -107,8 +53,21 @@ export function toPendingInteraction(
             providerRequestId: row.providerRequestId,
           }
         : {}),
-      ...originFields,
+      origin:
+        row.originKind === "provider"
+          ? {
+              kind: "provider",
+              providerId: row.providerId,
+              providerThreadId: row.providerThreadId,
+              providerRequestId: row.providerRequestId,
+            }
+          : {
+              kind: "plugin",
+              pluginId: row.pluginId,
+              rendererId: row.rendererId,
+            },
       status: row.status,
+      payload,
       resolution,
       statusReason: row.statusReason,
       createdAt: row.createdAt,

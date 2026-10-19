@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -29,9 +29,6 @@ export type CreatePendingInteractionInput =
       pluginId: string;
       rendererId: string;
       turnId: string | null;
-    })
-  | (CreatePendingInteractionInputBase & {
-      originKind: "server";
     });
 
 export interface PendingInteractionProviderRequestIdentity {
@@ -65,7 +62,6 @@ export interface InterruptPendingInteractionsForThreadsArgs {
 }
 
 export interface InterruptPendingInteractionsForThreadIdsArgs {
-  includeServerOwned: boolean;
   statusReason: string;
   threadIds: readonly string[];
 }
@@ -130,19 +126,12 @@ export function createPendingInteraction(
       id: createPendingInteractionId(),
       threadId: input.threadId,
       originKind: input.originKind ?? "provider",
-      turnId: input.originKind === "server" ? null : input.turnId,
-      providerId:
-        input.originKind === undefined || input.originKind === "provider"
-          ? input.providerId
-          : null,
+      turnId: input.turnId,
+      providerId: input.originKind !== "plugin" ? input.providerId : null,
       providerThreadId:
-        input.originKind === undefined || input.originKind === "provider"
-          ? input.providerThreadId
-          : null,
+        input.originKind !== "plugin" ? input.providerThreadId : null,
       providerRequestId:
-        input.originKind === undefined || input.originKind === "provider"
-          ? input.providerRequestId
-          : null,
+        input.originKind !== "plugin" ? input.providerRequestId : null,
       pluginId: input.originKind === "plugin" ? input.pluginId : null,
       rendererId: input.originKind === "plugin" ? input.rendererId : null,
       status: "pending",
@@ -400,25 +389,12 @@ export function interruptPendingInteractionsForPlugin(
     .all();
 }
 
-export function interruptServerPendingInteractionsForThread(
-  db: PendingInteractionWriteConnection,
-  args: { statusReason: string; threadId: string },
-): PendingInteractionRow[] {
-  return interruptPendingInteractionsBatched(db, {
-    extraConditions: [eq(pendingInteractions.originKind, "server")],
-    statusReason: args.statusReason,
-    threadIds: [args.threadId],
-  });
-}
-
 export function interruptPendingInteractionsForThreadIds(
   db: PendingInteractionWriteConnection,
   args: InterruptPendingInteractionsForThreadIdsArgs,
 ): PendingInteractionRow[] {
   return interruptPendingInteractionsBatched(db, {
-    extraConditions: args.includeServerOwned
-      ? []
-      : [ne(pendingInteractions.originKind, "server")],
+    extraConditions: [],
     statusReason: args.statusReason,
     threadIds: args.threadIds,
   });

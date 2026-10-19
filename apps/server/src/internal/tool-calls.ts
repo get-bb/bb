@@ -78,7 +78,6 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
       if (payload.tool === UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME) {
         return context.json(
           await handleUpdateEnvironmentDirectoryToolCall(deps, {
-            callId: payload.callId,
             currentEnvironment: environment,
             input: payload.arguments,
             thread,
@@ -110,7 +109,6 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
             }),
           onDetachedResult: (result) =>
             deliverDetachedToolResult(deps, {
-              deliverFailureToIdleThread: false,
               threadId: thread.id,
               toolName: payload.tool,
               presentation: pluginTool.record.presentation,

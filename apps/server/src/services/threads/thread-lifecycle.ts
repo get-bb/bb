@@ -1029,7 +1029,6 @@ export function settleThreadStopCommandResult(
       args.deps.pendingInteractions.interruptPendingInteractionsForThreadIdsInTransaction(
         args.deps,
         {
-          includeServerOwned: true,
           threadIds: [thread.id],
           reason: pendingInteractionStopReason("manual-stop"),
         },
@@ -1108,7 +1107,6 @@ export function requestThreadStorageDeletion(
   environment: { hostId: string; id: string } | null,
 ): void {
   deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
-    includeServerOwned: true,
     threadIds: [thread.id],
     reason: "thread-deleted",
   });
@@ -1849,7 +1847,6 @@ function interruptActiveThreads(
   );
 
   deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
-    includeServerOwned: effectiveReason === "manual-stop",
     threadIds: results.map((result) => result.threadId),
     reason: pendingInteractionStopReason(effectiveReason),
   });
@@ -2012,7 +2009,6 @@ export function finalizeStoppedThreadInTransaction(
     deps.pendingInteractions.interruptPendingInteractionsForThreadIdsInTransaction(
       deps,
       {
-        includeServerOwned: interruptionReason === "manual-stop",
         threadIds: [finalizedThread.id],
         reason: pendingInteractionStopReason(interruptionReason),
       },
@@ -2030,7 +2026,6 @@ export function finalizeStoppedThreadInTransaction(
     deps.pendingInteractions.interruptPendingInteractionsForThreadIdsInTransaction(
       deps,
       {
-        includeServerOwned: true,
         threadIds: [finalizedThread.id],
         reason: "thread-deleted",
       },
