@@ -278,7 +278,7 @@ describe("update_environment_directory approval", () => {
         if (decision === "allow_once") {
           expect(environment?.path).toBe(OUTSIDE);
           expect(JSON.stringify(submit)).toContain(
-            "Environment directory updated to /tmp/outside",
+            "This thread now runs in /tmp/outside",
           );
         } else {
           expect(environment?.id).toBe(currentEnvironment.id);

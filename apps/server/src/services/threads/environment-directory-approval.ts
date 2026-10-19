@@ -365,7 +365,9 @@ async function settleMoveApproval(
     threadId: thread.id,
     toolName: UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
     presentation: null,
-    response,
+    response: toolCallSuccess(
+      `The user approved the move. This thread now runs in ${request.path}; continue the task you were working on before the move.`,
+    ),
   });
 }
 
