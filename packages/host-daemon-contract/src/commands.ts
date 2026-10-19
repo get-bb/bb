@@ -485,6 +485,7 @@ export type HostReadFileRelativeDotfilePolicy = z.infer<
 const hostReadFileRelativeCommandSchema = z
   .object({
     type: z.literal("host.read_file_relative"),
+    followRootSymlink: z.boolean(),
     rootPath: z.string().min(1),
     path: z.string().min(1),
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
@@ -510,6 +511,7 @@ const fileListExcludeNamesSchema = z
 
 const hostListFilesCommandSchema = z.object({
   type: z.literal("host.list_files"),
+  followRootSymlink: z.boolean(),
   path: z.string().min(1),
   query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
@@ -691,6 +693,7 @@ const directoryListingSchema = z.object({
   directory: z.string(),
   parent: z.string().nullable(),
   entries: z.array(directoryEntrySchema),
+  roots: z.array(z.string()),
 });
 
 const hostCommandSourceSchema = z.enum(["skill", "command"]);
@@ -907,6 +910,7 @@ const providerListModelsCommandSchema = z.object({
   providerId: z.string().min(1),
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
+  contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
 });
 
 const providerListCommandsCommandSchema = z

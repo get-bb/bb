@@ -47,7 +47,7 @@ export const MACOS_TITLE_BAR_CONTROL_SIZE_CLASS =
   "[&_button]:h-(--bb-title-bar-control-size) [&_[data-tab-pill]]:h-(--bb-title-bar-control-size)";
 export const MACOS_TITLE_BAR_BAND_CLASS = `${MACOS_TITLE_BAR_ROW_CLASS} box-content pb-px`;
 export const MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS =
-  "pl-[calc(var(--bb-window-title-bar-controls-end)_+_12px_-_var(--bb-sidebar-control-size)_-_2*var(--bb-sidebar-rail-padding)_-_1px_-_1rem)]";
+  "pl-[calc(var(--bb-window-title-bar-controls-end)_+_12px_-_var(--bb-window-card-collapsed-left)_-_1rem)]";
 export const MACOS_TITLE_BAR_CONTROL_AXIS_CLASS =
   "[--bb-macos-chrome-control-y:calc(var(--bb-macos-traffic-light-center-y)_-_var(--bb-window-title-bar-height)/2)]";
 export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_CHROME_CONTROL_AXIS_CLASS}`;

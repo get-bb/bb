@@ -266,6 +266,23 @@ describe("bb settings commands", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it("disables terminal copy-on-select through the general settings CLI", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+      })),
+      "v1.settings.general.$put": put,
+    });
+    await runCommand(
+      ["settings", "general", "terminalCopyOnSelect", "off"],
+      register,
+    );
+    expect(put).toHaveBeenCalledExactlyOnceWith({
+      json: { ...defaultAppSettings, terminalCopyOnSelect: false },
+    });
+  });
+
   it("updates one general setting while preserving the full contract", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({

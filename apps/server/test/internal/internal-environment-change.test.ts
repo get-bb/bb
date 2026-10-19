@@ -71,6 +71,7 @@ describe("internal environment change websocket hints", () => {
           requestId: "rpc-protocol-session-scoped",
           command: {
             type: "host.list_files",
+            followRootSymlink: false,
             path: "/tmp/session-scope-test",
             limit: 10,
             includeHidden: false,

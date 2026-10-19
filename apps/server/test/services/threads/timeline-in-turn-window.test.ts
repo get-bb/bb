@@ -79,6 +79,7 @@ function backgroundTaskData(status: "pending" | "completed"): string {
       status,
       taskStatus: status === "pending" ? "running" : "completed",
       skipTranscript: false,
+      foreground: false,
       workflowName: "long-workflow",
     },
   });

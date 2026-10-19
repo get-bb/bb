@@ -188,6 +188,7 @@ describe("ProjectMachineSetupDialog", () => {
       directory: "/Users/me/code/bb",
       parent: "/Users/me/code",
       entries: [],
+      roots: ["/"],
     });
     vi.mocked(sdk.hosts.pathsExist).mockResolvedValue({
       existence: { "/Users/me/code/bb": true },
@@ -221,6 +222,7 @@ describe("ProjectMachineSetupDialog", () => {
       directory: "/Users/me",
       parent: null,
       entries: [],
+      roots: ["/"],
     });
     renderDialog({ ...gitTarget, gitRemoteUrl: null });
 

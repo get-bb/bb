@@ -120,6 +120,14 @@ function entriesHoldingWorkspaces(
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
+class StorageLocationUnavailable extends Error {
+  constructor() {
+    super(
+      "Scan the machine to identify a unique storage location for this thread",
+    );
+  }
+}
+
 export function createStorage(
   bb: BbPluginApi,
   devCleanupEnabled: () => Promise<boolean>,
@@ -128,6 +136,8 @@ export function createStorage(
   bb.storage.migrate(db, [
     "CREATE TABLE scans (host_id TEXT PRIMARY KEY, result_json TEXT NOT NULL)",
     "CREATE TABLE archive_cleanup (thread_id TEXT PRIMARY KEY, archived_at INTEGER NOT NULL)",
+    "ALTER TABLE archive_cleanup ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE archive_cleanup ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0",
   ]);
   const worker = bb.hosts.experimental_client({
     contract: hostStorageContract,
@@ -1186,9 +1196,7 @@ export function createStorage(
         .all(threadId);
       const match = matches[0];
       if (matches.length !== 1 || match === undefined)
-        throw new Error(
-          "Scan the machine to identify a unique storage location for this thread",
-        );
+        throw new StorageLocationUnavailable();
       hostId = match.host_id;
     }
     await requireHost(hostId, true);
@@ -1234,7 +1242,7 @@ export function createStorage(
   let cleaningArchives = false;
   function queueArchivedStorage(threadId: string, archivedAt: number) {
     db.prepare(
-      "INSERT INTO archive_cleanup (thread_id, archived_at) VALUES (?, ?) ON CONFLICT(thread_id) DO UPDATE SET archived_at = excluded.archived_at",
+      "INSERT INTO archive_cleanup (thread_id, archived_at) VALUES (?, ?) ON CONFLICT(thread_id) DO UPDATE SET archived_at = excluded.archived_at, failure_count = 0, next_attempt_at = 0 WHERE archive_cleanup.archived_at != excluded.archived_at",
     ).run(threadId, archivedAt);
   }
   function cancelArchivedStorage(threadId: string) {
@@ -1254,11 +1262,18 @@ export function createStorage(
     return job;
   }
   async function drainPendingArchives(enabled: () => Promise<boolean>) {
+    if (!(await enabled())) {
+      db.prepare("DELETE FROM archive_cleanup").run();
+      return;
+    }
     const pending = db
-      .prepare<[], { thread_id: string; archived_at: number }>(
-        "SELECT thread_id, archived_at FROM archive_cleanup ORDER BY archived_at",
+      .prepare<
+        [number],
+        { thread_id: string; archived_at: number; failure_count: number }
+      >(
+        "SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at",
       )
-      .all();
+      .all(Date.now());
     for (const entry of pending) {
       if (lifecycle.signal.aborted) return;
       if (!(await enabled())) {
@@ -1291,6 +1306,19 @@ export function createStorage(
           cancelArchivedStorage(entry.thread_id);
           continue;
         }
+        const missingLocation = error instanceof StorageLocationUnavailable;
+        const delay = missingLocation
+          ? 3_600_000
+          : Math.min(3_600_000, 60_000 * 2 ** Math.min(entry.failure_count, 6));
+        db.prepare(
+          "UPDATE archive_cleanup SET failure_count = ?, next_attempt_at = ? WHERE thread_id = ? AND archived_at = ?",
+        ).run(
+          missingLocation ? 0 : Math.min(entry.failure_count + 1, 7),
+          Date.now() + delay,
+          entry.thread_id,
+          entry.archived_at,
+        );
+        if (missingLocation) continue;
         bb.log.warn(
           `Could not clear archived storage for ${entry.thread_id}: ${error instanceof Error ? error.message : String(error)}`,
         );

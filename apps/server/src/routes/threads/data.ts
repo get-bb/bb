@@ -466,6 +466,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_files",
+          followRootSymlink: false,
           path: target.storagePath,
           ...(query.query ? { query: query.query } : {}),
           limit,

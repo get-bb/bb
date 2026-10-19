@@ -120,6 +120,7 @@ function taskProgress(threadId: string, sequence: number): InsertEventInput {
         description: "fixture workflow",
         id: "task:wf-1",
         skipTranscript: false,
+        foreground: false,
         status: "pending",
         taskStatus: "running",
         taskType: "local_workflow",

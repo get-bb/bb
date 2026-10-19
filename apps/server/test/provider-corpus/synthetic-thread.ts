@@ -360,6 +360,7 @@ function pushSyntheticTurn(
     taskType: "local_bash",
     description: `background build ${turn}`,
     skipTranscript: false,
+    foreground: false,
   };
   builder.push({
     type: "item/started",

@@ -27,6 +27,20 @@ async function runGit(
   return result.stdout;
 }
 
+async function mountSubstDrive(target: string): Promise<string> {
+  for (const letter of "ZYXWVUTSRQPONMLKJIHGFED") {
+    const drive = `${letter}:\\`;
+    const inUse = await fs.stat(drive).then(
+      () => true,
+      () => false,
+    );
+    if (inUse) continue;
+    await execFileAsync("subst", [`${letter}:`, target]);
+    return drive;
+  }
+  throw new Error("No free drive letter for subst");
+}
+
 async function captureReadHostFileError(
   command: CommandOf<"host.read_file">,
 ): Promise<unknown> {
@@ -197,6 +211,7 @@ describe("readHostFile (no ref — disk read)", () => {
     const rootPath = path.join(parentPath, "STATUS");
     const thrown = await captureReadHostRelativeFileError({
       type: "host.read_file_relative",
+      followRootSymlink: false,
       rootPath,
       path: "index.html",
       dotfiles: "deny",
@@ -276,6 +291,34 @@ describe("browseHostDirectory", () => {
       },
     ]);
   });
+
+  it.runIf(process.platform === "win32")(
+    "lists every mounted drive and stays on the drive the user picked",
+    async () => {
+      const target = await makeTempDir("bb-browse-drive-");
+      const drive = await mountSubstDrive(target);
+      try {
+        await fs.writeFile(path.join(target, "on-drive.txt"), "x", "utf8");
+        const systemDrive = `${process.env.SystemDrive ?? "C:"}\\`;
+
+        const result = await browseHostDirectory({
+          type: "host.browse_directory",
+          path: drive,
+        });
+
+        expect(result.directory).toBe(drive);
+        expect(result.parent).toBeNull();
+        expect(result.entries.map((entry) => entry.path)).toEqual([
+          `${drive}on-drive.txt`,
+        ]);
+        expect(result.roots).toEqual(
+          expect.arrayContaining([systemDrive, drive]),
+        );
+      } finally {
+        await execFileAsync("subst", [drive.slice(0, 2), "/D"]);
+      }
+    },
+  );
 
   it("defaults to the host home directory when no path is given", async () => {
     const result = await browseHostDirectory({

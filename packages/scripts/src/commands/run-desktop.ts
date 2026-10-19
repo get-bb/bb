@@ -106,6 +106,7 @@ export function toDesktopLaunchProcessEnv(args: {
     args.baseEnv,
     args.config,
   );
+  env.BB_SKIP_ONBOARDING ??= "1";
   env.BB_TELEMETRY = "false";
   env.NODE_ENV = "production";
   return env;

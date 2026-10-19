@@ -1,0 +1,22 @@
+{
+  "method": "mcpServer/elicitation/request",
+  "id": 0,
+  "params": {
+    "threadId": "01a15560-485c-7433-b5c3-548de840c644",
+    "turnId": "01a15560-4882-7f81-ab0a-85361da9c880",
+    "serverName": "elicit_e2e",
+    "mode": "form",
+    "_meta": {
+      "codex_approval_kind": "mcp_tool_call",
+      "persist": ["session", "always"],
+      "tool_description": "Delete a widget by id. Destructive.",
+      "tool_params": { "widget_id": "w-42", "force": true },
+      "tool_params_display": [
+        { "name": "force", "value": true, "display_name": "force" },
+        { "name": "widget_id", "value": "w-42", "display_name": "widget_id" }
+      ]
+    },
+    "message": "Allow the elicit_e2e MCP server to run tool \"delete_widget\"?",
+    "requestedSchema": { "type": "object", "properties": {} }
+  }
+}

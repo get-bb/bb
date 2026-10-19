@@ -1,4 +1,4 @@
-import path from "node:path";
+import { posix as path } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin, {
@@ -72,9 +72,36 @@ describe("resolveContainedPreviewPath", () => {
     );
   });
 
+  it.each([
+    [
+      String.raw`C:\Users\fixture\project`,
+      "charts/demo.html",
+      String.raw`C:\Users\fixture\project\charts\demo.html`,
+    ],
+    [
+      String.raw`\\fixture-host\bb-data\thread-storage\thr_test`,
+      "reports/summary.html",
+      String.raw`\\fixture-host\bb-data\thread-storage\thr_test\reports\summary.html`,
+    ],
+  ])("resolves Windows host paths under %s", (root, file, expected) => {
+    expect(resolveContainedPreviewPath(root, file)).toBe(expected);
+  });
+
   it("rejects resolved paths outside the root", () => {
     expect(() =>
-      resolveContainedPreviewPath(ROOT, path.join("..", "outside.html")),
+      resolveContainedPreviewPath(ROOT, "../outside.html"),
+    ).toThrow(/escape/);
+    expect(() =>
+      resolveContainedPreviewPath(
+        String.raw`C:\Users\fixture\project`,
+        String.raw`..\outside.html`,
+      ),
+    ).toThrow(/escape/);
+    expect(() =>
+      resolveContainedPreviewPath(
+        String.raw`\\fixture-host\bb-data\thread-storage\thr_test`,
+        String.raw`..\outside.html`,
+      ),
     ).toThrow(/escape/);
   });
 });
@@ -157,6 +184,85 @@ describe("preparePreview rpc", () => {
       content: "# Report",
     });
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);
+  });
+
+  it("reads a workspace document from a Windows drive-letter host path", async () => {
+    const workspacePath = String.raw`C:\Users\fixture\project`;
+    const { harness } = await load({
+      threads: {
+        get: () => threadWithEnv({ path: workspacePath }),
+      },
+      files: {
+        read: (args) => {
+          expect(args).toEqual({
+            path: String.raw`C:\Users\fixture\project\reports\status.md`,
+            rootPath: workspacePath,
+            hostId: HOST_ID,
+          });
+          return {
+            content: "# Status",
+            contentEncoding: "utf8",
+            sizeBytes: 8,
+            sha256: "abc",
+          };
+        },
+      },
+    });
+
+    await expect(
+      harness.callRpc("preparePreview", {
+        threadId: "thr_1",
+        file: "reports/status.md",
+        source: "workspace",
+      }),
+    ).resolves.toMatchObject({
+      kind: "markdown",
+      rootPath: workspacePath,
+      target: {
+        kind: "workspace",
+        environmentId: "env_1",
+        path: "reports/status.md",
+      },
+    });
+  });
+
+  it("reads thread storage from a Windows UNC host path", async () => {
+    const storageRootPath = String.raw`\\fixture-host\bb-data\thread-storage\thr_test`;
+    const { harness } = await load({
+      threads: {
+        storageLocation: () => ({ hostId: HOST_ID, storageRootPath }),
+      },
+      files: {
+        read: (args) => {
+          expect(args).toEqual({
+            path: String.raw`\\fixture-host\bb-data\thread-storage\thr_test\reports\result.html`,
+            rootPath: storageRootPath,
+            hostId: HOST_ID,
+          });
+          return {
+            content: "<h1>Result</h1>",
+            contentEncoding: "utf8",
+            sizeBytes: 15,
+            sha256: "abc",
+          };
+        },
+      },
+    });
+
+    await expect(
+      harness.callRpc("preparePreview", {
+        threadId: "thr_1",
+        file: "reports/result.html",
+        source: "thread-storage",
+      }),
+    ).resolves.toMatchObject({
+      kind: "html",
+      target: {
+        kind: "thread-storage",
+        threadId: "thr_1",
+        path: "reports/result.html",
+      },
+    });
   });
 
   it("rejects unknown input fields immediately", async () => {

@@ -296,8 +296,10 @@ export {
   getHighWaterMarks,
   findStoredEventRow,
   getActiveStoredTurnId,
+  isStoredTurnMainRunIdle,
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
+  hasStoredTerminalClientTurnRequestEvent,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
@@ -357,6 +359,7 @@ export {
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  listThreadEventSuffixBackgroundSettlementRows,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -394,6 +397,7 @@ export type {
 } from "./events.js";
 
 export {
+  countTerminalSessions,
   createTerminalSession,
   getTerminalSession,
   listTerminalSessions,

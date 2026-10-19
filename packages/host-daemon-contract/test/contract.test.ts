@@ -277,6 +277,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       { kind: "directory", name: "src", path: "/home/me/project/src" },
       { kind: "file", name: "README.md", path: "/home/me/project/README.md" },
     ],
+    roots: ["/"],
   },
   "host.paths_exist": {
     existence: {
@@ -1264,7 +1265,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(240);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(244);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1522,6 +1523,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
+        followRootSymlink: false,
         path: "/tmp/workspace",
         limit: 1000,
         includeHidden: true,
@@ -1530,6 +1532,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "host.list_files",
+      followRootSymlink: false,
       path: "/tmp/workspace",
       limit: 1000,
       includeHidden: true,
@@ -1750,12 +1753,14 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file_relative",
+        followRootSymlink: false,
         rootPath: "/tmp/bb-data/apps/demo/assets",
         path: "logo.png",
         dotfiles: "deny",
       }),
     ).toMatchObject({
       type: "host.read_file_relative",
+      followRootSymlink: false,
       rootPath: "/tmp/bb-data/apps/demo/assets",
       path: "logo.png",
       dotfiles: "deny",
@@ -1788,6 +1793,7 @@ describe("host-daemon command schemas", () => {
     const onlineReadCommands = [
       {
         type: "host.list_files",
+        followRootSymlink: false,
         path: "/tmp/workspace",
         limit: 100,
         includeHidden: true,
@@ -1822,12 +1828,14 @@ describe("host-daemon command schemas", () => {
       },
       {
         type: "host.read_file_relative",
+        followRootSymlink: false,
         rootPath: "/tmp/workspace",
         path: "README.md",
         dotfiles: "deny",
       },
       {
         type: "provider.list_models",
+        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: BRIDGE_LAUNCH,
       },
@@ -1926,6 +1934,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file_relative",
+        followRootSymlink: false,
         rootPath: "/tmp/bb-data/apps/demo/assets",
         path: "logo.png",
       }),
@@ -2212,6 +2221,7 @@ describe("host-daemon command schemas", () => {
   it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
+      contributedEnv: [],
       bridgeLaunch: ACP_BRIDGE_LAUNCH,
       providerId: "acp-local",
       cwd: "/tmp/workspace",
@@ -2339,6 +2349,7 @@ describe("host-daemon command schemas", () => {
 
     const providerListModelsCommand = {
       type: "provider.list_models",
+      contributedEnv: [],
       providerId: "echo-agent",
       bridgeLaunch,
       cwd: "/tmp/workspace",
@@ -2816,6 +2827,7 @@ describe("host-daemon command schemas", () => {
   it("requires file list commands to state their entry filters", () => {
     const listFiles = {
       type: "host.list_files",
+      followRootSymlink: false,
       path: "/tmp/workspace",
       limit: 100,
       includeHidden: true,
@@ -2864,6 +2876,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
+        followRootSymlink: false,
         path: "/tmp/bb-data/thread-storage/thread-123",
         query: longQuery,
         limit: 100,
@@ -2876,6 +2889,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
+        followRootSymlink: false,
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,
@@ -2887,6 +2901,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
+        followRootSymlink: false,
         path: "/tmp/workspace",
         query: longQuery,
         limit: 100,
@@ -2899,6 +2914,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
+        followRootSymlink: false,
         path: "/tmp/workspace",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,

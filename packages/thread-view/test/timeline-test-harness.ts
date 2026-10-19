@@ -256,6 +256,10 @@ interface ContextCompactionArgs extends ProviderTurnEventOptions {
   itemId?: string;
 }
 
+interface TurnMainRunUpdatedArgs extends ProviderTurnEventOptions {
+  state: "idle" | "running";
+}
+
 interface TurnPlanUpdatedArgs extends ProviderTurnEventOptions {
   plan: Array<{
     status: "pending" | "active" | "completed";
@@ -443,6 +447,9 @@ export interface TimelineEventFactory {
       status?: "completed" | "failed" | "interrupted";
     },
   ): ThreadEventRowOfType<"turn/completed">;
+  turnMainRunUpdated(
+    args: TurnMainRunUpdatedArgs,
+  ): ThreadEventRowOfType<"turn/mainRun/updated">;
   turnPlanUpdated(
     args: TurnPlanUpdatedArgs,
   ): ThreadEventRowOfType<"turn/plan/updated">;
@@ -1276,6 +1283,17 @@ export function createTimelineEventFactory(
         data: {
           ...providerFields(args),
           status: args?.status ?? "completed",
+        },
+      };
+    },
+    turnMainRunUpdated(args) {
+      const base = nextProviderTurnScopedRowBase("turn-main-run-updated", args);
+      return {
+        ...base,
+        type: "turn/mainRun/updated",
+        data: {
+          ...providerFields(args),
+          state: args.state,
         },
       };
     },

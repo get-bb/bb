@@ -78,6 +78,7 @@
     "katex": "^0.16.22",
     "mermaid": "^11.15.0",
     "micromark-extension-directive": "^4.0.0",
+    "micromark-extension-math": "^3.1.0",
     "nanoid": "^5.1.6",
     "partysocket": "^1.1.16",
     "picomatch": "^4.0.5",

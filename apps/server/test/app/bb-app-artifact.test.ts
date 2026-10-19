@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -97,9 +106,33 @@ async function fixture(mode: Mode) {
   return { packageRoot, refreshHostPackage, root, serverEntry };
 }
 
+async function setTreeReadOnly(directory: string): Promise<void> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await setTreeReadOnly(path);
+    } else {
+      await chmod(path, 0o444);
+    }
+  }
+  await chmod(directory, 0o555);
+}
+
+async function restoreTreeWritable(directory: string): Promise<void> {
+  await chmod(directory, 0o755);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      await restoreTreeWritable(join(directory, entry.name));
+    }
+  }
+}
+
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+    roots.splice(0).map(async (root) => {
+      await restoreTreeWritable(root).catch(() => undefined);
+      await rm(root, { force: true, recursive: true });
+    }),
   );
 });
 
@@ -166,6 +199,47 @@ describe("bb-app artifact service (desktop packaging)", () => {
           /\r?\n/u,
         ),
       ).toContain("package/host-daemon/dist/daemon-bundle.mjs");
+    },
+    ARTIFACT_LIFECYCLE_TIMEOUT_MS,
+  );
+
+  it.skipIf(
+    process.platform === "win32" ||
+      (typeof process.getuid === "function" && process.getuid() === 0),
+  )(
+    "serves the tarball and removes its temporary copy from a read-only install",
+    async () => {
+      const test = await fixture("packaged");
+      const dataDir = join(test.root, "data");
+      const nested = join(
+        test.packageRoot,
+        "host-daemon/dist/bb-chunks/nested",
+      );
+      await mkdir(nested, { recursive: true });
+      await writeFile(join(nested, "deep.js"), "export {};\n");
+      await setTreeReadOnly(join(test.packageRoot, "host-daemon"));
+      const service = createBbAppArtifactService({
+        dataDir,
+        serverEntryUrl: pathToFileURL(test.serverEntry).href,
+      });
+
+      const artifact = await service.getArtifact();
+
+      expect(artifact.size).toBeGreaterThan(0);
+      expect(
+        (await execFileAsync("tar", ["-tzf", artifact.path])).stdout.split(
+          /\r?\n/u,
+        ),
+      ).toContain("package/host-daemon/dist/bb-chunks/nested/deep.js");
+      expect(
+        (await readdir(join(dataDir, "install-cache"))).filter((name) =>
+          name.startsWith("host-package-"),
+        ),
+      ).toEqual([]);
+      expect(
+        (await stat(join(test.packageRoot, "host-daemon/dist/bb-chunks")))
+          .mode & 0o222,
+      ).toBe(0);
     },
     ARTIFACT_LIFECYCLE_TIMEOUT_MS,
   );

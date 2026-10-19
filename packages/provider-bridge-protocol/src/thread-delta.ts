@@ -64,6 +64,7 @@ export const deltaBackgroundTaskShapeSchema = z.object({
   status: threadEventItemStatusSchema,
   taskStatus: backgroundTaskStatusSchema,
   skipTranscript: z.boolean(),
+  foreground: z.boolean().optional(),
   workflowName: z.string().optional(),
   workflow: workflowProgressSnapshotSchema.optional(),
   usage: backgroundTaskUsageSchema.optional(),
@@ -230,6 +231,11 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("turn.open"),
     providerTurnId: providerTurnIdSchema.optional(),
     parentRef: deltaKeyPartSchema.optional(),
+  }),
+
+  z.object({
+    kind: z.literal("turn.mainRun"),
+    state: z.enum(["idle", "running"]),
   }),
 
   z.object({

@@ -72,6 +72,7 @@ describe("desktop launch environment", () => {
       BB_DESKTOP_USER_DATA_DIR: join(config.dataDir, "desktop"),
       BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
       BB_SERVER_PORT: String(config.ports.serverPort),
+      BB_SKIP_ONBOARDING: "1",
       BB_TELEMETRY: "false",
       NODE_ENV: "production",
       OPENAI_API_KEY: "test-key",
@@ -98,6 +99,16 @@ describe("desktop launch environment", () => {
     ).toBe(join(process.cwd(), "relative-profile"));
   });
 
+  it("lets an explicit onboarding choice survive the worktree default", () => {
+    const env = toDesktopLaunchProcessEnv({
+      baseEnv: { BB_SKIP_ONBOARDING: "0" },
+      config,
+      mode: "worktree",
+    });
+
+    expect(env.BB_SKIP_ONBOARDING).toBe("0");
+  });
+
   it("lets an explicit devtools choice survive the worktree default", () => {
     const env = toDesktopLaunchProcessEnv({
       baseEnv: { BB_DESKTOP_OPEN_DEVTOOLS: "1" },
@@ -119,6 +130,7 @@ describe("desktop launch environment", () => {
     expect(env.BB_SERVER_PORT).toBeUndefined();
     expect(env.BB_HOST_DAEMON_PORT).toBeUndefined();
     expect(env.BB_DESKTOP_USER_DATA_DIR).toBeUndefined();
+    expect(env.BB_SKIP_ONBOARDING).toBeUndefined();
     expect(env).toMatchObject({
       BB_DESKTOP_OPEN_DEVTOOLS: "0",
       NODE_ENV: "production",

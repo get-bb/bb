@@ -1042,6 +1042,7 @@ describe("timeline event budget", () => {
               status: "pending",
               taskStatus: "running",
               skipTranscript: false,
+              foreground: false,
               usage: {
                 totalTokens: progress,
                 toolUses: progress,

@@ -200,6 +200,7 @@ describe("thread delta grammar v3", () => {
           status: "pending",
           taskStatus: "running",
           skipTranscript: false,
+          foreground: false,
         },
       }).success,
     ).toBe(true);

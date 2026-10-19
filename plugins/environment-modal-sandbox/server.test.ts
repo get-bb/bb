@@ -1415,7 +1415,7 @@ describe("Modal allocation tracking", () => {
       h.bb,
       allocations,
       h.backend.backend,
-      Date.now(),
+      Date.now() + 60_000,
     );
     expect(await allocations.keys()).toEqual([]);
   });
@@ -1461,6 +1461,51 @@ describe("Modal allocation tracking", () => {
       Date.now(),
     );
     expect(await allocations.keys()).toEqual(["allocations/sandbox/sandbox-1"]);
+  });
+
+  it("persists per-allocation exponential backoff, caps it, and resumes cleanup after recovery", async () => {
+    const h = await setup();
+    await h.provider.create(createContext("first"));
+    await h.provider.create(createContext("second"));
+    h.backend.states[1]!.terminated = true;
+    const original = h.backend.backend.fromId;
+    let failing = true;
+    const lookup = vi
+      .spyOn(h.backend.backend, "fromId")
+      .mockImplementation(async (id) => {
+        if (id === "sandbox-1" && failing) throw new Error("unavailable");
+        return original(id);
+      });
+    let now = Date.now();
+    let allocations = modalAllocations(h.bb, () => now);
+    await sweepModalAllocations(h.bb, allocations, h.backend.backend, now);
+    expect(await allocations.keys()).toEqual(["allocations/sandbox/sandbox-1"]);
+    for (const delay of [
+      60_000, 120_000, 240_000, 480_000, 960_000, 1_920_000, 3_600_000,
+      3_600_000,
+    ]) {
+      const calls = lookup.mock.calls.length;
+      allocations = modalAllocations(h.bb, () => now);
+      await sweepModalAllocations(
+        h.bb,
+        allocations,
+        h.backend.backend,
+        now + delay - 1,
+      );
+      expect(lookup).toHaveBeenCalledTimes(calls);
+      now += delay;
+      await sweepModalAllocations(h.bb, allocations, h.backend.backend, now);
+      expect(lookup).toHaveBeenCalledTimes(calls + 1);
+    }
+    failing = false;
+    h.backend.states[0]!.terminated = true;
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      now + 3_600_000,
+    );
+    expect(await allocations.keys()).toEqual([]);
   });
 
   it("rediscovers allocation after create loses its response and prunes it after termination", async () => {
@@ -1555,7 +1600,7 @@ describe("Modal allocation tracking", () => {
     );
     await sweepModalAllocations(h.bb, allocations, h.backend.backend, 60_001);
     expect(await allocations.keys()).toHaveLength(1);
-    await sweepModalAllocations(h.bb, allocations, h.backend.backend, 60_001);
+    await sweepModalAllocations(h.bb, allocations, h.backend.backend, 120_001);
     expect(await allocations.keys()).toEqual([]);
     create.mockRestore();
   });

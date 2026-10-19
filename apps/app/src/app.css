@@ -33,6 +33,7 @@
     --bb-shell-height: 100dvh;
     --bb-window-frame-top: 0px;
     --bb-window-frame-lip: 0px;
+    --bb-window-frame-leading-lip: 0px;
     --secondary-panel-width-mobile: min(76vw, 320px);
     --bb-sidebar-rail-padding: var(--bb-frame-rail-padding);
     --bb-sidebar-control-size: var(--bb-frame-rail-control-size);

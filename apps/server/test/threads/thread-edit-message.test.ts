@@ -4,6 +4,7 @@ import {
   createPendingInteraction,
   createPromptHistoryEntry,
   getThread,
+  listActiveBackgroundTaskCountsByThreadIds,
   listEvents,
   listQueuedThreadMessages,
   listStoredProjectPromptHistoryRows,
@@ -1050,6 +1051,114 @@ describe("editThreadMessage", () => {
         ok: true,
         operationId: "edit-op-incomplete-turn",
       });
+    });
+  });
+
+  it("keeps the settlement of background work started before the edited message", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        includeSecondTurn: false,
+        providerId: "claude-code",
+      });
+      const backgroundTask = (id: string, taskStatus: "running" | "stopped") =>
+        ({
+          id,
+          type: "backgroundTask",
+          taskType: "local_bash",
+          description: `Command ${id}`,
+          status: taskStatus === "running" ? "pending" : "interrupted",
+          taskStatus,
+          skipTranscript: false,
+          foreground: false,
+        }) as const;
+      const seedTaskEvent = (args: {
+        id: string;
+        sequence: number;
+        taskStatus: "running" | "stopped";
+      }) =>
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-original",
+          sequence: args.sequence,
+          ...(args.taskStatus === "running"
+            ? {
+                type: "item/started" as const,
+                scope: turnScope("turn-first"),
+              }
+            : {
+                type: "item/backgroundTask/completed" as const,
+                scope: threadScope(),
+              }),
+          itemId: args.id,
+          itemKind: "backgroundTask",
+          data: {
+            providerThreadId: "provider-original",
+            item: backgroundTask(args.id, args.taskStatus),
+          },
+        });
+      seedTaskEvent({ id: "task-before", sequence: 7, taskStatus: "running" });
+      seedTurn(harness, {
+        completionStatus: "interrupted",
+        providerCheckpointId: "checkpoint-last",
+        providerThreadId: "provider-original",
+        requestSequence: 8,
+        text: "Original last message",
+        threadId: thread.id,
+        turnId: "turn-last",
+      });
+      seedTaskEvent({ id: "task-before", sequence: 13, taskStatus: "stopped" });
+      seedTaskEvent({ id: "task-after", sequence: 14, taskStatus: "running" });
+      seedTaskEvent({ id: "task-after", sequence: 15, taskStatus: "stopped" });
+
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-background-settlement",
+          expectedRequestSequence: 8,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-background-edit",
+      });
+
+      await expect(editPromise).resolves.toEqual({
+        ok: true,
+        operationId: "edit-op-background-settlement",
+        requestSequence: 18,
+      });
+      const remaining = listEvents(harness.db, { threadId: thread.id });
+      expect(
+        remaining
+          .filter((event) => event.sequence >= 8)
+          .map((event) => [event.sequence, event.type, event.itemId]),
+      ).toEqual([
+        [16, "system/operation", null],
+        [17, "item/backgroundTask/completed", "task-before"],
+        [18, "client/turn/requested", null],
+      ]);
+      const carried = remaining.at(-2);
+      expect(carried).toMatchObject({
+        providerThreadId: "provider-original",
+        scopeKind: "thread",
+      });
+      expect(JSON.parse(carried?.data ?? "null")).toMatchObject({
+        item: {
+          id: "task-before",
+          status: "interrupted",
+          taskStatus: "stopped",
+        },
+      });
+      expect(
+        listActiveBackgroundTaskCountsByThreadIds(harness.db, {
+          threadIds: [thread.id],
+        }),
+      ).toEqual([]);
     });
   });
 

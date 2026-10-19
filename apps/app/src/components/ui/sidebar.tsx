@@ -46,6 +46,8 @@ const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
 
 const SIDEBAR_FRAME_CLASS =
   "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-window-title-bar-height) pr-(--bb-window-frame-lip) pb-(--bb-window-frame-lip) [--bb-window-frame-top:var(--bb-window-title-bar-height)] [--bb-window-frame-lip:var(--bb-frame-window-lip)]";
+const SIDEBAR_FRAME_LEADING_LIP_CLASS =
+  "pl-(--bb-window-frame-leading-lip) [--bb-window-frame-leading-lip:var(--bb-window-frame-lip)]";
 const SIDEBAR_FRAMED_PANEL_CLASS =
   "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
 const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-y border-l border-border";
@@ -654,12 +656,22 @@ const SidebarProvider = React.forwardRef<
                   style={
                     {
                       ...sidebarMobileWidthStyle,
+                      ...(isFramed
+                        ? {
+                            "--bb-window-card-collapsed-left":
+                              desktopCollapsedRailWidth ??
+                              "var(--bb-window-frame-leading-lip)",
+                          }
+                        : {}),
                       ...style,
                     } as React.CSSProperties
                   }
                   className={cn(
                     "group/sidebar-wrapper flex h-full min-h-0 w-full max-md:overflow-clip",
                     isFramed && SIDEBAR_FRAME_CLASS,
+                    isFramed &&
+                      desktopCollapsedRailWidth === null &&
+                      SIDEBAR_FRAME_LEADING_LIP_CLASS,
                     className,
                   )}
                   ref={ref}
@@ -791,7 +803,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
           className={cn(
             "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) select-none flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
             "group-data-[collapsible=offcanvas]:invisible group-data-[collapsible=offcanvas]:[transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_200ms]",
-            "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
+            "left-(--bb-window-frame-leading-lip) group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
             "group-data-[collapsible=rail]:w-(--sidebar-rail-width)",
             "border-border-seam group-data-[side=left]:border-r",
             SIDEBAR_FRAMED_PANEL_CLASS,

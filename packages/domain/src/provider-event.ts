@@ -371,6 +371,7 @@ export const threadEventBackgroundTaskItemSchema = z.object({
   status: threadEventItemStatusSchema,
   taskStatus: backgroundTaskStatusSchema,
   skipTranscript: z.boolean(),
+  foreground: z.boolean(),
   workflowName: z.string().optional(),
   workflow: workflowProgressSnapshotSchema.optional(),
   usage: backgroundTaskUsageSchema.optional(),
@@ -626,6 +627,12 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string(),
     plan: z.array(threadEventPlanStepSchema),
     explanation: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("turn/mainRun/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    state: z.enum(["idle", "running"]),
   }),
   z.object({
     type: z.literal("turn/diff/updated"),

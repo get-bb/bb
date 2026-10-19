@@ -48,6 +48,7 @@ function backgroundTaskItemData(args: {
       status: args.status,
       taskStatus: args.taskStatus,
       skipTranscript: false,
+      foreground: false,
       workflowName: "fixture-mini",
       usage: { totalTokens: 100, toolUses: 2, durationMs: 1500 },
     },

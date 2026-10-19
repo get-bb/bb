@@ -31,6 +31,7 @@ export const hostDirectoryListingSchema = z.object({
   directory: z.string(),
   parent: z.string().nullable(),
   entries: z.array(hostDirectoryEntrySchema),
+  roots: z.array(z.string()),
 });
 export type HostDirectoryListing = z.infer<typeof hostDirectoryListingSchema>;
 

@@ -40,7 +40,10 @@ const sessionConstructionFields = {
 };
 
 export const modelListParamsSchema = z
-  .object({ cwd: z.string().min(1).optional() })
+  .object({
+    cwd: z.string().min(1).optional(),
+    envVars: z.record(z.string(), z.string()).optional(),
+  })
   .passthrough();
 
 export const commandListParamsSchema = z

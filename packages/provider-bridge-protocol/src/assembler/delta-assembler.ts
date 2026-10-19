@@ -559,6 +559,7 @@ export function createDeltaAssembler(
         status: shape.status,
         taskStatus: shape.taskStatus,
         skipTranscript: shape.skipTranscript,
+        foreground: shape.foreground ?? false,
         ...(shape.workflowName === undefined
           ? {}
           : { workflowName: shape.workflowName }),
@@ -2000,6 +2001,20 @@ export function createDeltaAssembler(
           rawEvent: delta.raw,
           scope: turnId === undefined ? threadScope() : turnScope(turnId),
           ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+        });
+        return;
+      }
+
+      case "turn.mainRun": {
+        if (state.currentTurnId === undefined) {
+          return;
+        }
+        events.push({
+          type: "turn/mainRun/updated",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(state.currentTurnId),
+          state: delta.state,
         });
         return;
       }

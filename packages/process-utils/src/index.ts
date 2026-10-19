@@ -12,3 +12,4 @@ export * from "./plugin-process-paths.js";
 export * from "./socket-type-of-service.js";
 export * from "./process-info.js";
 export * from "./performance-diagnostics.js";
+export * from "./vcs-process-scheduler.js";

@@ -717,6 +717,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.list_files",
+        followRootSymlink: false,
         path: target.path,
         ...(query.query ? { query: query.query } : {}),
         limit,

@@ -67,6 +67,7 @@ import type {
   ReapedIdleProviderSession,
 } from "./types.js";
 import {
+  resolveContributedEnvironment,
   resolveThreadEnvironment,
   type DroppedThreadEnvironmentContribution,
   type ResolvedThreadEnvironmentEntry,
@@ -2369,7 +2370,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async listModels({ providerId, bridgeLaunch, cwd }) {
+    async listModels({ providerId, bridgeLaunch, cwd, contributedEnv = [] }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2380,6 +2381,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         plan: proc.adapter.buildCommandPlan({
           type: "model/list",
           ...(cwd !== undefined ? { cwd } : {}),
+          envVars: resolveContributedEnvironment(
+            contributedEnv,
+            options.shellEnv,
+          ),
         }),
         providerId,
       });

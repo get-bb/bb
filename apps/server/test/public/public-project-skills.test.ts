@@ -1530,10 +1530,18 @@ describe("public project skills route", () => {
       });
       expect(stub.requests.map((request) => request.command)).toContainEqual({
         type: "host.read_file_relative",
+        followRootSymlink: true,
         rootPath: "/home/.codex/skills/documents",
         path: "references/layout.md",
         dotfiles: "deny",
       });
+      expect(stub.requests.map((request) => request.command)).toContainEqual(
+        expect.objectContaining({
+          type: "host.list_files",
+          followRootSymlink: true,
+          path: "/home/.codex/skills/documents",
+        }),
+      );
     });
   });
 

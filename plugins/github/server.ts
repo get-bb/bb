@@ -1,3 +1,7 @@
+import {
+  experimental_runVcsProcess as runVcsProcess,
+  type ExperimentalVcsProcessPriority as VcsProcessPriority,
+} from "@get-bb/plugin-sdk/host";
 import { execFile } from "node:child_process";
 import {
   defineRpcContract,
@@ -349,27 +353,34 @@ function run(
   file: string,
   args: string[],
   timeoutMs = 30_000,
+  priority: VcsProcessPriority = "background",
 ): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      file,
-      args,
-      { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(
-            new Error(
-              `${file} ${args.slice(0, 3).join(" ")} failed: ${
-                stderr.trim() || error.message
-              }`,
-            ),
-          );
-        } else {
-          resolve({ stdout, stderr });
-        }
-      },
-    );
-  });
+  return runVcsProcess(
+    file === "git" ? "git" : "gh",
+    args,
+    () =>
+      new Promise((resolve, reject) => {
+        execFile(
+          file,
+          args,
+          { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(
+                new Error(
+                  `${file} ${args.slice(0, 3).join(" ")} failed: ${
+                    stderr.trim() || error.message
+                  }`,
+                ),
+              );
+            } else {
+              resolve({ stdout, stderr });
+            }
+          },
+        );
+      }),
+    { priority },
+  );
 }
 
 export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
@@ -563,15 +574,23 @@ export default async function plugin(bb: BbPluginApi) {
     throw needsConfiguration(`GitHub CLI not found. ${GH_HINT}`);
   }
 
-  async function gh(args: string[], timeoutMs?: number): Promise<string> {
+  async function gh(
+    args: string[],
+    timeoutMs?: number,
+    priority: VcsProcessPriority = "interactive",
+  ): Promise<string> {
     const file = await resolveGh();
-    const { stdout } = await run(file, args, timeoutMs);
+    const { stdout } = await run(file, args, timeoutMs, priority);
     return stdout;
   }
 
   async function probeAuth(): Promise<void> {
     try {
-      await gh(["auth", "status", "--hostname", GH_HOST, "--active"], 10_000);
+      await gh(
+        ["auth", "status", "--hostname", GH_HOST, "--active"],
+        10_000,
+        "background",
+      );
       ghState = "ready";
       ghAuthError = null;
       return;
@@ -584,7 +603,7 @@ export default async function plugin(bb: BbPluginApi) {
     }
     let hasCredentials = true;
     try {
-      await gh(["auth", "token", "--hostname", GH_HOST], 5_000);
+      await gh(["auth", "token", "--hostname", GH_HOST], 5_000, "background");
     } catch (error) {
       const message = errorMessage(error);
       hasCredentials = !GH_NO_CREDENTIALS.test(message);
@@ -823,7 +842,10 @@ export default async function plugin(bb: BbPluginApi) {
     let lastFailure = "";
     for (const { repo } of repos) {
       try {
-        const items = await fetchRepoItems(gh, repo);
+        const items = await fetchRepoItems(
+          (args) => gh(args, undefined, "background"),
+          repo,
+        );
         replaceRepoRows(repo, items);
         total += items.length;
       } catch (error) {

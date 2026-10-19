@@ -32,6 +32,7 @@
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
     "modal": "0.10.0",
+    "nice-grpc-common": "^2.0.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {

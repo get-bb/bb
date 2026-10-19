@@ -1,6 +1,8 @@
+import { realpath as resolveSymlinksPreservingDrive } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import type {
   DirectoryEntry,
   HostDaemonOnlineRpcResult,
@@ -25,6 +27,7 @@ import {
   readRootRelativeFileForTransport,
   type ReadFileContentForTransportResult,
 } from "./file-read.js";
+import { listFilesystemRoots } from "./filesystem-roots.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 const SAFE_GIT_REF_REGEX = /^[A-Za-z0-9_./~^@-]+$/;
@@ -67,7 +70,9 @@ export async function listHostFiles(
   try {
     const realRootPath = await resolveNonSymlinkDirectoryPath({
       description: "Path",
-      path: command.path,
+      path: command.followRootSymlink
+        ? await fs.realpath(command.path)
+        : command.path,
     });
 
     return await finalizeListedFiles({
@@ -131,6 +136,7 @@ export async function listHostPaths(
 }
 
 const DIRECTORY_BROWSE_SKIP_NAMES = new Set(["node_modules"]);
+const resolveBrowsedDirectory = promisify(resolveSymlinksPreservingDrive);
 
 function compareDirectoryEntries(a: DirectoryEntry, b: DirectoryEntry): number {
   if (a.kind !== b.kind) {
@@ -154,7 +160,7 @@ export async function browseHostDirectory(
       `Path "${requestedPath}" is not a directory`,
     );
   }
-  const directory = await fs.realpath(requestedPath);
+  const directory = await resolveBrowsedDirectory(requestedPath);
 
   const dirents = await fs.readdir(directory, { withFileTypes: true });
   const entries: DirectoryEntry[] = [];
@@ -188,6 +194,7 @@ export async function browseHostDirectory(
     directory,
     parent: parent === directory ? null : parent,
     entries,
+    roots: await listFilesystemRoots(),
   };
 }
 
@@ -264,6 +271,7 @@ export async function readHostRelativeFile(
   command: CommandOf<"host.read_file_relative">,
 ): Promise<HostDaemonOnlineRpcResult<"host.read_file_relative">> {
   return readRootRelativeFileForTransport({
+    followRootSymlink: command.followRootSymlink,
     rootPath: command.rootPath,
     relativePath: command.path,
     dotfiles: command.dotfiles,

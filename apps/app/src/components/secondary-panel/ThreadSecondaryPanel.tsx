@@ -133,6 +133,21 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
+type FilePreviewScrollPositions = Map<string, { scrollTop: number }>;
+const scopedFilePreviewScrollPositions = new Map<
+  string,
+  FilePreviewScrollPositions
+>();
+
+function getScopedFilePreviewScrollPositions(
+  panelStateId: string,
+): FilePreviewScrollPositions {
+  const existing = scopedFilePreviewScrollPositions.get(panelStateId);
+  if (existing !== undefined) return existing;
+  const positions: FilePreviewScrollPositions = new Map();
+  scopedFilePreviewScrollPositions.set(panelStateId, positions);
+  return positions;
+}
 
 export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
@@ -290,9 +305,13 @@ function ThreadSecondaryPanelContent({
     () => tabs.filter((tab) => tab.isHidden !== true),
     [tabs],
   );
-  const [filePreviewScrollPositions] = useState(
-    () => new Map<string, { scrollTop: number }>(),
+  const [instanceScrollPositions] = useState<FilePreviewScrollPositions>(
+    () => new Map(),
   );
+  const filePreviewScrollPositions =
+    splitPanelStateId === undefined
+      ? instanceScrollPositions
+      : getScopedFilePreviewScrollPositions(splitPanelStateId);
   useLayoutEffect(() => {
     const openTabIds = new Set(tabs.map((tab) => tab.tab.id));
     for (const tabId of filePreviewScrollPositions.keys()) {

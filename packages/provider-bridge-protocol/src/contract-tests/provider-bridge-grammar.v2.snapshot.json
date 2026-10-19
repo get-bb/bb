@@ -155,6 +155,10 @@
       "diff": "required",
       "providerTurnId": "optional"
     },
+    "turn.mainRun": {
+      "kind": "required",
+      "state": "required"
+    },
     "turn.open": {
       "kind": "required",
       "providerTurnId": "optional",
@@ -191,6 +195,7 @@
       "status": "required",
       "taskStatus": "required",
       "skipTranscript": "required",
+      "foreground": "optional",
       "workflowName": "optional",
       "workflow": "optional",
       "usage": "optional",

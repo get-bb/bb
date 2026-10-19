@@ -81,7 +81,7 @@ export function VoiceInputTextarea({
         )}
       />
       {voice.isSupported ? (
-        <div className="absolute inset-x-1 bottom-1 flex items-center justify-end gap-2">
+        <div className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center justify-end gap-2 *:pointer-events-auto">
           {voice.isListening ? (
             <>
               <Button

@@ -273,6 +273,7 @@ describe("conformance presentation/icon-namespaced-declared", () => {
         taskStatus:
           type === "item/backgroundTask/completed" ? "completed" : "running",
         skipTranscript: false,
+        foreground: false,
         presentation: {
           label: { pending: "Running", completed: "Ran" },
           icon: { glyph },

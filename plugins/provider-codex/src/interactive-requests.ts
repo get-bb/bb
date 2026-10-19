@@ -1,7 +1,9 @@
+import { z } from "zod";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
   isApprovalInteractionOutcome,
+  providerInteractionOutcomeSchema,
   userQuestionInteractionOutcomeSchema,
   type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
@@ -10,6 +12,7 @@ import {
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
+  type ProviderInteractionOutcome,
   type UserQuestionInteractionOutcome,
   type UserQuestionPendingInteractionPayload,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -18,6 +21,16 @@ import { normalizePendingInteractionRequestedPermissionProfile } from "./pending
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
+import {
+  CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
+  CODEX_MCP_ELICITATION_KIND,
+  normalizeCodexMcpElicitation,
+  codexMcpElicitationSchema,
+  codexMcpElicitationResponseSchema,
+  buildCodexMcpElicitationResponse,
+  type CodexNativeMcpElicitationResponse,
+} from "./mcp-elicitation.js";
+import { codexMcpElicitationTitle } from "./mcp-elicitation-title.js";
 import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
@@ -35,11 +48,8 @@ type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
   | PermissionsRequestApprovalResponse
-  | { answers: Record<string, { answers: string[] }> };
-
-type CodexInteractionOutcome =
-  | ApprovalInteractionOutcome
-  | UserQuestionInteractionOutcome;
+  | { answers: Record<string, { answers: string[] }> }
+  | CodexNativeMcpElicitationResponse;
 
 function assertNever(value: never): never {
   throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
@@ -167,6 +177,28 @@ export function decodeCodexInteractiveRequest(
   }
 
   switch (request.method) {
+    case "mcpServer/elicitation/request": {
+      try {
+        const { threadId, turnId, elicitation } = normalizeCodexMcpElicitation(
+          request.params,
+        );
+        return {
+          requestId: request.id,
+          method: request.method,
+          providerThreadId: threadId,
+          turnId,
+          payload: {
+            kind: CODEX_MCP_ELICITATION_KIND,
+            title: codexMcpElicitationTitle(elicitation),
+            data: elicitation,
+          },
+        };
+      } catch (error) {
+        throw new ProviderRequestDecodeErrorValue(
+          `Invalid Codex MCP elicitation envelope: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     case "item/commandExecution/requestApproval": {
       const parsed = codexCommandExecutionRequestApprovalParamsSchema.safeParse(
         request.params,
@@ -303,11 +335,63 @@ export function decodeCodexInteractiveRequest(
   }
 }
 
-export function buildCodexInteractiveResponse(
-  args: CodexInteractionOutcome,
+const requestAnswerResolutionSchema = z.object({
+  kind: z.literal("request_answer"),
+});
+
+export function buildCodexInteractiveResult(
+  payload: DecodedInteractiveRequest["payload"],
+  runtimeResult: PromiseSettledResult<unknown>,
 ): CodexInteractiveResponse {
+  if (
+    payload.kind === CODEX_MCP_ELICITATION_KIND &&
+    (runtimeResult.status === "rejected" ||
+      !requestAnswerResolutionSchema.safeParse(runtimeResult.value).success)
+  ) {
+    return CODEX_MCP_ELICITATION_CANCEL_RESPONSE;
+  }
+  if (runtimeResult.status === "rejected") {
+    throw runtimeResult.reason;
+  }
+  return buildCodexInteractiveResponse(
+    providerInteractionOutcomeSchema.parse({
+      payload,
+      resolution: runtimeResult.value,
+    }),
+  );
+}
+
+export function buildCodexInteractiveResponse(
+  args: ProviderInteractionOutcome,
+): CodexInteractiveResponse {
+  if (args.payload.kind === "user_question") {
+    return buildCodexUserQuestionResponse(
+      userQuestionInteractionOutcomeSchema.parse(args),
+    );
+  }
   if (!isApprovalInteractionOutcome(args)) {
-    return buildCodexUserQuestionResponse(args);
+    if (args.payload.kind !== CODEX_MCP_ELICITATION_KIND) {
+      throw new ProviderResponseEncodeError(
+        `Unsupported Codex interaction outcome: ${args.payload.kind}`,
+      );
+    }
+    if (
+      !("kind" in args.resolution) ||
+      args.resolution.kind !== "request_answer"
+    ) {
+      return CODEX_MCP_ELICITATION_CANCEL_RESPONSE;
+    }
+    try {
+      const elicitation = codexMcpElicitationSchema.parse(args.payload.data);
+      const response = codexMcpElicitationResponseSchema.parse(
+        args.resolution.value,
+      );
+      return buildCodexMcpElicitationResponse(elicitation, response);
+    } catch (error) {
+      throw new ProviderResponseEncodeError(
+        `Invalid Codex MCP elicitation response: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
   switch (args.payload.subject.kind) {
     case "command": {

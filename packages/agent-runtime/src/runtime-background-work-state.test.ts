@@ -25,6 +25,7 @@ function task(
     status: options.status ?? "pending",
     taskStatus: options.status === undefined ? "running" : "completed",
     skipTranscript: options.skipTranscript ?? false,
+    foreground: false,
   };
 }
 

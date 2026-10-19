@@ -92,6 +92,7 @@ describe("LazyBrowserTabDeck", () => {
         canShowNativeBrowserView={false}
         environmentId="env-1"
         onUpdate={noop}
+        onOpenInNewTab={null}
         threadId="thread-1"
       />
     );

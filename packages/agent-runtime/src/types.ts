@@ -283,6 +283,7 @@ export interface ListModelsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 export interface ListCommandsArgs {

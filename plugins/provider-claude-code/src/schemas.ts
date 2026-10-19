@@ -245,6 +245,7 @@ export const claudeTaskStartedMessageSchema = claudeSystemMessageSchema
     workflow_name: z.string().optional(),
     prompt: z.string().optional(),
     skip_transcript: z.boolean().optional(),
+    is_backgrounded: z.boolean().optional(),
   })
   .passthrough();
 

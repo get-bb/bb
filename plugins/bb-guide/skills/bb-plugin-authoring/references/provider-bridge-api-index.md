@@ -12,6 +12,7 @@ Read the installed declarations for exact current signatures.
 - `ContextEntry`
 
 - `BRIDGE_INBOUND_REQUEST_METHODS`
+- `PLUGIN_INTERACTION_MAX_TITLE_LENGTH`
 - `BRIDGE_JSON_RPC_ERRORS`
 - `BRIDGE_NOTIFICATION_METHODS`
 - `BRIDGE_REQUEST_METHODS`

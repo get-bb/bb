@@ -389,6 +389,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.list_files",
+        followRootSymlink: false,
         path: tempDir,
         limit: 1000,
         includeHidden: false,
@@ -452,6 +453,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.list_files",
+        followRootSymlink: false,
         path: missingPath,
         limit: 1000,
         includeHidden: false,
@@ -504,6 +506,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.list_files",
+          followRootSymlink: false,
           path: symlinkRoot,
           limit: 1000,
           includeHidden: false,
@@ -517,6 +520,75 @@ describe("workspace command dispatch", () => {
       code: "invalid_path",
       message: expect.stringContaining("must not be a symlink"),
     });
+  });
+
+  it("reads and lists a linked skill while confining files to its resolved root", async () => {
+    const tempDir = await makeTempDir("bb-dispatch-linked-skill-");
+    const skillRoot = path.join(tempDir, "shared", "research");
+    const linkedRoot = path.join(tempDir, "research");
+    await fs.mkdir(path.join(skillRoot, "references"), { recursive: true });
+    await fs.writeFile(path.join(skillRoot, "SKILL.md"), "# Research");
+    await fs.writeFile(
+      path.join(skillRoot, "references", "guide.md"),
+      "# Guide",
+    );
+    await fs.writeFile(path.join(skillRoot, ".env"), "hidden");
+    await fs.writeFile(path.join(tempDir, "outside.md"), "outside");
+    await fs.symlink(skillRoot, linkedRoot, "dir");
+    await fs.symlink(
+      path.join(tempDir, "outside.md"),
+      path.join(skillRoot, "escape.md"),
+    );
+    const harness = createHarness();
+    const signal = new AbortController().signal;
+
+    const files = await dispatchOnlineRpcCommand(
+      {
+        type: "host.list_files",
+        followRootSymlink: true,
+        path: linkedRoot,
+        limit: 200,
+        includeHidden: false,
+        respectGitIgnore: false,
+        excludeNames: [],
+      },
+      harness.dispatchOptions(),
+      signal,
+    );
+    expect(files.files.map((file) => file.path).sort()).toEqual([
+      "SKILL.md",
+      "references/guide.md",
+    ]);
+
+    const read = (relativePath: string) =>
+      dispatchOnlineRpcCommand(
+        {
+          type: "host.read_file_relative",
+          followRootSymlink: true,
+          rootPath: linkedRoot,
+          path: relativePath,
+          dotfiles: "deny",
+        },
+        harness.dispatchOptions(),
+        signal,
+      );
+    await expect(read("SKILL.md")).resolves.toMatchObject({
+      content: "# Research",
+    });
+    await expect(read("references/guide.md")).resolves.toMatchObject({
+      content: "# Guide",
+    });
+    await expect(read("escape.md")).rejects.toMatchObject({
+      code: "invalid_path",
+      message: expect.stringContaining("escapes read root"),
+    });
+    await expect(read("../outside.md")).rejects.toMatchObject({
+      code: "invalid_path",
+    });
+    await expect(read(".env")).rejects.toMatchObject({ code: "ENOENT" });
+
+    await fs.rm(skillRoot, { recursive: true });
+    await expect(read("SKILL.md")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("returns base64 for image files", async () => {
@@ -557,6 +629,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file_relative",
+        followRootSymlink: false,
         rootPath: tempDir,
         path: "assets/logo.png",
         dotfiles: "deny",
@@ -582,6 +655,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file_relative",
+        followRootSymlink: false,
         rootPath: tempDir,
         path: "large.png",
         dotfiles: "deny",
@@ -603,6 +677,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file_relative",
+          followRootSymlink: false,
           rootPath: tempDir,
           path: "../secrets.txt",
           dotfiles: "deny",
@@ -627,6 +702,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file_relative",
+          followRootSymlink: false,
           rootPath: tempDir,
           path: ".env",
           dotfiles: "deny",
@@ -653,6 +729,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file_relative",
+          followRootSymlink: false,
           rootPath: tempDir,
           path: "outside-link.txt",
           dotfiles: "deny",
@@ -682,6 +759,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file_relative",
+          followRootSymlink: false,
           rootPath: symlinkRoot,
           path: "index.html",
           dotfiles: "deny",

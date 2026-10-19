@@ -53,6 +53,7 @@ describe("deriveStoredEventItemFields", () => {
       status: "pending",
       taskStatus: "running",
       skipTranscript: false,
+      foreground: false,
     } as const;
 
     expect(

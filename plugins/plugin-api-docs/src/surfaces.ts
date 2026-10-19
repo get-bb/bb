@@ -1170,6 +1170,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Watch files, hold a wake lock, or run local commands on that machine",
           "Call the worker from server code over typed RPC",
           "Stop leftover processes before a workspace is deleted",
+          "Queue git and gh with priority, cancellation, and reserved foreground capacity",
         ],
         apiSymbols: [
           "PluginHosts",
@@ -1179,6 +1180,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_sanitizeInheritedChildProcessEnv",
           "ExperimentalSanitizeInheritedChildProcessEnvArgs",
           "experimental_spawnPortableOutputProcess",
+          "experimental_runVcsProcess",
+          "ExperimentalVcsProcessOptions",
+          "ExperimentalVcsProcessPriority",
           "experimental_defineHostEntry",
           "ExperimentalHostEntry",
           "ExperimentalHostClient",

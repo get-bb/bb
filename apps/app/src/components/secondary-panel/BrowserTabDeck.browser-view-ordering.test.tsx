@@ -164,6 +164,7 @@ function renderBrowserDeck({
       canShowNativeBrowserView={canShowNativeBrowserView}
       threadId="thread-1"
       onUpdate={() => {}}
+      onOpenInNewTab={null}
     />,
   );
 }
@@ -260,6 +261,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       canShowNativeBrowserView
       threadId="thread-1"
       onUpdate={() => {}}
+      onOpenInNewTab={null}
     />
   );
   const savedTab = (saved: Partial<typeof desktopTarget>) => ({
@@ -524,6 +526,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canShowNativeBrowserView
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />
     );
     const view = render(deck(null));
@@ -574,6 +577,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canShowNativeBrowserView={true}
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />,
     );
 
@@ -618,6 +622,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canShowNativeBrowserView={false}
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />,
     );
     await waitFor(() => {
@@ -642,6 +647,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canShowNativeBrowserView={true}
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />,
     );
     await waitFor(() => {
@@ -680,6 +686,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canHandleBrowserCommands={false}
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />,
     );
 
@@ -701,6 +708,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canHandleBrowserCommands={false}
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />,
     );
 
@@ -731,6 +739,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canShowNativeBrowserView={true}
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />,
     );
 
@@ -754,6 +763,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
         canShowNativeBrowserView
         threadId="thread-1"
         onUpdate={() => {}}
+        onOpenInNewTab={null}
       />
     );
     const view = render(renderTab(false));

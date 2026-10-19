@@ -296,6 +296,7 @@ function backgroundTaskSnapshot(
         status: completed ? "completed" : "pending",
         taskStatus: completed ? "completed" : "running",
         skipTranscript: false,
+        foreground: false,
         presentation: presentationOf(glyph),
       },
     },

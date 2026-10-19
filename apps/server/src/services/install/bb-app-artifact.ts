@@ -6,6 +6,7 @@ import {
   cp,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rename,
   rm,
@@ -185,6 +186,15 @@ function hostPackageJson(packageJson: BbAppPackageJson): object {
   };
 }
 
+async function makeDirectoriesOwnerWritable(directory: string): Promise<void> {
+  await chmod(directory, (await stat(directory)).mode | 0o700);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      await makeDirectoriesOwnerWritable(join(directory, entry.name));
+    }
+  }
+}
+
 async function materializePackagedHostPackage(
   packageRoot: string,
   packageJson: BbAppPackageJson,
@@ -215,6 +225,7 @@ async function materializePackagedHostPackage(
     join(hostDaemonTarget, "bb-chunks"),
     { recursive: true },
   );
+  await makeDirectoriesOwnerWritable(join(hostDaemonTarget, "bb-chunks"));
   try {
     await copyFile(
       join(packageRoot, "README.md"),

@@ -39,6 +39,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
+import { remarkInlineDollarMath } from "./markdown-inline-dollar-math.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import { MARKDOWN_TABLE_START_OFFSET_VARIABLE } from "./markdown-table-breakout.js";
 import {
@@ -1889,6 +1890,7 @@ function MarkdownPreviewComponent({
     const plugins: MarkdownRemarkPlugins = [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
+      remarkInlineDollarMath,
     ];
     if (
       threadMentions?.preserveSoftBreaks === true ||
