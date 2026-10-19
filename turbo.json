@@ -13,6 +13,12 @@
       ],
       "outputs": []
     },
+    "@bb/desktop#smoke:browser-address": {
+      "cache": false,
+      "dependsOn": ["topo"],
+      "passThroughEnv": ["DISPLAY"],
+      "outputs": []
+    },
     "@bb/desktop#smoke:browser-cdp": {
       "cache": false,
       "dependsOn": ["topo"],

@@ -1,3 +1,4 @@
+import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
 import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -477,8 +478,8 @@ function PluginSettingsPageSkeleton() {
     >
       <span className="sr-only">Loading plugin settings…</span>
       <div aria-hidden>
-        <header className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
             <Skeleton className="size-9 shrink-0" />
             <div className="min-w-0">
               <div className="flex h-7 items-center">
@@ -600,8 +601,8 @@ function PluginSettingsContent({
         pluginId={plugin.id}
         onBackToDetails={onBackToDetails}
       />
-      <header className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
           <div className="size-9 shrink-0">
             <PluginIcon
               pluginId={plugin.id}
@@ -614,14 +615,14 @@ function PluginSettingsContent({
               {plugin.name ?? plugin.id}
             </h1>
             {plugin.description ? (
-              <p className="truncate text-xs text-subtle-foreground">
+              <ExpandableText className="text-xs text-subtle-foreground">
                 {plugin.description}
-              </p>
+              </ExpandableText>
             ) : null}
           </div>
         </div>
         <Switch
-          className="mr-[13px]"
+          className="mr-[13px] mt-1"
           checked={enabled}
           disabled={toggle.isPending}
           onCheckedChange={(next) => toggle.mutate(next)}

@@ -939,6 +939,16 @@ export function releaseStaleQueuedMessageDispatchClaims(
   });
 }
 
+export function releaseOrphanedQueuedMessageDispatchClaims(
+  deps: Pick<AppDeps, "db" | "hub">,
+  now: number,
+): number {
+  return releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
+    claimedBefore: now + 1,
+    protectedClaimTokens: [...activeQueuedMessageClaimTokens],
+  });
+}
+
 interface QueuedMessageEditHoldArgs {
   queuedMessageId: string;
   threadId: string;

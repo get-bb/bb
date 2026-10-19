@@ -13,6 +13,11 @@
 - API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`. Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+The desktop main process also writes rotating `logs/desktop.log` immediately,
+including updater, Connect, and startup errors. View → Local Logs is available
+on every desktop platform and when attached to an existing server; it follows
+local desktop, server, and daemon files in the selected data directory.
+
 ## Desktop Browser Tab Recovery
 
 When the desktop app connects to a BB Connect server, it installs and renews

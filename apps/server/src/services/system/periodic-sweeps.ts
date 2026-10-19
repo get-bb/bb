@@ -70,6 +70,7 @@ import {
   type QueueWaitPluginDirectory,
 } from "../threads/queued-message-dispatch.js";
 import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
+import { releaseOrphanedQueuedMessageDispatchClaims } from "../threads/queued-messages.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
@@ -655,6 +656,16 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
+  const releasedClaims = releaseOrphanedQueuedMessageDispatchClaims(
+    deps,
+    Date.now(),
+  );
+  if (releasedClaims > 0) {
+    deps.logger.info(
+      { releasedClaims },
+      "Released queued message claims left by the previous server process",
+    );
+  }
   await deliverLegacyDeferredThreadMessages(deps);
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);

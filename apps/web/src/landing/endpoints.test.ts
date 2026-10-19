@@ -226,43 +226,66 @@ describe("marketing download", () => {
     expect(response.headers.get("Location")).toBe(DOWNLOAD_FALLBACK_URL);
   });
 
-  it("tracks the click through waitUntil when a PostHog key is set", async () => {
-    const fetchMock = vi.fn(
-      async (..._args: Parameters<typeof fetch>) => new Response("{}"),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const waitUntil = vi.fn<(promise: Promise<void>) => void>();
+  it.each([undefined, "1"])(
+    "tracks downloads while respecting Sec-GPC %s",
+    async (gpc) => {
+      const fetchMock = vi.fn(
+        async (..._args: Parameters<typeof fetch>) => new Response("{}"),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const waitUntil = vi.fn<(promise: Promise<void>) => void>();
 
-    await handleDownload(
-      "linux",
-      new Request(
-        "https://getbb.app/download/linux?placement=nav&utm_campaign=x&gclid=abc",
-      ),
-      { LANDING_POSTHOG_KEY: "phc_test" },
-      waitUntil,
-    );
+      await handleDownload(
+        "linux",
+        new Request(
+          "https://getbb.app/download/linux?placement=nav&utm_campaign=x&gclid=abc&gbraid=gb&wbraid=wb",
+          {
+            headers: {
+              referer: "https://getbb.app/?utm_source=google&gclid=ref",
+              ...(gpc ? { "Sec-GPC": gpc } : {}),
+            },
+          },
+        ),
+        { LANDING_POSTHOG_KEY: "phc_test" },
+        waitUntil,
+      );
 
-    expect(waitUntil).toHaveBeenCalledTimes(1);
-    await waitUntil.mock.calls[0]?.[0];
-    const captureCall = fetchMock.mock.calls.find(
-      ([url]) => typeof url === "string" && url.includes("posthog"),
-    );
-    expect(captureCall).toBeTruthy();
-    const body = JSON.parse(String(captureCall?.[1]?.body)) as {
-      event: string;
-      properties: {
-        download_target: string;
-        placement: string;
-        utm_campaign?: string;
-        gclid?: string;
+      expect(waitUntil).toHaveBeenCalledTimes(1);
+      await waitUntil.mock.calls[0]?.[0];
+      const captureCall = fetchMock.mock.calls.find(
+        ([url]) => typeof url === "string" && url.includes("posthog"),
+      );
+      expect(captureCall).toBeTruthy();
+      const body = JSON.parse(String(captureCall?.[1]?.body)) as {
+        event: string;
+        properties: {
+          download_target: string;
+          placement: string;
+          utm_campaign?: string;
+          gclid?: string;
+          gbraid?: string;
+          wbraid?: string;
+          utm_source?: string;
+          $current_url: string;
+          $referrer?: string;
+        };
       };
-    };
-    expect(body.event).toBe("landing_download_linux_clicked");
-    expect(body.properties.download_target).toBe("linux");
-    expect(body.properties.placement).toBe("nav");
-    expect(body.properties.utm_campaign).toBe("x");
-    expect(body.properties.gclid).toBe("abc");
-  });
+      expect(body.event).toBe("landing_download_linux_clicked");
+      expect(body.properties.download_target).toBe("linux");
+      expect(body.properties.placement).toBe("nav");
+      expect(body.properties.utm_campaign).toBe("x");
+      expect(body.properties.gclid).toBe(gpc === "1" ? undefined : "abc");
+      expect(body.properties.gbraid).toBe("gb");
+      expect(body.properties.wbraid).toBe("wb");
+      expect(body.properties.utm_source).toBe("google");
+      expect(
+        new URL(body.properties.$current_url).searchParams.get("gclid"),
+      ).toBe(gpc === "1" ? null : "abc");
+      expect(
+        new URL(body.properties.$referrer ?? "").searchParams.get("gclid"),
+      ).toBe(gpc === "1" ? null : "ref");
+    },
+  );
 });
 
 describe("marketing subscribe endpoint", () => {

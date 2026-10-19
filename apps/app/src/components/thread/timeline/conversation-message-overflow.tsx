@@ -10,14 +10,18 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 interface UseOverflowMeasurementArgs {
   elementRef: RefObject<HTMLElement | null>;
   enabled: boolean;
+  axis: "horizontal" | "vertical";
   measurementKey: string;
 }
 
 type OverflowMeasurement = "unmeasured" | "fits" | "overflowing";
 
-type OverflowMeasurementListener = (
-  measurement: Exclude<OverflowMeasurement, "unmeasured">,
-) => void;
+interface OverflowAxes {
+  horizontal: boolean;
+  vertical: boolean;
+}
+
+type OverflowMeasurementListener = (measurement: OverflowAxes) => void;
 
 const overflowListenersByElement = new Map<
   HTMLElement,
@@ -25,13 +29,11 @@ const overflowListenersByElement = new Map<
 >();
 let sharedOverflowResizeObserver: ResizeObserver | null = null;
 
-function readOverflowMeasurement(
-  element: HTMLElement,
-): Exclude<OverflowMeasurement, "unmeasured"> {
-  return element.scrollHeight > element.clientHeight + 1 ||
-    element.scrollWidth > element.clientWidth + 1
-    ? "overflowing"
-    : "fits";
+function readOverflowMeasurement(element: HTMLElement): OverflowAxes {
+  return {
+    horizontal: element.scrollWidth > element.clientWidth + 1,
+    vertical: element.scrollHeight > element.clientHeight + 1,
+  };
 }
 
 function measureOverflowElements(elements: readonly HTMLElement[]): void {
@@ -100,6 +102,7 @@ interface ConversationMessageInlineOverflowToggleProps {
 export function useOverflowMeasurement({
   elementRef,
   enabled,
+  axis,
   measurementKey,
 }: UseOverflowMeasurementArgs): OverflowMeasurement {
   const [measurement, setMeasurement] =
@@ -119,7 +122,7 @@ export function useOverflowMeasurement({
 
     const applyMeasurement: OverflowMeasurementListener = (nextMeasurement) => {
       if (!element.isConnected) return;
-      setMeasurement(nextMeasurement);
+      setMeasurement(nextMeasurement[axis] ? "overflowing" : "fits");
     };
     if (typeof ResizeObserver === "undefined") {
       applyMeasurement(readOverflowMeasurement(element));
@@ -127,7 +130,7 @@ export function useOverflowMeasurement({
     }
 
     return observeOverflow(element, applyMeasurement);
-  }, [elementRef, enabled, measurementKey]);
+  }, [elementRef, enabled, axis, measurementKey]);
 
   return measurement;
 }

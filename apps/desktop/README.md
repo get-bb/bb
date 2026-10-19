@@ -4,6 +4,16 @@ macOS, Linux, and Windows Electron shell for bb. The desktop app loads the exist
 web UI and uses the packaged `bb-app` launcher for server and host-daemon
 lifecycle.
 
+## Browser address interaction checks
+
+Run `pnpm exec turbo run smoke:browser-address --filter=@bb/desktop` from the
+repository root. On Linux, run it under `xvfb-run -a` or an active display.
+The smoke test mounts the production address input beside a real Electron
+`WebContentsView`, checks repeated focus transfers, first and second clicks,
+drag selection, keyboard focus, and replacing the selected URL by typing.
+It uses a temporary profile and removes it when finished. It needs no running
+BB server or user data. CI runs it alongside the desktop tests.
+
 ## Development
 
 From the repo root, run `pnpm dev` in one terminal for the source server and
@@ -410,8 +420,20 @@ Use the View menu to toggle DevTools. To open them automatically on launch, set
 BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/bb
 ```
 
-When the desktop app spawns `bb-app`, server and daemon logs land under
-`~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set.
+Desktop main-process logs are written immediately to `desktop.log` under
+`~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set, including
+updater, Connect, and startup failures from launches without a terminal.
+Logs append across launches and rotate at 10 MiB into `desktop.1.log` through
+`desktop.4.log`. When bb-app exits, its captured output is saved
+with the error. Logging failures fall back to stderr without interrupting
+startup.
+
+**View → Local Logs** shows desktop, server, and daemon logs on macOS, Windows,
+and Linux, including when attached to an existing server or startup fails.
+These are files in this computer's selected data directory; connecting to a
+remote server does not fetch its logs. Use **Open Logs Folder** to inspect
+rotated files. Scripts and agents can read the same files from the data
+directory.
 
 To verify attach-if-found manually, start a compatible bb first, then launch the
 desktop app:

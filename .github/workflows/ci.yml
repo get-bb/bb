@@ -566,6 +566,10 @@ jobs:
           VITEST_MAX_WORKERS: "2"
         run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
+      - name: Test native browser address interactions
+        if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
+        run: xvfb-run -a pnpm exec turbo run smoke:browser-address --filter=@bb/desktop --output-logs=new-only
+
       - name: Upload test timings
         if: ${{ !cancelled() }}
         continue-on-error: true

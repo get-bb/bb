@@ -107,6 +107,7 @@ export function threadResponse(
     ...thread,
     activeBackgroundAgentCount: 0,
     canRestoreEnvironment: false,
+    canEditMessages: true,
     canSpawnChild: true,
     queuedMessageCount: 0,
   };

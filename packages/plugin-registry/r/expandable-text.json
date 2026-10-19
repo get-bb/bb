@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "expandable-text",
+  "type": "registry:ui",
+  "title": "expandable-text",
+  "description": "BB ui \"expandable-text\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/expandable-text.tsx",
+      "content": "import {\n  useId,\n  useLayoutEffect,\n  useRef,\n  useState,\n  type ReactNode,\n} from \"react\";\nimport { cn } from \"../../lib/utils\";\n\nexport function ExpandableText({\n  children,\n  className,\n  expandLabel = \"Show more\",\n}: {\n  children: ReactNode;\n  className?: string;\n  expandLabel?: string;\n}) {\n  const id = useId();\n  const textRef = useRef<HTMLSpanElement>(null);\n  const [expanded, setExpanded] = useState(false);\n  const [overflowing, setOverflowing] = useState(false);\n\n  useLayoutEffect(() => {\n    const element = textRef.current;\n    if (!element || expanded) return;\n    const measure = () =>\n      setOverflowing(element.scrollHeight > element.clientHeight + 1);\n    measure();\n    const observer = new ResizeObserver(measure);\n    observer.observe(element);\n    return () => observer.disconnect();\n  }, [children, expanded]);\n\n  return (\n    <span className={cn(\"pointer-events-auto block min-w-0\", className)}>\n      <span\n        ref={textRef}\n        id={id}\n        className={cn(\n          \"break-words [overflow-wrap:anywhere]\",\n          expanded ? \"block\" : \"line-clamp-3\",\n        )}\n      >\n        {children}\n      </span>\n      {expanded || overflowing ? (\n        <button\n          type=\"button\"\n          aria-expanded={expanded}\n          aria-controls={id}\n          className=\"mt-1 cursor-pointer rounded-sm text-xs font-medium underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring\"\n          onClick={(event) => {\n            event.stopPropagation();\n            setExpanded((value) => !value);\n          }}\n        >\n          {expanded ? \"Show less\" : expandLabel}\n        </button>\n      ) : null}\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/expandable-text.tsx"
+    }
+  ]
+}

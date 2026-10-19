@@ -1,3 +1,4 @@
+import { ExpandableText } from "../expandable-text";
 import type { ReactNode, Ref } from "react";
 import { Button, type ButtonProps } from "../button";
 import { ScrollArea } from "../scroll-area";
@@ -301,7 +302,7 @@ type ResourceBrowseCardProps = {
   leadingClassName?: string;
   title: ReactNode;
   description?: ReactNode;
-  descriptionLines?: 2 | 3;
+  descriptionLines?: 2 | 3 | "expandable";
   byline?: ReactNode;
   headerAction?: ReactNode;
   footerMeta?: ReactNode;
@@ -378,10 +379,18 @@ export function ResourceBrowseCard({
         <span
           className={cn(
             "pointer-events-none relative col-span-2 row-start-2 self-center text-left text-xs leading-snug text-muted-foreground",
-            descriptionLines === 3 ? "line-clamp-3" : "line-clamp-2",
+            descriptionLines === "expandable"
+              ? "break-words"
+              : descriptionLines === 3
+                ? "line-clamp-3"
+                : "line-clamp-2",
           )}
         >
-          {description}
+          {descriptionLines === "expandable" ? (
+            <ExpandableText>{description}</ExpandableText>
+          ) : (
+            description
+          )}
         </span>
       ) : null}
       {byline ? (

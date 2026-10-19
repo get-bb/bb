@@ -118,6 +118,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "expandable-text",
+      "type": "registry:ui"
+    },
+    {
       "name": "form",
       "type": "registry:ui"
     },

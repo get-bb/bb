@@ -950,18 +950,13 @@ function ThreadDetailViewInternal(
       : null;
   const canEditSentMessages =
     thread !== undefined &&
-    (threadProviderInfo?.capabilities.supportsSessionRewind ?? false) &&
-    thread.archivedAt === null &&
-    thread.deletedAt === null &&
+    thread.canEditMessages &&
     !hasPendingInteraction &&
     sentMessageEditSession === null &&
     !sendMessage.isPending &&
     !createQueuedMessage.isPending &&
     !editMessage.isPending &&
-    !(timelineLoading && timelineRows.length === 0) &&
-    activeWorkflows.length === 0 &&
-    thread.activeBackgroundAgentCount === 0 &&
-    activeBackgroundCommands.length === 0;
+    !(timelineLoading && timelineRows.length === 0);
   const sentMessageEditEntryRef = useRef({ canEditSentMessages, thread });
   sentMessageEditEntryRef.current = { canEditSentMessages, thread };
   const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
@@ -2401,7 +2396,6 @@ function ThreadDetailViewInternal(
   );
   const composerFooter = (
     <ThreadDetailPromptArea
-      activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}

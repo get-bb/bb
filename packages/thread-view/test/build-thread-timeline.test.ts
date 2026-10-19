@@ -908,6 +908,39 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(row).not.toHaveProperty("statusLabels");
   });
 
+  it.each([2048, 2049])(
+    "preserves the full %i-character command while bounding inferred summaries",
+    (length) => {
+      const event = createTimelineEventFactory({ threadId: "thread-1" });
+      const prefix = "rg needle src; printf '%s' '";
+      const command = `${prefix}${"x".repeat(length - prefix.length - 1)}'`;
+      const [row] = workRowsOfKind(
+        buildTimelineRows(
+          fromRows([
+            event.turnStarted({ turnId: "turn-1" }),
+            event.commandStarted({ itemId: "bounded", command }),
+            event.commandCompleted({ itemId: "bounded", command, exitCode: 0 }),
+            event.turnCompleted({ turnId: "turn-1" }),
+          ]),
+        ),
+        "command",
+      );
+      if (row === undefined) throw new Error("Missing command row");
+      expect(row.command).toBe(command);
+      expect(row.activityIntents).toEqual(
+        length <= 2048
+          ? [{ type: "search", command, query: "needle", path: "src" }]
+          : [],
+      );
+      expect(
+        buildTimelineRowTitle(row, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).plain,
+      ).toMatch(length <= 2048 ? /^Searched for needle/ : /^Ran rg needle src/);
+    },
+  );
+
   it("builds the same timeline with or without held-turn main-run updates", () => {
     const build = (withMainRun: boolean) => {
       const event = createTimelineEventFactory({ threadId: "thread-1" });

@@ -1,4 +1,5 @@
 import {
+  claimNextQueuedThreadMessageGroup,
   createQueuedThreadMessage,
   listEvents,
   listQueuedThreadMessages,
@@ -16,6 +17,7 @@ import {
   requestQueuedMessageDispatch,
   runQueuedMessageDispatch,
 } from "../../src/services/threads/queued-message-dispatch.js";
+import { runStartupRecoverySweep } from "../../src/services/system/periodic-sweeps.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -930,6 +932,48 @@ describe("queue recovery", () => {
       expect(listQueuedThreadMessages(harness.db, missing.id)).toEqual([]);
       expect(listQueuedThreadMessages(harness.db, loaded.id)).toHaveLength(1);
       expect(listQueuedThreadMessages(harness.db, pending.id)).toHaveLength(1);
+    });
+  });
+
+  it("releases a claim left by a killed server at startup so the message is listed and sent", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-orphaned-claim",
+        status: "idle",
+      });
+      const queued = seedQueuedMessage(harness.deps, {
+        content: textInput("ORPHANED CLAIM"),
+        threadId: thread.id,
+      });
+      expect(
+        claimNextQueuedThreadMessageGroup(
+          harness.db,
+          harness.deps.hub,
+          thread.id,
+          () => true,
+        ),
+      ).toHaveLength(1);
+      const listedIds = async () => {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/queued-messages`,
+        );
+        const rows: { id: string }[] = await response.json();
+        return rows.map((row) => row.id);
+      };
+      const turnsBefore = turnRequests(harness, thread.id).length;
+      expect(await listedIds()).toEqual([]);
+
+      await runStartupRecoverySweep(harness.deps);
+
+      expect(await listedIds()).toEqual([queued.id]);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "idle-recovery",
+        now: Date.now(),
+      });
+      const turns = turnRequests(harness, thread.id);
+      expect(turns).toHaveLength(turnsBefore + 1);
+      expect(turns.at(-1)?.data).toContain("ORPHANED CLAIM");
+      expect(await listedIds()).toEqual([]);
     });
   });
 });

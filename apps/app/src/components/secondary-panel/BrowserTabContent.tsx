@@ -45,6 +45,7 @@ import {
   BrowserFindBar,
   type BrowserFindMatches,
 } from "./BrowserFindBar";
+import { BrowserAddressInput } from "./BrowserAddressInput";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
@@ -209,7 +210,6 @@ function BrowserChrome({
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
   const addressValue = isEditing ? addressDraft : currentUrl;
-  const selectAddressOnMouseUpRef = useRef(false);
   return (
     <div
       role="region"
@@ -273,38 +273,19 @@ function BrowserChrome({
                 aria-hidden
               />
             )}
-            <input
+            <BrowserAddressInput
               ref={addressInputRef}
-              type="text"
               value={addressValue}
               onChange={(event) => onAddressChange(event.target.value)}
-              onMouseDown={(event) => {
-                selectAddressOnMouseUpRef.current =
-                  document.activeElement !== event.currentTarget;
-              }}
-              onMouseUp={(event) => {
-                if (!selectAddressOnMouseUpRef.current) return;
-                selectAddressOnMouseUpRef.current = false;
-                const input = event.currentTarget;
-                if (input.selectionStart !== input.selectionEnd) return;
-                event.preventDefault();
-                input.select();
-              }}
-              onFocus={(event) => {
-                event.currentTarget.select();
-                onAddressFocus();
-              }}
+              onFocus={onAddressFocus}
               onBlur={onAddressBlur}
               onKeyDown={onAddressKeyDown}
-              placeholder="Enter a URL"
               aria-label={
                 locationShortcut
                   ? `Address and search bar (${locationShortcut.label})`
                   : "Address and search bar"
               }
               aria-keyshortcuts={locationShortcut?.ariaKeyshortcuts}
-              autoComplete="off"
-              spellCheck={false}
               className={cn(
                 "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground",
                 COARSE_POINTER_TEXT_SM_CLASS,
