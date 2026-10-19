@@ -2396,7 +2396,6 @@ function ThreadDetailViewInternal(
   );
   const composerFooter = (
     <ThreadDetailPromptArea
-      activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
