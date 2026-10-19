@@ -124,6 +124,57 @@ for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM
 bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp
 DESC`.
 
+## Focused Local Tests and Shared Cache
+
+Keep local tests inside Turbo so generators and upstream dependencies run first.
+For example, run a server test with a path relative to `apps/server`:
+
+```bash
+pnpm exec turbo run test --filter=@bb/server -- test/services/threads/timeline-cache.test.ts
+```
+
+Opt into a local cache outside disposable checkouts, separated by Node runtime:
+
+```bash
+cache_dir="$HOME/.cache/turbo/bb/$(node -p 'process.version + "-" + process.platform + "-" + process.arch')"
+pnpm exec turbo run test --filter=@bb/server --cache-dir="$cache_dir" -- test/services/threads/timeline-cache.test.ts
+```
+
+Use the same directory in another checkout to reuse successful tasks with
+identical inputs and arguments. This does not change repository or global
+configuration. Test paths, name filters,
+and coverage flags belong after `--`; they produce separate task hashes.
+A focused cache hit proves only that selection. The uncached native-module check
+still runs; changed generators and upstream builds still run when required.
+Use `--dry=json` to inspect task hashes and cache status, and `--summarize` to
+record an executed run. Test reports are not declared cache outputs: copy them
+before a checkout disappears; replayed logs do not create a fresh report.
+
+For package selection, resolve the task's approved merge base to an immutable SHA,
+then preview against the working tree (including untracked files):
+
+```bash
+base_sha=$(git rev-parse '<approved-base>^{commit}')
+TURBO_SCM_BASE="$base_sha" pnpm exec turbo run test --affected --dry=json
+TURBO_SCM_BASE="$base_sha" pnpm exec turbo run test --affected
+```
+
+Review the preview before execution. Source deletion and rename select the owning
+package and its dependents. Root configuration, shared Vitest helpers, lockfiles,
+fixtures outside a package, and uncertain dynamic dependencies need an explicit
+broader filter or the full `pnpm exec turbo run test`. In particular, a root
+`vitest.shared.ts` edit can produce an empty `--affected` selection even though
+it invalidates test hashes. Keep full CI gates intact.
+
+Keep Git-based test-file selection outside cached tasks. `vitest --changed` with
+a mutable ref can select different tests without changing Turbo's task hash;
+changing `TURBO_SCM_BASE` also does not enter that hash. Prefer full affected
+package tasks or reviewed explicit file arguments. Do not add a cached wrapper
+around a Git-based selector. Use the installed toolchain consistently across
+checkouts; direct Turbo commands do not automatically add runtime versions to
+the cache key. The launcher's `BB_BUILD_TOOLCHAIN` handling applies to launcher
+preparation, not these direct commands.
+
 ## Reproducing Test Order Failures
 
 CI's test shards shuffle test files and tests within each file. Vitest prints the seed for
