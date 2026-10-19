@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "job": {
+    "runId": null,
+    "attempt": null,
+    "name": null,
+    "runnerOs": null
+  },
+  "summaries": 1,
+  "duplicateSummaries": 0,
+  "invalidSummaries": 0,
+  "invalidTasks": 0,
+  "tasks": [
+    {
+      "taskId": "@bb/scripts#test",
+      "hash": "cce1e24906872eea",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 1263,
+      "executedMisses": 1,
+      "missDurationMs": 1263,
+      "repeatedMisses": 0
+    },
+    {
+      "taskId": "@bb/plugin-build#generate",
+      "hash": "39e3b1ac63842101",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 834,
+      "executedMisses": 1,
+      "missDurationMs": 834,
+      "repeatedMisses": 0
+    },
+    {
+      "taskId": "//#ensure-native-modules",
+      "hash": "ebe02aa1947f1bb0",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 700,
+      "executedMisses": 1,
+      "missDurationMs": 700,
+      "repeatedMisses": 0
+    },
+    {
+      "taskId": "@bb/process-utils#generate:profile-worker",
+      "hash": "471d88fe0fecd694",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 579,
+      "executedMisses": 1,
+      "missDurationMs": 579,
+      "repeatedMisses": 0
+    },
+    {
+      "taskId": "@bb/cli#build",
+      "hash": "394a5324433a1e32",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 300,
+      "executedMisses": 1,
+      "missDurationMs": 300,
+      "repeatedMisses": 0
+    },
+    {
+      "taskId": "@bb/templates#generate:templates",
+      "hash": "3a297566667c70e4",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 177,
+      "executedMisses": 1,
+      "missDurationMs": 177,
+      "repeatedMisses": 0
+    },
+    {
+      "taskId": "@bb/templates#generate:plugin-scaffold",
+      "hash": "27f008377f954a48",
+      "invocations": 1,
+      "hits": 0,
+      "misses": 1,
+      "unknown": 0,
+      "timedInvocations": 1,
+      "durationMs": 143,
+      "executedMisses": 1,
+      "missDurationMs": 143,
+      "repeatedMisses": 0
+    }
+  ],
+  "totals": {
+    "invocations": 7,
+    "hits": 0,
+    "misses": 7,
+    "unknown": 0,
+    "timedInvocations": 7,
+    "durationMs": 3996,
+    "executedMisses": 7,
+    "missDurationMs": 3996,
+    "repeatedMisses": 0
+  }
+}

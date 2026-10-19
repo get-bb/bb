@@ -6,7 +6,6 @@ on:
 permissions:
   contents: read
   actions: read
-  checks: read
 concurrency:
   group: ci-health
   cancel-in-progress: false

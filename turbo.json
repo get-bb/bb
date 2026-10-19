@@ -687,12 +687,8 @@
     "@bb/desktop#test": {
       "env": ["VITEST_MAX_WORKERS"],
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/vitest*.ts",
-        "$TURBO_ROOT$/.github/actions/setup-workspace/install-electron-libraries.sh"
-      ],
-      "passThroughEnv": ["DISPLAY", "GITHUB_ACTIONS"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
+      "passThroughEnv": ["DISPLAY"]
     },
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
     // dist), so the SDK build is a dependency.

@@ -13,7 +13,6 @@ function saveReport(evidence) {
   const collection = {
     inventoryComplete: evidence.inventoryComplete,
     errors: evidence.errors,
-    annotations: evidence.annotations,
   };
   const report = {
     since,
