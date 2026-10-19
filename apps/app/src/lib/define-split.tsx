@@ -1,3 +1,4 @@
+import { isChunkDownloadError } from "./stale-chunk-recovery";
 import {
   prepareSplitImport,
   queueSplitPreload,
@@ -43,15 +44,6 @@ class SplitErrorBoundary extends Component<
 }
 
 const DOWNLOAD_RETRY_DELAYS = [500, 1500];
-
-function isChunkDownloadError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    /^(Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed)/i.test(
-      error.message,
-    )
-  );
-}
 
 async function loadWithDownloadRetries<T>(load: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {

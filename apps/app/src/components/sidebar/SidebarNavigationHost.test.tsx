@@ -192,6 +192,43 @@ afterEach(() => {
 });
 
 describe("sidebar navigation providers", () => {
+  describe.each(["navigation/rail", "navigation/top-list"])(
+    "%s destination activation",
+    (layout) => {
+      it.each([
+        ["Plugins", "/plugins", { metaKey: true }],
+        ["Plugins", "/plugins", { ctrlKey: true }],
+        ["Skills", "/skills", { metaKey: true }],
+        ["Skills", "/skills", { ctrlKey: true }],
+      ])("opens %s (%s) in a browser tab with %j", (label, path, modifier) => {
+        const open = vi.spyOn(window, "open").mockReturnValue(null);
+        renderHost(layout);
+
+        fireEvent.click(screen.getByRole("button", { name: label }), modifier);
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          path,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        expect(screen.getByTestId("pathname").textContent).toBe(THREAD_PATH);
+      });
+
+      it.each([
+        ["Plugins", "/plugins"],
+        ["Skills", "/skills"],
+      ])("opens %s in place without a modifier", (label, path) => {
+        const open = vi.spyOn(window, "open").mockReturnValue(null);
+        renderHost(layout);
+
+        fireEvent.click(screen.getByRole("button", { name: label }));
+
+        expect(open).not.toHaveBeenCalled();
+        expect(screen.getByTestId("pathname").textContent).toBe(path);
+      });
+    },
+  );
+
   it("draws the bundled Rail when no other plugin provides navigation", () => {
     renderHost();
 

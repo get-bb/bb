@@ -298,6 +298,10 @@ export function SidebarNavigationModelProvider({
           case "open-skills": {
             const routePath = getResourceNavigationRoutePath(row.action);
             if (routePath === null) return;
+            if (options.openInSplit) {
+              window.open(routePath, "_blank", "noopener,noreferrer");
+              return;
+            }
             void current.navigate(routePath);
             return;
           }

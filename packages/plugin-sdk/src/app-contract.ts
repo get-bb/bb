@@ -269,8 +269,12 @@ export interface ExperimentalSidebarNavigationActions {
   /**
    * Run the item's host behavior. Plugin panels close the mobile sidebar
    * drawer; Plugins and Skills swap the list beside the navigation.
-   * `openInSplit` is ignored where splits are unavailable, and disabled or
-   * loading items do nothing.
+   * `openInSplit` opens Plugins and Skills in a browser tab because those
+   * destinations do not support splits. New thread and plugin panels retain
+   * their split placement rules, including in-place navigation on compact
+   * screens. Search remains a command. Disabled or loading items do nothing.
+   * Browser-tab activation must run synchronously from a user gesture;
+   * native shells handle the new-window request using their existing policy.
    */
   activate(
     itemId: string,

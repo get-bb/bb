@@ -415,7 +415,7 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 | Window    | Find in window                               | `Mod+F`                     | Desktop                  |
 | Window    | Settings                                     | `Mod+,`                     | All clients              |
 | Window    | Open data directory                          | Unassigned                  | Desktop                  |
-| Window    | Open server and daemon logs                  | Unassigned                  | macOS desktop            |
+| Window    | Open local logs                              | Unassigned                  | Desktop                  |
 | Window    | Show all notifications                       | Unassigned                  | All clients              |
 | Plugins   | Turn plugin safe mode on / off               | Unassigned                  | All clients              |
 | Panel     | New tab / close tab / toggle                 | `Mod+T` / `Mod+W` / `Mod+J` | All clients              |

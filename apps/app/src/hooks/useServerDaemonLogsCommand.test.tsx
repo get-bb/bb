@@ -15,7 +15,7 @@ const LOGS_BINDING: AppDefaultKeybinding = {
   command: "logs.openServerDaemon",
   desktopOnly: true,
   shortcut: null,
-  when: { all: ["mainSurface", "macPlatform"], none: ["modalOpen"] },
+  when: { all: ["mainSurface"], none: ["modalOpen"] },
 };
 
 const openServerDaemonLogs = vi.hoisted(() => vi.fn(() => Promise.resolve()));
@@ -91,7 +91,7 @@ describe("useServerDaemonLogsCommand", () => {
     expect(openServerDaemonLogs).toHaveBeenCalledTimes(1);
   });
 
-  it("stays unavailable for an attached runtime, which has no logs to tail", async () => {
+  it("stays unavailable when the shell does not support the log viewer", async () => {
     renderHarness(false);
 
     await waitFor(() => {

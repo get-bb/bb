@@ -312,10 +312,10 @@ jobs:
 
       - name: Setup Bun
         if: ${{ matrix.shard == 'plugins-1' }}
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        timeout-minutes: 4
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: "1.3.14"
-          no-cache: true
+          version: "1.3.14"
 
       - name: Test on Windows
         shell: cmd
@@ -549,10 +549,10 @@ jobs:
 
       - name: Setup Bun
         if: ${{ startsWith(matrix.shard, 'packages-') || matrix.shard == 'plugins' }}
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        timeout-minutes: 4
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: "1.3.14"
-          no-cache: true
+          version: "1.3.14"
 
       - name: Install Electron runtime libraries
         if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
@@ -654,10 +654,10 @@ jobs:
 
       - name: Setup Bun
         if: steps.selection.outputs.count != '0'
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        timeout-minutes: 4
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: "1.3.14"
-          no-cache: true
+          version: "1.3.14"
 
       - name: Build, typecheck, and test forkable plugins outside the workspace
         if: steps.selection.outputs.count != '0'

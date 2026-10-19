@@ -43,7 +43,10 @@ import { ThreadContextWindowIndicator } from "@/components/thread/timeline/Threa
 import {
   EMPTY_ORDERED_MENTION_SUGGESTIONS,
   emptyPromptDraftState,
+  promptInputToDraft,
+  type PromptDraftState,
 } from "@bb/client-core";
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   getComposerInputLock,
   useComposer,
@@ -306,6 +309,36 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
         Late layout focus target
       </button>
     </>
+  );
+}
+
+function PromptBoxHistoryNavigationHarness({
+  entries,
+}: {
+  entries: PromptDraftState[];
+}) {
+  const [draft, setDraft] = useState(emptyPromptDraftState);
+  return (
+    <PromptBoxInternal
+      {...createPromptBoxProps({
+        value: draft.text,
+        mentionRanges: draft.mentions,
+        onChange: (text, mentions) =>
+          setDraft((current) => ({ ...current, text, mentions })),
+        attachments: { items: draft.attachments },
+        history: {
+          currentDraft: draft,
+          entries,
+          onSelectEntry: (entry) =>
+            createCoreComposerActions({
+              getCurrent: () => draft,
+              setDraft,
+              focus: () => {},
+            }).restoreDraft(entry),
+          resetKey: "history",
+        },
+      })}
+    />
   );
 }
 
@@ -1643,6 +1676,60 @@ describe("PromptBoxInternal controlled value sync", () => {
     } finally {
       restoreMatchMedia();
     }
+  });
+
+  it("keeps cycling history past entries with attachments and mentions", async () => {
+    const newest = promptInputToDraft([
+      {
+        type: "text",
+        text: "@Fix search with a screenshot",
+        mentions: [
+          {
+            start: 0,
+            end: 11,
+            resource: {
+              kind: "thread",
+              threadId: "thr_1",
+              projectId: "proj_1",
+              label: "Fix search",
+            },
+          },
+        ],
+      },
+      {
+        type: "localImage",
+        path: "attachments/screenshot.png",
+        sourceProjectId: "proj_1",
+      },
+      {
+        type: "localFile",
+        path: "attachments/spec.txt",
+        sourceProjectId: "proj_1",
+        name: "spec.txt",
+        sizeBytes: 12,
+        mimeType: "text/plain",
+      },
+    ]);
+    const older = promptInputToDraft([
+      { type: "text", text: "older prompt", mentions: [] },
+    ]);
+    render(<PromptBoxHistoryNavigationHarness entries={[newest, older]} />);
+    await waitForPromptFocus();
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowUp" });
+    await waitFor(() =>
+      expect(getPromptEditorElement().textContent).toContain(
+        "with a screenshot",
+      ),
+    );
+    await act(
+      () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowUp" });
+    await waitFor(() =>
+      expect(getPromptEditorElement().textContent).toBe("older prompt"),
+    );
   });
 
   it("applies an added quote before focus-end insertion can edit the old document", () => {

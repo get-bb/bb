@@ -41,13 +41,12 @@ function menuArgs(
     openAbout: () => {},
     openNewTab: () => {},
     openNewThread: () => {},
-    openServerDaemonLogs: () => {},
+    openLocalLogs: () => {},
     openSettings: () => {},
     reopenClosedTab: () => {},
     reloadWindow,
     zoomFocusedPage: () => {},
     selectServer: () => {},
-    serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: BUILTIN_SERVER_NAME }],
     setServerUrl: () => {},
     signInToConnect: () => {},
@@ -81,6 +80,23 @@ function findDesktopSettingsServerSubmenu(
 }
 
 describe("application menu", () => {
+  it.each([true, false])(
+    "opens local logs independently of runtime ownership (isMac=%s)",
+    (isMac) => {
+      const openLocalLogs = vi.fn();
+      const template = buildApplicationMenuTemplate(
+        menuArgs(() => {}, { isMac, openLocalLogs }),
+      );
+      const view = template.find((item) => item.label === "View")
+        ?.submenu as MenuItemConstructorOptions[];
+      const logs = view.find((item) => item.label === "Local Logs");
+      expect(logs).toBeDefined();
+      expect(logs?.enabled).not.toBe(false);
+      if (logs?.click) logs.click({} as never, undefined, {} as never);
+      expect(openLocalLogs).toHaveBeenCalledOnce();
+    },
+  );
+
   it("reopens the last closed tab from the File menu", () => {
     const reopenClosedTab = vi.fn();
     const template = buildApplicationMenuTemplate(

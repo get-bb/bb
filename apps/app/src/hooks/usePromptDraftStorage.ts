@@ -82,33 +82,32 @@ function clearPromptDraftPersistTimer(storageKey: string): void {
   promptDraftPersistTimers.delete(storageKey);
 }
 
-function persistPromptDraftCache(storageKey: string): void {
-  if (typeof window === "undefined") return;
+function persistPromptDraftCache(storageKey: string): boolean {
+  if (typeof window === "undefined") return false;
 
   clearPromptDraftPersistTimer(storageKey);
-  pendingPromptDraftStorageKeys.delete(storageKey);
-
   const cachedEntry = promptDraftCache.get(storageKey);
-  if (!cachedEntry) {
-    window.localStorage.removeItem(storageKey);
-    return;
-  }
-
-  const serialized = serializePromptDraftStorage(cachedEntry.draft);
-  cachedEntry.rawValue = serialized;
-  if (serialized === null) {
-    window.localStorage.removeItem(storageKey);
-    return;
-  }
-
+  const serialized = serializePromptDraftStorage(
+    cachedEntry?.draft ?? EMPTY_PROMPT_DRAFT,
+  );
   try {
-    window.localStorage.setItem(storageKey, serialized);
+    if (serialized === null) {
+      window.localStorage.removeItem(storageKey);
+    } else {
+      window.localStorage.setItem(storageKey, serialized);
+    }
+    if (cachedEntry) cachedEntry.rawValue = serialized;
+    pendingPromptDraftStorageKeys.delete(storageKey);
+    return true;
   } catch (error) {
-    cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
+    pendingPromptDraftStorageKeys.add(storageKey);
+    if (cachedEntry)
+      cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
     console.warn(
       `[prompt-draft] could not persist draft for ${storageKey}; keeping it in memory only`,
       error,
     );
+    return false;
   }
 }
 
@@ -131,10 +130,12 @@ function schedulePromptDraftPersist(storageKey: string): void {
   promptDraftPersistTimers.set(storageKey, timerId);
 }
 
-function flushPendingPromptDraftPersists(): void {
+export function flushPendingPromptDraftPersists(): boolean {
+  let persisted = true;
   for (const storageKey of Array.from(pendingPromptDraftStorageKeys)) {
-    persistPromptDraftCache(storageKey);
+    if (!persistPromptDraftCache(storageKey)) persisted = false;
   }
+  return persisted;
 }
 
 function ensurePromptDraftStorageObserver(): void {

@@ -47,11 +47,26 @@ retries. Recognized browser JavaScript chunk-download failures get two
 additional attempts after 500 ms and 1500 ms; the loading UI stays visible until
 success or exhaustion. Other loader errors, CSS-preload errors (retrying can
 skip the failed stylesheet and render an unstyled feature), and component render
-errors fail immediately. There is no retry loop, automatic page reload, or URL
-rewriting. Try again starts a fresh bounded attempt with a new lazy component,
-but the browser's module cache can still keep a failed download or stale
-deployment URL failing; a page reload recovers. Errors thrown while rendering
-the loaded subtree are contained locally.
+errors fail immediately. There is no retry loop or URL rewriting. Try again
+starts a fresh bounded attempt with a new lazy component, but the browser's
+module cache can still keep a failed download or stale deployment URL failing.
+Errors thrown while rendering the loaded subtree are contained locally.
+
+A Vite preload error triggers recovery only for a recognized JavaScript chunk
+**download** failure. This covers route imports as well as `defineSplit` loads.
+Recovery then fetches `/` without the HTTP cache and compares the deployed
+entry script URL with the one the running document loaded. Entry filenames are
+content-hashed and the entry references every lazy chunk by filename, so any
+rebuilt chunk changes the entry URL. Only a different entry URL triggers a
+reload; nothing is requested at startup. The app flushes unsent composer drafts
+to local storage before reloading, then records the target entry URL in
+`sessionStorage` and reloads once. Concurrent failures share one check; the
+guard survives navigation and prevents another reload to the same entry, for
+example when the reload still serves the stale document. A later deployment can
+recover independently. Recovery leaves the error visible when the index fetch,
+session storage, or draft persistence fails. Failures while the same entry is
+deployed, stylesheet failures, module evaluation errors, and render errors never
+trigger an automatic reload. This is not a general error handler.
 
 Do not declare splits during render. Use a literal dynamic import path. Import
 implementation types with `import type` or `typeof import(...)`; do not re-export

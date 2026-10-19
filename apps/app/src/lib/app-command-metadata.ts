@@ -207,8 +207,8 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       ),
       command(
         "logs.openServerDaemon",
-        "Open server and daemon logs",
-        "Open the desktop log viewer for the bb server and host daemon.",
+        "Open local logs",
+        "Open local desktop, server, and host daemon logs.",
       ),
       command(
         "dataDirectory.open",

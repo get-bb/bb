@@ -420,8 +420,24 @@ Use the View menu to toggle DevTools. To open them automatically on launch, set
 BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/bb
 ```
 
-When the desktop app spawns `bb-app`, server and daemon logs land under
-`~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set.
+Unpackaged runs use `assets/icon-dev.png` for the Dock and window icon. Set
+`BB_DESKTOP_DEV_ICON=1` to use it in a packaged build too; `pnpm
+desktop:worktree` sets it. The bundle's own icon in Finder is unchanged.
+
+Desktop main-process logs are written immediately to `desktop.log` under
+`~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set, including
+updater, Connect, and startup failures from launches without a terminal.
+Logs append across launches and rotate at 10 MiB into `desktop.1.log` through
+`desktop.4.log`. When bb-app exits, its captured output is saved
+with the error. Logging failures fall back to stderr without interrupting
+startup.
+
+**View → Local Logs** shows desktop, server, and daemon logs on macOS, Windows,
+and Linux, including when attached to an existing server or startup fails.
+These are files in this computer's selected data directory; connecting to a
+remote server does not fetch its logs. Use **Open Logs Folder** to inspect
+rotated files. Scripts and agents can read the same files from the data
+directory.
 
 To verify attach-if-found manually, start a compatible bb first, then launch the
 desktop app:

@@ -132,6 +132,37 @@ describe("formatLogLine", () => {
 });
 
 describe("log viewer", () => {
+  it("shows persisted desktop diagnostics and follows new entries alongside an attached server", async () => {
+    const tempDir = await createTempDir();
+    await writeFile(
+      join(tempDir.path, "desktop.log"),
+      "desktop startup failed\n",
+    );
+    await writeFile(join(tempDir.path, "server.1.log"), "attached server\n");
+    const lines: LogViewerLine[] = [];
+    const tailer = createLogTailer({
+      logDir: tempDir.path,
+      onLines: (entries) => lines.push(...entries),
+    });
+    tailers.push(tailer);
+    await tailer.start();
+    await waitFor({
+      predicate: () =>
+        lines.some((line) => line.text === "[server] attached server"),
+    });
+    await appendFile(
+      join(tempDir.path, "desktop.log"),
+      "Connect renewal failed\n",
+    );
+    await waitFor({
+      predicate: () =>
+        lines.some((line) => line.text === "[desktop] Connect renewal failed"),
+    });
+    expect(
+      lines.some((line) => line.text === "[desktop] desktop startup failed"),
+    ).toBe(true);
+  });
+
   it("selects the newest matching server log file", async () => {
     const tempDir = await createTempDir();
     const firstServerLog = join(tempDir.path, "server.1.log");

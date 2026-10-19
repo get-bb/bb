@@ -101,6 +101,7 @@ export function toDesktopLaunchProcessEnv(args: {
     config: args.config,
   });
   delete env.BB_DEV_APP_PORT;
+  env.BB_DESKTOP_DEV_ICON = "1";
   env.BB_DESKTOP_OPEN_DEVTOOLS = args.baseEnv.BB_DESKTOP_OPEN_DEVTOOLS ?? "0";
   env.BB_DESKTOP_USER_DATA_DIR = resolveDesktopUserDataDir(
     args.baseEnv,

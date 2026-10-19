@@ -68,6 +68,7 @@ describe("desktop launch environment", () => {
 
     expect(env).toMatchObject({
       BB_DATA_DIR: config.dataDir,
+      BB_DESKTOP_DEV_ICON: "1",
       BB_DESKTOP_OPEN_DEVTOOLS: "0",
       BB_DESKTOP_USER_DATA_DIR: join(config.dataDir, "desktop"),
       BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),

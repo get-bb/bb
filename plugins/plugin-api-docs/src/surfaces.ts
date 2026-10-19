@@ -52,7 +52,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Arrange New thread, Search, Plugins, Skills, and plugin pages in any layout",
           "Choose the rail or list placement, and get bb's layout around it",
-          "Keep the user's saved order, hidden items, badges, and split-view behavior",
+          "Keep saved order and badges; Cmd/Ctrl-click splits supported pages or opens Plugins/Skills in tabs",
           "Add controls to the header row beside the sidebar toggle",
         ],
         apiSymbols: [

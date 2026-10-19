@@ -1,8 +1,14 @@
 const assert = require("node:assert/strict");
 const { createServer } = require("node:http");
-const { writeFile } = require("node:fs/promises");
+const {
+  appendFile,
+  chmod,
+  mkdir,
+  readFile,
+  writeFile,
+} = require("node:fs/promises");
 const { join } = require("node:path");
-const { app, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 
 app.setName("bb-dev");
 
@@ -14,6 +20,7 @@ const loads = [];
 let contents;
 let recovered = false;
 let mintCount = 0;
+let logsWindow;
 
 async function until(check) {
   const deadline = Date.now() + 10_000;
@@ -70,14 +77,23 @@ async function run() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
   const serverUrl = `http://127.0.0.1:${port}`;
-  if (scenario === "custom") {
+  if (scenario === "custom" || scenario === "crashed") {
     await new Promise((resolve) => server.close(resolve));
+  }
+  if (scenario === "crashed") {
+    const crashingRuntime = join(app.getPath("userData"), "crashing-bb-app");
+    await writeFile(
+      crashingRuntime,
+      '#!/bin/sh\necho "bb-app native module failed to load" >&2\nexit 3\n',
+    );
+    await chmod(crashingRuntime, 0o755);
+    process.env.BB_DESKTOP_NODE_EXEC_PATH = crashingRuntime;
   }
   process.env.BB_SERVER_PORT = String(port);
   await writeFile(
     join(app.getPath("userData"), "server-target.json"),
     JSON.stringify(
-      scenario === "fatal"
+      scenario === "fatal" || scenario === "attached" || scenario === "crashed"
         ? { target: "builtin", customServerUrl: null }
         : scenario === "connect"
           ? {
@@ -92,16 +108,51 @@ async function run() {
           : { target: "custom", customServerUrl: serverUrl },
     ),
   );
+  if (scenario === "attached") process.env.BB_DESKTOP_APP_URL = serverUrl;
   app.setAppPath(desktopRoot);
   app.on("browser-window-created", (_event, window) => {
-    contents = window.webContents;
-    const loadURL = contents.loadURL.bind(contents);
-    contents.loadURL = (url, options) => {
+    contents ??= window.webContents;
+    const loadURL = window.webContents.loadURL.bind(window.webContents);
+    window.webContents.loadURL = (url, options) => {
       loads.push(url);
       return loadURL(url, options);
     };
   });
   require(join(desktopRoot, "dist/main.js"));
+  if (scenario === "attached") {
+    await until(() => contents?.getURL() === `${serverUrl}/`);
+    await until(() =>
+      contents.executeJavaScript(
+        'document.querySelector("h1")?.textContent === "Recovered"',
+      ),
+    );
+    assert.equal(
+      await contents.executeJavaScript(
+        "window.bbDesktop.getInfo().then((info) => info.serverDaemonLogsAvailable)",
+      ),
+      true,
+    );
+    await contents.executeJavaScript("window.bbDesktop.openServerDaemonLogs()");
+    await verifyLocalLogs();
+    server.close();
+    console.log("STARTUP_RETRY_SMOKE_OK");
+    app.exit(0);
+    return;
+  }
+  if (scenario === "crashed") {
+    const desktopLog = join(process.env.BB_DATA_DIR, "logs", "desktop.log");
+    await until(async () =>
+      (await readFile(desktopLog, "utf8")).includes("Could not start bb"),
+    );
+    const savedLogs = await readFile(desktopLog, "utf8");
+    assert.ok(
+      savedLogs.includes("bb-app native module failed to load"),
+      "bb-app output from a failed startup must be persisted",
+    );
+    console.log("STARTUP_RETRY_SMOKE_OK");
+    app.exit(0);
+    return;
+  }
   const errorTitle =
     scenario === "fatal"
       ? "Port conflict"
@@ -114,6 +165,23 @@ async function run() {
       `document.querySelector("h1")?.textContent === ${JSON.stringify(errorTitle)}`,
     );
   await until(hasError);
+  const savedLogs = await readFile(
+    join(process.env.BB_DATA_DIR, "logs", "desktop.log"),
+    "utf8",
+  );
+  assert.ok(
+    savedLogs.includes(errorTitle),
+    "Startup failures must be persisted without relying on stderr",
+  );
+  const viewMenu = Menu.getApplicationMenu().items.find(
+    (item) => item.label === "View",
+  );
+  const logsItem = viewMenu.submenu.items.find(
+    (item) => item.label === "Local Logs",
+  );
+  assert.equal(logsItem.enabled, true);
+  logsItem.click();
+  await verifyLocalLogs();
   if (scenario === "fatal") {
     assert.equal(
       await contents.executeJavaScript(
@@ -239,9 +307,50 @@ async function run() {
   );
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(loads.length, after, "Loaded remote pages cannot retry startup");
+  assert.equal(
+    logsWindow.isDestroyed(),
+    false,
+    "Runtime changes must preserve the local log viewer",
+  );
   server.close();
   console.log("STARTUP_RETRY_SMOKE_OK");
   app.exit(0);
+}
+
+async function verifyLocalLogs() {
+  await until(() => {
+    logsWindow = BrowserWindow.getAllWindows().find(
+      (window) => window.getTitle() === "bb - Local Logs",
+    );
+    return logsWindow && !logsWindow.webContents.isLoading();
+  });
+  const logDir = join(process.env.BB_DATA_DIR, "logs");
+  const openPath = shell.openPath;
+  let openedPath;
+  shell.openPath = async (path) => {
+    openedPath = path;
+    return "";
+  };
+  try {
+    const result = await logsWindow.webContents.executeJavaScript(
+      "window.bbLogViewer.openLogsFolder()",
+    );
+    assert.equal(result.path, logDir);
+    assert.equal(openedPath, logDir);
+  } finally {
+    shell.openPath = openPath;
+  }
+  await mkdir(logDir, { recursive: true });
+  await appendFile(
+    join(logDir, "server.1.log"),
+    "attached server diagnostic\n",
+  );
+  await appendFile(join(logDir, "desktop.log"), "desktop Connect diagnostic\n");
+  await until(() =>
+    logsWindow.webContents.executeJavaScript(
+      'document.querySelector("pre")?.textContent.includes("attached server diagnostic") && document.querySelector("pre")?.textContent.includes("desktop Connect diagnostic")',
+    ),
+  );
 }
 
 run().catch((error) => {
