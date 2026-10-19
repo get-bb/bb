@@ -873,13 +873,34 @@ applied chunk.
    otherwise. A candidate is not a confirmed cause: both fall somewhere in the
    five-second window. Profile processing runs in a worker and no longer emits
    the historical `cpu-profile:*` synchronous-work labels.
-2. Load the `.cpuprofile` covering that time and PID in Chrome DevTools'
+2. With performance diagnostics enabled, look for `Event loop stall attribution`
+   records for the same PID and UTC window. They are emitted at the next CPU
+   profile rotation (normally within 30 seconds), or on diagnostics shutdown,
+   even if the profile file is discarded for exceeding its size limit. A
+   separate 20 ms timer records individual gaps of at least 100 ms; the
+   five-second histogram's observation time is not the stall's end time.
+   `stacks` ranks the top five sampled leaf stacks in each gap, with up to 12
+   caller frames, including GC, plugin functions, native writes, and database
+   callers. Frame coordinates are one-based; cached Node source maps are used
+   in the profile worker when available, otherwise coordinates refer to the
+   generated code. Profile scanning and stack formatting run in that worker;
+   the main thread only collects and transfers bounded timing windows.
+   `sampledMs` is elapsed sampling coverage, not CPU time; native frames can
+   include waiting. Each sample contributes at most 10 ms so a long sampling
+   gap cannot be blamed on one frame. `unobservedMs` reports missing coverage,
+   including profile boundaries. The window includes up to one timer interval
+   of ordinary work; ranked stacks are evidence, not proof of a single cause.
+   Up to 128 windows are retained per rotation, with overflow reported as
+   `droppedWindows`; gaps of 60 seconds or more are treated as suspension.
+   These records require the existing profiling gates. Without profiling, the
+   immediate stall record can only report explicitly measured candidates.
+3. Load the `.cpuprofile` covering that time and PID in Chrome DevTools'
    JavaScript profiler, select the window, and read the bottom-up view.
    Match function names against the exact source revision of the build.
-3. Compare stacks with `mainThreadCpuMs`, GC totals, and SQL `cpuDurationMs`.
+4. Compare stacks with `mainThreadCpuMs`, GC totals, and SQL `cpuDurationMs`.
    A slow SQL operation with little CPU indicates waiting but does not identify
    the lock owner or prove disk I/O.
-4. Repeat with a small control workload. Expected long polls log slow requests
+5. Repeat with a small control workload. Expected long polls log slow requests
    without blocking the loop; require corroborating loop delay, stage timings,
    or sampled execution before calling them stalls.
 

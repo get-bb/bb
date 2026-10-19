@@ -1,3 +1,4 @@
+import { startStallWindowCollector } from "./stall-windows.js";
 import { Worker } from "node:worker_threads";
 import {
   monitorEventLoopDelay,
@@ -76,6 +77,7 @@ export async function startPerformanceDiagnostics(options: {
     eval: true,
     workerData: options.dataDir,
   });
+  const stallWindows = startStallWindowCollector();
   let failed = false;
   let terminating = false;
   let pending:
@@ -84,6 +86,7 @@ export async function startPerformanceDiagnostics(options: {
   const fail = (error: Error) => {
     if (failed) return;
     failed = true;
+    stallWindows.stop();
     pending?.reject(error);
     pending = undefined;
     options.logger.warn(
@@ -99,6 +102,8 @@ export async function startPerformanceDiagnostics(options: {
     if (
       typeof value !== "object" ||
       value === null ||
+      !("complete" in value) ||
+      typeof value.complete !== "boolean" ||
       !("message" in value) ||
       typeof value.message !== "string" ||
       !("fields" in value) ||
@@ -111,14 +116,20 @@ export async function startPerformanceDiagnostics(options: {
       return;
     }
     options.logger[value.level](value.fields, value.message);
-    pending?.resolve();
-    pending = undefined;
+    if (value.complete) {
+      pending?.resolve();
+      pending = undefined;
+    }
   });
   const request = (command: "start" | "capture" | "stop") => {
     if (failed) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       pending = { resolve, reject };
-      worker.postMessage(command);
+      worker.postMessage(
+        command === "start"
+          ? command
+          : { command, stalls: stallWindows.take() },
+      );
     }).catch(() => {});
   };
   await request("start");
@@ -143,6 +154,7 @@ export async function startPerformanceDiagnostics(options: {
         observer.disconnect();
         worker.ref();
         await rotation;
+        stallWindows.stop();
         await request("stop");
         terminating = true;
         await worker.terminate();

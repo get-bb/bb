@@ -1,3 +1,8 @@
+import { summarizeStallWindows } from "./stall-attribution.js";
+import {
+  parseStallWindowBatch,
+  type StallWindowBatch,
+} from "./stall-windows.js";
 import { parentPort, workerData } from "node:worker_threads";
 import { Session } from "node:inspector/promises";
 import type { Profiler } from "node:inspector";
@@ -39,8 +44,13 @@ async function runProfileWorker(): Promise<void> {
       expression: `process.getBuiltinModule("node:inspector").console.profile(${JSON.stringify(name)})`,
     });
   };
-  const respond = (fields: object, message: string, level = "info") => {
-    port.postMessage({ fields, message, level });
+  const respond = (
+    fields: object,
+    message: string,
+    level = "info",
+    complete = true,
+  ) => {
+    port.postMessage({ fields, message, level, complete });
   };
   const start = async () => {
     await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -90,7 +100,7 @@ async function runProfileWorker(): Promise<void> {
       "Server performance diagnostics enabled",
     );
   };
-  const capture = async (restart: boolean) => {
+  const capture = async (restart: boolean, stalls: StallWindowBatch) => {
     const beginning = startedAt;
     const nextTitle = `bb-performance-${randomUUID()}`;
     if (restart) {
@@ -106,6 +116,9 @@ async function runProfileWorker(): Promise<void> {
     if (!profile) throw new Error("CPU profile completion was not received");
     title = nextTitle;
     const endedAt = new Date().toISOString();
+    for (const fields of summarizeStallWindows(profile, stalls)) {
+      respond(fields, "Event loop stall attribution", "info", false);
+    }
     const contents = JSON.stringify(profile);
     const bytes = Buffer.byteLength(contents);
     await prune(bytes > maxProfileBytes ? 0 : bytes);
@@ -142,9 +155,18 @@ async function runProfileWorker(): Promise<void> {
   port.on("message", async (command: unknown) => {
     try {
       if (command === "start") await start();
-      else if (command === "capture" || command === "stop") {
-        await capture(command === "capture");
-        if (command === "stop") session.disconnect();
+      else if (
+        typeof command === "object" &&
+        command !== null &&
+        "command" in command &&
+        (command.command === "capture" || command.command === "stop") &&
+        "stalls" in command
+      ) {
+        await capture(
+          command.command === "capture",
+          parseStallWindowBatch(command.stalls),
+        );
+        if (command.command === "stop") session.disconnect();
       } else throw new Error("Invalid profiling command");
     } catch (error) {
       session.disconnect();

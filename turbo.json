@@ -458,6 +458,9 @@
       "dependsOn": [],
       "inputs": [
         "src/profile-worker.ts",
+        "src/stall-attribution.ts",
+        "src/stall-windows.ts",
+        "src/event-loop-delay.ts",
         "scripts/generate-profile-worker.mjs",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/pnpm-lock.yaml"
