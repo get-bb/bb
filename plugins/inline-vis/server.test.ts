@@ -1,4 +1,4 @@
-import path from "node:path";
+import { posix as path } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin, {
@@ -89,7 +89,7 @@ describe("resolveContainedPreviewPath", () => {
 
   it("rejects resolved paths outside the root", () => {
     expect(() =>
-      resolveContainedPreviewPath(ROOT, path.join("..", "outside.html")),
+      resolveContainedPreviewPath(ROOT, "../outside.html"),
     ).toThrow(/escape/);
     expect(() =>
       resolveContainedPreviewPath(
