@@ -603,6 +603,7 @@ export const GeneratedConversationMessage = memo(
       [],
     );
     const collapsedPreviewOverflowMeasurement = useOverflowMeasurement({
+      axis: "horizontal",
       elementRef: collapsedPreviewTextRef,
       enabled: !titleOnly && messageText.length > 0,
       measurementKey: messageText,

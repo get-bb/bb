@@ -32,6 +32,7 @@ function CollapsibleHeader({ toolName, argEntries }: CollapsibleHeaderProps) {
   const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const overflows = useIsOverflowing({
+    axis: "vertical",
     elementRef: ref,
     enabled: !expanded,
     measurementKey: `${toolName}\u0000${JSON.stringify(argEntries)}`,

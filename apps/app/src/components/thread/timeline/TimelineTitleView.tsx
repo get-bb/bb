@@ -368,6 +368,7 @@ export function ExpandableTimelineTitle(props: TimelineTitleViewProps) {
   const ref = useRef<HTMLSpanElement>(null);
   const [expanded, setExpanded] = useState(false);
   const overflowing = useIsOverflowing({
+    axis: "vertical",
     elementRef: ref,
     enabled: !expanded,
     measurementKey: props.title.plain,

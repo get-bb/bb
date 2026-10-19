@@ -253,3 +253,36 @@ export function OrderedListMarkers() {
     </StoryCard>
   );
 }
+
+const OVERFLOW_CASES = [
+  {
+    label: "quoted table",
+    text: "> | No image attachments | app only | — |\n> | --- | --- | --- |\n\nWhat does this mean?",
+  },
+  {
+    label: "wide code",
+    text:
+      "```text\n" +
+      "unbroken_output_".repeat(80) +
+      "\n```\nWhat does this mean?",
+  },
+  {
+    label: "long word",
+    text: "unbroken".repeat(40),
+  },
+  { label: "tall message", text: LONG_BODY },
+];
+
+export function Overflow() {
+  return (
+    <StoryCard>
+      {OVERFLOW_CASES.map(({ label, text }) => (
+        <StoryRow key={label} label={label}>
+          <div className="w-full" data-overflow-case={label}>
+            <UserMessage text={text} />
+          </div>
+        </StoryRow>
+      ))}
+    </StoryCard>
+  );
+}
