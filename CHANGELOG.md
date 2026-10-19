@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.46.1
+
+Connect MCP clients to bb, install the bb CLI from Settings, search Settings, and answer child threads' questions without leaving the parent.
+
+### Highlights
+
+- **MCP server (Experimental):** the new MCP plugin lets MCP clients find and run bb commands over bb Connect, with OAuth sign-in through your bb account. Off by default; enable it in Settings → Plugins and manage access with `bb mcp clients` and `bb mcp revoke`.
+- **Install the bb CLI:** Settings → General → Command line can add `bb` to your PATH, and remove it again, so you can use it outside bb. Also available as `bb settings cli-command install`.
+- **Search Settings:** find pages, individual settings, and plugin settings from the Settings sidebar. Press **/** to focus the search.
+- **Child threads at a glance:** one banner lists waiting and working child threads, and you can answer their questions right there. The Info panel also lists a thread's child threads.
+- **New ACP adapter (Experimental):** an opt-in rebuilt adapter adds agent options in the model picker, live slash commands, agent questions, and the official ACP registry (`bb acp add <agent-id>`). Enable "ACP providers (new adapter)" in Settings → Plugins.
+
+### Improvements
+
+- **Agents:** turn Codex Daybreak on or off per thread from the model picker, pick OpenCode project agents from the mode menu, and keep the composer's service tier per provider. Pi finds nested and linked skills, and agents can transcribe audio attachments with `bb voice transcribe`.
+- **Desktop:** name and edit saved servers, see each bb Connect server once in the Server menu, and update desktop-hosted servers from Settings → Updates or the CLI. Updates now shows the hosting server's version.
+- **Sidebar and menus:** compact banners explain offline machines and plugin warnings, the thread menu is grouped by job, and clicking another thread while a menu is open goes straight to it.
+- **Files, terminal, and Browser:** HTML files open in bb's rendered preview by default, Ctrl+Shift+C copies the terminal selection, and Docs keeps raw HTML when saving. Browser pages survive server switches and go quiet on inactive servers.
+- **Mobile:** message queues start collapsed, and iOS downloads use the system download sheet.
+
+### Fixes
+
+- Fix scheduled follow-ups to pending threads, @ mentions of threads beyond the first 200, threads marked read too early, the reading position jumping while scrolling up, and toasts hidden beneath drawers.
+- Fix Pi on Windows, Pi turns after recovery, ACP agent cleanup and model lists when discovery fails, and Account Pooler sessions switching accounts before Claude's one-hour prompt cache expires.
+- Fix macOS update retries, a second server starting from duplicate launchers, path search on huge workspaces disconnecting the machine, and New thread overlapping the macOS window controls.
+
+### Plugins
+
+- The experimental `codeFenceRenderer` slot lets plugins render fenced code blocks by language; Inline Visualizations now uses it. Git marketplaces can keep `marketplace.json` in a subdirectory, plugins named with `[Experimental]` show a badge, and scoped plugin styles recalculate faster.
+
+### Thanks
+
+Thank you to [@ComicBit](https://github.com/ComicBit), [@MayankBansal12](https://github.com/MayankBansal12), [@alanagoyal](https://github.com/alanagoyal), [@ariofrio](https://github.com/ariofrio), [@dyc3](https://github.com/dyc3), and [@yteruel31](https://github.com/yteruel31) for contributions to this release.
+
+## 0.46.0
+
+A new navigation rail, better thread search, reusable prompts, and more control over notifications and storage.
+
+### Highlights
+
+- **Navigation rail:** Home, Plugins, Skills, Settings, and your chosen destinations now share one customizable rail, including inside the mobile sidebar.
+- **Find threads faster:** instant title and project matches, matching messages beneath their thread titles, and filter and sort controls in thread search.
+- **Prompt Library:** search previous prompts, preview them, star favorites, and insert them into your draft with **Ctrl+R**. Enable it in Settings → Plugins.
+- **Per-thread notifications:** choose All activity, Needs input only, or Muted. Quieting a parent thread also limits notifications from its children.
+- **Storage & retention (Experimental):** inspect storage across machines, reclaim thread and development files, and opt into automatic archiving or deletion. Disabled by default; automatic cleanup is off until configured.
+
+![The navigation rail beside the new-thread composer](https://getbb.app/changelog/0.46.0/navigation-rail.jpg)
+
+### Improvements
+
+- **Getting started:** a setup guide helps install and sign into agents, find projects, enable plugins, and connect devices. Existing installs can reopen it from Settings.
+- **Composer:** large text pastes become file attachments, attachments support undo and redo, and file pills open an in-app preview. Dictate custom question answers and keep partial answers while navigating.
+- **Conversations:** copy links to individual messages, paste thread links as mention pills, group sidebar threads by read status, and open links in a split with Cmd/Ctrl-click. Plan and permission approvals open automatically, and queued messages wait while you edit them.
+- **Files and panels:** an explicit Save button and clearer conflict recovery in File Editor, a redesigned Info panel with a storage folder tree, and remembered Markdown reading positions.
+- **Desktop and mobile:** switch desktop servers and reload the window from the command palette, recover browser tabs after relaunch, and use mobile terminal keyboard controls. Android gains image copy and paste.
+- **Performance:** less background database work, quicker page loading, deferred conversation details, and plugin installs and updates that run in the background.
+
+### Fixes
+
+- Fix timeline flicker, history loss, scroll shifts, sidebar drag-and-drop races, mobile picker transitions, and desktop repaint flashes.
+- Fix provider permission and model changes on follow-ups and steers, ACP session recovery, exhausted account-pool retries, and pooled Claude prompt caching.
+- Improve bb Connect request deadlines and reconnection, voice transcription retries, thread-title generation, and attachment handling so later files cannot overwrite earlier turns' attachments.
+
+### Plugins
+
+- Plugins can add thread-menu actions and customizable row buttons through the same registry as bb. The Plugin Guide is now available on getbb.app, and Agent Annotations has a public marketplace page.
+- **For plugin authors upgrading:** the experimental sidebar navigation and header slots and their related hooks and types have been removed, along with the built-in Navigation plugin. Plugins using those APIs need updating for the navigation rail.
+
+### Thanks
+
+Thank you to [@MayankBansal12](https://github.com/MayankBansal12), [@Willhong](https://github.com/Willhong), [@andrewkchan](https://github.com/andrewkchan), [@aotd1](https://github.com/aotd1), [@ariofrio](https://github.com/ariofrio), [@iipanda](https://github.com/iipanda), [@its-rosetta](https://github.com/its-rosetta), [@regutierrez](https://github.com/regutierrez), [@salemsayed](https://github.com/salemsayed), [@stefanroex](https://github.com/stefanroex), [@timurkhakhalev](https://github.com/timurkhakhalev), [@vburojevic](https://github.com/vburojevic), [@vznh](https://github.com/vznh), and [@yteruel31](https://github.com/yteruel31) for contributions to this release.
+
 ## 0.45.0
 
 Thread titles and voice transcription without a Codex login, faster conversations, and new platforms in alpha.

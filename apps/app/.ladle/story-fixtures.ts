@@ -75,6 +75,7 @@ export function makeTypeaheadConfig(
   const mention: TypeaheadMentionConfig = {
     results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
     isLoading: false,
+    isRefreshing: false,
     isError: false,
     onQueryChange: noop,
     ...mentionOverrides,
@@ -94,8 +95,8 @@ export function makeAttachmentsConfig(
   const base: AttachmentsConfig = {
     items: [],
     projectId: PROJECT_IDS.bb,
-    onAttachFiles: noop,
-    onRemove: noop,
+    onAttachFiles: async () => [],
+    onUpdate: noop,
     isAttaching: false,
     error: null,
   };
@@ -614,6 +615,7 @@ export function makeWorkspaceStatus(
       insertions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 0,
       files: [],
     },
     branch: {
@@ -635,6 +637,7 @@ export function makeWorkspaceStatus(
       insertions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 0,
       files: [],
     },
   };

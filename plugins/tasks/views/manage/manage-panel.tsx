@@ -22,7 +22,10 @@ import { Input } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@/components/ui/hover-reveal";
 import { cn } from "@/lib/utils";
-import { ConfirmDialog } from "../../components/confirm-dialog.js";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/ui/confirm-delete-dialog";
 import {
   PERMISSION_LABELS,
   PresetDialog,
@@ -243,27 +246,34 @@ function LabelsSection() {
           {error}
         </p>
       ) : null}
-      <ConfirmDialog
+      <ConfirmDeleteDialog
+        className="max-w-sm"
         open={confirmDelete !== null}
         onOpenChange={(open) => {
           if (!open) setConfirmDelete(null);
         }}
-        title={`Delete label “${confirmDelete?.label.name ?? ""}”?`}
-        description={
-          confirmDelete && confirmDelete.usedBy > 0
-            ? `Used by ${confirmDelete.usedBy} task${confirmDelete.usedBy > 1 ? "s" : ""} — removing it detaches them.`
-            : "This label isn't used by any tasks."
-        }
-        confirmLabel="Delete label"
-        onConfirm={() => {
-          const target = confirmDelete;
-          if (target) {
-            void run(() =>
-              rpc.call("deleteLabel", { labelId: target.label.id }),
-            );
-          }
-        }}
-      />
+      >
+        {confirmDelete ? (
+          <ConfirmDeleteDialogContent
+            title={`Delete label “${confirmDelete.label.name}”?`}
+            description={
+              confirmDelete.usedBy > 0
+                ? `Used by ${confirmDelete.usedBy} task${confirmDelete.usedBy > 1 ? "s" : ""} — removing it detaches them.`
+                : "This label isn't used by any tasks."
+            }
+            confirmLabel="Delete label"
+            pending={false}
+            size="sm"
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => {
+              setConfirmDelete(null);
+              void run(() =>
+                rpc.call("deleteLabel", { labelId: confirmDelete.label.id }),
+              );
+            }}
+          />
+        ) : null}
+      </ConfirmDeleteDialog>
     </div>
   );
 }
@@ -617,31 +627,40 @@ function FoldersSection() {
           {error}
         </p>
       ) : null}
-      <ConfirmDialog
+      <ConfirmDeleteDialog
+        className="max-w-sm"
         open={confirmDelete !== null}
         onOpenChange={(open) => {
           if (!open) setConfirmDelete(null);
         }}
-        title={`Delete folder “${confirmDelete?.name ?? ""}”?`}
-        description={confirmDelete ? describeDeleteImpact(confirmDelete) : ""}
-        confirmLabel="Delete folder"
-        confirmDisabled={!impactReady}
-        onConfirm={() => {
-          const target = confirmDelete;
-          if (target) {
-            void run(async () => {
-              const result = await rpc.call("deleteFolder", {
-                folderId: target.id,
+      >
+        {confirmDelete ? (
+          <ConfirmDeleteDialogContent
+            title={`Delete folder “${confirmDelete.name}”?`}
+            description={describeDeleteImpact(confirmDelete)}
+            confirmLabel="Delete folder"
+            pending={false}
+            confirmDisabled={!impactReady}
+            size="sm"
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => {
+              setConfirmDelete(null);
+              void run(async () => {
+                const result = await rpc.call("deleteFolder", {
+                  folderId: confirmDelete.id,
+                });
+                if (!result.deleted) {
+                  folders.refresh();
+                  projects.refresh();
+                  throw new Error(
+                    `Folder “${confirmDelete.name}” was already deleted.`,
+                  );
+                }
               });
-              if (!result.deleted) {
-                folders.refresh();
-                projects.refresh();
-                throw new Error(`Folder “${target.name}” was already deleted.`);
-              }
-            });
-          }
-        }}
-      />
+            }}
+          />
+        ) : null}
+      </ConfirmDeleteDialog>
     </div>
   );
 }

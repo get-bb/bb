@@ -31,7 +31,7 @@ export type ProviderNativeSkillRoots = z.infer<
   typeof providerNativeSkillRootsSchema
 >;
 
-const acpReasoningCliLevelValueOverridesSchema = z.partialRecord(
+const acpReasoningCliLevelValueOverridesSchema = z.record(
   reasoningLevelSchema,
   z.string().min(1),
 );

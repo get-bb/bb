@@ -43,6 +43,7 @@ import type {
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import type { CompactBeforeSendOffer } from "@/components/promptbox/CompactBeforeSendChip";
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
@@ -285,6 +286,7 @@ const typeaheadBase: TypeaheadConfig = {
   mention: {
     results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
     isLoading: false,
+    isRefreshing: false,
     isError: false,
     onQueryChange: noop,
   },
@@ -296,8 +298,8 @@ const attachmentsBase: AttachmentsConfig = {
   projectId: "proj_demo",
   isAttaching: false,
   error: null,
-  onAttachFiles: noop,
-  onRemove: noop,
+  onAttachFiles: async () => [],
+  onUpdate: noop,
 };
 
 const historyEntries = [
@@ -407,6 +409,7 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     insertions: 128,
     deletions: 24,
     lineStatsComplete: true,
+    fileCount: 3,
   },
   branch: {
     currentBranch: STORY_BRANCH_NAME,
@@ -498,6 +501,34 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
   makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
 ];
 
+const STORY_NOW = Date.UTC(2026, 9, 8, 15, 0);
+
+const queuedMessagesWithReasons: readonly ThreadQueuedMessage[] = [
+  {
+    ...makeStoryQueuedMessage("q_failed", "Summarize the diff for the team."),
+    failureReason: "Workspace cleanup is pending. Try again shortly.",
+    createdAt: STORY_NOW - 30 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage(
+      "q_plain",
+      "Also run the tests when you're done.",
+    ),
+    createdAt: STORY_NOW - 20 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage("q_scheduled", "Post the summary to the team."),
+    waitingOn: { kind: "time" },
+    sendAt: STORY_NOW + 2 * 60 * 60_000,
+    createdAt: STORY_NOW - 10 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage("q_draft", "Draft: release notes outline."),
+    waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
+    createdAt: STORY_NOW - 5 * 60_000,
+  },
+];
+
 type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
 
 interface RowConfig {
@@ -509,6 +540,7 @@ interface RowConfig {
   promptPlaceholder?: string;
   environmentSummary?: ReactNode | null;
   contextWindowUsage?: ThreadContextWindowUsage | null;
+  compactBeforeSend?: CompactBeforeSendOffer | null;
   stack?: ReactNode | null;
   queuedMessages?: readonly ThreadQueuedMessage[];
   collapseResetKey?: string;
@@ -549,6 +581,7 @@ function Row({
   promptPlaceholder,
   environmentSummary = localEnvironmentSummary,
   contextWindowUsage = null,
+  compactBeforeSend = null,
   stack = null,
   queuedMessages: initialQueuedMessages,
   collapseResetKey = "thr_demo",
@@ -758,6 +791,7 @@ function Row({
         }
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
+        compactBeforeSend={compactBeforeSend}
         execution={execution}
         permission={permission}
         activePromptMode={activePromptMode}
@@ -782,6 +816,27 @@ function StackedCardsWithPillsRow() {
       queuedMessages={queuedMessages}
       contextWindowUsage={usage}
       environmentSummary={multiMachineEnvironmentSummary}
+    />
+  );
+}
+
+const expiredCacheUsage: ThreadContextWindowUsage = {
+  usedTokens: 331_000,
+  modelContextWindow: 1_000_000,
+  estimated: false,
+};
+
+function CompactBeforeSendRow() {
+  const [compactFirst, setCompactFirst] = useState(true);
+  return (
+    <Row
+      submitMode={{ kind: "ready" }}
+      contextWindowUsage={expiredCacheUsage}
+      compactBeforeSend={{
+        compactFirst,
+        tokens: expiredCacheUsage.usedTokens,
+        onCompactFirstChange: setCompactFirst,
+      }}
     />
   );
 }
@@ -863,6 +918,12 @@ export function Overview() {
           environmentSummary={detachedWorktreeEnvironmentSummary}
         />
       </StoryRow>
+      <StoryRow
+        label="prompt cache expired"
+        hint="click the chip to switch between compacting first and keeping the full history"
+      >
+        <CompactBeforeSendRow />
+      </StoryRow>
       <StoryRow label="with promptbox context banner">
         <Row
           submitMode={{ kind: "ready" }}
@@ -898,6 +959,16 @@ export function Overview() {
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
           queuedMessages={queuedMessages.slice(0, 2)}
+        />
+      </StoryRow>
+      <StoryRow
+        label="queue with reasons"
+        hint="collapse the queue: the header names the failed send, which outranks the newer draft; delete it to see the newest reason (the draft). Open it to check the caret row and the gap above it; the count pill sits on the composer caret's axis"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessagesWithReasons}
         />
       </StoryRow>
       <StoryRow

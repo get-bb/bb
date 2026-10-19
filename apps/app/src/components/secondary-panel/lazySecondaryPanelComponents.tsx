@@ -1,13 +1,10 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
-import {
-  useEffect,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { FilePreviewLoading } from "./FilePreviewChrome";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import {
   CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
@@ -27,14 +24,6 @@ export function SecondaryPanelContentSkeleton() {
       <Skeleton className="h-3 w-full rounded-sm" />
       <Skeleton className="h-3 w-5/6 rounded-sm" />
       <Skeleton className="h-3 w-2/3 rounded-sm" />
-    </div>
-  );
-}
-
-function FilePreviewLoading() {
-  return (
-    <div role="status" aria-label="Loading file preview">
-      <SecondaryPanelContentSkeleton />
     </div>
   );
 }
@@ -85,6 +74,24 @@ function ThreadSecondaryPanelInlinePlaceholder({
   );
 }
 
+function ThreadSecondaryPanelPlaceholderContent({
+  activeTab,
+  metadataContent,
+}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  switch (activeTab?.kind) {
+    case "thread-info":
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
+      );
+    case "workspace-file-preview":
+    case "host-file-preview":
+    case "thread-storage-file-preview":
+      return <FilePreviewLoading path={activeTab.path} copyPath={null} />;
+    default:
+      return <SecondaryPanelContentSkeleton />;
+  }
+}
+
 type LazyThreadSecondaryPanelProps = ComponentProps<
   ThreadSecondaryPanelModule["ThreadSecondaryPanel"]
 > & {
@@ -105,7 +112,12 @@ const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
         isOpen={props.isOpen}
         isConversationCollapsed={props.isConversationCollapsed}
         resizablePanelId={props.resizablePanelId}
-      />
+      >
+        <ThreadSecondaryPanelPlaceholderContent
+          activeTab={props.activeTab}
+          metadataContent={props.metadataContent}
+        />
+      </ThreadSecondaryPanelInlinePlaceholder>
     ),
   error: (props) =>
     props.renderAsDrawer ? (
@@ -192,7 +204,13 @@ export const LazyNewTabPage = defineSplit({
 export const LazyFilePreview = defineSplit({
   id: "file-preview",
   load: () => import("./FilePreview").then((module) => module.FilePreview),
-  loading: FilePreviewLoading,
+  loading: ({ path, copyPath, headerMode }) => (
+    <FilePreviewLoading
+      path={path}
+      copyPath={copyPath ?? null}
+      showHeader={(headerMode ?? "file") === "file"}
+    />
+  ),
   tier: "intent",
 });
 
@@ -202,8 +220,10 @@ export const LazyWorkspaceFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.WorkspaceFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
-  tier: "intent",
+  loading: ({ activePath, copyPath }) => (
+    <FilePreviewLoading path={activePath} copyPath={copyPath ?? null} />
+  ),
+  tier: "preload",
 });
 
 export const LazyHostFilePreviewTabContent = defineSplit({
@@ -212,8 +232,10 @@ export const LazyHostFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.HostFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
-  tier: "intent",
+  loading: ({ activePath, copyPath }) => (
+    <FilePreviewLoading path={activePath} copyPath={copyPath ?? null} />
+  ),
+  tier: "preload",
 });
 
 export const LazyHostScopedFilePreviewTabContent = defineSplit({
@@ -222,8 +244,10 @@ export const LazyHostScopedFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.HostScopedFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
-  tier: "intent",
+  loading: ({ activePath }) => (
+    <FilePreviewLoading path={activePath} copyPath={activePath} />
+  ),
+  tier: "preload",
 });
 
 export const LazyProjectFilePreviewTabContent = defineSplit({
@@ -232,8 +256,10 @@ export const LazyProjectFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.ProjectFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
-  tier: "intent",
+  loading: ({ activePath, copyPath }) => (
+    <FilePreviewLoading path={activePath} copyPath={copyPath ?? null} />
+  ),
+  tier: "preload",
 });
 
 export const LazyThreadStorageFilePreviewTabContent = defineSplit({
@@ -242,7 +268,19 @@ export const LazyThreadStorageFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.ThreadStorageFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
+  loading: ({ activePath, copyPath }) => (
+    <FilePreviewLoading path={activePath} copyPath={copyPath ?? null} />
+  ),
+  tier: "preload",
+});
+
+export const LazyAttachmentFilePreviewTabContent = defineSplit({
+  id: "attachment-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.AttachmentFilePreviewTabContent,
+    ),
+  loading: ({ name }) => <FilePreviewLoading path={name} copyPath={null} />,
   tier: "intent",
 });
 
@@ -256,4 +294,5 @@ const panelContentSplits = [
   LazyHostScopedFilePreviewTabContent,
   LazyProjectFilePreviewTabContent,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
 ];

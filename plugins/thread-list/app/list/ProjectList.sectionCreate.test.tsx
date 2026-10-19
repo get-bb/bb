@@ -64,7 +64,14 @@ function renderCustomSections(pinned = false) {
             pinnedAt: pinned ? 1 : null,
           }),
         ],
-        projects: [makePluginProject()],
+        projects: [
+          makePluginProject(),
+          makePluginProject({
+            id: "proj_personal",
+            name: "Personal",
+            isPersonal: true,
+          }),
+        ],
         sections: [makeSection("sec_a", "Alpha"), makeSection("sec_b", "Beta")],
       },
       sdk: {
@@ -97,11 +104,11 @@ describe("creating a sidebar section", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "New thread in Pinned" }),
     );
-    expect(inspection.sidebarActionCalls).toContainEqual({
-      method: "openNewThread",
+    expect(inspection.navigateCalls).toContainEqual({
+      method: "toCompose",
       options: {
         focusPrompt: true,
-        experimental_placement: { sectionId: null, pinned: true },
+        placement: { sectionId: null, pinned: true },
       },
     });
   });
@@ -114,32 +121,13 @@ describe("creating a sidebar section", () => {
       }),
     );
 
-    expect(inspection.sidebarActionCalls).toContainEqual({
-      method: "openNewThread",
+    expect(inspection.navigateCalls).toContainEqual({
+      method: "toCompose",
       options: {
-        experimental_placement: { sectionId: "sec_a", pinned: false },
+        placement: { sectionId: "sec_a", pinned: false },
         focusPrompt: true,
       },
     });
-  });
-
-  it("offers section moves from a thread row in the rendered list", async () => {
-    const slot = renderCustomSections();
-    fireEvent.pointerDown(
-      await screen.findByRole("button", { name: "Thread actions" }),
-      { button: 0 },
-    );
-    const move = await screen.findByRole("menuitem", {
-      name: "Move to section",
-    });
-    fireEvent.keyDown(move, { key: "ArrowRight" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Beta" }));
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toContainEqual({
-        method: "threads.update",
-        args: [{ threadId: "thr_alpha", sectionId: "sec_b" }],
-      }),
-    );
   });
 
   it("shows one divider before the built-in section visibility actions", async () => {

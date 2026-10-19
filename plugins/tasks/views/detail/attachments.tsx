@@ -1,9 +1,13 @@
+import { experimental_saveFile } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import { attachmentDownloadUrl } from "../../shared/attachments.js";
 import type { Attachment } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
 import { formatFileSize } from "../activity/time.js";
-import { ConfirmDialog } from "../../components/confirm-dialog.js";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/ui/confirm-delete-dialog";
 import { Icon } from "@/components/ui/icon";
 
 let tokenPromise: Promise<string> | null = null;
@@ -188,6 +192,13 @@ export function AttachmentsGrid({
       <a
         href={attachmentDownloadUrl(attachment.id)}
         download={attachment.fileName}
+        onClick={(event) => {
+          event.preventDefault();
+          void experimental_saveFile({
+            url: attachmentDownloadUrl(attachment.id),
+            fileName: attachment.fileName,
+          });
+        }}
         className="flex min-w-0 items-center gap-2 rounded-sm hover:bg-state-hover"
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
@@ -249,22 +260,28 @@ export function AttachmentsGrid({
       {lightbox ? (
         <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
       ) : null}
-      <ConfirmDialog
+      <ConfirmDeleteDialog
+        className="max-w-sm"
         open={confirm !== null}
         onOpenChange={(open) => {
           if (!open) setConfirm(null);
         }}
-        title="Remove attachment?"
-        description={
-          confirm
-            ? `"${confirm.fileName}" will be permanently removed. Any references in the task description will be removed too. This cannot be undone.`
-            : ""
-        }
-        confirmLabel="Remove"
-        onConfirm={() => {
-          if (confirm) void performRemove(confirm);
-        }}
-      />
+      >
+        {confirm ? (
+          <ConfirmDeleteDialogContent
+            title="Remove attachment?"
+            description={`"${confirm.fileName}" will be permanently removed. Any references in the task description will be removed too. This cannot be undone.`}
+            confirmLabel="Remove"
+            pending={false}
+            size="sm"
+            onCancel={() => setConfirm(null)}
+            onConfirm={() => {
+              setConfirm(null);
+              void performRemove(confirm);
+            }}
+          />
+        ) : null}
+      </ConfirmDeleteDialog>
     </div>
   );
 }

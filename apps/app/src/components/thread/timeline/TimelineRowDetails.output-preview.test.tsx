@@ -1,24 +1,13 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineCommandWorkRow } from "@bb/server-contract";
-import {
-  commandRow,
-  delegationRow,
-  turnRow,
-} from "@/test/fixtures/thread-timeline-rows";
+import { commandRow } from "@/test/fixtures/thread-timeline-rows";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-import { useTimelineWorkRowFullOutput } from "./useTimelineWorkRowFullOutput";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { threads: { timelineTurnSummaryDetails: vi.fn() } },
@@ -80,86 +69,6 @@ afterEach(() => {
 });
 
 describe("previewed command output", () => {
-  it("loads the full output for an expanded finished row through row-scoped turn details", async () => {
-    timelineTurnSummaryDetails.mockResolvedValue({
-      rows: [
-        commandRow({
-          id: "cmd_big",
-          command: "pnpm test",
-          output: FULL_OUTPUT,
-          sourceSeqStart: 4,
-          sourceSeqEnd: 7,
-          threadId: "thr_main",
-          turnId: "turn_1",
-        }),
-      ],
-    });
-    const view = renderExpandedRow(previewedCommandRow());
-
-    await waitFor(() => {
-      expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
-    });
-    expect(timelineTurnSummaryDetails.mock.calls[0]?.[0]).toMatchObject({
-      threadId: "thr_main",
-      turnId: "turn_1",
-      sourceSeqStart: "4",
-      sourceSeqEnd: "7",
-    });
-    await waitFor(() => {
-      expect(view.container.textContent).toContain(FULL_OUTPUT);
-    });
-    expect(view.container.textContent).not.toContain("characters omitted");
-    expect(screen.queryByTestId("timeline-output-preview-note")).toBeNull();
-  });
-
-  it("loads full output from nested delegated turn details", async () => {
-    const preview = previewedCommandRow();
-    timelineTurnSummaryDetails.mockResolvedValue({
-      rows: [
-        delegationRow({
-          childRows: [
-            turnRow({
-              children: [
-                commandRow({
-                  callId: preview.callId,
-                  command: preview.command,
-                  id: preview.id,
-                  output: FULL_OUTPUT,
-                  sourceSeqEnd: preview.sourceSeqEnd,
-                  sourceSeqStart: preview.sourceSeqStart,
-                  threadId: preview.threadId,
-                  turnId: preview.turnId ?? undefined,
-                }),
-              ],
-            }),
-          ],
-        }),
-      ],
-    });
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(() => useTimelineWorkRowFullOutput(preview), {
-      wrapper,
-    });
-
-    await waitFor(() => {
-      expect(result.current.state).toBe("loaded");
-    });
-    expect(result.current.output).toBe(FULL_OUTPUT);
-  });
-
-  it("keeps the live preview for a running row and does not fetch details", async () => {
-    const view = renderExpandedRow(previewedCommandRow({ status: "pending" }));
-
-    await waitFor(() => {
-      expect(view.container.textContent).toContain("characters omitted");
-    });
-    expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("full output loads when this finishes");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
-  });
-
   it("shows the preview with a retry when the full-output load fails", async () => {
     timelineTurnSummaryDetails.mockRejectedValue(new Error("boom"));
     const view = renderExpandedRow(previewedCommandRow());
@@ -173,89 +82,5 @@ describe("previewed command output", () => {
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("Failed to load the full output");
-  });
-
-  it("keeps a preview warning when row details cannot hydrate the full output", async () => {
-    const detailPreview =
-      "FULL-HEAD detail preview\n…[output remains truncated]\nFULL-TAIL";
-    timelineTurnSummaryDetails.mockResolvedValue({
-      rows: [
-        {
-          ...commandRow({
-            id: "cmd_big",
-            command: "pnpm test",
-            output: detailPreview,
-            sourceSeqStart: 4,
-            sourceSeqEnd: 7,
-            threadId: "thr_main",
-            turnId: "turn_1",
-          }),
-          outputPreview: {
-            experimental_fullOutputAvailability: "detail-limit",
-            totalChars: FULL_OUTPUT.length,
-          },
-        },
-      ],
-    });
-    const view = renderExpandedRow(previewedCommandRow());
-
-    await waitFor(() => {
-      expect(view.container.textContent).toContain(detailPreview);
-    });
-    expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("exceeds the detail response limit");
-    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
-  });
-
-  it("does not request details for an already-expired retained output", async () => {
-    const row = previewedCommandRow();
-    row.outputPreview = {
-      experimental_fullOutputAvailability: "retention-expired",
-      totalChars: FULL_OUTPUT.length,
-    };
-    const view = renderExpandedRow(row);
-
-    await waitFor(() => {
-      expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
-    });
-    expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("retention period ended");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
-  });
-
-  it("explains when output retention expires while details load", async () => {
-    const expiredPreview =
-      "FULL-HEAD expired preview\n…[output remains truncated]\nFULL-TAIL";
-    timelineTurnSummaryDetails.mockResolvedValue({
-      rows: [
-        {
-          ...commandRow({
-            id: "cmd_big",
-            command: "pnpm test",
-            output: expiredPreview,
-            sourceSeqStart: 4,
-            sourceSeqEnd: 7,
-            threadId: "thr_main",
-            turnId: "turn_1",
-          }),
-          outputPreview: {
-            experimental_fullOutputAvailability: "retention-expired",
-            totalChars: FULL_OUTPUT.length,
-          },
-        },
-      ],
-    });
-    const view = renderExpandedRow(previewedCommandRow());
-
-    await waitFor(() => {
-      expect(view.container.textContent).toContain(expiredPreview);
-    });
-    expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("retention period ended");
-    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
   });
 });

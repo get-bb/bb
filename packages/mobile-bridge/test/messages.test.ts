@@ -164,3 +164,20 @@ describe("parseNativeShellHandshake", () => {
     ).toBeNull();
   });
 });
+
+describe("native download support", () => {
+  it("advertises native downloads without extending the capability enum", () => {
+    const supported = { ...handshake, nativeDownloads: true };
+    expect(parseNativeShellHandshake(supported)).toEqual(supported);
+    expect(parseNativeShellHandshake(handshake)).toEqual(handshake);
+    expect(
+      parseNativeShellHandshake({ ...handshake, nativeDownloads: "true" }),
+    ).toBeNull();
+    expect(
+      parseNativeShellHandshake({
+        ...handshake,
+        capabilities: ["native-downloads"],
+      }),
+    ).toBeNull();
+  });
+});

@@ -91,6 +91,11 @@ local host daemon, and serves the web app. It stores bb-managed state under
 launcher restarts that child without stopping the other one. Press `Ctrl+C` in
 the terminal to stop both processes and exit with status `0`.
 
+If another live bb owns the runtime record for the same data directory and a
+healthy server answers on the configured local address, startup exits with
+status `1` without starting either child process. The existing instance keeps
+running. A runtime record without a healthy server does not prevent startup.
+
 Server and host-daemon output goes directly to `logs/server-stdio.log` and
 `logs/host-daemon-stdio.log` under the data directory, including startup errors
 and console output. These files append across restarts; they are separate from
@@ -117,6 +122,23 @@ npx bb-app stop
 `stop` reads `bb-app-runtime.json` from the data directory, confirms that the
 recorded process really is that launcher, then stops it. Pass `--data-dir` when
 the bb you want to stop does not use the default `~/.bb/`.
+
+### The `bb` command
+
+To control bb from outside bb, open **Settings → General → Command line** and
+choose **Install** next to **bb CLI**. Threads in bb already have `bb`; this
+is for your own terminals, scripts, and agents running outside bb, such as
+Claude Code or Codex. bb links a launcher from `~/.bb/bin/bb` into a folder on
+your PATH (`~/.local/bin` on Linux; `/opt/homebrew/bin`, `/usr/local/bin`, or
+`~/.local/bin` on macOS). On Windows it adds `~/.bb/bin` to your user PATH;
+open a new terminal afterwards. **Remove** takes it off again. bb leaves any
+other `bb` you already have in place.
+
+From a terminal, before `bb` is on your PATH:
+
+```bash
+npx --package bb-app bb settings cli-command install
+```
 
 ### Updating from the app
 

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { USER_ACTIVITY_WINDOW_MS } from "@/lib/user-activity";
 import { useThreadReadTracking } from "./useThreadReadTracking";
 
 type MarkThreadReadMutation = Parameters<
@@ -32,10 +33,37 @@ function setDocumentVisibilityState(
   });
 }
 
+function hideDocument(): void {
+  act(() => {
+    setDocumentVisibilityState("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
+function pressKey(): void {
+  act(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown"));
+  });
+}
+
+function pressKeyWithFakeTimers(): void {
+  hideDocument();
+  setDocumentVisibilityState("visible");
+  vi.useFakeTimers();
+  pressKey();
+}
+
 describe("useThreadReadTracking", () => {
+  beforeEach(() => {
+    pressKey();
+  });
+
   afterEach(() => {
     cleanup();
+    hideDocument();
     setDocumentVisibilityState("visible");
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("does not mark read without a visible thread", () => {
@@ -51,8 +79,8 @@ describe("useThreadReadTracking", () => {
     expect(markThreadRead.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it("marks an unread thread read after a mobile pageshow restore", () => {
-    setDocumentVisibilityState("hidden");
+  it("marks a thread restored by a mobile pageshow read on the next touch", () => {
+    hideDocument();
     const markThreadRead = makeMarkThreadRead();
 
     renderHook(() =>
@@ -71,6 +99,12 @@ describe("useThreadReadTracking", () => {
     act(() => {
       setDocumentVisibilityState("visible");
       window.dispatchEvent(new Event("pageshow"));
+    });
+
+    expect(markThreadRead.mutateAsync).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(new Event("touchstart"));
     });
 
     expect(markThreadRead.mutateAsync).toHaveBeenCalledTimes(1);
@@ -195,5 +229,102 @@ describe("useThreadReadTracking", () => {
     rerender({ lastReadAt: null, visible: true });
 
     expect(markThreadRead.mutateAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for input when the window is visible but not focused", () => {
+    hideDocument();
+    setDocumentVisibilityState("visible");
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    const markThreadRead = makeMarkThreadRead();
+
+    renderHook(() =>
+      useThreadReadTracking({
+        markThreadRead,
+        thread: { id: "thr_unfocused", lastReadAt: 10, latestAttentionAt: 20 },
+      }),
+    );
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new WheelEvent("wheel"));
+    });
+
+    expect(markThreadRead.mutateAsync).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(new Event("pointerdown"));
+    });
+
+    expect(markThreadRead.mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for input when attention arrives after the user went idle", () => {
+    pressKeyWithFakeTimers();
+    const markThreadRead = makeMarkThreadRead();
+    const { rerender } = renderHook(
+      ({ latestAttentionAt }: { latestAttentionAt: number }) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread: { id: "thr_idle", lastReadAt: 20, latestAttentionAt },
+        }),
+      { initialProps: { latestAttentionAt: 20 } },
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(USER_ACTIVITY_WINDOW_MS);
+    });
+    rerender({ latestAttentionAt: 30 });
+
+    expect(markThreadRead.mutateAsync).not.toHaveBeenCalled();
+
+    pressKey();
+
+    expect(markThreadRead.mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes idle when the window loses focus", () => {
+    pressKeyWithFakeTimers();
+    const markThreadRead = makeMarkThreadRead();
+    const { rerender } = renderHook(
+      ({ latestAttentionAt }: { latestAttentionAt: number }) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread: { id: "thr_blurred", lastReadAt: 20, latestAttentionAt },
+        }),
+      { initialProps: { latestAttentionAt: 20 } },
+    );
+
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+      vi.advanceTimersByTime(0);
+    });
+    rerender({ latestAttentionAt: 30 });
+
+    expect(markThreadRead.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps a thread marked unread elsewhere while the user is idle", () => {
+    pressKeyWithFakeTimers();
+    const markThreadRead = makeMarkThreadRead();
+    const { rerender } = renderHook(
+      ({ lastReadAt }: { lastReadAt: number | null }) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread: {
+            id: "thr_remote_unread",
+            lastReadAt,
+            latestAttentionAt: 20,
+          },
+        }),
+      { initialProps: { lastReadAt: 20 as number | null } },
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(USER_ACTIVITY_WINDOW_MS);
+    });
+    rerender({ lastReadAt: null });
+    pressKey();
+
+    expect(markThreadRead.mutateAsync).not.toHaveBeenCalled();
   });
 });

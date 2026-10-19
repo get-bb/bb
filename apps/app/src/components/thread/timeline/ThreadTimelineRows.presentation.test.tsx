@@ -28,7 +28,11 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const toMarkup = (ui: ReactElement) =>
-  renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);
+  renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 
 function renderRows(
   ui: ReactElement,

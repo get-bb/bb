@@ -750,6 +750,7 @@ describe("flat completed turn display", () => {
     const detailOptions = {
       includeDiagnosticOperations: false,
       sourceSeqStart: 4,
+      summarizeShellCommands: true,
       threadName: "",
       threadStatus: "idle" as const,
       turnId: "turn-1",

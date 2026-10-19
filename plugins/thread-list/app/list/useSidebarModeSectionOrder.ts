@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
 import { useAtom, useAtomValue } from "jotai";
-import { reorderStoredOrder } from "../model/stored-order.js";
 import {
   sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,
@@ -10,7 +9,7 @@ import {
 import type { OrganizationMode as SidebarOrganizationMode } from "../../shared/preferences.js";
 import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import {
-  buildSidebarEntitySectionId,
+  applyVisibleSidebarSectionOrder,
   normalizeSidebarSectionOrder,
   type LegacySidebarEntityAnchor,
 } from "../model/sidebar-section-order.js";
@@ -93,32 +92,17 @@ export function useSidebarModeSectionOrder({
   );
   const onOrderChange = useCallback(
     (nextOrder: SidebarSectionId[]) => {
-      const nextIds = new Set(nextOrder);
-      setStoredOrder((current) => {
-        const storedEntityIds = current
-          .filter((id) => id.startsWith(`${config.entityKind}:`))
-          .map((id) =>
-            buildSidebarEntitySectionId(
-              config.entityKind,
-              id.slice(config.entityKind.length + 1),
-            ),
-          );
-        const fullOrder = normalizeSidebarSectionOrder({
-          storedOrder: current,
-          entitySectionIds: [...entitySectionIds, ...storedEntityIds],
-          legacyEntityAnchor: config.legacyEntityAnchor,
-          hasPinnedSection: true,
-          hasThreadsSection:
-            hasThreadsSection !== false || current.includes("threads"),
-        });
-        return (
-          reorderStoredOrder({
-            order: fullOrder,
-            visibleIds: fullOrder.filter((id) => nextIds.has(id)),
-            nextVisibleIds: nextOrder,
-          }) ?? current
-        );
-      });
+      setStoredOrder(
+        (current) =>
+          applyVisibleSidebarSectionOrder({
+            storedOrder: current,
+            nextVisibleOrder: nextOrder,
+            entitySectionIds,
+            entityKind: config.entityKind,
+            legacyEntityAnchor: config.legacyEntityAnchor,
+            hasThreadsSection,
+          }) ?? current,
+      );
     },
     [config, entitySectionIds, hasThreadsSection, setStoredOrder],
   );

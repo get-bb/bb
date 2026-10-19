@@ -95,11 +95,10 @@ function storyTimeline(
     goal,
     maxSeq: goal.sourceSeq,
     timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: 1,
-      hasOlderRows: false,
       olderCursor: null,
+      historySnapshot: "snapshot-1",
+      olderRowsSourceSeqEnd: null,
     },
   });
 }

@@ -44,11 +44,15 @@ describe("createAccountCookieSource", () => {
   it("mints a desktop session from the signed-in account", async () => {
     const fetchImpl = vi.fn(async (url: string) =>
       url.endsWith("/api/connect/servers")
-        ? new Response(JSON.stringify({ servers: [{ handle: "laptop" }] }))
+        ? new Response(
+            JSON.stringify({
+              servers: [{ handle: "laptop", name: "Laptop", live: true }],
+            }),
+          )
         : gateResponse(),
     );
     const result = await installConnectDesktopSession({
-      cookieStore: createCookieStore(),
+      cookieStores: [createCookieStore()],
       mintCookie: createAccountCookieSource({
         accountCookie: {
           name: "__Secure-better-auth.session_token",
@@ -65,6 +69,7 @@ describe("createAccountCookieSource", () => {
       1,
       "https://laptop.getbb.app/api/connect/servers",
       {
+        method: "GET",
         headers: { cookie: "__Secure-better-auth.session_token=account-token" },
       },
     );
@@ -81,7 +86,11 @@ describe("createAccountCookieSource", () => {
   it("uses the server origin including its protocol and port for local Connect", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(
+        Response.json({
+          servers: [{ handle: "laptop", name: "Laptop", live: true }],
+        }),
+      )
       .mockResolvedValueOnce(gateResponse());
     const source = createAccountCookieSource({
       accountCookie: {
@@ -97,7 +106,10 @@ describe("createAccountCookieSource", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "http://laptop.bb.localhost:8787/api/connect/servers",
-      { headers: { cookie: "better-auth.session_token=account-token" } },
+      {
+        method: "GET",
+        headers: { cookie: "better-auth.session_token=account-token" },
+      },
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
@@ -112,7 +124,11 @@ describe("createAccountCookieSource", () => {
   it("checks the selected handle when the server uses a custom hostname", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(
+        Response.json({
+          servers: [{ handle: "laptop", name: "Laptop", live: true }],
+        }),
+      )
       .mockResolvedValueOnce(gateResponse());
     const source = createAccountCookieSource({
       accountCookie: {
@@ -145,7 +161,11 @@ describe("createAccountCookieSource", () => {
   it("rejects a sign-in from an account that does not own the server", async () => {
     const fetchImpl = vi.fn(
       async () =>
-        new Response(JSON.stringify({ servers: [{ handle: "other" }] })),
+        new Response(
+          JSON.stringify({
+            servers: [{ handle: "other", name: "Other", live: true }],
+          }),
+        ),
     );
     const source = createAccountCookieSource({
       accountCookie: {
@@ -170,6 +190,32 @@ function successfulSource() {
 }
 
 describe("installConnectDesktopSession", () => {
+  it("authenticates and renews both app and browser cookie stores", async () => {
+    const appCookies = createCookieStore();
+    const browserCookies = createCookieStore();
+    for (const value of ["initial-session", "renewed-session"]) {
+      const mintCookie = vi.fn(async () => ({
+        cookie: { ...COOKIE, value },
+        ok: true as const,
+      }));
+      const result = await installConnectDesktopSession({
+        cookieStores: [appCookies, browserCookies],
+        mintCookie,
+        remoteServerUrl: "https://laptop.getbb.app",
+      });
+      expect(result.ok).toBe(true);
+      for (const store of [appCookies, browserCookies]) {
+        expect(
+          await store.get({
+            name: COOKIE.name,
+            url: "https://laptop.getbb.app",
+          }),
+        ).toEqual([{ name: COOKIE.name, value }]);
+      }
+      expect(mintCookie).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("installs and verifies the cookie the source minted", async () => {
     const cookieStore = createCookieStore();
     const set = vi.spyOn(cookieStore, "set");
@@ -177,7 +223,7 @@ describe("installConnectDesktopSession", () => {
 
     await expect(
       installConnectDesktopSession({
-        cookieStore,
+        cookieStores: [cookieStore],
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),
@@ -202,7 +248,7 @@ describe("installConnectDesktopSession", () => {
   it("passes a mint failure through untouched", async () => {
     await expect(
       installConnectDesktopSession({
-        cookieStore: createCookieStore(),
+        cookieStores: [createCookieStore()],
         mintCookie: async () => ({
           code: "unauthorized",
           detail: "revoked",
@@ -216,14 +262,17 @@ describe("installConnectDesktopSession", () => {
   it("fails when Electron rejects or does not retain the cookie", async () => {
     await expect(
       installConnectDesktopSession({
-        cookieStore: {
-          async get() {
-            return [];
+        cookieStores: [
+          createCookieStore(),
+          {
+            async get() {
+              return [];
+            },
+            async set() {
+              throw new Error("cookie rejected");
+            },
           },
-          async set() {
-            throw new Error("cookie rejected");
-          },
-        },
+        ],
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),
@@ -235,12 +284,15 @@ describe("installConnectDesktopSession", () => {
 
     await expect(
       installConnectDesktopSession({
-        cookieStore: {
-          async get() {
-            return [];
+        cookieStores: [
+          createCookieStore(),
+          {
+            async get() {
+              return [];
+            },
+            async set() {},
           },
-          async set() {},
-        },
+        ],
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),

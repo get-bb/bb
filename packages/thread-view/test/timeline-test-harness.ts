@@ -1441,7 +1441,7 @@ export function flattenTimelineRows(
       return [row, ...flattenTimelineRows(row.children ?? [])];
     }
     if (row.kind === "work" && row.workKind === "delegation") {
-      return [row, ...flattenTimelineRows(row.childRows)];
+      return [row, ...flattenTimelineRows(row.childRows ?? [])];
     }
     return [row];
   });
@@ -1485,6 +1485,7 @@ export function renderTimelineFixture(
     includeDiagnosticOperations:
       args.projectionOptions.includeDiagnosticOperations ?? false,
     isLatestPage: true,
+    summarizeShellCommands: true,
     threadStatus: args.projectionOptions.threadStatus ?? "idle",
     threadName: args.projectionOptions.threadName ?? "",
     workspaceRoot: null,

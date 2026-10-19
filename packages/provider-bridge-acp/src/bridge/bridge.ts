@@ -132,10 +132,11 @@ import {
   buildModelCatalogFromSessionModels,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
+  findAcpFastConfigOption,
   findAcpThoughtLevelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
-  type AcpNativeReasoningSupport,
+  type AcpNativeModelSupport,
   type AgentModelCatalog,
 } from "./model-catalog.js";
 import {
@@ -206,6 +207,26 @@ type AcpDeferredStartEmitter = (
 ) => void;
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
+const agentConnections = new Set<AcpAgentConnection>();
+let shuttingDown = false;
+
+function createBridgeAgentConnection(
+  options: Parameters<typeof createAcpAgentConnection>[0],
+): AcpAgentConnection {
+  if (shuttingDown) {
+    throw new Error("ACP bridge is shutting down");
+  }
+  const connection = createAcpAgentConnection({
+    ...options,
+    onExit: (info) => {
+      agentConnections.delete(connection);
+      options.onExit(info);
+    },
+  });
+  agentConnections.add(connection);
+  return connection;
+}
+
 const bbThreadIdByProviderThreadId = new Map<string, string>();
 const pendingRuntimeRequests = new Map<
   number,
@@ -540,6 +561,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   description: "Model selection is managed by the connected ACP agent.",
   supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
   defaultReasoningEffort: "medium",
+  supportedServiceTiers: [],
   isDefault: true,
 };
 
@@ -844,7 +866,7 @@ async function loadSessionDiscoveredModels(
     ...withoutBridgeRuntimeEnv(process.env),
     ...(agent.envVars ?? {}),
   };
-  const connection = createAcpAgentConnection({
+  const connection = createBridgeAgentConnection({
     command: agent.command,
     args: agent.args,
     cwd: agent.cwd ?? process.cwd(),
@@ -910,7 +932,7 @@ async function loadSessionDiscoveredModels(
       return sessionModels;
     }
 
-    const reasoningByModel = await discoverAcpNativeReasoningByModel({
+    const supportByModel = await discoverAcpNativeModelSupport({
       connection,
       sessionId: newSession.sessionId,
       modelOption,
@@ -918,7 +940,7 @@ async function loadSessionDiscoveredModels(
     });
     const models = buildModelCatalogFromConfigOptions(
       modelOption,
-      reasoningByModel,
+      supportByModel,
     );
     cachedSessionDiscoveredModels = {
       key,
@@ -941,12 +963,12 @@ async function loadSessionDiscoveredModels(
   }
 }
 
-async function discoverAcpNativeReasoningByModel(args: {
+async function discoverAcpNativeModelSupport(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   modelOption: AcpConfigOption | undefined;
   reasoningProbePriorityModelIds: readonly string[];
-}): Promise<ReadonlyMap<string, AcpNativeReasoningSupport>> {
+}): Promise<ReadonlyMap<string, AcpNativeModelSupport>> {
   const modelOptions = args.modelOption?.options ?? [];
   if (!args.modelOption || modelOptions.length === 0) {
     return new Map();
@@ -970,11 +992,11 @@ async function discoverAcpNativeReasoningByModel(args: {
     }
   }
 
-  const supportByModel = new Map<string, AcpNativeReasoningSupport>();
+  const supportByModel = new Map<string, AcpNativeModelSupport>();
   let timedOut = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<
-    ReadonlyMap<string, AcpNativeReasoningSupport>
+    ReadonlyMap<string, AcpNativeModelSupport>
   >((resolve) => {
     timeout = setTimeout(() => {
       timedOut = true;
@@ -997,12 +1019,16 @@ async function discoverAcpNativeReasoningByModel(args: {
               },
               resultSchema: acpConfigStateResultSchema,
             });
-            supportByModel.set(
-              model.value,
-              buildAcpNativeReasoningSupport(
+            supportByModel.set(model.value, {
+              ...buildAcpNativeReasoningSupport(
                 findAcpThoughtLevelConfigOption(configState.configOptions),
               ),
-            );
+              supportedServiceTiers: findAcpFastConfigOption(
+                configState.configOptions,
+              )?.options?.some((option) => option.value === "true")
+                ? [{ id: "fast" }]
+                : [],
+            });
           } catch (error) {
             if (timedOut) {
               break;
@@ -1331,8 +1357,8 @@ async function selectAcpNativeServiceTier(args: {
   if (serviceTier === undefined) {
     return;
   }
-  const fastOption = (args.session.nativeConfig.configOptions ?? []).find(
-    (option) => option.id === "fast" && option.type === "select",
+  const fastOption = findAcpFastConfigOption(
+    args.session.nativeConfig.configOptions,
   );
   const value = serviceTier === "fast" ? "true" : "false";
   if (!fastOption?.options?.some((option) => option.value === value)) {
@@ -1784,7 +1810,7 @@ async function startAgentSession(
       ? { OPENCODE_CLIENT: "acp", OPENCODE_ENABLE_QUESTION_TOOL: "false" }
       : {}),
   };
-  const connection = createAcpAgentConnection({
+  const connection = createBridgeAgentConnection({
     command: params.agent.command,
     args: launch.args,
     cwd: params.cwd,
@@ -2642,14 +2668,18 @@ async function handleModelList(
     );
     return;
   }
-  const sessionDiscoveredModels =
-    params.listCommand === undefined && params.agent
-      ? await loadSessionDiscoveredModels(
-          params.agent,
-          params.reasoningProbePriorityModelIds,
-          params.parameterizedModelPicker,
-        )
-      : null;
+  if (params.listCommand) {
+    throw new Error(
+      "ACP model list command failed to provide a model catalog.",
+    );
+  }
+  const sessionDiscoveredModels = params.agent
+    ? await loadSessionDiscoveredModels(
+        params.agent,
+        params.reasoningProbePriorityModelIds,
+        params.parameterizedModelPicker,
+      )
+    : null;
   if (sessionDiscoveredModels) {
     sendModels(sessionDiscoveredModels);
     return;
@@ -3008,11 +3038,19 @@ function handleParsedMessage(parsed: unknown): void {
 export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 async function stopAllSessions(): Promise<void> {
-  await Promise.all(
-    Array.from(sessionsByBbThreadId.values()).map((session) =>
-      stopSession(session),
+  const results = await Promise.allSettled([
+    ...Array.from(sessionsByBbThreadId.values(), (session) =>
+      releaseSession(session),
     ),
-  );
+    ...Array.from(agentConnections, (connection) => connection.kill()),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      process.stderr.write(
+        `acp bridge: shutdown cleanup failed: ${String(result.reason)}\n`,
+      );
+    }
+  }
   const dynamicToolBridge = dynamicToolBridgePromise
     ? await dynamicToolBridgePromise.catch(() => null)
     : null;
@@ -3025,15 +3063,23 @@ async function stopAllSessions(): Promise<void> {
   });
 }
 
+function shutdownBridge(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  void stopAllSessions()
+    .catch((error: unknown) => {
+      process.stderr.write(`acp bridge: shutdown failed: ${String(error)}\n`);
+    })
+    .finally(() => process.exit(0));
+}
+
 if (process.argv.includes("--mcp-stdio")) {
   runAcpDynamicToolMcpServer();
 }
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
-  onClose: () => {
-    void stopAllSessions().finally(() => {
-      process.exit(0);
-    });
-  },
+  onClose: shutdownBridge,
+  onSigterm: shutdownBridge,
+  onSigint: shutdownBridge,
 });

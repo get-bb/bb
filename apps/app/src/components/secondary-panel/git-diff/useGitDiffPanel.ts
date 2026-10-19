@@ -3,6 +3,12 @@ import type { GitBranchRefClassification } from "@bb/domain";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
+import {
+  selectScopedMergeBaseBranch,
+  selectScopedPendingGitDiffIntent,
+  type PendingGitDiffIntent,
+  type SelectedMergeBaseBranchState,
+} from "./gitDiffPanelHelpers";
 
 type ThreadSecondaryPanelSetter = (
   panel: ThreadSecondaryPanelTab | null,
@@ -17,25 +23,6 @@ interface UseGitDiffPanelParams {
   setThreadSecondaryPanel: ThreadSecondaryPanelSetter;
   threadId: string;
 }
-
-interface SelectedMergeBaseBranchState {
-  branch?: string;
-  environmentId?: string;
-}
-
-type PendingGitDiffIntent =
-  | {
-      environmentId?: string;
-      kind: "commit";
-      sha: string;
-      threadId: string;
-    }
-  | {
-      environmentId?: string;
-      kind: "file";
-      path: string;
-      threadId: string;
-    };
 
 function prependSelectedBranch(
   list: string[] | undefined,
@@ -62,10 +49,10 @@ export function useGitDiffPanel({
 }: UseGitDiffPanelParams) {
   const [selectedMergeBaseBranchState, setSelectedMergeBaseBranchState] =
     useState<SelectedMergeBaseBranchState>({ environmentId });
-  const selectedMergeBaseBranch =
-    selectedMergeBaseBranchState.environmentId === environmentId
-      ? selectedMergeBaseBranchState.branch
-      : undefined;
+  const selectedMergeBaseBranch = selectScopedMergeBaseBranch(
+    selectedMergeBaseBranchState,
+    environmentId,
+  );
   const setSelectedMergeBaseBranch = useCallback(
     (branch: string | undefined) => {
       setSelectedMergeBaseBranchState({ branch, environmentId });
@@ -74,12 +61,10 @@ export function useGitDiffPanel({
   );
   const [pendingGitDiffIntent, setPendingGitDiffIntent] =
     useState<PendingGitDiffIntent | null>(null);
-  const currentPendingGitDiffIntent =
-    pendingGitDiffIntent !== null &&
-    pendingGitDiffIntent.environmentId === environmentId &&
-    pendingGitDiffIntent.threadId === threadId
-      ? pendingGitDiffIntent
-      : null;
+  const currentPendingGitDiffIntent = selectScopedPendingGitDiffIntent(
+    pendingGitDiffIntent,
+    { environmentId, threadId },
+  );
   const pendingGitDiffCommitSha =
     currentPendingGitDiffIntent?.kind === "commit"
       ? currentPendingGitDiffIntent.sha
@@ -90,11 +75,10 @@ export function useGitDiffPanel({
       : null;
   const clearPendingGitDiffIntent = useCallback(() => {
     setPendingGitDiffIntent((current) =>
-      current !== null &&
-      current.environmentId === environmentId &&
-      current.threadId === threadId
-        ? null
-        : current,
+      selectScopedPendingGitDiffIntent(current, { environmentId, threadId }) ===
+      null
+        ? current
+        : null,
     );
   }, [environmentId, threadId]);
   const [mergeBaseBranchSearchQuery, setMergeBaseBranchSearchQuery] =

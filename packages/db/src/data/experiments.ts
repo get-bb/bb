@@ -1,6 +1,7 @@
 import { inArray } from "drizzle-orm";
 import {
   defaultExperiments,
+  earlyAdopterExperiments,
   experimentKeys,
   experimentKeySchema,
   type ExperimentUpdates,
@@ -8,9 +9,12 @@ import {
 } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { systemExperiments } from "../schema.js";
+import { getEarlyAdopter } from "./app-settings.js";
 
 export function getExperiments(db: DbConnection): Experiments {
-  const experiments = { ...defaultExperiments };
+  const experiments = getEarlyAdopter(db)
+    ? { ...earlyAdopterExperiments }
+    : { ...defaultExperiments };
   const rows = db
     .select()
     .from(systemExperiments)

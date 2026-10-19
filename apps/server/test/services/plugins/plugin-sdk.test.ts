@@ -4,14 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createConnection,
   archiveThread,
   createThread,
   getThread,
   insertThreadPluginMetadata,
-  migrate,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
@@ -170,8 +169,7 @@ describe("plugin bb.sdk bind gate", () => {
   });
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-test-"));
     sharedPorts.declareSharedPorts.mockClear();
     sharedPorts.validateSharedPortDeclaration.mockClear();
@@ -657,6 +655,23 @@ describe("plugin bb.sdk against a running server", () => {
       await expect(
         api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
       ).resolves.toEqual({ a: 1, nested: { old: true } });
+      await expect(
+        api.sdk.threads.experimental_listPluginMetadata({
+          threadIds: [thread.id],
+        }),
+      ).resolves.toEqual({
+        threads: [
+          { threadId: thread.id, metadata: { a: 1, nested: { old: true } } },
+        ],
+      });
+      await expect(
+        api.sdk.threads.experimental_listPluginMetadata({
+          threadIds: [thread.id],
+          pluginId: "cross",
+        }),
+      ).resolves.toEqual({
+        threads: [{ threadId: thread.id, metadata: { b: 2 } }],
+      });
       await expect(
         api.sdk.threads.getPluginMetadata({
           threadId: thread.id,

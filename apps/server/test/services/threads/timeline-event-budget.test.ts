@@ -23,10 +23,10 @@ import {
   createProject,
   createThread,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import type {
   ThreadTimelineResponse,
@@ -117,8 +117,7 @@ function setup(connection?: DbConnection): {
   db: DbConnection;
   thread: Thread;
 } {
-  const db = connection ?? createConnection(":memory:");
-  if (connection === undefined) migrate(db);
+  const db = connection ?? createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
@@ -340,6 +339,8 @@ function walkAllFileChangeDiffs(
         eventBudget,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -357,7 +358,7 @@ function walkAllFileChangeDiffs(
             : "",
         ),
     );
-    if (!response.timelinePage.hasOlderRows) {
+    if (response.timelinePage.olderCursor === null) {
       break;
     }
     cursor = response.timelinePage.olderCursor;
@@ -390,6 +391,8 @@ function walkAllPages(
         eventBudget,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -404,7 +407,7 @@ function walkAllPages(
         .filter((row) => row.kind === "conversation" && row.role === "user")
         .map((row) => row.id),
     );
-    if (!response.timelinePage.hasOlderRows) {
+    if (response.timelinePage.olderCursor === null) {
       break;
     }
     const next = response.timelinePage.olderCursor;
@@ -448,6 +451,8 @@ describe("timeline event budget", () => {
         completedTurnDisplay: "collapse",
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -479,7 +484,6 @@ describe("timeline event budget", () => {
           olderRows: page.rows,
         });
         cursor = page.timelinePage.olderCursor;
-        expect(page.timelinePage.hasOlderRows).toBe(cursor !== null);
         if (cursor !== null) {
           expect(seen.has(cursor.anchorId)).toBe(false);
           seen.add(cursor.anchorId);
@@ -525,6 +529,8 @@ describe("timeline event budget", () => {
         completedTurnDisplay: "collapse",
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -541,8 +547,7 @@ describe("timeline event budget", () => {
       }).response;
       expect(latest.rows).toEqual(full.rows);
       expect(latest.rows.length).toBeGreaterThan(0);
-      expect(latest.timelinePage.kind).toBe("latest");
-      expect(latest.timelinePage.hasOlderRows).toBe(false);
+      expect(latest.timelinePage.olderCursor).toBeNull();
       expect(latest.timelinePage.olderCursor).toBeNull();
     } finally {
       db.$client.close();
@@ -555,6 +560,8 @@ describe("timeline event budget", () => {
     const options = {
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -610,6 +617,8 @@ describe("timeline event budget", () => {
         completedTurnDisplay: "collapse",
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: 32_000,
         maxSeq: 0,
@@ -679,6 +688,8 @@ describe("timeline event budget", () => {
           completedTurnDisplay: "collapse",
           includeClearedContextHistory: false,
           includeDiagnosticOperations: false,
+          compactionOfferEnabled: false,
+          summarizeShellCommands: true,
           includeNestedRows: true,
           maxInlineOutputChars: 32_000,
           maxSeq: 0,
@@ -778,7 +789,7 @@ describe("timeline event budget", () => {
       expect(live.timelinePage.historySnapshot).not.toBe(
         latest.timelinePage.historySnapshot,
       );
-      expect(live.timelinePage.olderRowsSourceSeqEnd).toBeLessThanOrEqual(
+      expect(live.timelinePage.olderRowsSourceSeqEnd ?? 0).toBeLessThanOrEqual(
         latest.maxSeq,
       );
       expect(
@@ -792,6 +803,8 @@ describe("timeline event budget", () => {
           completedTurnDisplay: "collapse",
           includeClearedContextHistory: false,
           includeDiagnosticOperations: false,
+          compactionOfferEnabled: false,
+          summarizeShellCommands: true,
           includeNestedRows: true,
           maxInlineOutputChars: 32_000,
           maxSeq: 0,
@@ -805,15 +818,14 @@ describe("timeline event budget", () => {
   });
 
   it.each([
-    { changedRows: "an older group", turns: [1, 2], rebuilds: false },
+    { changedRows: "an older group", turns: [1, 2] },
     {
       changedRows: "the omitted start of the newest group",
       turns: [1],
-      rebuilds: true,
     },
   ])(
     "merges a late completion that changes $changedRows",
-    async ({ turns, rebuilds }) => {
+    async ({ turns }) => {
       const harness = await createTestAppHarness({
         featureFlags: { ...defaultFeatureFlags, timelineWindowEventBudget: 5 },
       });
@@ -940,9 +952,9 @@ describe("timeline event budget", () => {
 
         const live = await read("");
 
-        expect(live.timelinePage.olderRowsSourceSeqEnd! > latest.maxSeq).toBe(
-          rebuilds,
-        );
+        expect(
+          live.timelinePage.olderRowsSourceSeqEnd ?? 0,
+        ).toBeLessThanOrEqual(latest.maxSeq);
         const merged = mergeLoadedTimelineWithLatest({
           current: buildLoadedTimelineState({
             latestWindowEndSequence: latest.maxSeq,
@@ -954,7 +966,10 @@ describe("timeline event budget", () => {
           latestTimeline: live,
           surfaceKey: thread.id,
         });
-        if (rebuilds) expect(merged.rows).toEqual(live.rows);
+        expect(merged.rows.map((row) => row.id)).toEqual(
+          rows.map((row) => row.id),
+        );
+        expect(merged.olderCursor).toBeNull();
         let reloadedRows = merged.rows;
         let reloadCursor = merged.olderCursor;
         while (reloadCursor) {
@@ -975,6 +990,8 @@ describe("timeline event budget", () => {
             completedTurnDisplay: "collapse",
             includeClearedContextHistory: false,
             includeDiagnosticOperations: false,
+            compactionOfferEnabled: false,
+            summarizeShellCommands: true,
             includeNestedRows: false,
             maxInlineOutputChars: 32_000,
             maxSeq: 0,
@@ -1025,6 +1042,7 @@ describe("timeline event budget", () => {
               status: "pending",
               taskStatus: "running",
               skipTranscript: false,
+              foreground: false,
               usage: {
                 totalTokens: progress,
                 toolUses: progress,
@@ -1198,6 +1216,8 @@ describe("timeline event budget", () => {
       const options = {
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -1245,6 +1265,8 @@ describe("timeline event budget", () => {
       const options = {
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -1336,18 +1358,22 @@ describe("timeline event budget", () => {
       eventBudget: LARGE_BUDGET,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
     }).response;
-    expect(unbudgeted.timelinePage.hasOlderRows).toBe(false);
+    expect(unbudgeted.timelinePage.olderCursor).toBeNull();
 
     const budgeted = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: 100,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -1356,7 +1382,7 @@ describe("timeline event budget", () => {
     expect(budgeted.timelinePage.returnedSegmentCount).toBeLessThan(
       unbudgeted.timelinePage.returnedSegmentCount,
     );
-    expect(budgeted.timelinePage.hasOlderRows).toBe(true);
+    expect(budgeted.timelinePage.olderCursor).not.toBeNull();
     expect(budgeted.timelinePage.olderCursor).not.toBeNull();
   });
 
@@ -1434,6 +1460,8 @@ describe("timeline event budget", () => {
         eventBudget: 2,
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -1449,11 +1477,13 @@ describe("timeline event budget", () => {
             row.text === "Visible response",
         ),
       ).toBe(true);
-      expect(response.timelinePage.hasOlderRows).toBe(true);
+      expect(response.timelinePage.olderCursor).not.toBeNull();
       const options = {
         completedTurnDisplay: "collapse",
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,
         maxSeq: 0,
@@ -1493,6 +1523,8 @@ describe("timeline event budget", () => {
       eventBudget: 50,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -1529,6 +1561,8 @@ describe("timeline event budget", () => {
     const options = {
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -1558,6 +1592,8 @@ it("does not decode unrelated turn history for a one-group page", () => {
     eventBudget: 1500,
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
+    compactionOfferEnabled: false,
+    summarizeShellCommands: true,
     maxInlineOutputChars: 32000,
     maxSeq: 0,
     page: { kind: "latest", segmentLimit: 1 },
@@ -1587,6 +1623,8 @@ it("resolves acceptance after the next conversation boundary", () => {
     eventBudget: LARGE_BUDGET,
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
+    compactionOfferEnabled: false,
+    summarizeShellCommands: true,
     maxInlineOutputChars: 32000,
     maxSeq: 0,
     page: { kind: "latest", segmentLimit: 100 },
@@ -1596,6 +1634,8 @@ it("resolves acceptance after the next conversation boundary", () => {
     eventBudget: 5,
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
+    compactionOfferEnabled: false,
+    summarizeShellCommands: true,
     maxInlineOutputChars: 32000,
     maxSeq: 0,
     page: { kind: "latest", segmentLimit: 1 },
@@ -1608,6 +1648,8 @@ it("resolves acceptance after the next conversation boundary", () => {
       eventBudget: 5,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       maxInlineOutputChars: 32000,
       maxSeq: 0,
       page: {

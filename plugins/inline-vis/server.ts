@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   defineRpcContract,
@@ -131,6 +132,8 @@ export const inlineVisRpcContract = defineRpcContract({
           source: z.enum(["workspace", "thread-storage"]),
           target: previewTargetSchema,
           url: z.string(),
+          content: z.string(),
+          sha256: z.string(),
         })
         .strict(),
       z
@@ -235,7 +238,18 @@ export default async function plugin(bb: BbPluginApi) {
         target.kind === "thread-storage"
           ? `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodedFile}`
           : `/api/v1/environments/${encodeURIComponent(target.environmentId)}/files/${encodedFile}`;
-      return { kind, file, source, target, url };
+      const sha256 = createHash("sha256")
+        .update(result.content, "utf8")
+        .digest("hex");
+      return {
+        kind,
+        file,
+        source,
+        target,
+        url,
+        content: result.content,
+        sha256,
+      };
     },
   });
 }

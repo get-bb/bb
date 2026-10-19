@@ -109,6 +109,7 @@ export function makeThreadResponse(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -323,6 +324,7 @@ export function makeQueueEntry(
     serviceTier: "default",
     groupWithNext: false,
     sendAt: null,
+    state: "waiting",
     waitingOn: {
       kind: "plugin",
       pluginId: "test-plugin",

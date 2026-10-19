@@ -308,11 +308,11 @@ describe("QueuedMessagesList", () => {
   });
 
   it.each([
-    { initiator: "system" as const, senderThreadId: null, height: "122px" },
+    { initiator: "system" as const, senderThreadId: null, height: "118px" },
     {
       initiator: "agent" as const,
       senderThreadId: "thr_sender",
-      height: "128px",
+      height: "124px",
     },
   ])(
     "reserves the metadata height for $initiator senders",
@@ -364,7 +364,7 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(toggle);
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(surface?.style.height).toBe("139px");
+    expect(surface?.style.height).toBe("135px");
     expect(
       getByRole("button", { name: "Collapse queued messages" }).querySelector(
         '[data-icon="ChevronUp"]',
@@ -380,7 +380,7 @@ describe("QueuedMessagesList", () => {
     expect(document.activeElement).toBe(toggle);
 
     fireEvent.click(toggle);
-    expect(surface?.style.height).toBe("139px");
+    expect(surface?.style.height).toBe("135px");
     toggle.focus();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -414,8 +414,8 @@ describe("QueuedMessagesList", () => {
       'section[aria-label="Queued messages"]',
     )?.style.height;
 
-    expect(plainHeight).toBe("106px");
-    expect(waitingHeight).toBe("122px");
+    expect(plainHeight).toBe("102px");
+    expect(waitingHeight).toBe("118px");
   });
 
   it("toggles an overflowing queue with the same disclosure as a fitted queue", () => {
@@ -591,7 +591,11 @@ describe("QueuedMessagesList", () => {
     };
     const draftMessage = {
       ...makeQueuedMessage("q_draft", "Release notes outline"),
-      waitingOn: { kind: "plugin" as const, pluginId: "drafts", reason: "Draft" },
+      waitingOn: {
+        kind: "plugin" as const,
+        pluginId: "drafts",
+        reason: "Draft",
+      },
       createdAt: 3,
     };
     const { container, rerender } = render(
@@ -601,9 +605,7 @@ describe("QueuedMessagesList", () => {
       />,
     );
     const headerWait = () =>
-      container.querySelector<HTMLElement>(
-        "header [data-queued-message-wait]",
-      );
+      container.querySelector<HTMLElement>("header [data-queued-message-wait]");
 
     expect(headerWait()?.textContent).toBe("Provider unavailable");
     expect(headerWait()?.hasAttribute("data-queued-message-failed")).toBe(true);
@@ -1068,7 +1070,7 @@ describe("QueuedMessagesList", () => {
     rerender(renderSurface(false));
 
     await waitFor(() => {
-      expect(surface?.style.height).toBe("139px");
+      expect(surface?.style.height).toBe("135px");
       expect(
         container
           .querySelector("[data-queued-messages-mode]")
@@ -1656,22 +1658,42 @@ describe("QueuedMessagesList", () => {
     );
   });
 
-  it("preserves grouping when reordering a row across the divider", () => {
+  it("keeps the lead group for reorders inside it and dissolves it when a row crosses the divider", () => {
     const queuedMessages = [
-      makeQueuedMessage("q_one", "First queued message"),
+      {
+        ...makeQueuedMessage("q_one", "First queued message"),
+        groupWithNext: true,
+      },
       makeQueuedMessage("q_two", "Second queued message"),
       makeQueuedMessage("q_three", "Third queued message"),
     ];
+    const combinedIds = [
+      "q_one",
+      "q_two",
+      "__queued_message_group_divider__",
+      "q_three",
+    ];
+
+    expect(
+      resolveQueuedMessageDrag({
+        activeId: "q_two",
+        overId: "q_one",
+        combinedIds,
+        orderedMessages: queuedMessages,
+      }),
+    ).toMatchObject({
+      kind: "row",
+      orderedMessages: [
+        { id: "q_two", groupWithNext: true },
+        { id: "q_one", groupWithNext: false },
+        { id: "q_three", groupWithNext: false },
+      ],
+    });
 
     const result = resolveQueuedMessageDrag({
       activeId: "q_three",
       overId: "q_one",
-      combinedIds: [
-        "q_one",
-        "__queued_message_group_divider__",
-        "q_two",
-        "q_three",
-      ],
+      combinedIds,
       orderedMessages: queuedMessages,
     });
 

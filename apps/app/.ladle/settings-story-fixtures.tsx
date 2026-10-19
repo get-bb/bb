@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID, type Host, type ProviderInfo } from "@bb/domain";
 import type {
   SidebarBootstrapResponse,
+  SystemAiServicesResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
@@ -14,6 +15,7 @@ import {
   pluginMarketplacesQueryKey,
   serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
+  systemAiServicesQueryKey,
   systemConfigQueryKey,
   systemProvidersQueryKey,
   systemVersionQueryKey,
@@ -65,6 +67,32 @@ const STORY_GLOBAL_VARIABLES = [
   },
   { name: "SENTRY_DSN", value: null, secret: true as const, note: null },
 ];
+
+const STORY_AI_SERVICES: SystemAiServicesResponse = {
+  selections: {
+    "thread-title": { mode: "automatic" },
+    "commit-message": { mode: "automatic" },
+    voice: { mode: "automatic" },
+  },
+  services: [
+    {
+      id: "bb",
+      displayName: "bb cloud",
+      pluginId: "bb-ai",
+      tasks: ["thread-title", "commit-message", "voice"],
+      automaticRank: 0,
+      status: { ready: true },
+    },
+    {
+      id: "codex",
+      displayName: "Codex",
+      pluginId: "provider-codex",
+      tasks: ["thread-title", "commit-message"],
+      automaticRank: 1,
+      status: { ready: false, message: "Run `codex login` to sign in" },
+    },
+  ],
+};
 
 const SETTINGS_STORY_NOW = Date.parse("2026-08-19T08:00:00.000Z");
 
@@ -295,6 +323,7 @@ function createSettingsStoryQueryClient(hosts: Host[] = SETTINGS_STORY_HOSTS) {
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
   queryClient.setQueryData(sidebarNavigationQueryKey(), sidebarNavigation);
   queryClient.setQueryData(pluginMarketplacesQueryKey(), []);
+  queryClient.setQueryData(systemAiServicesQueryKey(), STORY_AI_SERVICES);
   queryClient.setQueryData(machineEnvironmentQueryKey(null), {
     builtInGit: STORY_GIT_HEALTH,
     variables: STORY_GLOBAL_VARIABLES,

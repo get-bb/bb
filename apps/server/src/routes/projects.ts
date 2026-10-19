@@ -44,7 +44,7 @@ import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
   copyProjectAttachments,
-  readAttachment,
+  createAttachmentContentResponse,
   storeAttachment,
 } from "../services/projects/attachments.js";
 import {
@@ -68,7 +68,6 @@ import {
   readProjectSkill,
   writeProjectSkill,
 } from "../services/skills/skill-listing.js";
-import { requestMatchesEntityTag } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   buildCommandListResponse,
@@ -91,7 +90,10 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
-import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
+import {
+  readWorkspaceAgentContext,
+  type WorkspaceAgentContext,
+} from "../services/threads/workspace-agent-context.js";
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import {
   providerHasNativeRootSurface,
@@ -104,7 +106,6 @@ import {
 } from "../services/projects/project-workspace.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
-const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
   project: ProjectResponseProjectFields,
@@ -678,9 +679,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
+      signal: context.req.raw.signal,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.list_files",
+        followRootSymlink: false,
         path: target.path,
         ...(query.query ? { query: query.query } : {}),
         limit,
@@ -709,6 +712,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
+      signal: context.req.raw.signal,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.list_paths",
@@ -750,22 +754,29 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         cwd: workspace.cwd,
       });
     };
-    const [result, projectSkillSources, sharedSkills] = await Promise.all([
-      listProviderCommands(),
+    const readWorkspaceSkills = async (): Promise<
+      Pick<WorkspaceAgentContext, "projectSkillSources" | "sharedSkills">
+    > =>
       workspace.cwd === null
-        ? Promise.resolve([])
-        : resolveWorkspaceProjectSkills(deps, {
+        ? {
+            projectSkillSources: [],
+            sharedSkills: await resolveSharedSkills(deps, {
+              hostId: workspace.hostId,
+              cwd: null,
+            }),
+          }
+        : readWorkspaceAgentContext(deps, {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
-          }),
-      resolveSharedSkills(deps, {
-        hostId: workspace.hostId,
-        cwd: workspace.cwd,
-      }),
+            includeAgentInstructions: false,
+          });
+    const [result, workspaceSkills] = await Promise.all([
+      listProviderCommands(),
+      readWorkspaceSkills(),
     ]);
     const skillCatalog = resolveSkillCatalog(deps, {
-      projectSkillSources,
-      sharedSkillSources: sharedSkills.runtimeSources,
+      projectSkillSources: workspaceSkills.projectSkillSources,
+      sharedSkillSources: workspaceSkills.sharedSkills.runtimeSources,
     });
     return context.json(
       buildCommandListResponse({
@@ -963,28 +974,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.attachmentContent, async (context, query) => {
     requirePublicProject(deps.db, context.req.param("id"));
-    const attachment = await readAttachment(
-      deps.config.dataDir,
-      context.req.param("id"),
-      query.path,
-    );
-    const headers = new Headers({
-      "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
-      "content-type": attachment.mimeType ?? "application/octet-stream",
-      etag: attachment.etag,
-    });
-    if (
-      requestMatchesEntityTag(
-        context.req.header("if-none-match"),
-        attachment.etag,
-      )
-    ) {
-      return new Response(null, { status: 304, headers });
-    }
-    headers.set("content-length", String(attachment.content.byteLength));
-    return new Response(new Uint8Array(attachment.content), {
-      status: 200,
-      headers,
+    return createAttachmentContentResponse({
+      dataDir: deps.config.dataDir,
+      projectId: context.req.param("id"),
+      path: query.path,
+      request: context.req.raw,
     });
   });
 }

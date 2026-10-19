@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createAccountClient } from "./account-client.js";
 import { AccountLink } from "./account-link.js";
-import { resolveDefaultConnectBaseUrl } from "./base-url.js";
+import { resolveDefaultConnectBaseUrl } from "@bb/connect-client";
 import { registerConnectCli } from "./cli.js";
 import { HostedConnectApi } from "./hosted.js";
 import { ShareHostResolver } from "./hosts.js";

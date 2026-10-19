@@ -9,19 +9,23 @@ import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-po
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
-import { usePanelShelfState } from "./secondary-panel-shelf-visibility.js";
 import {
+  isCompactSecondaryPanelSwipeOpening,
+  usePanelShelfState,
+} from "./secondary-panel-shelf-visibility.js";
+import {
+  browserNavigationEdgeGuardPx,
   findTouchById,
   hasTextSelectionWithin,
   isHorizontallyScrollableElement,
 } from "./gesture-dom.js";
 import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
+import { MACOS_WINDOW_DRAG_CLASS } from "@/lib/bb-desktop";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.86;
 const SIDEBAR_MOBILE_MAX_WIDTH_PX = 360;
 const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, ${SIDEBAR_MOBILE_MAX_WIDTH_PX}px)`;
-const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
@@ -41,10 +45,18 @@ const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
   "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 
 const SIDEBAR_FRAME_CLASS =
-  "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-app-chrome-row-height) [--bb-window-frame-top:var(--bb-app-chrome-row-height)]";
+  "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-window-title-bar-height) pr-(--bb-window-frame-lip) pb-(--bb-window-frame-lip) [--bb-window-frame-top:var(--bb-window-title-bar-height)] [--bb-window-frame-lip:var(--bb-frame-window-lip)]";
+const SIDEBAR_FRAME_LEADING_LIP_CLASS =
+  "pl-(--bb-window-frame-leading-lip) [--bb-window-frame-leading-lip:var(--bb-window-frame-lip)]";
 const SIDEBAR_FRAMED_PANEL_CLASS =
-  "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
-const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-t border-l border-border-seam";
+  "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
+const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-y border-l border-border";
+const SIDEBAR_FRAMED_INSET_CLASS =
+  "isolate px-px pb-px [mask-repeat:no-repeat] [mask-size:100%_100%] -mt-(--bb-window-title-bar-height) h-[calc(100%+var(--bb-window-title-bar-height))] bg-transparent [clip-path:inset(0_round_0_0_var(--bb-frame-card-radius)_0)] before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:top-(--bb-window-title-bar-height) before:-z-10 before:rounded-tr-(--bb-frame-card-radius) before:rounded-br-(--bb-frame-card-radius) before:border-y before:border-r before:border-l before:border-border before:bg-background";
+const SIDEBAR_FRAMED_EXPANDED_INSET_CLASS =
+  "[mask-image:var(--bb-window-card-mask-square-left)] after:pointer-events-none after:absolute after:top-0 after:left-0 after:h-(--bb-window-title-bar-height) after:w-px after:bg-border";
+const SIDEBAR_FRAMED_COLLAPSED_INSET_CLASS =
+  "[mask-image:var(--bb-window-card-mask)] [clip-path:inset(0_round_0_0_var(--bb-frame-card-radius)_var(--bb-frame-card-radius))] before:rounded-tl-(--bb-frame-card-radius) before:rounded-bl-(--bb-frame-card-radius) [transition:clip-path_0s_linear_200ms] before:[transition:border-top-left-radius_0s_linear_200ms,border-bottom-left-radius_0s_linear_200ms]";
 
 type SidebarMobileWidthStyle = React.CSSProperties & {
   "--sidebar-width-mobile": string;
@@ -203,7 +215,7 @@ function createSidebarInsetSwipeSession({
 
 function isSidebarSwipeEdgeZoneTouch(clientX: number): boolean {
   return (
-    clientX >= SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX &&
+    clientX >= browserNavigationEdgeGuardPx() &&
     clientX < SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX
   );
 }
@@ -644,17 +656,37 @@ const SidebarProvider = React.forwardRef<
                   style={
                     {
                       ...sidebarMobileWidthStyle,
+                      ...(isFramed
+                        ? {
+                            "--bb-window-card-collapsed-left":
+                              desktopCollapsedRailWidth ??
+                              "var(--bb-window-frame-leading-lip)",
+                          }
+                        : {}),
                       ...style,
                     } as React.CSSProperties
                   }
                   className={cn(
                     "group/sidebar-wrapper flex h-full min-h-0 w-full max-md:overflow-clip",
                     isFramed && SIDEBAR_FRAME_CLASS,
+                    isFramed &&
+                      desktopCollapsedRailWidth === null &&
+                      SIDEBAR_FRAME_LEADING_LIP_CLASS,
                     className,
                   )}
                   ref={ref}
                   {...props}
                 >
+                  {isFramed ? (
+                    <div
+                      aria-hidden="true"
+                      data-testid="window-title-bar-drag-region"
+                      className={cn(
+                        "fixed inset-x-0 top-0 h-(--bb-window-title-bar-height)",
+                        MACOS_WINDOW_DRAG_CLASS,
+                      )}
+                    />
+                  ) : null}
                   {children}
                 </div>
               </SidebarFramedContext.Provider>
@@ -771,7 +803,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
           className={cn(
             "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) select-none flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
             "group-data-[collapsible=offcanvas]:invisible group-data-[collapsible=offcanvas]:[transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_200ms]",
-            "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
+            "left-(--bb-window-frame-leading-lip) group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
             "group-data-[collapsible=rail]:w-(--sidebar-rail-width)",
             "border-border-seam group-data-[side=left]:border-r",
             SIDEBAR_FRAMED_PANEL_CLASS,
@@ -795,8 +827,8 @@ Sidebar.displayName = "Sidebar";
 
 const SidebarCollapsibleBody = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, children, ...props }, ref) => {
+  React.ComponentProps<"div"> & { contentInFlow?: boolean }
+>(({ className, children, contentInFlow = false, ...props }, ref) => {
   const { open } = useSidebar();
   const width = React.useContext(SidebarWidthContext);
   const collapsedRailWidth = React.useContext(SidebarCollapsedRailWidthContext);
@@ -811,7 +843,7 @@ const SidebarCollapsibleBody = React.forwardRef<
         "group-data-[collapsible=rail]:invisible group-data-[collapsible=rail]:[transition:visibility_0s_linear_200ms]",
         isFramed
           ? [
-              "rounded-tl-xl bg-sidebar [clip-path:inset(0_-6px_0_0_round_0.75rem_0_0_0)]",
+              "rounded-tl-(--bb-frame-card-radius) rounded-bl-(--bb-frame-card-radius) bg-sidebar [clip-path:inset(0_-6px_0_0_round_var(--bb-frame-card-radius)_0_0_var(--bb-frame-card-radius))]",
               SIDEBAR_FRAMED_CARD_EDGE_CLASS,
             ]
           : "[clip-path:inset(0_-6px_0_0)]",
@@ -820,7 +852,10 @@ const SidebarCollapsibleBody = React.forwardRef<
       {...props}
     >
       <div
-        className="absolute inset-y-0 right-0 flex"
+        className={cn(
+          "flex",
+          contentInFlow ? "relative h-full" : "absolute inset-y-0 right-0",
+        )}
         style={{
           width:
             collapsedRailWidth === null
@@ -993,6 +1028,7 @@ const SidebarMobilePanel = React.forwardRef<
         applySidebarMobileDragStyles({ progress, settling });
       },
       resetKey: open ? "open" : "closed",
+      shouldBeginDrag: () => true,
       suppressClick: true,
     });
 
@@ -1261,9 +1297,10 @@ const SidebarInset = React.forwardRef<
         }
 
         if (
-          session.startTarget !== null &&
-          (!session.startTarget.isConnected ||
-            isInsideHorizontalScrollRegion(session.startTarget))
+          isCompactSecondaryPanelSwipeOpening() ||
+          (session.startTarget !== null &&
+            (!session.startTarget.isConnected ||
+              isInsideHorizontalScrollRegion(session.startTarget)))
         ) {
           clearSidebarMobileDragStyles();
           clearSwipeSession();
@@ -1412,7 +1449,7 @@ const SidebarInset = React.forwardRef<
       const touch = event.touches.item(0);
       if (
         touch == null ||
-        touch.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX
+        touch.clientX < browserNavigationEdgeGuardPx()
       ) {
         return;
       }
@@ -1468,7 +1505,7 @@ const SidebarInset = React.forwardRef<
         event.pointerType !== "touch" ||
         !event.isPrimary ||
         event.button !== 0 ||
-        event.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX ||
+        event.clientX < browserNavigationEdgeGuardPx() ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
       ) {
@@ -1568,7 +1605,7 @@ const SidebarInset = React.forwardRef<
         event.defaultPrevented ||
         !isCompactViewport ||
         openMobile ||
-        event.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX ||
+        event.clientX < browserNavigationEdgeGuardPx() ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
       ) {
@@ -1689,10 +1726,9 @@ const SidebarInset = React.forwardRef<
         SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
         "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf]:will-change-[translate]",
         "data-[panel-shelf=full]:-translate-x-full data-[panel-shelf]:will-change-[translate]",
-        isFramed && ["overflow-clip", SIDEBAR_FRAMED_CARD_EDGE_CLASS],
-        isFramed &&
-          !open &&
-          "rounded-tl-xl [transition:border-top-left-radius_0s_linear_200ms]",
+        isFramed && SIDEBAR_FRAMED_INSET_CLASS,
+        isFramed && open && SIDEBAR_FRAMED_EXPANDED_INSET_CLASS,
+        isFramed && !open && SIDEBAR_FRAMED_COLLAPSED_INSET_CLASS,
         className,
       )}
       {...props}

@@ -1,4 +1,8 @@
-import type { PromptInput, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  type PromptInput,
+  type ThreadRuntimeDisplayStatus,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   buildAutoFollowUpRequest,
@@ -103,6 +107,7 @@ describe("threadDetailPromptSubmission", () => {
   it("builds auto follow-up requests with selected execution options", () => {
     expect(
       buildAutoFollowUpRequest({
+        compactFirst: false,
         execution: {
           model: "gpt-5",
           permissionMode: "full",
@@ -126,9 +131,26 @@ describe("threadDetailPromptSubmission", () => {
     });
   });
 
+  it.each([
+    [textInput, true],
+    [createStandaloneBuiltinCompactCommandInput(), false],
+  ])(
+    "asks to compact first only for a message to send after compacting %#",
+    (input, expected) => {
+      const request = buildAutoFollowUpRequest({
+        compactFirst: true,
+        execution: null,
+        input,
+        threadId: "thread-1",
+      });
+      expect(request?.compactFirst === true).toBe(expected);
+    },
+  );
+
   it("omits execution overrides when building auto follow-up requests without concrete defaults", () => {
     expect(
       buildAutoFollowUpRequest({
+        compactFirst: false,
         execution: null,
         input: textInput,
         threadId: "thread-1",

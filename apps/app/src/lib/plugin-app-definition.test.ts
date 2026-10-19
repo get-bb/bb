@@ -15,6 +15,10 @@ function Component() {
   return null;
 }
 
+function useNoBadge() {
+  return null;
+}
+
 describe("definePluginApp", () => {
   it("brands the setup for host detection", () => {
     const definition = definePluginApp(() => {});
@@ -56,6 +60,77 @@ describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
     expect(() => collectPluginAppRegistrations(malformed)).toThrow(
       '"component" must be a React component function',
     );
+  });
+});
+
+describe("collectPluginAppRegistrations — experimental_threadAction", () => {
+  const item = () => null;
+  const useData = () => 1;
+
+  it("collects a thread action with its hooks", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "notifications",
+        title: "Notifications",
+        icon: "Notification",
+        group: "3_settings",
+        order: 5,
+        useData,
+        item,
+      });
+    });
+    expect(collectPluginAppRegistrations(definition).threadActions).toEqual([
+      {
+        id: "notifications",
+        title: "Notifications",
+        icon: "Notification",
+        group: "3_settings",
+        order: 5,
+        useData,
+        item,
+      },
+    ]);
+  });
+
+  it("rejects two thread actions with the same id", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "a",
+        title: "One",
+        icon: "Pin",
+        group: "2_organize",
+        item,
+      });
+      app.slots.experimental_threadAction({
+        id: "a",
+        title: "Two",
+        icon: "Pin",
+        group: "2_organize",
+        item,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/"a"/);
+  });
+
+  it.each([
+    ["item", { item: null }, '"item" must be a function'],
+    ["useData", { item, useData: 1 }, '"useData" must be a function'],
+    ["icon", { item, icon: "" }, "icon"],
+    ["group", { item, group: "" }, "group"],
+    ["order", { item, order: Number.NaN }, '"order" must be a finite number'],
+  ])("rejects a malformed %s", (_field, fields, message) => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "a",
+        title: "One",
+        icon: "Pin",
+        group: "2_organize",
+        ...fields,
+      } as unknown as Parameters<
+        typeof app.slots.experimental_threadAction
+      >[0]);
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(message);
   });
 });
 
@@ -372,7 +447,7 @@ describe("collectPluginAppRegistrations", () => {
         icon: "Columns",
         path: "panel",
         component: Component,
-        experimental_sidebarAccessory: Component,
+        experimental_useBadge: useNoBadge,
         headerContent: Component,
       });
       app.slots.threadPanelAction({
@@ -600,6 +675,37 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.contentScripts).toEqual([
       { id: "editor-enhancement", mount },
+    ]);
+  });
+
+  it("keeps loading a pre-0.6.53 nav panel that passes experimental_sidebarAccessory and warns", () => {
+    const warned = vi.fn<(message: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+        experimental_sidebarAccessory: Component,
+      } as never);
+    });
+
+    const registrations = collectPluginAppRegistrations(definition, warned);
+
+    expect(registrations.navPanels).toEqual([
+      {
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+      },
+    ]);
+    expect(warned.mock.calls).toEqual([
+      [
+        'slots.navPanel: "experimental_sidebarAccessory" is ignored: it was replaced by "experimental_useBadge", a hook returning a badge value, in SDK 0.6.53',
+      ],
     ]);
   });
 
@@ -969,7 +1075,7 @@ describe("collectPluginAppRegistrations", () => {
       'slots.navPanel: unknown field "experimental_badge"',
     ],
     [
-      "nav panel with a non-component experimental sidebar accessory",
+      "nav panel with a non-function experimental badge hook",
       () =>
         definePluginApp((app) => {
           app.slots.navPanel({
@@ -978,10 +1084,10 @@ describe("collectPluginAppRegistrations", () => {
             icon: "columns",
             path: "x",
             component: Component,
-            experimental_sidebarAccessory: "nope" as never,
+            experimental_useBadge: "nope" as never,
           });
         }),
-      /"experimental_sidebarAccessory" must be a React component/,
+      /"experimental_useBadge" must be a React hook function/,
     ],
     [
       "message directive with uppercase id",
@@ -1067,9 +1173,9 @@ describe("collectPluginAppRegistrations", () => {
     });
   });
 
-  it("keeps an experimental_sidebarAccessory registration", () => {
-    function SidebarAccessory() {
-      return null;
+  it("keeps an experimental_useBadge registration", () => {
+    function useBadge() {
+      return { count: 3, label: "3 open tasks" };
     }
     const definition = definePluginApp((app) => {
       app.slots.navPanel({
@@ -1078,13 +1184,13 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
-        experimental_sidebarAccessory: SidebarAccessory,
+        experimental_useBadge: useBadge,
       });
     });
     expect(
       collectPluginAppRegistrations(definition).navPanels[0],
     ).toMatchObject({
-      experimental_sidebarAccessory: SidebarAccessory,
+      experimental_useBadge: useBadge,
     });
   });
 });

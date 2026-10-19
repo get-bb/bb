@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 import {
   createReplacementPreferenceAtom,
-  resolvePreferredReplacement,
+  usePreferredReplacement,
 } from "@/lib/plugin-replacement-preference";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import {
@@ -24,11 +24,11 @@ export const diffRendererProviderAtom = createReplacementPreferenceAtom(
 export function useSourceCodeRendererReplacement(): ResolvedReplacement<PluginSourceCodeRendererSlot> {
   const { sourceCodeRenderers } = usePluginSlots();
   const preference = useAtomValue(sourceCodeRendererProviderAtom);
-  return resolvePreferredReplacement(sourceCodeRenderers, preference);
+  return usePreferredReplacement(sourceCodeRenderers, preference);
 }
 
 export function useDiffRendererReplacement(): ResolvedReplacement<PluginDiffRendererSlot> {
   const { diffRenderers } = usePluginSlots();
   const preference = useAtomValue(diffRendererProviderAtom);
-  return resolvePreferredReplacement(diffRenderers, preference);
+  return usePreferredReplacement(diffRenderers, preference);
 }

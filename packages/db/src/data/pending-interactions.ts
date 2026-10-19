@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -212,6 +212,25 @@ export function getActivePendingInteractionForThread(
       )
       .orderBy(desc(pendingInteractions.createdAt))
       .get() ?? null
+  );
+}
+
+export function hasTurnBoundActivePendingInteractionForThread(
+  db: PendingInteractionReadConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: pendingInteractions.id })
+      .from(pendingInteractions)
+      .where(
+        and(
+          eq(pendingInteractions.threadId, threadId),
+          inArray(pendingInteractions.status, ["pending", "resolving"]),
+          isNotNull(pendingInteractions.turnId),
+        ),
+      )
+      .get() !== undefined
   );
 }
 

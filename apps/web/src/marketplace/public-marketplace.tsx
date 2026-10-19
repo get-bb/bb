@@ -6,6 +6,7 @@ import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import PackageIcon from "@hugeicons/core-free-icons/PackageIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
 import {
   createContext,
   type ReactNode,
@@ -41,6 +42,7 @@ import {
   marketplaceAuthorPath,
   marketplaceCategoryOptions,
   marketplaceDetailPath,
+  marketplaceIndexPath,
   marketplaceInstallCommand,
   marketplaceRepositoryUrl,
   marketplaceShelves,
@@ -263,6 +265,34 @@ function categoryLabel(
   );
 }
 
+function PluginTitle({
+  displayName,
+  heading = false,
+}: {
+  displayName: string;
+  heading?: boolean;
+}) {
+  const { name, tag } = splitPluginDisplayName(displayName);
+  const badge = tag ? (
+    <span
+      className={`marketplace-plugin-tag marketplace-plugin-tag-${tag.tone}`}
+    >
+      {tag.label}
+    </span>
+  ) : null;
+  return heading ? (
+    <div className="marketplace-plugin-title">
+      <h1>{name}</h1>
+      {badge}
+    </div>
+  ) : (
+    <span className="marketplace-plugin-title">
+      <strong>{name}</strong>
+      {badge}
+    </span>
+  );
+}
+
 function PluginCard({
   manifest,
   entry,
@@ -282,7 +312,7 @@ function PluginCard({
       >
         <span className="marketplace-card-topline">
           <PluginArtwork entry={entry} />
-          <strong>{entry.displayName}</strong>
+          <PluginTitle displayName={entry.displayName} />
         </span>
         <span className="marketplace-card-description">
           {entry.description}
@@ -360,7 +390,7 @@ function Shelf({
     ? `#${shelf.id}`
     : notable
       ? "/marketplace?sort=recently-added"
-      : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
+      : marketplaceIndexPath(shelf.id);
   return (
     <section
       id={builtIn ? shelf.id : undefined}
@@ -707,6 +737,16 @@ function MarketplaceBrowser({
     state.sort === undefined
       ? filtered
       : sortMarketplaceEntries(filtered, state.sort, stats);
+  const activeOption = options.find((option) => option.id === activeCategory);
+  const categoryHeading =
+    activeOption === undefined || query.trim().length > 0
+      ? undefined
+      : {
+          label: activeOption.label,
+          description: manifest.categories.find(
+            (category) => category.id === activeOption.id,
+          )?.description,
+        };
   const isFlat =
     query.trim().length > 0 ||
     activeCategory !== undefined ||
@@ -729,17 +769,36 @@ function MarketplaceBrowser({
           />
         ) : isFlat ? (
           <section className="marketplace-flat-results">
-            <div className="marketplace-section-head">
-              <div>
-                <h2>
-                  {query.trim().length > 0
-                    ? "Search results"
-                    : state.sort === undefined
-                      ? "Filtered plugins"
-                      : SORT_LABELS[state.sort]}
-                </h2>
-                <span>{displayed.length} plugins</span>
-              </div>
+            <div
+              className={
+                categoryHeading === undefined
+                  ? "marketplace-section-head"
+                  : "marketplace-section-head is-category"
+              }
+            >
+              {categoryHeading === undefined ? (
+                <div>
+                  <h2>
+                    {query.trim().length > 0
+                      ? "Search results"
+                      : state.sort === undefined
+                        ? "Filtered plugins"
+                        : SORT_LABELS[state.sort]}
+                  </h2>
+                  <span>{displayed.length} plugins</span>
+                </div>
+              ) : (
+                <div>
+                  <h2>
+                    {categoryHeading.label}
+                    {"\u00a0"}
+                    <span>{displayed.length}</span>
+                  </h2>
+                  {categoryHeading.description === undefined ? null : (
+                    <p>{categoryHeading.description}</p>
+                  )}
+                </div>
+              )}
             </div>
             <PluginGrid
               manifest={manifest}
@@ -831,7 +890,7 @@ function MoreFromAuthor({
           >
             <PluginArtwork entry={candidate} />
             <span>
-              <strong>{candidate.displayName}</strong>
+              <PluginTitle displayName={candidate.displayName} />
               <small>{candidate.description}</small>
             </span>
             <InstallCount entry={candidate} stats={stats} />
@@ -869,9 +928,7 @@ function MoreInCategory({
             <p>{category.description}</p>
           )}
         </div>
-        <MarketplaceLink
-          href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
-        >
+        <MarketplaceLink href={marketplaceIndexPath(categoryId)}>
           View all
         </MarketplaceLink>
       </div>
@@ -925,18 +982,16 @@ export function PublicMarketplaceDetailPage({
         <nav className="marketplace-breadcrumbs" aria-label="Breadcrumb">
           <MarketplaceLink href="/marketplace">Marketplace</MarketplaceLink>
           <span aria-hidden>/</span>
-          <MarketplaceLink
-            href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
-          >
+          <MarketplaceLink href={marketplaceIndexPath(categoryId)}>
             {category}
           </MarketplaceLink>
           <span aria-hidden>/</span>
-          <strong>{entry.displayName}</strong>
+          <strong>{splitPluginDisplayName(entry.displayName).name}</strong>
         </nav>
         <header className="marketplace-detail-head">
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
-            <h1>{entry.displayName}</h1>
+            <PluginTitle displayName={entry.displayName} heading />
             <div className="marketplace-detail-attribution">
               {authorPath === undefined ? (
                 <span className="marketplace-detail-author">
@@ -960,7 +1015,7 @@ export function PublicMarketplaceDetailPage({
               )}
               <MarketplaceLink
                 className="marketplace-detail-category"
-                href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+                href={marketplaceIndexPath(categoryId)}
               >
                 {category}
               </MarketplaceLink>
@@ -984,13 +1039,13 @@ export function PublicMarketplaceDetailPage({
                   }}
                 />
               )}
-              <MarketplaceLink
+              <a
                 className="marketplace-detail-source marketplace-detail-download"
                 href="/download/macos"
               >
                 Get it for macOS
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </MarketplaceLink>
+              </a>
             </div>
           </div>
         </header>

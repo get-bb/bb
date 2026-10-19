@@ -1,14 +1,13 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGit } from "../src/git.js";
 import { Workspace } from "../src/workspace.js";
 
 const execFileAsync = promisify(execFile);
-const tempDirs: string[] = [];
 
 const localBranch = "bb/review-github-issue-1235-thr_test";
 const forkRemote = "review-fork";
@@ -32,12 +31,6 @@ function pullRequestJson(): string {
     mergeStateStatus: "CLEAN",
     mergeable: "MERGEABLE",
   });
-}
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(directory);
-  return directory;
 }
 
 async function createTrackedForkWorkspace(
@@ -158,34 +151,35 @@ async function readGhCalls(logPath: string): Promise<string[][]> {
   }
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((directory) => fs.rm(directory, { recursive: true, force: true })),
-  );
 });
 
 describe("pull request lookup for differently named upstream branches", () => {
-  it("uses the managed local branch when it tracks the origin base branch", async () => {
-    const workspacePath = await createManagedBaseTrackedWorkspace();
-    const { logPath } = await installFakeGh("found");
-    const workspace = new Workspace(workspacePath);
+  it.each(["origin-base", "none"])(
+    "uses the managed local branch with %s upstream",
+    async (upstream) => {
+      const workspacePath = await createManagedBaseTrackedWorkspace();
+      if (upstream === "none") {
+        await runGit(["branch", "--unset-upstream"], { cwd: workspacePath });
+      }
+      const { logPath } = await installFakeGh("found");
+      const workspace = new Workspace(workspacePath);
 
-    await expect(workspace.getPullRequest()).resolves.toMatchObject({
-      outcome: "found",
-      pullRequest: { number: 1236 },
-    });
-    await workspace.runPullRequestAction({ operation: "ready" });
+      await expect(workspace.getPullRequest()).resolves.toMatchObject({
+        outcome: "found",
+        pullRequest: { number: 1236 },
+      });
+      await workspace.runPullRequestAction({ operation: "ready" });
 
-    const calls = (await readGhCalls(logPath)).filter(
-      (call) => call[0] === "pr",
-    );
-    expect(calls).toHaveLength(2);
-    expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
-    expect(calls[1]).toEqual(["pr", "ready"]);
-  });
+      const calls = (await readGhCalls(logPath)).filter(
+        (call) => call[0] === "pr",
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
+      expect(calls[1]).toEqual(["pr", "ready"]);
+    },
+  );
 
   it("uses the local branch when a differently named remote aliases origin", async () => {
     const workspacePath = await createTrackedForkWorkspace(

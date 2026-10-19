@@ -56,6 +56,10 @@ npx bb-app@latest
 
 Then open `http://localhost:38886`.
 
+To control bb from outside bb with the `bb` CLI, open **Settings → General →
+Command line** and choose **Install**. See
+[The bb Command On PATH](./docs/configuration.md#the-bb-command-on-path).
+
 To run the newest automated build instead:
 
 ```bash

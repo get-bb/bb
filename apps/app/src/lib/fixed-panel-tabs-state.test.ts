@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { createMemoryStorage } from "@bb/test-helpers";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { threadTabsSchema } from "@bb/server-contract";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   areFixedPanelTabsEquivalent,
   buildFixedPanelTabId,
+  createAttachmentFilePreviewFixedPanelTab,
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
@@ -15,9 +17,11 @@ import {
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   ensureOpenFixedPanelHasActiveTab,
+  FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
+  pruneFixedPanelTabsStorage,
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   type FixedPanelTabsState,
@@ -294,6 +298,28 @@ describe("workspace file preview fixed panel tabs", () => {
 
     expect(parsed.secondary.activeTabId).toBe(projectTab.id);
     expect(parsed.secondary.tabs).toEqual([projectTab]);
+  });
+
+  it("round-trips an attachment preview through storage and the thread-tabs contract", () => {
+    const tab = createAttachmentFilePreviewFixedPanelTab({
+      name: "Pasted text.txt",
+      path: "Pasted-text-1791431248908-krajcq.txt",
+      projectId: "proj_app",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: { activeTabId: tab.id, isOpen: true, tabs: [tab] },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.activeTabId).toBe(tab.id);
+    expect(parsed.secondary.tabs).toEqual([tab]);
+    expect(threadTabsSchema.parse([tab])).toEqual([tab]);
   });
 
   it("does not collide project-source preview tabs for the same path in different projects", () => {
@@ -623,5 +649,55 @@ describe("legacy side-chat tabs", () => {
     });
 
     expect(parsed.secondary.tabs).toEqual([browserTab]);
+  });
+});
+
+describe("pruneFixedPanelTabsStorage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("prunes expired and malformed blobs and keeps fresh ones", () => {
+    const localStorage = createMemoryStorage();
+    vi.stubGlobal("window", { localStorage });
+    const now = Date.now();
+    const freshKey = getFixedPanelTabsStateStorageKey({ threadId: "fresh" });
+    const expiredKey = getFixedPanelTabsStateStorageKey({
+      threadId: "expired",
+    });
+    const garbageKey = getFixedPanelTabsStateStorageKey({
+      threadId: "garbage",
+    });
+    const staleShapeKey = getFixedPanelTabsStateStorageKey({
+      threadId: "stale-shape",
+    });
+    localStorage.setItem(
+      freshKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({ lastUsedAt: now }),
+      }),
+    );
+    localStorage.setItem(
+      expiredKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: now - FIXED_PANEL_TABS_IDLE_EXPIRY_MS - 1,
+        }),
+      }),
+    );
+    localStorage.setItem(garbageKey, "{not json");
+    localStorage.setItem(
+      staleShapeKey,
+      JSON.stringify({ lastUsedAt: now, secondary: "nope" }),
+    );
+    localStorage.setItem("unrelated", "keep");
+
+    pruneFixedPanelTabsStorage({ now });
+
+    expect(localStorage.getItem(freshKey)).not.toBeNull();
+    expect(localStorage.getItem(expiredKey)).toBeNull();
+    expect(localStorage.getItem(garbageKey)).toBeNull();
+    expect(localStorage.getItem(staleShapeKey)).toBeNull();
+    expect(localStorage.getItem("unrelated")).toBe("keep");
   });
 });

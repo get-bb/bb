@@ -161,6 +161,21 @@ function getExitCode(error: ExecFileException | undefined): number {
   return 1;
 }
 
+const WINDOWS_STARTUP_CRASH_ATTEMPTS = 3;
+const WINDOWS_STARTUP_CRASH_RETRY_DELAY_MS = 150;
+const STATUS_DLL_INIT_FAILED = 0xc0000142;
+
+function isWindowsStartupCrash(error: ExecFileException | undefined): boolean {
+  return (
+    error !== undefined &&
+    error.code === STATUS_DLL_INIT_FAILED &&
+    error.killed !== true &&
+    (error.signal ?? null) === null &&
+    error.stdout === "" &&
+    error.stderr === ""
+  );
+}
+
 function resolveGitProcessEnv(
   args: ResolveGitProcessEnvArgs,
 ): NodeJS.ProcessEnv {
@@ -275,63 +290,74 @@ export async function runGit(
   if (options.signal?.aborted) {
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
-  try {
-    const processOptions = {
-      cwd: options.cwd,
-      env: resolveGitProcessEnv({
-        env: options.env,
-        shellPath: options.shellPath,
-      }),
-      maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
-      signal: options.signal,
-      timeout: options.timeoutMs,
-    } as const;
-    const result = await execPortableFile("git", args, {
-      ...processOptions,
-      input: options.input,
-      onStderr: options.onStderr,
-    });
-    return {
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exitCode: 0,
-    };
-  } catch (error) {
-    if (options.signal?.aborted) {
-      throw createGitCommandCancelledError(args, error);
-    }
-    const execError = toExecError(error);
-    const timeoutMs = readCommandTimeoutMs(execError, options.timeoutMs);
-    if (timeoutMs !== null) {
-      throw createGitCommandTimedOutError(args, timeoutMs, error);
-    }
-    if (
-      options.allowTruncatedStdout === true &&
-      isStdoutMaxBufferExceededError(error)
-    ) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const processOptions = {
+        cwd: options.cwd,
+        env: resolveGitProcessEnv({
+          env: options.env,
+          shellPath: options.shellPath,
+        }),
+        maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
+        signal: options.signal,
+        timeout: options.timeoutMs,
+      } as const;
+      const result = await execPortableFile("git", args, {
+        ...processOptions,
+        input: options.input,
+        onStderr: options.onStderr,
+      });
       return {
-        stdout: execError?.stdout ?? "",
-        stderr: execError?.stderr ?? "",
+        stdout: result.stdout,
+        stderr: result.stderr,
         exitCode: 0,
       };
-    }
-    if (options.allowFailure) {
-      return {
-        stdout: execError?.stdout ?? "",
-        stderr: execError?.stderr ?? "",
-        exitCode: getExitCode(execError),
-      };
-    }
+    } catch (error) {
+      if (options.signal?.aborted) {
+        throw createGitCommandCancelledError(args, error);
+      }
+      const execError = toExecError(error);
+      const timeoutMs = readCommandTimeoutMs(execError, options.timeoutMs);
+      if (timeoutMs !== null) {
+        throw createGitCommandTimedOutError(args, timeoutMs, error);
+      }
+      if (
+        options.allowTruncatedStdout === true &&
+        isStdoutMaxBufferExceededError(error)
+      ) {
+        return {
+          stdout: execError?.stdout ?? "",
+          stderr: execError?.stderr ?? "",
+          exitCode: 0,
+        };
+      }
+      if (
+        attempt < WINDOWS_STARTUP_CRASH_ATTEMPTS &&
+        isWindowsStartupCrash(execError)
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, WINDOWS_STARTUP_CRASH_RETRY_DELAY_MS * attempt),
+        );
+        continue;
+      }
+      if (options.allowFailure) {
+        return {
+          stdout: execError?.stdout ?? "",
+          stderr: execError?.stderr ?? "",
+          exitCode: getExitCode(execError),
+        };
+      }
 
-    const stderr = trimOutput(execError?.stderr ?? "");
-    const detail = stderr ? `: ${stderr}` : "";
-    throw new WorkspaceError(
-      "git_command_failed",
-      `git ${args.join(" ")} failed${detail}`,
-      {
-        cause: error,
-      },
-    );
+      const stderr = trimOutput(execError?.stderr ?? "");
+      const detail = stderr ? `: ${stderr}` : "";
+      throw new WorkspaceError(
+        "git_command_failed",
+        `git ${args.join(" ")} failed${detail}`,
+        {
+          cause: error,
+        },
+      );
+    }
   }
 }
 

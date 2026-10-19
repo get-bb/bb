@@ -15,6 +15,7 @@ import { isPathWithinDirectory } from "@bb/process-utils";
 export const SKILL_FILE_NAME = "SKILL.md";
 const MARKDOWN_FILE_EXTENSION = ".md";
 const FRONTMATTER_DELIMITER = "---";
+const SKIPPED_SKILL_TREE_DIRECTORY_NAMES = new Set([".git", "node_modules"]);
 
 const MAX_SCAN_DEPTH = 24;
 const MAX_SCAN_ENTRY_COUNT = 1_000;
@@ -75,6 +76,17 @@ interface WalkMarkdownTreeArgs {
   depth: number;
   matchedFiles: string[];
   matches: (entry: Dirent) => boolean;
+}
+
+interface WalkSkillTreeArgs {
+  budget: ScanBudget;
+  depth: number;
+  linked: boolean;
+  logicalPath: string;
+  matches: SkillFileMatch[];
+  physicalPath: string;
+  root: CommandScanDirectoryRoot;
+  visitedPhysicalPaths: Set<string>;
 }
 
 interface ParsedFrontmatter {
@@ -329,6 +341,71 @@ async function resolveRecursiveRootPath(
     : null;
 }
 
+function isSkippedSkillTreeEntry(entry: Dirent): boolean {
+  return SKIPPED_SKILL_TREE_DIRECTORY_NAMES.has(entry.name);
+}
+
+async function skillTreeChildPhysicalPath(
+  args: WalkSkillTreeArgs,
+  entry: Dirent,
+): Promise<string | null> {
+  if (entry.isDirectory()) {
+    return path.join(args.physicalPath, entry.name);
+  }
+  if (!entry.isSymbolicLink() || !canFollowSkillSymlink(args.root)) {
+    return null;
+  }
+  const targetPath = await fs
+    .realpath(path.join(args.logicalPath, entry.name))
+    .catch(() => null);
+  if (targetPath === null) {
+    return null;
+  }
+  const targetStat = await fs.stat(targetPath).catch(() => null);
+  return targetStat?.isDirectory() === true ? targetPath : null;
+}
+
+async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
+  if (
+    args.depth > MAX_SCAN_DEPTH ||
+    args.budget.remainingEntries === 0 ||
+    args.visitedPhysicalPaths.has(args.physicalPath)
+  ) {
+    return;
+  }
+  args.visitedPhysicalPaths.add(args.physicalPath);
+  const skillFilePath = path.join(args.logicalPath, SKILL_FILE_NAME);
+  const skillFile = await statSkillFile(skillFilePath, args.root);
+  if (skillFile !== null) {
+    args.matches.push({
+      filePath: skillFilePath,
+      frontmatter: await parseFrontmatter(skillFilePath),
+      linked: args.linked || skillFile.linked,
+      name: path.basename(args.logicalPath),
+    });
+  }
+  const entries = await readDirEntries(args.physicalPath, args.budget);
+  if (entries === null) {
+    return;
+  }
+  for (const entry of entries) {
+    if (isSkippedSkillTreeEntry(entry)) {
+      continue;
+    }
+    const physicalPath = await skillTreeChildPhysicalPath(args, entry);
+    if (physicalPath === null) {
+      continue;
+    }
+    await walkSkillTree({
+      ...args,
+      depth: args.depth + 1,
+      linked: args.linked || entry.isSymbolicLink(),
+      logicalPath: path.join(args.logicalPath, entry.name),
+      physicalPath,
+    });
+  }
+}
+
 async function scanRecursiveSkillRootFiles(
   root: CommandScanDirectoryRoot,
   budget: ScanBudget,
@@ -337,26 +414,18 @@ async function scanRecursiveSkillRootFiles(
   if (rootPath === null) {
     return [];
   }
-  const matchedFiles: string[] = [];
-  await walkMarkdownTree({
+  const matches: SkillFileMatch[] = [];
+  await walkSkillTree({
     budget,
-    currentPath: rootPath,
     depth: 0,
-    matchedFiles,
-    matches: (entry) => entry.name === SKILL_FILE_NAME,
+    linked: await isSymbolicLinkPath(root.rootPath),
+    logicalPath: root.rootPath,
+    matches,
+    physicalPath: rootPath,
+    root,
+    visitedPhysicalPaths: new Set(),
   });
-  const linked = await isSymbolicLinkPath(root.rootPath);
-  return Promise.all(
-    matchedFiles.map(async (physicalFilePath) => ({
-      filePath: path.join(
-        root.rootPath,
-        path.relative(rootPath, physicalFilePath),
-      ),
-      frontmatter: await parseFrontmatter(physicalFilePath),
-      linked,
-      name: path.basename(path.dirname(physicalFilePath)),
-    })),
-  );
+  return matches;
 }
 
 async function scanSingleSkillDirectoryFiles(

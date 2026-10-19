@@ -5,7 +5,9 @@ Start a thread, pick Codex, and let it write and review code in your repository 
 - Permission modes `accept-edits`, `auto`, and `full`, plus plan and goal actions in the composer.
 - Reasoning levels from Low to Ultra. Ultra adds automatic task delegation.
 - A service tier picker that offers the tiers Codex reports for the selected model (Fast, and Ultrafast where the account has it).
+- A Daybreak switch in the model picker for accounts that have Daybreak, usable with any model that supports it.
 - Checkpoint forks, manual compaction, thread rename, and thread archive.
+- Question cards for the questions Codex asks while it keeps working. Your answer reaches Codex as a message.
 - Codex skills from your home directory and project, listed next to bb skills.
 - Health, usage, and install status on each host, with an install or update action.
 - A Codex AI service for inference and voice that other bb features can use.

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sortable-motion",
+  "type": "registry:ui",
+  "title": "sortable-motion",
+  "description": "BB ui \"sortable-motion\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "dependencies": [
+    "@dnd-kit/core",
+    "@dnd-kit/sortable",
+    "@dnd-kit/utilities"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/sortable-motion.ts",
+      "content": "import { useMemo, type CSSProperties } from \"react\";\nimport type {\n  DraggableAttributes,\n  DraggableSyntheticListeners,\n} from \"@dnd-kit/core\";\nimport { useSortable } from \"@dnd-kit/sortable\";\nimport { CSS } from \"@dnd-kit/utilities\";\n\nconst SIDEBAR_SORTABLE_TRANSITION = {\n  duration: 160,\n  easing: \"cubic-bezier(0.2, 0, 0, 1)\",\n};\n\nexport interface SidebarSortableDragBindings {\n  attributes: DraggableAttributes;\n  disabled: boolean;\n  isDragging: boolean;\n  listeners: DraggableSyntheticListeners;\n  setActivatorNodeRef: (element: HTMLElement | null) => void;\n}\n\ninterface UseSidebarSortableArgs {\n  id: string;\n  disabled: boolean;\n  displace?: boolean;\n}\n\ninterface UseSidebarSortableResult {\n  dragBindings: SidebarSortableDragBindings;\n  isOver: boolean;\n  setNodeRef: (element: HTMLElement | null) => void;\n  style: CSSProperties;\n}\n\nexport function useSidebarSortable({\n  id,\n  disabled,\n  displace = true,\n}: UseSidebarSortableArgs): UseSidebarSortableResult {\n  const {\n    attributes,\n    isDragging,\n    isOver,\n    listeners,\n    setActivatorNodeRef,\n    setNodeRef,\n    transform,\n    transition,\n  } = useSortable({ id, disabled, transition: SIDEBAR_SORTABLE_TRANSITION });\n  const lifted = displace && isDragging;\n  const style = useMemo<CSSProperties>(\n    () => ({\n      transform: displace ? CSS.Translate.toString(transform) : undefined,\n      transition: displace ? transition : undefined,\n      position: lifted ? \"relative\" : undefined,\n      zIndex: lifted ? 100 : undefined,\n      opacity: isDragging ? 0.8 : undefined,\n    }),\n    [displace, isDragging, lifted, transform, transition],\n  );\n  const dragBindings = useMemo<SidebarSortableDragBindings>(\n    () => ({ attributes, disabled, isDragging, listeners, setActivatorNodeRef }),\n    [attributes, disabled, isDragging, listeners, setActivatorNodeRef],\n  );\n\n  return { dragBindings, isOver, setNodeRef, style };\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/sortable-motion.ts"
+    }
+  ]
+}

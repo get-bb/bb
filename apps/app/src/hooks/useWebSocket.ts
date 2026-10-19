@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import { useDeletedResourceRouteOwner } from "./cache-owners/resource-route-owner";
 import { wsManager } from "../lib/ws";
+import { applyThreadTimelineSignal } from "./cache-owners/thread-timeline-push-owner";
 
 export function useWebSocket(): void {
   const queryClient = useQueryClient();
@@ -18,6 +19,9 @@ export function useWebSocket(): void {
       cacheEffects.handleConnected,
     );
     const unsubscribeResumed = wsManager.onResumed(cacheEffects.handleResumed);
+    const unsubscribeThreadTimeline = wsManager.onThreadTimeline((signal) => {
+      applyThreadTimelineSignal(queryClient, signal);
+    });
     const unsubscribe = wsManager.onChanged((message) => {
       cacheEffects.handleChanged(message);
       deletedResourceRouteChangeRef.current(message);
@@ -29,6 +33,7 @@ export function useWebSocket(): void {
       cacheEffects.dispose();
       unsubscribeConnected();
       unsubscribeResumed();
+      unsubscribeThreadTimeline();
       unsubscribe();
     };
   }, [queryClient]);

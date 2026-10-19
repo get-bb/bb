@@ -20,12 +20,8 @@ interface ArrangeableRow {
 
 export interface SidebarNavigationArrangement<Row extends ArrangeableRow> {
   ordered: Row[];
-  visible: Row[];
-  hidden: Row[];
-  orderedKeys: string[];
   visibleKeys: string[];
   setVisible(key: string, isVisible: boolean): void;
-  moveVisible(activeKey: string, overKey: string): void;
   moveAny(activeKey: string, overKey: string): void;
   setOrder(keys: readonly string[]): void;
 }
@@ -60,32 +56,24 @@ export function useSidebarNavigationArrangement<Row extends ArrangeableRow>(
         ),
     [rows, seededPreferences.order],
   );
-  const {
-    ordered,
-    normalizedOrder,
-    normalizedVisibleKeys,
-    visible,
-    visibleKeys,
-  } = useMemo(
-    () =>
-      arrangePluginNavPanelPreferences({
-        panels: rows,
-        storedOrder:
-          newLeadingKeys.length === 0
-            ? seededPreferences.order
-            : [...newLeadingKeys, ...seededPreferences.order],
-        storedVisibleKeys:
-          seededPreferences.visibleKeys === null || newVisibleKeys.length === 0
-            ? seededPreferences.visibleKeys
-            : [...newVisibleKeys, ...seededPreferences.visibleKeys],
-        defaultHiddenKeys: DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
-      }),
-    [newLeadingKeys, newVisibleKeys, rows, seededPreferences],
-  );
-  const hidden = useMemo(() => {
-    const visibleSet = new Set(visibleKeys);
-    return ordered.filter((row) => !visibleSet.has(getPluginNavPanelKey(row)));
-  }, [ordered, visibleKeys]);
+  const { ordered, normalizedOrder, normalizedVisibleKeys, visibleKeys } =
+    useMemo(
+      () =>
+        arrangePluginNavPanelPreferences({
+          panels: rows,
+          storedOrder:
+            newLeadingKeys.length === 0
+              ? seededPreferences.order
+              : [...newLeadingKeys, ...seededPreferences.order],
+          storedVisibleKeys:
+            seededPreferences.visibleKeys === null ||
+            newVisibleKeys.length === 0
+              ? seededPreferences.visibleKeys
+              : [...newVisibleKeys, ...seededPreferences.visibleKeys],
+          defaultHiddenKeys: DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
+        }),
+      [newLeadingKeys, newVisibleKeys, rows, seededPreferences],
+    );
   const orderedKeys = useMemo(
     () => ordered.map(getPluginNavPanelKey),
     [ordered],
@@ -122,19 +110,6 @@ export function useSidebarNavigationArrangement<Row extends ArrangeableRow>(
     [normalizedOrder, normalizedVisibleKeys, orderedKeys, persist, visibleKeys],
   );
 
-  const moveVisible = useCallback(
-    (activeKey: string, overKey: string) => {
-      const nextOrder = reorderStoredOrder({
-        activeId: activeKey,
-        overId: overKey,
-        order: normalizedOrder,
-        visibleIds: visibleKeys,
-      });
-      if (nextOrder) persist(nextOrder, normalizedVisibleKeys);
-    },
-    [normalizedOrder, normalizedVisibleKeys, persist, visibleKeys],
-  );
-
   const moveAny = useCallback(
     (activeKey: string, overKey: string) => {
       const nextOrder = reorderStoredOrder({
@@ -153,28 +128,23 @@ export function useSidebarNavigationArrangement<Row extends ArrangeableRow>(
       const known = new Set(orderedKeys);
       const requested = [...new Set(keys)].filter((key) => known.has(key));
       const requestedSet = new Set(requested);
-      const nextOrderedKeys = [
-        ...requested,
-        ...orderedKeys.filter((key) => !requestedSet.has(key)),
-      ];
       const nextOrder = reorderStoredOrder({
         order: normalizedOrder,
         visibleIds: orderedKeys,
-        nextVisibleIds: nextOrderedKeys,
+        nextVisibleIds: [
+          ...requested,
+          ...orderedKeys.filter((key) => !requestedSet.has(key)),
+        ],
       });
-      if (nextOrder) persist(nextOrder, normalizedVisibleKeys);
+      if (nextOrder) persist(nextOrder, normalizedVisibleKeys ?? visibleKeys);
     },
-    [normalizedOrder, normalizedVisibleKeys, orderedKeys, persist],
+    [normalizedOrder, normalizedVisibleKeys, orderedKeys, persist, visibleKeys],
   );
 
   return {
     ordered,
-    visible,
-    hidden,
-    orderedKeys,
     visibleKeys,
     setVisible,
-    moveVisible,
     moveAny,
     setOrder,
   };

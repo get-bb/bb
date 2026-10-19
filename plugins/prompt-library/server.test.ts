@@ -15,7 +15,11 @@ function entry(
   id: string,
   createdAt: number,
   value: string,
-  location: { projectId?: string; threadId?: string } = {},
+  location: {
+    projectId?: string;
+    threadId?: string;
+    scope?: HistoryEntry["scope"];
+  } = {},
 ): HistoryEntry {
   return {
     id,
@@ -23,6 +27,7 @@ function entry(
     input: text(value),
     projectId: location.projectId ?? "proj_a",
     threadId: location.threadId ?? "thr_a",
+    scope: location.scope ?? "thread",
   };
 }
 
@@ -63,7 +68,12 @@ async function setup(entries: readonly HistoryEntry[]) {
   return { ...fake, history, list, call };
 }
 
-const GLOBAL = { scope: "global", projectId: null, threadId: null } as const;
+const GLOBAL = {
+  scope: "global",
+  projectId: null,
+  threadId: null,
+  composer: "follow-up",
+} as const;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -119,6 +129,7 @@ describe("prompt library server", () => {
         createdAt: 1,
         projectId: "proj_a",
         threadId: "thr_a",
+        scope: "thread",
         input: [
           {
             type: "text",
@@ -282,11 +293,12 @@ describe("prompt library server", () => {
     });
   });
 
-  it("fuzzy-matches every word and highlights the matched characters", async () => {
+  it("matches every word inside one prompt word and highlights it", async () => {
     const { call } = await setup([
       entry("h1", 1, "fix the timeline cache"),
       entry("h2", 2, "timeline only"),
       entry("h3", 3, "unrelated prompt"),
+      entry("h4", 4, "the main line can catch errors"),
     ]);
 
     const result = (await call("search", {
@@ -300,16 +312,37 @@ describe("prompt library server", () => {
     };
 
     expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
-    expect(result.prompts[0]?.snippet.highlights.length).toBeGreaterThan(0);
+    expect(result.prompts[0]?.snippet.highlights).toEqual([
+      [8, 9],
+      [10, 11],
+      [12, 13],
+      [14, 15],
+      [17, 21],
+    ]);
   });
 
-  it("ranks a search as one list by prefix, fuzzy score, starred, then recency", async () => {
+  it("ignores case and never matches letters scattered across words", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "Secret questions are rejected because the current shell"),
+      entry("h2", 2, "please squash these commits"),
+      entry("h3", 3, "Squashed before merging"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "Squash" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h3", "h2"]);
+  });
+
+  it("ranks a search as one list by prefix, then match quality, then relevance", async () => {
     const { call } = await setup([
       entry("h1", 1, "deploy the preview"),
       entry("h2", 2, "delete old preview logs yearly"),
       entry("h3", 3, "Deploy later"),
       entry("h4", 4, "please deploy the docs"),
       entry("h5", 5, "now deploy staging"),
+      entry("h6", 6, "redeploy the api"),
     ]);
     await call("star", { prompt: draft("please deploy the docs") });
     await call("star", { prompt: draft("deploy staging") });
@@ -324,11 +357,11 @@ describe("prompt library server", () => {
       ["recent", "deploy the preview"],
       ["starred", "please deploy the docs"],
       ["recent", "now deploy staging"],
-      ["recent", "delete old preview logs yearly"],
+      ["recent", "redeploy the api"],
     ]);
   });
 
-  it("loads older pages only when the loaded ones have too few matches", async () => {
+  it("searches all history, beyond the newest page", async () => {
     const { call, list } = await setup([
       entry("old", 1, "migrate the billing tables"),
       ...Array.from({ length: 1200 }, (_, index) =>
@@ -347,8 +380,8 @@ describe("prompt library server", () => {
     expect(list).toHaveBeenCalledTimes(2);
   });
 
-  it("loads only the newest page while it yields enough results", async () => {
-    const { call, list } = await setup(
+  it("lists the 30 newest prompts without a query", async () => {
+    const { call } = await setup(
       Array.from({ length: 1200 }, (_, index) =>
         entry(`h${index}`, index, `prompt number ${index}`),
       ),
@@ -360,7 +393,70 @@ describe("prompt library server", () => {
 
     expect(result.prompts).toHaveLength(30);
     expect(result.prompts[0]?.id).toBe("h1199");
-    expect(list).toHaveBeenCalledOnce();
+  });
+
+  it("finds a word typed with one typo and highlights it", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "please deploy the docs"),
+      entry("h2", 2, "unrelated prompt"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "dpeloy" })) as {
+      prompts: { id: string; snippet: { highlights: number[][] } }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
+    expect(result.prompts[0]?.snippet.highlights).toEqual([[7, 13]]);
+  });
+
+  it("ranks an exact word above newer partial matches", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "write a test first"),
+      entry("h2", 2, "run the tests"),
+      entry("h3", 3, "update the attestation"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "test" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1", "h2", "h3"]);
+  });
+
+  it("ranks prompts of the searching composer's kind first within a match type", async () => {
+    const { call } = await setup([
+      entry("start", 1, "investigate the flaky login test", {
+        scope: "project",
+      }),
+      entry("follow", 2, "the login test is still flaky"),
+    ]);
+    const search = async (composer: "new-thread" | "follow-up") =>
+      (
+        (await call("search", { ...GLOBAL, composer, query: "flaky" })) as {
+          prompts: { id: string }[];
+        }
+      ).prompts.map((row) => row.id);
+
+    expect(await search("new-thread")).toEqual(["start", "follow"]);
+    expect(await search("follow-up")).toEqual(["follow", "start"]);
+  });
+
+  it("weighs how often a word appears against how old the prompt is", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = Date.UTC(2026, 9, 8);
+    vi.setSystemTime(now);
+    const day = 86_400_000;
+    const { call } = await setup([
+      entry("old", now - 30 * day, "we should ship ship ship it"),
+      entry("new", now, "can you ship it"),
+      entry("day", now - day, "time to ship the ship"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "ship" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["day", "new", "old"]);
   });
 
   it("adds new prompts on later searches and keeps prompts core no longer returns", async () => {
@@ -391,6 +487,7 @@ describe("prompt library server", () => {
       scope: "thread",
       projectId: "proj_a",
       threadId: "thr_b",
+      composer: "follow-up",
     })) as { prompts: { id: string }[] };
     expect(thread.prompts.map((row) => row.id)).toEqual(["h2"]);
 
@@ -400,6 +497,7 @@ describe("prompt library server", () => {
       scope: "project",
       projectId: null,
       threadId: null,
+      composer: "new-thread",
     })) as { prompts: unknown[] };
     expect(missing.prompts).toEqual([]);
     expect(list).not.toHaveBeenCalled();

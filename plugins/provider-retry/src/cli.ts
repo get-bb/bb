@@ -1,3 +1,4 @@
+import { readRetryDiagnostic } from "./diagnostics.js";
 import {
   PluginCliError,
   cliCommand,
@@ -33,7 +34,7 @@ function textQueuedRetry(queued: QueuedRetry): string {
 function requiredThreadId(
   requested: string | undefined,
   context: PluginCliContext,
-  command: "cancel" | "retry",
+  command: "cancel" | "retry" | "explain",
 ): string {
   const threadId = requested ?? context.threadId;
   if (threadId === undefined) {
@@ -126,6 +127,34 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
                 queued.length === 0
                   ? "No provider retries are pending.\n"
                   : `${queued.map(textQueuedRetry).join("\n")}\n`,
+            };
+          },
+        }),
+        explain: cliCommand({
+          summary: "Explain the last automatic retry decision for a thread",
+          positionals: [THREAD_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          async run(input, context) {
+            const threadId = requiredThreadId(
+              input.positionals["thread-id"],
+              context,
+              "explain",
+            );
+            const diagnostic = await readRetryDiagnostic(bb, threadId);
+            if (input.options.json)
+              return {
+                exitCode: 0,
+                stdout: `${JSON.stringify({ threadId, diagnostic }, null, 2)}\n`,
+              };
+            if (diagnostic === null)
+              return {
+                exitCode: 0,
+                stdout: `No automatic retry decision recorded for ${threadId}.\n`,
+              };
+            const { decision, availability } = diagnostic;
+            return {
+              exitCode: 0,
+              stdout: `${threadId}: ${decision.kind === "retry" ? `Scheduled for ${new Date(decision.sendAt).toISOString()}` : "Skipped"}: ${decision.reason}${availability.kind === "unavailable" ? ` (${availability.reason})` : ""}.\n`,
             };
           },
         }),

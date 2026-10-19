@@ -15,6 +15,8 @@ import type {
   SerializedParcelEvent,
 } from "./messages.js";
 
+const MAX_EVENTS_PER_MESSAGE = 10_000;
+
 function serializeEvents(
   events: ParcelWatcherEventBatch,
 ): SerializedParcelEvent[] {
@@ -70,6 +72,14 @@ export function createParcelChildHandler(args: {
               recovery: isRescanRequiredMessage(errorMessage)
                 ? "rescan-subscription"
                 : "recycle-child",
+            });
+            return;
+          }
+          if (events.length > MAX_EVENTS_PER_MESSAGE) {
+            args.send({
+              kind: "events-dropped",
+              id: message.id,
+              count: events.length,
             });
             return;
           }
@@ -144,4 +154,13 @@ export function createParcelChildHandler(args: {
       );
     },
   };
+}
+
+export function disposeThenExit(args: {
+  deadlineMs: number;
+  dispose: () => Promise<void>;
+  exit: () => void;
+}): void {
+  setTimeout(args.exit, args.deadlineMs);
+  void args.dispose().finally(args.exit);
 }

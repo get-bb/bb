@@ -12,15 +12,16 @@ import {
   type PushSubscription,
 } from "./contract.js";
 import { notificationPreviewText, truncate } from "./notification-text.js";
+import {
+  NOTIFICATION_KINDS_BY_LEVEL,
+  type NotificationLevel,
+  type PushNotificationKind,
+} from "./preferences.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
 type PendingInteraction =
   PluginThreadEventPayloads["interaction.pending"]["interaction"];
-type PushNotificationKind =
-  | "pending-interaction"
-  | "turn-finished"
-  | "thread-error";
 
 const EXPO_PUSH_BATCH_SIZE = 100;
 const DEFAULT_COALESCE_MS = 2_000;
@@ -139,6 +140,10 @@ export interface CreatePushSenderArgs {
   bb: BbPluginApi;
   subscriptions: PushSubscriptionStore;
   getExpoPushUrl(): Promise<string>;
+  getNotificationLevel(thread: {
+    id: string;
+    parentThreadId: string | null;
+  }): Promise<NotificationLevel>;
   getDeliverySettings(): Promise<{
     mobileEnabled: boolean;
     webEnabled: boolean;
@@ -270,8 +275,12 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
   async function resolvePush(
     thread: ThreadResponse,
     entry: PendingThreadPush,
+    allowedKinds: ReadonlySet<PushNotificationKind>,
   ): Promise<{ kind: PushNotificationKind; body: string } | null> {
-    const kinds = new Set(entry.kinds);
+    const kinds = new Set(
+      [...entry.kinds].filter((kind) => allowedKinds.has(kind)),
+    );
+    if (kinds.size === 0) return null;
     let interaction: PendingInteraction | null = null;
     if (kinds.has("pending-interaction")) {
       const interactions = await bb.sdk.threads.interactions.list({
@@ -330,7 +339,12 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     if (lastReadAt >= thread.latestAttentionAt && lastReadAt >= entry.eventAt) {
       return;
     }
-    const resolved = await resolvePush(thread, entry);
+    const level = await args.getNotificationLevel(thread);
+    const resolved = await resolvePush(
+      thread,
+      entry,
+      NOTIFICATION_KINDS_BY_LEVEL[level],
+    );
     if (resolved === null) return;
     const preview = await notificationPreviewText(
       resolved.body,
@@ -493,9 +507,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       schedule(thread.id, "thread-error", firstLine(error ?? ""));
     },
     onThreadIdle({ thread, lastAssistantText }) {
-      if (thread.parentThreadId !== null || thread.visibility !== "visible") {
-        return;
-      }
+      if (thread.visibility !== "visible") return;
       schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
     settle,

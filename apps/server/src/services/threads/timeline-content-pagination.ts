@@ -1,7 +1,11 @@
-import type { TimelineRow } from "@bb/server-contract";
+import {
+  timelineRowChildren,
+  withTimelineRowChildren,
+  type TimelineRow,
+} from "@bb/server-contract";
 
 export interface TimelineContentPage {
-  olderRowsSourceSeqEnd: number | null;
+  partialRowsSourceSeqEnd: number | null;
   rows: TimelineRow[];
   start: number;
   end: number;
@@ -9,21 +13,8 @@ export interface TimelineContentPage {
 }
 
 function children(row: TimelineRow): readonly TimelineRow[] | null {
-  if (row.kind === "turn" && row.children?.length) return row.children;
-  if (
-    row.kind === "work" &&
-    row.workKind === "delegation" &&
-    row.childRows.length
-  )
-    return row.childRows;
-  return null;
-}
-
-function withChildren(row: TimelineRow, rows: TimelineRow[]): TimelineRow {
-  if (row.kind === "turn") return { ...row, children: rows };
-  if (row.kind === "work" && row.workKind === "delegation")
-    return { ...row, childRows: rows };
-  return row;
+  const nested = timelineRowChildren(row);
+  return nested?.length ? nested : null;
 }
 
 export function paginateTimelineContents(
@@ -45,7 +36,7 @@ export function paginateTimelineContents(
         measure(
           nested,
           ancestorBytes +
-            Buffer.byteLength(JSON.stringify(withChildren(row, []))),
+            Buffer.byteLength(JSON.stringify(withTimelineRowChildren(row, []))),
         );
     }
   };
@@ -77,11 +68,24 @@ export function paginateTimelineContents(
       }
       const selected = select(nested);
       if (selected.length === 0 && index <= start) recordOlderRow(row);
-      return selected.length === 0 ? [] : [withChildren(row, selected)];
+      return selected.length === 0
+        ? []
+        : [withTimelineRowChildren(row, selected)];
     });
-  const selectedRows = select(rows);
+  let partialRowsSourceSeqEnd: number | null = null;
+  const selectedRows = rows.flatMap((row) => {
+    olderRowsSourceSeqEnd = null;
+    const selected = select([row]);
+    if (selected.length > 0 && olderRowsSourceSeqEnd !== null) {
+      partialRowsSourceSeqEnd = Math.max(
+        partialRowsSourceSeqEnd ?? 0,
+        olderRowsSourceSeqEnd,
+      );
+    }
+    return selected;
+  });
   return {
-    olderRowsSourceSeqEnd,
+    partialRowsSourceSeqEnd,
     rows: selectedRows,
     start,
     end,

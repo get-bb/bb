@@ -3,6 +3,7 @@ import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResponseMessage,
+  type HostDaemonOnlineRpcResult,
   type HostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
 import type { AvailableModel } from "@bb/domain";
@@ -11,6 +12,14 @@ import {
   registerTestHostRpcCapture,
   type TestHostRpcSocket,
 } from "./commands.js";
+
+export const EMPTY_WORKSPACE_AGENT_CONTEXT: HostDaemonOnlineRpcResult<"host.read_workspace_agent_context"> =
+  {
+    agentInstructions: null,
+    projectSkills: [],
+    projectSkillsTruncated: false,
+    sharedSkills: [],
+  };
 
 interface ProviderModelResponse {
   models: AvailableModel[];

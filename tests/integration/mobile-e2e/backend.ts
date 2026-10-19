@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAppSettings, setAppSettings } from "@bb/db";
 import type { PendingInteraction } from "@bb/domain";
 import { createIntegrationHarness } from "../helpers/harness.js";
 import type { IntegrationHarness } from "../helpers/harness.js";
@@ -194,6 +195,11 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    onboardingCompletedAt: new Date().toISOString(),
+  });
 
   const project = await createProjectFixture(harness, {
     name: "Mobile E2E Project",

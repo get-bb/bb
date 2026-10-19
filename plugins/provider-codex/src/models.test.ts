@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { parseModelsResponse } from "./models.js";
+import {
+  cyberProgramForTurn,
+  mapBbReasoningLevelToCodex,
+  parseModelCatalog,
+} from "./models.js";
+
+function parseModelsResponse(result: unknown) {
+  return parseModelCatalog(result).models;
+}
 
 describe("parseModelsResponse", () => {
   it("parses a live-shaped Codex payload with max and ultra", () => {
@@ -49,7 +57,7 @@ describe("parseModelsResponse", () => {
     expect(models[1]?.defaultReasoningEffort).toBe("low");
   });
 
-  it("skips unknown reasoning efforts without rejecting the model", () => {
+  it("keeps reasoning efforts outside the standard ladder under the ids Codex gave them", () => {
     const models = parseModelsResponse({
       data: [
         {
@@ -68,8 +76,9 @@ describe("parseModelsResponse", () => {
     expect(models).toHaveLength(1);
     expect(
       models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["low", "high"]);
-    expect(models[0]?.defaultReasoningEffort).toBe("low");
+    ).toEqual(["low", "quantum", "high"]);
+    expect(models[0]?.defaultReasoningEffort).toBe("quantum");
+    expect(mapBbReasoningLevelToCodex("quantum")).toBe("quantum");
   });
 
   it("skips effort entries without a string level and defaults to the first effort when none is named", () => {
@@ -93,16 +102,17 @@ describe("parseModelsResponse", () => {
     expect(models[0]?.defaultReasoningEffort).toBe("high");
   });
 
-  it("falls back to default efforts when every effort is unknown", () => {
+  it("falls back to default efforts when no effort carries a usable id", () => {
     const models = parseModelsResponse({
       data: [
         {
           id: "odd-model",
           model: "odd-model",
           supportedReasoningEfforts: [
-            { reasoningEffort: "quantum", description: "Brand new" },
+            { reasoningEffort: "", description: "Blank" },
+            { reasoningEffort: 7, description: "Numeric" },
           ],
-          defaultReasoningEffort: "quantum",
+          defaultReasoningEffort: "",
         },
       ],
     });
@@ -242,5 +252,101 @@ describe("parseModelsResponse", () => {
         }),
       ).toEqual([{ id: "fast" }]);
     });
+  });
+});
+
+describe("parseModelCatalog Daybreak", () => {
+  const entry = (model: string, cyber?: string[], isDefault = false) => ({
+    id: model,
+    model,
+    isDefault,
+    ...(cyber === undefined ? {} : { availableAccessPrograms: { cyber } }),
+  });
+  const optionOf = (model: { sessionOptions?: unknown }) => {
+    const option = (
+      model.sessionOptions as { value: boolean; fixed?: boolean }[]
+    )[0];
+    return [option?.value, option?.fixed === true];
+  };
+
+  it("adds no option when no model advertises a Daybreak program", () => {
+    const catalog = parseModelCatalog({
+      data: [entry("gpt-6-astra", ["standard"], true), entry("gpt-5.5")],
+    });
+    expect(catalog.daybreakAvailable).toBe(false);
+    expect(catalog.models.map((model) => model.sessionOptions)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(catalog.selectedOnlyModels).toEqual([]);
+  });
+
+  it("marks each model with whether it runs with Daybreak, without it, or both", () => {
+    const catalog = parseModelCatalog({
+      data: [
+        entry("gpt-6-astra", ["standard"], true),
+        entry("gpt-6-sol", ["standard", "daybreakBlue"]),
+        entry("gpt-legacy"),
+        entry("gpt-red-only", ["daybreakRed"]),
+        entry("gpt-daybreak-blue-latest", ["daybreakBlue"]),
+      ],
+    });
+    expect(catalog.daybreakAvailable).toBe(true);
+    expect(
+      catalog.models.map((model) => [model.model, ...optionOf(model)]),
+    ).toEqual([
+      ["gpt-6-astra", false, true],
+      ["gpt-6-sol", false, false],
+      ["gpt-legacy", false, true],
+      ["gpt-red-only", true, true],
+    ]);
+    expect(
+      catalog.selectedOnlyModels.map((model) => [
+        model.model,
+        ...optionOf(model),
+      ]),
+    ).toEqual([["gpt-daybreak-blue-latest", true, true]]);
+  });
+
+  it("keeps the alias as a regular model when it is the only way to reach Daybreak", () => {
+    const catalog = parseModelCatalog({
+      data: [
+        entry("gpt-6-astra", ["standard"], true),
+        entry("gpt-daybreak-blue-latest", ["daybreakBlue"]),
+      ],
+    });
+    expect(catalog.models.map((model) => model.model)).toEqual([
+      "gpt-6-astra",
+      "gpt-daybreak-blue-latest",
+    ]);
+    expect(catalog.selectedOnlyModels).toEqual([]);
+  });
+
+  it("ignores programs it does not know", () => {
+    const catalog = parseModelCatalog({
+      data: [entry("gpt-6-sol", ["standard", "daybreakGreen"], true)],
+    });
+    expect(catalog.daybreakAvailable).toBe(false);
+    expect(catalog.cyberProgramsByModel.get("gpt-6-sol")).toEqual(["standard"]);
+  });
+});
+
+describe("cyberProgramForTurn", () => {
+  it("prefers blue over red with Daybreak on and asks for standard with it off", () => {
+    expect(
+      cyberProgramForTurn(["standard", "daybreakBlue", "daybreakRed"], true),
+    ).toBe("daybreakBlue");
+    expect(cyberProgramForTurn(["standard", "daybreakRed"], true)).toBe(
+      "daybreakRed",
+    );
+    expect(cyberProgramForTurn(["standard", "daybreakBlue"], false)).toBe(
+      "standard",
+    );
+  });
+
+  it("asks for nothing when the model cannot run in the chosen state", () => {
+    expect(cyberProgramForTurn(["standard"], true)).toBeNull();
+    expect(cyberProgramForTurn(["daybreakBlue"], false)).toBeNull();
+    expect(cyberProgramForTurn([], false)).toBeNull();
   });
 });

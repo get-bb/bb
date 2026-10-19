@@ -332,7 +332,7 @@ function generatedConversationEmptyText(
 function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
-      return "UserRoundPlus";
+      return "ChildThread";
     case "ownership-removed":
       return "UserRound";
     case "child-needs-attention":
@@ -699,6 +699,7 @@ export const GeneratedConversationMessage = memo(
             <ConversationAttachments
               align="start"
               filePaths={attachmentItems.filePaths}
+              fileDetails={attachmentItems.fileDetails}
               imageItems={attachmentItems.imageItems}
               onOpenLocalFileLink={onOpenLocalFileLink}
               projectId={projectId}
@@ -713,6 +714,7 @@ export const GeneratedConversationMessage = memo(
       ),
       [
         attachmentItems.filePaths,
+        attachmentItems.fileDetails,
         attachmentItems.imageItems,
         linkRouting,
         messageText,

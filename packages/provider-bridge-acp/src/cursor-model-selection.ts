@@ -1,4 +1,4 @@
-import { reasoningLevelValues } from "@bb/domain";
+import { compareReasoningLevels } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import { agentModelFamilyId } from "./bridge/model-catalog.js";
 
@@ -67,10 +67,8 @@ function cursorCatalogModel(model: AvailableModel): {
       ...model,
       id: selection.modelId,
       model: selection.modelId,
-      supportedReasoningEfforts: [...efforts.values()].sort(
-        (a, b) =>
-          reasoningLevelValues.indexOf(a.reasoningEffort) -
-          reasoningLevelValues.indexOf(b.reasoningEffort),
+      supportedReasoningEfforts: [...efforts.values()].sort((a, b) =>
+        compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
       ),
       defaultReasoningEffort:
         selection.reasoningLevel ?? model.defaultReasoningEffort,
@@ -134,10 +132,8 @@ export function buildCursorParameterizedModelCatalog(
     normalized.set(candidate.model.id, {
       model: {
         ...preferred.model,
-        supportedReasoningEfforts: [...efforts.values()].sort(
-          (a, b) =>
-            reasoningLevelValues.indexOf(a.reasoningEffort) -
-            reasoningLevelValues.indexOf(b.reasoningEffort),
+        supportedReasoningEfforts: [...efforts.values()].sort((a, b) =>
+          compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
         ),
         ...(serviceTiers === undefined
           ? {}

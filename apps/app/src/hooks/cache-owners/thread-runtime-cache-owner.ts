@@ -1,3 +1,4 @@
+import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import type {
@@ -427,6 +428,7 @@ function buildOptimisticQueuedMessage({
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,
     sendAt: scheduledSendAt,
+    state: scheduledSendAt === null ? "queued" : "scheduled",
     waitingOn: scheduledSendAt === null ? null : { kind: "time" },
     failureReason: null,
     payload: { kind: "inline" },
@@ -675,6 +677,7 @@ function buildOptimisticUserMessageRow({
           imageUrls: attachments.imageUrls ?? [],
           localImagePaths: attachments.localImagePaths ?? [],
           localFilePaths: attachments.localFilePaths ?? [],
+          localFileDetails: attachments.localFileDetails ?? [],
         }
       : null;
   return {
@@ -872,7 +875,7 @@ export function applyThreadGoalClearResult(args: ThreadIdCacheArgs): void {
 export async function beginCreateThreadTransaction({
   queryClient,
 }: BeginCreateThreadTransactionArgs): Promise<void> {
-  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
+  await cancelOptimisticQueries(queryClient, { queryKey: threadsQueryKey() });
 }
 
 export function prefetchThreadQueuedMessages({
@@ -899,8 +902,9 @@ export function applyCreateThreadResult({
   const cachedHostId =
     environmentId === null
       ? null
-      : (queryClient.getQueryData<Environment>(environmentQueryKey(environmentId))
-          ?.hostId ?? null);
+      : (queryClient.getQueryData<Environment>(
+          environmentQueryKey(environmentId),
+        )?.hostId ?? null);
   const selectedHostId =
     request.environment.type === "provider" &&
     request.environment.machine?.type === "existing"
@@ -940,14 +944,13 @@ export async function beginSendThreadMessageTransaction({
   request,
 }: SendThreadMessageTransactionArgs): Promise<SendThreadMessageTransaction> {
   await Promise.all([
-    queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) }),
-    queryClient.cancelQueries({
-      queryKey: threadQueuedMessagesQueryKey(request.id),
+    cancelOptimisticQueries(queryClient, {
+      queryKey: threadQueryKey(request.id),
     }),
-    queryClient.cancelQueries({
+    cancelOptimisticQueries(queryClient, {
       queryKey: threadTimelineQueryKeyPrefix(request.id),
     }),
-    queryClient.cancelQueries({
+    cancelOptimisticQueries(queryClient, {
       queryKey: threadTimelineTurnSummaryDetailsQueryKeyPrefix(request.id),
     }),
   ]);
@@ -956,6 +959,9 @@ export async function beginSendThreadMessageTransaction({
     threadQueryKey(request.id),
   );
   if (requestWillOptimisticallyQueue(request, previousThread)) {
+    await cancelOptimisticQueries(queryClient, {
+      queryKey: threadQueuedMessagesQueryKey(request.id),
+    });
     const transaction = insertOptimisticQueuedMessage({
       queryClient,
       request,
@@ -1126,7 +1132,7 @@ export async function beginCreateQueuedMessageTransaction({
   queryClient,
   request,
 }: CreateQueuedMessageTransactionArgs): Promise<CreateQueuedMessageTransaction> {
-  await queryClient.cancelQueries({
+  await cancelOptimisticQueries(queryClient, {
     queryKey: threadQueuedMessagesQueryKey(request.id),
   });
   return insertOptimisticQueuedMessage({ queryClient, request });
@@ -1198,7 +1204,7 @@ export async function beginUpdateQueuedMessageTransaction({
   request,
 }: UpdateQueuedMessageTransactionArgs): Promise<UpdateQueuedMessageTransaction> {
   const queryKey = threadQueuedMessagesQueryKey(request.id);
-  await queryClient.cancelQueries({ queryKey });
+  await cancelOptimisticQueries(queryClient, { queryKey });
   const previousQueuedMessage = queryClient
     .getQueryData<ThreadQueuedMessageListResponse>(queryKey)
     ?.find((queuedMessage) => queuedMessage.id === request.queuedMessageId);
@@ -1272,7 +1278,7 @@ export async function beginRemoveQueuedMessageTransaction({
   queryClient,
   request,
 }: RemoveQueuedMessageTransactionArgs): Promise<RemoveQueuedMessageTransaction> {
-  await queryClient.cancelQueries({
+  await cancelOptimisticQueries(queryClient, {
     queryKey: threadQueuedMessagesQueryKey(request.id),
   });
   return removeCachedQueuedMessage({ queryClient, request });
@@ -1283,14 +1289,16 @@ export async function beginSendQueuedMessageTransaction({
   request,
 }: SendQueuedMessageTransactionArgs): Promise<RemoveQueuedMessageTransaction> {
   await Promise.all([
-    queryClient.cancelQueries({
+    cancelOptimisticQueries(queryClient, {
       queryKey: threadQueuedMessagesQueryKey(request.id),
     }),
-    queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) }),
-    queryClient.cancelQueries({
+    cancelOptimisticQueries(queryClient, {
+      queryKey: threadQueryKey(request.id),
+    }),
+    cancelOptimisticQueries(queryClient, {
       queryKey: threadTimelineQueryKeyPrefix(request.id),
     }),
-    queryClient.cancelQueries({
+    cancelOptimisticQueries(queryClient, {
       queryKey: threadTimelineTurnSummaryDetailsQueryKeyPrefix(request.id),
     }),
   ]);
@@ -1484,7 +1492,7 @@ export async function beginReorderQueuedMessageTransaction({
     },
   );
 
-  await queryClient.cancelQueries({ queryKey });
+  await cancelOptimisticQueries(queryClient, { queryKey });
 
   return { previousQueuedMessages };
 }
@@ -1540,7 +1548,7 @@ export async function beginSetQueuedMessageGroupBoundaryTransaction({
         : currentQueuedMessages,
   );
 
-  await queryClient.cancelQueries({ queryKey });
+  await cancelOptimisticQueries(queryClient, { queryKey });
 
   return { previousQueuedMessages };
 }
@@ -1558,8 +1566,10 @@ export async function beginStopThreadTransaction({
   threadId,
 }: StopThreadTransactionArgs): Promise<StopThreadTransaction> {
   await Promise.all([
-    queryClient.cancelQueries({ queryKey: threadQueryKey(threadId) }),
-    queryClient.cancelQueries({ queryKey: threadsQueryKey() }),
+    cancelOptimisticQueries(queryClient, {
+      queryKey: threadQueryKey(threadId),
+    }),
+    cancelOptimisticQueries(queryClient, { queryKey: threadsQueryKey() }),
   ]);
 
   const previousThread = queryClient.getQueryData<ThreadResponse>(

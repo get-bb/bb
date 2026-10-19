@@ -2804,6 +2804,7 @@ describe("a provider-produced environment over its life", () => {
         emitThreadUnarchived: (thread) => {
           unarchived.push(thread.id);
         },
+        emitThreadParentChanged: () => {},
         emitThreadDeleted: () => {},
         emitMessageQueued: () => {},
         emitMessageDispatched: () => {},

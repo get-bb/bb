@@ -2,7 +2,10 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import * as frontendRuntime from "../app.js";
 
-const RUNTIME_ONLY_COMPAT_EXPORTS = ["useComposerView"];
+const RUNTIME_ONLY_COMPAT_EXPORTS = [
+  "useComposerView",
+  "experimental_useSidebarThreadActions",
+];
 
 function declarationValueExports(declarations: string): string[] {
   const match = declarations.match(/^export \{ ([^}]+) \};$/mu);

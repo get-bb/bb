@@ -7,16 +7,15 @@ import {
 } from "@bb/domain";
 import type { ClientTurnRequestId, Thread } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   getLatestThreadSequence,
   insertEvents,
-  migrate,
   migrateNextLegacyImageGenerationOutput,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { LOCAL_WORKFLOW_TASK_TYPE } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type {
@@ -27,7 +26,9 @@ import {
   buildTimelineTurnSummaryDetails as buildTurnDetailsPage,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+  TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
 } from "../../../src/services/threads/timeline.js";
+import { TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS } from "../../../src/services/threads/timeline-output-shortening.js";
 
 const LARGE_BUDGET = 1_000_000;
 const BYTE_WINDOW_ITEM_COUNT = 250;
@@ -48,8 +49,7 @@ function requestId(value: number): ClientTurnRequestId {
 }
 
 function setup(): { db: DbConnection; thread: Thread } {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
@@ -79,6 +79,7 @@ function backgroundTaskData(status: "pending" | "completed"): string {
       status,
       taskStatus: status === "pending" ? "running" : "completed",
       skipTranscript: false,
+      foreground: false,
       workflowName: "long-workflow",
     },
   });
@@ -403,14 +404,19 @@ function buildPage(
   cursor: TimelinePaginationCursor | null,
   segmentLimit = 20,
   responseByteBudget = THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+  includeNestedRows = false,
+  deferContent = false,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     completedTurnDisplay: "collapse",
+    deferContent,
     eventBudget,
     responseByteBudget,
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
-    includeNestedRows: false,
+    compactionOfferEnabled: false,
+    summarizeShellCommands: true,
+    includeNestedRows,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
     page: cursor
@@ -432,6 +438,8 @@ function buildNestedPage(
     responseByteBudget,
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
+    compactionOfferEnabled: false,
+    summarizeShellCommands: true,
     includeNestedRows: true,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -441,10 +449,12 @@ function buildNestedPage(
   });
 }
 
-function buildTimelineTurnSummaryDetails(
+type TurnDetailsPageOptions = Parameters<typeof buildTurnDetailsPage>[2];
+
+function walkTurnDetailsPages(
   db: DbConnection,
   thread: Thread,
-  options: Parameters<typeof buildTurnDetailsPage>[2],
+  options: TurnDetailsPageOptions,
 ) {
   const response = buildTurnDetailsPage(db, thread, options);
   let rows = response.rows;
@@ -465,6 +475,89 @@ function buildTimelineTurnSummaryDetails(
   return { ...response, rows, olderCursor: null };
 }
 
+function expandDeferredDelegations(
+  db: DbConnection,
+  thread: Thread,
+  options: TurnDetailsPageOptions,
+  rows: TimelineRow[],
+): TimelineRow[] {
+  return rows.map((row): TimelineRow => {
+    if (row.kind === "turn" && row.children !== null) {
+      return {
+        ...row,
+        children: expandDeferredDelegations(db, thread, options, row.children),
+      };
+    }
+    if ("contentDeferred" in row && row.contentDeferred === true) {
+      const itemId =
+        row.kind === "work" && "callId" in row
+          ? row.callId
+          : row.kind === "system" && "reasoningId" in row
+            ? row.reasoningId
+            : undefined;
+      const loaded = walkTurnDetailsPages(db, thread, {
+        ...options,
+        itemId: itemId ?? null,
+        sourceSeqStart: row.sourceSeqStart,
+        sourceSeqEnd: row.sourceSeqEnd,
+      }).rows.find((candidate) => candidate.id === row.id);
+      if (loaded === undefined) {
+        throw new Error(`Expected deferred content for ${row.id}`);
+      }
+      return loaded;
+    }
+    if (row.kind !== "work" || row.workKind !== "delegation") {
+      return row;
+    }
+    if (row.childRows !== null) {
+      return {
+        ...row,
+        childRows: expandDeferredDelegations(
+          db,
+          thread,
+          options,
+          row.childRows,
+        ),
+      };
+    }
+    const scoped = walkTurnDetailsPages(db, thread, {
+      ...options,
+      itemId: row.callId,
+      sourceSeqStart: row.sourceSeqStart,
+      sourceSeqEnd: row.sourceSeqEnd,
+    }).rows[0];
+    if (
+      scoped?.kind !== "work" ||
+      scoped.workKind !== "delegation" ||
+      scoped.childRows === null
+    ) {
+      throw new Error(`Expected delegation ${row.callId} children`);
+    }
+    return {
+      ...row,
+      childRows: expandDeferredDelegations(
+        db,
+        thread,
+        options,
+        scoped.childRows,
+      ),
+    };
+  });
+}
+
+function buildTimelineTurnSummaryDetails(
+  db: DbConnection,
+  thread: Thread,
+  options: Omit<TurnDetailsPageOptions, "deferContent" | "itemId">,
+) {
+  const pageOptions = { ...options, deferContent: true, itemId: null };
+  const response = walkTurnDetailsPages(db, thread, pageOptions);
+  return {
+    ...response,
+    rows: expandDeferredDelegations(db, thread, pageOptions, response.rows),
+  };
+}
+
 function collectCommandCallIds(
   rows: readonly TimelineRow[],
   target: Set<string>,
@@ -474,7 +567,7 @@ function collectCommandCallIds(
       target.add(row.callId);
     }
     if (row.kind === "work" && row.workKind === "delegation") {
-      collectCommandCallIds(row.childRows, target);
+      collectCommandCallIds(row.childRows ?? [], target);
     }
     if (row.kind === "turn" && row.children !== null) {
       collectCommandCallIds(row.children, target);
@@ -493,6 +586,7 @@ function walkAllPages(
   thread: Thread,
   eventBudget: number,
   segmentLimit = 20,
+  includeNestedRows = false,
 ): WalkResult {
   let mergedRows: TimelineRow[] = [];
   const seenCursors = new Set<string>();
@@ -507,6 +601,8 @@ function walkAllPages(
       eventBudget,
       cursor,
       segmentLimit,
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      includeNestedRows,
     );
     pages += 1;
     maxEventRowCount = Math.max(maxEventRowCount, profile.eventRowCount);
@@ -514,7 +610,7 @@ function walkAllPages(
       olderRows: response.rows,
       loadedRows: mergedRows,
     });
-    if (!response.timelinePage.hasOlderRows) {
+    if (response.timelinePage.olderCursor === null) {
       break;
     }
     const next = response.timelinePage.olderCursor;
@@ -700,7 +796,7 @@ describe("in-turn timeline windows", () => {
 
     const timeline = buildPage(db, thread, LARGE_BUDGET, null).response;
     const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
-    expect(latest.timelinePage.hasOlderRows).toBe(true);
+    expect(latest.timelinePage.olderCursor).not.toBeNull();
     expect(latest.rows).toContainEqual(
       expect.objectContaining({
         kind: "conversation",
@@ -718,7 +814,7 @@ describe("in-turn timeline windows", () => {
       latest.timelinePage.olderCursor!,
       1,
     ).response;
-    expect(older.timelinePage.hasOlderRows).toBe(false);
+    expect(older.timelinePage.olderCursor).toBeNull();
     expect(
       prependOlderTimelineRows({
         loadedRows: latest.rows,
@@ -747,6 +843,7 @@ describe("in-turn timeline windows", () => {
     const details = buildTimelineTurnSummaryDetails(db, thread, {
       completedTurnDisplay: "collapse",
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
@@ -780,20 +877,16 @@ describe("in-turn timeline windows", () => {
 
     const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
     expect(unbudgeted.profile.eventRowCount).toBeGreaterThan(600);
-    expect(unbudgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(unbudgeted.response.timelinePage.olderCursor).toBeNull();
 
     const budgeted = buildPage(db, thread, 100, null);
     expect(budgeted.profile.eventRowCount).toBe(
       unbudgeted.profile.eventRowCount,
     );
-    expect(
-      budgeted.response.timelinePage.contentPage?.end! -
-        budgeted.response.timelinePage.contentPage?.start!,
-    ).toBeLessThanOrEqual(100);
     expect(budgeted.response.rows.length).toBeLessThan(
       unbudgeted.response.rows.length,
     );
-    expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
+    expect(budgeted.response.timelinePage.olderCursor).not.toBeNull();
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
       /^timeline-v3:/,
     );
@@ -852,7 +945,7 @@ describe("in-turn timeline windows", () => {
 
     const budgeted = buildPage(db, thread, 100, null);
 
-    expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(budgeted.response.timelinePage.olderCursor).toBeNull();
     expect(budgeted.response.timelinePage.olderCursor).toBeNull();
     expect(budgeted.response.rows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.rows,
@@ -893,6 +986,7 @@ describe("in-turn timeline windows", () => {
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           completedTurnDisplay: "collapse",
           includeDiagnosticOperations: false,
+          summarizeShellCommands: true,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -909,7 +1003,7 @@ describe("in-turn timeline windows", () => {
         Buffer.byteLength(JSON.stringify(page.response.rows)),
         `page ${pages}`,
       ).toBeLessThanOrEqual(SCALED_BYTE_BUDGET);
-      if (!page.response.timelinePage.hasOlderRows) {
+      if (page.response.timelinePage.olderCursor === null) {
         break;
       }
       cursor = page.response.timelinePage.olderCursor;
@@ -1014,22 +1108,32 @@ describe("in-turn timeline windows", () => {
     if (turnRow?.kind !== "turn") {
       throw new Error("expected a turn row");
     }
-    const details = buildTimelineTurnSummaryDetails(db, thread, {
+    const details = walkTurnDetailsPages(db, thread, {
+      deferContent: false,
+      itemId: null,
       completedTurnDisplay: "collapse",
       includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
     });
-    const commandOutputs = details.rows.flatMap((row) =>
-      row.kind === "work" && row.workKind === "command" ? [row.output] : [],
+    const commandRows = details.rows.flatMap((row) =>
+      row.kind === "work" && row.workKind === "command" ? [row] : [],
     );
 
-    expect(commandOutputs).toHaveLength(150);
-    expect(commandOutputs.every((output) => output.length < 33_000)).toBe(true);
+    expect(commandRows).toHaveLength(150);
     expect(
-      commandOutputs.some((output) =>
-        output.includes("output truncated by retention policy"),
+      commandRows.every(
+        (row) =>
+          row.output.length < TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
+      ),
+    ).toBe(true);
+    expect(
+      commandRows.some(
+        (row) =>
+          row.outputPreview?.experimental_fullOutputAvailability ===
+          "detail-limit",
       ),
     ).toBe(true);
   });
@@ -1068,6 +1172,7 @@ describe("in-turn timeline windows", () => {
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           completedTurnDisplay: "collapse",
           includeDiagnosticOperations: false,
+          summarizeShellCommands: true,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1083,7 +1188,7 @@ describe("in-turn timeline windows", () => {
         Buffer.byteLength(JSON.stringify(page.response.rows)),
         `page ${pages}`,
       ).toBeLessThanOrEqual(SCALED_BYTE_BUDGET);
-      if (!page.response.timelinePage.hasOlderRows) {
+      if (page.response.timelinePage.olderCursor === null) {
         break;
       }
       cursor = page.response.timelinePage.olderCursor;
@@ -1114,7 +1219,7 @@ describe("in-turn timeline windows", () => {
     ]);
 
     const latest = buildPage(db, thread, LARGE_BUDGET, null);
-    expect(latest.response.timelinePage.hasOlderRows).toBe(false);
+    expect(latest.response.timelinePage.olderCursor).toBeNull();
     expect(latest.response.timelinePage.olderCursor).toBeNull();
     expect(latest.response.rows).toHaveLength(1);
     const row = latest.response.rows[0]!;
@@ -1294,14 +1399,88 @@ describe("in-turn timeline windows", () => {
       itemsPerTurn: [300],
     });
 
-    const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
-    const budgeted = buildPage(db, thread, 100, null);
+    const unbudgeted = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const budgeted = buildNestedPage(db, thread, 100, null);
 
-    expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
+    expect(budgeted.response.timelinePage.olderCursor).not.toBeNull();
     expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
-    expect(walkAllPages(db, thread, 100).rows).toEqual(
+    expect(walkAllPages(db, thread, 100, 20, true).rows).toEqual(
       unbudgeted.response.rows.map((row) => JSON.stringify(row)),
     );
+  });
+
+  it("returns a settled delegation in a running turn without its children, then loads them by call", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: false,
+      delegateLastTurn: true,
+      itemsPerTurn: [300],
+    });
+
+    const page = buildPage(
+      db,
+      thread,
+      100,
+      null,
+      20,
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      false,
+      true,
+    );
+    const delegation = page.response.rows.find(
+      (row) => row.kind === "work" && row.workKind === "delegation",
+    );
+    if (delegation?.kind !== "work" || delegation.workKind !== "delegation") {
+      throw new Error("expected a delegation row");
+    }
+    expect(delegation.status).toBe("completed");
+    expect(delegation.childRows).toBeNull();
+    expect(page.response.timelinePage.olderCursor).toBeNull();
+
+    const firstPage = buildTurnDetailsPage(db, thread, {
+      deferContent: true,
+      itemId: delegation.callId,
+      completedTurnDisplay: "collapse",
+      includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
+      sourceSeqEnd: delegation.sourceSeqEnd,
+      sourceSeqStart: delegation.sourceSeqStart,
+      turnId: delegation.turnId ?? "",
+    });
+    const [scoped] = firstPage.rows;
+    if (scoped?.kind !== "work" || scoped.workKind !== "delegation") {
+      throw new Error("expected the scoped delegation row");
+    }
+    expect(firstPage.rows).toHaveLength(1);
+    expect(scoped.callId).toBe(delegation.callId);
+    expect(scoped.childRows).toHaveLength(
+      TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
+    );
+    expect(firstPage.olderCursor).not.toBeNull();
+
+    const nested = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const nestedDelegation = nested.response.rows.find(
+      (row) => row.kind === "work" && row.workKind === "delegation",
+    );
+    if (
+      nestedDelegation?.kind !== "work" ||
+      nestedDelegation.workKind !== "delegation"
+    ) {
+      throw new Error("expected a nested delegation row");
+    }
+    const walked = buildTimelineTurnSummaryDetails(db, thread, {
+      completedTurnDisplay: "collapse",
+      includeDiagnosticOperations: false,
+      summarizeShellCommands: true,
+      sourceSeqEnd: nestedDelegation.sourceSeqEnd,
+      sourceSeqStart: nestedDelegation.sourceSeqStart,
+      turnId: nestedDelegation.turnId ?? "",
+    }).rows;
+    expect(
+      walked.find(
+        (row) => row.kind === "work" && row.workKind === "delegation",
+      ),
+    ).toEqual(nestedDelegation);
   });
 
   it("gives an item straddling the cut to exactly one page, completed", () => {
@@ -1354,6 +1533,7 @@ describe("in-turn timeline windows", () => {
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           completedTurnDisplay: "collapse",
           includeDiagnosticOperations: false,
+          summarizeShellCommands: true,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1368,7 +1548,7 @@ describe("in-turn timeline windows", () => {
           }
         }
       }
-      if (!page.response.timelinePage.hasOlderRows) {
+      if (page.response.timelinePage.olderCursor === null) {
         break;
       }
       cursor = page.response.timelinePage.olderCursor;
@@ -1506,7 +1686,7 @@ describe("timeline window hints", () => {
 
     const timeline = buildPage(db, thread, 1_501, null).response;
 
-    expect(timeline.timelinePage.hasOlderRows).toBe(false);
+    expect(timeline.timelinePage.olderCursor).toBeNull();
     expect(timeline.timelinePage.olderCursor).toBeNull();
     expect(timeline.rows).toEqual(
       expect.arrayContaining([
@@ -1540,7 +1720,7 @@ describe("timeline window hints", () => {
     expect(exactFloor.olderCursor).toMatchObject({ anchorSeq: 3 });
 
     const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
-    expect(latest.timelinePage.hasOlderRows).toBe(true);
+    expect(latest.timelinePage.olderCursor).not.toBeNull();
     expect(latest.rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1561,7 +1741,7 @@ describe("timeline window hints", () => {
       latest.timelinePage.olderCursor,
       1,
     ).response;
-    expect(older.timelinePage.hasOlderRows).toBe(false);
+    expect(older.timelinePage.olderCursor).toBeNull();
     expect(older.timelinePage.olderCursor).toBeNull();
     expect(older.rows).toEqual([
       expect.objectContaining({
@@ -1729,7 +1909,7 @@ describe("timeline window hints", () => {
         },
       ]);
       const reference = buildPage(db, thread, LARGE_BUDGET, null, 100).response;
-      expect(reference.timelinePage.hasOlderRows).toBe(false);
+      expect(reference.timelinePage.olderCursor).toBeNull();
       for (const segmentLimit of [1, 2]) {
         const walked = walkAllPages(db, thread, LARGE_BUDGET, segmentLimit);
         expect(walked.rows).toEqual(
@@ -1848,6 +2028,8 @@ describe("timeline inline output reads", () => {
       eventBudget: LARGE_BUDGET,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
@@ -1858,6 +2040,8 @@ describe("timeline inline output reads", () => {
       eventBudget: LARGE_BUDGET,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -1904,10 +2088,6 @@ describe("background tasks across an in-turn window", () => {
       /^timeline-v3:/,
     );
     expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
-    expect(
-      budgeted.response.timelinePage.contentPage?.end! -
-        budgeted.response.timelinePage.contentPage?.start!,
-    ).toBeLessThanOrEqual(100);
     expect(budgeted.response.activeWorkflows).toHaveLength(1);
     expect(budgeted.response.activeWorkflows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.activeWorkflows,
@@ -2006,7 +2186,7 @@ describe("in-turn windows and items that only stream", () => {
         (row) => row.kind === "conversation" && row.role === "assistant",
       );
 
-      expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
+      expect(budgeted.response.timelinePage.olderCursor).not.toBeNull();
       expect(assistant?.text).toBe(chunks.join(""));
       const laterChunks = Array.from(
         { length: 25 },
@@ -2163,6 +2343,7 @@ function collectTurnDetailsAndChildren(
       details: buildTimelineTurnSummaryDetails(db, thread, {
         completedTurnDisplay: "collapse",
         includeDiagnosticOperations: false,
+        summarizeShellCommands: true,
         sourceSeqEnd: row.sourceSeqEnd,
         sourceSeqStart: row.sourceSeqStart,
         turnId: row.turnId,
@@ -2240,6 +2421,8 @@ describe("turn details for an item that finishes in a later turn", () => {
       eventBudget: LARGE_BUDGET,
       includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
+      compactionOfferEnabled: false,
+      summarizeShellCommands: true,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
@@ -2311,6 +2494,7 @@ describe("turn details for an item that finishes in a later turn", () => {
       buildTimelineTurnSummaryDetails(db, thread, {
         completedTurnDisplay: "collapse",
         includeDiagnosticOperations: false,
+        summarizeShellCommands: true,
         sourceSeqEnd: olderTurn.sourceSeqEnd,
         sourceSeqStart: olderTurn.sourceSeqStart,
         turnId,

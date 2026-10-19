@@ -23,6 +23,7 @@ function event(
     usedTokens: number | null;
     modelContextWindow: number | null;
     snapshot?: ContextSnapshot;
+    cost?: { amount: number; currency: string };
   },
 ): ThreadEventWithMeta {
   return {
@@ -44,6 +45,35 @@ const first = event(1, {
   usedTokens: 100,
   modelContextWindow: 1_000,
   snapshot,
+});
+
+describe("session cost", () => {
+  it("carries the latest reported cost and omits the field when none was reported", () => {
+    expect(
+      extractThreadContextWindowUsage([
+        event(1, {
+          usedTokens: 100,
+          modelContextWindow: 1_000,
+          cost: { amount: 0.1, currency: "USD" },
+        }),
+        event(2, {
+          usedTokens: 200,
+          modelContextWindow: 1_000,
+          cost: { amount: 0.25, currency: "USD" },
+        }),
+      ]),
+    ).toEqual({
+      usedTokens: 200,
+      modelContextWindow: 1_000,
+      estimated: true,
+      cost: { amount: 0.25, currency: "USD" },
+    });
+    expect(
+      extractThreadContextWindowUsage([
+        event(1, { usedTokens: 100, modelContextWindow: 1_000 }),
+      ]),
+    ).toEqual({ usedTokens: 100, modelContextWindow: 1_000, estimated: true });
+  });
 });
 
 describe("context snapshot projection", () => {

@@ -8,6 +8,7 @@ import type {
   ReasoningLevel,
   RuntimePermissionPolicy,
   ServiceTier,
+  SessionOptionSelections,
 } from "@bb/domain";
 import type {
   AgentRuntimeBridgeLaunch,
@@ -27,6 +28,7 @@ export type ProviderExecutionContext = {
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
   promptMode?: PromptMode;
+  sessionOptions?: SessionOptionSelections;
   providerOptions: JsonObject;
   instructions?: string;
   envVars?: Record<string, string>;

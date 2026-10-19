@@ -358,6 +358,50 @@ describe("buildProjectThreadGroups", () => {
     ]);
   });
 
+  it.each([false, true])(
+    "does not repeat the parent's worktree around its children (outer group: %s)",
+    (outerGroup) => {
+      const environment = makeSidebarEnvironment({
+        id: "env_shared",
+        isWorktree: true,
+      });
+      const otherEnvironment = makeSidebarEnvironment({
+        id: "env_other",
+        isWorktree: true,
+      });
+      const threads = [
+        createThread({ id: "parent", environment, createdAt: 100 }),
+        ...["child-a", "child-b"].map((id) =>
+          createThread({ id, parentThreadId: "parent", environment }),
+        ),
+        ...["other-a", "other-b"].map((id) =>
+          createThread({
+            id,
+            parentThreadId: "parent",
+            environment: otherEnvironment,
+          }),
+        ),
+      ];
+      if (outerGroup) {
+        threads.push(createThread({ id: "sibling", environment }));
+      }
+
+      const parent = {
+        id: "parent",
+        children: [
+          "child-a",
+          "child-b",
+          { env: "env_other", threads: ["other-a", "other-b"] },
+        ],
+      };
+      expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual(
+        outerGroup
+          ? [{ env: "env_shared", threads: [parent, "sibling"] }]
+          : [parent],
+      );
+    },
+  );
+
   it("sorts siblings with active rows first, then inactive attention recency", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({

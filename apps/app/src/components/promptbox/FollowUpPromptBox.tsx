@@ -27,6 +27,7 @@ import { modifierSubmitShortcutLabel } from "./modifier-submit-shortcut";
 import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
+  composerScopeIdentity,
   PluginComposerHostProvider,
   PluginComposerViewProvider,
   type PluginComposerHost,
@@ -59,6 +60,11 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
+import { formatCompactTokenCount } from "@/components/thread/timeline/thread-context-window-usage";
+import {
+  CompactBeforeSendChip,
+  type CompactBeforeSendOffer,
+} from "@/components/promptbox/CompactBeforeSendChip";
 import {
   PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_TRACK_CLASS,
@@ -154,8 +160,10 @@ export interface FollowUpPromptBoxProps {
   environmentSummary: ReactNode | null;
   compactEnvironmentSummary?: ReactNode;
   contextWindowUsage: ContextWindowUsage | null;
+  compactBeforeSend?: CompactBeforeSendOffer | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
+  sessionOptionsControl?: ReactNode;
   executionReadOnly?: boolean;
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
@@ -231,8 +239,10 @@ function FollowUpPromptBoxWithComposer({
   environmentSummary,
   compactEnvironmentSummary = null,
   contextWindowUsage,
+  compactBeforeSend = null,
   execution,
   permission,
+  sessionOptionsControl = null,
   executionReadOnly,
   permissionReadOnly,
   typeahead,
@@ -286,17 +296,20 @@ function FollowUpPromptBoxWithComposer({
     voiceDraft
       ? { ...voiceDraft, submit: pluginComposerHost?.submit }
       : (pluginComposerHost ?? undefined),
+    composerScope ? composerScopeIdentity(composerScope) : null,
   );
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const composerInteractionRef = useRef<HTMLDivElement>(null);
-  const interactionExpandedRef = useRef(false);
+  const focusesEditorOnMount = !isPointerCoarse;
+  const interactionExpandedRef = useRef(focusesEditorOnMount);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const deferredControlFocusLossRef = useRef<(() => void) | null>(null);
   const pressedComposerControlRef = useRef(false);
   const pressedComposerControlCleanupRef = useRef<(() => void) | null>(null);
-  const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
+  const [isInteractionExpanded, setIsInteractionExpanded] =
+    useState(focusesEditorOnMount);
   const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
     string | number | null
   >(null);
@@ -744,26 +757,33 @@ function FollowUpPromptBoxWithComposer({
           showModifierSubmitAction: submitMode.kind === "queue",
           title: composer.isFollowUpSubmitting
             ? "Submitting..."
-            : canSubmit && composer.submitTitle !== undefined
-              ? composer.submitTitle
-              : isStopping
-                ? "Queue for after the stop (Enter)"
-                : canQueueFollowUp
-                  ? steerOnPrimarySubmit
-                    ? isSteeringWhenReady
-                      ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
-                      : `Steer current run (Enter)${modifierSubmitHint("queue")}`
-                    : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
-                  : isLoadingExecutionOptions
-                    ? "Loading models..."
-                    : isUnavailable
-                      ? "Unavailable"
-                      : "Submit (Enter)",
+            : canSubmit && compactBeforeSend?.compactFirst
+              ? `Compact ${formatCompactTokenCount(compactBeforeSend.tokens)} tokens, then send (Enter)`
+              : canSubmit && composer.submitTitle !== undefined
+                ? composer.submitTitle
+                : isStopping
+                  ? "Queue for after the stop (Enter)"
+                  : canQueueFollowUp
+                    ? steerOnPrimarySubmit
+                      ? isSteeringWhenReady
+                        ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                        : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                      : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
+                    : isLoadingExecutionOptions
+                      ? "Loading models..."
+                      : isUnavailable
+                        ? "Unavailable"
+                        : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}
         attachments={attachments}
         promptActions={promptActions}
+        submitAccessory={
+          compactBeforeSend ? (
+            <CompactBeforeSendChip {...compactBeforeSend} />
+          ) : null
+        }
         suppressPluginComposerCustomizations={
           suppressPluginComposerCustomizations
         }
@@ -804,6 +824,7 @@ function FollowUpPromptBoxWithComposer({
             {isCompactViewport ? compactEnvironmentSummary : environmentSummary}
           </div>
           <div className="flex shrink-0 items-center gap-2 max-md:gap-0">
+            {sessionOptionsControl}
             {permissionControl}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />

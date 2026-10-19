@@ -16,6 +16,37 @@ import {
 import type { MarketplaceV2Entry } from "./marketplace-v2.js";
 
 describe("public marketplace route rendering", () => {
+  it.each([
+    ["Prompt Library [Experimental]", "attention", "Experimental"],
+    ["Prompt Library [Preview]", "neutral", "Preview"],
+    ["Prompt Library", null, null],
+  ] as const)("renders %j with a %s tag", (displayName, tone, label) => {
+    const entry = { ...MARKETPLACE_V2_FIXTURE.plugins[0]!, displayName };
+    const manifest = { ...MARKETPLACE_V2_FIXTURE, plugins: [entry] };
+    const pages = [
+      <PublicMarketplacePage
+        manifest={manifest}
+        stats={null}
+        state={{}}
+        onStateChange={() => {}}
+      />,
+      <PublicMarketplaceDetailPage
+        manifest={manifest}
+        entry={entry}
+        stats={null}
+      />,
+    ];
+    for (const page of pages) {
+      const html = renderToStaticMarkup(page);
+      expect(html.includes("marketplace-plugin-tag ")).toBe(tone !== null);
+      if (tone !== null) {
+        expect(html).toContain(
+          `class="marketplace-plugin-tag marketplace-plugin-tag-${tone}">${label}</span>`,
+        );
+      }
+    }
+  });
+
   it("renders the marketplace route with document shelves and controls", () => {
     const html = renderToStaticMarkup(
       <PublicMarketplacePage
@@ -79,8 +110,11 @@ describe("public marketplace route rendering", () => {
       />,
     );
     expect(html).toContain('aria-label="Category: Code &amp; Reviews"');
-    expect(html).toContain("Filtered plugins");
-    expect(html).toContain("2 plugins");
+    expect(html).toContain("<h2>Code &amp; Reviews");
+    expect(html).toContain(
+      "<span>2</span></h2><p>Work with code and reviews.</p>",
+    );
+    expect(html).not.toContain("Filtered plugins");
     expect(html).toContain(
       '<span class="marketplace-card-category">Code &amp; Reviews</span>',
     );

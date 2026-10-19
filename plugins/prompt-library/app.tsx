@@ -217,6 +217,7 @@ function PromptLibraryPopup() {
             scope,
             projectId: targets.projectId,
             threadId: targets.threadId,
+            composer: kind,
           });
           finish(() => setResult({ ...next, query }));
         } catch (cause: unknown) {
@@ -233,7 +234,15 @@ function PromptLibraryPopup() {
       window.clearTimeout(timeout);
       window.clearTimeout(slow);
     };
-  }, [query, reloadCount, rpc, scope, targets.projectId, targets.threadId]);
+  }, [
+    kind,
+    query,
+    reloadCount,
+    rpc,
+    scope,
+    targets.projectId,
+    targets.threadId,
+  ]);
 
   const draftText = composer.draft.text.trim();
   const draftIsStarred =

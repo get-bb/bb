@@ -90,8 +90,14 @@ operations and `localhost` refer to the browser host. Transfer files explicitly.
 Stop cancels running and queued work and releases desktop control. Cancellation
 and timeout stop the session too; open a new session to resume. Close disposes
 owned Chrome and desktop tabs the session opened while preserving a `--tab` tab.
-Close sessions after use. Five-minute idle and thirty-minute absolute expiry
-apply. Timeouts default to 30 seconds, maximum 120 seconds: pass either
+Close sessions after use. When `close` or `stop` fails, the session still
+accepts no more commands, but its browser may still be running; run `close`
+again to retry cleanup. `run`, `pages`, and `screenshot` renew expiry at their start and completion to
+30 minutes later, capped at eight hours from creation. Active scripts are not idle;
+the hard deadline still stops running work. `list` and live preview do not renew
+expiry. Desktop leases and connections cannot be renewed through the current API,
+so desktop sessions still end at their earlier deadline (at most 30 minutes from
+creation). Timeouts default to 30 seconds, maximum 120 seconds: pass either
 `--timeout-ms <1000-120000>` or `--timeout <duration>`, where a duration carries
 a unit (`90s`, `2m`, `1500ms`) and a bare number is read as seconds (1-120) or
 milliseconds (1000-120000).

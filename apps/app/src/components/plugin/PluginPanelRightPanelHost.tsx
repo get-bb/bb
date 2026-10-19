@@ -1,3 +1,4 @@
+import { BrowserTabIcon } from "../secondary-panel/BrowserTabIcon";
 import {
   getPanelTabHistoryKey,
   forgetClosedPanelTab,
@@ -21,6 +22,7 @@ import type { PluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -36,6 +38,7 @@ import {
   LazyThreadSecondaryPanel,
   preloadThreadSecondaryPanel,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -66,7 +69,11 @@ import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  isDesktopBrowserAvailable,
+  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+} from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -256,7 +263,7 @@ export function PluginPanelRightPanelHost({
     string | null
   >(null);
   const [isPluginDetailPanelOpen, setIsPluginDetailPanelOpen] = useState(false);
-  const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
+  const [isPanelFullPage, setIsPanelFullPage] = useState(false);
   const [pluginDetailTabMetadata, setPluginDetailTabMetadata] = useState<
     Record<string, PluginDetailTabMetadata>
   >({});
@@ -407,7 +414,7 @@ export function PluginPanelRightPanelHost({
   const selectPersistedPanelTab = useCallback(() => {
     setActivePluginDetailId(null);
     setIsPluginDetailPanelOpen(false);
-    setIsPluginDetailFullPage(false);
+    setIsPanelFullPage(false);
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
@@ -534,7 +541,7 @@ export function PluginPanelRightPanelHost({
   );
   const hidePanel = useCallback(() => {
     setIsPluginDetailPanelOpen(false);
-    setIsPluginDetailFullPage(false);
+    setIsPanelFullPage(false);
     if (isCompactViewport) {
       closeCompactDrawer();
       return;
@@ -598,6 +605,7 @@ export function PluginPanelRightPanelHost({
     return true;
   });
 
+  const isSidebarFramed = useIsSidebarFramed();
   const [togglePortalTarget, setTogglePortalTarget] =
     useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -639,7 +647,7 @@ export function PluginPanelRightPanelHost({
       setActivePluginDetailId((current) =>
         current === closingPluginId ? nextActivePluginId : current,
       );
-      setIsPluginDetailFullPage(false);
+      setIsPanelFullPage(false);
       if (
         nextActivePluginId === null &&
         fixedViewTabs.length === 0 &&
@@ -833,6 +841,15 @@ export function PluginPanelRightPanelHost({
               lineRange={tab.lineRange}
             />
           );
+        case "attachment-file-preview":
+          return (
+            <LazyAttachmentFilePreviewTabContent
+              isPanelOpen={isOpen}
+              name={tab.name}
+              path={tab.path}
+              projectId={tab.projectId}
+            />
+          );
         case "thread-storage-file-preview":
           return tab.threadId === null ? null : (
             <LazyThreadStorageFilePreviewTabContent
@@ -888,7 +905,7 @@ export function PluginPanelRightPanelHost({
               {
                 ...shared,
                 label: label || "Browser",
-                leadingVisual: <Icon name="Globe" className="size-3.5" />,
+                leadingVisual: <BrowserTabIcon tabId={tab.id} />,
                 statusLabel: null,
                 onClose: () => closeTab(tab.id),
               },
@@ -936,6 +953,16 @@ export function PluginPanelRightPanelHost({
                   tab.kind === "workspace-file-preview"
                     ? tab.statusLabel
                     : null,
+                onClose: () => closeTab(tab.id),
+              },
+            ];
+          case "attachment-file-preview":
+            return [
+              {
+                ...shared,
+                label: tab.name,
+                leadingVisual: <Icon name="File" className="size-3.5" />,
+                statusLabel: null,
                 onClose: () => closeTab(tab.id),
               },
             ];
@@ -1008,6 +1035,7 @@ export function PluginPanelRightPanelHost({
             onNativeFocus={onNativeFocus}
             threadId={panelStateId}
             onUpdate={updateBrowserTab}
+            onOpenInNewTab={panelBrowser.open}
           />
         );
       const drawerFallback = renderDeck(
@@ -1055,6 +1083,7 @@ export function PluginPanelRightPanelHost({
       browserTabs,
       fixedTabs,
       panelBrowser.handleAddressFocusRequestConsumed,
+      panelBrowser.open,
       hidePanel,
       isOpen,
       openNewTab,
@@ -1078,6 +1107,7 @@ export function PluginPanelRightPanelHost({
       <SecondaryPanelLayout
         open={isOpen}
         onToggle={togglePanel}
+        onSwipeOpen={togglePanel}
         onClose={hidePanel}
         panelGroupKey={`plugin-panel-host:${panelHostId}`}
         resetKey={panelStateId}
@@ -1085,15 +1115,10 @@ export function PluginPanelRightPanelHost({
         drawerLabel="Right panel"
         drawerFallback={null}
         mainPanelId={`plugin-panel-main-${panelHostId}`}
-        collapse={
-          activePluginDetailId === null
-            ? undefined
-            : {
-                active: isPluginDetailFullPage,
-                onToggle: () =>
-                  setIsPluginDetailFullPage((current) => !current),
-              }
-        }
+        collapse={{
+          active: isPanelFullPage,
+          onToggle: () => setIsPanelFullPage((current) => !current),
+        }}
         main={children}
         composerHost={null}
         renderPanel={renderPanel}
@@ -1114,7 +1139,10 @@ export function PluginPanelRightPanelHost({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className={RIGHT_PANEL_TOGGLE_CLASS}
+                  className={cn(
+                    RIGHT_PANEL_TOGGLE_CLASS,
+                    isSidebarFramed && MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+                  )}
                   aria-label={toggleLabel}
                   aria-pressed={isOpen}
                   onPointerEnter={preloadThreadSecondaryPanel}

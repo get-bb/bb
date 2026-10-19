@@ -19,6 +19,7 @@ export type PromptHistoryEntry = z.infer<typeof promptHistoryEntrySchema>;
 export const promptHistoryListEntrySchema = promptHistoryEntrySchema.extend({
   projectId: z.string().min(1),
   threadId: z.string().min(1),
+  scope: promptHistoryScopeSchema,
 });
 export type PromptHistoryListEntry = z.infer<
   typeof promptHistoryListEntrySchema

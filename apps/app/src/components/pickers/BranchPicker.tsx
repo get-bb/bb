@@ -1,3 +1,5 @@
+import { ListLoadingPlaceholder } from "@/components/ui/ListLoadingPlaceholder";
+import { PICKER_MOBILE_CLASS_NAME } from "./picker-layout";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
@@ -393,12 +395,16 @@ export function BranchPicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        mobileClassName={PICKER_MOBILE_CLASS_NAME}
         align={popoverAlign}
         sideOffset={6}
         collisionPadding={16}
         mobileTitle={menuLabel || "Branch"}
         autoFocusRef={inputRef}
-        className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:min-w-40")}
+        className={cn(
+          BRANCH_PICKER_CONTENT_CLASS_NAME,
+          "max-md:min-h-0 max-md:flex-1 md:min-w-40",
+        )}
       >
         <MenuHoverProvider>
           <BranchPickerSearch
@@ -410,7 +416,7 @@ export function BranchPicker({
           />
           <div
             ref={optionsScrollRef}
-            className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 md:max-h-80"
+            className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 max-md:max-h-none max-md:flex-1 md:max-h-80"
             onWheel={(event) => {
               event.stopPropagation();
             }}
@@ -428,9 +434,13 @@ export function BranchPicker({
               </BranchPickerRow>
             ))}
             {filteredBranchOptions.length === 0 ? (
-              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                {loading ? "Loading branches..." : "No branches found."}
-              </p>
+              loading ? (
+                <ListLoadingPlaceholder label="Loading branches…" />
+              ) : (
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                  No branches found.
+                </p>
+              )
             ) : null}
           </div>
         </MenuHoverProvider>

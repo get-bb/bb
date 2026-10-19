@@ -7,22 +7,21 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Provider, createStore } from "jotai";
-import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import { systemEnvironmentProvidersQueryKey } from "@/hooks/queries/environment-provider-queries";
-import {
-  getMobileRecentAncestorIds,
-  getMobileRecentThreads,
-  RootComposeMobileRecents,
-} from "./RootComposeMobileRecents";
+import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
 
 const threadActions = vi.hoisted(() => ({
   requestArchive: vi.fn(),
@@ -36,6 +35,14 @@ const threadActions = vi.hoisted(() => ({
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => threadActions,
 }));
+
+const sdkThreads = vi.hoisted(() => ({
+  pin: vi.fn(async ({ threadId }: { threadId: string }) => ({
+    id: threadId,
+  })),
+}));
+
+vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
 
 const personalProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
@@ -67,7 +74,13 @@ function TestProviders({
   return (
     <Provider store={store}>
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={CORE_THREAD_ACTIONS}
+            requestRename={() => {}}
+          />
+          {children}
+        </MemoryRouter>
       </QueryClientProvider>
     </Provider>
   );
@@ -75,7 +88,7 @@ function TestProviders({
 
 function storeWithCollapsedThreads(threadIds: string[]) {
   const store = createStore();
-  store.set(collapsedThreadIdsAtom, threadIds);
+  store.set(mobileRecentsCollapsedThreadIdsAtom, threadIds);
   return store;
 }
 
@@ -130,155 +143,6 @@ afterEach(() => {
   window.localStorage.clear();
   vi.useRealTimers();
   vi.clearAllMocks();
-});
-
-const NONE: ReadonlySet<string> = new Set();
-
-describe("getMobileRecentThreads", () => {
-  it("returns every active thread newest-first instead of a capped window", () => {
-    const threads = Array.from({ length: 12 }, (_unused, index) =>
-      makeThread({
-        id: `thr_${index}`,
-        latestAttentionAt: index,
-        createdAt: index,
-      }),
-    );
-
-    const rows = getMobileRecentThreads({
-      collapsedThreadIds: NONE,
-      draftThreadIds: NONE,
-      threads,
-    });
-
-    expect(rows).toHaveLength(12);
-    expect(rows.map((row) => row.thread.id)).toEqual([
-      "thr_11",
-      "thr_10",
-      "thr_9",
-      "thr_8",
-      "thr_7",
-      "thr_6",
-      "thr_5",
-      "thr_4",
-      "thr_3",
-      "thr_2",
-      "thr_1",
-      "thr_0",
-    ]);
-    expect(rows.every((row) => row.depth === 0)).toBe(true);
-  });
-
-  it("nests a child under its parent instead of listing it as a peer", () => {
-    const rows = getMobileRecentThreads({
-      collapsedThreadIds: NONE,
-      draftThreadIds: NONE,
-      threads: [
-        makeThread({ id: "thr_parent", latestAttentionAt: 10 }),
-        makeThread({
-          id: "thr_child",
-          parentThreadId: "thr_parent",
-          latestAttentionAt: 99,
-        }),
-        makeThread({ id: "thr_other", latestAttentionAt: 5 }),
-      ],
-    });
-
-    expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
-      ["thr_parent", 0],
-      ["thr_child", 1],
-      ["thr_other", 0],
-    ]);
-    expect(rows[0]?.hasChildren).toBe(true);
-    expect(rows[1]?.hasChildren).toBe(false);
-  });
-
-  it("hides descendants of a collapsed parent but keeps the parent", () => {
-    const threads = [
-      makeThread({ id: "thr_parent", latestAttentionAt: 10 }),
-      makeThread({
-        id: "thr_child",
-        parentThreadId: "thr_parent",
-        latestAttentionAt: 9,
-      }),
-      makeThread({
-        id: "thr_grandchild",
-        parentThreadId: "thr_child",
-        latestAttentionAt: 8,
-      }),
-    ];
-
-    const rows = getMobileRecentThreads({
-      collapsedThreadIds: new Set(["thr_parent"]),
-      draftThreadIds: NONE,
-      threads,
-    });
-
-    expect(rows.map((row) => row.thread.id)).toEqual(["thr_parent"]);
-    expect(rows[0]?.isCollapsed).toBe(true);
-    expect(rows[0]?.hasChildren).toBe(true);
-  });
-
-  it("promotes a child whose parent is absent to the top level", () => {
-    const rows = getMobileRecentThreads({
-      collapsedThreadIds: NONE,
-      draftThreadIds: NONE,
-      threads: [
-        makeThread({
-          id: "thr_orphan",
-          parentThreadId: "thr_missing",
-          latestAttentionAt: 3,
-        }),
-      ],
-    });
-
-    expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
-      ["thr_orphan", 0],
-    ]);
-  });
-});
-
-describe("getMobileRecentAncestorIds", () => {
-  const tree = [
-    makeThread({ id: "thr_root" }),
-    makeThread({ id: "thr_mid", parentThreadId: "thr_root" }),
-    makeThread({ id: "thr_leaf", parentThreadId: "thr_mid" }),
-  ];
-
-  it("walks the whole ancestor chain of a nested thread", () => {
-    expect(
-      getMobileRecentAncestorIds({ threadId: "thr_leaf", threads: tree }),
-    ).toEqual(["thr_mid", "thr_root"]);
-  });
-
-  it("returns nothing for a root thread or an unknown id", () => {
-    expect(
-      getMobileRecentAncestorIds({ threadId: "thr_root", threads: tree }),
-    ).toEqual([]);
-    expect(
-      getMobileRecentAncestorIds({ threadId: "thr_missing", threads: tree }),
-    ).toEqual([]);
-  });
-
-  it("stops at an absent parent instead of looping", () => {
-    expect(
-      getMobileRecentAncestorIds({
-        threadId: "thr_orphan",
-        threads: [makeThread({ id: "thr_orphan", parentThreadId: "thr_gone" })],
-      }),
-    ).toEqual([]);
-  });
-
-  it("terminates on a parent cycle", () => {
-    expect(
-      getMobileRecentAncestorIds({
-        threadId: "thr_a",
-        threads: [
-          makeThread({ id: "thr_a", parentThreadId: "thr_b" }),
-          makeThread({ id: "thr_b", parentThreadId: "thr_a" }),
-        ],
-      }).length,
-    ).toBeLessThanOrEqual(2);
-  });
 });
 
 describe("mobile recents hierarchy interaction", () => {
@@ -464,49 +328,7 @@ describe("mobile recents hierarchy interaction", () => {
     );
 
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
-    expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
-  });
-
-  it("de-emphasizes the provider tile on child rows only", () => {
-    renderTree();
-
-    const [parentRow, childRow] = screen.getAllByRole("listitem");
-    const parentTile = parentRow?.querySelector("span.size-7");
-    const childTile = childRow?.querySelector("span.size-7");
-    if (
-      !(parentTile instanceof HTMLElement) ||
-      !(childTile instanceof HTMLElement)
-    ) {
-      throw new Error("Expected a tile on both rows");
-    }
-
-    expect(parentTile.className).not.toContain("opacity-60");
-    expect(childTile.className).toContain("opacity-60");
-
-    for (const tile of [parentTile, childTile]) {
-      expect(tile.className).toContain("border-border-seam");
-      expect(tile.className).toContain("bg-surface-raised");
-    }
-
-    for (const tile of [parentTile, childTile]) {
-      expect(tile.className).toContain("size-7");
-      expect(tile.className).toContain("border");
-    }
-  });
-
-  it("centers provider tiles against the title and metadata block", () => {
-    renderTree();
-
-    const rows = screen.getAllByRole("listitem");
-    for (const row of rows) {
-      const tile = row.querySelector("span.size-7");
-      if (!(tile instanceof HTMLElement)) {
-        throw new Error("Expected a leading provider tile");
-      }
-      expect(row.className).toContain("items-center");
-      expect(tile.className).not.toContain("self-start");
-      expect(tile.className).not.toContain("mt-1");
-    }
+    expect(store.get(mobileRecentsCollapsedThreadIdsAtom)).toEqual([]);
   });
 
   it("gives only the parent a toggle and indents the child", () => {
@@ -679,7 +501,7 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
-  it("opens thread actions on a long press without following the thread link", () => {
+  it("opens thread actions on a long press without following the thread link", async () => {
     vi.useFakeTimers();
     const thread = makeThread();
     render(
@@ -712,7 +534,10 @@ describe("RootComposeMobileRecents", () => {
     const pin = screen.getByRole("menuitem", { name: "Pin" });
     fireEvent.pointerDown(pin, { pointerType: "touch" });
     fireEvent.click(pin);
-    expect(threadActions.togglePin).toHaveBeenCalledWith(thread);
+    vi.useRealTimers();
+    await waitFor(() =>
+      expect(sdkThreads.pin).toHaveBeenCalledWith({ threadId: thread.id }),
+    );
   });
 
   it("shows concurrent Plan activity before the runtime spinner", () => {

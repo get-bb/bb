@@ -2,12 +2,14 @@ import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons"
 import {
   type CSSProperties,
   type ReactNode,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { FilePreviewScrollPositionContext } from "./filePreviewScrollPositionContext";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -41,9 +43,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatByteSize } from "@/lib/format-byte-size";
+import { saveFile } from "@/lib/save-file";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type {
   FilePreviewLineRange,
@@ -57,6 +59,11 @@ import {
 } from "@/lib/code-overflow-mode";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SecondaryPanelSelectionActions } from "./SecondaryPanelSelectionActions.js";
+import {
+  FILE_PREVIEW_WRAPPER_STYLE,
+  FilePreviewHeaderFrame,
+  FilePreviewPath,
+} from "./FilePreviewChrome.js";
 import { useImageTabLightbox } from "./ImageTabLightboxContext.js";
 
 export interface FilePreviewFile {
@@ -102,7 +109,13 @@ export type FilePreviewState =
       textPreviewKind: TextFilePreviewKind | null;
     };
 
+interface FilePreviewDownload {
+  url: string;
+  fileName: string;
+}
+
 interface FilePreviewProps {
+  download?: FilePreviewDownload | null;
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
@@ -134,6 +147,7 @@ interface HtmlFilePreviewBodyProps {
 }
 
 interface FilePreviewHeaderProps {
+  download: FilePreviewDownload | null;
   previewIcon: ReactNode;
   path: string;
   copyPath: string | null;
@@ -155,11 +169,6 @@ interface FilePreviewLineWrapButtonProps {
   showLineOverflowToggle: boolean;
   lineOverflowMode: CodeOverflowMode;
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
-}
-
-interface FilePreviewPathProps {
-  path: string;
-  copyPath: string | null;
 }
 
 interface MarkdownFilePreviewProps {
@@ -223,9 +232,6 @@ const CSV_PREVIEW_MAX_ROWS = 500;
 const CSV_PREVIEW_ROW_HEIGHT_PX = 29;
 const CSV_PREVIEW_OVERSCAN_ROWS = 8;
 
-const FILE_PREVIEW_WRAPPER_STYLE = {
-  "--md-content-w": "100cqi",
-} as CSSProperties;
 
 const HTML_FILE_PREVIEW_IFRAME_STYLE = {
   width: "100%",
@@ -449,6 +455,7 @@ export function getCsvTruncationNote(
 }
 
 export function FilePreview({
+  download = null,
   state,
   path,
   copyPath = null,
@@ -527,22 +534,29 @@ export function FilePreview({
     state.textPreviewKind === "csv" &&
     bodyViewMode === "preview";
   const usesFullHeightLayout =
-    usesIframeLayout || usesCsvPreviewLayout || usesCodeLayout;
-  const usesContentHeightLayout = usesMarkdownPreviewLayout;
+    usesIframeLayout ||
+    usesCsvPreviewLayout ||
+    usesCodeLayout ||
+    usesMarkdownPreviewLayout;
 
   return (
     <div
       className={
         usesFullHeightLayout
-          ? "@container/page flex h-full min-h-0 flex-col"
-          : usesContentHeightLayout
-            ? "@container/page flex min-h-full flex-col"
-            : "@container/page min-h-full"
+          ? cn(
+              "@container/page flex h-full min-h-0 flex-col",
+              usesMarkdownPreviewLayout && "overflow-y-auto",
+            )
+          : "@container/page min-h-full"
+      }
+      data-file-preview-scroll-container={
+        usesMarkdownPreviewLayout ? "" : undefined
       }
       style={FILE_PREVIEW_WRAPPER_STYLE}
     >
       {headerMode === "file" ? (
         <FilePreviewHeader
+          download={download}
           previewIcon={
             <FilePreviewIcon
               key={path}
@@ -657,6 +671,7 @@ function FilePreviewBody({
 }
 
 function FilePreviewHeader({
+  download,
   previewIcon,
   path,
   copyPath,
@@ -681,8 +696,7 @@ function FilePreviewHeader({
   const copyFileContentsLabel = getFileContentsCopyLabel(toggleKind);
 
   return (
-    <div ref={headerRef} className="sticky top-0 z-10 bg-sidebar">
-      <div className="flex h-9 items-center gap-2 bg-surface-raised px-4 max-md:pointer-coarse:h-12 max-md:pointer-coarse:px-3">
+    <FilePreviewHeaderFrame headerRef={headerRef}>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {previewIcon}
           <FilePreviewPath path={path} copyPath={copyPath} />
@@ -721,6 +735,23 @@ function FilePreviewHeader({
                   <TooltipContent side="bottom">
                     {isRefreshing ? "Refreshing file" : "Refresh file"}
                   </TooltipContent>
+                </Tooltip>
+              ) : null}
+              {download !== null ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
+                      onClick={() => void saveFile(download)}
+                      aria-label="Download"
+                    >
+                      <Icon name="Download" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Download</TooltipContent>
                 </Tooltip>
               ) : null}
               {rawContents === null ? null : (
@@ -880,6 +911,11 @@ function FilePreviewHeader({
                       <Icon name="Copy" aria-hidden /> {copyFileContentsLabel}
                     </DropdownMenuItem>
                   ) : null}
+                  {download !== null ? (
+                    <DropdownMenuItem onSelect={() => void saveFile(download)}>
+                      <Icon name="Download" aria-hidden /> Download
+                    </DropdownMenuItem>
+                  ) : null}
                   {onRefresh ? (
                     <DropdownMenuItem
                       disabled={isRefreshing}
@@ -924,43 +960,7 @@ function FilePreviewHeader({
             ) : null}
           </div>
         ) : null}
-      </div>
-    </div>
-  );
-}
-
-function FilePreviewPath({ path, copyPath }: FilePreviewPathProps) {
-  const copyTarget = copyPath ?? path;
-  const label = "Copy file path";
-  const className = cn(
-    "min-w-0 font-mono font-medium leading-5 text-file-accent",
-    COARSE_POINTER_TEXT_SM_CLASS,
-  );
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              className,
-              "cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            )}
-            aria-label={label}
-            onClick={() => {
-              void copyToClipboardWithToast(copyTarget, {
-                successMessage: "File path copied",
-                errorMessage: "Failed to copy file path",
-              });
-            }}
-          >
-            <TruncateStart>{path}</TruncateStart>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    </FilePreviewHeaderFrame>
   );
 }
 
@@ -1041,9 +1041,26 @@ function MarkdownFilePreview({
   onSelectionAddToChat,
   markdownLinkRouting,
 }: MarkdownFilePreviewProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollPosition = useContext(FilePreviewScrollPositionContext);
+  useLayoutEffect(() => {
+    const container = contentRef.current?.closest<HTMLElement>(
+      "[data-file-preview-scroll-container]",
+    );
+    if (!container || !scrollPosition) return;
+    container.scrollTop = scrollPosition.scrollTop;
+    const savePosition = () => {
+      scrollPosition.scrollTop = container.scrollTop;
+    };
+    container.addEventListener("scroll", savePosition);
+    return () => container.removeEventListener("scroll", savePosition);
+  }, [scrollPosition, file.name, file.contents]);
   return (
-    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
-      <div className="flex-auto bg-background px-4 py-4">
+    <SecondaryPanelSelectionActions
+      markdown
+      onSelectionAddToChat={onSelectionAddToChat}
+    >
+      <div ref={contentRef} className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
           content={file.contents}
@@ -1326,7 +1343,14 @@ function UnsupportedFilePreview({ file }: UnsupportedFilePreviewProps) {
           : "This file type can't be previewed."}
       </p>
       <Button asChild variant="outline" size="sm">
-        <a href={file.url} download={file.name}>
+        <a
+          href={file.url}
+          download={file.name}
+          onClick={(event) => {
+            event.preventDefault();
+            void saveFile({ url: file.url, fileName: file.name });
+          }}
+        >
           <Icon name="Download" aria-hidden />
           Download
         </a>
@@ -1365,7 +1389,6 @@ function FilePreviewCode({
       overflow={lineOverflowMode}
       highlightedLines={highlightedLines}
       scrollToHighlightedLines
-      fallback={<SourceLoadingSkeleton />}
       onSelectionAddToChat={onSelectionAddToChat}
     />
   );

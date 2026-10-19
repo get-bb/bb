@@ -39,6 +39,43 @@ describe("claude usage and fixture translation (delta path)", () => {
     },
   );
 
+  it("reports the prompt cache TTL of the latest cache write across turns", () => {
+    const harness = createClaudeDeltaHarness();
+    const fixture = loadFixture("result-success.json");
+    const turns: [unknown, number | undefined][] = [
+      [undefined, undefined],
+      [
+        { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 9 },
+        3_600_000,
+      ],
+      [
+        { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 },
+        3_600_000,
+      ],
+      [{ ephemeral_5m_input_tokens: 9, ephemeral_1h_input_tokens: 0 }, 300_000],
+      ["malformed", 300_000],
+    ];
+
+    const reported = turns.map(([cacheCreation]) => {
+      harness.translate(loadFixture("assistant-text.json"));
+      const event = harness
+        .translate({
+          ...fixture,
+          usage: {
+            input_tokens: 80,
+            output_tokens: 20,
+            cache_creation_input_tokens: 9,
+            cache_creation: cacheCreation,
+          },
+        })
+        .find((event) => event.type === "thread/tokenUsage/updated");
+      expect(event?.tokenUsage.last.inputTokens).toBe(80);
+      return event?.tokenUsage.promptCacheTtlMs;
+    });
+
+    expect(reported).toEqual(turns.map(([, ttl]) => ttl));
+  });
+
   it("emits context-window usage on a top-level assistant message", () => {
     const harness = createClaudeDeltaHarness();
     const threadId = "bb-thread-1";

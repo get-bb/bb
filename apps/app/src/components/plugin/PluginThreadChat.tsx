@@ -10,7 +10,6 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
@@ -36,6 +35,7 @@ import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provi
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
+import { ThreadChatLoadingBody } from "@/components/thread/timeline/ThreadChatLoading";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
@@ -255,11 +255,7 @@ function PluginThreadChatBody({
   }
   if (thread === undefined) {
     return (
-      <div className="space-y-2 px-4 pt-4">
-        <Skeleton className="h-4 w-3/4 rounded-sm" />
-        <Skeleton className="h-4 w-2/3 rounded-sm" />
-        <Skeleton className="h-4 w-1/2 rounded-sm" />
-      </div>
+      <ThreadChatLoadingBody leadingContent={leadingContent} variant={variant} />
     );
   }
 

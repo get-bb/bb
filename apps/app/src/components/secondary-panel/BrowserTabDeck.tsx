@@ -27,6 +27,7 @@ interface BrowserTabDeckProps {
   onNativeFocus?: () => void;
   threadId: string;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
+  onOpenInNewTab: ((url: string) => void) | null;
 }
 
 export function selectActiveBrowserTab(
@@ -87,6 +88,7 @@ export function BrowserTabDeck({
   onNativeFocus,
   threadId,
   onUpdate,
+  onOpenInNewTab,
 }: BrowserTabDeckProps) {
   const desktopBrowser = useMemo(() => getDesktopBrowserApi(), []);
   const visibilityCoordinator = useMemo(
@@ -263,6 +265,7 @@ export function BrowserTabDeck({
         environmentId={environmentId}
         threadId={threadId}
         onUpdate={onUpdate}
+        onOpenInNewTab={onOpenInNewTab}
       />
     </div>
   );

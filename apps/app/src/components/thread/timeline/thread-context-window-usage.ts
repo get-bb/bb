@@ -18,3 +18,19 @@ export function formatCompactTokenCount(value: number): string {
   const safeValue = Math.max(0, Math.round(value));
   return TOKEN_COMPACT_FORMATTER.format(safeValue).toLowerCase();
 }
+
+export function formatUsageCost(cost: {
+  amount: number;
+  currency: string;
+}): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: cost.currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: cost.amount < 1 ? 4 : 2,
+    }).format(cost.amount);
+  } catch {
+    return `${cost.amount} ${cost.currency}`;
+  }
+}

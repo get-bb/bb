@@ -1,6 +1,7 @@
 import type {
   PluginSidebarThread,
   PluginSidebarThreadIndicator,
+  PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
 
 type ThreadStatusShape = Pick<
@@ -113,6 +114,31 @@ export function getThreadListIndicatorLabel(
   kind: ThreadListIndicatorKind,
 ): string | null {
   return kind === "none" ? null : THREAD_LIST_INDICATOR_LABELS[kind];
+}
+
+interface ThreadStatusResolution {
+  accessibleLabel: string | null;
+  indicatorKind: ThreadListIndicatorKind;
+  rowStatusIsVisible: boolean;
+}
+
+export function resolveThreadStatus(
+  state: ThreadListIndicatorState,
+  rowStatus: PluginSidebarThreadRowStatus | null,
+): ThreadStatusResolution {
+  const indicatorKind = resolveThreadListIndicator(state);
+  const rowStatusIsVisible =
+    rowStatus !== null &&
+    indicatorKind !== "runtime" &&
+    indicatorKind !== "unread-error" &&
+    indicatorKind !== "waiting-for-input";
+  return {
+    accessibleLabel: rowStatusIsVisible
+      ? rowStatus.label
+      : getThreadListIndicatorLabel(indicatorKind),
+    indicatorKind,
+    rowStatusIsVisible,
+  };
 }
 
 export function hasThreadListWorkingActivity(

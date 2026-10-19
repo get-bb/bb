@@ -40,9 +40,9 @@ import { resourceRouteLabelAtom } from "./resourceRouteLabelAtom";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
-  getLatestPendingInteraction,
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
@@ -63,7 +63,6 @@ import {
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
-import { AppThreadSectionMoveProvider } from "@/components/thread/ThreadSectionMoveProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import {
   usePluginNavPanelChrome,
@@ -77,6 +76,8 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
@@ -85,6 +86,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useDataDirectoryCommand } from "@/hooks/useDataDirectoryCommand";
+import { useWindowReloadCommand } from "@/hooks/useWindowReloadCommand";
 import { usePluginSafeModeCommands } from "@/hooks/usePluginSafeModeCommands";
 import { usePluginCachePruneCommand } from "@/hooks/usePluginCachePruneCommand";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
@@ -105,8 +107,8 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
-import { useNavigationRailExperiment } from "@/components/sidebar/navigationRailExperiment";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
+import { useSidebarNavigationPlacement } from "@/components/sidebar/sidebarNavigationProvider";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import {
   useAppCommandHandler,
@@ -179,8 +181,7 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 );
 
 interface SidebarStateBridgeProps {
-  navigationRail: boolean;
-  framed: boolean;
+  usesDesktopChrome: boolean;
   children: ReactNode;
 }
 
@@ -188,11 +189,11 @@ type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
 function SidebarStateBridge({
-  navigationRail,
-  framed,
+  usesDesktopChrome,
   children,
 }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
+  const hasRail = useSidebarNavigationPlacement() === "rail";
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
@@ -210,9 +211,9 @@ function SidebarStateBridge({
     <SidebarProvider
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
       collapsedRailWidth={
-        navigationRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
+        hasRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
       }
-      framed={framed}
+      framed={usesDesktopChrome}
       data-testid="app-layout-root"
       open={open}
       onOpenChange={handleOpenChange}
@@ -258,29 +259,29 @@ function SidebarTriggerOverlay({
         data-testid="app-window-title-bar"
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed inset-x-0 top-0 gap-1",
-          CHROME_ROW_CLASS,
+          "pointer-events-none fixed top-0 left-0",
+          "flex h-(--bb-window-title-bar-height) items-center",
+          MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
+          MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS
             : BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
-          MACOS_WINDOW_DRAG_CLASS,
         )}
       >
-        <SidebarHistoryNavigationControls
-          className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-        />
-        <div className="relative flex items-center">
-          <SidebarTrigger
-            className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-            {...triggerProps}
-          />
-          <AppCommandShortcutHint
-            shortcut={shortcut}
-            className={cn(
-              "absolute left-full ml-1",
-              MACOS_CHROME_CONTROL_AXIS_CLASS,
-            )}
-          />
+        <div
+          className={cn(
+            "pointer-events-auto flex items-center gap-(--bb-title-bar-sidebar-toggle-gap)",
+            MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+          )}
+        >
+          <SidebarHistoryNavigationControls className="gap-0" />
+          <div className="relative flex items-center">
+            <SidebarTrigger {...triggerProps} />
+            <AppCommandShortcutHint
+              shortcut={shortcut}
+              className="absolute left-full ml-1"
+            />
+          </div>
         </div>
       </div>
     );
@@ -300,6 +301,7 @@ function SidebarTriggerOverlay({
             ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
             : ["left-0", BROWSER_SIDEBAR_TRIGGER_INSET_CLASS],
           MACOS_WINDOW_DRAG_CLASS,
+          MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
         )}
       >
         <SidebarTrigger
@@ -487,7 +489,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
     useAppSettingsRouteMemory();
-  const navigationRail = useNavigationRailExperiment();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -532,6 +533,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   useServerDaemonLogsCommand();
   useDataDirectoryCommand();
+  useWindowReloadCommand();
   usePluginSafeModeCommands();
   usePluginCachePruneCommand();
   const archivedSectionId = isArchivedView
@@ -721,8 +723,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { enabled: isThreadView && Boolean(threadId) },
   );
   const currentThreadHasPendingInteraction =
-    getLatestPendingInteraction(currentThreadPendingInteractionsQuery.data) !==
-    null;
+    (currentThreadPendingInteractionsQuery.data?.length ?? 0) > 0;
   const faviconBadge = shouldShowFaviconAttentionDot({
     currentThreadHasPendingInteraction,
     currentThreadId: threadId,
@@ -823,17 +824,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <TooltipProvider delayDuration={300} disableHoverableContent>
-      <ProjectActionsProvider>
-        <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
-          <AppThreadSectionMoveProvider
-            sections={sidebarNavigationQuery.data?.sections ?? []}
-          >
+    <SidebarThreadEntriesProvider navigation={sidebarNavigationQuery.data}>
+      <TooltipProvider delayDuration={300} disableHoverableContent>
+        <ProjectActionsProvider>
+          <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
             <ThreadActionsProvider>
-              <SidebarStateBridge
-                navigationRail={navigationRail}
-                framed={usesDesktopChrome && navigationRail}
-              >
+              <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
                 {backToAppRoutePath !== null && !isSidebarResizing ? (
                   <BackToAppCommandHandler routePath={backToAppRoutePath} />
                 ) : null}
@@ -848,12 +844,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                           ? "skills"
                           : "app"
                   }
-                  navigationRail={navigationRail}
                   onResizeMouseDown={handleResizeMouseDown}
                   isResizing={isSidebarResizing}
-                  appRoutePath={appRoutePath}
                   settingsRoutePath={settingsRoutePath}
-                  toolsBackRoutePath={toolsBackRoutePath}
+                  backToAppRoutePath={backToAppRoutePath}
                 />
                 <SidebarInset>
                   <div
@@ -905,9 +899,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                 onSubmit={quickCreateProject.submitProjectPath}
               />
             </ThreadActionsProvider>
-          </AppThreadSectionMoveProvider>
-        </ThreadTitleMentionResourcesProvider>
-      </ProjectActionsProvider>
-    </TooltipProvider>
+          </ThreadTitleMentionResourcesProvider>
+        </ProjectActionsProvider>
+      </TooltipProvider>
+    </SidebarThreadEntriesProvider>
   );
 }

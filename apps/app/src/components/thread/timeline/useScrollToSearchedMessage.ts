@@ -21,7 +21,7 @@ interface SeqAnchoredRow {
   messageSeq?: number;
   sourceSeqStart: number;
   sourceSeqEnd: number;
-  childRows?: readonly SeqAnchoredRow[];
+  childRows?: readonly SeqAnchoredRow[] | null;
   children?: readonly SeqAnchoredRow[] | null;
 }
 
@@ -72,7 +72,7 @@ function containsSeq(row: SeqAnchoredRow, seq: number): boolean {
 }
 
 function getNestedRows(row: SeqAnchoredRow): readonly SeqAnchoredRow[] | null {
-  if (row.childRows) {
+  if (row.childRows !== undefined) {
     return row.childRows;
   }
   if ("children" in row) {
@@ -431,10 +431,7 @@ export function useScrollToSearchedMessage(
     }
     const selector = `[data-timeline-row-id="${escapeTimelineRowId(targetLeafRow.id)}"]`;
     const renderedTarget = document.querySelector<HTMLElement>(selector);
-    if (
-      renderedTarget === null ||
-      renderedTarget.dataset.timelineWindowedRealized === "false"
-    ) {
+    if (renderedTarget === null) {
       return;
     }
     let frame: number;

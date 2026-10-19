@@ -55,6 +55,16 @@ describe("ChangelogInline", () => {
     );
   });
 
+  it("renders a standalone screenshot with its alternative text", () => {
+    expect(
+      render(
+        "![Navigation rail](https://getbb.app/changelog/0.46.0/navigation-rail.jpg)",
+      ),
+    ).toBe(
+      '<img src="https://getbb.app/changelog/0.46.0/navigation-rail.jpg" alt="Navigation rail" class="release-screenshot" loading="lazy"/>',
+    );
+  });
+
   it("refuses a script URL and keeps it as text", () => {
     expect(render("[click](javascript:alert(1))")).toBe(
       "[click](javascript:alert(1))",

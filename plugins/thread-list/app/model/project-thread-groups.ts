@@ -203,6 +203,7 @@ function buildSortedItems(
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
   respectSections = false,
+  parentEnvironmentId: string | null = null,
 ): ProjectThreadItem[] {
   if (groupEnvironmentThreads && respectSections) {
     const nodesBySectionId = new Map<string | null, ProjectThreadNode[]>();
@@ -228,6 +229,7 @@ function buildSortedItems(
   const { environmentThreadGroups, looseNodes } = bucketEnvironmentThreadGroups(
     nodes,
     compareThreads,
+    parentEnvironmentId,
   );
   const items = [
     ...looseNodes.map(buildThreadItem),
@@ -274,6 +276,8 @@ function buildThreadNode({
     childNodes,
     compareThreads,
     groupEnvironmentThreads,
+    false,
+    thread.environment?.id ?? null,
   );
   return {
     thread,
@@ -443,13 +447,19 @@ export function isSidebarProjectThread(
 function bucketEnvironmentThreadGroups(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
+  parentEnvironmentId: string | null,
 ): BucketEnvironmentThreadGroupsResult {
   const nodesByEnvironmentId = new Map<string, ProjectThreadNode[]>();
   const providerIdByEnvironmentId = new Map<string, string | null>();
   for (const node of nodes) {
     const environment = node.thread.environment;
     const environmentId = environment?.id ?? null;
-    if (environmentId === null || environment?.isWorktree !== true) continue;
+    if (
+      environmentId === null ||
+      environmentId === parentEnvironmentId ||
+      environment?.isWorktree !== true
+    )
+      continue;
     providerIdByEnvironmentId.set(environmentId, environment.providerId);
     const bucket = nodesByEnvironmentId.get(environmentId);
     if (bucket) {

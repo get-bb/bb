@@ -62,7 +62,9 @@ function SidebarHistoryNavButton({
       </TooltipTrigger>
       <TooltipContent className="px-1.5 py-1">
         {shortcut ? (
-          <kbd className="font-sans leading-4 tabular-nums">{shortcut.label}</kbd>
+          <kbd className="font-sans leading-4 tabular-nums">
+            {shortcut.label}
+          </kbd>
         ) : (
           label
         )}
@@ -96,7 +98,12 @@ export function SidebarHistoryNavigationControls({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className={cn("relative flex items-center gap-1", className)}>
+      <div
+        className={cn(
+          "relative flex items-center gap-(--bb-chrome-control-gap)",
+          className,
+        )}
+      >
         <SidebarHistoryShortcutHints />
         <SidebarHistoryNavButton
           command="history.back"

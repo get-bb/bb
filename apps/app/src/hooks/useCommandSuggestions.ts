@@ -1,6 +1,7 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
+import type { ProviderCommand } from "@bb/server-contract";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   filterCommandSuggestions,
@@ -19,6 +20,7 @@ interface UseCommandSuggestionsArgs {
   skillsTriggers: readonly PromptMentionCommandTrigger[];
   activeTrigger: PromptMentionCommandTrigger | null;
   promptActions?: readonly CommandSuggestionPromptAction[];
+  threadProviderCommands?: readonly ProviderCommand[] | null;
   environmentId: string | null;
   hostId?: string | null;
   query: string | null;
@@ -79,6 +81,24 @@ export function promptActionCommandSuggestions({
   );
 }
 
+export function threadProviderCommandSuggestions({
+  commands,
+  query,
+  trigger,
+}: {
+  commands: readonly ProviderCommand[] | null | undefined;
+  query: string;
+  trigger: PromptMentionCommandTrigger | null;
+}): ProviderCommandSuggestion[] {
+  if (trigger !== "/") {
+    return [];
+  }
+  return filterCommandSuggestions(
+    (commands ?? []).map(toProviderCommandSuggestion),
+    query,
+  );
+}
+
 function mergeCommandSuggestions(
   preferred: readonly ProviderCommandSuggestion[],
   fallback: readonly ProviderCommandSuggestion[],
@@ -98,16 +118,91 @@ function mergeCommandSuggestions(
   return suggestions;
 }
 
+export function isCommandSuggestionsActive({
+  projectId,
+  providerId,
+  skillsTriggers,
+  activeTrigger,
+  query,
+}: Pick<
+  UseCommandSuggestionsArgs,
+  "projectId" | "providerId" | "skillsTriggers" | "activeTrigger" | "query"
+>): boolean {
+  return (
+    projectId !== undefined &&
+    providerId !== undefined &&
+    activeTrigger !== null &&
+    skillsTriggers.includes(activeTrigger) &&
+    query !== null
+  );
+}
+
+export function shouldPrefetchCommandCatalog({
+  composerFocused,
+  isPointerCoarse,
+  projectId,
+  providerId,
+  skillsTriggers,
+}: Pick<
+  UseCommandSuggestionsArgs,
+  "composerFocused" | "projectId" | "providerId" | "skillsTriggers"
+> & { isPointerCoarse: boolean }): boolean {
+  return (
+    composerFocused === true &&
+    isPointerCoarse &&
+    projectId !== undefined &&
+    providerId !== undefined &&
+    skillsTriggers.length > 0
+  );
+}
+
+export function prefetchCommandCatalog(
+  queryClient: QueryClient,
+  target: {
+    projectId: string | undefined;
+    providerId: string | undefined;
+    environmentId: string | null;
+    hostId: string | null;
+  },
+): Promise<void> {
+  return queryClient.prefetchQuery({
+    ...projectCommandsQueryOptions(target),
+    retry: false,
+    staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
+  });
+}
+
+export function discoveredCommandSuggestions({
+  commands,
+  trigger,
+  commandScope,
+  query,
+}: {
+  commands: readonly ProviderCommand[];
+  trigger: PromptMentionCommandTrigger | null;
+  commandScope: UseCommandSuggestionsArgs["commandScope"];
+  query: string;
+}): ProviderCommandSuggestion[] {
+  return filterCommandSuggestions(
+    commands
+      .map(toProviderCommandSuggestion)
+      .filter(
+        (suggestion) =>
+          (trigger !== "$" || suggestion.source === "skill") &&
+          (commandScope === "thread" ||
+            suggestion.source !== "command" ||
+            suggestion.origin !== "builtin" ||
+            suggestion.name !== "compact"),
+      ),
+    query,
+  );
+}
+
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,
 ): UseCommandSuggestionsResult {
   const trigger = args.activeTrigger;
-  const isActive =
-    args.projectId !== undefined &&
-    args.providerId !== undefined &&
-    trigger !== null &&
-    args.skillsTriggers.includes(trigger) &&
-    args.query !== null;
+  const isActive = isCommandSuggestionsActive(args);
 
   const trimmedQuery = args.query?.trim() ?? "";
   const promptActionSuggestions = useMemo(
@@ -133,12 +228,10 @@ export function useCommandSuggestions(
   );
   const queryClient = useQueryClient();
   const isPointerCoarse = usePointerCoarse();
-  const shouldPrefetchCatalog =
-    args.composerFocused === true &&
-    isPointerCoarse &&
-    args.projectId !== undefined &&
-    args.providerId !== undefined &&
-    args.skillsTriggers.length > 0;
+  const shouldPrefetchCatalog = shouldPrefetchCommandCatalog({
+    ...args,
+    isPointerCoarse,
+  });
   const prefetchProjectId = args.projectId;
   const prefetchProviderId = args.providerId;
   const prefetchEnvironmentId = args.environmentId;
@@ -147,15 +240,11 @@ export function useCommandSuggestions(
     if (!shouldPrefetchCatalog) {
       return;
     }
-    void queryClient.prefetchQuery({
-      ...projectCommandsQueryOptions({
-        projectId: prefetchProjectId,
-        providerId: prefetchProviderId,
-        environmentId: prefetchEnvironmentId,
-        hostId: prefetchHostId,
-      }),
-      retry: false,
-      staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
+    void prefetchCommandCatalog(queryClient, {
+      projectId: prefetchProjectId,
+      providerId: prefetchProviderId,
+      environmentId: prefetchEnvironmentId,
+      hostId: prefetchHostId,
     });
   }, [
     prefetchEnvironmentId,
@@ -170,24 +259,25 @@ export function useCommandSuggestions(
     if (!isActive) {
       return [];
     }
-    const discoveredSuggestions = filterCommandSuggestions(
-      (commandsQuery.data?.commands ?? [])
-        .map(toProviderCommandSuggestion)
-        .filter(
-          (suggestion) =>
-            (trigger !== "$" || suggestion.source === "skill") &&
-            (args.commandScope === "thread" ||
-              suggestion.source !== "command" ||
-              suggestion.origin !== "builtin" ||
-              suggestion.name !== "compact"),
-        ),
-      trimmedQuery,
-    );
+    const discoveredSuggestions = discoveredCommandSuggestions({
+      commands: commandsQuery.data?.commands ?? [],
+      trigger,
+      commandScope: args.commandScope,
+      query: trimmedQuery,
+    });
     return mergeCommandSuggestions(
-      promptActionSuggestions,
+      mergeCommandSuggestions(
+        promptActionSuggestions,
+        threadProviderCommandSuggestions({
+          commands: args.threadProviderCommands,
+          query: trimmedQuery,
+          trigger,
+        }),
+      ),
       discoveredSuggestions,
     );
   }, [
+    args.threadProviderCommands,
     commandsQuery.data?.commands,
     args.commandScope,
     trigger,

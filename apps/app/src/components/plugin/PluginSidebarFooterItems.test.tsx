@@ -12,7 +12,6 @@ import {
   sidebarFooterCapacityAtom,
   sidebarFooterOrderAtom,
   sidebarFooterHiddenAtom,
-  sidebarFooterSettingsInRailAtom,
 } from "@/components/sidebar/sidebarFooterPreferences";
 import { SidebarFooterCustomize } from "@/components/sidebar/SidebarFooterCustomize";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
@@ -21,7 +20,7 @@ import type {
   ExperimentalSidebarFooterActionContext,
   ExperimentalSidebarFooterDisclosureController,
 } from "@get-bb/plugin-sdk";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarMenu, SidebarProvider } from "@/components/ui/sidebar.js";
@@ -44,6 +43,7 @@ import {
   collectPluginAppRegistrations,
   definePluginApp,
 } from "@/lib/plugin-app-definition";
+import { LocationProbe } from "@/test/location-probe";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -58,16 +58,6 @@ function registrationSet(
     messageDirectives: [],
     ...overrides,
   };
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <output aria-label="Current path">
-      {location.pathname}
-      {location.hash}
-    </output>
-  );
 }
 
 function renderWithProviders(ui: ReactNode, store = createStore()) {
@@ -146,7 +136,7 @@ describe("PluginSidebarFooterItems", () => {
     );
     const store = createStore();
     store.set(sidebarFooterHiddenAtom, ["plugin:unloaded/action"]);
-    store.set(sidebarFooterCapacityAtom, 6);
+    store.set(sidebarFooterCapacityAtom, 5);
     renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
     const footerIcons = () =>
       Array.from(
@@ -154,7 +144,6 @@ describe("PluginSidebarFooterItems", () => {
         (element) => element.dataset.footerIcon,
       );
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/two",
@@ -162,7 +151,7 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/four",
     ]);
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Remove Settings from footer" }),
+      screen.getByRole("button", { name: "Remove Mobile apps from footer" }),
     );
     expect(
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
@@ -177,7 +166,6 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/two",
     ]);
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/three",
@@ -188,7 +176,6 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "Add Action two to footer" }),
     );
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/three",
@@ -199,13 +186,12 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
     ).toHaveProperty("disabled", true);
 
-    act(() => store.set(sidebarFooterCapacityAtom, 7));
-    expect(footerIcons()).toHaveLength(6);
+    act(() => store.set(sidebarFooterCapacityAtom, 6));
+    expect(footerIcons()).toHaveLength(5);
     fireEvent.click(
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
     );
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/three",
@@ -216,25 +202,6 @@ describe("PluginSidebarFooterItems", () => {
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
     ]);
-  });
-
-  it("does not spend a footer slot on Settings while the navigation rail hosts it", () => {
-    const store = createStore();
-    store.set(sidebarFooterCapacityAtom, 1);
-    store.set(sidebarFooterSettingsInRailAtom, true);
-    renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
-    const footerIcons = () =>
-      Array.from(
-        document.querySelectorAll<HTMLElement>("[data-footer-icon]"),
-        (element) => element.dataset.footerIcon,
-      );
-    expect(footerIcons()).toEqual(["builtin:mobile"]);
-    expect(
-      screen.queryByRole("button", { name: "Add Settings to footer" }),
-    ).toBeNull();
-
-    act(() => store.set(sidebarFooterSettingsInRailAtom, false));
-    expect(footerIcons()).toEqual(["builtin:settings"]);
   });
 
   it("hides the whole footer from More and shows it again", async () => {
@@ -269,7 +236,6 @@ describe("PluginSidebarFooterItems", () => {
     );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/action",
       "builtin:report-bug",
@@ -369,7 +335,7 @@ describe("PluginSidebarFooterItems", () => {
     renderWithProviders(<FooterHarness />);
     fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
 
-    expect(screen.getByLabelText("Current path").textContent).toBe(
+    expect(screen.getByTestId("location").textContent).toBe(
       "/settings/plugins/remote",
     );
   });
@@ -397,7 +363,7 @@ describe("PluginSidebarFooterItems", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remote access" }));
 
     expect(onActivate).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText("Current path").textContent).toBe(
+    expect(screen.getByTestId("location").textContent).toBe(
       "/settings/plugins/connect",
     );
   });
@@ -584,7 +550,7 @@ describe("PluginSidebarFooterItems", () => {
       await screen.findByRole("menuitem", { name: "Customize footer" }),
     );
     await waitFor(() => expect(onCustomize).toHaveBeenCalledTimes(1));
-    expect(screen.getByLabelText("Current path").textContent).toBe("/");
+    expect(screen.getByTestId("location").textContent).toBe("/");
     fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
     expect(screen.getByText("Usage detail")).toBeDefined();
     act(() => store.set(sidebarFooterCapacityAtom, 3));
@@ -595,7 +561,7 @@ describe("PluginSidebarFooterItems", () => {
       await screen.findByRole("menuitem", { name: "Customize footer" }),
       { button: 2, pointerType: "mouse" },
     );
-    expect(screen.getByLabelText("Current path").textContent).toBe("/");
+    expect(screen.getByTestId("location").textContent).toBe("/");
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from footer" }),
     );
@@ -719,7 +685,6 @@ describe("PluginSidebarFooterItems", () => {
           activeDisclosureKey={null}
           onDisclosureCommand={vi.fn()}
           builtInActions={[
-            { id: "settings", onActivate: run },
             { id: "mobile", href: "/settings/mobile", onActivate: run },
             { id: "report-bug", onActivate: run },
           ]}
@@ -734,7 +699,6 @@ describe("PluginSidebarFooterItems", () => {
     ).toEqual([
       "builtin:report-bug",
       "plugin:example/action",
-      "builtin:settings",
       "builtin:mobile",
     ]);
     expect(
@@ -755,7 +719,9 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "More footer actions" }),
       { button: 0, ctrlKey: false, pointerType: "mouse" },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Report a bug" }),
+    );
     expect(run).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,15 +1,23 @@
-import type { Thread } from "@bb/domain";
+import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
+import { useThreadActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { usePaneContext } from "./PaneContext";
 
-export function ThreadArchiveCommandHandler({ thread }: { thread: Thread }) {
+const ARCHIVE_KEYS = ["bb--core/archive"];
+
+export function ThreadArchiveCommandHandler({
+  thread,
+}: {
+  thread: PluginThreadActionTarget;
+}) {
   const { isFocused } = usePaneContext();
-  const { requestArchive } = useThreadActions();
+  const [archive] = useThreadActionEntries(thread, { keys: ARCHIVE_KEYS });
 
   useAppCommandHandler("thread.archive", () => {
-    if (!isFocused || thread.archivedAt !== null) return false;
-    requestArchive(thread);
+    if (!isFocused || thread.archivedAt !== null || archive === undefined) {
+      return false;
+    }
+    void archive.action.run();
     return true;
   });
 

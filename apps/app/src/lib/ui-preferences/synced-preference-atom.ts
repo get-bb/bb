@@ -15,10 +15,27 @@ export type SyncedPreferenceAtom<Key extends UiPreferenceKey> = WritableAtom<
   void
 >;
 
+export interface LastKnownPreferenceStore<Value> {
+  read(): Value | null;
+  write(value: Value): void;
+}
+
 export function createSyncedPreferenceAtom<Key extends UiPreferenceKey>(
   key: Key,
+  lastKnown?: LastKnownPreferenceStore<UiPreferenceValue<Key>>,
 ): SyncedPreferenceAtom<Key> {
-  const valueAtom = atom<UiPreferenceValue<Key>>(getUiPreferenceDefault(key));
+  const storedAtom = atom<UiPreferenceValue<Key>>(
+    lastKnown?.read() ?? getUiPreferenceDefault(key),
+  );
+  const valueAtom = lastKnown
+    ? atom(
+        (get) => get(storedAtom),
+        (_get, set, value: UiPreferenceValue<Key>) => {
+          set(storedAtom, value);
+          lastKnown.write(value);
+        },
+      )
+    : storedAtom;
   registerSyncedUiPreference(key, { valueAtom });
   return atom(
     (get) => get(valueAtom),

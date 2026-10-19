@@ -15,7 +15,7 @@ import {
   SidebarControlButton,
   SidebarRowControls,
 } from "../rows/SidebarRowControls.js";
-import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
+import { SIDEBAR_CONTROL_BUTTON_CLASS } from "@/components/ui/sidebar-row-classes";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility.js";
 import { SidebarHeaderMenuContents } from "./SidebarViewItems.js";
 

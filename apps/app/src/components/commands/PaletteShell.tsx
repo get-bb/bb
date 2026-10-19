@@ -4,11 +4,12 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
-import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
-import { TabPill } from "@/components/ui/tab-pill";
+import { PaletteModeChip, type PaletteModeChipProps } from "./PaletteModeChip";
 import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
 
 export const PALETTE_SECTION_LABEL_CLASS =
@@ -23,14 +24,6 @@ export function PaletteShortcut({ children }: { children: string }) {
       {children}
     </kbd>
   );
-}
-
-interface PaletteModeChipProps {
-  clearLabel: string;
-  icon: Parameters<typeof Icon>[0]["name"];
-  label: string;
-  onClear: () => void;
-  hideShortcut?: boolean;
 }
 
 interface PaletteShellProps {
@@ -66,6 +59,7 @@ export function PaletteShell({
   placeholder,
   value,
 }: PaletteShellProps) {
+  const isCompact = useIsCompactViewport();
   const inputDescriptionId = useId();
   const overflow = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
@@ -95,7 +89,7 @@ export function PaletteShell({
           aria-label={inputLabel}
           autoComplete="off"
           spellCheck={false}
-          className={PALETTE_INPUT_CLASS}
+          className={cn(PALETTE_INPUT_CLASS, isCompact && "text-base")}
           placeholder={placeholder}
           value={value}
           onChange={(event) => onInputChange(event.target.value)}
@@ -115,7 +109,7 @@ export function PaletteShell({
           id={listId}
           role="listbox"
           aria-label={listLabel}
-          className="max-h-[min(24rem,50dvh)] overflow-y-auto p-1"
+          className={`${isCompact ? "h-full" : "max-h-[min(24rem,50dvh)]"} overflow-y-auto p-1`}
           style={{
             WebkitMaskImage: resultsMask,
             maskImage: resultsMask,
@@ -138,39 +132,5 @@ export function PaletteShell({
         </div>
       </div>
     </TooltipProvider>
-  );
-}
-
-function PaletteModeChip({
-  clearLabel,
-  icon,
-  label,
-  onClear,
-  hideShortcut,
-}: PaletteModeChipProps) {
-  return (
-    <span
-      data-palette-mode-chip
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        event.stopPropagation();
-        onClear();
-      }}
-    >
-      <TabPill
-        ariaLabel={`${label} search`}
-        label={label}
-        title={label}
-        isActive
-        onSelect={() => undefined}
-        leadingVisual={<Icon name={icon} aria-hidden />}
-        closeAction={{
-          onClose: onClear,
-          closeLabel: clearLabel,
-          tooltip: hideShortcut ? clearLabel : `${clearLabel} (Esc)`,
-        }}
-      />
-    </span>
   );
 }

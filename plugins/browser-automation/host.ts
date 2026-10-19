@@ -19,18 +19,16 @@ export function createHostEntry(
   timing = { preparePollMs: 20_000, abandonedInstallGraceMs: 15_000 },
 ) {
   const { preparePollMs, abandonedInstallGraceMs } = timing;
-  const sessions = new Map<
-    string,
-    {
-      runtime: Promise<RuntimeSession>;
-      abort: AbortController;
-      lease: ExperimentalHostWorkerLease;
-      expiresAt: number;
-      idleTimeoutMs: number;
-      lastUsed: number;
-      active: number;
-    }
-  >();
+  interface Session {
+    runtime: Promise<RuntimeSession>;
+    abort: AbortController;
+    lease: ExperimentalHostWorkerLease;
+    expiresAt: number;
+    idleTimeoutMs: number;
+    lastUsed: number;
+    active: number;
+  }
+  const sessions = new Map<string, Session>();
   let resolved: ResolvedRuntime | null = null;
   interface RuntimePreparation {
     promise: Promise<ResolvedRuntime>;
@@ -107,17 +105,73 @@ export function createHostEntry(
     context.signal.addEventListener("abort", detach, { once: true });
     return { promise: current.promise, detach };
   }
-  async function close(sessionId: string) {
-    const session = sessions.get(sessionId);
-    if (!session) return;
-    sessions.delete(sessionId);
+  const closes = new Map<
+    string,
+    { outcome: Promise<void>; session: Session | null; failed: boolean }
+  >();
+  async function release(session: Session) {
     session.abort.abort();
     try {
-      await (await session.runtime).close();
-    } catch {
+      const runtime = await session.runtime.catch(() => null);
+      await runtime?.close();
     } finally {
       await session.lease.dispose();
     }
+  }
+  function close(sessionId: string): Promise<void> {
+    const existing = closes.get(sessionId);
+    if (existing && !existing.failed) return existing.outcome;
+    const session = existing
+      ? existing.session
+      : (sessions.get(sessionId) ?? null);
+    sessions.delete(sessionId);
+    const entry = {
+      outcome: session ? release(session) : Promise.resolve(),
+      session,
+      failed: false,
+    };
+    entry.outcome.catch(() => {
+      entry.failed = true;
+    });
+    closes.delete(sessionId);
+    closes.set(sessionId, entry);
+    if (closes.size > 1024) closes.delete(closes.keys().next().value!);
+    return entry.outcome;
+  }
+  async function available(sessionId: string) {
+    const session = sessions.get(sessionId);
+    if (
+      !session ||
+      Date.now() >= session.expiresAt ||
+      (session.active === 0 &&
+        Date.now() - session.lastUsed >= session.idleTimeoutMs)
+    ) {
+      if (session) await close(sessionId);
+      throw new Error(
+        "Session stopped, expired, or worker restarted; open a new session",
+      );
+    }
+    return session;
+  }
+  async function start(
+    context: ExperimentalHostRpcContext,
+    signal: AbortSignal,
+    connectionUrl: string | undefined,
+  ) {
+    const attached = await attachRuntime(context);
+    let runtime: ResolvedRuntime;
+    try {
+      runtime = await attached.promise;
+    } finally {
+      attached.detach();
+    }
+    signal.throwIfAborted();
+    return factory({
+      ...context.experimental_paths,
+      runtime,
+      connectionUrl,
+      signal,
+    });
   }
   const timer = setInterval(() => {
     for (const [id, session] of sessions) {
@@ -161,30 +215,22 @@ export function createHostEntry(
       },
       async open(input, context) {
         context.signal.throwIfAborted();
+        if (Date.now() >= input.expiresAt)
+          throw new Error("Session expired; open a new session");
         if (sessions.has(input.sessionId))
           throw new Error("Session already exists");
+        if (closes.has(input.sessionId))
+          throw new Error("Session already closed");
         if (sessions.size >= 32)
           throw new Error("Host browser session limit reached");
-        const attached = await attachRuntime(context);
-        let runtime: ResolvedRuntime;
-        try {
-          runtime = await attached.promise;
-        } finally {
-          attached.detach();
-        }
         const abort = new AbortController();
         const signal = AbortSignal.any([
           context.signal,
           context.lifecycle.signal,
           abort.signal,
         ]);
-        const session = {
-          runtime: factory({
-            ...context.experimental_paths,
-            runtime,
-            connectionUrl: input.connectionUrl,
-            signal,
-          }),
+        const session: Session = {
+          runtime: start(context, signal, input.connectionUrl),
           abort,
           lease: context.experimental_retainWorker(),
           expiresAt: input.expiresAt,
@@ -198,18 +244,15 @@ export function createHostEntry(
           signal.throwIfAborted();
           session.active = 0;
         } catch (error) {
-          await close(input.sessionId);
+          await close(input.sessionId).catch(() => {});
           throw error;
         }
         return null;
       },
       async run(input, context) {
-        const session = sessions.get(input.sessionId);
-        if (!session)
-          throw new Error(
-            "Session stopped, expired, or worker restarted; open a new session",
-          );
+        const session = await available(input.sessionId);
         session.active++;
+        session.lastUsed = Date.now();
         try {
           const runtime = await session.runtime;
           const result = await runtime.run(
@@ -221,10 +264,11 @@ export function createHostEntry(
               session.abort.signal,
             ]),
           );
-          if (result.exitCode === 124) await close(input.sessionId);
+          if (result.exitCode === 124)
+            await close(input.sessionId).catch(() => {});
           return result;
         } catch (error) {
-          await close(input.sessionId);
+          await close(input.sessionId).catch(() => {});
           throw error;
         } finally {
           session.active--;
@@ -232,11 +276,7 @@ export function createHostEntry(
         }
       },
       async preview(input, context) {
-        const session = sessions.get(input.sessionId);
-        if (!session)
-          throw new Error(
-            "Session stopped, expired, or worker restarted; open a new session",
-          );
+        const session = await available(input.sessionId);
         const runtime = await session.runtime;
         if (!runtime.preview)
           throw new Error(
@@ -263,7 +303,7 @@ export function createHostEntry(
     async dispose() {
       clearInterval(timer);
       job?.abort.abort();
-      await Promise.all([...sessions.keys()].map(close));
+      await Promise.allSettled([...sessions.keys()].map(close));
     },
   });
 }

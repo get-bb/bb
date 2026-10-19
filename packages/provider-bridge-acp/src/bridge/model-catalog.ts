@@ -1,4 +1,4 @@
-import { reasoningLevelValues } from "@bb/domain";
+import { compareReasoningLevels } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
@@ -18,6 +18,18 @@ export const ACP_NATIVE_REASONING_EFFORTS: AvailableModel["supportedReasoningEff
 export interface AcpNativeReasoningSupport {
   supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"];
   defaultReasoningEffort: ReasoningLevel;
+}
+
+export interface AcpNativeModelSupport extends AcpNativeReasoningSupport {
+  supportedServiceTiers: NonNullable<AvailableModel["supportedServiceTiers"]>;
+}
+
+export function findAcpFastConfigOption(
+  configOptions: readonly AcpConfigOption[] | undefined,
+): AcpConfigOption | undefined {
+  return (configOptions ?? []).find(
+    (option) => option.id === "fast" && option.type === "select",
+  );
 }
 
 interface AgentModelVariant extends RawAgentModel {
@@ -177,10 +189,8 @@ export function buildAcpNativeReasoningSupport(
       description: option.name ?? option.value,
     });
   }
-  supportedReasoningEfforts.sort(
-    (a, b) =>
-      reasoningLevelValues.indexOf(a.reasoningEffort) -
-      reasoningLevelValues.indexOf(b.reasoningEffort),
+  supportedReasoningEfforts.sort((a, b) =>
+    compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
   );
   if (supportedReasoningEfforts.length === 0) {
     return {
@@ -206,7 +216,7 @@ export function buildAcpNativeReasoningSupport(
 
 export function buildModelCatalogFromConfigOptions(
   modelOption: AcpConfigOption | undefined,
-  reasoningByModel?: ReadonlyMap<string, AcpNativeReasoningSupport>,
+  supportByModel?: ReadonlyMap<string, AcpNativeModelSupport>,
 ): AvailableModel[] {
   const options = modelOption?.options ?? [];
   if (options.length === 0) {
@@ -216,7 +226,7 @@ export function buildModelCatalogFromConfigOptions(
   const models = options.map((option, index): AvailableModel => {
     const isDefault =
       currentValue !== undefined ? option.value === currentValue : index === 0;
-    const reasoning = reasoningByModel?.get(option.value) ?? {
+    const reasoning = supportByModel?.get(option.value) ?? {
       supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
       defaultReasoningEffort: "medium" as ReasoningLevel,
     };
@@ -227,6 +237,8 @@ export function buildModelCatalogFromConfigOptions(
       description: "",
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
       defaultReasoningEffort: reasoning.defaultReasoningEffort,
+      supportedServiceTiers:
+        supportByModel?.get(option.value)?.supportedServiceTiers ?? [],
       isDefault,
     };
   });
@@ -257,6 +269,7 @@ export function buildModelCatalogFromSessionModels(
       description: model.description ?? "",
       supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
       defaultReasoningEffort: "medium",
+      supportedServiceTiers: [],
       isDefault,
     };
   });
@@ -408,8 +421,7 @@ export function buildAgentModelCatalog(
     const defaultVariant = defaultEntry.member;
 
     const levelsInLadderOrder = [...byLevel.keys()].sort(
-      (a, b) =>
-        reasoningLevelValues.indexOf(a) - reasoningLevelValues.indexOf(b),
+      compareReasoningLevels,
     );
     const nameByLevel = new Map<ReasoningLevel, string>();
     for (const { member, level } of leveled) {

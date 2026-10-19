@@ -125,6 +125,14 @@
   color: var(--heading-sub);
 }
 
+.release-body .release-screenshot {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 20px;
+  border-radius: 12px;
+}
+
 .release-body h3 + p,
 .release-body ul + p {
   margin-top: 12px;

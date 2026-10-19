@@ -6,15 +6,14 @@ import type {
   ExperimentalSidebarNavigationState,
   PluginSidebarSplitPane,
 } from "@get-bb/plugin-sdk";
-import {
-  useSidebarNavigationModel,
-  useSidebarNavigationRowContent,
-} from "@/components/sidebar/SidebarNavigationModel";
+import { useOptionalSidebarNavigationModel } from "@/components/sidebar/SidebarNavigationModel";
+import { getSidebarNavigationRowContent } from "@/components/sidebar/sidebarNavigationItems";
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
 
 const NOOP_ACTIONS: ExperimentalSidebarNavigationActions = {
   activate() {},
+  goHome() {},
   setVisible() {},
   setOrder() {},
   openCustomize() {},
@@ -25,6 +24,7 @@ const NOOP_ACTIONS: ExperimentalSidebarNavigationActions = {
 const EMPTY_STATE: ExperimentalSidebarNavigationState = {
   items: [],
   activeItemId: null,
+  isHomeActive: false,
   isShortcutModifierHeld: false,
   actions: NOOP_ACTIONS,
 };
@@ -36,6 +36,9 @@ function guardActions(
   return {
     activate: (itemId, options) => {
       if (isMounted()) actions.activate(itemId, options);
+    },
+    goHome: () => {
+      if (isMounted()) actions.goHome();
     },
     setVisible: (itemId, isVisible) => {
       if (isMounted()) actions.setVisible(itemId, isVisible);
@@ -55,7 +58,7 @@ function guardActions(
 }
 
 export function useSidebarNavigation(): ExperimentalSidebarNavigationState {
-  const state = useSidebarNavigationModel()?.state ?? EMPTY_STATE;
+  const state = useOptionalSidebarNavigationModel()?.state ?? EMPTY_STATE;
   const mountedRef = useRef(false);
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -71,10 +74,17 @@ export function useSidebarNavigation(): ExperimentalSidebarNavigationState {
     () => ({
       items: state.items,
       activeItemId: state.activeItemId,
+      isHomeActive: state.isHomeActive,
       isShortcutModifierHeld: state.isShortcutModifierHeld,
       actions,
     }),
-    [actions, state.activeItemId, state.isShortcutModifierHeld, state.items],
+    [
+      actions,
+      state.activeItemId,
+      state.isHomeActive,
+      state.isShortcutModifierHeld,
+      state.items,
+    ],
   );
 }
 
@@ -84,8 +94,12 @@ export function useSidebarNavigationSplit(
   itemId: string,
   splitOptions?: ExperimentalSidebarNavigationSplitOptions,
 ): ExperimentalSidebarNavigationSplit {
-  const model = useSidebarNavigationModel();
-  const target = useSidebarNavigationRowContent(itemId);
+  const model = useOptionalSidebarNavigationModel();
+  const row = model?.rowsById.get(itemId);
+  const target = useMemo(() => {
+    const content = row ? getSidebarNavigationRowContent(row) : null;
+    return row && content ? { content, label: row.label } : null;
+  }, [row]);
   const enabled = target !== null && (model?.splitEnabled ?? false);
   const onNavigate = model?.onNavigate;
   const activation = splitOptions?.activation ?? "sidebar";

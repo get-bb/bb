@@ -6,6 +6,7 @@ import {
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
+import { useSidebarNavigationPlacement } from "./sidebarNavigationProvider";
 
 export const sidebarFooterOrderAtom = createSyncedPreferenceAtom(
   "sidebar.footerOrder",
@@ -15,7 +16,6 @@ export const sidebarFooterHiddenAtom = createSyncedPreferenceAtom(
 );
 export const SIDEBAR_FOOTER_MORE_ID = "sidebar-footer-more";
 export const sidebarFooterCapacityAtom = atom<number | null>(null);
-export const sidebarFooterSettingsInRailAtom = atom(false);
 
 export function useMeasureSidebarFooterCapacity(
   rowRef: RefObject<HTMLElement | null>,
@@ -49,6 +49,14 @@ export type FooterItem = { key: string; label: string; icon: string } & (
   | { kind: "builtin"; id: BuiltinFooterId }
   | { kind: "plugin"; slot: PluginSidebarFooterItemSlot }
 );
+const SETTINGS_FOOTER_ITEM: FooterItem = {
+  kind: "builtin",
+  id: "settings",
+  key: "builtin:settings",
+  label: "Settings",
+  icon: "Settings",
+};
+
 export function footerPreferenceKey(item: {
   pluginId: string;
   id: string;
@@ -61,15 +69,9 @@ export function useSidebarFooterPreferences() {
   const [order, setOrder] = useAtom(sidebarFooterOrderAtom);
   const [hidden, setHidden] = useAtom(sidebarFooterHiddenAtom);
   const capacity = useAtomValue(sidebarFooterCapacityAtom);
-  const settingsInRail = useAtomValue(sidebarFooterSettingsInRailAtom);
+  const hasRail = useSidebarNavigationPlacement() === "rail";
   const items: FooterItem[] = [
-    {
-      kind: "builtin",
-      id: "settings",
-      key: "builtin:settings",
-      label: "Settings",
-      icon: "Settings",
-    },
+    ...(hasRail ? [] : [SETTINGS_FOOTER_ITEM]),
     {
       kind: "builtin",
       id: "mobile",
@@ -92,14 +94,11 @@ export function useSidebarFooterPreferences() {
       icon: "Bug",
     },
   ];
-  const { ordered: arranged, normalizedOrder } = arrangeByStoredOrder({
+  const { ordered, normalizedOrder } = arrangeByStoredOrder({
     items,
     storedOrder: order,
     getId: (item) => item.key,
   });
-  const ordered = settingsInRail
-    ? arranged.filter((item) => item.key !== "builtin:settings")
-    : arranged;
   const footer = ordered
     .filter((item) => !hidden.includes(item.key))
     .slice(0, capacity ?? undefined);

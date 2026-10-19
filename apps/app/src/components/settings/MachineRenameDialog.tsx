@@ -1,16 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type RefObject } from "react";
 import type { Host } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import {
-  Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
-import { useRenameDialogAutoFocus } from "@/components/dialogs/useRenameDialogAutoFocus.js";
+import { RenameDialog } from "@bb/shared-ui/rename-dialog";
 
 const HOST_NAME_MAX_LENGTH = 100;
 
@@ -29,11 +27,10 @@ export function MachineRenameDialog({
   onOpenChange,
   onRename,
 }: MachineRenameDialogProps) {
-  const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
-        {target ? (
+    <RenameDialog open={target !== null} onOpenChange={onOpenChange}>
+      {(inputRef) =>
+        target ? (
           <MachineRenameDialogContent
             key={target.id}
             target={target}
@@ -42,9 +39,9 @@ export function MachineRenameDialog({
             onRename={onRename}
             inputRef={inputRef}
           />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+        ) : null
+      }
+    </RenameDialog>
   );
 }
 
@@ -59,7 +56,7 @@ function MachineRenameDialogContent({
   pending: boolean;
   errorMessage: string | null;
   onRename: (host: Host, name: string) => void;
-  inputRef: ReturnType<typeof useRenameDialogAutoFocus>["inputRef"];
+  inputRef: RefObject<HTMLInputElement | null>;
 }) {
   const [nextName, setNextName] = useState(target.name);
 

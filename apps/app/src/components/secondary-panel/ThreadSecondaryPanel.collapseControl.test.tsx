@@ -750,7 +750,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
     expect(
       screen.getByRole("button", { name: "Show diff panel" }),
     ).toBeTruthy();
-    expect(screen.getByText("Checking Git support…")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Loading diff" })).toBeTruthy();
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 });

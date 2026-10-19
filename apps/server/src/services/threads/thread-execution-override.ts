@@ -106,7 +106,11 @@ export function resolveThreadExecutionOverrideUpdate(
     supportedReasoning.length > 0 &&
     !supportedReasoning.includes(nextReasoning)
   ) {
-    nextReasoning = reconcileReasoningLevel(nextReasoning, supportedReasoning);
+    nextReasoning = reconcileReasoningLevel(
+      nextReasoning,
+      supportedReasoning,
+      effectiveModelEntry?.defaultReasoningEffort,
+    );
   }
 
   return { modelOverride: nextModel, reasoningLevelOverride: nextReasoning };

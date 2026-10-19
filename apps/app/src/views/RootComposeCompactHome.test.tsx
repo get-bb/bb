@@ -2,15 +2,8 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  getCompactHomeScrollViewportTop,
-  RootComposeCompactHome,
-} from "./RootComposeCompactHome";
+import { RootComposeCompactHome } from "./RootComposeCompactHome";
 import { COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY } from "@/components/promptbox/ComposerEditorSlot";
-import {
-  MOBILE_RECENT_LABEL_HEIGHT_PX,
-  MOBILE_RECENT_ROW_HEIGHT_PX,
-} from "./RootComposeMobileRecents";
 
 afterEach(() => {
   cleanup();
@@ -41,18 +34,6 @@ describe("RootComposeCompactHome", () => {
     expect(viewport.contains(screen.getByTestId("recents"))).toBe(true);
   });
 
-  it("pins the scroll viewport so 5.5 rows show once the label sticks", () => {
-    const scrolledBandPx =
-      5.5 * MOBILE_RECENT_ROW_HEIGHT_PX + MOBILE_RECENT_LABEL_HEIGHT_PX;
-
-    expect(
-      getCompactHomeScrollViewportTop({
-        regionHeight: 852,
-        composerHeight: 188,
-      }),
-    ).toBe(852 - 188 - scrolledBandPx);
-  });
-
   it("writes measured geometry directly before the compact home paints", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
@@ -66,11 +47,13 @@ describe("RootComposeCompactHome", () => {
 
     renderCompactHome();
 
-    const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
+    const leadingSpacer = screen.getByTestId(
+      "root-compose-compact-leading-spacer",
+    );
     const bottomSpacer = screen.getByTestId(
       "root-compose-compact-bottom-spacer",
     );
-    expect(viewport.style.top).toBe("310px");
+    expect(leadingSpacer.style.height).toBe("314px");
     expect(bottomSpacer.style.height).toBe("188px");
   });
 
@@ -102,20 +85,15 @@ describe("RootComposeCompactHome", () => {
     ).toBe(`${480 - 56 - (682 - 540)}px`);
   });
 
-  it("never lifts the scroll viewport above the app chrome row", () => {
-    expect(
-      getCompactHomeScrollViewportTop({
-        regionHeight: 420,
-        composerHeight: 188,
-      }),
-    ).toBe(56);
-  });
-
-  it("offsets the resting list by one row so 4.5 show before scrolling", () => {
+  it("starts the scroll viewport at the app chrome row so rows scroll up through the band", () => {
     renderCompactHome();
 
-    const offset = screen.getByTestId("root-compose-compact-recents-offset");
-    expect(offset.style.height).toBe(`${MOBILE_RECENT_ROW_HEIGHT_PX}px`);
+    const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
+    const content = screen.getByTestId("root-compose-compact-scroll-content");
+    expect(viewport.style.top).toBe("56px");
+    expect(content.firstElementChild).toBe(
+      screen.getByTestId("root-compose-compact-leading-spacer"),
+    );
   });
 
   it("rests a list that fits on the composer instead of the band top", () => {
@@ -145,17 +123,5 @@ describe("RootComposeCompactHome", () => {
     renderCompactHome();
 
     expect(screen.getByTestId("root-compose-compact-fade").hidden).toBe(false);
-  });
-
-  it("renders a strong fade so rows dissolve into the composer", () => {
-    renderCompactHome();
-
-    const composer = screen.getByTestId("root-compose-compact-composer");
-    const fade = composer.querySelector('[data-overflow-fade="above"]');
-    if (!(fade instanceof HTMLElement)) {
-      throw new Error("Expected an above fade over the composer");
-    }
-    expect(fade.className).toContain("h-24");
-    expect(fade.className).toContain("-top-24");
   });
 });

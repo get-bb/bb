@@ -11,16 +11,36 @@ import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+  MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { RootComposeCompactHome } from "./RootComposeCompactHome";
 import { useOptionalPaneContext } from "./thread-detail/PaneContext";
 
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
-export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
+const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
+
+export function useRootComposePinnedPanelToggleBoxClassName(): string {
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isSidebarFramed = useIsSidebarFramed();
+  return cn(
+    "fixed mr-(--bb-window-frame-lip)",
+    ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
+    usesDesktopChrome && [
+      MACOS_CHROME_CONTROL_AXIS_CLASS,
+      "flex h-7 items-center",
+      MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
+    ],
+    isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
+  );
+}
 
 type RootSecondaryPanelProps = Omit<
   ComponentProps<typeof LazyThreadSecondaryPanel>,
@@ -76,12 +96,14 @@ export function RootComposeSecondaryContent({
   const composerHost = usePluginComposerHost();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const pinnedPanelToggleBoxClassName =
+    useRootComposePinnedPanelToggleBoxClassName();
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
 
   const mainContent = (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden pt-(--bb-window-frame-top)">
       {rendersWindowDragStrip ? (
         <div
           data-testid="root-compose-main-window-drag-strip"
@@ -96,9 +118,8 @@ export function RootComposeSecondaryContent({
             <div
               data-testid="root-compose-drag-strip-toggle-cutout"
               className={cn(
-                "absolute",
-                ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+                pinnedPanelToggleBoxClassName,
                 MACOS_APP_REGION_NO_DRAG_CLASS,
               )}
             />
@@ -126,7 +147,6 @@ export function RootComposeSecondaryContent({
             style={PAGE_SHELL_CONTENT_STYLE}
           >
             {children}
-            {compactScrollContent}
             <PluginHomepageSections />
           </div>
         </div>
@@ -139,6 +159,7 @@ export function RootComposeSecondaryContent({
       <SecondaryPanelLayout
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
+        onSwipeOpen={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
         resetKey="new-thread"
         contentKey="new-thread"
@@ -170,6 +191,7 @@ export function RootComposeSecondaryContent({
             onToggleConversationCollapse={onToggleMainCollapse}
             showNewTabButton
             resizablePanelId={resizablePanelId}
+            isAtWindowTop={paneContext?.isTopRow !== false}
           />
         )}
       />

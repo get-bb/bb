@@ -10,7 +10,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
+import { CompactLongPressMenu } from "@bb/shared-ui/compact-long-press-menu";
 import { PluginComposerPlusMenuEntry } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerSendMenuItems } from "@/components/plugin/composer-slot-hooks";
 import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";

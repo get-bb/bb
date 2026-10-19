@@ -1,3 +1,4 @@
+import { Video } from "./video";
 import {
   useCallback,
   useEffect,
@@ -45,6 +46,7 @@ interface ImageLightboxProps {
   previousDisabled?: boolean;
   nextDisabled?: boolean;
   navigationStatus?: string;
+  mediaType?: "image" | "video";
   imageAlt: string;
   imageSrc: string | null;
   isOpen?: boolean;
@@ -105,6 +107,7 @@ export function ImageLightbox({
   previousDisabled = false,
   nextDisabled = false,
   navigationStatus,
+  mediaType = "image",
   imageAlt,
   imageSrc,
   isOpen,
@@ -137,6 +140,8 @@ export function ImageLightbox({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLVideoElement && event.key !== "Escape")
+        return;
       const action = getImageLightboxKeyAction({
         event,
         hasNavigation,
@@ -204,7 +209,17 @@ export function ImageLightbox({
       <h2 id={titleId} className="sr-only">
         {title}
       </h2>
-      {imageSrc ? (
+      {imageSrc && mediaType === "video" ? (
+        <Video
+          key={imageSrc}
+          src={imageSrc}
+          aria-label={imageAlt}
+          controls
+          autoPlay
+          playsInline
+          className="max-h-[82dvh] max-w-full cursor-auto"
+        />
+      ) : imageSrc ? (
         <img
           src={imageSrc}
           alt={imageAlt}
@@ -264,7 +279,9 @@ export function ImageLightbox({
         size="icon"
         className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] size-11 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
         onClick={onClose}
-        aria-label="Close image preview"
+        aria-label={
+          mediaType === "video" ? "Close video preview" : "Close image preview"
+        }
       >
         <Icon name="X" className="size-5" />
       </Button>

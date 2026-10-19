@@ -21,6 +21,7 @@
       "used": "required",
       "size": "optional",
       "estimated": "required",
+      "cost": "optional",
       "attach": "required",
       "providerTurnId": "optional"
     },
@@ -135,7 +136,8 @@
     },
     "thread.name": {
       "kind": "required",
-      "name": "required"
+      "name": "required",
+      "source": "optional"
     },
     "thread.started": {
       "kind": "required"
@@ -172,6 +174,7 @@
       "total": "required",
       "last": "required",
       "modelContextWindow": "required",
+      "promptCacheTtlMs": "optional",
       "providerTurnId": "optional"
     }
   },
@@ -188,6 +191,7 @@
       "status": "required",
       "taskStatus": "required",
       "skipTranscript": "required",
+      "foreground": "optional",
       "workflowName": "optional",
       "workflow": "optional",
       "usage": "optional",

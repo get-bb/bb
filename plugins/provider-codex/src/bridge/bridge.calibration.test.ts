@@ -105,6 +105,7 @@ const SCRIPT: (ScriptedNotification | ScriptedRequest)[][] = [
         phase: null,
         memoryCitation: null,
         delivery: null,
+        questions: null,
       },
     }),
     APPROVAL_REQUEST,
@@ -246,6 +247,7 @@ const SCRIPT: (ScriptedNotification | ScriptedRequest)[][] = [
         phase: null,
         memoryCitation: null,
         delivery: null,
+        questions: null,
       },
     }),
     codexNotification("item/completed", {
@@ -259,6 +261,7 @@ const SCRIPT: (ScriptedNotification | ScriptedRequest)[][] = [
         phase: null,
         memoryCitation: null,
         delivery: null,
+        questions: null,
       },
     }),
     codexNotification("turn/completed", {

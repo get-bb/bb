@@ -43,6 +43,9 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  PluginThreadMetadataListResponse,
+  ThreadAncestorsListResponse,
+  ThreadDescendantsListResponse,
   ThreadPluginMetadataResponse,
   ThreadSearchResponse,
   ThreadStorageFileListResponse,
@@ -74,6 +77,7 @@ import type {
   ThreadStorageFilesQuery,
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
+  ThreadConversationOutlineQuery,
   TimelineTurnSummaryDetailsQuery,
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
@@ -99,6 +103,12 @@ export interface ThreadListArgs {
   projectId?: string;
   signal?: AbortSignal;
   sourceThreadId?: string;
+  /**
+   * Only threads with these IDs, at most 200 per call. The other filters still
+   * apply, unknown and deleted IDs are left out, and an empty list matches no
+   * threads.
+   */
+  threadIds?: readonly string[];
   unsectioned?: boolean;
 }
 
@@ -171,6 +181,9 @@ export interface ThreadOutputResponse {
 }
 export type ThreadMutationResult = ThreadResponse;
 export type ThreadPluginMetadataResult = ThreadPluginMetadataResponse;
+export type PluginThreadMetadataListResult = PluginThreadMetadataListResponse;
+export type ThreadAncestorsListResult = ThreadAncestorsListResponse;
+export type ThreadDescendantsListResult = ThreadDescendantsListResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
@@ -257,6 +270,21 @@ export interface ThreadPluginMetadataArgs {
   pluginId: string;
   signal?: AbortSignal;
   threadId: string;
+}
+export interface PluginThreadMetadataListArgs {
+  pluginId: string;
+  threadIds: readonly string[];
+  signal?: AbortSignal;
+}
+export interface ThreadAncestorsListArgs {
+  threadIds: readonly string[];
+  signal?: AbortSignal;
+}
+export interface ThreadDescendantsListArgs {
+  threadIds: readonly string[];
+  includeArchived?: boolean;
+  includeHidden?: boolean;
+  signal?: AbortSignal;
 }
 export interface ThreadPluginMetadataUpdateArgs {
   threadId: string;
@@ -358,6 +386,11 @@ export interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
 }
 
 export interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
+  signal?: AbortSignal;
+  threadId: string;
+}
+
+export interface ThreadConversationOutlineArgs extends ThreadConversationOutlineQuery {
   signal?: AbortSignal;
   threadId: string;
 }
@@ -574,7 +607,7 @@ export interface ThreadsArea {
   clearContext(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
-    args: ThreadStatusArgs,
+    args: ThreadConversationOutlineArgs,
   ): Promise<ThreadConversationOutlineResult>;
   count(args?: ThreadCountArgs): Promise<ThreadCountResult>;
   defaultExecutionOptions(
@@ -588,6 +621,35 @@ export interface ThreadsArea {
   getPluginMetadata(
     args: ThreadPluginMetadataArgs,
   ): Promise<ThreadPluginMetadataResult>;
+  /**
+   * `pluginId`'s metadata for each of `threadIds` (1–200 per request) that
+   * has any, as `{ threadId, metadata }` rows; archived and deleted threads
+   * included.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listPluginMetadata(
+    args: PluginThreadMetadataListArgs,
+  ): Promise<PluginThreadMetadataListResult>;
+  /**
+   * Each of `threadIds` (1–200 per request) that exists, with `ancestorIds`
+   * from its parent up to the root (empty for a root thread); archived and
+   * deleted threads included, unknown ids omitted.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listAncestors(
+    args: ThreadAncestorsListArgs,
+  ): Promise<ThreadAncestorsListResult>;
+  /**
+   * Each of `threadIds` (1–200 per request) that exists and is not deleted,
+   * with `descendantIds` for every thread below it, children first (empty
+   * for a leaf). Archived and hidden descendants are omitted unless
+   * `includeArchived` / `includeHidden` is true; threads below them are still
+   * returned. Deleted threads and unknown ids are always omitted.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listDescendants(
+    args: ThreadDescendantsListArgs,
+  ): Promise<ThreadDescendantsListResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -663,6 +725,9 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
     ...(args?.originKind ? { originKind: args.originKind } : {}),
     ...(args?.originPluginId ? { originPluginId: args.originPluginId } : {}),
+    ...(args?.threadIds === undefined
+      ? {}
+      : { threadIds: args.threadIds.join(",") }),
     ...(args?.archived === undefined
       ? {}
       : { archived: args.archived ? "true" : "false" }),
@@ -700,7 +765,9 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
     parentThreadId: args.parentThreadId,
     model: args.model,
     reasoningLevel: args.reasoningLevel,
+    sessionOptions: args.sessionOptions,
     visibility: args.visibility,
+    parentNotifications: args.parentNotifications,
   };
 }
 
@@ -718,6 +785,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     // Present ⇒ the message joins the queue waiting for the clock instead
     // of attempting now; the response reports `delivery: "queued"`.
     sendAt: args.sendAt,
+    compactFirst: args.compactFirst,
   };
 }
 
@@ -807,6 +875,9 @@ function searchQuery(args: ThreadSearchArgs): ThreadSearchQuery {
 
 function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
   return {
+    ...(args.deferContent !== undefined
+      ? { deferContent: args.deferContent }
+      : {}),
     ...(args.includeNestedRows !== undefined
       ? { includeNestedRows: args.includeNestedRows }
       : {}),
@@ -1155,7 +1226,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async conversationOutline(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["conversation-outline"].$get(
-          { param: { id: input.threadId } },
+          {
+            param: { id: input.threadId },
+            query: input.role === undefined ? {} : { role: input.role },
+          },
           ...signalRequestArgs(input.signal),
         ),
       );
@@ -1213,6 +1287,42 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    async experimental_listAncestors(input) {
+      return transport.readJson(
+        transport.api.v1.threads.ancestors.$post(
+          { json: { threadIds: [...input.threadIds] } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_listDescendants(input) {
+      return transport.readJson(
+        transport.api.v1.threads.descendants.$post(
+          {
+            json: {
+              threadIds: [...input.threadIds],
+              ...(input.includeArchived === undefined
+                ? {}
+                : { includeArchived: input.includeArchived }),
+              ...(input.includeHidden === undefined
+                ? {}
+                : { includeHidden: input.includeHidden }),
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_listPluginMetadata(input) {
+      return transport.readJson(
+        transport.api.v1.threads["plugin-metadata"].$post(
+          {
+            json: { pluginId: input.pluginId, threadIds: [...input.threadIds] },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async getPluginMetadata(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["plugin-metadata"].$get(
@@ -1464,6 +1574,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               ...(input.beforeCursor === undefined
                 ? {}
                 : { beforeCursor: input.beforeCursor }),
+              ...(input.deferContent === undefined
+                ? {}
+                : { deferContent: input.deferContent }),
+              ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
             },
           },
           ...signalRequestArgs(input.signal),

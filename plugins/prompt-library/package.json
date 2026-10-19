@@ -28,7 +28,6 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
-    "fzf": "^0.5.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {

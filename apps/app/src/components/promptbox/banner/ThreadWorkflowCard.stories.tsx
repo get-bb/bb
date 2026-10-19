@@ -356,7 +356,7 @@ export function ConcurrentWorkflows() {
     <StoryCard>
       <StoryRow
         label="two running"
-        hint="two or more running workflows auto-collapse into a stack: the newest card in front with a +N count and peeking edges; tapping it fans out into individual cards with an up chevron below them to restack"
+        hint="two or more running workflows auto-collapse into a stack: the newest card in front with a total count and peeking edges; tapping it fans out into individual cards with an up chevron below them to restack"
       >
         <ResponsiveStage>
           <div className="flex flex-col gap-2">

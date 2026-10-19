@@ -727,9 +727,23 @@ export function updateCachedThreadListStatusState(
       return list;
     }
     return list.map((thread) =>
-      thread.id === threadId ? { ...thread, ...statusChange } : thread,
+      thread.id === threadId && statusChange.updatedAt >= thread.updatedAt
+        ? { ...thread, ...statusChange }
+        : thread,
     );
   });
+}
+
+export function updateCachedThreadStatusState(
+  queryClient: QueryClient,
+  threadId: string,
+  { status, runtime, latestAttentionAt, updatedAt }: ThreadStatusChangeMetadata,
+): void {
+  updateCachedThread(queryClient, threadId, (thread) =>
+    updatedAt < thread.updatedAt
+      ? thread
+      : { ...thread, status, runtime, latestAttentionAt, updatedAt },
+  );
 }
 
 export function getFetchingThreadListQueryKeys(

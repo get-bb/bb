@@ -1,7 +1,4 @@
-import {
-  BUNDLED_THREAD_LIST_PROVIDER,
-  threadListProviderAtom,
-} from "@/components/sidebar/threadListProvider";
+import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { ReplacementProviderSetting } from "./ReplacementProviderSetting";
 
@@ -9,10 +6,9 @@ export function SidebarThreadListSetting() {
   const { threadLists } = usePluginSlots();
   return (
     <ReplacementProviderSetting
-      label="Sidebar"
+      label="Sidebar thread list"
       triggerAriaLabel="Sidebar thread list"
-      description="Choose the plugin that renders your sidebar thread list."
-      bundledProvider={BUNDLED_THREAD_LIST_PROVIDER}
+      description="Which plugin draws your threads in the sidebar."
       preferenceAtom={threadListProviderAtom}
       slots={threadLists}
     />

@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGit } from "@bb/host-workspace";
+import { initRepo } from "@bb/test-helpers";
 import { listWorkspacePaths } from "./file-list.js";
 import { listHostPaths } from "./host-files.js";
 
@@ -18,10 +19,6 @@ async function createRoot() {
 async function write(root: string, file: string, content = "fixture") {
   await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
   await fs.writeFile(path.join(root, file), content);
-}
-
-async function initRepo(root: string) {
-  await runGit(["init", "-b", "main"], { cwd: root });
 }
 
 function listingArgs(root: string) {
@@ -53,7 +50,7 @@ describe("workspace path discovery", () => {
   it("includes tracked and non-ignored untracked files while pruning Git-ignored trees", async () => {
     const fileNameBreak = process.platform === "win32" ? " " : "\n";
     const root = await createRoot();
-    await initRepo(root);
+    await initRepo(root, { commit: false });
     await write(root, ".github/workflows/ci.yml");
     await write(root, ".generated/tracked.txt");
     await runGit(["add", "."], { cwd: root });
@@ -95,7 +92,7 @@ describe("workspace path discovery", () => {
 
   it("resolves ignore rules relative to a subdirectory and a linked worktree", async () => {
     const root = await createRoot();
-    await initRepo(root);
+    await initRepo(root, { commit: false });
     await write(root, ".gitignore", "/.sandboxes/\n*.log\n");
     await write(root, "src/README.md");
     await runGit(["add", "."], { cwd: root });
@@ -144,7 +141,7 @@ describe("workspace path discovery", () => {
         "src/worktrees/index.ts",
       ],
     );
-    await initRepo(root);
+    await initRepo(root, { commit: false });
     expect(await paths(root)).not.toContain("output/result.txt");
     expect(
       (await listWorkspacePaths({ ...args, respectGitIgnore: false })).map(
@@ -160,7 +157,7 @@ describe("workspace path discovery", () => {
 
   it("shares pending discovery but refreshes completed results and ignore rules", async () => {
     const root = await createRoot();
-    await initRepo(root);
+    await initRepo(root, { commit: false });
     await write(root, "first.txt");
     const args = listingArgs(root);
     const first = listWorkspacePaths(args);
@@ -179,6 +176,45 @@ describe("workspace path discovery", () => {
     );
   });
 
+  it("reuses a slow listing and refreshes it in the background", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const root = await createRoot();
+      await write(root, "first.txt");
+      const slowListing = paths(root);
+      vi.setSystemTime(Date.now() + 1_000);
+      expect(await slowListing).toEqual(["first.txt"]);
+
+      await write(root, "second.txt");
+      expect(await paths(root)).toEqual(["first.txt"]);
+
+      vi.setSystemTime(Date.now() + 2_000);
+      expect(await paths(root)).toEqual(["first.txt"]);
+      await vi.waitFor(async () => {
+        expect(await paths(root)).toEqual(["first.txt", "second.txt"]);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("walks again once a cached slow listing expires", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const root = await createRoot();
+      await write(root, "first.txt");
+      const slowListing = paths(root);
+      vi.setSystemTime(Date.now() + 1_000);
+      expect(await slowListing).toEqual(["first.txt"]);
+
+      await write(root, "second.txt");
+      vi.setSystemTime(Date.now() + 30_000);
+      expect(await paths(root)).toEqual(["first.txt", "second.txt"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not retain failed discovery", async () => {
     const root = path.join(await createRoot(), "missing");
     await expect(listWorkspacePaths(listingArgs(root))).rejects.toMatchObject({
@@ -190,7 +226,7 @@ describe("workspace path discovery", () => {
 
   it("ranks concurrent queries independently over the shared listing", async () => {
     const root = await createRoot();
-    await initRepo(root);
+    await initRepo(root, { commit: false });
     await write(root, "alpha.md");
     await write(root, "beta.md");
     const command = {
@@ -203,9 +239,10 @@ describe("workspace path discovery", () => {
       excludeNames: [],
       limit: 1,
     };
+    const signal = new AbortController().signal;
     const [alpha, beta] = await Promise.all([
-      listHostPaths({ ...command, query: "alpha" }),
-      listHostPaths({ ...command, query: "beta" }),
+      listHostPaths({ ...command, query: "alpha" }, signal),
+      listHostPaths({ ...command, query: "beta" }, signal),
     ]);
     expect(alpha.paths.map((entry) => entry.path)).toEqual(["alpha.md"]);
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);

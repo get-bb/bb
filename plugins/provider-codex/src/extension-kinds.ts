@@ -5,6 +5,8 @@ export const CODEX_PLUGIN_ID = "provider-codex";
 export const CODEX_GOAL_EXTENSION_KIND = `${CODEX_PLUGIN_ID}/goal` as const;
 export const CODEX_MACOS_PERMISSION_EXTENSION_KIND =
   `${CODEX_PLUGIN_ID}/macos-permission` as const;
+export const CODEX_ASYNC_QUESTION_EXTENSION_KIND =
+  `${CODEX_PLUGIN_ID}/async-question` as const;
 
 export const codexGoalStatusSchema = z.enum([
   "active",
@@ -50,9 +52,24 @@ export type CodexMacOsPermissionItem = z.infer<
   typeof codexMacOsPermissionItemSchema
 >;
 
+export const codexAsyncQuestionSchema = z.object({
+  title: z.string().trim().min(1),
+  options: z.array(z.string().trim().min(1)).min(1).nullable().default(null),
+});
+export type CodexAsyncQuestion = z.infer<typeof codexAsyncQuestionSchema>;
+
+export const codexAsyncQuestionStateSchema = z.object({
+  itemId: z.string().min(1),
+  questions: z.array(codexAsyncQuestionSchema).min(1),
+});
+export type CodexAsyncQuestionState = z.infer<
+  typeof codexAsyncQuestionStateSchema
+>;
+
 export const codexExtensionKinds = {
   goal: { state: codexGoalStateSchema },
   "macos-permission": { item: codexMacOsPermissionItemSchema },
+  "async-question": { state: codexAsyncQuestionStateSchema },
 } as const;
 
 export function summarizeCodexMacOsPermissions(

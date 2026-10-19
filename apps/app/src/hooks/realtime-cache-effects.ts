@@ -23,6 +23,7 @@ import {
   subscribeToDocumentVisibility,
 } from "@/lib/document-visibility";
 import {
+  applyRealtimeThreadPatches,
   collectCachedThreadIdsForEnvironment,
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
@@ -501,6 +502,14 @@ export function createRealtimeCacheEffects({
       const documentVisible = visibility.isDocumentVisible();
       switch (message.entity) {
         case "thread": {
+          if (message.id) {
+            applyRealtimeThreadPatches(message.changes, {
+              hasPendingInteraction: message.metadata?.hasPendingInteraction,
+              queryClient,
+              statusChange: message.metadata?.statusChange,
+              threadId: message.id,
+            });
+          }
           if (!documentVisible) {
             recordThreadChange(threadChangeState, message);
             hasDeferredThreadChanges = true;

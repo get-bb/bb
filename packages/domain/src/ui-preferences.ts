@@ -21,8 +21,6 @@ const sidebarChronologicalSortSchema = z.enum([
 
 const sidebarThreadGroupingSchema = z.union([z.literal("auto"), z.boolean()]);
 
-const collapsibleSidebarSectionIdSchema = z.enum(["pinned", "threads"]);
-
 const uiPreferenceStringSchema = z
   .string()
   .min(1)
@@ -44,18 +42,11 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
   "sidebar.hiddenGroups",
-  "sidebar.collapsedSections",
-  "sidebar.collapsedProjects",
-  "sidebar.collapsedThreads",
-  "sidebar.collapsedEnvironments",
-  "sidebar.collapsedThreadSections",
-  "sidebar.collapsedMachines",
   "sidebar.footerOrder",
   "sidebar.hiddenFooterItems",
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
-  "sidebar.headerProvider",
   "sidebar.threadListProvider",
   "infoPanel.collapsedSections",
 ] as const;
@@ -121,38 +112,6 @@ export const uiPreferenceDefinitions = {
     [],
     "Project, custom section, and machine groups moved into More, using project:<id>, section:<id>, or machine:<id>. Setting this list replaces the hidden groups across all sidebar organizations; reset shows every group.",
   ),
-  "sidebar.collapsedSections": defineUiPreference(
-    z
-      .array(collapsibleSidebarSectionIdSchema)
-      .max(UI_PREFERENCE_LIST_MAX_LENGTH),
-    [],
-    "Built-in sidebar sections that are collapsed.",
-  ),
-  "sidebar.collapsedProjects": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Project ids whose sidebar rows are collapsed.",
-  ),
-  "sidebar.collapsedThreads": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Thread ids whose child threads are collapsed in the sidebar.",
-  ),
-  "sidebar.collapsedEnvironments": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Environment ids whose sidebar rows are collapsed.",
-  ),
-  "sidebar.collapsedThreadSections": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Thread section ids that are collapsed in the sidebar.",
-  ),
-  "sidebar.collapsedMachines": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Machine ids whose sidebar rows are collapsed.",
-  ),
   "sidebar.footerOrder": defineUiPreference(
     uiPreferenceStringListSchema,
     [],
@@ -166,26 +125,21 @@ export const uiPreferenceDefinitions = {
   "sidebar.pluginPanelOrder": defineUiPreference(
     uiPreferenceStringListSchema,
     [],
-    "Order of navigation entries in the sidebar navigation strip.",
+    "Order of sidebar navigation destinations.",
   ),
   "sidebar.visiblePluginPanels": defineUiPreference(
     uiPreferenceStringListSchema.nullable(),
     null,
-    "Navigation entries shown in the sidebar navigation strip; null shows every entry.",
+    "Sidebar navigation destinations shown; null shows every destination.",
   ),
   "sidebar.navigationProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>
-      value === "__builtin__" ? "navigation/navigation" : value,
+      value === "__builtin__" || value === "navigation/navigation"
+        ? "__automatic__"
+        : value,
     ),
     "__automatic__",
-    "Plugin that renders the sidebar navigation, or __automatic__ for the first installed navigation plugin other than the bundled navigation/navigation, falling back to it. Legacy __builtin__ resolves to navigation/navigation.",
-  ),
-  "sidebar.headerProvider": defineUiPreference(
-    uiPreferenceStringSchema.transform((value) =>
-      value === "__automatic__" ? "__builtin__" : value,
-    ),
-    "__builtin__",
-    "Plugin that renders controls beside the sidebar toggle, or __builtin__ for bb's own header only.",
+    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>

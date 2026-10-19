@@ -2,11 +2,13 @@ import type { CSSProperties, ReactNode } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { AppPageHeader } from "@/components/layout/AppPageHeader";
 import { SettingsSidebarContent } from "@/components/settings/SettingsSidebar";
+import type { SettingsSearchCondition } from "@/components/settings/settings-search";
 import {
   SETTINGS_NAV_SECTIONS,
   type SettingsSectionId,
 } from "@/components/settings/settings-sections";
 import {
+  Sidebar,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -42,6 +44,13 @@ export function useSettingsStoryRoute(): SettingsStoryRoute {
   return { kind: "section", id: section?.id ?? "general" };
 }
 
+const STORY_SEARCH_CONDITIONS: ReadonlySet<SettingsSearchCondition> = new Set([
+  "cliCommand",
+  "desktopBrowser",
+  "filePreferences",
+  "performanceDiagnostics",
+]);
+
 export function SettingsStoryChrome({
   activeSection,
   children,
@@ -65,18 +74,26 @@ export function SettingsStoryChrome({
       className="h-screen min-h-[640px] bg-background"
       style={{ "--bb-shell-height": "100vh" } as CSSProperties}
     >
-      <SettingsSidebarContent
-        appRoutePath="/"
-        isResizing={false}
-        navigation={{
-          activePluginId: null,
-          activeSection: resolvedActiveSection,
-          pluginEntries: [],
-          sections: SETTINGS_NAV_SECTIONS,
-        }}
-        onResizeMouseDown={() => {}}
-        testIdPrefix="settings-story"
-      />
+      <Sidebar>
+        <SettingsSidebarContent
+          backTo={null}
+          isResizing={false}
+          navigation={{
+            activePluginId: null,
+            activeSection: resolvedActiveSection,
+            pluginEntries: [],
+            sections: SETTINGS_NAV_SECTIONS,
+          }}
+          onResizeMouseDown={() => {}}
+          pluginSettingSearch={{
+            entries: [],
+            isLoading: false,
+            onActivate: () => {},
+          }}
+          searchConditions={STORY_SEARCH_CONDITIONS}
+          testIdPrefix="settings-story"
+        />
+      </Sidebar>
       <SidebarInset>
         <div className="relative flex h-full min-h-0 min-w-0 flex-col">
           <AppPageHeader

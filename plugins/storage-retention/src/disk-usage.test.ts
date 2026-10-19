@@ -226,7 +226,6 @@ describe.each([
         );
 
         expect(result).toEqual({
-
           largeFiles: [],
           targets: [
             { outcome: "missing", path: path.join(root, "missing") },
@@ -336,27 +335,31 @@ describe.each([
 
     it.runIf(enabled)("measures wide trees completely", async () => {
       const root = await makeTempDir();
-      const entryPaths: string[] = [root];
-      for (let dirIndex = 0; dirIndex < 20; dirIndex++) {
-        const dir = path.join(root, `dir-${dirIndex}`);
-        entryPaths.push(dir);
-        for (let fileIndex = 0; fileIndex < 10; fileIndex++) {
-          const filePath = path.join(dir, `file-${fileIndex}.txt`);
-          await writeFile(filePath, 1_000);
-          entryPaths.push(filePath);
-        }
-      }
+      const directoryBytes = await Promise.all(
+        Array.from({ length: 20 }, async (_, dirIndex) => {
+          const dir = path.join(root, `dir-${dirIndex}`);
+          await fs.mkdir(dir);
+          const files = Array.from({ length: 10 }, (_, fileIndex) =>
+            path.join(dir, `file-${fileIndex}.txt`),
+          );
+          for (const file of files)
+            await fs.writeFile(file, Buffer.alloc(1_000, 1));
+          return allocatedBytes(dir, ...files);
+        }),
+      );
+      const expected =
+        (await allocatedBytes(root)) +
+        directoryBytes.reduce((sum, bytes) => sum + bytes, 0);
 
       const result = await measure([{ path: root, perChild: false }], options);
 
       expect(result).toEqual({
-
         largeFiles: [],
         targets: [
           {
             outcome: "measured",
             path: root,
-            sizeBytes: await allocatedBytes(...entryPaths),
+            sizeBytes: expected,
             children: null,
           },
         ],

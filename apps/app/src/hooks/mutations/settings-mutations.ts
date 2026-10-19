@@ -1,4 +1,5 @@
 import {
+  mutationOptions,
   type QueryClient,
   useMutation,
   useQueryClient,
@@ -73,10 +74,8 @@ export function useUpdateExperiments() {
   });
 }
 
-export function useUpdateGeneralSettings() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+export function generalSettingsMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     mutationKey: generalSettingsMutationKey,
     scope: { id: generalSettingsMutationKey.join(":") },
     meta: {
@@ -128,10 +127,13 @@ export function useUpdateGeneralSettings() {
   });
 }
 
-export function useUpdateKeyboardSettings() {
+export function useUpdateGeneralSettings() {
   const queryClient = useQueryClient();
+  return useMutation(generalSettingsMutationOptions(queryClient));
+}
 
-  return useMutation({
+export function keyboardSettingsMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to update keyboard shortcuts.",
     },
@@ -151,6 +153,11 @@ export function useUpdateKeyboardSettings() {
   });
 }
 
+export function useUpdateKeyboardSettings() {
+  const queryClient = useQueryClient();
+  return useMutation(keyboardSettingsMutationOptions(queryClient));
+}
+
 export function useInstallCliSkills() {
   return useMutation({
     meta: {
@@ -158,6 +165,18 @@ export function useInstallCliSkills() {
     },
     mutationFn: (args: SystemInstallCliSkillsRequest) =>
       sdk.system.installCliSkills(args),
+  });
+}
+
+export function useChangeCliCommand() {
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to change the bb CLI install.",
+    },
+    mutationFn: (change: "install" | "remove") =>
+      change === "install"
+        ? sdk.system.experimental_installCliCommand()
+        : sdk.system.experimental_removeCliCommand(),
   });
 }
 

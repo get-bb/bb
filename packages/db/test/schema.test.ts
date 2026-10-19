@@ -475,6 +475,7 @@ describe("db rebuild schema", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        state: "queued",
         sortKey: "V",
         createdAt: now,
         updatedAt: now,

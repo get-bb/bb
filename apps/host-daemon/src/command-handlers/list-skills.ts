@@ -2,7 +2,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
+import {
+  EMPTY_PROVIDER_NATIVE_ROOTS,
+  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+  providerNativeRootsAreEmpty,
+  type ProviderNativeRoots,
+} from "@bb/domain";
 import type {
+  DiscoveredSkill,
   HostDaemonOnlineRpcResult,
   SkillRootKind,
 } from "@bb/host-daemon-contract";
@@ -103,6 +110,26 @@ export async function resolveSkillScanRoots(
     skillRoots.push({ ...root, ...classification });
   }
   return skillRoots;
+}
+
+export async function listSharedSkills(args: {
+  cwd: string;
+  roots: ProviderNativeRoots;
+}): Promise<DiscoveredSkill[]> {
+  if (providerNativeRootsAreEmpty(args.roots)) {
+    return [];
+  }
+  const roots = await resolveSkillScanRoots({
+    cwd: args.cwd,
+    homeDir: os.homedir(),
+    providerId: SHARED_SKILLS_PROVIDER_ID,
+    nativeRoots: {
+      skills: args.roots,
+      commands: EMPTY_PROVIDER_NATIVE_ROOTS,
+      resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+    },
+  });
+  return discoverSkills({ roots });
 }
 
 export async function listHostSkills(

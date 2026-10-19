@@ -14,6 +14,7 @@ import {
 import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
+  ensureOpenFixedPanelHasActiveTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
@@ -35,6 +36,7 @@ interface MigrateLocalThreadTabsArgs extends ThreadTabsSyncArgs {
 const writeQueues = new WeakMap<QueryClient, Map<string, Promise<void>>>();
 const pendingWriteCounts = new WeakMap<QueryClient, Map<string, number>>();
 const attemptedLocalMigrations = new WeakMap<QueryClient, Set<string>>();
+const MAX_WRITE_ATTEMPTS = 3;
 
 type PersistedThreadFixedPanelTab = Exclude<
   FixedPanelTab,
@@ -90,6 +92,31 @@ export function reconcileFixedPanelTabsState(
       tabs,
     },
   };
+}
+
+export type FixedPanelTabsHydration =
+  | { kind: "migrate-local-tabs" }
+  | { kind: "replace"; state: FixedPanelTabsState };
+
+export function resolveFixedPanelTabsHydration({
+  current,
+  hasPendingWrite,
+  localTabs,
+  server,
+}: {
+  current: FixedPanelTabsState;
+  hasPendingWrite: boolean;
+  localTabs: readonly FixedPanelTab[];
+  server: ThreadTabsResponse;
+}): FixedPanelTabsHydration | null {
+  if (hasPendingWrite) return null;
+  if (server.revision === 0 && localTabs.length > 0) {
+    return { kind: "migrate-local-tabs" };
+  }
+  const next = ensureOpenFixedPanelHasActiveTab(
+    reconcileFixedPanelTabsState(current, server.tabs),
+  );
+  return next === current ? null : { kind: "replace", state: next };
 }
 
 function getWriteQueue(queryClient: QueryClient): Map<string, Promise<void>> {
@@ -173,15 +200,17 @@ export function mergeThreadTabChanges(
     .map((tab) => {
       const before = previousById.get(tab.id);
       const after = nextById.get(tab.id);
-      return after !== undefined &&
-        (before === undefined || !areFixedPanelTabsEquivalent(before, after))
+      return before !== undefined &&
+        after !== undefined &&
+        !areFixedPanelTabsEquivalent(before, after)
         ? withServerDesktopTarget(after, tab)
         : tab;
     });
   for (const [index, tab] of next.entries()) {
-    if (previousById.has(tab.id) || merged.some((item) => item.id === tab.id)) {
-      continue;
-    }
+    if (previousById.has(tab.id)) continue;
+    const existingIndex = merged.findIndex((item) => item.id === tab.id);
+    const existing =
+      existingIndex === -1 ? undefined : merged.splice(existingIndex, 1)[0];
     const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
     const insertionIndex = merged.findIndex((item) =>
       followingIds.has(item.id),
@@ -189,7 +218,7 @@ export function mergeThreadTabChanges(
     merged.splice(
       insertionIndex === -1 ? merged.length : insertionIndex,
       0,
-      tab,
+      existing ?? tab,
     );
   }
   const retainedIds = new Set(merged.map((tab) => tab.id));
@@ -217,17 +246,32 @@ async function persistThreadTabs({
   queryClient,
   threadId,
 }: PersistThreadTabsArgs): Promise<void> {
-  const current = await readCurrentThreadTabs({ queryClient, threadId });
-  const tabsToPersist = mergeThreadTabChanges(current.tabs, previousTabs, tabs);
-  if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
-    return;
+  let current = await readCurrentThreadTabs({ queryClient, threadId });
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
+    const tabsToPersist = mergeThreadTabChanges(
+      current.tabs,
+      previousTabs,
+      tabs,
+    );
+    if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
+      return;
+    }
+    try {
+      const response = await sdk.threads.tabs.update({
+        expectedRevision: current.revision,
+        tabs: threadTabsSchema.parse(tabsToPersist),
+        threadId,
+      });
+      setCachedThreadTabs(queryClient, threadId, response);
+      return;
+    } catch (error) {
+      if (!isThreadTabsConflict(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+      current = await sdk.threads.tabs.get({ threadId });
+      setCachedThreadTabs(queryClient, threadId, current);
+    }
   }
-  const response = await sdk.threads.tabs.update({
-    expectedRevision: current.revision,
-    tabs: threadTabsSchema.parse(tabsToPersist),
-    threadId,
-  });
-  setCachedThreadTabs(queryClient, threadId, response);
 }
 
 async function migrateLocalThreadTabs({

@@ -6,17 +6,10 @@ import {
   redeemEnrollment,
 } from "./enrollment";
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 describe("redeemEnrollment", () => {
   it("redeems at the apex and shapes a connect profile labelled by handle", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse(200, {
+      Response.json({
         credential: "bbcm_secret",
         machineId: "m1",
         handle: "account",
@@ -52,7 +45,7 @@ describe("redeemEnrollment", () => {
     const limit = vi
       .fn<typeof fetch>()
       .mockImplementation(async () =>
-        jsonResponse(409, { error: "machine-limit" }),
+        Response.json({ error: "machine-limit" }, { status: 409 }),
       );
     await expect(
       redeemEnrollment(
@@ -84,7 +77,7 @@ describe("redeemEnrollment", () => {
         },
         vi
           .fn<typeof fetch>()
-          .mockResolvedValue(jsonResponse(status, { error: wire })),
+          .mockResolvedValue(Response.json({ error: wire }, { status })),
       ).catch((error: unknown) => describeEnrollmentError(error));
       expect(failed).toMatchObject({ code });
     }

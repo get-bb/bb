@@ -15,6 +15,7 @@ import {
   createPromptThreadLinkPasteExtension,
   promptThreadLinkPasteKey,
 } from "./prompt-thread-link-paste";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 const origin = "https://brsbl.getbb.app";
 const projectId = "proj_khiw2za95v";
@@ -29,14 +30,6 @@ type PasteOptions = Parameters<typeof createPromptThreadLinkPasteExtension>[0];
 
 function resolution(id = threadId, project = projectId): Resolution {
   return { threadId: id, projectId: project, label: `Thread ${id}` };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
 }
 
 function createEditor({
@@ -95,7 +88,7 @@ describe("pasted thread link conversion", () => {
   ])(
     "preserves a pending URL after surrounding edits create %s",
     async (_name, prefix, suffix) => {
-      const pending = deferred<Resolution[]>();
+      const pending = createDeferredPromise<Resolution[]>();
       const editor = createEditor({ resolveThreads: () => pending.promise });
       await paste(editor, url);
       editor.view.dispatch(editor.state.tr.insertText(suffix, 1 + url.length));
@@ -109,7 +102,7 @@ describe("pasted thread link conversion", () => {
     },
   );
   it("converts one paste atomically and replays exact URL and selection history", async () => {
-    const pending = deferred<Resolution[]>();
+    const pending = createDeferredPromise<Resolution[]>();
     const resolveThreads = vi.fn(
       (_ids: string[], _signal: AbortSignal) => pending.promise,
     );
@@ -168,7 +161,7 @@ describe("pasted thread link conversion", () => {
   });
 
   it("maps boundary edits and the current caret while permanently excluding edited or removed occurrences", async () => {
-    const pending = deferred<Resolution[]>();
+    const pending = createDeferredPromise<Resolution[]>();
     const resolveThreads = vi.fn(
       (_ids: string[], _signal: AbortSignal) => pending.promise,
     );
@@ -204,7 +197,7 @@ describe("pasted thread link conversion", () => {
   it.each(["undo", "cancel", "destroy"])(
     "aborts pending lookup on %s and ignores its late result",
     async (action) => {
-      const pending = deferred<Resolution[]>();
+      const pending = createDeferredPromise<Resolution[]>();
       const resolveThreads = vi.fn(
         (_ids: string[], _signal: AbortSignal) => pending.promise,
       );
@@ -242,7 +235,7 @@ describe("pasted thread link conversion", () => {
       const low = GENERATED_ID_ALPHABET[index % GENERATED_ID_ALPHABET.length];
       return `thr_22222222${high}${low}`;
     });
-    const stalled = deferred<Resolution[]>();
+    const stalled = createDeferredPromise<Resolution[]>();
     const resolveThreads = vi.fn((batch: string[], _signal: AbortSignal) =>
       batch.length === 32
         ? Promise.resolve(batch.map((id) => resolution(id)))

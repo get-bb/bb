@@ -6,7 +6,10 @@ import type {
   ParcelWatcherEventBatch,
   ParcelWatcherSubscribeOptions,
 } from "../parcel-watcher-backend.js";
-import { RESCAN_REQUIRED_MESSAGE } from "../watch-recovery.js";
+import {
+  EVENTS_DROPPED_MESSAGE,
+  RESCAN_REQUIRED_MESSAGE,
+} from "../watch-recovery.js";
 import type {
   ChildToParentMessage,
   ParentToChildMessage,
@@ -271,6 +274,20 @@ export function createParcelWatcherProxy(
       case "events": {
         const record = subscriptions.get(message.id);
         record?.callback(null, toEventBatch(message.events));
+        break;
+      }
+      case "events-dropped": {
+        const record = subscriptions.get(message.id);
+        if (record) {
+          log(
+            "warn",
+            "Watcher event batch too large; reporting dropped events",
+            {
+              droppedEvents: message.count,
+            },
+          );
+          record.callback(new Error(EVENTS_DROPPED_MESSAGE), []);
+        }
         break;
       }
       case "watch-error":

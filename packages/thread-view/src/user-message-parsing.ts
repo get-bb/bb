@@ -3,6 +3,7 @@ import {
   type PromptTextMention,
   type ThreadEvent,
 } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { EventMeta } from "./event-decode.js";
 import type { AcceptedClientRequest } from "./accepted-client-request-context.js";
 import type {
@@ -27,6 +28,7 @@ export function parsePromptInput(
   imageUrls: string[];
   localImagePaths: string[];
   localFilePaths: string[];
+  localFileDetails: TimelineConversationAttachments["localFileDetails"];
   mentions: PromptTextMention[];
 } | null {
   if (!Array.isArray(input) || input.length === 0) return null;
@@ -38,6 +40,8 @@ export function parsePromptInput(
   const imageUrls: string[] = [];
   const localImagePaths: string[] = [];
   const localFilePaths: string[] = [];
+  const localFileDetails: TimelineConversationAttachments["localFileDetails"] =
+    [];
   const mentions: PromptTextMention[] = [];
   let textOffset = 0;
 
@@ -82,6 +86,12 @@ export function parsePromptInput(
         localFiles += 1;
         if (part.path.length > 0) {
           localFilePaths.push(part.path);
+          if (part.name)
+            localFileDetails.push({
+              path: part.path,
+              name: part.name,
+              sizeBytes: part.sizeBytes ?? null,
+            });
         }
         break;
     }
@@ -100,6 +110,7 @@ export function parsePromptInput(
     imageUrls,
     localImagePaths,
     localFilePaths,
+    localFileDetails,
     mentions,
   };
 }
@@ -152,6 +163,9 @@ function buildAttachments(
       : {}),
     ...(parsed.localFilePaths.length > 0
       ? { localFilePaths: parsed.localFilePaths }
+      : {}),
+    ...(parsed.localFileDetails.length > 0
+      ? { localFileDetails: parsed.localFileDetails }
       : {}),
   };
 }

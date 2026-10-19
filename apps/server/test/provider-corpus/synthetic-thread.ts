@@ -1,13 +1,12 @@
 import {
-  createConnection,
   createProject,
   createThread,
   deriveStoredEventItemFields,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -361,6 +360,7 @@ function pushSyntheticTurn(
     taskType: "local_bash",
     description: `background build ${turn}`,
     skipTranscript: false,
+    foreground: false,
   };
   builder.push({
     type: "item/started",
@@ -452,8 +452,7 @@ export interface SyntheticThread {
 }
 
 export function createSyntheticThread(minimumEvents: number): SyntheticThread {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "synthetic-host",
   });

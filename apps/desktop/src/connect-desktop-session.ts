@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   ConnectListError,
   fetchDesktopSession,
+  listAccountServersWithSession,
+  type AccountServerWithUrl,
   type ConnectCredential,
 } from "@bb/connect-client";
 
@@ -151,41 +153,24 @@ export function createAccountCookieSource(args: {
       cookie: `${args.accountCookie.name}=${args.accountCookie.value}`,
     };
     const fetchImpl = args.fetchImpl ?? globalThis.fetch;
-    let serversResponse: Response;
+    let servers: AccountServerWithUrl[];
     try {
-      serversResponse = await fetchImpl(
-        `${connectApiOrigin}/api/connect/servers`,
-        { headers },
+      servers = await listAccountServersWithSession(
+        { serverUrl: connectApiOrigin, cookie: args.accountCookie },
+        fetchImpl,
       );
     } catch (error) {
+      if (error instanceof ConnectListError) {
+        return error.code === "unauthorized"
+          ? failure("unauthorized", "bb Connect sign-in is no longer valid")
+          : failure(
+              error.code === "not_paired" ? "invalid_response" : error.code,
+              error.message,
+            );
+      }
       return failure("network", errorMessage(error));
     }
-    if (serversResponse.status === 401 || serversResponse.status === 403) {
-      return failure("unauthorized", "bb Connect sign-in is no longer valid");
-    }
-    if (!serversResponse.ok) {
-      return failure("request_rejected", `HTTP ${serversResponse.status}`);
-    }
-    let serversBody: unknown;
-    try {
-      serversBody = await serversResponse.json();
-    } catch (error) {
-      return failure("invalid_response", errorMessage(error));
-    }
-    const servers = z
-      .object({ servers: z.array(z.object({ handle: z.string() })) })
-      .safeParse(serversBody);
-    if (!servers.success) {
-      return failure(
-        "invalid_response",
-        "server list did not match the contract",
-      );
-    }
-    if (
-      !servers.data.servers.some(
-        (server) => server.handle === args.targetHandle,
-      )
-    ) {
+    if (!servers.some((server) => server.handle === args.targetHandle)) {
       return failure(
         "unauthorized",
         "this account does not own the selected server",
@@ -224,7 +209,7 @@ export function createAccountCookieSource(args: {
 }
 
 export async function installConnectDesktopSession(args: {
-  cookieStore: DesktopCookieStore;
+  cookieStores: readonly [DesktopCookieStore, ...DesktopCookieStore[]];
   mintCookie: DesktopSessionCookieSource;
   remoteServerUrl: string;
 }): Promise<ConnectDesktopSessionResult> {
@@ -235,40 +220,42 @@ export async function installConnectDesktopSession(args: {
 
   const { cookie } = minted;
   const remoteOrigin = new URL(args.remoteServerUrl).origin;
-  try {
-    await args.cookieStore.set({
-      domain: cookie.domain,
-      expirationDate: cookie.expiresAt / 1000,
-      httpOnly: true,
-      name: cookie.name,
-      path: "/",
-      sameSite: "lax",
-      secure: remoteOrigin.startsWith("https://"),
-      url: remoteOrigin,
-      value: cookie.value,
-    });
-  } catch (error) {
-    return failure("cookie_install_failed", errorMessage(error));
-  }
+  for (const cookieStore of args.cookieStores) {
+    try {
+      await cookieStore.set({
+        domain: cookie.domain,
+        expirationDate: cookie.expiresAt / 1000,
+        httpOnly: true,
+        name: cookie.name,
+        path: "/",
+        sameSite: "lax",
+        secure: remoteOrigin.startsWith("https://"),
+        url: remoteOrigin,
+        value: cookie.value,
+      });
+    } catch (error) {
+      return failure("cookie_install_failed", errorMessage(error));
+    }
 
-  let installedCookies: DesktopCookie[];
-  try {
-    installedCookies = await args.cookieStore.get({
-      name: cookie.name,
-      url: remoteOrigin,
-    });
-  } catch (error) {
-    return failure("cookie_verification_failed", errorMessage(error));
-  }
-  const installed = installedCookies.some(
-    (candidate) =>
-      candidate.name === cookie.name && candidate.value === cookie.value,
-  );
-  if (!installed) {
-    return failure(
-      "cookie_verification_failed",
-      "Electron did not retain the desktop session cookie",
+    let installedCookies: DesktopCookie[];
+    try {
+      installedCookies = await cookieStore.get({
+        name: cookie.name,
+        url: remoteOrigin,
+      });
+    } catch (error) {
+      return failure("cookie_verification_failed", errorMessage(error));
+    }
+    const installed = installedCookies.some(
+      (candidate) =>
+        candidate.name === cookie.name && candidate.value === cookie.value,
     );
+    if (!installed) {
+      return failure(
+        "cookie_verification_failed",
+        "Electron did not retain the desktop session cookie",
+      );
+    }
   }
   return { expiresAt: cookie.expiresAt, ok: true };
 }

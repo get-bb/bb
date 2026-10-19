@@ -21,10 +21,13 @@ jobs:
           node-version: 22.x
           package-manager-cache: false
       - name: Report speed and same-commit rerun recovery
+        timeout-minutes: 8
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/report-ci-health.mjs
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        timeout-minutes: 1
         with:
           name: ci-health-${{ github.run_id }}
           path: .ci-health/

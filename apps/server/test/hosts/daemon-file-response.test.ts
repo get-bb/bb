@@ -1,8 +1,8 @@
+import { requestMatchesEntityTag } from "../../src/services/files/entity-tag.js";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
   createDaemonFileContentResponse,
-  requestMatchesEntityTag,
   type DaemonFileReadResult,
 } from "../../src/services/hosts/daemon-file-response.js";
 

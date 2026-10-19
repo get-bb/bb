@@ -1134,7 +1134,10 @@ describe("pi delta translation equivalence", () => {
       type: "tool_execution_start",
       toolCallId: "tool-edit-unknown-batch",
       toolName: "edit",
-      args: { path: "src/app.ts", edits: [{ old: "before", replacement: "after" }] },
+      args: {
+        path: "src/app.ts",
+        edits: [{ old: "before", replacement: "after" }],
+      },
     } as AgentSessionEvent);
 
     const started = events.find(
@@ -1627,6 +1630,37 @@ describe("pi delta translation equivalence", () => {
     },
   );
 
+  it("reports the prompt cache TTL of the latest cache write across turns", () => {
+    const harness = createHarness();
+    const turns: [Record<string, unknown>, number | undefined][] = [
+      [{ cacheWrite: 9 }, undefined],
+      [{ cacheWrite: 9, cacheWrite1h: 9 }, 3_600_000],
+      [{ cacheWrite: 0, cacheWrite1h: 0 }, 3_600_000],
+      [{ cacheWrite: 9, cacheWrite1h: 0 }, 300_000],
+      [{ cacheWrite: 9, cacheWrite1h: "invalid" }, 300_000],
+    ];
+
+    const reported = turns.map(([cache]) => {
+      harness.translate(loadFixture("agent-start.json"));
+      const event = harness
+        .translate({
+          type: "agent_end",
+          messages: [
+            {
+              role: "assistant",
+              content: [],
+              usage: { input: 80, output: 20, ...cache },
+            },
+          ],
+        })
+        .find((event) => event.type === "thread/tokenUsage/updated");
+      expect(event?.tokenUsage.last.inputTokens).toBe(80);
+      return event?.tokenUsage.promptCacheTtlMs;
+    });
+
+    expect(reported).toEqual(turns.map(([, ttl]) => ttl));
+  });
+
   it.each(["cacheRead", "cacheWrite"])(
     "invalid %s cannot discard Pi completion or valid usage",
     (field) => {
@@ -1855,6 +1889,180 @@ describe("pi delta translation equivalence", () => {
       "turn/completed",
     ]);
   });
+
+  it.each(["aborted", "error"])(
+    "structured %s without errorMessage cannot complete successfully",
+    (stopReason) => {
+      const harness = createHarness();
+      harness.translate(loadFixture("agent-start.json"));
+      const events = harness.translate(
+        sdkMessage({
+          type: "agent_end",
+          messages: [
+            { role: "assistant", stopReason, content: [] },
+            { role: "toolResult", content: [] },
+          ],
+        }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: "turn/completed", status: "failed" }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "provider/error",
+          detail: expect.any(String),
+        }),
+      );
+      expect(
+        events.some(
+          (event) =>
+            event.type === "turn/completed" && event.status === "completed",
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("defers finality across native recovery and does not double-count text or usage at settlement", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const initial = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        deferSettlement: true,
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "length",
+            content: [{ type: "text", text: "partial" }],
+            usage: { input: 2, output: 3 },
+          },
+        ],
+      }),
+    );
+    expect(initial.some((delta) => delta.kind === "turn.boundary")).toBe(false);
+    expect(initial.filter((delta) => delta.kind === "usage")).toHaveLength(1);
+    const settled = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        settlementOnly: true,
+        providerCheckpointId: "settled-checkpoint",
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "stop",
+            content: [{ type: "text", text: "partial" }],
+            usage: { input: 2, output: 3 },
+          },
+        ],
+      }),
+    );
+    expect(settled).toEqual([
+      expect.objectContaining({
+        kind: "turn.boundary",
+        status: "completed",
+        providerCheckpointId: "settled-checkpoint",
+      }),
+    ]);
+  });
+
+  it("reports a failed run that queued work superseded without ending the turn", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const failedAttempt = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        deferSettlement: true,
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "error",
+            errorMessage: "original prompt failed",
+            content: [],
+            usage: { input: 0, output: 0 },
+          },
+        ],
+      }),
+    );
+    expect(failedAttempt).toEqual([]);
+    expect(
+      translator.translate(
+        sdkMessage({
+          type: "agent_end",
+          deferSettlement: true,
+          settlementSuperseded: true,
+          settlementError: "original prompt failed",
+          messages: [],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: "original prompt failed",
+      },
+    ]);
+  });
+
+  it("does not repeat a recovery failure that compaction already reported", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const compaction = translator.translate(
+      sdkMessage({
+        type: "compaction_end",
+        reason: "overflow",
+        aborted: false,
+        willRetry: false,
+        errorMessage: "overflow recovery exhausted",
+      }),
+    );
+    expect(
+      compaction.filter((delta) => delta.kind === "provider.error"),
+    ).toEqual([
+      expect.objectContaining({ detail: "overflow recovery exhausted" }),
+    ]);
+    expect(
+      translator.translate(
+        sdkMessage({
+          type: "agent_end",
+          settlementOnly: true,
+          settlementError: "overflow recovery exhausted",
+          settlementErrorReported: true,
+          providerCheckpointId: "settled-checkpoint",
+          messages: [],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: "turn.boundary",
+        status: "failed",
+        providerCheckpointId: "settled-checkpoint",
+      },
+    ]);
+  });
+
+  it.each([true, "false", null, 0])(
+    "reports explicit or malformed settlement abort %s as failed",
+    (aborted) => {
+      const translator = createPiDeltaTranslator({
+        resolveModelContextWindow: builtinCatalogResolver,
+      });
+      const deltas = translator.translate(
+        sdkMessage({ type: "agent_end", aborted, messages: [] }),
+      );
+      expect(deltas).toContainEqual(
+        expect.objectContaining({ kind: "turn.boundary", status: "failed" }),
+      );
+      expect(
+        deltas.some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "completed",
+        ),
+      ).toBe(false);
+    },
+  );
 
   it("session error envelopes settle the open turn as failed", () => {
     const harness = createHarness();

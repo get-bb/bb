@@ -1,7 +1,12 @@
+import {
+  markThreadReadMutationOptions,
+  markThreadUnreadMutationOptions,
+} from "@/hooks/mutations/thread-state-mutations";
 import type {
   BbSdkAreas,
   ThreadForkArgs,
   ThreadMutationResult,
+  PluginThreadMetadataListArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
@@ -101,7 +106,16 @@ function createOptimisticThreadMutationBatcher(
     if (fulfilledThreads.length === results.length) {
       applyThreadMetadataBatchResult({
         queryClient,
-        threads: fulfilledThreads,
+        updates: fulfilledThreads.map((thread, index) => {
+          const { args, operation } = batch[index]!;
+          return {
+            thread,
+            request: {
+              ...args,
+              ...(operation === "update" ? {} : { pinnedAt: thread.pinnedAt }),
+            },
+          };
+        }),
       });
     } else {
       rollbackThreadMetadataBatchTransaction({ queryClient, transaction });
@@ -308,6 +322,24 @@ export function bindSdkToPlugin(
     threads: {
       ...sdk.threads,
       ...threadMutations,
+      markRead(args) {
+        return queryClient
+          .getMutationCache()
+          .build(
+            queryClient,
+            markThreadReadMutationOptions(queryClient, sdk.threads),
+          )
+          .execute(args);
+      },
+      markUnread(args) {
+        return queryClient
+          .getMutationCache()
+          .build(
+            queryClient,
+            markThreadUnreadMutationOptions(queryClient, sdk.threads),
+          )
+          .execute(args);
+      },
       async reorderPinned(args) {
         const orderedRoots = await sdk.threads.reorderPinned(args);
         applyPinnedThreadOrderResult({ queryClient, orderedRoots });
@@ -340,6 +372,16 @@ export function bindSdkToPlugin(
         },
       ) {
         return sdk.threads.getPluginMetadata({
+          ...args,
+          pluginId: args.pluginId ?? pluginId,
+        });
+      },
+      experimental_listPluginMetadata(
+        args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.experimental_listPluginMetadata({
           ...args,
           pluginId: args.pluginId ?? pluginId,
         });

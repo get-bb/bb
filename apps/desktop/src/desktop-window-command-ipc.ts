@@ -16,7 +16,13 @@ export const BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL =
 export const CLOSE_WINDOW_REQUEST_TIMEOUT_MS = 1000;
 export const BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL =
   "bb-desktop:set-split-navigation-enabled";
-export const BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL =
-  "bb-desktop:write-clipboard";
+export const BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL = "bb-desktop:write-clipboard";
 export const BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL =
   "bb-desktop:open-window-find";
+export const BB_DESKTOP_RELOAD_WINDOW_CHANNEL = "bb-desktop:reload-window";
+
+export const BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL =
+  "bb-desktop:get-server-choices";
+export const BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL =
+  "bb-desktop:server-choices-changed";
+export const BB_DESKTOP_SELECT_SERVER_CHANNEL = "bb-desktop:select-server";

@@ -20,6 +20,7 @@ import {
   experimental_webSearchPresentation as webSearchPresentation,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
+  codexAsyncQuestionItemSchema,
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,
   codexHandledThreadItemSchema,
@@ -45,7 +46,9 @@ import {
   planStepsPresentation,
 } from "./presentation.js";
 import {
+  CODEX_ASYNC_QUESTION_EXTENSION_KIND,
   CODEX_GOAL_EXTENSION_KIND,
+  type CodexAsyncQuestionState,
   type CodexGoalState,
 } from "./extension-kinds.js";
 import { codexVisibilityMetadata } from "./visibility.js";
@@ -762,6 +765,24 @@ function summarizeCollabAgentsStates(
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
+function translateCodexAsyncQuestion(item: unknown): ThreadDelta[] {
+  const parsed = codexAsyncQuestionItemSchema.safeParse(item);
+  if (!parsed.success) {
+    return [];
+  }
+  const state: CodexAsyncQuestionState = {
+    itemId: parsed.data.id,
+    questions: parsed.data.questions,
+  };
+  return [
+    {
+      kind: "extension.state",
+      extensionKind: CODEX_ASYNC_QUESTION_EXTENSION_KIND,
+      payload: state,
+    },
+  ];
+}
+
 function translateCodexItemShape(
   item: unknown,
   state: CodexEventTranslationState,
@@ -1149,6 +1170,7 @@ export function translateCodexEventToDeltas(
           presentation: translation.presentation,
           providerTurnId: handledEvent.params.turnId,
         },
+        ...translateCodexAsyncQuestion(handledEvent.params.item),
       ];
     }
     case "item/agentMessage/delta":

@@ -25,8 +25,40 @@ import {
   useSidebar,
   useSidebarKeepsCollapsedRail,
 } from "./sidebar";
+import { setCompactSecondaryPanelSwipeOpening } from "./secondary-panel-shelf-visibility";
+import { buildBridgeInjectionScript } from "@bb/mobile-bridge";
+import { resetNativeShellForTests } from "@/lib/native-shell/native-shell";
+
+function installNativeShell() {
+  Object.defineProperty(window, "ReactNativeWebView", {
+    configurable: true,
+    value: { postMessage: () => {} },
+  });
+  // eslint-disable-next-line no-new-func
+  new Function(
+    "window",
+    buildBridgeInjectionScript({
+      bridgeVersion: 2,
+      appVersion: "0.46.1",
+      platform: "ios",
+      profileMode: "direct",
+      secureContext: true,
+      safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+      capabilities: [],
+      nativeDownloads: true,
+    }),
+  )(window);
+  resetNativeShellForTests();
+}
+
+function uninstallNativeShell() {
+  Reflect.deleteProperty(window, "ReactNativeWebView");
+  Reflect.deleteProperty(window, "bb");
+  resetNativeShellForTests();
+}
 
 afterEach(() => {
+  uninstallNativeShell();
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -370,16 +402,81 @@ describe("framed desktop sidebar", () => {
     );
 
     const inset = screen.getByTestId("inset");
+    const body = screen.getByTestId("body");
     expect(screen.getByTestId("framed-probe").textContent).toBe("true");
     expect(screen.getByTestId("wrapper").dataset.framed).toBe("");
-    expect(screen.getByTestId("body").classList.contains("rounded-tl-xl")).toBe(
+    expect(
+      screen
+        .getByTestId("wrapper")
+        .classList.contains("pl-(--bb-window-frame-leading-lip)"),
+    ).toBe(false);
+    expect(
+      screen
+        .getByTestId("wrapper")
+        .style.getPropertyValue("--bb-window-card-collapsed-left"),
+    ).toBe("52px");
+    expect(body.classList.contains("rounded-tl-(--bb-frame-card-radius)")).toBe(
       true,
     );
-    expect(inset.classList.contains("rounded-tl-xl")).toBe(false);
+    expect(body.classList.contains("rounded-bl-(--bb-frame-card-radius)")).toBe(
+      true,
+    );
+    expect(
+      inset.classList.contains("before:rounded-tl-(--bb-frame-card-radius)"),
+    ).toBe(false);
+    expect(
+      inset.classList.contains("before:rounded-bl-(--bb-frame-card-radius)"),
+    ).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
-    expect(inset.classList.contains("rounded-tl-xl")).toBe(true);
+    expect(
+      inset.classList.contains("before:rounded-tl-(--bb-frame-card-radius)"),
+    ).toBe(true);
+    expect(
+      inset.classList.contains("before:rounded-bl-(--bb-frame-card-radius)"),
+    ).toBe(true);
+  });
+
+  it("keeps a lip of window frame on both sides of and below the card", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider framed data-testid="wrapper">
+          <Sidebar data-testid="panel">Sidebar content</Sidebar>
+          <SidebarInset data-testid="inset" />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const wrapper = screen.getByTestId("wrapper");
+    const inset = screen.getByTestId("inset");
+    expect(wrapper.classList.contains("pr-(--bb-window-frame-lip)")).toBe(true);
+    expect(wrapper.classList.contains("pb-(--bb-window-frame-lip)")).toBe(true);
+    expect(
+      wrapper.classList.contains("pl-(--bb-window-frame-leading-lip)"),
+    ).toBe(true);
+    expect(
+      wrapper.style.getPropertyValue("--bb-window-card-collapsed-left"),
+    ).toBe("var(--bb-window-frame-leading-lip)");
+    expect(screen.getByTestId("panel").className).toContain(
+      "left-(--bb-window-frame-leading-lip)",
+    );
+    expect(screen.getByTestId("panel").className).toContain(
+      "var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip)",
+    );
+    for (const edge of [
+      "before:rounded-tr-(--bb-frame-card-radius)",
+      "before:rounded-br-(--bb-frame-card-radius)",
+      "before:border-r",
+      "px-px",
+      "pb-px",
+    ]) {
+      expect(inset.classList.contains(edge)).toBe(true);
+    }
+    expect(inset.classList.contains("-mt-(--bb-window-title-bar-height)")).toBe(
+      true,
+    );
+    expect(screen.getByTestId("window-title-bar-drag-region")).toBeTruthy();
   });
 
   it("leaves compact viewports and unframed sidebars as they were", () => {
@@ -1077,6 +1174,51 @@ describe("mobile sidebar interrupted swipe sessions", () => {
     },
   );
 
+  it.each(["touch", "pointer"] as const)(
+    "ignores a %s swipe that starts in the browser edge strip",
+    (kind) => {
+      vi.useFakeTimers();
+      renderSelectableSwipeHarness();
+      const prose = screen.getByText("Selectable message prose");
+
+      if (kind === "touch") {
+        fireTouch(prose, "touchstart", createTouch(8, 160));
+        fireTouch(window, "touchmove", createTouch(60, 160));
+        fireTouchEnd(window, createTouch(190, 160));
+      } else {
+        firePointer(prose, "pointerdown", 8, 160);
+        firePointer(window, "pointermove", 60, 160);
+        firePointer(window, "pointerup", 190, 160);
+      }
+
+      settleMobileToggle();
+      expect(getMobilePanel()?.dataset.state).not.toBe("open");
+    },
+  );
+
+  it.each(["touch", "pointer"] as const)(
+    "opens from a %s swipe that starts at the screen edge inside the native shell",
+    (kind) => {
+      vi.useFakeTimers();
+      installNativeShell();
+      renderSelectableSwipeHarness();
+      const prose = screen.getByText("Selectable message prose");
+
+      if (kind === "touch") {
+        fireTouch(prose, "touchstart", createTouch(2, 160));
+        fireTouch(window, "touchmove", createTouch(60, 160));
+        fireTouchEnd(window, createTouch(190, 160));
+      } else {
+        firePointer(prose, "pointerdown", 2, 160);
+        firePointer(window, "pointermove", 60, 160);
+        firePointer(window, "pointerup", 190, 160);
+      }
+
+      settleMobileToggle();
+      expect(getMobilePanel()?.dataset.state).toBe("open");
+    },
+  );
+
   it("closes a short swipe that pauses before release", () => {
     vi.useFakeTimers();
     renderSelectableSwipeHarness();
@@ -1199,6 +1341,20 @@ describe("mobile sidebar text-selection arbitration", () => {
 
     expect(getMobilePanel()?.dataset.state).toBe("open");
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+  });
+
+  it("yields a right swipe while the right panel is being swiped open", () => {
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+
+    setCompactSecondaryPanelSwipeOpening(true);
+    try {
+      fireTouch(prose, "touchstart", createTouch(120, 160));
+      fireTouch(window, "touchmove", createTouch(260, 164));
+      expect(getMobilePanel()?.dataset.state).toBe("closed");
+    } finally {
+      setCompactSecondaryPanelSwipeOpening(false);
+    }
   });
 
   it("defers the horizontal-scroll-region probe until horizontal intent", () => {

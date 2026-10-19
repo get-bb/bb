@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "shortcut-pill",
+  "type": "registry:ui",
+  "title": "shortcut-pill",
+  "description": "BB ui \"shortcut-pill\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/shortcut-pill.tsx",
+      "content": "import { cn } from \"../../lib/utils\";\n\ninterface ShortcutPillProps {\n  ariaHidden?: boolean;\n  shortcut: { label: string };\n  className?: string;\n}\n\nconst SHORTCUT_PILL_CLASS =\n  \"pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover px-1.5 py-1 font-sans text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60\";\n\nexport function ShortcutPill({\n  ariaHidden = true,\n  shortcut,\n  className,\n}: ShortcutPillProps) {\n  return (\n    <kbd\n      aria-hidden={ariaHidden}\n      className={cn(SHORTCUT_PILL_CLASS, className)}\n    >\n      {shortcut.label}\n    </kbd>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/shortcut-pill.tsx"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sidebar-customize-panel",
+  "type": "registry:ui",
+  "title": "sidebar-customize-panel",
+  "description": "BB ui \"sidebar-customize-panel\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/chrome-style-tokens",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/sidebar-customize-panel.tsx",
+      "content": "import { useEffect, useRef, type ReactNode } from \"react\";\nimport { Button } from \"./button\";\nimport { CHROME_SECTION_LABEL_CLASS } from \"./chrome-style-tokens\";\nimport { cn } from \"../../lib/utils\";\n\nexport function SidebarCustomizePanel({\n  autoFocusDone = false,\n  children,\n  onDone,\n  testIdPrefix,\n  title,\n  variant,\n}: {\n  autoFocusDone?: boolean;\n  children: ReactNode;\n  onDone: () => void;\n  testIdPrefix?: string;\n  title: string;\n  variant: \"compact\" | \"card\";\n}) {\n  const testId =\n    testIdPrefix === undefined ? undefined : `${testIdPrefix}-customize-inline`;\n  const containerRef = useRef<HTMLDivElement>(null);\n  const doneButtonRef = useRef<HTMLButtonElement>(null);\n\n  useEffect(() => {\n    if (variant === \"compact\") {\n      doneButtonRef.current?.focus();\n      return;\n    }\n    containerRef.current\n      ?.querySelector<HTMLElement>(\"[data-sidebar-customize-launch]\")\n      ?.focus();\n  }, [variant]);\n\n  if (variant === \"compact\") {\n    return (\n      <div\n        ref={containerRef}\n        className=\"flex min-h-0 flex-1 flex-col\"\n        data-testid={testId}\n      >\n        <div className=\"flex shrink-0 items-center gap-1\">\n          <div\n            className={cn(\"min-w-0 flex-1 px-2\", CHROME_SECTION_LABEL_CLASS)}\n          >\n            {title}\n          </div>\n          <Button\n            ref={doneButtonRef}\n            type=\"button\"\n            variant=\"ghost\"\n            size=\"sm\"\n            autoFocus={autoFocusDone}\n            className=\"h-7 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2 max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm\"\n            onClick={onDone}\n          >\n            Done\n          </Button>\n        </div>\n        <div className=\"min-h-0 flex-1 overflow-y-auto pt-1\">{children}</div>\n      </div>\n    );\n  }\n\n  return (\n    <div\n      ref={containerRef}\n      className=\"rounded-lg border border-sidebar-border/40 bg-sidebar-accent/40 p-1\"\n      data-testid={testId}\n      onKeyDown={(event) => {\n        if (\n          event.key !== \"Escape\" ||\n          !(event.target instanceof Node) ||\n          !event.currentTarget.contains(event.target)\n        )\n          return;\n        event.preventDefault();\n        onDone();\n      }}\n    >\n      <div className=\"flex items-center gap-1 pb-1\">\n        <div\n          className={cn(\"min-w-0 flex-1 px-2 py-1\", CHROME_SECTION_LABEL_CLASS)}\n        >\n          {title}\n        </div>\n        <Button\n          ref={doneButtonRef}\n          type=\"button\"\n          variant=\"ghost\"\n          size=\"sm\"\n          autoFocus={autoFocusDone}\n          className=\"h-6 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2\"\n          onClick={onDone}\n        >\n          Done\n        </Button>\n      </div>\n      {children}\n    </div>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/sidebar-customize-panel.tsx"
+    }
+  ]
+}

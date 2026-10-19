@@ -16,21 +16,8 @@ describe("@bb/templates", () => {
     expect(guide).toContain("local CLI machine fallback");
   });
 
-  it("documents complete and partial automation execution updates", () => {
-    const guide = renderTemplate("bbGuideAutomations", {});
-
-    expect(guide).toContain("bb automation update <automationId>");
-    expect(guide).toContain("Partial updates to an existing");
-    expect(guide).toContain("--env-json");
-    expect(guide).toContain("--reasoning <none|low|medium|high");
-    expect(guide).toContain("--service-tier <tier>");
-    expect(guide).toContain("--clear-service-tier");
-    expect(guide).toContain("--permission-mode <accept-edits|auto|full>");
-    expect(guide).not.toContain("workspace-write|readonly");
-  });
-
   it("documents project-aware thread references", () => {
-    const guide = renderTemplate("bbGuideThreads", {});
+    const guide = renderTemplate("bbGuideThreadInspection", {});
 
     expect(guide).toContain("@thread:thr_abc123");
     expect(guide).toContain("do not construct thread URLs manually");

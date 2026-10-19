@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "overlay-anchor",
+  "type": "registry:ui",
+  "title": "overlay-anchor",
+  "description": "BB ui \"overlay-anchor\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/overlay-anchor.ts",
+      "content": "import * as React from \"react\";\n\nfunction isAnchorInteractive(anchor: Element): boolean {\n  return anchor.isConnected && anchor.closest(\"[inert]\") === null;\n}\n\nfunction assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {\n  if (typeof ref === \"function\") {\n    ref(value);\n  } else if (ref !== null) {\n    ref.current = value;\n  }\n}\n\nexport function useCloseWhenAnchorDetaches<T extends Element>(\n  forwardedRef: React.ForwardedRef<T>,\n  open: boolean,\n  onOpenChange: (open: boolean) => void,\n): React.RefCallback<T> {\n  const anchorRef = React.useRef<T | null>(null);\n  const onOpenChangeRef = React.useRef(onOpenChange);\n  React.useLayoutEffect(() => {\n    onOpenChangeRef.current = onOpenChange;\n  }, [onOpenChange]);\n\n  React.useEffect(() => {\n    const anchor = anchorRef.current;\n    if (!open || anchor === null) return;\n\n    let closed = false;\n    const close = () => {\n      if (closed) return;\n      if (anchorRef.current !== null && anchorRef.current !== anchor) return;\n      closed = true;\n      onOpenChangeRef.current(false);\n    };\n\n    let wasInteractive = isAnchorInteractive(anchor);\n    const mutationObserver = new MutationObserver(() => {\n      if (isAnchorInteractive(anchor)) {\n        wasInteractive = true;\n      } else if (wasInteractive) {\n        close();\n      }\n    });\n    mutationObserver.observe(anchor.ownerDocument.documentElement, {\n      attributes: true,\n      attributeFilter: [\"inert\"],\n      childList: true,\n      subtree: true,\n    });\n\n    if (typeof IntersectionObserver !== \"function\") {\n      return () => mutationObserver.disconnect();\n    }\n\n    let wasVisible = false;\n    const intersectionObserver = new IntersectionObserver((entries) => {\n      const entry = entries.at(-1);\n      if (entry === undefined) return;\n      if (entry.isIntersecting) {\n        wasVisible = true;\n      } else if (wasVisible) {\n        close();\n      }\n    });\n    intersectionObserver.observe(anchor);\n\n    return () => {\n      mutationObserver.disconnect();\n      intersectionObserver.disconnect();\n    };\n  }, [open]);\n\n  return React.useCallback(\n    (element: T | null) => {\n      anchorRef.current = element;\n      assignRef(forwardedRef, element);\n    },\n    [forwardedRef],\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/overlay-anchor.ts"
+    }
+  ]
+}

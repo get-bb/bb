@@ -1,28 +1,27 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
-  type ComponentType,
+  useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import type {
   ExperimentalSidebarNavigationActions,
-  ExperimentalSidebarNavigationIconProps,
+  ExperimentalSidebarNavigationIcon,
   ExperimentalSidebarNavigationItem,
   ExperimentalSidebarNavigationState,
 } from "@get-bb/plugin-sdk";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   useAppCommandRunner,
   useAppCommandShortcut,
   useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { openPluginDetailsInWorkspace } from "@/components/plugin/plugin-detail-opener";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import { getPluginNavPanelKey } from "@/components/plugin/pluginNavSidebarOrder";
@@ -30,17 +29,23 @@ import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import { appQueryClient } from "@/lib/app-query-client";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
-import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import {
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
+  getRootComposeRoutePath,
+  SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
+import {
+  NavigationBadgeSources,
+  type NavigationBadges,
+} from "./navigationBadges";
 import {
   createSidebarNavigationRows,
   getResourceNavigationRoutePath,
   getSidebarNavigationRowContent,
   isSameSidebarNavigationItem,
+  NEW_THREAD_NAVIGATION_ITEM_ID,
   resolveActiveSidebarNavigationItemId,
   SIDEBAR_NAVIGATION_LEADING_KEYS,
   toSidebarNavigationItem,
@@ -56,8 +61,8 @@ export interface SidebarNavigationHostOptions {
   onNavigate?: () => void;
   onNewChat?: () => void;
   onSearchThreads?: () => void;
+  onOpenCustomize?: () => void;
   splitEnabled: boolean;
-  onOpenCustomize: () => void;
 }
 
 export interface SidebarNavigationModel {
@@ -72,10 +77,7 @@ const SidebarNavigationModelContext =
   createContext<SidebarNavigationModel | null>(null);
 
 const HOST_ICON_NAMES: Record<
-  Extract<
-    ExperimentalSidebarNavigationIconProps["icon"],
-    { kind: "host" }
-  >["name"],
+  Extract<ExperimentalSidebarNavigationIcon, { kind: "host" }>["name"],
   IconName
 > = {
   "new-thread": "MessageSquarePlus",
@@ -87,7 +89,10 @@ const HOST_ICON_NAMES: Record<
 export function SidebarNavigationIcon({
   icon,
   className,
-}: ExperimentalSidebarNavigationIconProps) {
+}: {
+  icon: ExperimentalSidebarNavigationIcon;
+  className?: string;
+}) {
   if (icon.kind === "host") {
     return (
       <Icon
@@ -104,30 +109,6 @@ export function SidebarNavigationIcon({
       className={className}
     />
   );
-}
-
-const wrappedAccessories = new WeakMap<ComponentType, ComponentType>();
-
-function wrappedAccessory(panel: PluginNavPanelSlot): ComponentType | null {
-  const Accessory = panel.experimental_sidebarAccessory;
-  if (Accessory === undefined) return null;
-  const cached = wrappedAccessories.get(Accessory);
-  if (cached) return cached;
-  const SidebarNavigationAccessory = () => {
-    return (
-      <PluginSlotMount
-        key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-        pluginId={panel.pluginId}
-        slotKind="navPanelSidebarAccessory"
-        slotId={panel.id}
-        crashFallback={<></>}
-      >
-        <Accessory />
-      </PluginSlotMount>
-    );
-  };
-  wrappedAccessories.set(Accessory, SidebarNavigationAccessory);
-  return SidebarNavigationAccessory;
 }
 
 function useStableItems(
@@ -156,6 +137,10 @@ function useStableItems(
   }, [items]);
 }
 
+function isSettingsPathname(pathname: string): boolean {
+  return matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname) !== null;
+}
+
 export function SidebarNavigationModelProvider({
   children,
   ...host
@@ -173,7 +158,15 @@ export function SidebarNavigationModelProvider({
     () => new Map(rows.map((row) => [getPluginNavPanelKey(row), row])),
     [rows],
   );
-  const isCompactViewport = useIsCompactViewport();
+  const [badges, setBadges] = useState<NavigationBadges>(() => new Map());
+  const badgedPanels = useMemo(
+    () =>
+      rows.flatMap((row) => {
+        const panel = row.panelEntry?.panel;
+        return panel ? [{ itemId: getPluginNavPanelKey(row), panel }] : [];
+      }),
+    [rows],
+  );
   const location = useLocation();
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
@@ -191,7 +184,6 @@ export function SidebarNavigationModelProvider({
     const visibleSet = new Set(arrangement.visibleKeys);
     return arrangement.ordered.map((row) => {
       const key = getPluginNavPanelKey(row);
-      const panel = row.panelEntry?.panel ?? null;
       return toSidebarNavigationItem(row, {
         isDisabled:
           row.action.kind === "new-thread"
@@ -212,14 +204,13 @@ export function SidebarNavigationModelProvider({
                   ariaKeyShortcuts: threadSearchShortcut.ariaKeyshortcuts,
                 }
               : null,
-        accessory:
-          panel !== null && !isCompactViewport ? wrappedAccessory(panel) : null,
+        badge: badges.get(key) ?? null,
       });
     });
   }, [
     arrangement.ordered,
     arrangement.visibleKeys,
-    isCompactViewport,
+    badges,
     newThreadDisabled,
     newThreadShortcut,
     searchThreadsDisabled,
@@ -231,11 +222,22 @@ export function SidebarNavigationModelProvider({
     rows,
     pathname: location.pathname,
   });
+  const isHomeActive =
+    !isSettingsPathname(location.pathname) &&
+    (activeItemId === null || activeItemId === NEW_THREAD_NAVIGATION_ITEM_ID);
+  const currentRoutePath = `${location.pathname}${location.search}${location.hash}`;
+  const homeRoutePathRef = useRef(
+    isHomeActive ? currentRoutePath : getRootComposeRoutePath(),
+  );
+  useEffect(() => {
+    if (isHomeActive) homeRoutePathRef.current = currentRoutePath;
+  }, [currentRoutePath, isHomeActive]);
 
   const latest = useRef({
     arrangement,
     commandRunner,
     host,
+    isHomeActive,
     items,
     navigate,
     rowsById,
@@ -247,6 +249,7 @@ export function SidebarNavigationModelProvider({
       arrangement,
       commandRunner,
       host,
+      isHomeActive,
       items,
       navigate,
       rowsById,
@@ -295,7 +298,6 @@ export function SidebarNavigationModelProvider({
           case "open-skills": {
             const routePath = getResourceNavigationRoutePath(row.action);
             if (routePath === null) return;
-            current.host.onNavigate?.();
             void current.navigate(routePath);
             return;
           }
@@ -316,6 +318,11 @@ export function SidebarNavigationModelProvider({
           }
         }
       },
+      goHome() {
+        const current = latest.current;
+        if (current.isHomeActive) return;
+        void current.navigate(homeRoutePathRef.current);
+      },
       setVisible(itemId, isVisible) {
         latest.current.arrangement.setVisible(itemId, isVisible);
       },
@@ -323,7 +330,7 @@ export function SidebarNavigationModelProvider({
         latest.current.arrangement.setOrder(itemIds);
       },
       openCustomize() {
-        latest.current.host.onOpenCustomize();
+        latest.current.host.onOpenCustomize?.();
       },
       openDetails(itemId) {
         const found = lookup(itemId);
@@ -362,8 +369,14 @@ export function SidebarNavigationModelProvider({
   }, []);
 
   const state = useMemo<ExperimentalSidebarNavigationState>(
-    () => ({ items, activeItemId, isShortcutModifierHeld, actions }),
-    [actions, activeItemId, isShortcutModifierHeld, items],
+    () => ({
+      items,
+      activeItemId,
+      isHomeActive,
+      isShortcutModifierHeld,
+      actions,
+    }),
+    [actions, activeItemId, isHomeActive, isShortcutModifierHeld, items],
   );
   const model = useMemo<SidebarNavigationModel>(
     () => ({
@@ -377,22 +390,22 @@ export function SidebarNavigationModelProvider({
   );
   return (
     <SidebarNavigationModelContext.Provider value={model}>
+      <NavigationBadgeSources panels={badgedPanels} setBadges={setBadges} />
       {children}
     </SidebarNavigationModelContext.Provider>
   );
 }
 
-export function useSidebarNavigationModel(): SidebarNavigationModel | null {
+export function useOptionalSidebarNavigationModel(): SidebarNavigationModel | null {
   return useContext(SidebarNavigationModelContext);
 }
 
-export function useSidebarNavigationRowContent(
-  itemId: string,
-): { content: PaneContent; label: string } | null {
-  const model = useSidebarNavigationModel();
-  const row = model?.rowsById.get(itemId);
-  return useMemo(() => {
-    const content = row ? getSidebarNavigationRowContent(row) : null;
-    return row && content ? { content, label: row.label } : null;
-  }, [row]);
+export function useSidebarNavigationModel(): SidebarNavigationModel {
+  const model = useOptionalSidebarNavigationModel();
+  if (model === null) {
+    throw new Error(
+      "useSidebarNavigationModel must be used within a SidebarNavigationModelProvider.",
+    );
+  }
+  return model;
 }

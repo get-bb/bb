@@ -11,6 +11,27 @@ import { z } from "zod";
 const CODEX_FAST_SERVICE_TIER = "priority";
 const BB_FAST_SERVICE_TIER = "fast";
 
+export const CODEX_DAYBREAK_OPTION_ID = "daybreak";
+const CODEX_CYBER_PROGRAMS = [
+  "standard",
+  "daybreakBlue",
+  "daybreakRed",
+] as const;
+const DAYBREAK_ALIAS_MODEL_PATTERN = /^gpt-daybreak-.+-latest$/u;
+
+export type CodexCyberProgram = (typeof CODEX_CYBER_PROGRAMS)[number];
+type CodexBooleanSessionOption = Extract<
+  NonNullable<AvailableModel["sessionOptions"]>[number],
+  { type: "boolean" }
+>;
+
+export interface CodexModelCatalog {
+  models: AvailableModel[];
+  selectedOnlyModels: AvailableModel[];
+  cyberProgramsByModel: Map<string, CodexCyberProgram[]>;
+  daybreakAvailable: boolean;
+}
+
 const DEFAULT_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
   reasoningEffortsForLevels(["low", "medium", "high", "xhigh"]);
 
@@ -32,18 +53,7 @@ function mapCodexReasoningLevelToBb(value: unknown): ReasoningLevel | null {
 export function mapBbReasoningLevelToCodex(
   level: ReasoningLevel,
 ): string | null {
-  switch (level) {
-    case "ultracode":
-      return null;
-    case "none":
-    case "low":
-    case "medium":
-    case "high":
-    case "xhigh":
-    case "max":
-    case "ultra":
-      return level;
-  }
+  return level === "ultracode" ? null : level;
 }
 
 function cloneDefaultReasoningEfforts(): ModelReasoningEffort[] {
@@ -164,7 +174,59 @@ function toAvailableModel(
   };
 }
 
-export function parseModelsResponse(result: unknown): AvailableModel[] {
+function parseCyberPrograms(raw: unknown): CodexCyberProgram[] {
+  if (raw == null || typeof raw !== "object") {
+    return [];
+  }
+  const cyber = (raw as { cyber?: unknown }).cyber;
+  if (!Array.isArray(cyber)) {
+    return [];
+  }
+  return CODEX_CYBER_PROGRAMS.filter((program) => cyber.includes(program));
+}
+
+function daybreakProgram(
+  programs: readonly CodexCyberProgram[],
+): CodexCyberProgram | null {
+  if (programs.includes("daybreakBlue")) {
+    return "daybreakBlue";
+  }
+  return programs.includes("daybreakRed") ? "daybreakRed" : null;
+}
+
+export function cyberProgramForTurn(
+  programs: readonly CodexCyberProgram[],
+  daybreakEnabled: boolean,
+): CodexCyberProgram | null {
+  if (daybreakEnabled) {
+    return daybreakProgram(programs);
+  }
+  return programs.includes("standard") ? "standard" : null;
+}
+
+export function codexDaybreakOption(value: boolean): CodexBooleanSessionOption {
+  return {
+    type: "boolean",
+    id: CODEX_DAYBREAK_OPTION_ID,
+    label: "Daybreak",
+    description: "Run turns in OpenAI's Daybreak cyber access program",
+    value,
+  };
+}
+
+function modelDaybreakOption(
+  programs: readonly CodexCyberProgram[],
+): CodexBooleanSessionOption {
+  const runsWithDaybreak = daybreakProgram(programs) !== null;
+  const runsWithoutDaybreak =
+    !runsWithDaybreak || programs.includes("standard");
+  if (runsWithDaybreak && runsWithoutDaybreak) {
+    return codexDaybreakOption(false);
+  }
+  return { ...codexDaybreakOption(runsWithDaybreak), fixed: true };
+}
+
+export function parseModelCatalog(result: unknown): CodexModelCatalog {
   if (result == null || typeof result !== "object") {
     throw new Error("Invalid response from codex model/list.");
   }
@@ -174,18 +236,57 @@ export function parseModelsResponse(result: unknown): AvailableModel[] {
     throw new Error("Invalid response from codex model/list.");
   }
 
-  const models: AvailableModel[] = [];
+  const listed: AvailableModel[] = [];
+  const cyberProgramsByModel = new Map<string, CodexCyberProgram[]>();
   for (const entry of data) {
     const identity = codexModelIdentitySchema.safeParse(entry);
     if (!identity.success) {
       continue;
     }
-    models.push(toAvailableModel(identity.data));
+    const model = toAvailableModel(identity.data);
+    listed.push(model);
+    cyberProgramsByModel.set(
+      model.model,
+      parseCyberPrograms(identity.data.availableAccessPrograms),
+    );
   }
 
-  if (models.length === 0) {
+  if (listed.length === 0) {
     throw new Error("Codex model/list returned no supported models.");
   }
 
-  return models;
+  const programsFor = (model: AvailableModel): CodexCyberProgram[] =>
+    cyberProgramsByModel.get(model.model) ?? [];
+  const isDaybreakAlias = (model: AvailableModel): boolean =>
+    DAYBREAK_ALIAS_MODEL_PATTERN.test(model.model);
+  const daybreakAvailable = listed.some(
+    (model) => daybreakProgram(programsFor(model)) !== null,
+  );
+  if (!daybreakAvailable) {
+    return {
+      models: listed,
+      selectedOnlyModels: [],
+      cyberProgramsByModel,
+      daybreakAvailable,
+    };
+  }
+
+  const withOption = listed.map((model) => ({
+    ...model,
+    sessionOptions: [modelDaybreakOption(programsFor(model))],
+  }));
+  const switchReplacesAliases = withOption.some(
+    (model) =>
+      !isDaybreakAlias(model) && daybreakProgram(programsFor(model)) !== null,
+  );
+  return {
+    models: switchReplacesAliases
+      ? withOption.filter((model) => !isDaybreakAlias(model))
+      : withOption,
+    selectedOnlyModels: switchReplacesAliases
+      ? withOption.filter(isDaybreakAlias)
+      : [],
+    cyberProgramsByModel,
+    daybreakAvailable,
+  };
 }

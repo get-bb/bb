@@ -13,11 +13,11 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
 });
 
-function gh(email: string | null = null) {
+function gh(email: string | null = null, login = "octocat") {
   return vi.fn(async (args: string[]) =>
     args[0] === "auth"
       ? "test-private-token\n"
-      : JSON.stringify({ login: "octocat", id: 123, email }),
+      : JSON.stringify({ login, id: 123, email }),
   );
 }
 
@@ -79,15 +79,19 @@ describe("machine Git environment", () => {
   });
 
   it("derives login identity and public or noreply email", async () => {
-    for (const email of [null, "public@example.com"]) {
-      const entries = await resolveGitCredentials(gh(email));
+    for (const [login, email] of [
+      ["octocat", null],
+      ["octo-cat", "public@example.com"],
+      ["octocat_enterprise", null],
+    ] as const) {
+      const entries = await resolveGitCredentials(gh(email, login));
       const env = Object.fromEntries(
         entries.map((entry) => [entry.name, entry.value]),
       );
-      expect(env.GIT_AUTHOR_NAME).toBe("octocat");
-      expect(env.GIT_COMMITTER_NAME).toBe("octocat");
+      expect(env.GIT_AUTHOR_NAME).toBe(login);
+      expect(env.GIT_COMMITTER_NAME).toBe(login);
       expect(env.GIT_AUTHOR_EMAIL).toBe(
-        email ?? "123+octocat@users.noreply.github.com",
+        email ?? `123+${login}@users.noreply.github.com`,
       );
       expect(env.GIT_COMMITTER_EMAIL).toBe(env.GIT_AUTHOR_EMAIL);
       expect(
@@ -210,7 +214,7 @@ for (let line = readLine(); line !== null; line = readLine()) {
 describe("server Git credential refresh", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("shares concurrent and repeated lookups, isolates returned entries, and refreshes rotated credentials after a minute", async () => {
+  it("shares concurrent and repeated lookups, isolates returned entries, and serves expired credentials while refreshing rotated ones in the background", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const run = gh();
     const results = await Promise.all(
@@ -237,17 +241,23 @@ describe("server Git credential refresh", () => {
     expect(cached.some((entry) => entry.name === "EXTRA")).toBe(false);
     expect(run).toHaveBeenCalledTimes(2);
     vi.advanceTimersByTime(1);
-    const refreshed = await resolveGitCredentials(run);
-    expect(refreshed.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
-      "rotated-token",
+    const expired = await resolveGitCredentials(run);
+    expect(expired.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+      "test-private-token",
     );
-    expect(
-      refreshed.find((entry) => entry.name === "GIT_AUTHOR_NAME")?.value,
-    ).toBe("new-user");
+    await vi.waitFor(async () => {
+      const refreshed = await resolveGitCredentials(run);
+      expect(refreshed.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+        "rotated-token",
+      );
+      expect(
+        refreshed.find((entry) => entry.name === "GIT_AUTHOR_NAME")?.value,
+      ).toBe("new-user");
+    });
     expect(run).toHaveBeenCalledTimes(4);
   });
 
-  it("retries unavailable credentials after five seconds and lets health checks observe logout and login immediately", async () => {
+  it("retries unavailable credentials in the background after five seconds and lets health checks observe logout and login immediately", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const run = gh();
     run.mockRejectedValue(new Error("unavailable"));
@@ -256,8 +266,11 @@ describe("server Git credential refresh", () => {
     expect(run).toHaveBeenCalledTimes(1);
     run.mockImplementation(gh());
     vi.advanceTimersByTime(5_000);
-    expect(await resolveGitCredentials(run)).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    await vi.waitFor(async () =>
+      expect(await resolveGitCredentials(run)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+      ),
     );
     run.mockRejectedValue(new Error("logged out"));
     expect((await machineGitHealth(run)).status).toBe("not configured");

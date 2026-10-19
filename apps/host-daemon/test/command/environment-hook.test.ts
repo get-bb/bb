@@ -1,14 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { expect, it } from "vitest";
 import { dispatchOnlineRpcCommand } from "../../src/command-dispatch.js";
-import {
-  cleanupTempDirs,
-  createHarness,
-  makeTempDir,
-} from "./dispatch-helpers.js";
-
-afterEach(cleanupTempDirs);
+import { createHarness } from "./dispatch-helpers.js";
 
 it("streams hook output and cancels the process before the run RPC settles", async () => {
   const harness = createHarness();
@@ -28,6 +23,7 @@ it("streams hook output and cancels the process before the run RPC settles", asy
           operationId: "hook-1",
         },
         options,
+        new AbortController().signal,
       );
   };
   await expect(
@@ -42,6 +38,7 @@ it("streams hook output and cancels the process before the run RPC settles", asy
         timeoutMs: 5000,
       },
       options,
+      new AbortController().signal,
     ),
   ).rejects.toThrow("cancelled");
   expect(output).toContain("running-hook");
@@ -64,17 +61,26 @@ it("reconciles running and completed hook IDs without executing a second shell",
     kind: "setup" as const,
     timeoutMs: 5000,
   };
-  const first = dispatchOnlineRpcCommand(command, options);
+  const first = dispatchOnlineRpcCommand(
+    command,
+    options,
+    new AbortController().signal,
+  );
   await expect
     .poll(async () => readFile(join(path, "marker"), "utf8").catch(() => ""))
     .toBe("once\n");
   const resumed = dispatchOnlineRpcCommand(
     { ...command, resumeOnly: true },
     options,
+    new AbortController().signal,
   );
   await writeFile(join(path, "proceed"), "");
   await Promise.all([first, resumed]);
-  await dispatchOnlineRpcCommand({ ...command, resumeOnly: true }, options);
+  await dispatchOnlineRpcCommand(
+    { ...command, resumeOnly: true },
+    options,
+    new AbortController().signal,
+  );
   expect(await readFile(join(path, "marker"), "utf8")).toBe("once\n");
 });
 
@@ -94,12 +100,14 @@ it("rejects unknown recovery and cancels delayed dispatch within this daemon", a
         timeoutMs: 5000,
       },
       options,
+      new AbortController().signal,
     ),
   ).rejects.toThrow("outcome is unknown");
   await expect(
     dispatchOnlineRpcCommand(
       { type: "environment.hook.cancel", operationId: "unknown" },
       options,
+      new AbortController().signal,
     ),
   ).resolves.toEqual({ status: "unknown" });
   await expect(
@@ -114,6 +122,7 @@ it("rejects unknown recovery and cancels delayed dispatch within this daemon", a
         timeoutMs: 5000,
       },
       options,
+      new AbortController().signal,
     ),
   ).rejects.toThrow("cancelled before dispatch");
   await expect(readFile(join(path, "marker"))).rejects.toThrow();
@@ -135,21 +144,28 @@ it("reports unknown after daemon memory is lost without rerunning the script", a
     kind: "setup" as const,
     timeoutMs: 5000,
   };
-  const running = dispatchOnlineRpcCommand(command, firstOptions).catch(
-    () => undefined,
-  );
+  const running = dispatchOnlineRpcCommand(
+    command,
+    firstOptions,
+    new AbortController().signal,
+  ).catch(() => undefined);
   await expect
     .poll(async () => readFile(join(path, "started"), "utf8").catch(() => ""))
     .toBe("started\n");
   const restored = createHarness().dispatchOptions({ dataDir: path });
   try {
     await expect(
-      dispatchOnlineRpcCommand({ ...command, resumeOnly: true }, restored),
+      dispatchOnlineRpcCommand(
+        { ...command, resumeOnly: true },
+        restored,
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("outcome is unknown");
     await expect(
       dispatchOnlineRpcCommand(
         { type: "environment.hook.cancel", operationId: "restart" },
         restored,
+        new AbortController().signal,
       ),
     ).resolves.toEqual({ status: "unknown" });
     expect(await readFile(join(path, "started"), "utf8")).toBe("started\n");
@@ -157,6 +173,7 @@ it("reports unknown after daemon memory is lost without rerunning the script", a
     await dispatchOnlineRpcCommand(
       { type: "environment.hook.cancel", operationId: "restart" },
       firstOptions,
+      new AbortController().signal,
     );
     await running;
   }
@@ -199,10 +216,19 @@ it.each(["setup", "teardown"] as const)(
       timeoutMs: 5000,
     };
     if (kind === "setup")
-      await expect(dispatchOnlineRpcCommand(command, options)).rejects.toThrow(
-        "exit code 1",
+      await expect(
+        dispatchOnlineRpcCommand(
+          command,
+          options,
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow("exit code 1");
+    else
+      await dispatchOnlineRpcCommand(
+        command,
+        options,
+        new AbortController().signal,
       );
-    else await dispatchOnlineRpcCommand(command, options);
     expect(await readFile(join(path, "received"), "utf8")).toBe(secret);
     expect(output.join("\n")).toContain(secret);
     expect(process.env.GH_TOKEN).not.toBe(secret);
@@ -240,6 +266,7 @@ it.each(["setup", "teardown"] as const)(
         timeoutMs: 5000,
       },
       options,
+      new AbortController().signal,
     );
     expect(output.join("\n")).toContain("PRIVATE_BODY");
   },
@@ -280,6 +307,7 @@ it("applies hook NODE_ENV and PATH contributions after sanitizing inherited stat
       timeoutMs: 5000,
     },
     options,
+    new AbortController().signal,
   );
   expect(output).toContain("NODE_ENV=production");
   if (process.platform === "win32") {

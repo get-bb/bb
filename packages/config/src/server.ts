@@ -28,8 +28,10 @@ import {
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
   BB_APP_UPDATE_MODE_ENV,
+  BB_CLI_LAUNCHER_ENV,
   BB_TELEMETRY_ENV,
   BB_PERF_DIAGNOSTICS_ENV,
+  BB_SKIP_ONBOARDING_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
@@ -63,8 +65,10 @@ export interface ServerConfig
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
   BB_APP_UPDATE_MODE?: AppUpdateMode;
+  BB_CLI_LAUNCHER?: string;
   BB_TELEMETRY: boolean;
   BB_PERF_DIAGNOSTICS: boolean;
+  BB_SKIP_ONBOARDING: boolean;
   featureFlags: FeatureFlags;
 }
 
@@ -165,6 +169,12 @@ export function loadServerConfig(
       env: loader.env,
       defaultValue: false,
     }),
+    BB_SKIP_ONBOARDING: readEnvVarWithDefault({
+      context: loader.context,
+      definition: BB_SKIP_ONBOARDING_ENV,
+      env: loader.env,
+      defaultValue: false,
+    }),
     BB_TELEMETRY: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_TELEMETRY,
@@ -189,6 +199,15 @@ export function loadServerConfig(
     value: readOptionalEnvVar({
       context: loader.context,
       definition: BB_APP_UPDATE_MODE_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_CLI_LAUNCHER",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_CLI_LAUNCHER_ENV,
       env: loader.env,
     }),
   });

@@ -60,6 +60,7 @@ export const GitDiffCard = memo(function GitDiffCard({
     changeKind: headerModel.changeKind,
     onRequestFileContents: undefined,
     patchText,
+    renderBeforeVisible: true,
   });
   const hasChanges = fileDiff.hunks.length > 0;
   const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({

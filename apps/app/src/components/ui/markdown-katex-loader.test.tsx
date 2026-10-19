@@ -19,7 +19,7 @@ describe("MarkdownPreview lazy KaTeX", () => {
   it("loads KaTeX only for math and shares it across mounted previews", async () => {
     const plain = render(
       <MarkdownPreview
-        content={"Plain prose with $5 and $x$ and \\$10 escaped."}
+        content={"Plain prose from $5 to $10 and \\$20 escaped."}
       />,
     );
     await act(async () => {

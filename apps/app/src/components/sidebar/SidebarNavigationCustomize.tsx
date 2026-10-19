@@ -1,62 +1,91 @@
-import { useMemo } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  SidebarVisibilityCustomize,
-  type SidebarVisibilityItem,
-} from "./SidebarVisibilityControls";
+import { useMemo, type RefObject } from "react";
+import type { ExperimentalSidebarNavigationPlacement } from "@get-bb/plugin-sdk";
+import { PopoverContent } from "@bb/shared-ui/popover";
+import type { SidebarVisibilityItem } from "@bb/shared-ui/sidebar-visibility-customize";
+import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import {
   SidebarNavigationIcon,
   useSidebarNavigationModel,
 } from "./SidebarNavigationModel";
 
+const CUSTOMIZE_SIDE_OFFSET = 12;
+
 export function SidebarNavigationCustomize({
+  title,
+  placement,
   onClose,
-  surface,
 }: {
+  title: string;
+  placement: ExperimentalSidebarNavigationPlacement;
   onClose: (restoreFocus: boolean) => void;
-  surface: "sidebar" | "popover";
 }) {
   const model = useSidebarNavigationModel();
-  const isCompactViewport = useIsCompactViewport();
   const items = useMemo<SidebarVisibilityItem[]>(
     () =>
-      (model?.state.items ?? []).map((item) => ({
-        id: item.id,
-        title: item.label,
-        icon: <SidebarNavigationIcon icon={item.icon} />,
-        ...(item.isDisabled ? { disabled: true } : {}),
-      })),
-    [model?.state.items],
+      model.state.items
+        .filter(
+          (item) => placement === "list" || item.action.kind !== "new-thread",
+        )
+        .map((item) => ({
+          id: item.id,
+          title: item.label,
+          icon: <SidebarNavigationIcon icon={item.icon} />,
+          ...(item.isDisabled ? { disabled: true } : {}),
+        })),
+    [model.state.items, placement],
   );
-  if (model === null) return null;
-  const { arrangement, state } = model;
-  const fillsContainer = surface === "popover" || isCompactViewport;
+  const { arrangement } = model;
   return (
     <div
-      className={cn(
-        surface === "sidebar" && "px-2 py-2",
-        fillsContainer ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
-      )}
+      className="flex min-h-0 flex-1 flex-col"
       data-testid="plugin-nav-sidebar-items"
       data-sidebar-navigation-customize-mode="true"
     >
       <SidebarVisibilityCustomize
-        title={surface === "popover" ? "Customize rail" : "Customize sidebar"}
+        title={title}
         listLabel="Sidebar navigation"
-        variant={fillsContainer ? "compact" : "card"}
+        variant="compact"
         items={items}
         visibleIds={arrangement.visibleKeys}
-        onActivate={(item, event) =>
-          state.actions.activate(item.id, {
-            openInSplit: event.metaKey || event.ctrlKey,
-          })
-        }
         onDone={() => onClose(true)}
-        onExit={() => onClose(false)}
         onReorder={arrangement.moveAny}
         onVisibleChange={arrangement.setVisible}
       />
     </div>
+  );
+}
+
+export function SidebarNavigationCustomizePopoverContent({
+  testId,
+  placement,
+  focusReturnRef,
+  onClose,
+}: {
+  testId: string;
+  placement: ExperimentalSidebarNavigationPlacement;
+  focusReturnRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+}) {
+  const title = "Customize navigation";
+  return (
+    <PopoverContent
+      side="right"
+      align="start"
+      sideOffset={CUSTOMIZE_SIDE_OFFSET}
+      aria-label={title}
+      mobileTitle={title}
+      data-testid={testId}
+      className="flex max-h-(--radix-popover-content-available-height) flex-col p-2 md:w-64"
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        focusReturnRef.current?.focus();
+      }}
+    >
+      <SidebarNavigationCustomize
+        title={title}
+        placement={placement}
+        onClose={onClose}
+      />
+    </PopoverContent>
   );
 }

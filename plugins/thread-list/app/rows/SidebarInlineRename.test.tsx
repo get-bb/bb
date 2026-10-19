@@ -15,7 +15,7 @@ import {
   SidebarRenameProvider,
   useSidebarRename,
 } from "./SidebarInlineRename.js";
-import { renameError } from "./SidebarRenameEditor.js";
+import { renameError } from "@/components/ui/inline-rename";
 
 installTestPluginRuntime();
 

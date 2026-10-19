@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
+  PluginAppSlots,
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
@@ -36,10 +37,10 @@ const {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
+  experimental_copyToClipboard,
   experimental_useSidebarNavigation,
   experimental_useSidebarNavigationSplit,
   experimental_SidebarNavigationIcon: SidebarNavigationIcon,
-  experimental_copyToClipboard,
 } = await import("../../app.js");
 
 function SdkProbe() {
@@ -528,79 +529,6 @@ const app = await loadPluginApp(
   }),
 );
 
-function NavigationProbe({ id }: { id: string }) {
-  const { activeItemId, actions, items } = experimental_useSidebarNavigation();
-  const split = experimental_useSidebarNavigationSplit(id);
-  const item = items.find((candidate) => candidate.id === id);
-  if (!item) return null;
-  return (
-    <button
-      type="button"
-      aria-current={item.id === activeItemId ? "page" : undefined}
-      {...split.splitProps}
-      onClick={() => {
-        actions.activate(item.id, { openInSplit: true });
-        actions.setVisible(item.id, false);
-        actions.setOrder([item.id]);
-        actions.openCustomize();
-      }}
-    >
-      <SidebarNavigationIcon icon={item.icon} />
-      {item.label}
-    </button>
-  );
-}
-
-describe("sidebar navigation test runtime", () => {
-  it("reports configured items and records every action", () => {
-    const slot = renderSlot(
-      { component: NavigationProbe },
-      { id: "garden/docs" },
-      {
-        sidebarNavigation: {
-          activeItemId: "garden/docs",
-          items: [
-            {
-              id: "garden/docs",
-              label: "Docs",
-              icon: { kind: "plugin", pluginId: "garden", icon: "BookOpen" },
-              action: {
-                kind: "open-plugin-panel",
-                pluginId: "garden",
-                panelId: "docs",
-              },
-              isDisabled: false,
-              isVisible: true,
-              isLoading: false,
-              pluginId: "garden",
-              shortcut: null,
-              experimental_Accessory: null,
-            },
-          ],
-        },
-      },
-    );
-
-    const button = slot.getByRole("button", { name: "Docs" });
-    expect(button.getAttribute("aria-current")).toBe("page");
-    expect(
-      button
-        .querySelector("[data-sidebar-navigation-icon]")
-        ?.getAttribute("data-sidebar-navigation-icon"),
-    ).toBe("garden/BookOpen");
-    fireEvent.pointerDown(button);
-    fireEvent.click(button);
-
-    expect(slot.inspection.sidebarNavigationCalls).toEqual([
-      { method: "beginSplitDrag", itemId: "garden/docs" },
-      { method: "activate", itemId: "garden/docs", openInSplit: true },
-      { method: "setVisible", itemId: "garden/docs", isVisible: false },
-      { method: "setOrder", itemIds: ["garden/docs"] },
-      { method: "openCustomize" },
-    ]);
-  });
-});
-
 describe("loadPluginApp", () => {
   beforeEach(() => {
     messageActionRuns.length = 0;
@@ -636,74 +564,6 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.experimental_appOverlay: duplicate id "office"');
-  });
-
-  it("captures and validates sidebar navigation registrations", async () => {
-    const captured = await loadPluginApp(
-      definePluginApp((builder) => {
-        builder.slots.experimental_sidebarNavigation({
-          id: "compact",
-          title: "Compact navigation",
-          description: "Groups the sidebar destinations.",
-          component: () => null,
-        });
-      }),
-    );
-
-    expect(captured.experimentalSidebarNavigations).toEqual([
-      {
-        id: "compact",
-        title: "Compact navigation",
-        description: "Groups the sidebar destinations.",
-        component: expect.any(Function),
-      },
-    ]);
-    const withHeader = await loadPluginApp(
-      definePluginApp((builder) => {
-        builder.slots.experimental_sidebarHeader({
-          id: "icons",
-          title: "Header icons",
-          component: () => null,
-        });
-      }),
-    );
-    expect(withHeader.experimentalSidebarHeaders).toEqual([
-      { id: "icons", title: "Header icons", component: expect.any(Function) },
-    ]);
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.experimental_sidebarHeader({
-            id: "icons",
-            title: "One",
-            component: () => null,
-          });
-          builder.slots.experimental_sidebarHeader({
-            id: "icons",
-            title: "Two",
-            component: () => null,
-          });
-        }),
-      ),
-    ).rejects.toThrow('slots.experimental_sidebarHeader: duplicate id "icons"');
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.experimental_sidebarNavigation({
-            id: "compact",
-            title: "One",
-            component: () => null,
-          });
-          builder.slots.experimental_sidebarNavigation({
-            id: "compact",
-            title: "Two",
-            component: () => null,
-          });
-        }),
-      ),
-    ).rejects.toThrow(
-      'slots.experimental_sidebarNavigation: duplicate id "compact"',
-    );
   });
 
   it("captures and validates New thread panel action registrations", async () => {
@@ -829,9 +689,9 @@ describe("loadPluginApp", () => {
     expect(mounted.inspection.experimental_clipboardWrites).toEqual([
       { text: "plain", html: "<b>rich</b>" },
     ]);
-    await expect(
-      experimental_copyToClipboard({ text: "later" }),
-    ).resolves.toBe(false);
+    await expect(experimental_copyToClipboard({ text: "later" })).resolves.toBe(
+      false,
+    );
 
     const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
     await expect(
@@ -1081,21 +941,19 @@ describe("loadPluginApp", () => {
             icon: "FileText",
             path: "panel",
             component: Panel,
-            experimental_sidebarAccessory: "nope" as never,
+            experimental_useBadge: "nope" as never,
           });
         }),
       ),
-    ).rejects.toThrow(
-      '"experimental_sidebarAccessory" must be a React component',
-    );
+    ).rejects.toThrow('"experimental_useBadge" must be a React hook');
     await expect(loadPluginApp({ default: { nope: true } })).rejects.toThrow(
       "not definePluginApp(...)",
     );
   });
 
-  it("captures a nav panel experimental sidebar accessory", async () => {
-    function SidebarAccessory() {
-      return <span>12</span>;
+  it("captures a nav panel experimental badge hook", async () => {
+    function useBadge() {
+      return { count: 12, label: "12 open tasks" };
     }
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
@@ -1105,14 +963,12 @@ describe("loadPluginApp", () => {
           icon: "ListTodo",
           path: "tasks",
           component: Panel,
-          experimental_sidebarAccessory: SidebarAccessory,
+          experimental_useBadge: useBadge,
         });
       }),
     );
 
-    expect(captured.navPanels[0]?.experimental_sidebarAccessory).toBe(
-      SidebarAccessory,
-    );
+    expect(captured.navPanels[0]?.experimental_useBadge).toBe(useBadge);
   });
 
   it("validates and captures nav panel fixed tabs", async () => {
@@ -1414,6 +1270,87 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.messageDirective: duplicate id "inline-vis"');
+  });
+
+  it("captures experimental_codeFenceRenderer registrations and validates them like the host", async () => {
+    const FenceRenderer = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_codeFenceRenderer({
+          id: "generative-ui",
+          languages: ["ui", "app"],
+          component: FenceRenderer,
+        });
+        builder.slots.experimental_codeFenceRenderer({
+          id: "charts",
+          languages: ["c++", "chart.v2"],
+          component: FenceRenderer,
+        });
+      }),
+    );
+    expect(captured.codeFenceRenderers).toEqual([
+      {
+        id: "generative-ui",
+        languages: ["ui", "app"],
+        component: FenceRenderer,
+      },
+      {
+        id: "charts",
+        languages: ["c++", "chart.v2"],
+        component: FenceRenderer,
+      },
+    ]);
+
+    const kind = "slots.experimental_codeFenceRenderer";
+    const rejected: [string, Record<string, unknown>[]][] = [
+      [
+        `${kind}: "languages" must be a non-empty array`,
+        [{ id: "ui", languages: [], component: FenceRenderer }],
+      ],
+      [
+        `${kind}: "languages" must be a non-empty array`,
+        [{ id: "ui", languages: "ui", component: FenceRenderer }],
+      ],
+      [
+        `${kind}: languages must match`,
+        [{ id: "ui", languages: ["UI"], component: FenceRenderer }],
+      ],
+      [
+        `${kind}: languages must match`,
+        [{ id: "ui", languages: ["ui block"], component: FenceRenderer }],
+      ],
+      [
+        `${kind}: duplicate language "ui"`,
+        [
+          { id: "first", languages: ["ui"], component: FenceRenderer },
+          { id: "second", languages: ["app", "ui"], component: FenceRenderer },
+        ],
+      ],
+      [
+        `${kind}: duplicate id "ui"`,
+        [
+          { id: "ui", languages: ["ui"], component: FenceRenderer },
+          { id: "ui", languages: ["app"], component: FenceRenderer },
+        ],
+      ],
+      [
+        `${kind}: "component"`,
+        [{ id: "ui", languages: ["ui"], component: undefined }],
+      ],
+    ];
+    for (const [message, registrations] of rejected) {
+      await expect(
+        loadPluginApp(
+          definePluginApp((builder) => {
+            for (const registration of registrations) {
+              builder.slots.experimental_codeFenceRenderer(
+                registration as never,
+              );
+            }
+          }),
+        ),
+      ).rejects.toThrow(message);
+    }
   });
 
   it("captures messageAction registrations and validates them like the host", async () => {
@@ -2190,4 +2127,320 @@ it("reacts to attachment-only updates and atomic replacement through the public 
   expect(slot.getByRole("status").textContent).toBe("prefill:1:false");
   fireEvent.click(slot.getByRole("button", { name: "Replace all" }));
   expect(slot.getByRole("status").textContent).toBe(":0:true");
+});
+
+describe("thread actions menu fake", () => {
+  const thread = {
+    id: "thr_menu",
+    projectId: "proj_menu",
+    parentThreadId: null,
+    archivedAt: null,
+    pinnedAt: null,
+    sectionId: null,
+    isUnread: false,
+    status: "idle" as const,
+    environment: null,
+  };
+
+  it("rejects a trigger that drops the props and ref it receives", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={() => <button type="button">Thread actions</button>}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /must spread the props and ref/,
+    );
+    error.mockRestore();
+  });
+
+  it("rejects a trigger that replaces the host's className", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button" className="mine">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /replaced the host's className/,
+    );
+    error.mockRestore();
+  });
+
+  it("opens from a trigger that spreads its props", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const run = vi.fn(async () => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      {
+        threadActions: () => [
+          {
+            key: "bb--core/pin",
+            pluginId: "bb--core",
+            group: "2_organize",
+            action: { label: "Pin", icon: "Pin", run },
+          },
+        ],
+      },
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Thread actions" }));
+    fireEvent.click(slot.getByRole("menuitem", { name: "Pin" }));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+interface LegacySidebarSlots {
+  experimental_sidebarHeader(registration: {
+    id: string;
+    title: string;
+    component: () => null;
+  }): void;
+}
+
+function legacySlots(slots: PluginAppSlots): LegacySidebarSlots {
+  return slots as unknown as LegacySidebarSlots;
+}
+
+function NavigationProbe({ id }: { id: string }) {
+  const { activeItemId, actions, items } = experimental_useSidebarNavigation();
+  const split = experimental_useSidebarNavigationSplit(id);
+  const item = items.find((candidate) => candidate.id === id);
+  if (!item) return null;
+  return (
+    <button
+      type="button"
+      aria-current={item.id === activeItemId ? "page" : undefined}
+      {...split.splitProps}
+      onClick={() => {
+        actions.activate(item.id, { openInSplit: true });
+        actions.setVisible(item.id, false);
+        actions.setOrder([item.id]);
+        actions.openCustomize();
+        actions.goHome();
+      }}
+    >
+      <SidebarNavigationIcon icon={item.icon} />
+      {item.badge ? `${item.label}, ${item.badge.label}` : item.label}
+    </button>
+  );
+}
+
+describe("sidebar navigation test runtime", () => {
+  it("reports configured items and records every action", () => {
+    const slot = renderSlot(
+      { component: NavigationProbe },
+      { id: "garden/docs" },
+      {
+        sidebarNavigation: {
+          activeItemId: "garden/docs",
+          items: [
+            {
+              id: "garden/docs",
+              label: "Docs",
+              icon: { kind: "plugin", pluginId: "garden", icon: "BookOpen" },
+              action: {
+                kind: "open-plugin-panel",
+                pluginId: "garden",
+                panelId: "docs",
+              },
+              isDisabled: false,
+              isVisible: true,
+              isLoading: false,
+              pluginId: "garden",
+              shortcut: null,
+              badge: { count: 2, label: "2 drafts" },
+            },
+          ],
+        },
+      },
+    );
+
+    const button = slot.getByRole("button", { name: "Docs, 2 drafts" });
+    expect(button.getAttribute("aria-current")).toBe("page");
+    expect(
+      button
+        .querySelector("[data-sidebar-navigation-icon]")
+        ?.getAttribute("data-sidebar-navigation-icon"),
+    ).toBe("garden/BookOpen");
+    fireEvent.pointerDown(button);
+    fireEvent.click(button);
+
+    expect(slot.inspection.sidebarNavigationCalls).toEqual([
+      { method: "beginSplitDrag", itemId: "garden/docs" },
+      { method: "activate", itemId: "garden/docs", openInSplit: true },
+      { method: "setVisible", itemId: "garden/docs", isVisible: false },
+      { method: "setOrder", itemIds: ["garden/docs"] },
+      { method: "openCustomize" },
+      { method: "goHome" },
+    ]);
+  });
+
+  it("captures sidebar navigation registrations, defaulting to the list placement", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_sidebarNavigation({
+          id: "compact",
+          title: "Compact navigation",
+          description: "Groups the sidebar destinations.",
+          component: () => null,
+          headerComponent: () => null,
+        });
+        builder.slots.experimental_sidebarNavigation({
+          id: "sections",
+          title: "Sections rail",
+          placement: "rail",
+          component: () => null,
+        });
+      }),
+    );
+
+    expect(captured.experimentalSidebarNavigations).toEqual([
+      {
+        id: "compact",
+        title: "Compact navigation",
+        description: "Groups the sidebar destinations.",
+        placement: "list",
+        component: expect.any(Function),
+        headerComponent: expect.any(Function),
+      },
+      {
+        id: "sections",
+        title: "Sections rail",
+        placement: "rail",
+        component: expect.any(Function),
+      },
+    ]);
+  });
+
+  it("joins a legacy experimental_sidebarHeader to the plugin's navigation", async () => {
+    const LegacyHeader = () => null;
+    const OwnHeader = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        legacySlots(builder.slots).experimental_sidebarHeader({
+          id: "icons",
+          title: "Header icons",
+          component: LegacyHeader,
+        });
+        builder.slots.experimental_sidebarNavigation({
+          id: "compact",
+          title: "Compact navigation",
+          component: () => null,
+        });
+        builder.slots.experimental_sidebarNavigation({
+          id: "sections",
+          title: "Sections",
+          component: () => null,
+          headerComponent: OwnHeader,
+        });
+      }),
+    );
+
+    expect(
+      captured.experimentalSidebarNavigations.map((navigation) => [
+        navigation.id,
+        navigation.headerComponent,
+      ]),
+    ).toEqual([
+      ["compact", LegacyHeader],
+      ["sections", OwnHeader],
+    ]);
+  });
+
+  it("warns when a legacy experimental_sidebarHeader has no list navigation to join", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const captured = await loadPluginApp(
+        definePluginApp((builder) => {
+          legacySlots(builder.slots).experimental_sidebarHeader({
+            id: "icons",
+            title: "Header icons",
+            component: () => null,
+          });
+        }),
+      );
+      expect(captured.experimentalSidebarNavigations).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("slots.experimental_sidebarHeader: ignored"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("rejects an unknown placement, a non-component header, and duplicate ids", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarNavigation({
+            id: "compact",
+            title: "Compact",
+            placement: "top" as "list",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_sidebarNavigation: "placement" must be "rail" or "list"',
+    );
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarNavigation({
+            id: "sections",
+            title: "Sections",
+            component: () => null,
+            headerComponent: "header" as unknown as () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_sidebarNavigation: "headerComponent" must be a React component function',
+    );
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          legacySlots(builder.slots).experimental_sidebarHeader({
+            id: "icons",
+            title: "One",
+            component: () => null,
+          });
+          legacySlots(builder.slots).experimental_sidebarHeader({
+            id: "icons",
+            title: "Two",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_sidebarHeader: duplicate id "icons"');
+  });
 });

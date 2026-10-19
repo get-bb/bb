@@ -21,7 +21,7 @@ import {
 } from "../../src/index.js";
 import type { UpsertInstalledPluginInput } from "../../src/data/plugins.js";
 import { installedPlugins } from "../../src/schema.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 const SOURCE_ROOT = "/home/me/.bb";
 const TARGET_ROOT = "/home/me/.bb-machines/old-server";
@@ -128,6 +128,7 @@ function seedPluginPaths(db: DbConnection): void {
       sourceKind,
       manifestUrl,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       manifestJson: "{}",
       statsJson: null,

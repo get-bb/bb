@@ -1,7 +1,8 @@
-import type {
-  HostDaemonCommand,
-  HostDaemonOnlineRpcRequestMessage,
-  HostDaemonOnlineRpcResponseMessage,
+import {
+  parseHostDaemonCommandResultForCommand,
+  type HostDaemonCommand,
+  type HostDaemonOnlineRpcRequestMessage,
+  type HostDaemonOnlineRpcResponseMessage,
 } from "@bb/host-daemon-contract";
 import { WorkspaceError } from "@bb/host-workspace";
 import {
@@ -10,6 +11,9 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import { createDeferredPromise } from "@bb/test-helpers";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   CommandRouter,
@@ -241,6 +245,85 @@ describe("CommandRouter", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("cancels an in-flight path search when the server cancels its request", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    const logger = {
+      debug: vi.fn(),
+      warn: vi.fn(),
+    };
+    const router = createRouter(harness, { logger });
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-router-paths-"));
+    try {
+      await fs.writeFile(path.join(root, "alpha.md"), "");
+
+      const response = router.handleOnlineRpcRequest({
+        type: "host-rpc.request",
+        requestId: "paths-cancelled",
+        command: {
+          type: "host.list_paths",
+          path: root,
+          query: "alpha",
+          limit: 5,
+          includeFiles: true,
+          includeDirectories: false,
+          includeHidden: true,
+          respectGitIgnore: false,
+          excludeNames: [],
+        },
+      });
+      router.cancelOnlineRpcRequest({
+        type: "host-rpc.cancel",
+        requestId: "paths-cancelled",
+      });
+
+      await expect(response).resolves.toMatchObject({
+        requestId: "paths-cancelled",
+        ok: false,
+        errorCode: "cancelled",
+      });
+      expect(logger.warn).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores cancellation for a different path search request", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    const router = createRouter(harness);
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-router-paths-"));
+    try {
+      await fs.writeFile(path.join(root, "alpha.md"), "");
+
+      const response = router.handleOnlineRpcRequest({
+        type: "host-rpc.request",
+        requestId: "paths-kept",
+        command: {
+          type: "host.list_paths",
+          path: root,
+          query: "alpha",
+          limit: 5,
+          includeFiles: true,
+          includeDirectories: false,
+          includeHidden: true,
+          respectGitIgnore: false,
+          excludeNames: [],
+        },
+      });
+      router.cancelOnlineRpcRequest({
+        type: "host-rpc.cancel",
+        requestId: "paths-other",
+      });
+
+      await expect(response).resolves.toMatchObject({
+        requestId: "paths-kept",
+        ok: true,
+        result: { paths: [{ path: "alpha.md" }], truncated: false },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("orders turn.submit after an in-flight environment provision", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-router" });
     const provisionStarted = createDeferredPromise<void>();
@@ -277,6 +360,36 @@ describe("CommandRouter", () => {
     const turnResponse = await turnTask;
     expect(turnResponse.ok).toBe(true);
     expect(harness.runtimeState.ranTurnText).toBe("after destroy");
+  });
+
+  it("returns turn.submit spans recorded across the execution lanes", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    const router = createRouter(harness);
+
+    const command = createTurnSubmitCommand();
+    const response = await runRouterCommand({
+      command,
+      requestId: "turn-trace-env-router",
+      router,
+    });
+
+    if (!response.ok) {
+      throw new Error("Expected a successful turn.submit response");
+    }
+    const { spans } = parseHostDaemonCommandResultForCommand(
+      command,
+      response.result,
+    ).trace;
+    expect(spans.map((span) => span.name)).toEqual([
+      "lanes.entered",
+      "skills.staged",
+      "runtime.ready",
+      "input.staged",
+      "bridge.turnStarted",
+      "events.flushed",
+    ]);
+    const offsets = spans.map((span) => span.atMs);
+    expect(offsets).toEqual([...offsets].sort((left, right) => left - right));
   });
 
   it("orders thread.stop after an in-flight thread.start handoff", async () => {

@@ -87,7 +87,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple (collapsed)"
-        hint='most recent command + "+N more"; click to expand'
+        hint="most recent command + total count; click to expand"
       >
         <ResponsiveStage>
           <ExpandableCard commands={many} />

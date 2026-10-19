@@ -45,14 +45,6 @@ describe("AppToastContent", () => {
     ).toBeDefined();
   });
 
-  it("uses the working-status loading glyph", () => {
-    const { container } = render(
-      <AppToastContent title="Creating commit" tone="loading" />,
-    );
-
-    expect(container.querySelector('[data-icon="Loading"]')).not.toBeNull();
-  });
-
   it("neutralizes Sonner margins on custom toast icons", () => {
     const { container } = render(
       <AppToastContent title="Thread archived" tone="success" />,

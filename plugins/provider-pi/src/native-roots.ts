@@ -12,8 +12,14 @@ export const PI_NATIVE_ROOTS_DECLARATION: Pick<
   "experimental_nativeSkillRoots" | "experimental_resolvesNativeRoots"
 > = {
   experimental_nativeSkillRoots: {
-    user: [".pi/agent/skills", ".agents/skills"],
-    project: [".pi/skills", ".agents/skills"],
+    user: [
+      { path: ".pi/agent/skills", recursive: true },
+      { path: ".agents/skills", recursive: true },
+    ],
+    project: [
+      { path: ".pi/skills", recursive: true },
+      { path: ".agents/skills", recursive: true, ancestors: true },
+    ],
   },
   experimental_resolvesNativeRoots: true,
 };
@@ -86,6 +92,7 @@ export async function resolvePiNativeRoots(
         skills: [...roots].sort().map((rootPath) => ({
           path: rootPath,
           origin: "user" as const,
+          recursive: true,
           shape: "skills" as const,
         })),
       },

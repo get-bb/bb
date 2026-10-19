@@ -10,9 +10,13 @@ import {
 const marketplaceRoute = getRouteApi("/marketplace_");
 
 export const Route = createFileRoute("/marketplace_/author/$github")({
-  loader: async ({ params, parentMatchPromise }) => {
+  loader: async ({ params, location, parentMatchPromise }) => {
     const { loaderData: marketplace } = await parentMatchPromise;
-    return marketplaceAuthorRouteEntries(marketplace, params.github);
+    return marketplaceAuthorRouteEntries(
+      marketplace,
+      params.github,
+      location.pathname,
+    );
   },
   head: ({ loaderData, params }) => {
     const author = loaderData?.[0]?.author;
@@ -31,7 +35,6 @@ export const Route = createFileRoute("/marketplace_/author/$github")({
         { name: "robots", content: author ? "index, follow" : "noindex" },
         ...unfurlMeta(title, description, path),
       ],
-      links: [{ rel: "canonical", href: `https://getbb.app${path}` }],
     };
   },
   component: MarketplaceAuthorRoute,

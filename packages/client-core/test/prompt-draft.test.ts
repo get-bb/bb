@@ -170,6 +170,36 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
+  it("keeps attachment mentions only while their attachment is in the draft", () => {
+    const text = "Compare @Pasted text.txt with @Pasted text 2.txt";
+    const attached = {
+      kind: "attachment" as const,
+      path: "Pasted-text-1.txt",
+      label: "Pasted text.txt",
+    };
+    const removed = {
+      kind: "attachment" as const,
+      path: "Pasted-text-2.txt",
+      label: "Pasted text 2.txt",
+    };
+    const input = promptDraftToInput({
+      text,
+      mentions: [
+        { start: 8, end: 24, resource: attached },
+        { start: 30, end: 48, resource: removed },
+      ],
+      attachments: [
+        { type: "localFile", path: "Pasted-text-1.txt", name: "Pasted text.txt" },
+      ],
+    });
+
+    expect(input[0]).toEqual({
+      type: "text",
+      text,
+      mentions: [{ start: 8, end: 24, resource: attached }],
+    });
+  });
+
   it("sends no size for an unknown or zero-size placeholder attachment", () => {
     const input = promptDraftToInput({
       text: "",

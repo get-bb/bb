@@ -221,7 +221,11 @@ function appRowFromStatus(args: {
   version: SystemVersionResponse;
 }): readonly [string, string, string] {
   const { appUpdate, version } = args;
-  if (appUpdate !== null && appUpdate.support.kind === "supported") {
+  if (
+    appUpdate !== null &&
+    (appUpdate.support.kind === "supported" ||
+      appUpdate.desktopUpdateSupported === true)
+  ) {
     const target = formatAvailableTarget(appUpdate);
     const current = formatRevision(appUpdate.current);
     const state =
@@ -232,7 +236,8 @@ function appRowFromStatus(args: {
             ? `${UPDATE_STATE_PRESENTATION["latest-unknown"].label} (${appUpdate.blocked.message})`
             : appUpdate.blocked !== null
               ? `${UPDATE_STATE_PRESENTATION["update-manually"].label} (${appUpdate.blocked.message})`
-              : appUpdate.support.mode === "npm" &&
+              : appUpdate.support.kind === "supported" &&
+                  appUpdate.support.mode === "npm" &&
                   version.latestVersion === null
                 ? UPDATE_STATE_PRESENTATION["latest-unknown"].label
                 : UPDATE_STATE_PRESENTATION["up-to-date"].label
@@ -269,7 +274,10 @@ function appRowFromStatus(args: {
 
 function printAppUpdateStatus(status: SystemAppUpdateStatus): void {
   const current = formatRevision(status.current);
-  if (status.support.kind !== "supported") {
+  if (
+    status.support.kind !== "supported" &&
+    status.desktopUpdateSupported !== true
+  ) {
     console.log(`bb-app ${current}`);
     console.log(unsupportedAppUpdateMessage(status));
     return;
@@ -386,7 +394,10 @@ function registerAppUpdateCommands(
       action(async (opts: AppUpdateApplyOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const status = await sdk.system.appUpdate({ force: true });
-        if (status.support.kind !== "supported") {
+        if (
+          status.support.kind !== "supported" &&
+          status.desktopUpdateSupported !== true
+        ) {
           throw new CliExitError(unsupportedAppUpdateMessage(status), 1);
         }
         if (status.blocked !== null) {

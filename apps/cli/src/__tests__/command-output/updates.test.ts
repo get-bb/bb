@@ -306,18 +306,30 @@ describe("bb updates app command output", () => {
   const register: CommandRegistrar = (program) =>
     registerUpdatesCommands(program, () => "http://server");
 
-  it("bb updates app shows the available version and how to apply it", async () => {
-    const getStatus = vi.fn(async () => appUpdateStatus());
-    stubServerApi({ "v1.system.app-update.$get": getStatus });
+  it.each([false, true])(
+    "bb updates app shows the available version and how to apply it (desktop: %s)",
+    async (desktop) => {
+      const getStatus = vi.fn(async () =>
+        appUpdateStatus(
+          desktop
+            ? {
+                desktopUpdateSupported: true,
+                support: { kind: "unsupported", reason: "desktop" },
+              }
+            : {},
+        ),
+      );
+      stubServerApi({ "v1.system.app-update.$get": getStatus });
 
-    await runCommand(["updates", "app"], register);
+      await runCommand(["updates", "app"], register);
 
-    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "bb-app 0.0.32 -> 0.0.33",
-      "Run bb updates app apply to update and restart bb.",
-    ]);
-    expect(getStatus).toHaveBeenCalledWith({ query: { force: "true" } });
-  });
+      expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+        "bb-app 0.0.32 -> 0.0.33",
+        "Run bb updates app apply to update and restart bb.",
+      ]);
+      expect(getStatus).toHaveBeenCalledWith({ query: { force: "true" } });
+    },
+  );
 
   it("bb updates app does not call a failed check up to date", async () => {
     stubServerApi({

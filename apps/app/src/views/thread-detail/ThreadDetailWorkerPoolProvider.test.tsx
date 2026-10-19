@@ -11,7 +11,12 @@ import {
 } from "@/lib/pierre-worker-pool-gate";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
 
-const fakePool = { kind: "fake-pool" } as unknown as WorkerPoolManager;
+let finishPoolInitialization: () => void = () => {};
+let poolInitialization = Promise.resolve();
+const fakePool = {
+  kind: "fake-pool",
+  initialize: () => poolInitialization,
+} as unknown as WorkerPoolManager;
 const acquirePierreWorkerPool = vi.fn((_theme: unknown) => fakePool);
 const releasePierreWorkerPool = vi.fn();
 const themeSyncMounts = vi.fn();
@@ -31,6 +36,7 @@ class FakeWorker {}
 
 beforeEach(() => {
   vi.stubGlobal("Worker", FakeWorker);
+  poolInitialization = Promise.resolve();
 });
 
 afterEach(() => {
@@ -131,6 +137,26 @@ describe("ThreadDetailWorkerPoolProvider", () => {
 
     unmount();
     expect(releasePierreWorkerPool).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps consumers waiting until the pool's highlighter has initialized", async () => {
+    poolInitialization = new Promise((resolve) => {
+      finishPoolInitialization = resolve;
+    });
+    render(
+      <ThreadDetailWorkerPoolProvider>
+        <DiffConsumer />
+      </ThreadDetailWorkerPoolProvider>,
+    );
+    await flushLoad();
+    expect(acquirePierreWorkerPool).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("diff-consumer").textContent).toBe("waiting");
+
+    finishPoolInitialization();
+    await flushLoad();
+    expect(screen.getByTestId("diff-consumer").textContent).toBe(
+      "ready with pool",
+    );
   });
 
   it("marks consumers ready at once when the page has no Worker support", async () => {

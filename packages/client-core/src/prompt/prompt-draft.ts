@@ -223,8 +223,17 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const trimEndIndex = draft.text.trimEnd().length;
   const text = draft.text.slice(trimStartLength, trimEndIndex);
   if (text.length > 0) {
+    const attachedPaths = new Set(
+      draft.attachments.map((attachment) => attachment.path),
+    );
     const mentions = normalizePromptTextMentions(
       draft.mentions.flatMap((mention) => {
+        if (
+          mention.resource.kind === "attachment" &&
+          !attachedPaths.has(mention.resource.path)
+        ) {
+          return [];
+        }
         const visibleStart = Math.max(mention.start, trimStartLength);
         const visibleEnd = Math.min(mention.end, trimEndIndex);
         return visibleStart < visibleEnd

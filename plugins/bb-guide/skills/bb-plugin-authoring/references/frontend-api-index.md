@@ -15,16 +15,12 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_FileLink`
 - `UrlLink`
 - `experimental_NewThreadComposer`
-- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
-  input
+- `experimental_VoiceInputTextarea`
 - `experimental_ProviderModelPicker`
 - `experimental_PermissionModePicker`
-- `experimental_BranchPicker` — the host's branch picker with its options
-  loading, for an environment provider's inputs control
-- `experimental_useBranches` — searchable local and remote branch lists with
-  host-backed refresh for a project source
-- `experimental_useCheckoutState` — checkout facts for composing a plugin's
-  own checkout branch control with `experimental_useBranches`
+- `experimental_BranchPicker`
+- `experimental_useBranches`
+- `experimental_useCheckoutState`
 - `experimental_SourceCode`
 - `experimental_Diff`
 - `useRpc`
@@ -32,48 +28,45 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtimeConnectionState`
 - `useSettings`
 - `useBbContext`
-- `experimental_usePluginId` — this plugin's id, for keying browser-side
-  state such as localStorage entries
-- `experimental_useQuestionFormHost` — bb's answer shortcuts inside a
-  `pendingInteraction` form
+- `experimental_usePluginId`
+- `experimental_useQuestionFormHost`
 - `useBbNavigate`
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`
 - `useComposer`
 - `useComposers`
-- `useComposerView` — deprecated, runtime-only for older plugins; use `useComposer`
+- `useComposerView`
 - `experimental_useSidebarThreads`
 - `experimental_useSidebarThreadActions`
+- `experimental_useArchiveEnvironmentThreads`
+- `experimental_useThreadActions`
+- `experimental_useThreadActionRegistrations`
+- `experimental_ThreadActionsMenu`
+- `experimental_ThreadActionsContextMenu`
+- `experimental_THREAD_ACTION_GROUPS`
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
 - `experimental_useSidebarNavigation` — the sidebar navigation items in the
-  user's saved order, the active item, and host actions to activate, hide,
-  reorder, and customize them
+  user's saved order, the active item, Home state, and host actions to
+  activate, hide, reorder, and customize them
 - `experimental_useSidebarNavigationSplit` — drag-to-split support for one
   navigation item
 - `experimental_SidebarNavigationIcon` — bb's artwork for a navigation item's
   icon, including plugin branding
-- `useSidebarThreadDraft` — whether the composer holds an unsent draft for
-  one thread, for the pencil glyph bb's row paints
-- `useSidebarThreadDraftIds` — every thread id with an unsent draft, for
-  collapsed-group rollups
-- `useSidebarThreadRowStatus` — the row status another plugin's app-wide
-  script set on a thread, or null
-- `useSidebarThreadRowStatuses` — every row status by thread id, for
-  collapsed-group rollups
-- `useSidebarSplitLayout` — the whole split layout with the thread each pane
-  shows, or null when nothing is split
-- `useSidebarThreadShortcut` — the jump shortcut assigned to a row while the
-  app command modifier is held, or null
-- `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
-  and `@thread:` mentions rendered as bb's chips
-- `useEnvironmentProviders` — bb's environment provider catalog, for naming
-  and drawing the environment a thread runs in
-- `useSdk` — bb's public API client bound to this plugin, the same areas the
-  `bb` CLI and the backend `bb.sdk` expose
+- `useSidebarThreadDraft`
+- `useSidebarThreadDraftIds`
+- `useSidebarThreadRowStatus`
+- `useSidebarThreadRowStatuses`
+- `useSidebarSplitLayout`
+- `useSidebarThreadShortcut`
+- `ThreadTitle`
+- `experimental_ThreadStatusGlyph`
+- `useEnvironmentProviders`
+- `useSdk`
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
 - `experimental_copyToClipboard`
+- `experimental_saveFile`
 
 ## Type exports
 
@@ -99,26 +92,12 @@ Read the installed SDK declarations for the exact current signatures.
 - `CheckoutState`
 - `PluginEnvironmentProviderInputsChange`
 - `PluginEnvironmentProviderInputsProps`
-- `PluginEnvironmentProviderInputsRegistration` — the registration accepted by
-  `app.slots.experimental_environmentProviderInputs`
+- `PluginEnvironmentProviderInputsRegistration`
 - `PluginMachineProviderInputsChange`
 - `PluginMachineProviderInputsProps`
-- `PluginMachineProviderInputsRegistration` — the registration accepted by
-  `app.slots.experimental_machineProviderInputs`
+- `PluginMachineProviderInputsRegistration`
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
-- `ExperimentalSidebarNavigationShortcut`
-- `ExperimentalSidebarNavigationAction`
-- `ExperimentalSidebarNavigationIcon`
-- `ExperimentalSidebarNavigationItem`
-- `ExperimentalSidebarNavigationActivationOptions`
-- `ExperimentalSidebarNavigationActions`
-- `ExperimentalSidebarNavigationState`
-- `ExperimentalSidebarNavigationSplit`
-- `ExperimentalSidebarNavigationSplitOptions`
-- `ExperimentalSidebarNavigationIconProps`
-- `ExperimentalSidebarNavigationProps`
-- `ExperimentalSidebarHeaderProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
@@ -139,6 +118,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginMessageDirectiveMessage`
 - `PluginMessageDirectiveOpenWorkspaceFile`
 - `PluginMessageDirectiveProps`
+- `ExperimentalCodeFenceRendererProps`
 - `PluginHomepageSectionRegistration`
 - `PluginSettingsSectionRegistration`
 - `ExperimentalAppOverlayRegistration`
@@ -147,6 +127,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginFixedTabRegistration`
 - `PluginFixedTabDeclaration`
 - `PluginNavPanelRegistration`
+- `ExperimentalBadge`
+- `ExperimentalBadgeTone`
 - `PluginPanelActionOpenOptions`
 - `PluginThreadPanelActionContext`
 - `PluginThreadPanelActionRegistration`
@@ -162,8 +144,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarFooterItemRegistration`
 - `ExperimentalSidebarFooterDisclosureController`
 - `ExperimentalSidebarFooter`
-- `ExperimentalSidebarNavigationRegistration`
-- `ExperimentalSidebarHeaderRegistration`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarThreadActivity`
 - `PluginSidebarThread`
@@ -177,25 +157,59 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `ExperimentalClipboardContent`
-- `PluginSidebarThreadActions`
+- `ExperimentalSaveFileRequest`
+- `ExperimentalSaveFileOutcome`
 - `PluginSidebarThreadDraftState`
 - `PluginSidebarThreadRowStatus`
 - `PluginSidebarThreadShortcut`
 - `PluginThreadTitleProps`
+- `PluginThreadStatusGlyphProps`
 - `PluginEnvironmentProvider`
 - `PluginEnvironmentProvidersState`
 - `PluginBoundThreadsArea`
 - `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
+- `PluginThreadActionTarget`
+- `PluginThreadActionChoice`
+- `PluginThreadActionChoices`
+- `PluginThreadActionRunInput`
+- `PluginThreadAction`
+- `PluginThreadActionDataInput`
+- `PluginThreadActionItemInput`
+- `PluginThreadActionRegistration`
+- `PluginBoundThreadAction`
+- `PluginThreadActionEntry`
+- `PluginThreadActionRegistrationInfo`
+- `PluginThreadActionsOptions`
+- `PluginThreadActionsInlineItem`
+- `PluginThreadActionsTriggerProps`
+- `PluginThreadActionsMenuProps`
+- `PluginThreadActionsContextMenuProps`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
 - `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
+- `ExperimentalSidebarNavigationShortcut`
+- `ExperimentalSidebarNavigationAction`
+- `ExperimentalSidebarNavigationIcon`
+- `ExperimentalSidebarNavigationItem`
+- `ExperimentalSidebarNavigationActivationOptions`
+- `ExperimentalSidebarNavigationActions`
+- `ExperimentalSidebarNavigationState`
+- `ExperimentalSidebarNavigationSplit`
+- `ExperimentalSidebarNavigationSplitOptions`
+- `ExperimentalSidebarNavigationIconProps`
+- `ExperimentalSidebarNavigationPlacement`
+- `ExperimentalSidebarNavigationProps`
+- `ExperimentalSidebarNavigationRegistration`
+- `ExperimentalSidebarHeaderProps`
 - `PluginFileOpenerRegistration`
 - `PluginSourceCodeRendererRegistration`
 - `PluginDiffRendererRegistration`
 - `PluginMessageDirectiveRegistration`
+- `ExperimentalCodeFenceRendererRegistration`
+- `ExperimentalCodeFenceStatus`
 - `ThreadChatMessageReference`
 - `PluginTargetedPanelActionOpenOptions`
 - `PluginMessageActionContext`

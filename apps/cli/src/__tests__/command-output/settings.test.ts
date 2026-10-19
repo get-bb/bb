@@ -23,7 +23,6 @@ describe("bb settings commands", () => {
         generalSettings: {
           ...defaultAppSettings,
           onboardingCompletedAt: "2026-10-01T00:00:00.000Z",
-          setupChecklistVisible: true,
           streamerMode: true,
         },
       })),
@@ -36,7 +35,6 @@ describe("bb settings commands", () => {
       json: {
         ...defaultAppSettings,
         onboardingCompletedAt: null,
-        setupChecklistVisible: true,
         streamerMode: true,
       },
     });
@@ -402,6 +400,43 @@ describe("bb settings commands", () => {
     expect(getUsage).toHaveBeenCalledWith({
       query: { hostId: "host-remote", refresh: "true" },
     });
+  });
+
+  it("shows, installs, and removes the bb CLI for use outside bb", async () => {
+    const install = vi.fn(async () => ({
+      installedPath: "/home/me/.local/bin/bb",
+      onPath: true,
+      shadowedBy: null,
+      supported: true,
+    }));
+    const remove = vi.fn(async () => ({
+      installedPath: null,
+      onPath: false,
+      shadowedBy: null,
+      supported: true,
+    }));
+    stubServerApi({
+      "v1.system.cli-command.$get": vi.fn(async () => ({
+        installedPath: null,
+        onPath: false,
+        shadowedBy: { path: "/usr/local/bin/bb", source: "other" },
+        supported: true,
+      })),
+      "v1.system.cli-command.install.$post": install,
+      "v1.system.cli-command.remove.$post": remove,
+    });
+
+    await runCommand(["settings", "cli-command"], register);
+    await runCommand(["settings", "cli-command", "install"], register);
+    await runCommand(["settings", "cli-command", "remove"], register);
+
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "The bb CLI is not installed for use outside bb. Another bb at /usr/local/bin/bb comes first on your PATH.",
+      "The bb CLI is installed at /home/me/.local/bin/bb for use outside bb.",
+      "Removed the bb CLI from your PATH.",
+    ]);
   });
 
   describe("ai-services", () => {

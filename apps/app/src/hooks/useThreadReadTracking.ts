@@ -2,9 +2,10 @@ import { useEffect, useRef } from "react";
 import type { Thread } from "@bb/domain";
 import { isThreadRead, type ThreadReadState } from "@bb/client-core";
 import {
-  isDocumentVisible,
   useDocumentVisibilityRevision,
+  useDocumentVisible,
 } from "@/lib/document-visibility";
+import { useUserActive } from "@/lib/user-activity";
 
 type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
 
@@ -21,6 +22,7 @@ interface UseThreadReadTrackingParams {
 }
 
 interface ReadTrackingSnapshot {
+  isActive: boolean;
   isVisible: boolean;
   isRead: boolean | null;
   latestAttentionAt: number | null;
@@ -38,7 +40,8 @@ export function useThreadReadTracking({
   const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
   const visibilityRevision = useDocumentVisibilityRevision();
-  const isVisible = isDocumentVisible();
+  const isVisible = useDocumentVisible();
+  const isActive = useUserActive();
 
   useEffect(() => {
     const controllers = pendingReadControllersRef.current;
@@ -51,6 +54,7 @@ export function useThreadReadTracking({
     const previousSnapshot = previousSnapshotRef.current;
     const threadIsRead = thread ? isThreadRead(thread) : null;
     const currentSnapshot: ReadTrackingSnapshot = {
+      isActive,
       isVisible,
       isRead: threadIsRead,
       latestAttentionAt: thread?.latestAttentionAt ?? null,
@@ -87,9 +91,6 @@ export function useThreadReadTracking({
       return;
     }
 
-    const becameVisible =
-      previousSnapshot?.threadId === thread.id &&
-      previousSnapshot.isVisible === false;
     const isRetry = failedReadKeysRef.current.has(marker);
     const becameManuallyUnread =
       previousSnapshot?.threadId === thread.id &&
@@ -109,7 +110,13 @@ export function useThreadReadTracking({
       return;
     }
 
-    if (!isOpenedThread && !hasNewAttention && !becameVisible && !isRetry) {
+    if (!isActive) {
+      return;
+    }
+    const becameActive =
+      previousSnapshot?.threadId === thread.id &&
+      previousSnapshot.isActive === false;
+    if (!isOpenedThread && !hasNewAttention && !becameActive && !isRetry) {
       return;
     }
     if (pendingReadControllersRef.current.has(marker)) {
@@ -129,5 +136,5 @@ export function useThreadReadTracking({
           pendingReadControllersRef.current.delete(marker);
         }
       });
-  }, [isVisible, markThreadRead, thread, visibilityRevision]);
+  }, [isActive, isVisible, markThreadRead, thread, visibilityRevision]);
 }

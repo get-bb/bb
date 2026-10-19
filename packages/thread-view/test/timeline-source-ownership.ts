@@ -88,7 +88,7 @@ export function assertTimelineSourceOwnership(
         );
       ownerBySource.set(key, row.id);
       if (row.kind === "work" && row.workKind === "delegation")
-        visit(row.childRows);
+        visit(row.childRows ?? []);
     }
   }
   visit(rows);

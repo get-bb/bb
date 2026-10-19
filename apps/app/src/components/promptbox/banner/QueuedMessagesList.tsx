@@ -81,7 +81,7 @@ import {
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@/components/promptbox/banner/prompt-banner-actions";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
-import { OverflowFade } from "@/components/ui/overflow-fade";
+import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 import {
@@ -1654,7 +1654,7 @@ export function QueuedMessagesList({
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={sortableIds} strategy={sortingStrategy}>
-              <ul ref={listRef} className="group/queue py-1">
+              <ul ref={listRef} className="group/queue pt-1">
                 {queueItems}
               </ul>
             </SortableContext>

@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
@@ -27,8 +28,7 @@ describe("plugin catalog routes", () => {
   let dataDir: string;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     dataDir = await mkdtemp(join(tmpdir(), "bb-catalog-routes-"));
   });
 
@@ -280,6 +280,23 @@ describe("plugin catalog routes", () => {
 
       const badBody = await postJson(app, "/marketplaces", { url: ACME_URL });
       expect(badBody.status).toBe(422);
+
+      const emptySubdirectory = await postJson(app, "/marketplaces", {
+        source: ACME_URL,
+        subdirectory: "",
+      });
+      expect(emptySubdirectory.status).toBe(422);
+
+      const misplacedSubdirectory = await postJson(app, "/marketplaces", {
+        source: ACME_URL,
+        subdirectory: "bb",
+      });
+      expect(misplacedSubdirectory.status).toBe(422);
+      await expect(misplacedSubdirectory.json()).resolves.toMatchObject({
+        error: expect.stringContaining(
+          "a subdirectory applies to git: sources only",
+        ),
+      });
 
       const badName = await app.request("/marketplaces/Not%20A%20Name", {
         method: "DELETE",

@@ -247,14 +247,20 @@ export function usePluginList(args: { enabled: boolean }) {
   });
 }
 
+export function pluginSettingsViewQueryOptions(pluginId: string) {
+  return queryOptions({
+    queryKey: pluginSettingsViewQueryKey(pluginId),
+    queryFn: () => fetchPluginSettingsView(fetch, pluginId),
+    staleTime: 30_000,
+  });
+}
+
 export function usePluginSettingsView(
   pluginId: string,
   options: { enabled: boolean },
 ) {
   return useQuery({
-    queryKey: pluginSettingsViewQueryKey(pluginId),
-    queryFn: () => fetchPluginSettingsView(fetch, pluginId),
+    ...pluginSettingsViewQueryOptions(pluginId),
     enabled: options.enabled,
-    staleTime: 30_000,
   });
 }

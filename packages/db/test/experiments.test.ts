@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { defaultExperiments } from "@bb/domain";
+import {
+  defaultAppSettings,
+  defaultExperiments,
+  earlyAdopterExperiments,
+} from "@bb/domain";
 import {
   createConnection,
   getExperiments,
   migrate,
+  setAppSettings,
   setExperiments,
 } from "../src/index.js";
 
@@ -54,6 +59,30 @@ describe("experiments", () => {
         ...defaultExperiments,
         serverMove: false,
       });
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("follows the early adopter defaults only for experiments the user has not set", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      setExperiments(db, { timelinePush: false, changelogPreview: true });
+      setAppSettings(db, { ...defaultAppSettings, earlyAdopter: true });
+
+      expect(getExperiments(db)).toEqual({
+        ...earlyAdopterExperiments,
+        timelinePush: false,
+        changelogPreview: true,
+      });
+
+      db.$client.prepare("DELETE FROM system_experiments").run();
+      expect(getExperiments(db)).toEqual(earlyAdopterExperiments);
+
+      setAppSettings(db, { ...defaultAppSettings, earlyAdopter: false });
+      expect(getExperiments(db)).toEqual(defaultExperiments);
     } finally {
       db.$client.close();
     }

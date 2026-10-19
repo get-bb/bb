@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +6,7 @@ import {
   resolveInheritedDevSkillsRootPaths,
   toDevProcessEnv,
 } from "@bb/config/runtime";
+import { makeTempDir } from "@bb/test-helpers";
 import {
   createStartWorktreeCommand,
   resolveDevCloud,
@@ -22,14 +22,6 @@ import {
   expectedDevServerUrl,
 } from "./dev-instance-expectations.js";
 
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
 async function pathExists(pathToCheck: string): Promise<boolean> {
   try {
     await fs.access(pathToCheck);
@@ -42,13 +34,8 @@ async function pathExists(pathToCheck: string): Promise<boolean> {
   }
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 describe("run-dev", () => {
@@ -291,6 +278,24 @@ describe("run-dev", () => {
     ).toBe(`http://bb.localhost:${config.ports.cloudPort}`);
   });
 
+  it.each(["vite", "worktree"] as const)(
+    "preserves an explicit onboarding override in %s mode",
+    (mode) => {
+      const config = resolveDevInstanceConfig({
+        homeDir: "/Users/tester",
+        repoRoot: "/Users/tester/src/bb",
+      });
+      const env = toDevLaunchProcessEnv({
+        baseEnv: { BB_SKIP_ONBOARDING: "0" },
+        cloud: "local",
+        config,
+        mode,
+      });
+
+      expect(env.BB_SKIP_ONBOARDING).toBe("0");
+    },
+  );
+
   it("uses production serving with checkout-specific dev selectors", () => {
     const config = resolveDevInstanceConfig({
       homeDir: "/Users/tester",
@@ -315,6 +320,7 @@ describe("run-dev", () => {
       BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
       BB_SERVER_PORT: String(config.ports.serverPort),
       BB_SERVER_URL: config.serverUrl,
+      BB_SKIP_ONBOARDING: "1",
       BB_TELEMETRY: "false",
       NODE_ENV: "production",
       OPENAI_API_KEY: "test-key",

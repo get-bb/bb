@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { defaultAppSettings, type AppSettings } from "@bb/domain";
-import { Provider, createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingGate } from "./OnboardingGate";
-import { onboardingReopenStepAtom } from "./onboarding-state";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -40,15 +38,13 @@ function configWith(settings: Partial<AppSettings>) {
   });
 }
 
-function renderGate(store = createStore()) {
+function renderGate() {
   const view = render(
-    <Provider store={store}>
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>
-    </Provider>,
+    <OnboardingGate>
+      <div>App shell</div>
+    </OnboardingGate>,
   );
-  return { store, view };
+  return { view };
 }
 
 beforeEach(() => {
@@ -79,7 +75,7 @@ describe("OnboardingGate", () => {
     expect(screen.queryByText(/Setup guide/u)).toBeNull();
   });
 
-  it("records completion, turns the checklist on, and reveals the app when first-run setup closes", async () => {
+  it("records completion and reveals the app when first-run setup closes", async () => {
     configWith({ onboardingCompletedAt: null, streamerMode: true });
     renderGate();
 
@@ -90,48 +86,30 @@ describe("OnboardingGate", () => {
     const written = mocks.mutate.mock.calls[0]?.[0] as AppSettings;
     expect(written).toMatchObject({
       streamerMode: true,
-      setupChecklistVisible: true,
     });
     expect(Number.isNaN(Date.parse(written.onboardingCompletedAt ?? ""))).toBe(
       false,
     );
   });
 
-  it("reopens at a requested step without rewriting the completion time", async () => {
-    configWith({ onboardingCompletedAt: COMPLETED_AT });
-    const store = createStore();
-    store.set(onboardingReopenStepAtom, "plugins");
-
-    renderGate(store);
-    fireEvent.click(await screen.findByText("Setup guide at plugins"));
-
-    expect(screen.getByText("App shell")).toBeTruthy();
-    expect(store.get(onboardingReopenStepAtom)).toBeNull();
-    expect(mocks.mutate).not.toHaveBeenCalled();
-  });
-
   it("shows the guide again when the completion time is cleared after a close in the same session", async () => {
     configWith({ onboardingCompletedAt: null });
-    const { view, store } = renderGate();
+    const { view } = renderGate();
     fireEvent.click(await screen.findByText("Setup guide at agent"));
 
     configWith({ onboardingCompletedAt: COMPLETED_AT });
     view.rerender(
-      <Provider store={store}>
-        <OnboardingGate>
-          <div>App shell</div>
-        </OnboardingGate>
-      </Provider>,
+      <OnboardingGate>
+        <div>App shell</div>
+      </OnboardingGate>,
     );
     expect(screen.getByText("App shell")).toBeTruthy();
 
     configWith({ onboardingCompletedAt: null });
     view.rerender(
-      <Provider store={store}>
-        <OnboardingGate>
-          <div>App shell</div>
-        </OnboardingGate>
-      </Provider>,
+      <OnboardingGate>
+        <div>App shell</div>
+      </OnboardingGate>,
     );
 
     expect(await screen.findByText("Setup guide at agent")).toBeTruthy();

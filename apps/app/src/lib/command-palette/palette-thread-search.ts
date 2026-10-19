@@ -13,6 +13,10 @@ import {
   normalizeThreadLifecycleFilter,
   type ThreadArchiveFilter,
 } from "@/lib/thread-lifecycle-filter";
+import type {
+  PaletteThreadSort,
+  PaletteThreadSortDirection,
+} from "./palette-preferences";
 import { PALETTE_RESULT_LIMIT } from "./palette-ranking";
 
 export interface PaletteThreadSearchRow {
@@ -41,6 +45,8 @@ interface BuildPaletteThreadSearchRowsArgs {
   recentThreads: readonly ThreadListEntry[];
   searchResponse: ThreadSearchResponse | undefined;
   searchResultsAreCurrent: boolean;
+  sort: PaletteThreadSort;
+  sortDirection: PaletteThreadSortDirection;
 }
 
 export interface PaletteThreadSearchRowsResult {
@@ -65,12 +71,38 @@ function projectMetadata(
     : (projectNamesById.get(projectId) ?? null);
 }
 
+function sortDate(thread: ThreadListEntry, sort: PaletteThreadSort): number {
+  return sort === "created" ? thread.createdAt : thread.updatedAt;
+}
+
+function compareByDate(
+  left: ThreadListEntry,
+  right: ThreadListEntry,
+  sort: PaletteThreadSort,
+  direction: PaletteThreadSortDirection,
+): number {
+  const difference = sortDate(right, sort) - sortDate(left, sort);
+  return direction === "ascending" ? -difference : difference;
+}
+
+function sortRows(
+  rows: readonly PaletteThreadSearchRow[],
+  sort: PaletteThreadSort,
+  direction: PaletteThreadSortDirection,
+): PaletteThreadSearchRow[] {
+  if (sort === "relevance") return [...rows];
+  return [...rows].sort((left, right) =>
+    compareByDate(left.thread, right.thread, sort, direction),
+  );
+}
+
 function serverRow(
   thread: ThreadListEntry,
   matches: readonly ThreadSearchMatch[],
   lifecycle: ThreadArchiveFilter,
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
+  sort: PaletteThreadSort,
 ): PaletteThreadSearchRow {
   const title = getThreadDisplayTitle(thread);
   const titleMatch = matches.find(
@@ -91,7 +123,7 @@ function serverRow(
           },
     projectName: projectMetadata(thread.projectId, projectNamesById),
     projectHighlightRanges: [],
-    relativeTime: formatRelativeTime({ timestamp: thread.updatedAt, now }),
+    relativeTime: formatRelativeTime({ timestamp: sortDate(thread, sort), now }),
     projectId: thread.projectId,
     threadId: thread.id,
     thread,
@@ -129,6 +161,7 @@ function localMatchRows(
   query: string,
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
+  sort: PaletteThreadSort,
 ): PaletteThreadSearchRow[] {
   const titleMatches = fuzzyMatchText({
     items: threads,
@@ -142,7 +175,7 @@ function localMatchRows(
   const titleRows = titleMatches
     .slice(0, PALETTE_RESULT_LIMIT)
     .map((match) => ({
-      ...serverRow(match.item, [], "active", projectNamesById, now),
+      ...serverRow(match.item, [], "active", projectNamesById, now, sort),
       highlightRanges: positionsToRanges(match.positions),
     }));
   const remaining = PALETTE_RESULT_LIMIT - titleRows.length;
@@ -165,7 +198,7 @@ function localMatchRows(
     .sort((left, right) => right.thread.updatedAt - left.thread.updatedAt)
     .slice(0, remaining)
     .map(({ thread, match }) => ({
-      ...serverRow(thread, [], "active", projectNamesById, now),
+      ...serverRow(thread, [], "active", projectNamesById, now, sort),
       projectHighlightRanges: [match],
     }));
   return [...titleRows, ...projectRows];
@@ -238,6 +271,8 @@ export function buildPaletteThreadSearchRows({
   recentThreads,
   searchResponse,
   searchResultsAreCurrent,
+  sort,
+  sortDirection,
 }: BuildPaletteThreadSearchRowsArgs): PaletteThreadSearchRowsResult {
   const trimmedQuery = query.trim();
   const isRecent = trimmedQuery.length === 0;
@@ -257,6 +292,7 @@ export function buildPaletteThreadSearchRows({
             lifecycle,
             projectNamesById,
             now,
+            sort,
           ),
         )
       : [];
@@ -264,27 +300,38 @@ export function buildPaletteThreadSearchRows({
     if (isRecent) {
       return threadsFor(lifecycle)
         .sort((left, right) =>
-          lifecycle === "archived"
-            ? (right.archivedAt ?? 0) - (left.archivedAt ?? 0)
-            : right.updatedAt - left.updatedAt,
+          sort !== "relevance"
+            ? compareByDate(left, right, sort, sortDirection)
+            : lifecycle === "archived"
+              ? (right.archivedAt ?? 0) - (left.archivedAt ?? 0)
+              : right.updatedAt - left.updatedAt,
         )
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) =>
-          serverRow(thread, [], lifecycle, projectNamesById, now),
+          serverRow(thread, [], lifecycle, projectNamesById, now, sort),
         );
     }
     if (lifecycle === "archived") {
-      return titleMatchesFirst(serverRowsFor(lifecycle), trimmedQuery);
+      return sortRows(
+        titleMatchesFirst(serverRowsFor(lifecycle), trimmedQuery),
+        sort,
+        sortDirection,
+      );
     }
-    return mergeActiveRows(
-      localMatchRows(
-        threadsFor(lifecycle),
+    return sortRows(
+      mergeActiveRows(
+        localMatchRows(
+          threadsFor(lifecycle),
+          trimmedQuery,
+          projectNamesById,
+          now,
+          sort,
+        ),
+        serverRowsFor(lifecycle),
         trimmedQuery,
-        projectNamesById,
-        now,
       ),
-      serverRowsFor(lifecycle),
-      trimmedQuery,
+      sort,
+      sortDirection,
     );
   };
   return {

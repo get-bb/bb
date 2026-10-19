@@ -5,6 +5,7 @@ import type {
 } from "./question-form-state";
 import {
   useQuestionFormHost,
+  type QuestionFormHost,
   type QuestionShortcut,
 } from "./question-form-host";
 import {
@@ -39,6 +40,7 @@ const PREVIEW_MAX_HEIGHT = 220;
 
 interface QuestionOptionRowProps {
   checked: boolean;
+  density: QuestionFormHost["density"];
   label: string;
   description?: string;
   multiSelect: boolean;
@@ -66,6 +68,7 @@ function useAutoGrow(
 
 function QuestionOptionRow({
   checked,
+  density,
   label,
   description,
   multiSelect,
@@ -85,7 +88,7 @@ function QuestionOptionRow({
     >
       <span
         className={cn(
-          "mt-0.5 flex size-4 shrink-0 items-center justify-center border",
+          "flex size-4 shrink-0 items-center justify-center border",
           multiSelect ? "rounded" : "rounded-full",
           checked
             ? "border-primary bg-primary text-primary-foreground"
@@ -94,20 +97,34 @@ function QuestionOptionRow({
       >
         {checked ? <Icon name="Check" className="size-3" aria-hidden /> : null}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-foreground">
-          {label}
-        </span>
-        {description ? (
-          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-            {description}
+      {density === "compact" ? (
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <span className="min-w-0 break-words text-xs text-foreground">
+            {label}
           </span>
-        ) : null}
-      </span>
+          {description ? (
+            <span
+              title={description}
+              className="min-w-0 grow basis-24 truncate text-xs text-muted-foreground"
+            >
+              {description}
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs text-foreground">{label}</span>
+          {description ? (
+            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+              {description}
+            </span>
+          ) : null}
+        </span>
+      )}
       {shortcut ? (
         <kbd
           aria-hidden="true"
-          className="mt-0.5 shrink-0 text-xs font-normal text-subtle-foreground"
+          className="shrink-0 text-xs font-normal text-subtle-foreground"
         >
           {shortcut.label}
         </kbd>
@@ -191,6 +208,8 @@ function QuestionTabs({
 }
 
 interface QuestionInputBlockProps {
+  density: QuestionFormHost["density"];
+  showPrompt: boolean;
   disabled: boolean;
   question: Question;
   state: QuestionAnswerState;
@@ -203,6 +222,8 @@ interface QuestionInputBlockProps {
 }
 
 function QuestionInputBlock({
+  density,
+  showPrompt,
   disabled,
   question,
   state,
@@ -244,18 +265,19 @@ function QuestionInputBlock({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
-      {question.prompt ? (
-        <div className="text-sm font-semibold text-foreground">
+      {showPrompt && question.prompt ? (
+        <div className="text-xs font-medium text-foreground">
           {question.prompt}
         </div>
       ) : null}
-      <div className="mt-2 space-y-0.5">
+      <div className={cn("space-y-0.5", showPrompt ? "mt-1" : undefined)}>
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
           return (
             <div key={option.value}>
               <QuestionOptionRow
                 checked={checked}
+                density={density}
                 label={option.label}
                 description={option.description}
                 multiSelect={question.multiSelect}
@@ -271,6 +293,7 @@ function QuestionInputBlock({
         {question.allowFreeText && options.length > 0 ? (
           <QuestionOptionRow
             checked={state.otherSelected}
+            density={density}
             label={OTHER_OPTION_LABEL}
             multiSelect={question.multiSelect}
             onSelect={onSelectOther}
@@ -290,7 +313,7 @@ function QuestionInputBlock({
           onVoiceInputActiveChange={onVoiceInputActiveChange}
           onKeyDown={handleFreeTextKeyDown}
           placeholder="Type your own answer…"
-          className="mt-2 block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
+          className="mt-2 block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
           style={{
             minHeight: `${FREE_TEXT_MIN_HEIGHT}px`,
             maxHeight: `${FREE_TEXT_MAX_HEIGHT}px`,
@@ -326,7 +349,13 @@ export function QuestionForm({
   const disabled = inputDisabled || settledAction !== null;
   const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
-  const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
+  const {
+    density,
+    promptShownAbove,
+    closeInline,
+    shortcuts,
+    registerChoiceHandler,
+  } = useQuestionFormHost();
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIndex] ?? null;
@@ -425,6 +454,7 @@ export function QuestionForm({
   if (!currentQuestion) return null;
 
   const currentState = answerStateFor(formState, currentQuestion);
+  const compactButtonClass = density === "compact" ? "font-normal" : undefined;
 
   return (
     <div
@@ -460,6 +490,12 @@ export function QuestionForm({
       <div>
         <QuestionInputBlock
           key={currentQuestion.id}
+          density={density}
+          showPrompt={
+            density !== "compact" ||
+            totalQuestions > 1 ||
+            currentQuestion.prompt !== promptShownAbove
+          }
           disabled={disabled}
           question={currentQuestion}
           state={currentState}
@@ -475,13 +511,25 @@ export function QuestionForm({
           shortcuts={shortcuts}
         />
       </div>
-      <div className="mt-3 flex shrink-0 items-center justify-between gap-2">
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2",
+          density === "compact" ? "mt-1.5" : "mt-3",
+        )}
+      >
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          disabled={cancelDisabled || settledAction !== null}
+          className={compactButtonClass}
+          disabled={
+            closeInline === null && (cancelDisabled || settledAction !== null)
+          }
           onClick={async () => {
+            if (closeInline) {
+              closeInline();
+              return;
+            }
             try {
               await onCancel();
               setSettledAction("cancel");
@@ -497,6 +545,7 @@ export function QuestionForm({
               type="button"
               size="sm"
               variant="outline"
+              className={compactButtonClass}
               disabled={disabled || voiceBusy}
               onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
             >
@@ -506,13 +555,18 @@ export function QuestionForm({
           <Button
             type="button"
             size="sm"
+            className={compactButtonClass}
             disabled={disabled || voiceBusy || (isLast && !allAnswered)}
             onClick={handleAdvance}
           >
             {inputDisabled || settledAction === "submit" ? (
               <Icon name="Spinner" className="size-3 animate-spin" />
             ) : null}
-            {isLast ? "Submit answer" : "Next"}
+            {isLast
+              ? density === "compact"
+                ? "Submit"
+                : "Submit answer"
+              : "Next"}
           </Button>
         </div>
       </div>

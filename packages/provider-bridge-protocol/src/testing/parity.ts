@@ -310,6 +310,20 @@ const REPLAY_CHILD_PATH = fileURLToPath(
 
 export const PARITY_INITIALIZE_ID = "parity-initialize";
 
+const BRIDGE_EXIT_STDERR_TAIL_CHARS = 2_000;
+
+function describeBridgeExit(child: ChildProcess): string {
+  if (child.pid === undefined) return "never started";
+  if (child.signalCode !== null) return `signal ${child.signalCode}`;
+  return `code ${String(child.exitCode)}`;
+}
+
+function stderrTail(stderr: string): string {
+  const trimmed = stderr.trim();
+  if (trimmed === "") return "; no stderr";
+  return `; stderr: ${trimmed.slice(-BRIDGE_EXIT_STDERR_TAIL_CHARS)}`;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
@@ -336,9 +350,26 @@ async function acquireReplayStartup(): Promise<() => void> {
   };
 }
 
+const BRIDGE_STARTUP_ATTEMPTS = 2;
+
 export async function replayRecording(
   options: ReplayRecordingOptions,
 ): Promise<ParityRun> {
+  for (let attempt = 1; ; attempt += 1) {
+    const { run, crashedBeforeInitialize } =
+      await replayRecordingAttempt(options);
+    if (!crashedBeforeInitialize || attempt >= BRIDGE_STARTUP_ATTEMPTS) {
+      return run;
+    }
+    process.stderr.write(
+      `parity replay of ${options.recordingDir}: retrying after a bridge startup crash: ${run.stalls.join("; ")}\n`,
+    );
+  }
+}
+
+async function replayRecordingAttempt(
+  options: ReplayRecordingOptions,
+): Promise<{ run: ParityRun; crashedBeforeInitialize: boolean }> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   const orderTimeoutMs = options.orderTimeoutMs ?? 5_000;
   const settleMs = options.settleMs ?? 750;
@@ -443,6 +474,7 @@ export async function replayRecording(
       : null;
 
     const answeredIds = new Set<string>();
+    const sentRequestIds: string[] = [];
     const pendingBridgeRequests: { id: string | number; method: string }[] = [];
     const recordedAnswers = new Map<string, ParsedWireMessage[]>();
     for (const step of steps) {
@@ -552,12 +584,28 @@ export async function replayRecording(
       },
     });
 
+    let reportedBridgeExit = false;
+
     async function waitFor(
       label: string,
       predicate: () => boolean,
       limitMs: number = timeoutMs,
       reportStall = true,
     ): Promise<void> {
+      const diagnostic = () =>
+        JSON.stringify({
+          events: events.length,
+          plannedEvents: plannedEventCount,
+          grammarViolationCount: grammarViolations.length,
+          grammarViolations: grammarViolations.slice(-5),
+          unansweredRequests: sentRequestIds.filter(
+            (id) => !answeredIds.has(id),
+          ),
+          exitCode: child.exitCode,
+          signal: child.signalCode,
+          millisecondsSinceOutput: Date.now() - lastOutputAt,
+          stderrTail: stderr.slice(-2_000),
+        });
       const deadline = Date.now() + limitMs;
       while (!predicate()) {
         if (
@@ -565,11 +613,15 @@ export async function replayRecording(
           child.signalCode !== null ||
           child.pid === undefined
         ) {
-          stalls.push(`bridge exited while waiting for ${label}`);
+          stalls.push(
+            `bridge exited (${describeBridgeExit(child)}) while waiting for ${label}${reportedBridgeExit ? "" : stderrTail(stderr)}: ${diagnostic()}`,
+          );
+          reportedBridgeExit = true;
           return;
         }
         if (Date.now() > deadline) {
-          if (reportStall) stalls.push(`timed out waiting for ${label}`);
+          if (reportStall)
+            stalls.push(`timed out waiting for ${label}: ${diagnostic()}`);
           return;
         }
         await sleep(10);
@@ -597,6 +649,11 @@ export async function replayRecording(
     );
     await waitFor("initialize response", () => answeredIds.has(initializeId));
     const initialized = answeredIds.has(initializeId);
+    const crashedBeforeInitialize =
+      !initialized &&
+      (child.pid === undefined ||
+        child.exitCode !== null ||
+        child.signalCode !== null);
     if (!initialized) {
       if (
         child.pid !== undefined &&
@@ -607,8 +664,24 @@ export async function replayRecording(
       await childEnded;
     }
     releaseStartup();
+    if (crashedBeforeInitialize) {
+      return {
+        run: {
+          providerId,
+          recordingDir: options.recordingDir,
+          lines,
+          lineTimes,
+          lineAfter,
+          events,
+          grammarViolations,
+          stalls,
+          stderr,
+          exitCode: child.exitCode,
+        },
+        crashedBeforeInitialize,
+      };
+    }
 
-    const sentRequestIds: string[] = [];
     for (const step of initialized ? steps : []) {
       if (step.message === null || !isRequest(step.message)) {
         if (step.message !== null && !isResponse(step.message)) {
@@ -716,16 +789,19 @@ export async function replayRecording(
     clearTimeout(shutdownTimer);
 
     return {
-      providerId,
-      recordingDir: options.recordingDir,
-      lines,
-      lineTimes,
-      lineAfter,
-      events,
-      grammarViolations,
-      stalls,
-      stderr,
-      exitCode,
+      run: {
+        providerId,
+        recordingDir: options.recordingDir,
+        lines,
+        lineTimes,
+        lineAfter,
+        events,
+        grammarViolations,
+        stalls,
+        stderr,
+        exitCode,
+      },
+      crashedBeforeInitialize: false,
     };
   } finally {
     if (

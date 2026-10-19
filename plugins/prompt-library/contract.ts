@@ -32,6 +32,7 @@ const mentionSchema = z.intersection(
       origin: z.enum(["builtin", "project", "user"]),
       argumentHint: z.string().nullable(),
     }),
+    z.object({ kind: z.literal("attachment"), path: z.string() }),
     z.object({
       kind: z.literal("plugin"),
       pluginId: z.string(),
@@ -139,6 +140,7 @@ export const searchPromptsInputSchema = z
     scope: promptScopeSchema,
     projectId: z.string().min(1).nullable(),
     threadId: z.string().min(1).nullable(),
+    composer: z.enum(["new-thread", "follow-up"]),
   })
   .strict();
 export type SearchPromptsInput = z.infer<typeof searchPromptsInputSchema>;

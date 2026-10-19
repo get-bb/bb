@@ -342,6 +342,7 @@ describe("codex item translation", () => {
           phase: null,
           memoryCitation: null,
           delivery: null,
+          questions: null,
         },
       }),
     );
@@ -356,6 +357,75 @@ describe("codex item translation", () => {
           presentation: AGENT_MESSAGE_PRESENTATION,
         },
       }),
+    );
+  });
+
+  it("records an async question as Codex extension state", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "call-1",
+          text: "Choose a, b, or c.\n- a\n- b\n- c\n\nWhy?",
+          phase: "final_answer",
+          memoryCitation: null,
+          delivery: "async",
+          questions: [
+            { title: "Choose a, b, or c.", options: ["a", "b", "c"] },
+            { title: "Why?", options: null },
+          ],
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "Choose a, b, or c.\n- a\n- b\n- c\n\nWhy?",
+        }),
+      }),
+    );
+    expect(events).toContainEqual({
+      type: "thread/extensionState/updated",
+      threadId: "",
+      providerThreadId: "",
+      scope: threadScope(),
+      kind: "provider-codex/async-question",
+      payload: {
+        itemId: "call-1",
+        questions: [
+          { title: "Choose a, b, or c.", options: ["a", "b", "c"] },
+          { title: "Why?", options: null },
+        ],
+      },
+    });
+  });
+
+  it("records no async question for a synchronous agentMessage", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "msg-1",
+          text: "Done.",
+          phase: "final_answer",
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        },
+      }),
+    );
+    expect(events.map((event) => event.type)).not.toContain(
+      "thread/extensionState/updated",
     );
   });
 

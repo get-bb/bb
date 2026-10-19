@@ -24,6 +24,7 @@ function fixture() {
     execFileSync("git", args, {
       cwd,
       encoding: "utf8",
+      timeout: 30_000,
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   put(
@@ -37,7 +38,7 @@ function fixture() {
   put("pnpm-workspace.yaml", "packages:\n  - apps/*\n  - packages/*\n");
   put(
     "pnpm-lock.yaml",
-    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n",
+    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n  apps/mobile: {}\n",
   );
   put(
     "turbo.json",
@@ -55,6 +56,7 @@ function fixture() {
     ["apps/app", "@bb/app", { "@bb/config": "workspace:*" }],
     ["packages/config", "@bb/config", {}],
     ["packages/text-utils", "@bb/text-utils", {}],
+    ["apps/mobile", "@bb/mobile", {}],
   ]) {
     put(
       `${path}/package.json`,
@@ -103,7 +105,12 @@ function fixture() {
           "--head",
           "HEAD",
         ],
-        { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        {
+          cwd,
+          encoding: "utf8",
+          timeout: 30_000,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
       );
       put("affected.json", affected);
       return JSON.parse(
@@ -116,7 +123,12 @@ function fixture() {
             "--affected",
             "affected.json",
           ],
-          { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+          {
+            cwd,
+            encoding: "utf8",
+            timeout: 30_000,
+            stdio: ["ignore", "pipe", "pipe"],
+          },
         ),
       );
     },
@@ -136,11 +148,46 @@ it("selects app checks without provisioning unrelated Windows or package smoke j
     "app-8",
   ]);
   expect(plan["windows-tests"].include).toEqual([]);
+  expect(plan.tests.include.every((entry) => entry.mobile === false)).toBe(
+    true,
+  );
   expect(plan.packaging).toBe(false);
   expect(plan.foundation).toBe(false);
   expect(plan.forks).toBe(false);
   expect(plan.staticFilters).toContain("--filter=@bb/app");
   expect(plan.staticFilters).not.toContain("@bb/text-utils");
+}, 30_000);
+
+it("omits mobile installs only when the selected tests do not include mobile", () => {
+  const selected = fixture().plan("packages/text-utils/src/index.ts");
+  for (const matrix of ["tests", "windows-tests"]) {
+    expect(selected[matrix].include).toEqual([
+      expect.objectContaining({ shard: "packages-other", mobile: false }),
+    ]);
+  }
+  const mobile = fixture().plan("apps/mobile/src/index.ts");
+  for (const matrix of ["tests", "windows-tests"]) {
+    expect(mobile[matrix].include).toEqual([
+      expect.objectContaining({ shard: "packages-other", mobile: true }),
+    ]);
+  }
+  const full = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [join(root, "scripts/plan-ci.mjs"), "--full"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 30_000,
+      },
+    ),
+  );
+  for (const matrix of ["tests", "windows-tests"]) {
+    expect(
+      full[matrix].include.find((entry) => entry.shard === "packages-other")
+        .mobile,
+    ).toBe(true);
+  }
 });
 
 it("keeps dependent app tests and Windows foundation checks for shared configuration changes", () => {
@@ -213,7 +260,12 @@ it.each(["missing base", "malformed query"])(
         "--affected",
         "affected.json",
       ],
-      { cwd: f.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      {
+        cwd: f.cwd,
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
     );
     const plan = JSON.parse(output);
     expect(plan.reason).toBe("Full cross-platform coverage");
@@ -240,7 +292,7 @@ it.each([
   const output = execFileSync(
     process.execPath,
     [join(root, "scripts/ci-dependencies-changed.mjs"), f.base],
-    { cwd: f.cwd, encoding: "utf8" },
+    { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
   );
   expect(output.trim()).toBe(String(required));
 });
@@ -253,8 +305,70 @@ it.each(["", "missing-ref"])(
       execFileSync(
         process.execPath,
         [join(root, "scripts/ci-dependencies-changed.mjs"), base],
-        { cwd: f.cwd, encoding: "utf8" },
+        { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
       ).trim(),
     ).toBe("true");
   },
 );
+
+it("compares a refreshed PR merge against its actual base without treating unrelated main changes as PR work", () => {
+  const f = fixture();
+  f.plan("apps/app/src/index.ts");
+  const head = f.git("rev-parse", "HEAD");
+  f.git("branch", "feature");
+  f.git("checkout", "-b", "updated-main", f.base);
+  f.put("unrelated-root-config.json", "{}\n");
+  f.git("add", ".");
+  f.git("commit", "-m", "advance main after the PR event");
+  const currentBase = f.git("rev-parse", "HEAD");
+  f.git("merge", "--no-ff", "feature", "-m", "refreshed merge");
+  const resolveBase = (eventBase, prHead) =>
+    execFileSync(
+      process.execPath,
+      [join(root, "scripts/ci-comparison-base.mjs"), eventBase, prHead],
+      { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
+    ).trim();
+  expect(resolveBase(f.base, head)).toBe(currentBase);
+  expect(resolveBase(f.base, "0".repeat(40))).toBe(f.base);
+  expect(resolveBase(f.base, "")).toBe(f.base);
+  const plan = (base) => {
+    f.put(
+      "affected.json",
+      execFileSync(
+        process.execPath,
+        [
+          join(root, "node_modules/turbo/bin/turbo"),
+          "query",
+          "affected",
+          "--base",
+          base,
+          "--head",
+          "HEAD",
+        ],
+        { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
+      ),
+    );
+    return JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          join(root, "scripts/plan-ci.mjs"),
+          "--base",
+          base,
+          "--affected",
+          "affected.json",
+        ],
+        { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
+      ),
+    );
+  };
+  expect(plan(f.base).packaging).toBe(true);
+  const selected = plan(resolveBase(f.base, head));
+  expect(selected.packaging).toBe(false);
+  expect(selected["windows-tests"].include).toEqual([]);
+  expect(
+    selected.tests.include.every(
+      (entry) => entry.filter === "--filter=@bb/app",
+    ),
+  ).toBe(true);
+}, 60_000);

@@ -32,11 +32,16 @@ built-ins held to this rule. Two checks read it:
   change how many run at once. Use `--shard=<index>/<count>` (one-based) to
   partition the selected plugins across runners; `--list` prints that shard.
 
-On PRs, CI selects only changed plugins when every changed file belongs to a
-listed forkable plugin. Shared changes or unavailable history run the full
-list; main and manual runs always run the full list. Use
-`--changed-from=<sha> --list` to inspect selection locally. See
-[CI performance](ci-performance.md) for selection rules and timing artifacts.
+On pull requests, `--changed-from=<sha>` compares the merge commit with the
+comparison base the CI planning job resolves (see
+[ci-performance.md](ci-performance.md#pr-selection)). When every changed path (renames count both paths) belongs to a
+listed plugin, only those plugins run; any shared, unknown, or unlisted-plugin
+change, or missing history, runs the full list. Main and manual runs always
+check the full list with fresh resolution of published dependencies. Add
+`--list` to print the selection, including the `--shard` partition, without
+installing or building. Explicit plugin directories and `--changed-from` are
+mutually exclusive. CI runs three shards with at most four concurrent checks
+each; a shard with nothing selected skips setup.
 
 ## What a listed plugin looks like
 
@@ -69,6 +74,10 @@ list; main and manual runs always run the full list. Use
   `@types/better-sqlite3`, `hono`, and `cron-parser` for `createTestPluginHost`;
   `@testing-library/react`, `@testing-library/dom`, `jsdom`, `react`,
   `react-dom`, and their `@types` for `renderSlot`.
+- **One copy of shared UI.** A component both the app and a listed plugin
+  need has one home, chosen by the rules in
+  [What belongs in shared-ui](#what-belongs-in-shared-ui); neither side keeps
+  a copy.
 - **Portable tests.** Tests use the SDK test harness and plugin-local fixtures.
   They do not import app or workspace source, and they do not assert on host
   behavior. Tests of the plugin's own components live in the plugin. Host
@@ -92,3 +101,27 @@ list; main and manual runs always run the full list. Use
   until it renames them; the list only guarantees that the copy builds.
 - **SDK floor.** `engines.bbPluginSdk` names the SDK version that introduced
   the newest hook the plugin calls.
+
+## What belongs in shared-ui
+
+When the app and a plugin need the same component, place it by the first rule
+that fits:
+
+1. **shared-ui and the registry.** Presentation primitives with no bb domain
+   knowledge: nothing imported from `@bb/domain` or app code, props are plain
+   data, and the component would make sense in another app. Dialog shells,
+   `use-dialog-state`, drag-click suppression, the reorder DnD hooks, the
+   compact long-press menu, action-menu items, and sortable motion qualify.
+   Where the app and a plugin need different behaviour, the one component
+   takes the difference as a prop, as `useSidebarReorderDnd` takes the touch
+   sensor.
+2. **Host-rendered through the SDK.** Anything that needs host state or host
+   data, and a thread-aware component the app still renders after a plugin
+   owns the surface: `experimental_BranchPicker`,
+   `experimental_ThreadActionsMenu`, `experimental_ThreadStatusGlyph`.
+3. **The owning plugin.** Thread-aware code that does not need the host lives
+   in the plugin that owns the surface, and the app deletes its copy.
+4. **Plugin-local.** Anything only one plugin uses, even if the app once had
+   it.
+
+Thread-aware components do not go into shared-ui.

@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { COPY_TOKEN } from "./surface-copy";
 
 export function annotationChipClass(active: boolean, className?: string) {
   return cn(
@@ -41,7 +42,7 @@ export const CHIP_PLACEMENT_CLASS: Record<AnnotationChipPlacement, string> = {
 export function ExperimentalBadge() {
   return (
     <span
-      className="inline-flex items-center rounded border border-warning/40 bg-warning/10 px-1.5 py-px font-mono text-xs text-warning-text"
+      className="inline-flex items-center rounded border border-attention/50 bg-surface-attention px-1.5 py-px font-mono text-xs text-foreground"
       title="Experimental: audited before stabilizing — see docs/api_to_audit.md in the bb repository."
     >
       experimental
@@ -54,8 +55,6 @@ export interface SurfaceReference {
   otherPage: string | null;
   onOpen: () => void;
 }
-
-const COPY_TOKEN = /(`[^`]+`)|(\[[^\]]+\]\([a-z0-9-]+\))|(\{experimental\})/g;
 
 export function renderSurfaceCopy(
   text: string,

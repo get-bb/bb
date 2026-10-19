@@ -1,18 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createConnection,
-  migrate,
-  upsertInstalledPlugin,
-  type DbConnection,
-} from "@bb/db";
+import { upsertInstalledPlugin, type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { gitSelectorForRow } from "../../../src/services/plugins/git-source-intent.js";
 
 describe("persisted git source intent", () => {
   let db: DbConnection;
 
   beforeEach(() => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
   });
 
   afterEach(() => db.$client.close());

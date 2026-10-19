@@ -80,6 +80,7 @@ import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { ThreadTimelineLoadingSkeleton } from "./components/thread/timeline/ThreadTimelineLoadingSkeleton";
 import {
   startSplitPreloading,
   trackCriticalLoad,
@@ -421,7 +422,11 @@ export function AppRoutes() {
             path="*"
             element={
               <Suspense
-                fallback={<RouteLoadingSkeleton isBoundedPane={false} />}
+                fallback={
+                  <RouteLoadingSkeleton isBoundedPane={false}>
+                    {isThreadView ? <ThreadTimelineLoadingSkeleton /> : null}
+                  </RouteLoadingSkeleton>
+                }
               >
                 <SplitWorkspaceRoute />
               </Suspense>

@@ -283,8 +283,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "A command row carries an output preview only when its output was truncated and the full text may still be fetchable; absence means the row's output field is the whole output.",
+      "A command row carries an output preview only when its output was truncated and the full text may still be fetchable, and a row is marked contentDeferred only when its expandable content was left out to be loaded on expand; absence means the row's fields hold the whole content.",
     fields: [
+      "threadTimelineResponseSchema.delta.upsertRows.contentDeferred",
+      "threadTimelineResponseSchema.rows.contentDeferred",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.contentDeferred",
       "threadTimelineResponseSchema.delta.upsertRows.outputPreview",
       "threadTimelineResponseSchema.rows.outputPreview",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.outputPreview",
@@ -320,13 +323,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content; older row updates only appear when a latest page omits rows that changed inside its window.",
+      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content; older row updates only appear when a latest page omits rows that changed inside its window; a detail item scope is absent when the whole turn is requested, and content stays inline unless deferral is requested.",
     fields: [
-      "threadTimelineResponseSchema.timelinePage.contentPage",
-      "threadTimelineResponseSchema.timelinePage.historySnapshot",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates",
-      "threadTimelineResponseSchema.timelinePage.olderRowsSourceSeqEnd",
       "timelineTurnSummaryDetailsQuerySchema.beforeCursor",
+      "timelineTurnSummaryDetailsQuerySchema.deferContent",
+      "timelineTurnSummaryDetailsQuerySchema.itemId",
     ],
   },
   {
@@ -370,8 +372,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Thread creation may omit visibility for backward compatibility; the server fills visible at the creation boundary.",
-    fields: ["createThreadRequestSchema.visibility"],
+      "Thread creation may omit visibility and parentNotifications; the server fills visible and auto at the creation boundary.",
+    fields: [
+      "createThreadRequestSchema.visibility",
+      "createThreadRequestSchema.parentNotifications",
+    ],
   },
   {
     reason:
@@ -416,6 +421,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "createThreadRequestSchema.permissionMode",
       "createThreadRequestSchema.reasoningLevel",
       "createThreadRequestSchema.serviceTier",
+      "createThreadRequestSchema.sessionOptions",
       "createThreadRequestSchema.sourceSeqEnd",
       "createThreadRequestSchema.sourceThreadId",
       "createThreadRequestSchema.title",
@@ -490,8 +496,10 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "updateThreadRequestSchema.sectionId",
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
+      "updateThreadRequestSchema.sessionOptions",
       "updateThreadRequestSchema.title",
       "updateThreadRequestSchema.visibility",
+      "updateThreadRequestSchema.parentNotifications",
     ],
   },
   {
@@ -519,10 +527,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "System provider lookups may target a host indirectly or directly, omit provider id to use the host default, and omit capability to return the full roster.",
+      "System provider lookups may target a host indirectly or directly, omit provider id to use the host default, omit the project when no project checkout should scope the model list, and omit capability to return the full roster.",
     fields: [
       "systemExecutionOptionsQuerySchema.environmentId",
       "systemExecutionOptionsQuerySchema.hostId",
+      "systemExecutionOptionsQuerySchema.projectId",
       "systemExecutionOptionsQuerySchema.providerId",
       "systemProvidersQuerySchema.capability",
       "systemProvidersQuerySchema.environmentId",
@@ -557,6 +566,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
       "threadListQuerySchema.sourceThreadId",
+      "threadListQuerySchema.threadIds",
       "threadListQuerySchema.unsectioned",
     ],
   },
@@ -570,6 +580,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineQuerySchema.beforeAnchorId",
       "threadTimelineQuerySchema.summaryOnly",
       "threadTimelineQuerySchema.afterSequence",
+      "threadTimelineQuerySchema.deferContent",
     ],
   },
   {
@@ -579,8 +590,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Context snapshots are omitted when the latest measurement has no breakdown.",
-    fields: ["threadTimelineResponseSchema.contextWindowUsage.snapshot"],
+      "Context snapshots are omitted when the latest measurement has no breakdown, session cost when the provider reports none, and the compaction offer time unless the compactExpiredCache experiment is on and the provider reported a prompt-cache lifetime for a context of at least 100k tokens.",
+    fields: [
+      "threadTimelineResponseSchema.contextWindowUsage.snapshot",
+      "threadTimelineResponseSchema.contextWindowUsage.cost",
+      "threadTimelineResponseSchema.contextWindowUsage.compactionOfferAt",
+    ],
   },
   {
     reason:
@@ -612,10 +627,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "sendAt is present only when the caller is scheduling the dispatch; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
+      "sendAt is present only when the caller is scheduling the dispatch, and compactFirst only when it asks to compact before the message; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
     fields: [
       "createThreadRequestSchema.sendAt",
       "sendMessageRequestSchema.sendAt",
+      "sendMessageRequestSchema.compactFirst",
     ],
   },
   {
@@ -1265,6 +1281,7 @@ describe("server-contract canonical schemas", () => {
           originKind: null,
           originPluginId: null,
           visibility: "visible",
+          parentNotifications: "auto",
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,

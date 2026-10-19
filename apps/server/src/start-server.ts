@@ -1,5 +1,8 @@
+import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
+import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "@bb/config/server";
@@ -10,6 +13,7 @@ import {
   getAppSettings,
   getDisabledProviderIds,
   listRunningThreads,
+  setAppSettings,
 } from "@bb/db";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
@@ -21,6 +25,10 @@ import { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artif
 import { createProviderNativeRootsCache } from "./services/providers/native-roots.js";
 import { createAiServiceRegistry } from "./services/ai/ai-service-registry.js";
 import { createAppUpdateService } from "./services/system/app-update.js";
+import {
+  createCliCommandService,
+  createWindowsUserPath,
+} from "./services/system/cli-command.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createLauncherChannel } from "./services/system/launcher-channel.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
@@ -131,6 +139,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       db,
       logger,
     });
+  }
+  if (serverConfig.BB_SKIP_ONBOARDING) {
+    const settings = getAppSettings(db);
+    if (settings.onboardingCompletedAt === null) {
+      setAppSettings(db, {
+        ...settings,
+        onboardingCompletedAt: new Date().toISOString(),
+      });
+    }
   }
   const serverMoveRun =
     pendingServerMove === null
@@ -249,19 +266,41 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
   const appUpdateMode = serverConfig.BB_APP_UPDATE_MODE ?? null;
-  const appUpdate = createAppUpdateService({
-    currentCommit:
-      serverConfig.BB_APP_INSTALL_KIND === "source"
-        ? (serverConfig.BB_APP_SOURCE_COMMIT ?? null)
-        : null,
-    appSurface: serverConfig.BB_APP_SURFACE,
-    appVersion,
-    config: runtimeConfig,
-    countRunningThreads: () => listRunningThreads(db).length,
-    launcher: appUpdateMode === null ? null : createLauncherChannel(process),
-    logger,
-    mode: appUpdateMode,
-    notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+  const desktopUpdateChannel =
+    serverConfig.BB_APP_SURFACE === "desktop"
+      ? createDesktopUpdateChannel(process)
+      : null;
+  const appUpdate =
+    desktopUpdateChannel === null
+      ? createAppUpdateService({
+          currentCommit:
+            serverConfig.BB_APP_INSTALL_KIND === "source"
+              ? (serverConfig.BB_APP_SOURCE_COMMIT ?? null)
+              : null,
+          appSurface: serverConfig.BB_APP_SURFACE,
+          appVersion,
+          config: runtimeConfig,
+          countRunningThreads: () => listRunningThreads(db).length,
+          launcher:
+            appUpdateMode === null ? null : createLauncherChannel(process),
+          logger,
+          mode: appUpdateMode,
+          notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+        })
+      : createDesktopAppUpdateService({
+          channel: desktopUpdateChannel,
+          currentVersion: runtimeConfig.appVersion,
+          dataDir: serverConfig.BB_DATA_DIR,
+          countRunningThreads: () => listRunningThreads(db).length,
+          notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          logger,
+        });
+  const cliCommand = createCliCommandService({
+    env: process.env,
+    homeDir: homedir(),
+    launcherPath: serverConfig.BB_CLI_LAUNCHER ?? null,
+    platform: process.platform,
+    windowsUserPath: createWindowsUserPath(process.env),
   });
   const {
     app,
@@ -275,6 +314,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       appUpdate,
       appVersion,
       bbAppManagedConfig,
+      cliCommand,
       config: runtimeConfig,
       db,
       hub,

@@ -27,6 +27,7 @@ export const EXTENDED_ICON_NAMES = [
   "ChevronUp",
   "ChevronsDown",
   "ChevronsUp",
+  "ChildThread",
   "CircleArrowShrink",
   "Clean",
   "Clock",

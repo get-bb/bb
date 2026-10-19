@@ -74,6 +74,44 @@ describe("bb marketplace", () => {
     expect(output).toContain("bb plugin install <id>@acme-plugins");
   });
 
+  it("sends --subdirectory with a git source and prints the stored subdirectory", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        ok: true,
+        marketplace: {
+          ...acme,
+          sourceKind: "git",
+          source: "git:https://github.com/acme/agent-plugins.git@main",
+          subdirectory: "bb",
+          resolvedCommit: "0123456789abcdef0123456789abcdef01234567",
+        },
+      }),
+    );
+
+    await runCommand(
+      [
+        "marketplace",
+        "add",
+        "git:https://github.com/acme/agent-plugins.git@main",
+        "--subdirectory",
+        "bb",
+      ],
+      register,
+    );
+
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
+    ).toEqual({
+      source: "git:https://github.com/acme/agent-plugins.git@main",
+      subdirectory: "bb",
+    });
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain(
+      "source: git:https://github.com/acme/agent-plugins.git@main",
+    );
+    expect(output).toContain("subdirectory: bb");
+  });
+
   it("resolves a relative path: source on the invoking machine", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ ok: true, marketplace: { ...acme, sourceKind: "path" } }),
@@ -101,6 +139,30 @@ describe("bb marketplace", () => {
     expect(output).toContain("bb-community (official)");
     expect(output).toContain("acme-plugins");
     expect(output).toContain("https://acme.test/marketplace.json");
+    expect(output).not.toContain("Subdirectory");
+  });
+
+  it("lists the subdirectory a git marketplace is read from", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        marketplaces: [
+          {
+            ...acme,
+            sourceKind: "git",
+            source: "git:https://acme.test/repo.git@main",
+            subdirectory: "bb",
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["marketplace", "list"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toMatch(/Source\s+Subdirectory\s+Entries/u);
+    expect(output).toMatch(
+      /git:https:\/\/acme\.test\/repo\.git@main\s+bb\s+2\s/u,
+    );
   });
 
   it("reports a failed refresh and exits non-zero without hiding the rest", async () => {

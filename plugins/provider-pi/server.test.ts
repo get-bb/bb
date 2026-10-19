@@ -21,23 +21,19 @@ describe("the pi plugin's environment passthrough", () => {
   });
 });
 
-function rootPaths(
-  side: readonly (string | { readonly path: string })[] | undefined,
-): string[] {
-  return (side ?? []).map((root) =>
-    typeof root === "string" ? root : root.path,
-  );
-}
-
 describe("the pi plugin's skill roots", () => {
-  it("declares pi's documented directories and resolves the rest per host", () => {
+  it("declares pi's directories as recursive, walks ancestors for .agents/skills only, and resolves the rest per host", () => {
     const declaration = registeredDeclaration();
-    const roots = declaration.experimental_nativeSkillRoots;
-    expect(rootPaths(roots?.user)).toEqual([
-      ".pi/agent/skills",
-      ".agents/skills",
-    ]);
-    expect(rootPaths(roots?.project)).toEqual([".pi/skills", ".agents/skills"]);
+    expect(declaration.experimental_nativeSkillRoots).toMatchObject({
+      user: [
+        { path: ".pi/agent/skills", recursive: true },
+        { path: ".agents/skills", recursive: true },
+      ],
+      project: [
+        { path: ".pi/skills", recursive: true, ancestors: false },
+        { path: ".agents/skills", recursive: true, ancestors: true },
+      ],
+    });
     expect(declaration.experimental_resolvesNativeRoots).toBe(true);
   });
 });

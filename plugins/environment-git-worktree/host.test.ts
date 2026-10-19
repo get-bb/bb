@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   realpath,
   rm,
@@ -124,6 +125,80 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it.each([
+    { existingBranch: false, branchMode: "reset" },
+    { existingBranch: false, branchMode: "reuse-existing" },
+    { existingBranch: true, branchMode: "reuse-existing" },
+    { existingBranch: true, branchMode: "reset" },
+  ] as const)(
+    "creates with a locked config (existing=$existingBranch, mode=$branchMode)",
+    async ({ existingBranch, branchMode }) => {
+      const { sourcePath, dataDir } = await createSourceRepository();
+      await git(sourcePath, "remote", "add", "origin", sourcePath);
+      await git(sourcePath, "fetch", "origin");
+      await git(sourcePath, "config", "branch.autoSetupMerge", "always");
+      await git(sourcePath, "config", "core.autocrlf", "true");
+      const branchName = "bb/config-lock";
+      if (existingBranch) {
+        await git(
+          sourcePath,
+          "update-ref",
+          "refs/remotes/origin/published",
+          "HEAD",
+        );
+        await git(
+          sourcePath,
+          "branch",
+          "--track",
+          branchName,
+          "origin/published",
+        );
+      }
+      const configPath = join(sourcePath, ".git", "config");
+      const originalConfig = await readFile(configPath, "utf8");
+      const lockPath = `${configPath}.lock`;
+      await writeFile(lockPath, "another Git writer\n");
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "config-lock",
+            sourcePath,
+            pathKey: "config-lock",
+            branchName,
+          }),
+          branchMode,
+          baseBranch: { kind: "named", name: "origin/main" },
+        });
+        expect(result.status).toBe("created");
+        if (result.status !== "created") throw new Error(result.message);
+        expect(
+          (await readFile(join(result.path, "README.md"), "utf8")).replace(
+            /\r\n/gu,
+            "\n",
+          ),
+        ).toBe("hello\n");
+        expect(await git(result.path, "rev-parse", "HEAD")).toBe(
+          await git(sourcePath, "rev-parse", "origin/main"),
+        );
+        expect(
+          (
+            await git(
+              result.path,
+              "for-each-ref",
+              "--format=%(upstream:short)",
+              `refs/heads/${branchName}`,
+            )
+          ).trim(),
+        ).toBe(existingBranch ? "origin/published" : "");
+        expect(await readFile(lockPath, "utf8")).toBe("another Git writer\n");
+        expect(await readFile(configPath, "utf8")).toBe(originalConfig);
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
   it("resolves adoption paths with trailing slashes and symlink aliases", async () => {
     const { root, sourcePath, dataDir } = await createSourceRepository();
     const worktreePath = join(root, "feature");
@@ -319,6 +394,44 @@ describe("worktree host entry", () => {
     expect(existsSync(join(second.path, "README.md"))).toBe(true);
     await harness.experimental_dispose();
   });
+
+  it.skipIf(process.platform === "win32")(
+    "settles a cancelled create promptly when Git's children are still running",
+    async () => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      const hookPidPath = join(root, "hook.pid");
+      const hookPath = join(sourcePath, ".git", "hooks", "post-checkout");
+      await writeFile(
+        hookPath,
+        `#!/bin/sh\necho $$ > "${hookPidPath}"\nexec sleep 30\n`,
+        { mode: 0o755 },
+      );
+      const harness = createHarness(dataDir);
+      const controller = new AbortController();
+      const created = harness
+        .experimental_call(
+          "create",
+          createInput({
+            operationId: "cancelled-create",
+            sourcePath,
+            pathKey: "cancelled",
+            branchName: "bb/cancelled",
+          }),
+          { signal: controller.signal },
+        )
+        .catch((error: unknown) => error);
+      await expect
+        .poll(() => existsSync(hookPidPath), { timeout: 10_000 })
+        .toBe(true);
+      const hookPid = Number((await readFile(hookPidPath, "utf8")).trim());
+      const abortedAt = performance.now();
+      controller.abort();
+      expect(await created).toBeInstanceOf(Error);
+      expect(performance.now() - abortedAt).toBeLessThan(3_000);
+      await expect.poll(() => isPidAlive(hookPid)).toBe(false);
+      await harness.experimental_dispose();
+    },
+  );
 
   it("creates a worktree on a named base under the path-key directory", async () => {
     const { sourcePath, dataDir } = await createSourceRepository();

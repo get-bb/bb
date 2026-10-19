@@ -271,6 +271,7 @@ describe("host file routes", () => {
         },
         {
           type: "host.list_files",
+          followRootSymlink: false,
           path: "/notes",
           limit: 1000,
           includeHidden: false,

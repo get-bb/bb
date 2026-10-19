@@ -233,14 +233,7 @@ function pluginAppSurfaceItems(
       pluginId,
       slots.experimentalSidebarNavigations,
       "sidebar-navigation",
-      "Can replace the sidebar navigation controls; configured in Appearance.",
-      () => getSettingsRoutePath("appearance"),
-    ),
-    ...namedSlotItems(
-      pluginId,
-      slots.experimentalSidebarHeaders,
-      "sidebar-header",
-      "Can add controls beside the sidebar toggle; configured in Appearance.",
+      "Can draw the sidebar navigation; configured in Appearance.",
       () => getSettingsRoutePath("appearance"),
     ),
     ...namedSlotItems(
@@ -296,6 +289,12 @@ function pluginAppSurfaceItems(
       slots.threadHeaderActions,
       "thread-header",
       "Adds an action to thread headers.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadActions,
+      "thread-action",
+      "Adds an action to thread menus.",
     ),
     ...namedSlotItems(
       pluginId,
@@ -372,6 +371,14 @@ function pluginAppSurfaceItems(
         key: `directive:${slot.id}`,
         label: `::${slot.id}`,
         detail: "Renders plugin-provided content inside thread messages.",
+        mono: true,
+      })),
+    ...slots.codeFenceRenderers
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) => ({
+        key: `code-fence:${slot.id}`,
+        label: slot.languages.map((language) => `\`\`\`${language}`).join(", "),
+        detail: "Renders these fenced code blocks inside assistant messages.",
         mono: true,
       })),
   ];

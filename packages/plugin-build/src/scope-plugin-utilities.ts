@@ -70,14 +70,17 @@ function scopeStatements(css: string, scope: string): string {
       }
 
       const nestedSibling = hasNestedSiblingRule(statement.body);
-      const selectors = splitSelectorList(prelude)
-        .flatMap((selector) =>
-          nestedSibling || hasSiblingCombinator(selector)
-            ? [`${scope} ${selector}`]
-            : [`${scope} ${selector}`, `${scope}${selector}`],
-        )
-        .join(",");
-      return `${selectors}{${statement.body}}`;
+      const originalSelectors = splitSelectorList(prelude);
+      const selectors = originalSelectors.flatMap((selector) =>
+        nestedSibling || hasSiblingCombinator(selector)
+          ? [`${scope} ${selector}`]
+          : [`${scope} ${selector}`, `${scope}${selector}`],
+      );
+      return (
+        originalSelectors.length === 1 ? selectors : [selectors.join(",")]
+      )
+        .map((selector) => `${selector}{${statement.body}}`)
+        .join("");
     })
     .join("");
 }
@@ -89,6 +92,23 @@ function splitStatements(css: string): Statement[] {
 
   for (let index = 0; index < css.length; index += 1) {
     const char = css[index];
+    if (char === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      if (end < 0)
+        throw new Error("Unterminated comment in compiled plugin CSS.");
+      if (
+        parenDepth === 0 &&
+        css.slice(preludeStart, index).trim().length === 0
+      ) {
+        statements.push({
+          prelude: css.slice(preludeStart, end + 2),
+          body: null,
+        });
+        preludeStart = end + 2;
+      }
+      index = end + 1;
+      continue;
+    }
     if (char === "\\") {
       index += 1;
       continue;

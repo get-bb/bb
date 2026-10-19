@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PreferencesSync } from "./app/preferences/PreferencesSync.js";
 import { ProjectList } from "./app/list/ProjectList.js";
 import { useSidebarThreadReveal } from "./app/list/useSidebarThreadReveal.js";
+import { moveThreadAction } from "./app/rows/moveThreadAction.js";
 
 function ThreadList({
   activeThreadId,
@@ -32,4 +33,5 @@ export default definePluginApp((app) => {
       "Pinned threads, custom sections, projects, machines, and nested threads.",
     component: ThreadList,
   });
+  app.slots.experimental_threadAction(moveThreadAction);
 });

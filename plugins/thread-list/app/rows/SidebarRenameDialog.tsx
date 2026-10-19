@@ -7,8 +7,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { RenameDialog } from "../ui/RenameDialog.js";
-import type { RenameController, RenameSession } from "./SidebarInlineRename.js";
+import { RenameDialog } from "@/components/ui/rename-dialog";
+import type {
+  RenameController,
+  RenameSession,
+} from "@/components/ui/inline-rename";
 
 export function SidebarRenameDialog({
   session,

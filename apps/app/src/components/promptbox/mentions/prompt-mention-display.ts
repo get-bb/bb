@@ -28,6 +28,9 @@ function promptMentionIconLabel(resource: PromptMentionResource): string {
   if (resource.kind === "plugin") {
     return "Plugin";
   }
+  if (resource.kind === "attachment") {
+    return "Attachment";
+  }
   if (resource.source === "thread-storage") {
     return "Storage";
   }
@@ -51,6 +54,9 @@ export function promptMentionIconName(
   }
   if (resource.kind === "plugin") {
     return "Zap";
+  }
+  if (resource.kind === "attachment") {
+    return "Paperclip";
   }
   return resource.entryKind === "directory" ? "Folder" : "File";
 }

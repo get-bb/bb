@@ -14,7 +14,7 @@ import {
 import {
   SIDEBAR_CONTROL_STATE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 
 installTestPluginRuntime();
 const { SidebarSectionRow } = await import("./SidebarSectionRow.js");
@@ -124,7 +124,7 @@ describe("SidebarSectionRow", () => {
     expect(slots[0]?.getAttribute("class")).toContain("fill-muted-foreground");
     expect(slots[1]?.getAttribute("class")).toContain("fill-none");
     expect(slots[2]?.getAttribute("class")).toContain("fill-primary");
-    expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
+    expect(document.querySelector("[data-thread-status-glyph]")).toBeNull();
   });
 
   it("rolls a hidden plugin status up to the collapsed section row", () => {
@@ -146,9 +146,11 @@ describe("SidebarSectionRow", () => {
       },
     );
 
-    expect(screen.getAllByLabelText("Plugin improving draft")).not.toHaveLength(
-      0,
-    );
+    expect(
+      document
+        .querySelector("[data-thread-status-glyph]")
+        ?.getAttribute("data-row-status"),
+    ).toBe("Plugin improving draft");
   });
 
   it("does not roll a plugin status up while the section is expanded", () => {
@@ -170,6 +172,6 @@ describe("SidebarSectionRow", () => {
       },
     );
 
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(document.querySelector("[data-thread-status-glyph]")).toBeNull();
   });
 });

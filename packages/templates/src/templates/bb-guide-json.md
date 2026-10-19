@@ -32,7 +32,8 @@ reading fields.
 Shapes
 
 List commands do not share one wrapper. Most print a bare array; a few wrap it.
-Fields beyond those shown exist; these are the ones scripts use.
+Fields beyond those shown exist; these are the ones scripts use. The `--help` of
+the most-parsed commands ends with the same shape.
 
   bb status --json
     {project: {id, name} | null, thread: {id, status, title, parentThreadId, environment: {hostId, display} | null} | null, childThreads: [{id, status, title}] | null, pendingTodos, pluginsNeedingAttention: [{id, status}], dataDir}
@@ -65,7 +66,7 @@ Fields beyond those shown exist; these are the ones scripts use.
     {active: {total, results}, archived: {total, results}}
 
   bb prompt-history list --json
-    {entries: [{id, createdAt, input, projectId, threadId}], nextCursor: string | null}
+    {entries: [{id, createdAt, input, projectId, threadId, scope}], nextCursor: string | null}
 
   bb thread section list --json
     [{id, name, createdAt, updatedAt}]

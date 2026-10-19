@@ -44,6 +44,14 @@ function resolveProjectSourceOnHost(
   return { hostId: source.hostId, path: source.path };
 }
 
+export function projectCheckoutPathOnHost(
+  deps: Pick<AppDeps, "db">,
+  projectId: string,
+  hostId: string,
+): string | undefined {
+  return resolveProjectSourceOnHost(deps, { hostId, projectId })?.path;
+}
+
 export function resolveProjectWorkspaceTarget(
   deps: Pick<AppDeps, "config" | "db" | "hub">,
   args: ResolveProjectWorkspaceArgs,

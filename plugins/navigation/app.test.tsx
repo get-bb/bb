@@ -1,27 +1,24 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DragEndEvent } from "@dnd-kit/core";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import type {
+  ExperimentalBadge,
   ExperimentalSidebarNavigationItem,
   ExperimentalSidebarNavigationProps,
 } from "@get-bb/plugin-sdk/app";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { useSidebarReorderDnd } from "./app/ui/useSidebarReorderDnd.js";
-
-vi.mock("./app/ui/useSidebarReorderDnd.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./app/ui/useSidebarReorderDnd.js")>();
-  return {
-    ...actual,
-    useSidebarReorderDnd: vi.fn(actual.useSidebarReorderDnd),
-  };
-});
 
 const app = await loadPluginApp(() => import("./app"));
-const registration = app.experimentalSidebarNavigations[0];
-if (!registration) throw new Error("navigation slot not registered");
+const rail = app.experimentalSidebarNavigations.find(
+  (registration) => registration.id === "rail",
+);
+const topList = app.experimentalSidebarNavigations.find(
+  (registration) => registration.id === "top-list",
+);
+if (!rail || !topList) throw new Error("navigation providers not registered");
+const RailHeader = rail.headerComponent;
+if (!RailHeader) throw new Error("Rail registers no header");
 
 function hostItem(
   id: string,
@@ -32,14 +29,14 @@ function hostItem(
   return {
     id,
     label,
-    icon: { kind: "host", name: "new-thread" },
+    icon: { kind: "host", name: "extensions" },
     action,
     isDisabled: false,
     isVisible: true,
     isLoading: false,
     pluginId: null,
     shortcut: null,
-    experimental_Accessory: null,
+    badge: null,
     ...overrides,
   };
 }
@@ -60,84 +57,243 @@ function panelItem(
     isLoading: false,
     pluginId,
     shortcut: null,
-    experimental_Accessory: null,
+    badge: null,
     ...overrides,
   };
 }
 
-const ITEMS = [
-  hostItem(
-    "__bb__/new-thread",
-    "New thread",
-    { kind: "new-thread" },
-    {
-      shortcut: { label: "⌘N", ariaKeyShortcuts: "Meta+N" },
-    },
-  ),
-  hostItem(
-    "__bb__/search-threads",
-    "Search threads",
-    { kind: "search-threads" },
-    { isVisible: false },
-  ),
-  panelItem("docs", "main", "Docs"),
-  panelItem("tasks", "board", "Tasks", {
-    experimental_Accessory: () => <span>7</span>,
-  }),
-  hostItem("__bb__/skills", "Skills", { kind: "open-skills" }),
-];
+const NEW_THREAD = hostItem(
+  "__bb__/new-thread",
+  "New thread",
+  { kind: "new-thread" },
+  { shortcut: { label: "⌘N", ariaKeyShortcuts: "Meta+N" } },
+);
+const SEARCH = hostItem(
+  "__bb__/search-threads",
+  "Search threads",
+  { kind: "search-threads" },
+  { isVisible: false },
+);
+const PLUGINS = hostItem("__bb__/extensions", "Plugins", {
+  kind: "open-extensions",
+});
+const DOCS = panelItem("garden", "docs", "Docs");
+const ALERTS = panelItem("garden", "alerts", "Alerts");
 
-const PROPS: ExperimentalSidebarNavigationProps = {
-  isCompactViewport: false,
-  experimental_Original: () => null,
-};
+function props(
+  placement: ExperimentalSidebarNavigationProps["placement"],
+): ExperimentalSidebarNavigationProps {
+  return {
+    isCompactViewport: false,
+    placement,
+    experimental_Original: () => null,
+  };
+}
 
-function renderNavigation(
-  items: readonly ExperimentalSidebarNavigationItem[] = ITEMS,
-  isShortcutModifierHeld = false,
+function renderRail(
+  items: readonly ExperimentalSidebarNavigationItem[],
+  activeItemId: string | null = null,
 ) {
-  return renderSlot(registration!, PROPS, {
+  return renderSlot(rail!, props("rail"), {
     sidebarNavigation: {
       items,
-      activeItemId: "docs/main",
-      isShortcutModifierHeld,
+      activeItemId,
+      isHomeActive: activeItemId === null,
     },
   });
 }
 
-function rowOrder(): string[] {
-  return Array.from(
-    document.querySelectorAll("[data-sidebar-navigation-item]"),
-    (row) => row.getAttribute("data-sidebar-navigation-item") ?? "",
-  );
+function renderTopList(
+  items: readonly ExperimentalSidebarNavigationItem[],
+  activeItemId: string | null = null,
+) {
+  return renderSlot(topList!, props("list"), {
+    sidebarNavigation: { items, activeItemId },
+  });
+}
+
+function railLabels(): (string | null)[] {
+  return within(screen.getByTestId("app-nav-rail"))
+    .getAllByRole("button")
+    .map((button) => button.getAttribute("aria-label"));
+}
+
+function badgeOf(element: HTMLElement): HTMLElement | null {
+  return element.querySelector<HTMLElement>("[data-nav-rail-badge]");
+}
+
+function withBadge(
+  item: ExperimentalSidebarNavigationItem,
+  badge: ExperimentalBadge,
+  overrides: Partial<ExperimentalSidebarNavigationItem> = {},
+): ExperimentalSidebarNavigationItem {
+  return { ...item, badge, ...overrides };
 }
 
 afterEach(cleanup);
 
-describe("navigation plugin", () => {
-  it("draws visible items in saved order and keeps hidden ones in More", () => {
-    renderNavigation();
+describe("Rail", () => {
+  it("draws Home and the visible destinations, leaving New thread to the header and hidden ones to More", () => {
+    renderRail([NEW_THREAD, SEARCH, PLUGINS, DOCS]);
 
-    expect(rowOrder()).toEqual([
-      "__bb__/new-thread",
-      "docs/main",
-      "tasks/board",
-      "__bb__/skills",
-    ]);
+    expect(railLabels()).toEqual(["Home", "Plugins", "Docs", "More"]);
     expect(
-      screen.getByRole("button", { name: "More sidebar navigation" }),
-    ).toBeDefined();
+      screen.getByRole("button", { name: "Home" }).getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it("marks the active destination instead of Home", () => {
+    renderRail([NEW_THREAD, PLUGINS, DOCS], DOCS.id);
+
     expect(
       screen.getByRole("button", { name: "Docs" }).getAttribute("aria-current"),
     ).toBe("page");
-    expect(screen.getByText("7")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Home" }).getAttribute("aria-current"),
+    ).toBeNull();
   });
 
-  it("does not mark New thread as the current page, like bb's rows", () => {
-    renderSlot(registration!, PROPS, {
-      sidebarNavigation: { items: ITEMS, activeItemId: "__bb__/new-thread" },
-    });
+  it("activates through the host, opening in a split on a modifier click", () => {
+    const view = renderRail([NEW_THREAD, PLUGINS, DOCS]);
 
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
+      metaKey: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+
+    expect(view.inspection.sidebarNavigationCalls).toEqual([
+      { method: "activate", itemId: DOCS.id, openInSplit: true },
+      { method: "activate", itemId: PLUGINS.id, openInSplit: false },
+      { method: "goHome" },
+    ]);
+  });
+
+  it("caps rail counts at 9+ and names the badge in the destination's label", () => {
+    renderRail([
+      withBadge(DOCS, { count: 9, label: "9 drafts" }),
+      withBadge(ALERTS, { count: 10, label: "10 alerts" }),
+    ]);
+
+    expect(
+      badgeOf(screen.getByRole("button", { name: "Docs, 9 drafts" }))
+        ?.textContent,
+    ).toBe("9");
+    expect(
+      badgeOf(screen.getByRole("button", { name: "Alerts, 10 alerts" }))
+        ?.textContent,
+    ).toBe("9+");
+  });
+
+  it("draws a text badge as a dot in its tone, since the rail has no room for text", () => {
+    renderRail([
+      withBadge(DOCS, { text: "2 down", tone: "critical", label: "2 down" }),
+    ]);
+
+    const mark = badgeOf(screen.getByRole("button", { name: "Docs, 2 down" }));
+    expect(mark?.dataset.navRailBadge).toBe("dot");
+    expect(mark?.dataset.navBadgeTone).toBe("critical");
+    expect(mark?.textContent).toBe("");
+  });
+
+  it("marks More with the strongest tone hidden under it and lists the hidden badges in its name", () => {
+    renderRail([
+      PLUGINS,
+      withBadge(DOCS, { count: 2, label: "2 drafts" }, { isVisible: false }),
+      withBadge(
+        ALERTS,
+        { tone: "warning", label: "1 due today" },
+        { isVisible: false },
+      ),
+    ]);
+
+    const more = screen.getByRole("button", {
+      name: "More, Docs: 2 drafts, Alerts: 1 due today",
+    });
+    expect(badgeOf(more)?.dataset.navBadgeTone).toBe("warning");
+  });
+
+  it("offers plugin actions only on plugin destinations", async () => {
+    const view = renderRail([PLUGINS, DOCS]);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
+    const hostMenu = await screen.findByRole("menu", {
+      name: "Plugins options",
+    });
+    expect(
+      within(hostMenu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Hide from rail", "Customize navigation"]);
+    fireEvent.click(
+      within(hostMenu).getByRole("menuitem", { name: "Hide from rail" }),
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+    const panelMenu = await screen.findByRole("menu", {
+      name: "Docs panel options",
+    });
+    fireEvent.click(
+      within(panelMenu).getByRole("menuitem", { name: "View details" }),
+    );
+
+    expect(view.inspection.sidebarNavigationCalls).toEqual([
+      { method: "setVisible", itemId: PLUGINS.id, isVisible: false },
+      { method: "openDetails", itemId: DOCS.id },
+    ]);
+  });
+});
+
+describe("Rail header", () => {
+  function renderHeader(
+    items: readonly ExperimentalSidebarNavigationItem[],
+    isShortcutModifierHeld = false,
+  ) {
+    return renderSlot(
+      { component: RailHeader! },
+      { width: 200, controlSize: 28, isCompactViewport: false },
+      { sidebarNavigation: { items, isShortcutModifierHeld } },
+    );
+  }
+
+  it("draws New thread even when it is hidden from the rail", () => {
+    const view = renderHeader([{ ...NEW_THREAD, isVisible: false }, PLUGINS]);
+
+    fireEvent.click(screen.getByRole("button", { name: "New thread (⌘N)" }));
+
+    expect(view.inspection.sidebarNavigationCalls).toEqual([
+      { method: "activate", itemId: NEW_THREAD.id, openInSplit: false },
+    ]);
+  });
+
+  it("shows the shortcut only while the modifier is held", () => {
+    renderHeader([NEW_THREAD]);
+    expect(screen.queryByText("⌘N")).toBeNull();
+    cleanup();
+
+    renderHeader([NEW_THREAD], true);
+    expect(screen.getByText("⌘N")).toBeDefined();
+  });
+
+  it("draws nothing when the host offers no New thread", () => {
+    renderHeader([PLUGINS]);
+
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("Top list", () => {
+  function rowLabels(): string[] {
+    return Array.from(
+      document.querySelectorAll("[data-sidebar-navigation-item]"),
+      (row) => row.getAttribute("data-sidebar-navigation-item") ?? "",
+    );
+  }
+
+  it("draws New thread as a row, never as the current page", () => {
+    renderTopList([NEW_THREAD, PLUGINS, DOCS], NEW_THREAD.id);
+
+    expect(rowLabels()).toEqual([NEW_THREAD.id, PLUGINS.id, DOCS.id]);
     expect(
       screen
         .getByRole("button", { name: "New thread (⌘N)" })
@@ -145,133 +301,53 @@ describe("navigation plugin", () => {
     ).toBeNull();
   });
 
-  it("activates through the host, splitting on modifier click", () => {
-    const view = renderNavigation();
+  it("shows More only when something is hidden, and activates hidden items from it", async () => {
+    renderTopList([NEW_THREAD, PLUGINS]);
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    cleanup();
 
-    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
-      metaKey: true,
+    const view = renderTopList([NEW_THREAD, SEARCH, PLUGINS]);
+    fireEvent.keyDown(screen.getByRole("button", { name: "More" }), {
+      key: "Enter",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Skills" }));
-
-    expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "activate", itemId: "docs/main", openInSplit: true },
-      { method: "activate", itemId: "__bb__/skills", openInSplit: false },
-    ]);
-  });
-
-  it("hides a panel and opens bb's editor from the row menu", async () => {
-    const view = renderNavigation();
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
-    );
-    fireEvent.contextMenu(
-      screen.getByRole("button", { name: "New thread (⌘N)" }),
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize sidebar" }),
+      await screen.findByRole("menuitem", { name: "Search threads" }),
     );
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "setVisible", itemId: "docs/main", isVisible: false },
-      { method: "openCustomize" },
+      { method: "activate", itemId: SEARCH.id, openInSplit: false },
     ]);
   });
 
-  it("gives every visible row an options button with sidebar actions", async () => {
-    const view = renderNavigation();
+  it("draws list counts up to 99+ and text badges as text", () => {
+    renderTopList([
+      withBadge(DOCS, { count: 120, label: "120 drafts" }),
+      withBadge(ALERTS, { text: "NEW", label: "New alerts" }),
+    ]);
 
-    for (const name of [
-      "New thread options",
-      "Docs panel options",
-      "Tasks panel options",
-      "Skills options",
-    ]) {
-      expect(screen.getByRole("button", { name })).toBeDefined();
-    }
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Skills options" }),
-      { button: 0 },
+    const counts = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-nav-rail-badge]"),
+      (mark) => `${mark.dataset.navRailBadge}:${mark.textContent}`,
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
-    );
+    expect(counts).toEqual(["count:99+", "text:NEW"]);
+    expect(
+      screen.getByRole("button", { name: "Docs, 120 drafts" }),
+    ).toBeDefined();
+  });
+
+  it("hides a row from its options button", async () => {
+    const view = renderTopList([NEW_THREAD, DOCS]);
+
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Docs panel options" }),
       { button: 0 },
     );
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize sidebar" }),
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     );
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "setVisible", itemId: "__bb__/skills", isVisible: false },
-      { method: "openCustomize" },
-    ]);
-  });
-
-  it("marks the right-clicked row and its options button while the menu is open", async () => {
-    renderNavigation();
-    const row = screen.getByRole("button", { name: "Skills" });
-    const options = screen.getByRole("button", { name: "Skills options" });
-    expect(row.classList.contains("bg-sidebar-accent")).toBe(false);
-
-    fireEvent.contextMenu(row);
-    await screen.findByRole("menuitem", { name: "Hide from sidebar" });
-
-    expect(screen.queryByRole("separator")).toBeNull();
-    expect(row.classList.contains("bg-sidebar-accent")).toBe(true);
-    expect(options.classList.contains("bg-state-active")).toBe(true);
-    expect(
-      options
-        .closest("[data-sidebar-hover-actions-open]")
-        ?.getAttribute("data-sidebar-hover-actions-open"),
-    ).toBe("true");
-  });
-
-  it("swaps New thread's options button for its shortcut while the modifier is held", () => {
-    renderNavigation(ITEMS, false);
-    expect(screen.queryByText("⌘N")).toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "New thread options" })
-        .parentElement?.classList.contains("hidden"),
-    ).toBe(false);
-    cleanup();
-
-    renderNavigation(ITEMS, true);
-    expect(screen.getByText("⌘N")).toBeDefined();
-    expect(
-      screen
-        .getByRole("button", { name: "New thread options" })
-        .parentElement?.classList.contains("hidden"),
-    ).toBe(true);
-  });
-
-  it("keeps hidden items in place when reordering visible ones", () => {
-    const view = renderNavigation();
-    const options = vi.mocked(useSidebarReorderDnd).mock.lastCall?.[0];
-    if (!options) throw new Error("reorder handler is not mounted");
-
-    act(() =>
-      options.onDragEnd({
-        active: { id: "docs/main" },
-        over: { id: "tasks/board" },
-      } as DragEndEvent),
-    );
-
-    expect(view.inspection.sidebarNavigationCalls).toEqual([
-      {
-        method: "setOrder",
-        itemIds: [
-          "__bb__/new-thread",
-          "__bb__/search-threads",
-          "tasks/board",
-          "docs/main",
-          "__bb__/skills",
-        ],
-      },
+      { method: "setVisible", itemId: DOCS.id, isVisible: false },
     ]);
   });
 });

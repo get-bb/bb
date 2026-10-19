@@ -21,6 +21,7 @@ describe("VoiceRecordingBar", () => {
       <VoiceRecordingBar
         isCompact={false}
         state="recording"
+        delivery="insert"
         microphoneWarning={null}
         stream={null}
         submitIcon="CornerDownLeft"
@@ -61,6 +62,7 @@ describe("VoiceRecordingBar", () => {
       <VoiceRecordingBar
         isCompact={false}
         state="transcribing"
+        delivery="insert"
         microphoneWarning={null}
         stream={null}
         submitIcon="CornerDownLeft"
@@ -87,7 +89,7 @@ describe("VoiceRecordingBar", () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it("shows transcription progress on the action that was pressed", () => {
+  it("shows transcription progress on the action that was chosen", () => {
     const props = {
       isCompact: false,
       stream: null,
@@ -98,12 +100,13 @@ describe("VoiceRecordingBar", () => {
       onCancel: vi.fn(),
     };
     const { rerender } = render(
-      <VoiceRecordingBar state="recording" {...props} />,
+      <VoiceRecordingBar state="recording" delivery="insert" {...props} />,
     );
     const send = screen.getByRole("button", { name: "Send voice input" });
     expect(send.querySelector('[data-icon-name="ArrowUp"]')).toBeTruthy();
-    fireEvent.click(send);
-    rerender(<VoiceRecordingBar state="transcribing" {...props} />);
+    rerender(
+      <VoiceRecordingBar state="transcribing" delivery="send" {...props} />,
+    );
 
     const sending = screen.getByRole("button", {
       name: "Transcribing and sending",

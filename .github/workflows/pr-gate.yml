@@ -21,12 +21,15 @@ jobs:
           ref: ${{ github.base_ref }}
           sparse-checkout: .github/APPROVED_CONTRIBUTORS
           sparse-checkout-cone-mode: false
-      - name: Check approval and close unapproved PRs
+      - name: Check approval and maintainer edits, and close failing PRs
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_OWNER_TYPE: ${{ github.event.pull_request.head.repo.owner.type }}
+          MAINTAINER_CAN_MODIFY: ${{ github.event.pull_request.maintainer_can_modify }}
           DISCORD_INVITE_URL: https://discord.gg/kvBU6tJhcJ
         run: |
           trusted=""
@@ -47,11 +50,28 @@ jobs:
               fi
             done < ".github/APPROVED_CONTRIBUTORS"
           fi
+          edits_off=""
+          if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$HEAD_OWNER_TYPE" = "User" ] && [ "$MAINTAINER_CAN_MODIFY" != "true" ]; then
+            edits_off="yes"
+          fi
+          edits_note="This PR has \"Allow edits by maintainers\" turned off. Open a new PR from your fork with it turned on."
           if [ -n "$trusted" ]; then
             gh pr edit "$PR_NUMBER" --remove-label "needs-approval" --repo "$GITHUB_REPOSITORY" || true
+            if [ -z "$edits_off" ]; then
+              exit 0
+            fi
+            note="Thanks @$PR_AUTHOR for the PR. $edits_note This PR now closes on its own."
+            gh pr comment "$PR_NUMBER" --body "$note" --repo "$GITHUB_REPOSITORY"
+            gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
             exit 0
           fi
-          note="Thanks @$PR_AUTHOR for the PR. This repo needs approval before a PR. Join the #contributors channel in Discord ($DISCORD_INVITE_URL) and explain what you want to open a PR for and why. A maintainer then adds you to the allow list. This PR now closes on its own. Reopen it or open a new one after approval."
+          note="Thanks @$PR_AUTHOR for the PR. This repo approves new contributors before it reviews their PRs, so this PR now closes on its own. That is expected."
+          linked_pr="this PR"
+          if [ -n "$edits_off" ]; then
+            note="$note $edits_note"
+            linked_pr="the new PR"
+          fi
+          note="$note Join the #contributors channel in Discord ($DISCORD_INVITE_URL), post a link to $linked_pr, and explain what it changes and why. A maintainer then adds you to the allow list and can reopen the PR."
           gh pr comment "$PR_NUMBER" --body "$note" --repo "$GITHUB_REPOSITORY"
           gh pr edit "$PR_NUMBER" --add-label "needs-approval" --repo "$GITHUB_REPOSITORY" || true
           gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"

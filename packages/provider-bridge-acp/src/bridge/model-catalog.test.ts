@@ -360,22 +360,25 @@ describe("acp configOptions model catalog", () => {
   });
 
   it("maps model configOptions values, names, and currentValue into picker models", () => {
-    const reasoningByModel = new Map([
+    const supportByModel = new Map([
       [
         "opencode/deepseek-v4-flash-free",
-        buildAcpNativeReasoningSupport({
-          id: "effort",
-          category: "thought_level",
-          type: "select",
-          currentValue: "high",
-          options: [
-            { value: "none" },
-            { value: "low" },
-            { value: "medium" },
-            { value: "high" },
-            { value: "xhigh" },
-          ],
-        }),
+        {
+          supportedServiceTiers: [],
+          ...buildAcpNativeReasoningSupport({
+            id: "effort",
+            category: "thought_level",
+            type: "select",
+            currentValue: "high",
+            options: [
+              { value: "none" },
+              { value: "low" },
+              { value: "medium" },
+              { value: "high" },
+              { value: "xhigh" },
+            ],
+          }),
+        },
       ],
     ]);
     const models = buildModelCatalogFromConfigOptions(
@@ -396,7 +399,7 @@ describe("acp configOptions model catalog", () => {
           },
         ],
       },
-      reasoningByModel,
+      supportByModel,
     );
 
     expect(models).toMatchObject([

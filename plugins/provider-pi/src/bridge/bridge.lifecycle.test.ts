@@ -34,16 +34,22 @@ afterEach(async () => {
 let nextId = 1000;
 
 function resultProviderThreadId(result: unknown): string {
-  const providerThreadId = (result as { providerThreadId?: unknown }).providerThreadId;
+  const providerThreadId = (result as { providerThreadId?: unknown })
+    .providerThreadId;
   expect(typeof providerThreadId).toBe("string");
-  if (typeof providerThreadId !== "string") throw new Error("missing providerThreadId");
+  if (typeof providerThreadId !== "string")
+    throw new Error("missing providerThreadId");
   return providerThreadId;
 }
 
 function providerThreadIdFor(threadId: string): string {
   const identity = [...harness.messages]
     .reverse()
-    .find((message) => message.method === "thread/identity" && (message.params as { threadId?: unknown }).threadId === threadId);
+    .find(
+      (message) =>
+        message.method === "thread/identity" &&
+        (message.params as { threadId?: unknown }).threadId === threadId,
+    );
   return resultProviderThreadId(identity?.params);
 }
 
@@ -114,7 +120,9 @@ it("stop{release} ends the child after a local-file-only turn", async () => {
       .some(
         (delta) =>
           delta.kind === "item.textDelta" &&
-          String(delta.text).includes(`[Attached file: ${filePath}]`),
+          String(delta.text).includes(
+            `[Attached file "notes.md": ${filePath}]`,
+          ),
       ),
   ).toBe(true);
   const stop = await harness.request((nextId += 1), "thread/stop", {
@@ -266,7 +274,11 @@ it("start_after_release_selects_fresh_pi_session", async () => {
     harness.sessionDir,
     harness.workspaceDir,
   );
-  expect(reopened.getEntries().some((entry) => JSON.stringify(entry).includes(sentinel))).toBe(true);
+  expect(
+    reopened
+      .getEntries()
+      .some((entry) => JSON.stringify(entry).includes(sentinel)),
+  ).toBe(true);
   const oldBytes = readFileSync(oldSessionFile, "utf8");
 
   const second = await harness.startThread(threadId, {
@@ -274,8 +286,12 @@ it("start_after_release_selects_fresh_pi_session", async () => {
   });
   const newProviderThreadId = resultProviderThreadId(second.result);
   expect(newProviderThreadId).not.toBe(oldProviderThreadId);
-  expect(oldProviderThreadId).toMatch(/^pi_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
-  expect(newProviderThreadId).toMatch(/^pi_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  expect(oldProviderThreadId).toMatch(
+    /^pi_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  );
+  expect(newProviderThreadId).toMatch(
+    /^pi_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  );
   expect(readFileSync(oldSessionFile, "utf8")).toBe(oldBytes);
   const freshSessionFile = join(
     harness.sessionDir,
@@ -292,7 +308,10 @@ it("start_after_release_selects_fresh_pi_session", async () => {
   expect(freshContext.messages).toEqual([]);
   const identities = harness.messages
     .filter((message) => message.method === "thread/identity")
-    .map((message) => message.params as { threadId?: unknown; providerThreadId?: unknown })
+    .map(
+      (message) =>
+        message.params as { threadId?: unknown; providerThreadId?: unknown },
+    )
     .filter((params) => params.threadId === threadId);
   expect(identities).toHaveLength(2);
   expect(identities.map((params) => params.providerThreadId)).toEqual([
@@ -312,7 +331,8 @@ it("start_after_release_selects_fresh_pi_session", async () => {
 it("release_resume_preserves_pi_session_and_replaces_configuration", async () => {
   const threadId = "thr_lc_facet_switch";
   const oldInstructions = "planner instructions: only plan the work";
-  const newInstructions = "orchestrator instructions: implement the approved plan";
+  const newInstructions =
+    "orchestrator instructions: implement the approved plan";
   const oldTool = {
     name: "planner_only_tool",
     description: "Only available to the planner facet.",
@@ -332,11 +352,31 @@ it("release_resume_preserves_pi_session_and_replaces_configuration", async () =>
   expect(providerThreadId).toMatch(/^pi_/u);
   const sessionFile = join(harness.sessionDir, `${providerThreadId}.jsonl`);
   expect(existsSync(sessionFile)).toBe(true);
-  const initialHeader = JSON.parse(readFileSync(sessionFile, "utf8").split("\n", 1)[0]!);
+  const initialHeader = JSON.parse(
+    readFileSync(sessionFile, "utf8").split("\n", 1)[0]!,
+  );
   const initialFiles = scratchFiles();
   expect(initialFiles).toHaveLength(2);
-  expect(readFileSync(join(experimental_scratchDirForTests(), initialFiles.find((name) => name.endsWith(".md"))!), "utf8")).toContain(oldInstructions);
-  expect(JSON.parse(readFileSync(join(experimental_scratchDirForTests(), initialFiles.find((name) => name.endsWith(".json"))!), "utf8")).map((tool: { name: string }) => tool.name)).toContain(oldTool.name);
+  expect(
+    readFileSync(
+      join(
+        experimental_scratchDirForTests(),
+        initialFiles.find((name) => name.endsWith(".md"))!,
+      ),
+      "utf8",
+    ),
+  ).toContain(oldInstructions);
+  expect(
+    JSON.parse(
+      readFileSync(
+        join(
+          experimental_scratchDirForTests(),
+          initialFiles.find((name) => name.endsWith(".json"))!,
+        ),
+        "utf8",
+      ),
+    ).map((tool: { name: string }) => tool.name),
+  ).toContain(oldTool.name);
 
   const turn = await harness.request((nextId += 1), "turn/start", {
     threadId,
@@ -370,7 +410,9 @@ it("release_resume_preserves_pi_session_and_replaces_configuration", async () =>
     harness.sessionDir,
     harness.workspaceDir,
   );
-  expect(JSON.stringify(independentlySeeded.buildSessionContext().messages)).toContain(sentinel);
+  expect(
+    JSON.stringify(independentlySeeded.buildSessionContext().messages),
+  ).toContain(sentinel);
 
   const resumed = await harness.request((nextId += 1), "thread/resume", {
     threadId,
@@ -390,15 +432,35 @@ it("release_resume_preserves_pi_session_and_replaces_configuration", async () =>
     harness.sessionDir,
     harness.workspaceDir,
   );
-  expect(JSON.stringify(independentlyResumed.buildSessionContext().messages)).toContain(sentinel);
+  expect(
+    JSON.stringify(independentlyResumed.buildSessionContext().messages),
+  ).toContain(sentinel);
   const resumedFiles = scratchFiles();
   expect(resumedFiles).toHaveLength(2);
-  const resumedPrompt = readFileSync(join(experimental_scratchDirForTests(), resumedFiles.find((name) => name.endsWith(".md"))!), "utf8");
-  const resumedTools = JSON.parse(readFileSync(join(experimental_scratchDirForTests(), resumedFiles.find((name) => name.endsWith(".json"))!), "utf8"));
+  const resumedPrompt = readFileSync(
+    join(
+      experimental_scratchDirForTests(),
+      resumedFiles.find((name) => name.endsWith(".md"))!,
+    ),
+    "utf8",
+  );
+  const resumedTools = JSON.parse(
+    readFileSync(
+      join(
+        experimental_scratchDirForTests(),
+        resumedFiles.find((name) => name.endsWith(".json"))!,
+      ),
+      "utf8",
+    ),
+  );
   expect(resumedPrompt).toContain(newInstructions);
   expect(resumedPrompt).not.toContain(oldInstructions);
-  expect(resumedTools.map((tool: { name: string }) => tool.name)).toContain(newTool.name);
-  expect(resumedTools.map((tool: { name: string }) => tool.name)).not.toContain(oldTool.name);
+  expect(resumedTools.map((tool: { name: string }) => tool.name)).toContain(
+    newTool.name,
+  );
+  expect(resumedTools.map((tool: { name: string }) => tool.name)).not.toContain(
+    oldTool.name,
+  );
 
   const resumedTurn = await harness.request((nextId += 1), "turn/start", {
     threadId,
@@ -424,7 +486,10 @@ it("resume_legacy_pi_session", async () => {
   const legacyProviderThreadId = "thr_lc_legacy_file";
   const sentinel = "legacy resume sentinel";
   const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-  const source = SessionManager.create(harness.workspaceDir, harness.sessionDir);
+  const source = SessionManager.create(
+    harness.workspaceDir,
+    harness.sessionDir,
+  );
   source.appendMessage({ role: "user", content: sentinel, timestamp: 1 });
   source.appendMessage({
     role: "assistant",
@@ -432,15 +497,31 @@ it("resume_legacy_pi_session", async () => {
     api: "openai-responses",
     provider: "fake-provider",
     model: "fake-model",
-    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    usage: {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 2,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
     stopReason: "stop",
     timestamp: 2,
   });
-  const legacyFile = join(harness.sessionDir, `${legacyProviderThreadId}.jsonl`);
+  const legacyFile = join(
+    harness.sessionDir,
+    `${legacyProviderThreadId}.jsonl`,
+  );
   copyFileSync(source.getSessionFile()!, legacyFile);
   const before = readFileSync(legacyFile, "utf8");
-  const reopened = SessionManager.open(legacyFile, harness.sessionDir, harness.workspaceDir);
-  expect(JSON.stringify(reopened.buildSessionContext().messages)).toContain(sentinel);
+  const reopened = SessionManager.open(
+    legacyFile,
+    harness.sessionDir,
+    harness.workspaceDir,
+  );
+  expect(JSON.stringify(reopened.buildSessionContext().messages)).toContain(
+    sentinel,
+  );
 
   const resumed = await harness.request((nextId += 1), "thread/resume", {
     threadId,
@@ -449,16 +530,38 @@ it("resume_legacy_pi_session", async () => {
     instructionMode: "append",
     options: FULL_PERMISSION_OPTIONS,
   });
-  expect(resumed.result).toMatchObject({ providerThreadId: legacyProviderThreadId });
+  expect(resumed.result).toMatchObject({
+    providerThreadId: legacyProviderThreadId,
+  });
   const after = readFileSync(legacyFile, "utf8");
   expect(after).toBe(before);
-  expect(JSON.parse(after.split("\n", 1)[0]!)).toEqual(JSON.parse(before.split("\n", 1)[0]!));
+  expect(JSON.parse(after.split("\n", 1)[0]!)).toEqual(
+    JSON.parse(before.split("\n", 1)[0]!),
+  );
   expect(after).toContain(sentinel);
-  const afterReopen = SessionManager.open(legacyFile, harness.sessionDir, harness.workspaceDir);
-  expect(JSON.stringify(afterReopen.buildSessionContext().messages)).toContain(sentinel);
-  const identity = harness.messages.find((message) => message.method === "thread/identity" && (message.params as { threadId?: unknown }).threadId === threadId);
-  expect(identity?.params).toMatchObject({ threadId, providerThreadId: legacyProviderThreadId });
-  await harness.request((nextId += 1), "thread/stop", { threadId, providerThreadId: legacyProviderThreadId, intent: "release", activeTurnId: null });
+  const afterReopen = SessionManager.open(
+    legacyFile,
+    harness.sessionDir,
+    harness.workspaceDir,
+  );
+  expect(JSON.stringify(afterReopen.buildSessionContext().messages)).toContain(
+    sentinel,
+  );
+  const identity = harness.messages.find(
+    (message) =>
+      message.method === "thread/identity" &&
+      (message.params as { threadId?: unknown }).threadId === threadId,
+  );
+  expect(identity?.params).toMatchObject({
+    threadId,
+    providerThreadId: legacyProviderThreadId,
+  });
+  await harness.request((nextId += 1), "thread/stop", {
+    threadId,
+    providerThreadId: legacyProviderThreadId,
+    intent: "release",
+    activeTurnId: null,
+  });
   await expectEveryChildGone(1);
 }, 90_000);
 

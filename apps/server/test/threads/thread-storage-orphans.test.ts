@@ -84,6 +84,7 @@ describe("thread storage orphan cleanup", () => {
               result: {
                 directory: rootPath,
                 parent: session.dataDir,
+                roots: ["/"],
                 entries: [...storedIds].map((name) => ({
                   kind: "directory" as const,
                   name,
@@ -143,6 +144,7 @@ describe("thread storage orphan cleanup", () => {
               result: {
                 directory: rootPath,
                 parent: session.dataDir,
+                roots: ["/"],
                 entries: [rejectedPath, removablePath].map((entryPath) => ({
                   kind: "directory" as const,
                   name: path.basename(entryPath),
@@ -194,6 +196,7 @@ describe("thread storage orphan cleanup", () => {
               result: {
                 directory: rootPath,
                 parent: session.dataDir,
+                roots: ["/"],
                 entries: [
                   {
                     kind: "directory",
@@ -237,6 +240,7 @@ describe("thread storage orphan cleanup", () => {
               result: {
                 directory: rootPath,
                 parent: session.dataDir,
+                roots: ["/"],
                 entries: [rejectedPath, removablePath].map((entryPath) => ({
                   kind: "directory" as const,
                   name: path.basename(entryPath),
@@ -292,6 +296,7 @@ describe("thread storage orphan cleanup", () => {
               result: {
                 directory: rootPath,
                 parent: session.dataDir,
+                roots: ["/"],
                 entries: [slowPath, laterPath].map((entryPath) => ({
                   kind: "directory" as const,
                   name: path.basename(entryPath),
@@ -373,6 +378,7 @@ describe("thread storage orphan cleanup", () => {
               result: {
                 directory: rootPath,
                 parent: session.dataDir,
+                roots: ["/"],
                 entries: [
                   ...leadingOrphanIds.map(directory),
                   directory(liveThread.id),

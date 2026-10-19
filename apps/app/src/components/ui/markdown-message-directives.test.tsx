@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   afterEach,
   beforeEach,
@@ -445,30 +446,43 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("hands null turn and project ids to the directive without substituting a value", () => {
+    const received: PluginMessageDirectiveProps["message"][] = [];
+    function MessageCaptureVis(props: PluginMessageDirectiveProps) {
+      received.push(props.message);
+      return null;
+    }
     const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+      slot({
+        id: "inline-vis",
+        pluginId: "demo",
+        component: MessageCaptureVis,
+      }),
     ]);
     render(
-      <MarkdownPreview
-        content={'::inline-vis{file="demo.html"}'}
-        messageDirectives={{
-          registry,
-          message: {
-            id: "msg_2",
-            threadId: "thr_2",
-            turnId: null,
-            projectId: null,
-          },
-          openWorkspaceFile: null,
-        }}
-      />,
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <MessageDirectiveRegistryProvider registry={registry}>
+            <ConversationMessageContent
+              role="assistant"
+              attachments={null}
+              id="msg_2"
+              threadId="thr_2"
+              turnId={null}
+              showActions={false}
+              text={'::inline-vis{file="demo.html"}'}
+              timestamp={0}
+            />
+          </MessageDirectiveRegistryProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
     );
-    expect(
-      screen.getByTestId("inline-vis").getAttribute("data-project-id"),
-    ).toBe("");
-    expect(screen.getByTestId("inline-vis").getAttribute("data-turn-id")).toBe(
-      "",
-    );
+
+    expect(received.at(-1)).toEqual({
+      id: "msg_2",
+      threadId: "thr_2",
+      turnId: null,
+      projectId: null,
+    });
   });
 
   it.each([false, true])(
@@ -635,24 +649,26 @@ describe("ConversationMessageContent assistant directives", () => {
       }),
     ]);
     render(
-      <MemoryRouter>
-        <RouteNavigationProvider>
-          <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_a"
-              threadId="thr_a"
-              turnId="turn_a"
-              showActions={false}
-              text={'::inline-vis{file="plan.md"}'}
-              timestamp={0}
-              projectId="proj_a"
-              onOpenPluginPanel={onOpenPluginPanel}
-            />
-          </MessageDirectiveRegistryProvider>
-        </RouteNavigationProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <RouteNavigationProvider>
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'::inline-vis{file="plan.md"}'}
+                timestamp={0}
+                projectId="proj_a"
+                onOpenPluginPanel={onOpenPluginPanel}
+              />
+            </MessageDirectiveRegistryProvider>
+          </RouteNavigationProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open thread panel" }));
@@ -743,33 +759,35 @@ describe("ThreadTimelineRows message directive subscription", () => {
     );
 
     render(
-      <MemoryRouter>
-        <ThreadTimelineRows
-          initialExpanded={new Set(["del_1"])}
-          threadId="thr_main"
-          projectId="proj_main"
-          timelineRows={[
-            conversationRow({
-              id: "asst_1",
-              role: "assistant",
-              text: '::inline-vis{file="top.html"}',
-              threadId: "thr_main",
-              turnId: "turn_top",
-            }),
-            delegationRow({
-              id: "del_1",
-              status: "pending",
-              durationMs: null,
-              output: '::inline-vis{file="nested.html"}',
-              threadId: "thr_main",
-              turnId: "turn_del",
-              childRows: [],
-            }),
-          ]}
-          threadRuntimeDisplayStatus="active"
-          workspaceRootPath={undefined}
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTimelineRows
+            initialExpanded={new Set(["del_1"])}
+            threadId="thr_main"
+            projectId="proj_main"
+            timelineRows={[
+              conversationRow({
+                id: "asst_1",
+                role: "assistant",
+                text: '::inline-vis{file="top.html"}',
+                threadId: "thr_main",
+                turnId: "turn_top",
+              }),
+              delegationRow({
+                id: "del_1",
+                status: "pending",
+                durationMs: null,
+                output: '::inline-vis{file="nested.html"}',
+                threadId: "thr_main",
+                turnId: "turn_del",
+                childRows: [],
+              }),
+            ]}
+            threadRuntimeDisplayStatus="active"
+            workspaceRootPath={undefined}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     const mounts = screen.getAllByTestId("inline-vis");

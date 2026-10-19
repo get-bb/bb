@@ -39,6 +39,7 @@ describe("MentionMenu", () => {
             trigger: "mention",
             state: {
               kind: "results",
+              refreshing: false,
               results: {
                 groups: [
                   {
@@ -63,5 +64,54 @@ describe("MentionMenu", () => {
     expect(pill.closest("a")).toBeNull();
     expect(pill.closest("[role='link']")).toBeNull();
     expect(screen.getByTitle("Continue from Mention target")).not.toBeNull();
+  });
+
+  it("shows a refresh spinner over current results without changing their layout", () => {
+    const suggestion: PromptMentionSuggestion = {
+      kind: "path",
+      source: "workspace",
+      entryKind: "file",
+      path: "src/index.ts",
+      name: "index.ts",
+      replacement: "@src/index.ts",
+    };
+    const renderMenu = (refreshing: boolean) =>
+      render(
+        <MentionMenu
+          state={{
+            trigger: "mention",
+            state: {
+              kind: "results",
+              refreshing,
+              results: {
+                groups: [
+                  {
+                    key: "workspace",
+                    label: "Workspace",
+                    startIndex: 0,
+                    suggestions: [suggestion],
+                  },
+                ],
+                suggestions: [suggestion],
+              },
+            },
+          }}
+          selectedIndex={0}
+          onApply={vi.fn()}
+        />,
+      );
+
+    const idle = renderMenu(false);
+    const idleStatus = idle.container.querySelector("[role='status']");
+    expect(idleStatus?.classList.contains("invisible")).toBe(true);
+    expect(screen.queryByLabelText("Updating results")).toBeNull();
+    idle.unmount();
+
+    const refreshing = renderMenu(true);
+    const refreshingStatus =
+      refreshing.container.querySelector("[role='status']");
+    expect(refreshingStatus?.classList.contains("invisible")).toBe(false);
+    expect(screen.getByLabelText("Updating results")).toBe(refreshingStatus);
+    expect(screen.getByText("index.ts")).not.toBeNull();
   });
 });

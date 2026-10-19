@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path, { delimiter } from "node:path";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createUserShellPathResolver,
@@ -11,14 +11,6 @@ import {
   type SpawnUserShellEnvArgs,
   type UserShellEnvSpawnResult,
 } from "./runtime-shell-env.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const directoryPath = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(directoryPath);
-  return directoryPath;
-}
 
 interface FakeCliPackageOptions {
   executablePath?: string;
@@ -143,15 +135,8 @@ function createFakeShellEnvSpawn(
   };
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((directoryPath) =>
-        fs.rm(directoryPath, { recursive: true, force: true }),
-      ),
-  );
 });
 
 describe("resolveLocalBbExecutablePath", () => {

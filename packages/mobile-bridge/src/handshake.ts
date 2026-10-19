@@ -33,6 +33,7 @@ export const nativeShellHandshakeSchema = z
     secureContext: z.boolean(),
     safeArea: safeAreaInsetsSchema,
     capabilities: z.array(nativeCapabilitySchema).readonly(),
+    nativeDownloads: z.literal(true).optional(),
   })
   .strict();
 

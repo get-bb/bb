@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -8,11 +7,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import type { VoiceDelivery } from "@/lib/voice-recording-store";
 import { WaveformVisualizer } from "./WaveformVisualizer.js";
 
 interface VoiceRecordingBarProps {
   isCompact: boolean;
   state: "recording" | "transcribing";
+  delivery: VoiceDelivery;
   stream: MediaStream | null;
   microphoneWarning: string | null;
   submitIcon: IconName;
@@ -29,6 +30,7 @@ const ACTION_BUTTON_CLASS =
 export function VoiceRecordingBar({
   isCompact,
   state,
+  delivery,
   stream,
   microphoneWarning,
   submitIcon,
@@ -36,12 +38,9 @@ export function VoiceRecordingBar({
   onSend,
   onCancel,
 }: VoiceRecordingBarProps) {
-  const [pressedAction, setPressedAction] = useState<"confirm" | "send">(
-    "confirm",
-  );
   const isTranscribing = state === "transcribing";
-  const isConfirming = isTranscribing && pressedAction === "confirm";
-  const isSending = isTranscribing && pressedAction === "send";
+  const isConfirming = isTranscribing && delivery === "insert";
+  const isSending = isTranscribing && delivery === "send";
 
   return (
     <div
@@ -90,10 +89,7 @@ export function VoiceRecordingBar({
                   : "Stop and add to draft"
               }
               disabled={isTranscribing}
-              onClick={() => {
-                setPressedAction("confirm");
-                onConfirm();
-              }}
+              onClick={onConfirm}
               className={cn(
                 ACTION_BUTTON_CLASS,
                 isConfirming && "disabled:opacity-100",
@@ -121,10 +117,7 @@ export function VoiceRecordingBar({
                 isSending ? "Transcribing and sending" : "Send voice input"
               }
               disabled={isTranscribing}
-              onClick={() => {
-                setPressedAction("send");
-                onSend();
-              }}
+              onClick={onSend}
               className={cn(
                 ACTION_BUTTON_CLASS,
                 isSending && "disabled:opacity-100",

@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { defineSplit } from "@/lib/define-split";
+import { SourceLoadingSkeleton } from "./code-loading-skeletons";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
@@ -9,12 +9,10 @@ import {
 
 const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
 
-const BbSourceCodeSplit = defineSplit<
-  BbSourceCodeProps & { fallback: ReactNode }
->({
+export const BbSourceCodeSplit = defineSplit<BbSourceCodeProps>({
   id: "bb-source-code",
   load: () => import("./BbSourceCode").then((module) => module.default),
-  loading: ({ fallback }) => fallback,
+  loading: () => <SourceLoadingSkeleton />,
   tier: "intent",
 });
 
@@ -24,7 +22,6 @@ interface SourceCodeHostProps extends Omit<
 > {
   overflow?: BbSourceCodeProps["overflow"];
   highlightedLines?: BbSourceCodeProps["highlightedLines"];
-  fallback?: ReactNode;
 }
 
 export function SourceCodeHost({
@@ -34,7 +31,6 @@ export function SourceCodeHost({
   overflow = DEFAULT_CODE_OVERFLOW,
   highlightedLines = null,
   className,
-  fallback = null,
   scrollToHighlightedLines,
   onSelectionAddToChat,
 }: SourceCodeHostProps) {
@@ -48,7 +44,6 @@ export function SourceCodeHost({
       overflow={overflow}
       highlightedLines={highlightedLines}
       className={className}
-      fallback={fallback}
       scrollToHighlightedLines={scrollToHighlightedLines}
       onSelectionAddToChat={onSelectionAddToChat}
     />

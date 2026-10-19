@@ -1,9 +1,11 @@
-import type {
-  PermissionMode,
-  PromptInput,
-  ReasoningLevel,
-  ServiceTier,
-  ThreadRuntimeDisplayStatus,
+import {
+  isStandaloneBuiltinClearCommand,
+  isStandaloneBuiltinCompactCommand,
+  type PermissionMode,
+  type PromptInput,
+  type ReasoningLevel,
+  type ServiceTier,
+  type ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
@@ -51,6 +53,7 @@ interface BaseFollowUpRequestArgs {
 }
 
 interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
+  compactFirst: boolean;
   execution: FollowUpExecutionSelection;
 }
 
@@ -218,6 +221,7 @@ export function resolveDefaultExecutionOptionsState({
 }
 
 export function buildAutoFollowUpRequest({
+  compactFirst,
   execution,
   input,
   threadId,
@@ -231,7 +235,18 @@ export function buildAutoFollowUpRequest({
     input,
     mode: "queue-if-active",
     ...buildSharedThreadExecutionRequestFields(execution),
+    ...(compactFirst &&
+    !isStandaloneBuiltinCompactCommand(input) &&
+    !isStandaloneBuiltinClearCommand(input)
+      ? { compactFirst: true }
+      : {}),
   };
+}
+
+export function canCompactBeforeSend(
+  displayStatus: ThreadRuntimeDisplayStatus,
+): boolean {
+  return displayStatus === "idle" || displayStatus === "error";
 }
 
 function buildSteerFollowUpRequest({

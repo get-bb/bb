@@ -18,6 +18,7 @@ import {
   isLastInputKeyboard,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
+import { useCloseWhenAnchorDetaches } from "./overlay-anchor.js";
 import {
   MENU_ITEM_LAST_HOVERED_CLASS,
   MenuHoverProvider,
@@ -83,6 +84,11 @@ const DropdownMenuTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
 >(({ asChild, children, className, ...props }, ref) => {
   const { isCompactViewport, open, onOpenChange } = useResponsiveMenu();
+  const anchorRef = useCloseWhenAnchorDetaches(
+    ref,
+    open && !isCompactViewport,
+    onOpenChange,
+  );
 
   if (isCompactViewport) {
     return (
@@ -102,7 +108,7 @@ const DropdownMenuTrigger = React.forwardRef<
 
   return (
     <DropdownMenuPrimitive.Trigger
-      ref={ref}
+      ref={anchorRef}
       asChild={asChild}
       className={getOverlayTriggerClassName(className)}
       onMouseDown={(event) => {

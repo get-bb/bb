@@ -27,6 +27,7 @@ import {
   CursorIcon,
   LinuxIcon,
   OpenAiIcon,
+  PiIcon,
 } from "../landing/icons";
 import { SpawnRow, useCycle } from "../landing/landing-visuals";
 
@@ -235,8 +236,8 @@ export function AgentSplit() {
                 </span>
                 <span className="composer-row">
                   <span className="model">
-                    <CursorIcon className="model-ic" />
-                    Cursor
+                    <PiIcon className="model-ic" />
+                    Pi
                     <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
                   </span>
                   <span className="composer-actions" aria-hidden="true">
@@ -516,7 +517,7 @@ const FLEET: {
     ],
   },
   {
-    name: "Mobile",
+    name: "Phone",
     os: "iOS & Android",
     icon: <HugeiconsIcon icon={SmartPhone01Icon} className="cmp-fleet-os-ic" />,
     threads: [
@@ -589,7 +590,7 @@ function PhoneApp() {
           <span aria-hidden="true" className="bb-mark cmp-push-mark" />
           <span className="cmp-push-body">
             <span className="cmp-push-title">Review the rate limiter</span>
-            <span className="cmp-push-text">Finished and waiting for you</span>
+            <span className="cmp-push-text">Ready for you</span>
           </span>
           <span className="cmp-push-time">now</span>
         </div>
@@ -1077,55 +1078,175 @@ export function TeamCost({
   );
 }
 
-const PLANS = [
-  { agent: "Claude Code", plan: "Your Claude Max plan", icon: ClaudeIcon },
-  { agent: "Codex", plan: "Your ChatGPT Pro plan", icon: OpenAiIcon },
-  { agent: "Cursor", plan: "Your Cursor Pro plan", icon: CursorIcon },
+const USAGE_ACCOUNTS = [
+  {
+    name: "Claude Code",
+    plan: "Max",
+    icon: ClaudeIcon,
+    windows: [
+      { label: "5h", used: 62, resets: "2h 10m" },
+      { label: "7d", used: 38, resets: "4d 6h" },
+    ],
+  },
+  {
+    name: "Codex",
+    plan: "Pro",
+    icon: OpenAiIcon,
+    windows: [
+      { label: "5h", used: 24, resets: "3h 40m" },
+      { label: "7d", used: 51, resets: "5d 2h" },
+    ],
+  },
 ] as const;
 
-export function PlansVisual() {
+export function UsageVisual() {
   return (
     <div
-      className="cmp-plans"
+      className="cmp-usage"
       role="img"
-      aria-label="Claude Code, Codex, and Cursor running in bb on your own Claude, ChatGPT, and Cursor plans. When one Claude account reaches its limit, the thread continues on your next account."
+      aria-label="bb's usage panel: Claude Code on a Claude Max plan and Codex on a ChatGPT Pro plan, each with its five-hour and weekly limits and when they reset."
     >
-      <ul className="cmp-plans-list">
-        {PLANS.map((plan) => (
-          <li key={plan.agent} className="cmp-plans-row">
-            <span className="cmp-plans-ic">
-              <plan.icon className="cmp-plans-agent" />
+      <span className="cmp-usage-head">Usage</span>
+      {USAGE_ACCOUNTS.map((account) => (
+        <div key={account.name} className="cmp-usage-account">
+          <span className="cmp-usage-title">
+            <account.icon className="cmp-usage-ic" />
+            <span className="cmp-usage-name">{account.name}</span>
+            <span className="cmp-usage-plan">{account.plan}</span>
+          </span>
+          {account.windows.map((window) => (
+            <span key={window.label} className="cmp-usage-row">
+              <span className="cmp-usage-label">{window.label}</span>
+              <span className="cmp-usage-bar">
+                <span
+                  className="cmp-usage-fill"
+                  style={{ width: `${window.used}%` }}
+                />
+              </span>
+              <span className="cmp-usage-pct">{window.used}%</span>
+              <span className="cmp-usage-reset">{window.resets}</span>
             </span>
-            <span className="cmp-plans-who">
-              <span className="cmp-plans-name">{plan.agent}</span>
-              <span className="cmp-plans-plan">{plan.plan}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const WORKTREES = [
+  {
+    agent: ClaudeIcon,
+    title: "Add rate limiting",
+    branch: "feat/rate-limit",
+    status: "running",
+  },
+  {
+    agent: OpenAiIcon,
+    title: "Fix the flaky test",
+    branch: "fix/flaky-test",
+    status: "running",
+  },
+  {
+    agent: CursorIcon,
+    title: "Port the billing page",
+    branch: "feat/billing",
+    status: "waiting",
+  },
+  {
+    agent: PiIcon,
+    title: "Write release notes",
+    branch: "docs/release-notes",
+    status: "done",
+  },
+] as const;
+
+export function WorktreesVisual() {
+  return (
+    <div
+      className="cmp-worktrees"
+      role="img"
+      aria-label="Four agents working on one repo at once, each in its own Git worktree and branch, with setup already run in each"
+    >
+      <span className="cmp-worktrees-head">
+        <HugeiconsIcon icon={GitBranchIcon} className="cmp-worktrees-head-ic" />
+        acme/web
+        <span className="cmp-worktrees-count">4 worktrees</span>
+      </span>
+      <ul className="cmp-worktrees-list">
+        {WORKTREES.map((row) => (
+          <li key={row.branch} className="cmp-worktrees-row">
+            <row.agent className="cmp-worktrees-agent" />
+            <span className="cmp-worktrees-who">
+              <span className="cmp-worktrees-title">{row.title}</span>
+              <span className="cmp-worktrees-branch">{row.branch}</span>
             </span>
-            <PhoneStatus status="running" />
+            <PhoneStatus status={row.status} />
           </li>
         ))}
       </ul>
-      <div className="cmp-plans-thread">
-        <span className="cmp-plans-title">
-          <ClaudeIcon className="cmp-plans-agent" />
-          <span className="trow-title">Add rate limiting to uploads</span>
+      <span className="cmp-worktrees-foot">
+        <HugeiconsIcon
+          icon={CheckmarkCircle02Icon}
+          className="cmp-worktrees-foot-ic"
+        />
+        .env copied and setup run in each
+      </span>
+    </div>
+  );
+}
+
+const REVIEW_FINDINGS = [
+  {
+    id: "forwarded",
+    text: (
+      <>
+        Limiter keys on the socket IP, not{" "}
+        <span className="cmp-review-term">X-Forwarded-For</span>
+      </>
+    ),
+  },
+  {
+    id: "retry-after",
+    text: (
+      <>
+        429 responses have no{" "}
+        <span className="cmp-review-term">Retry-After</span> header
+      </>
+    ),
+  },
+];
+
+export function ReviewVisual() {
+  return (
+    <div
+      className="cmp-review"
+      role="img"
+      aria-label="Codex reviews Claude Code's branch and sends back two findings, and Claude Code fixes both with the tests passing"
+    >
+      <span className="cmp-review-head">
+        <OpenAiIcon className="cmp-review-agent" />
+        <span className="cmp-review-who">
+          <span className="cmp-review-title">Review the rate limiter</span>
+          <span className="cmp-review-sub">Codex · sent to Claude Code</span>
         </span>
-        <span className="cmp-plans-acct cmp-plans-acct-work">
-          <span className="cmp-plans-dot" />
-          <span className="cmp-plans-acct-name">Account 1</span>
-          <span className="cmp-plans-bar">
-            <span className="cmp-plans-fill" />
-          </span>
-          <span className="cmp-plans-limit">Limit</span>
+      </span>
+      <ul className="cmp-review-list">
+        {REVIEW_FINDINGS.map((finding) => (
+          <li key={finding.id} className="cmp-review-row">
+            <HugeiconsIcon
+              icon={CheckmarkCircle02Icon}
+              className="cmp-review-done"
+            />
+            <span>{finding.text}</span>
+          </li>
+        ))}
+      </ul>
+      <span className="cmp-review-foot">
+        <ClaudeIcon className="cmp-review-agent" />
+        <span>
+          Claude Code fixed both. <code>pnpm test</code> passes.
         </span>
-        <span className="cmp-plans-acct cmp-plans-acct-personal">
-          <span className="cmp-plans-dot" />
-          <span className="cmp-plans-acct-name">Account 2</span>
-          <span className="cmp-plans-bar">
-            <span className="cmp-plans-fill" />
-          </span>
-          <span className="cmp-plans-limit" />
-        </span>
-      </div>
+      </span>
     </div>
   );
 }

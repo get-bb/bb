@@ -1248,6 +1248,70 @@ describe("thread runtime cache owner", () => {
     }
   });
 
+  it.each(["sent", "failed"] as const)(
+    "preserves a pending queue refresh when a direct send is %s",
+    async (outcome) => {
+      const queryClient = createAppQueryClient({
+        defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+        showMutationErrorToasts: false,
+      });
+      const queryKey = threadQueuedMessagesQueryKey("thread-1");
+      queryClient.setQueryData(queryKey, [
+        makeQueuedMessage({ waitingOn: { kind: "provisioning" } }),
+      ]);
+      let completeRefresh!: (messages: ThreadQueuedMessage[]) => void;
+      const response = new Promise<ThreadQueuedMessage[]>((resolve) => {
+        completeRefresh = resolve;
+      });
+      let refreshSignal: AbortSignal | undefined;
+      const observer = new QueryObserver(queryClient, {
+        queryKey,
+        queryFn: ({ signal }) => {
+          refreshSignal = signal;
+          return response;
+        },
+        staleTime: Infinity,
+      });
+      const unsubscribe = observer.subscribe(() => {});
+      try {
+        const refresh = queryClient.invalidateQueries({ queryKey });
+        expect(refreshSignal).toBeDefined();
+        const request = {
+          id: "thread-1",
+          mode: "auto" as const,
+          input: [{ type: "text" as const, text: "orange", mentions: [] }],
+        };
+        const transaction = await beginSendThreadMessageTransaction({
+          queryClient,
+          request,
+        });
+        expect(transaction.kind).toBe("accepted-turn");
+        if (outcome === "sent") {
+          applySendThreadMessageSuccess({
+            queryClient,
+            realtimeConnected: true,
+            request,
+            result: { ok: true, delivery: "sent" },
+            transaction,
+          });
+        } else {
+          rollbackSendThreadMessageTransaction({
+            queryClient,
+            request,
+            transaction,
+          });
+        }
+        completeRefresh([]);
+        await refresh;
+        expect(queryClient.getQueryData(queryKey)).toEqual([]);
+        expect(refreshSignal?.aborted).toBe(false);
+      } finally {
+        unsubscribe();
+        queryClient.clear();
+      }
+    },
+  );
+
   it("moves a predicted queued send into the timeline when the server sends it", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },

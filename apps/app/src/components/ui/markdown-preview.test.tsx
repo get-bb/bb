@@ -13,6 +13,7 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
+import { MARKDOWN_TABLE_START_OFFSET_VARIABLE } from "./markdown-table-breakout";
 import {
   MarkdownLocalFileContextMenuContext,
   MarkdownLocalFileOpenTargetsContext,
@@ -229,6 +230,29 @@ describe("MarkdownPreview", () => {
       rootedBreakout?.style.getPropertyValue("--md-table-breakout-max"),
     ).toBe("300px");
     sheet.remove();
+    rooted.unmount();
+
+    const startAlignedSheet = document.createElement("style");
+    startAlignedSheet.textContent = `.start-aligned [data-markdown-preview] { ${MARKDOWN_TABLE_START_OFFSET_VARIABLE}: 0px; }`;
+    document.head.appendChild(startAlignedSheet);
+    const startAligned = render(
+      <div
+        className="start-aligned"
+        data-left="0"
+        data-width="1200"
+        style={{ overflowX: "hidden" }}
+      >
+        <MarkdownPreview content={"| A |\n| - |\n| B |"} />
+      </div>,
+    );
+    const startAlignedBreakout =
+      startAligned.container.querySelector("table")?.parentElement
+        ?.parentElement;
+    notifyResize();
+    expect(
+      startAlignedBreakout?.style.getPropertyValue("--md-table-breakout-max"),
+    ).toBe("calc(1100px - 1rem)");
+    startAlignedSheet.remove();
   });
 
   it("skips height-only resize events for tables", () => {
@@ -322,23 +346,70 @@ describe("MarkdownPreview", () => {
     expect(code.querySelectorAll("span.sh__line")).toHaveLength(2);
   });
 
-  it("renders inline-code Markdown file paths as local file links", () => {
+  it.each([
+    ["README.md", "/workspace/README.md", null],
+    ["docs/guide.markdown:4", "/workspace/docs/guide.markdown", 4],
+    ["src/app.ts", "/workspace/src/app.ts", null],
+    ["src/app.ts:42", "/workspace/src/app.ts", 42],
+    ["src/app.ts:42:3", "/workspace/src/app.ts", 42],
+    ["package.json:12:3", "/workspace/package.json", 12],
+    ["./scripts/run", "/workspace/scripts/run", null],
+    ["scripts/run:7", "/workspace/scripts/run", 7],
+    ["/workspace/scripts/run", "/workspace/scripts/run", null],
+    ["./scripts/run:7:2", "/workspace/scripts/run", 7],
+    ["Dockerfile:8", "/workspace/Dockerfile", 8],
+    [".gitignore", "/workspace/.gitignore", null],
+    ["/workspace/src/app.ts:9:2", "/workspace/src/app.ts", 9],
+    ["C:\\repo\\src\\app.ts:12:3", "C:\\repo\\src\\app.ts", 12],
+  ])(
+    "opens inline-code file reference %s at its line",
+    (reference, path, line) => {
+      render(
+        <MarkdownPreview
+          content={`Read \`${reference}\`.`}
+          linkRouting={workspaceLinkRouting}
+        />,
+      );
+
+      const link = screen.getByRole("link", { name: reference });
+      expect(link.getAttribute("href")).toBe(
+        `${path.startsWith("C:") ? "file:///C:/repo/src/app.ts" : `file://${path}`}${line === null ? "" : `#L${line}`}`,
+      );
+      fireEvent.click(link);
+      expect(
+        workspaceLinkRouting.localFile.onOpenLink,
+      ).toHaveBeenCalledExactlyOnceWith({
+        path,
+        lineRange:
+          line === null ? null : { startLineNumber: line, endLineNumber: line },
+        openTargetId: null,
+      });
+    },
+  );
+
+  it.each([
+    "origin/main",
+    "...[origin/main]",
+    "feature/my-branch",
+    "scripts/run",
+    "orange",
+    "npm.test()",
+    "cat src/app.ts",
+    "https://example.com/app.ts:42",
+    "src/app.ts:0",
+    "src/app.ts:9007199254740992",
+    "../outside.ts:4",
+    "src/app.ts?raw",
+  ])("keeps non-file inline code %s literal", (reference) => {
     render(
       <MarkdownPreview
-        content="Read `README.md`, `docs/guide.markdown:4`, and `src/app.ts`."
+        content={`Read \`${reference}\`.`}
         linkRouting={workspaceLinkRouting}
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "README.md" }).getAttribute("href"),
-    ).toBe("file:///workspace/README.md");
-    expect(
-      screen
-        .getByRole("link", { name: "docs/guide.markdown:4" })
-        .getAttribute("href"),
-    ).toBe("file:///workspace/docs/guide.markdown#L4");
-    expect(screen.getByText("src/app.ts").tagName).toBe("CODE");
+    expect(screen.queryByRole("link", { name: reference })).toBeNull();
+    expect(screen.getByText(reference).tagName).toBe("CODE");
   });
 
   it("preserves inline commands ending in Markdown paths as code", () => {
@@ -431,11 +502,28 @@ describe("MarkdownPreview", () => {
     expect(screen.queryByText(/Open with/)).toBeNull();
   });
 
-  it("leaves inline-code Markdown paths as code without local file routing", () => {
-    render(<MarkdownPreview content="Read `README.md`." />);
+  it("leaves inline-code paths as code without local file routing", () => {
+    render(
+      <MarkdownPreview content="Read `README.md` and `src/app.ts:42:3`." />,
+    );
 
-    expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByText("README.md").tagName).toBe("CODE");
+    expect(screen.getByText("src/app.ts:42:3").tagName).toBe("CODE");
+  });
+
+  it("keeps file references inside fenced code literal", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={"```text\nsrc/app.ts:42:3\n```"}
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(requireElement(container, "pre code").textContent).toBe(
+      "src/app.ts:42:3",
+    );
   });
 
   it("renders sanitized HTML video and source URLs through local file routing", () => {
@@ -772,16 +860,87 @@ describe("MarkdownPreview", () => {
     expect(container.querySelector(".katex-display")).toBeNull();
   });
 
-  it("leaves single-dollar spans as literal text", () => {
+  it("renders single-dollar inline math with KaTeX", async () => {
     const { container } = render(
-      <MarkdownPreview
-        content={"It went from $5 to $10 last week, so $x$ stays literal."}
-      />,
+      <MarkdownPreview content={"Energy is $E = mc^2$ and $x$, not $$y$$."} />,
     );
 
+    await waitFor(() =>
+      expect(container.querySelectorAll(".katex")).toHaveLength(3),
+    );
+    expect(container.querySelector(".katex-display")).toBeNull();
+  });
+
+  it("keeps a dollar amount literal beside single-dollar math", async () => {
+    const { container } = render(
+      <MarkdownPreview content={"It costs $5 and $\\alpha$ more."} />,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".katex")).toHaveLength(1),
+    );
+    expect(container.textContent).toContain("It costs $5 and ");
+  });
+
+  it.each([false, true])(
+    "preserves code spans after currency with incrementalBlocks=%s",
+    (incrementalBlocks) => {
+      const content = [
+        'so chat text like "$5 to $10" was showing up as math (issue #511).',
+        "PR #512 fixed that by disabling single-`$` math (`singleDollarTextMath: false` in `markdown-preview.tsx`).",
+        "As a result, `$x$` shows as raw TeX everywhere: in chat and in opened `.md` files, since both use the same `MarkdownPreview`. Only `$$…$$` renders.",
+      ].join(" ");
+      const { container } = render(
+        <MarkdownPreview
+          content={content}
+          incrementalBlocks={incrementalBlocks}
+        />,
+      );
+
+      expect(
+        Array.from(container.querySelectorAll("code"), (node) => node.textContent),
+      ).toEqual([
+        "$",
+        "singleDollarTextMath: false",
+        "markdown-preview.tsx",
+        "$x$",
+        ".md",
+        "MarkdownPreview",
+        "$$…$$",
+      ]);
+      expect(container.textContent).toBe(content.replaceAll("`", ""));
+      expect(container.querySelector(".katex, .katex-error")).toBeNull();
+    },
+  );
+
+  it.each([
+    ["Pay $5 for `$x$`, then $y$.", "$x$"],
+    ["Pay $5 for ``a `$x$` sample``, then $y$.", "a `$x$` sample"],
+    ["Pay $5 for\n`$x$`, then $y$.", "$x$"],
+  ])("keeps code and math separate in %j", async (content, code) => {
+    const { container } = render(<MarkdownPreview content={content} />);
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".katex")).toHaveLength(1),
+    );
+    expect(container.querySelector("code")?.textContent).toBe(code);
+    expect(container.querySelector("annotation")?.textContent).toBe("y");
+    expect(container.textContent).toContain("Pay $5 for");
+    expect(container.querySelector(".katex-error")).toBeNull();
+  });
+
+  it.each([
+    ["It went from $5 to $10 last week.", "$5 to $10"],
+    ["Pay $5, then $10.", "$5, then $10"],
+    ["Between $20,000 and $30,000 a year.", "$20,000 and $30,000"],
+    ["A $5/$10 split.", "$5/$10"],
+    ["Spaced $ x $ stays literal.", "$ x $"],
+    ["Inline `$x$` code stays literal.", "$x$"],
+  ])("leaves %j as literal text", (content, literal) => {
+    const { container } = render(<MarkdownPreview content={content} />);
+
     expect(container.querySelector(".katex")).toBeNull();
-    expect(container.textContent).toContain("$5 to $10");
-    expect(container.textContent).toContain("$x$");
+    expect(container.textContent).toContain(literal);
   });
 
   it("leaves escaped dollar amounts as literal text", () => {

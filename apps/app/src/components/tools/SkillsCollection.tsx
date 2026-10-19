@@ -22,7 +22,7 @@ import { BbLogo } from "@/components/ui/bb-logo";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";

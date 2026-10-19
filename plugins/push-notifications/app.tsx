@@ -15,6 +15,7 @@ import {
   createClientDelivery,
   notificationPermission,
 } from "./client.js";
+import { notificationsThreadAction } from "./notificationsAction.js";
 
 function NotificationDelivery() {
   const navigate = useBbNavigate();
@@ -143,4 +144,5 @@ export default definePluginApp((app) => {
     component: NotificationDelivery,
   });
   app.slots.settingsSection({ id: "device", component: NotificationSettings });
+  app.slots.experimental_threadAction(notificationsThreadAction);
 });

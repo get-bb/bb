@@ -257,7 +257,8 @@ function structuredMention(
   if (resource.kind === "thread") id = resource.threadId;
   else if (resource.kind === "project") id = resource.projectId;
   else if (resource.kind === "section") id = resource.sectionId;
-  else if (resource.kind === "path") id = resource.path;
+  else if (resource.kind === "path" || resource.kind === "attachment")
+    id = resource.path;
   else id = `${resource.trigger}${resource.name}`;
   return {
     from: mention.start,

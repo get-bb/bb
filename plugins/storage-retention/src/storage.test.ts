@@ -22,9 +22,14 @@ import {
 const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(
-    directories
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+    directories.splice(0).map((dir) =>
+      fs.rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      }),
+    ),
   );
 });
 async function directory() {
@@ -127,9 +132,6 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
     ).rejects.toThrow("already running");
     pending.get("thr_one")!.resolve();
     await first;
-    await expect(
-      host.harness.callRpc("scanHost", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
     expect(
       hostStorageResponseSchema
         .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
@@ -696,9 +698,6 @@ it("deletes only large files from archived threads on scanned online machines, k
     await expect(
       host.harness.callRpc("startClearLargeFiles", { hostId: "host_test" }),
     ).rejects.toThrow("already running");
-    await expect(
-      host.harness.callRpc("scanHost", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
     pendingCleanup!.reject(new Error("host disconnected"));
     await expect
       .poll(
@@ -919,7 +918,102 @@ it("rejects traversal and symlinks without deleting their targets", async () => 
   }
 });
 
-it("fails a scan visibly and releases its host lock so it can be retried", async () => {
+it("keeps cleanup available during a scan and leaves cleared storage out of its result", async () => {
+  const threads = [
+    makeThreadResponse({ id: "thr_old", status: "idle", archivedAt: 1 }),
+    makeThreadResponse({ id: "thr_live", status: "idle" }),
+  ];
+  let gate: Promise<void> | null = null;
+  let release = () => {};
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "capacity")
+        return { totalBytes: 10000, freeBytes: 5000 };
+      if (call.method === "measure") {
+        await gate;
+        return {
+          targets: [
+            {
+              outcome: "measured",
+              path: "/storage",
+              sizeBytes: 2000,
+              children: threads.map((thread) => ({
+                name: thread.id,
+                sizeBytes: 1000,
+              })),
+            },
+          ],
+          largeFiles: [{ path: "/storage/thr_old/dump.db", sizeBytes: 600 }],
+        };
+      }
+      if (call.method === "discardLargeFiles")
+        return { removed: [{ name: "thr_old", sizeBytes: 600, count: 1 }] };
+      if (call.method === "discard")
+        return {
+          removed: hostStorageContract.discard.input.parse(call.input).names,
+        };
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      projects: { list: async () => [] },
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+      threads: {
+        list: async () => threads,
+        get: async ({ threadId }) =>
+          threads.find((thread) => thread.id === threadId)!,
+        storageLocation: async () => ({
+          hostId: "host_test",
+          storageRootPath: "/storage/thr_live",
+        }),
+      },
+      environments: { list: async () => [] },
+    },
+  });
+  const status = async () =>
+    hostStorageResponseSchema.parse(
+      await host.harness.callRpc("host", { hostId: "host_test" }),
+    );
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(async () => (await status()).report?.threadsWithStorageCount)
+      .toBe(2);
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    expect((await status()).scan.state).toBe("scanning");
+    await host.harness.callRpc("startClearLargeFiles", {
+      hostId: "host_test",
+    });
+    await expect
+      .poll(async () => (await status()).largeFileCleanup)
+      .toEqual({ state: "completed", clearedFiles: 1, clearedBytes: 600 });
+    await host.harness.callRpc("clearThread", { threadId: "thr_live" });
+    expect((await status()).scan.state).toBe("scanning");
+    release();
+    await expect.poll(async () => (await status()).scan.state).toBe("idle");
+    expect((await status()).report).toMatchObject({
+      threadsWithStorageCount: 1,
+      archivedLargeFiles: { threadCount: 0, fileCount: 0, bytes: 0 },
+      largestThreads: [{ threadId: "thr_old", sizeBytes: 400 }],
+    });
+  } finally {
+    release();
+    await host.harness.dispose();
+  }
+});
+
+it("fails a scan visibly so it can be retried", async () => {
   let root: string | null = null;
   let fail = true;
   let release!: () => void;
@@ -965,9 +1059,6 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
       });
     root = "/unused";
     await host.harness.callRpc("scanHost", { hostId: "host_test" });
-    await expect(
-      host.harness.callRpc("removeOrphans", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
     release();
     await expect
       .poll(
@@ -1318,14 +1409,10 @@ it.skipIf(process.platform === "win32")(
     const launcherPath = path.join(fakeHome, "bb-app-launcher.mjs");
     await fs.writeFile(launcherPath, "setInterval(() => {}, 1000);\n");
     const server = (checkout: string) => {
-      const child = spawn(
-        process.execPath,
-        [launcherPath],
-        {
-          cwd: checkout,
-          stdio: "ignore",
-        },
-      );
+      const child = spawn(process.execPath, [launcherPath], {
+        cwd: checkout,
+        stdio: "ignore",
+      });
       return {
         child,
         exited: new Promise<void>((resolve) =>
@@ -1603,6 +1690,7 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
           threadStorageRootPath: root,
         }),
       },
+      environments: { list: async () => [] },
       threads: {
         get: async ({ threadId }) => threads.get(threadId)!,
         storageLocation: async ({ threadId }) => ({
@@ -1683,6 +1771,9 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
     );
   } finally {
     await host.harness.lifecycle.dispose();
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
     await worker.experimental_dispose();
   }
 });
@@ -1727,6 +1818,190 @@ it("stops retrying archive storage cleanup once its thread no longer exists", as
     );
   } finally {
     await host.harness.lifecycle.dispose();
+  }
+});
+
+it("never clears thread storage that holds a workspace an environment still uses", async () => {
+  type Environment = Awaited<
+    ReturnType<
+      import("@get-bb/plugin-sdk").BbPluginApi["sdk"]["environments"]["list"]
+    >
+  >[number];
+  const root = await directory();
+  const large = 11 * 1024 * 1024;
+  for (const [file, size] of [
+    ["thr_owner/HANDOFF.md", 16],
+    ["thr_owner/repair/src.ts", 16],
+    ["thr_owner/repair/fixture.bin", large],
+    ["thr_plain/notes.md", 16],
+    ["thr_gone/worktrees/issue/src.ts", 16],
+    ["thr_lonely/notes.md", 16],
+  ] as const) {
+    await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
+    await fs.writeFile(path.join(root, file), Buffer.alloc(size, 1));
+  }
+  const environment: Environment = {
+    id: "env_repair",
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: path.join(root, "thr_owner", "repair"),
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: "feature",
+    baseBranch: null,
+    defaultBranch: "main",
+    mergeBaseBranch: "origin/main",
+    status: "ready",
+    environmentProviderId: null,
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
+    managed: false,
+    workspaceProvisionType: null,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+  const environments: Environment[] = [
+    environment,
+    {
+      ...environment,
+      id: "env_orphaned",
+      path: `${path.join(root, "thr_gone", "worktrees", "issue")}/`,
+    },
+    {
+      ...environment,
+      id: "env_destroyed",
+      path: path.join(root, "thr_plain", "old"),
+      status: "destroyed",
+    },
+  ];
+  const threads = new Map(
+    ["thr_owner", "thr_plain"].map((id) => [
+      id,
+      makeThreadResponse({
+        id,
+        status: "idle",
+        environmentId: "env_repair",
+        archivedAt: 1,
+      }),
+    ]),
+  );
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "measure")
+        return worker.experimental_call(
+          "measure",
+          hostStorageContract.measure.input.parse(call.input),
+        );
+      if (call.method === "capacity")
+        return worker.experimental_call(
+          "capacity",
+          hostStorageContract.capacity.input.parse(call.input),
+        );
+      if (call.method === "discardLargeFiles")
+        return worker.experimental_call(
+          "discardLargeFiles",
+          hostStorageContract.discardLargeFiles.input.parse(call.input),
+        );
+      if (call.method === "discard")
+        return worker.experimental_call(
+          "discard",
+          hostStorageContract.discard.input.parse(call.input),
+        );
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      projects: { list: async () => [] },
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host_test", status: "connected" }),
+        ],
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: root,
+        }),
+      },
+      environments: { list: async () => environments },
+      threads: {
+        list: async () => [...threads.values()],
+        get: async ({ threadId }) => threads.get(threadId)!,
+        storageLocation: async ({ threadId }) => ({
+          hostId: "host_test",
+          storageRootPath: path.join(root, threadId),
+        }),
+      },
+    },
+  });
+  const ownerFiles = async () =>
+    (await fs.readdir(path.join(root, "thr_owner"), { recursive: true }))
+      .map(String)
+      .sort();
+  const expectedOwnerFiles = [
+    "HANDOFF.md",
+    "repair",
+    path.join("repair", "fixture.bin"),
+    path.join("repair", "src.ts"),
+  ];
+  try {
+    await host.bb.storage.kv.set("policy", {
+      archiveAfterDays: null,
+      deleteAfterDays: null,
+      deleteStorageOnArchive: true,
+      deleteDevDataOnCheckoutRemoval: false,
+    });
+    plugin(host.bb);
+    for (const thread of threads.values())
+      await host.harness.behavior.emitThreadEvent("thread.archived", {
+        thread,
+      });
+    expect(await fs.readdir(path.join(root, "thr_plain"))).toEqual([]);
+    expect(await ownerFiles()).toEqual(expectedOwnerFiles);
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(await ownerFiles()).toEqual(expectedOwnerFiles);
+    await expect(
+      host.harness.callRpc("clearThread", { threadId: "thr_owner" }),
+    ).rejects.toThrow(
+      `contains the workspace ${path.join(root, "thr_owner", "repair")}`,
+    );
+
+    await host.harness.callRpc("scanAll", null);
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).scan.state,
+      )
+      .toBe("idle");
+    const report = hostStorageResponseSchema.parse(
+      await host.harness.callRpc("host", { hostId: "host_test" }),
+    ).report!;
+    expect(report.archivedFiles.threadCount).toBe(1);
+    expect(report.orphanCount).toBe(1);
+    expect(report.archivedLargeFiles.threadCount).toBe(0);
+
+    await host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" });
+    await host.harness.callRpc("clearLargeFiles", { hostId: "host_test" });
+    await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
+    expect(await ownerFiles()).toEqual(expectedOwnerFiles);
+    expect(
+      await fs.readdir(path.join(root, "thr_gone", "worktrees", "issue")),
+    ).toEqual(["src.ts"]);
+    await expect(fs.stat(path.join(root, "thr_lonely"))).rejects.toThrow(
+      "ENOENT",
+    );
+  } finally {
+    await host.harness.lifecycle.dispose();
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
+    await worker.experimental_dispose();
   }
 });
 
@@ -1904,9 +2179,10 @@ it("automatically removes missing-checkout data only when enabled and online, re
       )
       .toBe(2);
     await recreateMissing();
-    await emitRemoval();
+    const removal = emitRemoval();
     inspectionGate = null;
     openGate();
+    await removal;
     await expectCleaned();
     await recreateMissing();
     for (const subscription of subscriptions)

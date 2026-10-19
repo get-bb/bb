@@ -46,6 +46,7 @@ interface UsePromptMentionsResult {
   ) => void;
   results: OrderedMentionSuggestions;
   isLoading: boolean;
+  isRefreshing: boolean;
   isError: boolean;
 }
 
@@ -265,18 +266,20 @@ export function usePromptMentions(
     ],
   );
 
-  const isLoading =
-    hasQuery &&
-    results.suggestions.length === 0 &&
-    ((includeBuiltInSources &&
+  const isSearching =
+    (includeBuiltInSources &&
       (pathSearch.isDebouncing ||
         pathSearch.isLoading ||
+        pathSearch.isRefreshing ||
         threadsQuery.isLoading ||
         threadsQuery.isFetching)) ||
-      (hasMentionProviders &&
-        (!pluginSearchMatchesInput ||
-          pluginSearch.isLoading ||
-          pluginSearch.isFetching)));
+    (hasMentionProviders &&
+      (!pluginSearchMatchesInput ||
+        pluginSearch.isLoading ||
+        pluginSearch.isFetching));
+  const isLoading = hasQuery && results.suggestions.length === 0 && isSearching;
+  const isRefreshing =
+    hasQuery && results.suggestions.length > 0 && isSearching;
   const isThreadError =
     includeBuiltInSources &&
     hasQuery &&
@@ -292,6 +295,7 @@ export function usePromptMentions(
     setQuery,
     results,
     isLoading,
+    isRefreshing,
     isError,
   };
 }

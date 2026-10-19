@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
 
-import type { CommitOlderTimelineRows } from "./load-older-timeline-rows.js";
-
 import {
   act,
   cleanup,
@@ -21,7 +19,6 @@ import type {
   ThreadTimelineResponse,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
-import { mergeLatestTimelineRows } from "@bb/client-core";
 import { createDeferredPromise, type DeferredPromise } from "@bb/test-helpers";
 import {
   afterEach,
@@ -38,7 +35,6 @@ import {
 } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
-import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import {
   hasThreadTimelineUnseenEvents,
@@ -90,6 +86,7 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
+  useThreadTimelineRealtimeSubscription: vi.fn(),
 }));
 
 vi.mock("@/hooks/useServerConnectionState", () => ({
@@ -156,9 +153,7 @@ function makeServerError(): BbHttpError {
   });
 }
 
-async function renderControllerWithPendingOlderPage(
-  commit?: CommitOlderTimelineRows,
-) {
+async function renderControllerWithPendingOlderPage() {
   const olderPage = createDeferredPromise<ThreadTimelineResponse>();
   vi.mocked(sdk.threads.timeline)
     .mockResolvedValueOnce(
@@ -167,8 +162,8 @@ async function renderControllerWithPendingOlderPage(
         maxSeq: 1,
         timelinePage: {
           historySnapshot: "snapshot-1",
-          hasOlderRows: true,
           olderCursor: { anchorId: newestLoadedRow.id, anchorSeq: 1 },
+          olderRowsSourceSeqEnd: null,
         },
       }),
     )
@@ -185,7 +180,7 @@ async function renderControllerWithPendingOlderPage(
 
   let olderRequest: Promise<void> = Promise.resolve();
   act(() => {
-    olderRequest = result.current.loadOlderTimelineRows(commit);
+    olderRequest = result.current.loadOlderTimelineRows();
   });
   await waitFor(() => {
     expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
@@ -196,7 +191,7 @@ async function renderControllerWithPendingOlderPage(
       makeTimelineResponse({
         rows: [olderPageRow],
         maxSeq: 1,
-        timelinePage: { kind: "older", historySnapshot: "snapshot-1" },
+        timelinePage: { historySnapshot: "snapshot-1" },
       }),
     );
     await act(async () => {
@@ -224,8 +219,8 @@ function makeSameSnapshotRealtimeResponse(): ThreadTimelineResponse {
     maxSeq: 2,
     timelinePage: {
       historySnapshot: "snapshot-1",
-      hasOlderRows: true,
       olderCursor: { anchorId: newestLoadedRow.id, anchorSeq: 1 },
+      olderRowsSourceSeqEnd: null,
     },
   });
 }
@@ -383,46 +378,6 @@ function markTimelineHasNewEvents(queryClient: QueryClient): void {
   });
 }
 
-describe("mergeLatestTimelineRows", () => {
-  it("replaces a retained optimistic row with the server row it stands in for", () => {
-    const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
-    const serverRow = makeUserRow("thread-1:user-seed:5", 5);
-
-    const merged = mergeLatestTimelineRows({
-      latestRows: [serverRow],
-      latestWindowStartSequence: 0,
-      loadedRows: [optimistic],
-    });
-
-    expect(merged.rows.map((row) => row.id)).toEqual([serverRow.id]);
-  });
-
-  it("still appends genuinely disjoint server rows to retained ones", () => {
-    const older = makeUserRow("thread-1:user-seed:1", 1);
-    const newer = makeUserRow("thread-1:user-seed:5", 5);
-
-    const merged = mergeLatestTimelineRows({
-      latestRows: [newer],
-      latestWindowStartSequence: 5,
-      loadedRows: [older],
-    });
-
-    expect(merged.rows.map((row) => row.id)).toEqual([older.id, newer.id]);
-  });
-
-  it("keeps a pending optimistic row that the latest snapshot still carries", () => {
-    const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
-
-    const merged = mergeLatestTimelineRows({
-      latestRows: [optimistic],
-      latestWindowStartSequence: 0,
-      loadedRows: [optimistic],
-    });
-
-    expect(merged.rows.map((row) => row.id)).toEqual([optimistic.id]);
-  });
-});
-
 describe("useThreadTimelineController", () => {
   it("replaces loaded rows when realtime data starts a new context epoch", async () => {
     const oldRow = makeUserRow("thread-1:user-seed:1", 1);
@@ -501,8 +456,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 10,
           timelinePage: {
             historySnapshot: "snapshot-flat",
-            hasOlderRows: true,
             olderCursor: { anchorId: "cursor-10", anchorSeq: 10 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -511,7 +466,7 @@ describe("useThreadTimelineController", () => {
           completedTurnDisplay: "flat",
           rows: [olderRow],
           maxSeq: 10,
-          timelinePage: { kind: "older", historySnapshot: "snapshot-flat" },
+          timelinePage: { historySnapshot: "snapshot-flat" },
         }),
       );
 
@@ -538,7 +493,6 @@ describe("useThreadTimelineController", () => {
           timelinePage: {
             historySnapshot: "snapshot-collapse",
             olderRowsSourceSeqEnd: 1,
-            hasOlderRows: true,
             olderCursor: { anchorId: "cursor-10-collapse", anchorSeq: 10 },
           },
         }),
@@ -563,8 +517,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 10,
           timelinePage: {
             historySnapshot: "snapshot-10",
-            hasOlderRows: true,
             olderCursor: { anchorId: "cursor-10", anchorSeq: 10 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -600,7 +554,6 @@ describe("useThreadTimelineController", () => {
           timelinePage: {
             historySnapshot: "snapshot-11",
             olderRowsSourceSeqEnd: null,
-            hasOlderRows: true,
             olderCursor: { anchorId: "cursor-11", anchorSeq: 10 },
           },
         }),
@@ -617,7 +570,7 @@ describe("useThreadTimelineController", () => {
       makeTimelineResponse({
         rows: [olderRow],
         maxSeq: 10,
-        timelinePage: { kind: "older", historySnapshot: "snapshot-10" },
+        timelinePage: { historySnapshot: "snapshot-10" },
       }),
     );
     await act(async () => {
@@ -640,7 +593,6 @@ describe("useThreadTimelineController", () => {
           timelinePage: {
             historySnapshot: "snapshot-12",
             olderRowsSourceSeqEnd: null,
-            hasOlderRows: true,
             olderCursor: { anchorId: "cursor-12", anchorSeq: 10 },
           },
         }),
@@ -686,28 +638,6 @@ describe("useThreadTimelineController", () => {
       expect(result.current.timelineError).toBeNull();
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
-  });
-
-  it("keeps fetched history out of the rendered timeline until the scroll owner commits it", async () => {
-    const ready = createDeferredPromise<void>();
-    const release = createDeferredPromise<void>();
-    const { result, settleOlderPage } =
-      await renderControllerWithPendingOlderPage(async (update) => {
-        ready.resolve();
-        await release.promise;
-        update();
-      });
-    const settled = settleOlderPage();
-    await ready.promise;
-    expect(rowIds(result.current)).toEqual([newestLoadedRow.id]);
-    expect(result.current.isLoadingOlderTimelineRows).toBe(true);
-    release.resolve();
-    await settled;
-    expect(rowIds(result.current)).toEqual([
-      olderPageRow.id,
-      newestLoadedRow.id,
-    ]);
-    expect(result.current.isLoadingOlderTimelineRows).toBe(false);
   });
 
   it.each([
@@ -769,8 +699,8 @@ describe("useThreadTimelineController", () => {
         maxSeq: 10,
         timelinePage: {
           historySnapshot: "snapshot-2",
-          hasOlderRows: true,
           olderCursor: { anchorId: contextClearRow.id, anchorSeq: 10 },
+          olderRowsSourceSeqEnd: null,
         },
       }),
     );
@@ -789,8 +719,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 1,
           timelinePage: {
             historySnapshot: "snapshot-1",
-            hasOlderRows: true,
             olderCursor: { anchorId: newestLoadedRow.id, anchorSeq: 1 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -799,10 +729,9 @@ describe("useThreadTimelineController", () => {
           rows: [olderPageRow],
           maxSeq: 1,
           timelinePage: {
-            kind: "older",
             historySnapshot: "snapshot-1",
-            hasOlderRows: true,
             olderCursor: { anchorId: olderPageRow.id, anchorSeq: 0 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -874,8 +803,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 2,
           timelinePage: {
             historySnapshot: "snapshot-1",
-            hasOlderRows: true,
             olderCursor: { anchorId: realtimeRow.id, anchorSeq: 2 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -884,10 +813,9 @@ describe("useThreadTimelineController", () => {
           rows: [newestLoadedRow],
           maxSeq: 2,
           timelinePage: {
-            kind: "older",
             historySnapshot: "snapshot-1",
-            hasOlderRows: true,
             olderCursor: { anchorId: newestLoadedRow.id, anchorSeq: 1 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -896,10 +824,9 @@ describe("useThreadTimelineController", () => {
           rows: [olderPageRow],
           maxSeq: 2,
           timelinePage: {
-            kind: "older",
             historySnapshot: "snapshot-1",
-            hasOlderRows: false,
             olderCursor: null,
+            olderRowsSourceSeqEnd: null,
           },
         }),
       );
@@ -941,8 +868,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 5,
           timelinePage: {
             historySnapshot: "snapshot-1",
-            hasOlderRows: true,
             olderCursor: { anchorId: "thread-1:user-seed:3", anchorSeq: 3 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -951,10 +878,9 @@ describe("useThreadTimelineController", () => {
           rows: [newestLoadedRow],
           maxSeq: 5,
           timelinePage: {
-            kind: "older",
             historySnapshot: "snapshot-1",
-            hasOlderRows: false,
             olderCursor: null,
+            olderRowsSourceSeqEnd: null,
           },
         }),
       );
@@ -1143,8 +1069,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 1,
           timelinePage: {
             historySnapshot: "snapshot-1",
-            hasOlderRows: true,
             olderCursor: { anchorId: newestLoadedRow.id, anchorSeq: 1 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       )
@@ -1175,8 +1101,8 @@ describe("useThreadTimelineController", () => {
           maxSeq: 10,
           timelinePage: {
             historySnapshot: "snapshot-2",
-            hasOlderRows: true,
             olderCursor: { anchorId: contextClearRow.id, anchorSeq: 10 },
+            olderRowsSourceSeqEnd: null,
           },
         }),
       );
@@ -1191,7 +1117,7 @@ describe("useThreadTimelineController", () => {
         makeTimelineResponse({
           rows: [olderPageRow],
           maxSeq: 1,
-          timelinePage: { kind: "older", historySnapshot: "snapshot-1" },
+          timelinePage: { historySnapshot: "snapshot-1" },
         }),
       );
     });
@@ -1280,7 +1206,7 @@ describe("useThreadTimelineController commits", () => {
     },
   );
 
-  it("still reports timelineLoading while refetching an empty timeline", async () => {
+  it("keeps a loaded empty timeline out of the loading state while it refetches", async () => {
     vi.mocked(sdk.threads.timeline)
       .mockResolvedValueOnce(makeTimelineResponse())
       .mockReturnValueOnce(new Promise(() => {}));
@@ -1288,10 +1214,13 @@ describe("useThreadTimelineController commits", () => {
     const view = await renderSettledController(wrapper, []);
 
     startTimelineRefetch(queryClient);
-
     await waitFor(() => {
-      expect(view.latest().timelineLoading).toBe(true);
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
+    await flushQueryNotifications();
+
+    expect(queryClient.isFetching({ queryKey: TIMELINE_QUERY_KEY })).toBe(1);
+    expect(view.latest().timelineLoading).toBe(false);
   });
 
   it("reads only query result properties covered by the notify lists", async () => {
@@ -1319,8 +1248,9 @@ describe("useThreadTimelineController commits", () => {
         maxSeq: 1,
         rows: [newestLoadedRow],
         timelinePage: {
-          hasOlderRows: true,
           olderCursor: { anchorId: newestLoadedRow.id, anchorSeq: 1 },
+          historySnapshot: "snapshot-1",
+          olderRowsSourceSeqEnd: null,
         },
       }),
     );

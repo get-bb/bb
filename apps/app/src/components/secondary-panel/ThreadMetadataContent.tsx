@@ -9,7 +9,10 @@ import {
 } from "react";
 import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
-import { ForksSection } from "./info/RelatedThreadsSection";
+import {
+  ForksSection,
+  ChildThreadsSection,
+} from "./info/RelatedThreadsSection";
 import {
   ThreadStorageSection,
   type ThreadStorageSectionProps,
@@ -20,6 +23,7 @@ import type {
   GitBranchRefClassification,
   Thread,
   ThreadListEntry,
+  ThreadParentNotifications,
   ThreadPullRequest,
   WorkspaceStatus,
 } from "@bb/domain";
@@ -42,6 +46,7 @@ import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
+import { useFittedPathMiddle } from "@/components/ui/truncate-path-middle";
 import {
   DetailCard,
   DetailRow,
@@ -61,7 +66,14 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
-import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
+import {
+  useUnarchiveThread,
+  useUpdateThread,
+} from "../../hooks/mutations/thread-state-mutations";
+import {
+  OptionPicker,
+  type PickerOption,
+} from "@/components/pickers/OptionPicker";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -186,6 +198,55 @@ export function ParentSelectorRow({
           defaultOpen={defaultOpen}
         />
       )}
+    </DetailRow>
+  );
+}
+
+const PARENT_NOTIFICATIONS_OPTIONS: readonly PickerOption<ThreadParentNotifications>[] =
+  [
+    {
+      value: "auto",
+      label: "Auto",
+      description: "Every finished turn, failure, and blocker",
+    },
+    {
+      value: "stuck",
+      label: "When stuck",
+      description: "Only failures, interruptions, and blockers",
+    },
+    { value: "off", label: "Off", description: "Never" },
+  ];
+
+interface ParentNotificationsRowProps {
+  thread: Thread;
+}
+
+export function ParentNotificationsRow({
+  thread,
+}: ParentNotificationsRowProps) {
+  const updateThread = useUpdateThread({
+    errorMessage: "Failed to change parent notifications.",
+  });
+  if (thread.parentThreadId === null) return null;
+  return (
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="BellDot">Notify parent</DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
+      <OptionPicker
+        label="Notify parent"
+        value={thread.parentNotifications}
+        options={PARENT_NOTIFICATIONS_OPTIONS}
+        className="-mx-1 h-5 rounded-sm font-normal text-foreground hover:bg-state-hover data-[state=open]:bg-state-hover"
+        caretClassName="size-3"
+        disabled={updateThread.isPending}
+        showChevronWhenDisabled
+        onChange={(parentNotifications) => {
+          updateThread.mutate({ id: thread.id, parentNotifications });
+        }}
+      />
     </DetailRow>
   );
 }
@@ -373,8 +434,24 @@ function isReusableEnvironment(environment: Environment): boolean {
   return environment.status === "ready" && environment.path !== null;
 }
 
+function measureCopyIconWidth(container: HTMLElement): number {
+  const label = container.querySelector("button");
+  const icon = label?.querySelector("svg");
+  if (!label || !icon) return 0;
+  const gap = Number.parseFloat(getComputedStyle(label).columnGap);
+  return icon.getBoundingClientRect().width + (Number.isNaN(gap) ? 0 : gap);
+}
+
 export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   if (!environment?.path) return null;
+  return <WorkspacePathValue path={environment.path} />;
+}
+
+function WorkspacePathValue({ path }: { path: string }) {
+  const { containerRef, fitted } = useFittedPathMiddle<HTMLDivElement>(
+    formatHomePathForDisplay(path),
+    measureCopyIconWidth,
+  );
 
   return (
     <DetailRow
@@ -383,17 +460,17 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
       }
       valueClassName="min-w-0"
     >
-      <CopyableInlineLabel
-        text={environment.path}
-        label="Copy directory"
-        title={environment.path}
-        successMessage="Directory copied"
-        errorMessage="Failed to copy directory"
-      >
-        <span className="text-muted-foreground">
-          {formatHomePathForDisplay(environment.path)}
-        </span>
-      </CopyableInlineLabel>
+      <div ref={containerRef} className="min-w-0">
+        <CopyableInlineLabel
+          text={path}
+          label="Copy directory"
+          title={path}
+          successMessage="Directory copied"
+          errorMessage="Failed to copy directory"
+        >
+          <span className="text-muted-foreground">{fitted}</span>
+        </CopyableInlineLabel>
+      </div>
     </DetailRow>
   );
 }
@@ -922,6 +999,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             onParentSelectorOpenChange={onParentSelectorOpenChange}
             onRetryParentThreads={onRetryParentThreads}
           />
+          <ParentNotificationsRow thread={thread} />
           <ProjectRow projectId={projectId} />
           <EnvironmentRow
             thread={thread}
@@ -962,6 +1040,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
           <PullRequestRow pullRequest={pullRequest} />
           <ArchivedRow thread={thread} />
         </div>
+        <ChildThreadsSection thread={thread} />
         <ForksSection thread={thread} />
         {isHostActive ? (
           <>

@@ -28,15 +28,21 @@
    */
   :root {
     --bb-app-chrome-row-height: 3rem;
+    --bb-chrome-control-gap: 0.25rem;
+    --bb-panel-chrome-padding: 1rem;
     --bb-shell-height: 100dvh;
     --bb-window-frame-top: 0px;
+    --bb-window-frame-lip: 0px;
+    --bb-window-frame-leading-lip: 0px;
     --secondary-panel-width-mobile: min(76vw, 320px);
-    --bb-sidebar-control-size: 28px;
+    --bb-sidebar-rail-padding: var(--bb-frame-rail-padding);
+    --bb-sidebar-control-size: var(--bb-frame-rail-control-size);
     --bb-sidebar-control-icon-size: 16px;
   }
 
   @media (width < 48rem) and (pointer: coarse) {
     :root {
+      --bb-sidebar-rail-padding: 12px;
       --bb-sidebar-control-size: 36px;
       --bb-sidebar-control-icon-size: 20px;
     }
@@ -834,6 +840,23 @@
   border-radius: var(--radius-lg, 0.5rem);
   background-color: var(--state-hover);
   animation: bb-search-flash 1.6s ease-out forwards;
+}
+
+@keyframes bb-settings-search-flash {
+  0%,
+  25% {
+    background-color: var(--state-hover);
+    box-shadow: 0 0 0 0.5rem var(--state-hover);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0.5rem transparent;
+  }
+}
+
+[data-settings-anchor].bb-search-flash {
+  box-shadow: 0 0 0 0.5rem var(--state-hover);
+  animation-name: bb-settings-search-flash;
 }
 
 @media (prefers-reduced-motion: reduce) {

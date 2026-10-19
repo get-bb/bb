@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { useAtomValue } from "jotai";
 import { sidebarThreadLifecyclesAtom } from "../preferences/atoms.js";
 import {
@@ -178,10 +178,14 @@ export function resetSidebarDataCacheForTest(): void {
   sidebarDataCache = null;
 }
 
+export const SidebarProjectsContext = createContext<
+  readonly PluginSidebarProject[]
+>([]);
+
 export function useSidebarProjectName(
   projectId: string | null,
 ): string | undefined {
-  const { projects } = experimental_useSidebarThreads();
+  const projects = useContext(SidebarProjectsContext);
   return projectId === null
     ? undefined
     : projects.find((project) => project.id === projectId)?.name;

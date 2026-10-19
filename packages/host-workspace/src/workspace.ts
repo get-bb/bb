@@ -54,6 +54,7 @@ export interface DiffOptions {
 
 export interface StatusOptions {
   mergeBaseBranch?: string;
+  maxFiles?: number;
   maxUntrackedLineStatFiles?: number;
   maxUntrackedLineStatBytes?: number;
 }
@@ -583,6 +584,10 @@ export class Workspace {
   }
 
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {
+    const maxFiles = options.maxFiles;
+    if (maxFiles !== undefined) {
+      assertPositiveInteger(maxFiles, "maxFiles");
+    }
     const maxUntrackedLineStatFiles = options.maxUntrackedLineStatFiles;
     const maxUntrackedLineStatBytes = options.maxUntrackedLineStatBytes;
     const hasLineStatFileBudget = maxUntrackedLineStatFiles !== undefined;
@@ -640,6 +645,7 @@ export class Workspace {
         mergeBaseBranch
           ? this.readMergeBaseStatus(
               mergeBaseBranch,
+              maxFiles,
               WORKSPACE_STATUS_GIT_TIMEOUT_MS,
             )
           : null,
@@ -676,7 +682,9 @@ export class Workspace {
       if (entry.insertions !== null) workingTreeInsertions += entry.insertions;
       if (entry.deletions !== null) workingTreeDeletions += entry.deletions;
     }
-    const files: WorkspaceFileStatus[] = entries.map((entry) => {
+    const listedEntries =
+      maxFiles === undefined ? entries : entries.slice(0, maxFiles);
+    const files: WorkspaceFileStatus[] = listedEntries.map((entry) => {
       const numstat =
         entry.status === "??"
           ? untrackedNumstatByPath.get(entry.path)
@@ -710,6 +718,7 @@ export class Workspace {
         insertions: workingTreeInsertions,
         deletions: workingTreeDeletions,
         lineStatsComplete: !hasUntracked || untrackedNumstatEnrichment.complete,
+        fileCount: entries.length,
         files,
       },
       branch: {
@@ -1002,6 +1011,7 @@ export class Workspace {
 
   private async readMergeBaseStatus(
     mergeBaseBranch: string,
+    maxFiles: number | undefined,
     timeoutMs?: number,
   ): Promise<WorkspaceStatus["mergeBase"]> {
     const [mergeBaseRef, aheadBehindCounts, commits, nameStatus, numstat] =
@@ -1051,6 +1061,7 @@ export class Workspace {
           behindCount: 0,
           hasCommittedUnmergedChanges: false,
           commits: [],
+          fileCount: 0,
           files: [],
           insertions: 0,
           deletions: 0,
@@ -1123,7 +1134,11 @@ export class Workspace {
       behindCount: normalizedBehindCount,
       hasCommittedUnmergedChanges: normalizedAheadCount > 0,
       commits: effectiveCommits,
-      files: effectiveFiles,
+      fileCount: effectiveFiles.length,
+      files:
+        maxFiles === undefined
+          ? effectiveFiles
+          : effectiveFiles.slice(0, maxFiles),
       insertions: effectiveInsertions,
       deletions: effectiveDeletions,
       lineStatsComplete: effectiveLineStatsComplete,

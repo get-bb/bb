@@ -100,7 +100,7 @@ export default function plugin(bb: BbPluginApi) {
         );
       } catch (error) {
         return errorResult(
-          `The question could not be shown (${error instanceof Error ? error.message : String(error)}). Only one prompt can await the user at a time — put all of your questions in a single AskUserQuestion call, or continue with your best judgement.`,
+          `The question could not be shown (${error instanceof Error ? error.message : String(error)}). Continue with your best judgement.`,
         );
       }
 

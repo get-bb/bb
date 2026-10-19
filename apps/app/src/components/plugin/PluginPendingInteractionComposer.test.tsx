@@ -11,7 +11,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
+import type { PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
 import {
   resetPluginSlotStoreForTest,
@@ -33,30 +33,15 @@ import {
 } from "@/lib/plugin-logos";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
+import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { sdk } from "@/lib/sdk";
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: { ...defaultAppSettings },
-      keybindings: [1, 2, 3].map((digit) => ({
-        command: `question.select.${digit}`,
-        desktopOnly: false,
-        shortcut: {
-          key: String(digit),
-          mod: false,
-          meta: false,
-          control: false,
-          alt: false,
-          shift: false,
-        },
-        when: { all: ["questionOpen"], none: [] },
-      })),
-    },
-  }),
-}));
+vi.mock(
+  "@/hooks/queries/system-queries",
+  () => import("@/test/question-shortcuts-system-queries-mock"),
+);
 vi.mock("@/lib/bb-desktop", () => ({ getBbDesktopInfo: () => null }));
 const pane = vi.hoisted(() => ({ isFocused: true }));
 vi.mock("@/views/thread-detail/PaneContext", () => ({
@@ -156,6 +141,7 @@ describe("PluginPendingInteractionComposer", () => {
     const title = String.raw`Review /workspace/deep/path\.env.local`;
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",
@@ -194,6 +180,7 @@ describe("PluginPendingInteractionComposer", () => {
     );
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",
@@ -254,6 +241,7 @@ describe("PluginPendingInteractionComposer", () => {
     const composer = (id: string) => (
       <QueryClientProvider client={client}>
         <PluginPendingInteractionComposer
+          collapsedByDefault={false}
           interaction={{ ...interaction, id }}
           request={{
             pluginId: "secrets",
@@ -294,6 +282,7 @@ describe("PluginPendingInteractionComposer", () => {
       .mockRejectedValue(new Error("test response"));
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={{
           id: "pint_provider",
           threadId: "thr_test",
@@ -356,6 +345,7 @@ describe("PluginPendingInteractionComposer", () => {
         .mockResolvedValueOnce(undefined as never);
       renderComposer(
         <PluginPendingInteractionComposer
+          collapsedByDefault={false}
           interaction={interaction}
           request={secretsRequest}
           origin="plugin"
@@ -395,6 +385,7 @@ describe("PluginPendingInteractionComposer", () => {
 
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",
@@ -423,6 +414,7 @@ describe("PluginPendingInteractionComposer", () => {
     };
     const { rerender } = renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={request}
         origin="provider"
@@ -437,6 +429,7 @@ describe("PluginPendingInteractionComposer", () => {
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <PluginPendingInteractionComposer
+          collapsedByDefault={false}
           interaction={interaction}
           request={request}
           origin="provider"
@@ -458,6 +451,7 @@ describe("PluginPendingInteractionComposer", () => {
     };
     const composer = (
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={request}
         origin="plugin"
@@ -493,6 +487,7 @@ describe("PluginPendingInteractionComposer", () => {
     };
     const composer = (
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={request}
         origin="plugin"
@@ -518,6 +513,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={secretsRequest}
         origin="plugin"
@@ -527,10 +523,29 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.queryByText(/\bsecret-request\b/)).toBeNull();
   });
 
+  it("drops the attribution line inside the child threads banner", () => {
+    registerSecretsBranding("Secrets");
+    markPluginFrontendsSettled();
+    renderComposer(
+      <InlinePendingInteractionContext.Provider
+        value={{ promptShownAbove: "Choose a secret", close: () => {} }}
+      >
+        <PluginPendingInteractionComposer
+          collapsedByDefault={false}
+          interaction={interaction}
+          request={secretsRequest}
+          origin="plugin"
+        />
+      </InlinePendingInteractionContext.Provider>,
+    );
+    expect(screen.queryByText("Requested by Secrets")).toBeNull();
+  });
+
   it("falls back to the plugin id when no display name is registered", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={secretsRequest}
         origin="plugin"
@@ -544,6 +559,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={secretsRequest}
         origin="provider"
@@ -568,6 +584,7 @@ describe("PluginPendingInteractionComposer", () => {
     );
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",

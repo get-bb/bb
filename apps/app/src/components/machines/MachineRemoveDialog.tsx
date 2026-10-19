@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
+import { ConfirmDeleteDialog } from "@bb/shared-ui/confirm-delete-dialog";
 import { useRemoveHost } from "@/hooks/mutations/host-mutations";
 import { useMachineThreadPreview } from "@/hooks/queries/thread-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";

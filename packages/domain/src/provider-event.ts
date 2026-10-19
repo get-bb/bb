@@ -299,20 +299,30 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
   typeof threadEventTokenUsageBreakdownSchema
 >;
 
+export const threadUsageCostSchema = z.object({
+  amount: z.number().nonnegative(),
+  currency: z.string().min(1),
+});
+export type ThreadUsageCost = z.infer<typeof threadUsageCostSchema>;
+
 const threadEventContextWindowUsageSchema = z.object({
   snapshot: contextSnapshotSchema.optional(),
   usedTokens: z.number().nullable(),
   modelContextWindow: z.number().nullable(),
   estimated: z.boolean(),
+  cost: threadUsageCostSchema.optional(),
 });
 export type ThreadEventContextWindowUsage = z.infer<
   typeof threadEventContextWindowUsageSchema
 >;
 
+export const promptCacheTtlMsSchema = z.number().int().positive();
+
 const threadEventTokenUsageSchema = z.object({
   total: threadEventTokenUsageBreakdownSchema,
   last: threadEventTokenUsageBreakdownSchema,
   modelContextWindow: z.number().nullable(),
+  promptCacheTtlMs: promptCacheTtlMsSchema.optional(),
 });
 
 export const threadEventWarningCategorySchema = z.enum([
@@ -361,6 +371,7 @@ export const threadEventBackgroundTaskItemSchema = z.object({
   status: threadEventItemStatusSchema,
   taskStatus: backgroundTaskStatusSchema,
   skipTranscript: z.boolean(),
+  foreground: z.boolean(),
   workflowName: z.string().optional(),
   workflow: workflowProgressSnapshotSchema.optional(),
   usage: backgroundTaskUsageSchema.optional(),
@@ -512,6 +523,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     threadId: z.string(),
     providerThreadId: z.string(),
     threadName: z.string(),
+    source: z.literal("agent").optional(),
   }),
   z.object({
     type: z.literal("thread/compacted"),

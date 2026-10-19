@@ -7,14 +7,13 @@ import {
 } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import type {
   TimelinePaginationCursor,
@@ -43,8 +42,7 @@ const execution = {
 type EventInput = Parameters<typeof insertEvents>[2][number];
 
 function setup(): { db: DbConnection; thread: Thread } {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
@@ -73,6 +71,7 @@ function workflowTaskData(args: {
       status: args.status,
       taskStatus: args.status === "pending" ? "running" : "completed",
       skipTranscript: false,
+      foreground: false,
       workflowName: "sweep",
       parentToolCallId: WORKFLOW_CALL_ID,
       workflow: {
@@ -293,6 +292,8 @@ function buildPage(
     eventBudget,
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
+    compactionOfferEnabled: false,
+    summarizeShellCommands: true,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -318,7 +319,7 @@ function walkAllPages(db: DbConnection, thread: Thread): WalkResult {
     pages += 1;
     maxEventDataBytes = Math.max(maxEventDataBytes, profile.eventDataBytes);
     rowsByPage.push(response.rows);
-    if (!response.timelinePage.hasOlderRows) {
+    if (response.timelinePage.olderCursor === null) {
       break;
     }
     cursor = response.timelinePage.olderCursor;
@@ -352,7 +353,7 @@ describe("workflow progress snapshots across timeline pages", () => {
     seedWorkflowThread(db, thread, { snapshotCount: SNAPSHOT_COUNT });
 
     const latest = buildPage(db, thread, null);
-    expect(latest.response.timelinePage.hasOlderRows).toBe(false);
+    expect(latest.response.timelinePage.olderCursor).toBeNull();
     expect(latest.profile.eventDataBytes).toBeLessThan(SNAPSHOT_BYTES * 3);
     expect(latest.response.activeWorkflows).toHaveLength(1);
     expect(
@@ -362,7 +363,7 @@ describe("workflow progress snapshots across timeline pages", () => {
     ).toEqual(["turn-1"]);
 
     const eventBudgeted = buildPage(db, thread, null, 30);
-    expect(eventBudgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(eventBudgeted.response.timelinePage.olderCursor).toBeNull();
     expect(eventBudgeted.response.rows).toEqual(latest.response.rows);
 
     const outline = buildThreadConversationOutline(db, thread, {

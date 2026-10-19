@@ -5,8 +5,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { ActionMenuItem, ActionMenuSeparator } from "../ui/action-menu-items.js";
-import { CompactLongPressMenu } from "../ui/compact-long-press-menu.js";
+import { ActionMenuItem, ActionMenuSeparator } from "@/components/ui/action-menu-items";
+import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 
 export type ProjectActionsMenuSurface = "context" | "dropdown";

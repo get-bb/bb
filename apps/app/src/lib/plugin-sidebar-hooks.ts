@@ -1,8 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useStore } from "jotai";
+import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import {
   PERSONAL_PROJECT_ID,
   type Host,
+  type Thread,
   type ThreadListEntry,
 } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -18,6 +20,7 @@ import type {
   PluginSidebarThreadShortcut,
   PluginSidebarThreadsState,
 } from "@get-bb/plugin-sdk";
+import { sdk } from "@/lib/sdk";
 import { useSidebarThreadShortcut as useHostSidebarThreadShortcut } from "@/components/sidebar/sidebarThreadShortcuts";
 import {
   useThreadTitleMentionResources,
@@ -41,12 +44,21 @@ import { useHosts } from "@/hooks/queries/host-queries";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
+  archivedThreadsListQueryKey,
+  sidebarNavigationQueryKey,
+  threadQueryKey,
+} from "@/hooks/queries/query-keys";
+import {
   usePinThread,
   useUnpinThread,
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
+import {
+  threadEntryMapFor,
+  useSidebarThreadEntries,
+} from "./sidebar-thread-entries";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
 import { openThreadInSplit } from "./split-layout/openThreadInSplit";
 import {
@@ -59,7 +71,6 @@ import {
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
 const EMPTY_SECTIONS: readonly PluginSidebarSection[] = [];
-const EMPTY_ENTRIES: ReadonlyMap<string, ThreadListEntry> = new Map();
 const EMPTY_HOST_NAMES: ReadonlyMap<string, string> = new Map();
 
 const hostNamesByHosts = new WeakMap<
@@ -208,61 +219,40 @@ export function useSidebarThreads(
   ]);
 }
 
-const threadEntryMapByPayload = new WeakMap<
-  object,
-  ReadonlyMap<string, ThreadListEntry>
->();
-
-function threadEntryMapFor(
-  data: ReturnType<typeof useSidebarNavigation>["data"],
-): ReadonlyMap<string, ThreadListEntry> {
-  if (data === undefined) return EMPTY_ENTRIES;
-  const cached = threadEntryMapByPayload.get(data);
-  if (cached !== undefined) return cached;
-  const entries = new Map<string, ThreadListEntry>();
-  for (const project of [...data.projects, data.personalProject]) {
-    for (const thread of project.threads) entries.set(thread.id, thread);
-  }
-  threadEntryMapByPayload.set(data, entries);
-  return entries;
+export function lookupCachedThread(
+  queryClient: QueryClient,
+  threadId: string,
+): Thread | null {
+  const detail = queryClient.getQueryData<Thread>(threadQueryKey(threadId));
+  if (detail !== undefined) return detail;
+  const active = threadEntryMapFor(
+    queryClient.getQueryData<ReturnType<typeof useSidebarNavigation>["data"]>(
+      sidebarNavigationQueryKey(),
+    ),
+  ).get(threadId);
+  if (active !== undefined) return active;
+  const archived = queryClient.getQueryData<
+    InfiniteData<readonly ThreadListEntry[]>
+  >(archivedThreadsListQueryKey({}));
+  return (
+    archived?.pages.flat().find((thread) => thread.id === threadId) ?? null
+  );
 }
 
-const archivedEntryMaps = new WeakMap<
-  NonNullable<ReturnType<typeof useArchivedThreads>["data"]>,
-  WeakMap<
-    ReadonlyMap<string, ThreadListEntry>,
-    ReadonlyMap<string, ThreadListEntry>
-  >
->();
-
-function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
-  const { data } = useSidebarNavigation();
-  const archived = useArchivedThreads({}, { enabled: false });
-  return useMemo(() => {
-    const active = threadEntryMapFor(data);
-    if (archived.data === undefined) return active;
-    let maps = archivedEntryMaps.get(archived.data);
-    if (maps === undefined) {
-      maps = new WeakMap();
-      archivedEntryMaps.set(archived.data, maps);
-    }
-    const cached = maps.get(active);
-    if (cached !== undefined) return cached;
-    const entries = new Map([
-      ...archived.data.pages
-        .flat()
-        .map((thread) => [thread.id, thread] as const),
-      ...active,
-    ]);
-    maps.set(active, entries);
-    return entries;
-  }, [data, archived.data]);
+export async function resolveThread(
+  queryClient: QueryClient,
+  threadId: string,
+): Promise<Thread> {
+  return (
+    lookupCachedThread(queryClient, threadId) ??
+    (await sdk.threads.get({ threadId }))
+  );
 }
 
 export function useSidebarThreadEntry(
   threadId: string,
 ): ThreadListEntry | null {
-  return useThreadEntryMap().get(threadId) ?? null;
+  return useSidebarThreadEntries().get(threadId) ?? null;
 }
 
 export function useSidebarThreadActions(): PluginSidebarThreadActions {
@@ -271,7 +261,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const isCompact = useIsCompactViewport();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
-  const entriesById = useThreadEntryMap();
+  const entriesById = useSidebarThreadEntries();
   const { mutateAsync: pinThreadAsync } = usePinThread();
   const { mutateAsync: unpinThreadAsync } = useUnpinThread();
   const { mutateAsync: updateThreadAsync } = useUpdateThread();
@@ -398,7 +388,7 @@ export function useSidebarThreadDraft(
 }
 
 export function useSidebarThreadDraftIds(): ReadonlySet<string> {
-  const entries = useThreadEntryMap();
+  const entries = useSidebarThreadEntries();
   const refs = useMemo(() => [...entries.values()], [entries]);
   const ids = usePromptDraftInputThreadIds(refs);
   return ids.size === 0 ? EMPTY_DRAFT_IDS : ids;

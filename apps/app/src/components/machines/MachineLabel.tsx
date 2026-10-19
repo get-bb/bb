@@ -1,5 +1,5 @@
 import type { Host } from "@bb/domain";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type BuiltinIconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   MachineProviderIcon,
@@ -11,6 +11,24 @@ export type MachineLabelHost = Pick<
   "machineProviderId" | "name" | "type"
 >;
 
+export function resolveMachineIconProvider(
+  host: MachineLabelHost,
+  machineProvider: MachineProviderPresentation | null | undefined,
+): MachineProviderPresentation | null {
+  if (host.type !== "ephemeral" || host.machineProviderId === null) {
+    return null;
+  }
+  if (machineProvider?.id === host.machineProviderId) {
+    return machineProvider;
+  }
+  return {
+    id: host.machineProviderId,
+    displayName: host.machineProviderId,
+    icon: "ComputerCloud" satisfies BuiltinIconName,
+    logoUrl: null,
+  };
+}
+
 export function MachineIcon({
   host,
   machineProvider,
@@ -20,17 +38,7 @@ export function MachineIcon({
   machineProvider?: MachineProviderPresentation | null;
   className?: string;
 }) {
-  const provider =
-    host.type === "ephemeral" && host.machineProviderId !== null
-      ? machineProvider?.id === host.machineProviderId
-        ? machineProvider
-        : {
-            id: host.machineProviderId,
-            displayName: host.machineProviderId,
-            icon: "Server",
-            logoUrl: null,
-          }
-      : null;
+  const provider = resolveMachineIconProvider(host, machineProvider);
   if (provider === null) {
     return (
       <Icon

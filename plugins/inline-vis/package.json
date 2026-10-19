@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Render workspace or thread-storage HTML visualizations and Markdown documents inline in assistant messages.",
+  "description": "Show HTML visualizations inline in assistant messages, written in the reply as a fenced block or read from a workspace or thread-storage file, and Markdown documents from a file.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Inline visualizations",
-    "description": "Render workspace or thread-storage HTML visualizations and Markdown documents inline in assistant messages.",
+    "description": "Show HTML visualizations inline in assistant messages, written in the reply as a fenced block or read from a workspace or thread-storage file, and Markdown documents from a file.",
     "branding": {
       "icon": "AppWindow"
     },

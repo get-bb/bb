@@ -25,6 +25,7 @@ import {
   type MarkdownPieceCache,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces";
+import { remarkInlineDollarMath } from "./markdown-inline-dollar-math";
 import { normalizeMathFences } from "./markdown-math-fences";
 import {
   buildMessageDirectiveRegistry,
@@ -45,12 +46,14 @@ const registry = buildMessageDirectiveRegistry([
 ]);
 
 const config: MarkdownPieceRenderConfig = {
+  codeFenceRendererRegistry: null,
   components: {},
   messageDirectiveRegistry: registry,
   rehypePlugins: [rehypeKatex],
   remarkPlugins: [
     remarkGfm,
     [remarkMath, { singleDollarTextMath: false }],
+    remarkInlineDollarMath,
     remarkThreadMentions,
     remarkDirective,
   ],

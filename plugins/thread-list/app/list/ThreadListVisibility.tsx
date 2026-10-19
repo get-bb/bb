@@ -16,7 +16,7 @@ import { getCollapsedChildActivity } from "../model/thread-activity.js";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ContextMenuItem } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { ActionMenuSeparator } from "../ui/action-menu-items.js";
+import { ActionMenuSeparator } from "@/components/ui/action-menu-items";
 import { SidebarContentElementContext } from "../ui/sidebar.js";
 import { reorderStoredOrder } from "../model/stored-order.js";
 import { sidebarHiddenGroupsAtom } from "../preferences/atoms.js";
@@ -25,11 +25,14 @@ import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
 import {
   SidebarMore,
   SidebarOverflowItem,
-  SidebarVisibilityCustomize,
   SidebarVisibilityActionContent,
   SidebarCustomizeActionContent,
-  type SidebarVisibilityItem,
 } from "./SidebarVisibilityControls.js";
+import {
+  SidebarVisibilityCustomize,
+  type SidebarVisibilityItem,
+} from "@/components/ui/sidebar-visibility-customize";
+import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
 import {
   CustomizeRowActionsContext,
   ThreadRowActionsCustomizingContext,
@@ -191,6 +194,7 @@ export function ThreadListVisibility({
             {customizing === "list" ? (
               <SidebarVisibilityCustomize
                 items={orderedGroups}
+                touchSensor={SidebarTouchSensor}
                 visibleIds={orderedGroups
                   .filter((group) => !hiddenIds.has(group.id))
                   .map((group) => group.id)}

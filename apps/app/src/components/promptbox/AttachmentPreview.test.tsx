@@ -54,6 +54,31 @@ describe("AttachmentPreview", () => {
     expect(revoked).toEqual(["blob:local-1"]);
   });
 
+  it("shows an uploading file in the file pill row so finishing does not move it", () => {
+    const { getByRole } = render(
+      <AttachmentPreview
+        attachments={[
+          { type: "localFile", path: "uploads/notes.txt", name: "notes.txt" },
+        ]}
+        pendingUploads={[
+          {
+            id: "upload-1",
+            file: new File(["log"], "Pasted text.txt", { type: "text/plain" }),
+          },
+        ]}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+      />,
+    );
+
+    const uploading = getByRole("status", { name: "Uploading Pasted text.txt" });
+    const finishedPill = getByRole("button", { name: "Remove notes.txt" })
+      .parentElement?.parentElement;
+    expect(uploading.parentElement).toBe(finishedPill?.parentElement);
+    expect(uploading.className).toBe(finishedPill?.className);
+  });
+
   it("keeps upload feedback in the collapsed composer and releases previews on unmount", () => {
     const props = {
       attachments: [],

@@ -14,6 +14,7 @@ import {
 import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
 import {
+  HostOnlineRpcCancelledError,
   HostOnlineRpcTimeoutError,
   HostOnlineRpcUnavailableError,
 } from "../../ws/hub.js";
@@ -21,6 +22,7 @@ import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 import { inactiveHostUnavailableDetails } from "../lib/lifecycle-api-errors.js";
 import { isHostDisconnectHidden } from "./host-disconnect-display.js";
 import { LEASE_TIMEOUT_MS } from "../../constants.js";
+import { traceTurnRpc } from "../system/turn-trace.js";
 
 const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
 const HOST_DAEMON_RECONNECT_WAIT_MS = 5_000;
@@ -28,6 +30,7 @@ const HOST_DAEMON_RECONNECT_WAIT_MS = 5_000;
 interface CallHostOnlineRpcArgs<TCommand extends HostDaemonRpcCommand> {
   command: TCommand;
   hostId: string;
+  signal?: AbortSignal;
   timeoutMs: number;
 }
 
@@ -36,6 +39,7 @@ interface CallHostRetryableOnlineRpcArgs<
 > {
   command: TCommand;
   hostId: string;
+  signal?: AbortSignal;
   timeoutMs: number;
 }
 
@@ -323,15 +327,18 @@ function requestHostOnlineRpcResponse(
   deps: Pick<WorkSessionDeps, "hub">,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
-  return deps.hub.requestHostOnlineRpc({
-    hostId: args.hostId,
-    message: {
-      type: "host-rpc.request",
-      requestId: randomUUID(),
-      command: args.command,
-    },
-    timeoutMs: args.timeoutMs,
-  });
+  return traceTurnRpc(args.command.type, () =>
+    deps.hub.requestHostOnlineRpc({
+      hostId: args.hostId,
+      message: {
+        type: "host-rpc.request",
+        requestId: randomUUID(),
+        command: args.command,
+      },
+      ...(args.signal ? { signal: args.signal } : {}),
+      timeoutMs: args.timeoutMs,
+    }),
+  );
 }
 
 export function hostCommandTimeoutError(): ApiError {
@@ -345,6 +352,15 @@ export function hostCommandTimeoutError(): ApiError {
 function throwOnlineRpcError(error: unknown): never {
   if (error instanceof HostOnlineRpcTimeoutError) {
     throw hostCommandTimeoutError();
+  }
+
+  if (error instanceof HostOnlineRpcCancelledError) {
+    throw new ApiError(
+      408,
+      "request_cancelled",
+      "Request was cancelled by the client",
+      false,
+    );
   }
 
   if (error instanceof HostOnlineRpcUnavailableError) {

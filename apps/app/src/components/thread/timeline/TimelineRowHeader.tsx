@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
+  COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS,
+  COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS,
   COLLAPSIBLE_HEADER_STATIC_TONE_CLASS,
   CollapsibleHeader,
 } from "../../ui/disclosure.js";
@@ -88,6 +90,46 @@ export function TimelineStaticRowHeader({
         summaryClassName={TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME}
         summaryContent={children}
       />
+    </div>
+  );
+}
+
+interface TimelineActionRowHeaderProps {
+  children: ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+  summaryClassName: string;
+}
+
+export function TimelineActionRowHeader({
+  children,
+  disabled,
+  onClick,
+  summaryClassName,
+}: TimelineActionRowHeaderProps) {
+  return (
+    <div className="w-full rounded-md">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS,
+          timelineRowHeaderClassName("default"),
+          disabled
+            ? COLLAPSIBLE_HEADER_STATIC_TONE_CLASS
+            : cn(COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS, "cursor-pointer"),
+        )}
+      >
+        <span
+          className={cn(
+            TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME,
+            summaryClassName,
+          )}
+        >
+          {children}
+        </span>
+      </button>
     </div>
   );
 }

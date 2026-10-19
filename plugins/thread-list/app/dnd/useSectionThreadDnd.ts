@@ -20,10 +20,7 @@ import {
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import {
-  experimental_useSidebarThreadActions,
-  useSdk,
-} from "@get-bb/plugin-sdk/app";
+import { useSdk } from "@get-bb/plugin-sdk/app";
 import type { NeighborReorderRequest } from "../model/neighbor-reorder.js";
 import {
   getSidebarDndItemId,
@@ -37,12 +34,13 @@ import {
   reorderSidebarSectionOrder,
 } from "../model/sidebar-section-order.js";
 import { sidebarCollapsedThreadSectionsAtom } from "../preferences/atoms.js";
-import { useSidebarReorderDnd } from "./useSidebarReorderDnd.js";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "./sidebarTouchSensor.js";
 import {
   reorderCollisionDetection,
   type ReorderDndContextProps,
-} from "../ui/useReorderDnd.js";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+} from "@/components/ui/use-reorder-dnd";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { useNeighborReorderSortable } from "./useNeighborReorderSortable.js";
 import {
   getSidebarThreadRowDroppableId,
@@ -1097,7 +1095,6 @@ export function useSectionThreadDnd({
     ],
   );
   const sdk = useSdk();
-  const sidebarActions = experimental_useSidebarThreadActions();
   const { handleDragEnd: handlePinnedDragEnd } = useNeighborReorderSortable({
     disabled: pinnedReorderPending || pinnedThreads.length < 2,
     getId: (thread: SidebarThread) => thread.id,
@@ -1299,12 +1296,19 @@ export function useSectionThreadDnd({
         { kind: "move" | "nest" | "pin" }
       >,
       failureMessage: string,
-    ) =>
-      Promise.all(
-        decision.unpinThreadIds.map((threadId) =>
-          sidebarActions.setPinned(threadId, false),
-        ),
-      )
+    ) => {
+      const setPinned = (threadIds: readonly string[], pinned: boolean) =>
+        Promise.all(
+          threadIds.map((threadId) =>
+            pinned
+              ? sdk.threads.pin({ threadId })
+              : sdk.threads.unpin({ threadId }),
+          ),
+        ).catch((error: unknown) => {
+          toast.error(failureMessage);
+          throw error;
+        });
+      return setPinned(decision.unpinThreadIds, false)
         .then(() =>
           Promise.allSettled(
             decision.updates.map((update) => sdk.threads.update(update)),
@@ -1318,13 +1322,10 @@ export function useSectionThreadDnd({
             toast.error(failureMessage);
             throw new AggregateError(failures, failureMessage);
           }
-          return Promise.all(
-            decision.pinThreadIds.map((threadId) =>
-              sidebarActions.setPinned(threadId, true),
-            ),
-          );
-        }),
-    [sdk, sidebarActions],
+          return setPinned(decision.pinThreadIds, true);
+        });
+    },
+    [sdk],
   );
 
   const handleDragEnd = useCallback(
@@ -1443,6 +1444,7 @@ export function useSectionThreadDnd({
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({
+      touchSensor: SidebarTouchSensor,
       axis: "free",
       collisionDetection,
       measuring: SECTION_THREAD_DROPPABLE_MEASURING,

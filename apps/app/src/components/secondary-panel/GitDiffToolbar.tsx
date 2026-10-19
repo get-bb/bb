@@ -16,6 +16,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import {
   formatChangeSummary,
@@ -200,6 +201,7 @@ interface GitDiffToolbarProps {
   isSelectorDisabled: boolean;
 
   stats: GitDiffStats;
+  isStatsLoading: boolean;
   totalFilesCount: number;
   isTruncated: boolean;
 
@@ -223,6 +225,7 @@ export function GitDiffToolbar({
   onSelectionChange,
   isSelectorDisabled,
   stats,
+  isStatsLoading,
   totalFilesCount,
   isTruncated,
   fileFilter,
@@ -283,7 +286,13 @@ export function GitDiffToolbar({
                   : completeSummary
             }
           >
-            {isFiltering ? (
+            {isStatsLoading ? (
+              <Skeleton
+                role="status"
+                aria-label="Loading changes"
+                className="inline-block h-3 w-24 rounded-sm align-middle"
+              />
+            ) : isFiltering ? (
               <>
                 {filteredFilesLabel}
                 {hasShownLineChanges ? (

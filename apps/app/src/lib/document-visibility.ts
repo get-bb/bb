@@ -38,3 +38,11 @@ export function useDocumentVisibilityRevision(): number {
     () => revision,
   );
 }
+
+export function useDocumentVisible(): boolean {
+  return useSyncExternalStore(
+    subscribeToDocumentVisibility,
+    isDocumentVisible,
+    () => true,
+  );
+}

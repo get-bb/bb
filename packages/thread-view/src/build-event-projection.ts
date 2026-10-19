@@ -317,6 +317,7 @@ function selectActiveBackgroundCommandMessages(
       message.taskType === LOCAL_WORKFLOW_TASK_TYPE ||
       message.status !== "pending" ||
       message.skipTranscript ||
+      message.foreground ||
       isRepresentedByActiveParent ||
       (!isDirect && !isBackgroundCommandTaskType(message.taskType))
     ) {

@@ -16,6 +16,7 @@ export interface StoredPromptHistoryEntryRow {
   input: string;
   projectId: string;
   requestSequence: number;
+  scope: PromptHistoryScope;
   threadId: string;
 }
 
@@ -25,6 +26,7 @@ const storedPromptHistoryEntryColumns = {
   input: promptHistoryEntries.input,
   projectId: promptHistoryEntries.projectId,
   requestSequence: promptHistoryEntries.requestSequence,
+  scope: promptHistoryEntries.scope,
   threadId: promptHistoryEntries.threadId,
 };
 

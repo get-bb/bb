@@ -22,6 +22,10 @@ type PluginMentionSuggestion = Extract<
   PromptMentionSuggestion,
   { kind: "plugin" }
 >;
+export type AttachmentMentionSuggestion = Extract<
+  PromptMentionSuggestion,
+  { kind: "attachment" }
+>;
 
 interface BuildPromptMentionResultsArgs {
   query: string;
@@ -104,6 +108,19 @@ function pluginMentionCandidate(
   };
 }
 
+function attachmentMentionCandidate(
+  suggestion: AttachmentMentionSuggestion,
+): MentionCandidate {
+  return {
+    suggestion,
+    visibleTitle: suggestion.name,
+    identityTerms: [],
+    supportingTerms: [],
+    groupKey: "attachments",
+    groupLabel: "Attachments",
+  };
+}
+
 function promptMentionCandidate(
   suggestion: PromptMentionSuggestion,
 ): MentionCandidate {
@@ -118,6 +135,9 @@ function promptMentionCandidate(
   }
   if (suggestion.kind === "plugin") {
     return pluginMentionCandidate(suggestion);
+  }
+  if (suggestion.kind === "attachment") {
+    return attachmentMentionCandidate(suggestion);
   }
   return pathMentionCandidate(suggestion);
 }
@@ -156,4 +176,35 @@ export function buildPromptMentionResults(
     query: args.query,
     suggestions: sourceOrdered,
   });
+}
+
+export function withAttachmentMentionSuggestions({
+  attachments,
+  query,
+  results,
+}: {
+  attachments: readonly AttachmentMentionSuggestion[];
+  query: string;
+  results: OrderedMentionSuggestions;
+}): OrderedMentionSuggestions {
+  const normalizedQuery = query.trim().toLowerCase();
+  const matches = attachments.filter((attachment) =>
+    attachment.name.toLowerCase().includes(normalizedQuery),
+  );
+  if (matches.length === 0) return results;
+  const attachmentResults = orderPromptMentionSuggestions({
+    query: query.trim(),
+    suggestions: matches,
+  });
+  const offset = attachmentResults.suggestions.length;
+  return {
+    groups: [
+      ...attachmentResults.groups,
+      ...results.groups.map((group) => ({
+        ...group,
+        startIndex: group.startIndex + offset,
+      })),
+    ],
+    suggestions: [...attachmentResults.suggestions, ...results.suggestions],
+  };
 }

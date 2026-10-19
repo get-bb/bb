@@ -19,7 +19,7 @@ const gitConfig = [
   ["url.https://github.com/.insteadOf", "ssh://git@github.com/"],
 ] as const;
 const identitySchema = z.object({
-  login: z.string().regex(/^[a-zA-Z0-9-]+$/u),
+  login: z.string().regex(/^[a-zA-Z0-9_-]+$/u),
   id: z.number().int().positive(),
   email: z.email().nullable(),
 });
@@ -96,6 +96,7 @@ async function cachedGitCredentials(run: typeof runGh, refresh: boolean) {
     cache = createAsyncTtlMemo({
       maxEntries: 1_024,
       ttlMs: (entries) => (entries.length ? 60_000 : 5_000),
+      staleWhileRevalidate: true,
     });
     credentialCaches.set(run, cache);
   }

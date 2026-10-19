@@ -147,6 +147,7 @@ export function defineSplit<P extends object>({
     id,
     tier,
     preload: warm,
+    isLoaded: () => loaded !== null,
     intentProps: {
       onPointerEnter: onIntent,
       onFocus: onIntent,

@@ -1,10 +1,8 @@
 import { useAtomValue } from "jotai";
-import { resolvePreferredReplacement } from "@/lib/plugin-replacement-preference";
+import { usePreferredReplacement } from "@/lib/plugin-replacement-preference";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlots, type PluginThreadListSlot } from "@/lib/plugin-slots";
-
-export const BUNDLED_THREAD_LIST_PROVIDER = "thread-list/thread-list";
 
 export const threadListProviderAtom = createSyncedPreferenceAtom(
   "sidebar.threadListProvider",
@@ -13,9 +11,5 @@ export const threadListProviderAtom = createSyncedPreferenceAtom(
 export function useThreadListReplacement(): ResolvedReplacement<PluginThreadListSlot> {
   const { threadLists } = usePluginSlots();
   const preference = useAtomValue(threadListProviderAtom);
-  return resolvePreferredReplacement(
-    threadLists,
-    preference,
-    BUNDLED_THREAD_LIST_PROVIDER,
-  );
+  return usePreferredReplacement(threadLists, preference);
 }

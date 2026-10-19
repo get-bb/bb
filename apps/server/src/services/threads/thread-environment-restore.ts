@@ -69,10 +69,7 @@ export function resolveThreadEnvironmentRestore(
     return { restorable: false, refusal: "not_destroyed" };
   }
   const { environmentProviderId, environmentProviderSelection } = environment;
-  if (
-    environmentProviderId === null ||
-    environmentProviderSelection === null
-  ) {
+  if (environmentProviderId === null || environmentProviderSelection === null) {
     return { restorable: false, refusal: "unrecoverable" };
   }
   const record = getEnvironmentProvider(environmentProviderId);

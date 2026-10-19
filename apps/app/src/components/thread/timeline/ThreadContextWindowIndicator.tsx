@@ -6,6 +6,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   calculateContextWindowUsagePercent,
   formatCompactTokenCount,
+  formatUsageCost,
 } from "./thread-context-window-usage.js";
 
 import {
@@ -48,6 +49,7 @@ export function ThreadContextWindowCard({
   const usedTokensLabel = formatCompactTokenCount(usage.usedTokens);
   const windowTokensLabel = formatCompactTokenCount(usage.modelContextWindow);
   const titleLabel = usage.estimated ? "Estimated context" : "Context window";
+  const costLabel = usage.cost ? formatUsageCost(usage.cost) : null;
 
   return (
     <div
@@ -115,6 +117,17 @@ export function ThreadContextWindowCard({
           </span>
           <span>{leftPercent}% left</span>
         </div>
+        {costLabel ? (
+          <div
+            className={cn(
+              "flex items-baseline justify-between gap-2 text-xs tabular-nums text-muted-foreground max-md:pointer-coarse:text-sm",
+              details && detailsExpanded && "order-3",
+            )}
+          >
+            <span>Session cost</span>
+            <span>{costLabel}</span>
+          </div>
+        ) : null}
       </div>
       {details ? (
         <>

@@ -22,13 +22,13 @@ installation is never touched. `runtime-pin.ts` pins one exact npm release:
 
 | Field        | Value                                                               |
 | ------------ | ------------------------------------------------------------------- |
-| package      | `dev-browser@1.0.0-rc.3` from `registry.npmjs.org`                  |
+| package      | `dev-browser@1.0.0-rc.4` from `registry.npmjs.org`                  |
 | repository   | [SawyerHood/dev-browser](https://github.com/SawyerHood/dev-browser) |
-| tag / commit | `v1.0.0-rc.3` at `a25e7672e199153b2f5b52a841a62436a28d925f`         |
-| linux-x64    | `390dd08f8321807bca2e1e060ec031511adb0af002e871dfde3b1f6c8feac914`  |
-| linux-arm64  | `8a1d7c80c3bede69809996848526b5ed43cf6f0965d87f99e4349b775f76042e`  |
-| darwin-x64   | `76f70f6e8a48c5caf546003e09d9daa4a0cb756d191c4f7fc3c300c2e2935522`  |
-| darwin-arm64 | `d68887f7df149915811bf362b208377c2d0d7d500297d4d5977dab129db5b5eb`  |
+| tag / commit | `v1.0.0-rc.4` at `e5d746f1fc17a3301d6e7f865f89c034f15f69fb`         |
+| linux-x64    | `fa6cec3f84463e171bd7b307e2e1f0243df59c70c38f96d790dc41b160db921a`  |
+| linux-arm64  | `578db7f1e502cf6b9e43ac09e6adc5720f5397fa3e6d6b7b9ba8377708fe040e`  |
+| darwin-x64   | `7cfad83f7f9e16dc5acbc94553430bcd1be24adc4304c0f534805969bfa6d2ba`  |
+| darwin-arm64 | `f0a7e7d10ab8be0fee1ee8ac2ca33d3efc46b493e5e998b29ea75c79479a2e8d`  |
 
 The digests are the SHA-256 values published in that release's `SHA256SUMS`.
 The pin never follows the `next` or `latest` dist-tags and never falls back to
@@ -142,8 +142,12 @@ fresh `DEV_BROWSER_HOME` and socket under the worker's temporary directory.
 Pages and cookies persist between runs in that session. `stop`, timeout, or
 cancellation terminates that local session; open another session to resume.
 `close` disposes its processes and session directory. Tabs taken over with
-`--tab` remain open. Sessions expire after 30 minutes, with five-minute idle cleanup;
-active scripts do not count as idle. Archiving, deleting, or failing a thread
+`--tab` remain open. Sessions close after 30 minutes without `run`, `pages`, or `screenshot` activity.
+Each operation renews expiry at its start and completion, up to eight hours from
+creation; active scripts do not count as idle. The hard deadline also stops running
+work. Desktop control leases and connections cannot be renewed through the current
+API, so desktop sessions retain their earlier deadline (at most 30 minutes from
+creation). `list` and live preview do not renew expiry. Archiving, deleting, or failing a thread
 closes its sessions; normal idle turns preserve them. Externally invoked CLI
 runs remain subject to the same per-run timeout and absolute session expiry. Run timeouts default to 30 seconds and are
 bounded to 1–120 seconds. Runs are serialized per session.
@@ -174,8 +178,16 @@ The host supervises Chrome and the DevBrowser daemon as separate children. Each
 child owns a process group. Closing the worker pipe also stops those groups, so
 a worker crash does not leave browsers running. Stop sends TERM then KILL after
 1.5 seconds. The plugin does not discover or kill processes from PID files.
+`stop` and `close` retire the session before cleanup starts, so it accepts no
+more commands and an `open` still starting is aborted. They succeed only once
+the host has released the browser processes and session directory and the
+desktop lease and tabs are released. Otherwise they fail with the reason,
+including a host that does not answer within 10 seconds. Concurrent closes
+share one outcome, and closing again retries cleanup. A host worker repeats a
+session's close outcome until that worker exits, and refuses to reopen a
+session it already closed.
 Server metadata persists ownership and cleanup needs; restart reconciles active
-sessions and revokes their desktop leases. Unreachable desktop cleanup remains
+sessions, retries unfinished cleanup, and revokes their desktop leases. Unreachable desktop cleanup remains
 recorded for reconciliation on a later plugin load. Desktop lease loss is
 observed using the public SDK subscription; core revokes the CDP endpoint
 immediately, and the plugin stops its worker session when notified.
@@ -215,7 +227,7 @@ only while the window is visible and it is expanded and scrolled into view, so
 cards left behind in the chat history cost nothing. The lightbox opens from the
 card's current frame and then runs its own poller; the card pauses its poller
 while its session's lightbox is open. Preview requests are not
-session activity: watching a preview does not postpone the five-minute idle
+session activity: watching a preview does not postpone the 30-minute idle
 cleanup. When the session stops, closes, or expires, the card keeps its last
 frame dimmed for as long as it stays mounted; a card first viewed after that
 shows only its Ended header. A card whose session it can never read, such as a

@@ -57,6 +57,12 @@ export type PromptMentionSuggestion =
       name: string;
     }
   | {
+      kind: "attachment";
+      path: string;
+      name: string;
+      replacement: string;
+    }
+  | {
       kind: "plugin";
       pluginId: string;
       providerId: string;
@@ -228,6 +234,7 @@ export type MentionMenuState =
   | {
       kind: "results";
       results: OrderedMentionSuggestions;
+      refreshing: boolean;
     };
 
 export type CommandMenuState =

@@ -669,7 +669,9 @@ describe("acp bridge", () => {
   it("answers a minimal model/list (no params) with the synthetic default", async () => {
     const modelListId = sendRequest("model/list", {});
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
   });
@@ -728,6 +730,7 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
@@ -736,6 +739,7 @@ describe("acp bridge", () => {
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
@@ -767,10 +771,12 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           supportedReasoningEfforts: [
             {
               reasoningEffort: "medium",
@@ -809,9 +815,17 @@ describe("acp bridge", () => {
       models: {
         id: string;
         supportedReasoningEfforts: { reasoningEffort: string }[];
+        supportedServiceTiers: { id: string }[];
       }[];
       selectedOnlyModels: { id: string }[];
     };
+    expect(
+      result.models.map((model) => [model.id, model.supportedServiceTiers]),
+    ).toEqual([
+      ["default", []],
+      ["composer-2.5", []],
+      ["grok-4.6", [{ id: "fast" }]],
+    ]);
     const initialize = loggedAcpRequests(requestLog).find(
       (request) => request.method === "initialize",
     );
@@ -1002,6 +1016,7 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
+          supportedServiceTiers: [],
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
@@ -1010,6 +1025,7 @@ describe("acp bridge", () => {
         },
         {
           id: "fake/strong",
+          supportedServiceTiers: [],
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
@@ -1126,7 +1142,9 @@ describe("acp bridge", () => {
     }
 
     expect((await waitForResponse(modelListId!)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
     await waitForAgentExit(readyFile);
@@ -1174,7 +1192,9 @@ describe("acp bridge", () => {
     const modelListId = sendModelList();
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
+      ],
       selectedOnlyModels: [],
     });
   });
@@ -1210,11 +1230,49 @@ describe("acp bridge", () => {
     });
   });
 
-  it("falls back to the synthetic model when the list command prints no models", async () => {
-    const emptyId = sendModelList({ modelLines: "no model lines here" });
-    expect((await waitForResponse(emptyId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+  it.each([
+    ["exits unsuccessfully", "process.exit(2)"],
+    ["prints no models", "process.stdout.write('no model lines here')"],
+    ["times out", "setInterval(() => {}, 1000)"],
+  ])(
+    "fails model/list when the configured command %s without a cached catalog",
+    async (_failure, script) => {
+      const failingId = sendModelList({
+        agent: { command: process.execPath, args: ["-e", script] },
+        modelListArgs: ["--"],
+      });
+      const response = await waitFor(
+        () => findResponse(failingId),
+        `response ${failingId}`,
+        40_000,
+      );
+      expect(response.error?.message).toBe(
+        "ACP model list command failed to provide a model catalog.",
+      );
+      expect(response.result).toBeUndefined();
+    },
+    45_000,
+  );
+
+  it("keeps the last good CLI catalog when the same command later fails", async () => {
+    const scriptPath = join(workspaceDir, "model-list.cjs");
+    writeFileSync(
+      scriptPath,
+      "process.stdout.write('cached-model - Cached Model\\n')",
+    );
+    const launch = {
+      agent: { command: process.execPath, args: [scriptPath] },
+      modelListArgs: ["--"],
+    };
+    const first = await waitForResponse(sendModelList(launch));
+    expect(first.result).toMatchObject({
+      models: [{ id: "cached-model", displayName: "Cached Model" }],
     });
+
+    writeFileSync(scriptPath, "process.exit(2)");
+    const second = await waitForResponse(sendModelList(launch));
+    expect(second.error).toBeUndefined();
+    expect(second.result).toEqual(first.result);
   });
 
   it("keeps CLI reasoning on the resolved model variant instead of ACP config", async () => {

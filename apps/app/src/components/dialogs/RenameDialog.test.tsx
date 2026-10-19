@@ -2,7 +2,8 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { RenameDialog, RenameDialogContent } from "./RenameDialog";
+import { RenameDialog } from "@bb/shared-ui/rename-dialog";
+import { RenameDialogContent } from "./RenameDialogContent";
 
 function RenameDialogHarness({ open }: { open: boolean }) {
   return (

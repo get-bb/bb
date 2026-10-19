@@ -1214,10 +1214,12 @@ export function createCodexEventTranslator(
     if (!tracked.terminal) {
       return [];
     }
-    const wasOpen = isTrackedSubAgentOpen(tracked);
+    if (!isTrackedSubAgentOpen(tracked)) {
+      return beginCodexTrackedSubAgent(activity);
+    }
     tracked.pendingFollowups += 1;
     rearmTrackedSubAgent(tracked);
-    return wasOpen ? [] : [buildCodexSubAgentOpenDelta(tracked)];
+    return [];
   }
 
   function hasConsumablePendingDelegationLink(args: {

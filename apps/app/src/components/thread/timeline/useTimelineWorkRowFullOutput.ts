@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import type {
   TimelineCommandWorkRow,
   TimelineOutputPreview,
@@ -44,101 +44,89 @@ function loadedOutputState(
 
 function findPreviewableWorkRow(
   rows: readonly TimelineRow[],
-  predicate: (row: TimelinePreviewableWorkRow) => boolean,
+  workKind: TimelinePreviewableWorkRow["workKind"],
+  callId: string,
 ): TimelinePreviewableWorkRow | null {
-  for (const row of rows) {
+  for (const candidate of rows) {
     if (
-      row.kind === "work" &&
-      (row.workKind === "command" || row.workKind === "tool") &&
-      predicate(row)
+      candidate.kind === "work" &&
+      candidate.workKind === workKind &&
+      candidate.callId === callId
     ) {
-      return row;
-    }
-    const children =
-      row.kind === "turn"
-        ? row.children
-        : row.kind === "work" && row.workKind === "delegation"
-          ? row.childRows
-          : null;
-    if (children !== null) {
-      const match = findPreviewableWorkRow(children, predicate);
-      if (match !== null) {
-        return match;
-      }
+      return candidate;
     }
   }
   return null;
 }
 
+export function shouldLoadTimelineWorkRowFullOutput(
+  row: TimelinePreviewableWorkRow,
+): boolean {
+  return (
+    row.outputPreview !== undefined &&
+    row.outputPreview.experimental_fullOutputAvailability !==
+      "retention-expired" &&
+    row.turnId !== null &&
+    row.status !== "pending"
+  );
+}
+
+export function resolveTimelineWorkRowFullOutput({
+  data,
+  isError,
+  row,
+}: {
+  data: readonly TimelineRow[] | undefined;
+  isError: boolean;
+  row: TimelinePreviewableWorkRow;
+}): Omit<TimelineWorkRowFullOutput, "retry"> {
+  const outputPreview = row.outputPreview;
+  if (outputPreview === undefined) {
+    return { output: row.output, state: "complete" };
+  }
+  if (
+    outputPreview.experimental_fullOutputAvailability === "retention-expired"
+  ) {
+    return { output: row.output, state: "expired-preview" };
+  }
+  const shouldLoad = shouldLoadTimelineWorkRowFullOutput(row);
+  const match =
+    shouldLoad && data !== undefined
+      ? findPreviewableWorkRow(data, row.workKind, row.callId)
+      : null;
+  if (match !== null) {
+    return {
+      output: match.output,
+      state: loadedOutputState(match.outputPreview),
+    };
+  }
+  if (!shouldLoad) {
+    return { output: row.output, state: "streaming-preview" };
+  }
+  if (isError || data !== undefined) {
+    return { output: row.output, state: "error" };
+  }
+  return { output: row.output, state: "loading" };
+}
+
 export function useTimelineWorkRowFullOutput(
   row: TimelinePreviewableWorkRow,
 ): TimelineWorkRowFullOutput {
-  const outputPreview = row.outputPreview;
-  const isPreview = outputPreview !== undefined;
-  const shouldLoad =
-    isPreview &&
-    outputPreview.experimental_fullOutputAvailability !== "retention-expired" &&
-    row.turnId !== null &&
-    row.status !== "pending";
   const { data, isError, refetch } = useThreadTimelineTurnSummaryDetails(
     {
+      itemId: row.callId,
       sourceSeqEnd: row.sourceSeqEnd,
       sourceSeqStart: row.sourceSeqStart,
       threadId: row.threadId,
       turnId: row.turnId ?? "",
     },
-    { enabled: shouldLoad, refetchOnMount: false },
+    {
+      enabled: shouldLoadTimelineWorkRowFullOutput(row),
+      refetchOnMount: false,
+    },
   );
   const retry = useCallback((): void => {
     void refetch();
   }, [refetch]);
-  const loadedOutput = useMemo((): {
-    output: string;
-    outputPreview: TimelineOutputPreview | undefined;
-  } | null => {
-    if (!shouldLoad || data === undefined) {
-      return null;
-    }
-    const match =
-      findPreviewableWorkRow(
-        data.rows,
-        (candidate) => candidate.id === row.id,
-      ) ??
-      findPreviewableWorkRow(
-        data.rows,
-        (candidate) =>
-          candidate.workKind === row.workKind &&
-          candidate.callId === row.callId,
-      );
-    if (match === null) {
-      return null;
-    }
-    return {
-      output: match.output,
-      outputPreview: match.outputPreview,
-    };
-  }, [data, row.callId, row.id, row.workKind, shouldLoad]);
-
-  if (!isPreview) {
-    return { output: row.output, state: "complete", retry };
-  }
-  if (
-    outputPreview.experimental_fullOutputAvailability === "retention-expired"
-  ) {
-    return { output: row.output, state: "expired-preview", retry };
-  }
-  if (loadedOutput !== null) {
-    return {
-      output: loadedOutput.output,
-      state: loadedOutputState(loadedOutput.outputPreview),
-      retry,
-    };
-  }
-  if (!shouldLoad) {
-    return { output: row.output, state: "streaming-preview", retry };
-  }
-  if (isError || data !== undefined) {
-    return { output: row.output, state: "error", retry };
-  }
-  return { output: row.output, state: "loading", retry };
+  return { ...resolveTimelineWorkRowFullOutput({ data, isError, row }), retry };
 }

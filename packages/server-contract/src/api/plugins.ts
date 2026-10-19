@@ -392,6 +392,9 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
       ...pluginSettingBaseSchema,
       type: z.literal("select"),
       options: z.array(z.string().min(1)).min(1),
+      experimental_optionLabels: z
+        .record(z.string().min(1), z.string().min(1))
+        .optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -625,6 +628,7 @@ export const pluginMarketplaceSchema = z.object({
   official: z.boolean(),
   sourceKind: pluginMarketplaceSourceKindSchema,
   source: z.string(),
+  subdirectory: z.string().nullable().default(null),
   resolvedCommit: z.string().nullable(),
   entryCount: z.number(),
   lastRefreshAt: z.number().nullable(),
@@ -640,6 +644,7 @@ export const pluginMarketplaceListResponseSchema = z.object({
 export const pluginMarketplaceAddRequestSchema = z
   .object({
     source: z.string().min(1),
+    subdirectory: z.string().min(1).optional(),
   })
   .strict();
 
