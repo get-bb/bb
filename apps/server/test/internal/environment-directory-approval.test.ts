@@ -105,7 +105,7 @@ async function setupMove(
   return { currentEnvironment, session, thread };
 }
 
-function postMove(
+async function postMove(
   harness: TestAppHarness,
   args: { path: string; sessionId: string; threadId: string },
 ): Promise<Response> {
@@ -151,7 +151,7 @@ async function completeTurn(
   expect(response.status).toBe(200);
 }
 
-function resolveMove(
+async function resolveMove(
   harness: TestAppHarness,
   args: {
     decision: "allow_once" | "deny";

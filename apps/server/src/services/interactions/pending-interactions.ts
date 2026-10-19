@@ -289,6 +289,9 @@ function buildInteractiveResolveCommand(
   if (isPluginPendingInteraction(args.interaction)) {
     throw new Error("Plugin interactions do not produce host resolve commands");
   }
+  if (isServerPendingInteraction(args.interaction)) {
+    throw new Error("Server approvals do not produce host resolve commands");
+  }
   return {
     type: "interactive.resolve",
     environmentId: args.environmentId,
