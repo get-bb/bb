@@ -1256,7 +1256,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(242);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(243);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1826,6 +1826,7 @@ describe("host-daemon command schemas", () => {
       },
       {
         type: "provider.list_models",
+        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: BRIDGE_LAUNCH,
       },
@@ -2211,6 +2212,7 @@ describe("host-daemon command schemas", () => {
   it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
+      contributedEnv: [],
       bridgeLaunch: ACP_BRIDGE_LAUNCH,
       providerId: "acp-local",
       cwd: "/tmp/workspace",
@@ -2338,6 +2340,7 @@ describe("host-daemon command schemas", () => {
 
     const providerListModelsCommand = {
       type: "provider.list_models",
+      contributedEnv: [],
       providerId: "echo-agent",
       bridgeLaunch,
       cwd: "/tmp/workspace",

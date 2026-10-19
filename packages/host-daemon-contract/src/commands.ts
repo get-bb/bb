@@ -909,6 +909,7 @@ const providerListModelsCommandSchema = z.object({
   providerId: z.string().min(1),
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
+  contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
 });
 
 const providerHealthCommandSchema = z

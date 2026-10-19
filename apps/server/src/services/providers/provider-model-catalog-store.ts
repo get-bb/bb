@@ -12,7 +12,10 @@ import {
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
-import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonBridgeLaunch,
+  HostDaemonContributedEnvEntry,
+} from "@bb/host-daemon-contract";
 import type { SystemExecutionOptionsModelLoadErrorCode } from "@bb/server-contract";
 import { z } from "zod";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -27,6 +30,7 @@ import {
   expectedFallbackErrorLogFields,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
+import { resolvePluginProviderEnv } from "../plugins/plugin-agent-contributions.js";
 import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
@@ -157,21 +161,35 @@ export function toProviderModelCatalogFailureDetail(
     : collapsed;
 }
 
-function catalogFingerprint(
-  providerId: string,
-  bridgeLaunch: HostDaemonBridgeLaunch,
-): string {
-  return createHash("sha256")
+interface CatalogLaunch {
+  bridgeLaunch: HostDaemonBridgeLaunch;
+  contributedEnv: HostDaemonContributedEnvEntry[];
+  fingerprint: string;
+}
+
+async function resolveCatalogLaunch(args: {
+  hostId: string;
+  providerId: string;
+  bridgeLaunch: HostDaemonBridgeLaunch;
+}): Promise<CatalogLaunch> {
+  const { bridgeLaunch } = args;
+  const contributedEnv = await resolvePluginProviderEnv({
+    providerId: args.providerId,
+    context: { threadId: null, projectId: null, hostId: args.hostId },
+  });
+  const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([
-        providerId,
+        args.providerId,
         bridgeLaunch.pluginId,
         bridgeLaunch.source,
         bridgeLaunch.providerOptions,
         bridgeLaunch.envPassthrough,
+        contributedEnv.map((entry) => [entry.name, entry.value]),
       ]),
     )
     .digest("hex");
+  return { bridgeLaunch, contributedEnv, fingerprint };
 }
 
 function parseStoredModels(json: string): AvailableModel[] | null {
@@ -475,12 +493,11 @@ export function createProviderModelCatalogStore(options: {
   function startRefresh(
     deps: WorkSessionDeps,
     entry: CatalogEntry,
-    fingerprint: string,
-    bridgeLaunch: HostDaemonBridgeLaunch,
+    launch: CatalogLaunch,
   ): Promise<void> {
     const { hostId, providerId, scopeKey } = entry.key;
     const refresh: CatalogRefresh = {
-      fingerprint,
+      fingerprint: launch.fingerprint,
       sessionId: deps.hub.getDaemonSessionIdForHost(hostId),
       startedAt: options.now(),
       markedStale: false,
@@ -494,7 +511,8 @@ export function createProviderModelCatalogStore(options: {
         type: "provider.list_models",
         providerId,
         ...(scopeKey === "" ? {} : { cwd: scopeKey }),
-        bridgeLaunch,
+        bridgeLaunch: launch.bridgeLaunch,
+        contributedEnv: launch.contributedEnv,
       },
     }).then(
       (result) =>
@@ -511,21 +529,21 @@ export function createProviderModelCatalogStore(options: {
   function joinOrStartRefresh(
     deps: WorkSessionDeps,
     entry: CatalogEntry,
-    fingerprint: string,
-    bridgeLaunch: HostDaemonBridgeLaunch,
+    launch: CatalogLaunch,
   ): Promise<void> {
-    return entry.refresh?.fingerprint === fingerprint
+    return entry.refresh?.fingerprint === launch.fingerprint
       ? entry.refresh.promise
-      : startRefresh(deps, entry, fingerprint, bridgeLaunch);
+      : startRefresh(deps, entry, launch);
   }
 
   return {
     async read(deps, args) {
-      const bridgeLaunch = requireBridgeLaunchForProviderId(
-        deps,
-        args.provider.id,
-      );
-      const fingerprint = catalogFingerprint(args.provider.id, bridgeLaunch);
+      const launch = await resolveCatalogLaunch({
+        hostId: args.hostId,
+        providerId: args.provider.id,
+        bridgeLaunch: requireBridgeLaunchForProviderId(deps, args.provider.id),
+      });
+      const { fingerprint } = launch;
       const entry = loadEntry(deps, {
         hostId: args.hostId,
         providerId: args.provider.id,
@@ -547,11 +565,11 @@ export function createProviderModelCatalogStore(options: {
         );
         if (decision.kind === "serve") {
           if (decision.backgroundRefresh) {
-            void joinOrStartRefresh(deps, entry, fingerprint, bridgeLaunch);
+            void joinOrStartRefresh(deps, entry, launch);
           }
           return decision.result;
         }
-        await joinOrStartRefresh(deps, entry, fingerprint, bridgeLaunch);
+        await joinOrStartRefresh(deps, entry, launch);
       }
     },
 
@@ -563,7 +581,12 @@ export function createProviderModelCatalogStore(options: {
       if (bridgeLaunch === null) {
         return;
       }
-      const fingerprint = catalogFingerprint(args.provider.id, bridgeLaunch);
+      const launch = await resolveCatalogLaunch({
+        hostId: args.hostId,
+        providerId: args.provider.id,
+        bridgeLaunch,
+      });
+      const { fingerprint } = launch;
       const entry = loadEntry(deps, {
         hostId: args.hostId,
         providerId: args.provider.id,
@@ -580,7 +603,7 @@ export function createProviderModelCatalogStore(options: {
       if (options.now() - lastAttemptAt < PREWARM_MIN_AGE_MS) {
         return;
       }
-      await startRefresh(deps, entry, fingerprint, bridgeLaunch);
+      await startRefresh(deps, entry, launch);
     },
 
     clearFailure(hostId, providerId) {

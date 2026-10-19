@@ -311,17 +311,23 @@ export function createAccountPoolPlugin(
         provider: PoolProvider,
         serving: (token: string) => Promise<PoolEnvEntry[]>,
       ) =>
-      async (context: { threadId: string; hostId: string }) => {
-        const bypassed = await routing.isBypassed(context.threadId);
+      async (context: { threadId: string | null; hostId: string }) => {
+        const { threadId } = context;
+        const bypassed =
+          threadId !== null && (await routing.isBypassed(threadId));
         if (!bypassed && (await canServe(provider))) {
-          await bb.storage.kv.set(`retry-route:${context.threadId}`, provider);
           const token = await hubTokens.forHost(context.hostId);
-          if (provider === "claude") {
-            await routing.recordRouted(context.threadId, context.hostId);
+          if (threadId !== null) {
+            await bb.storage.kv.set(`retry-route:${threadId}`, provider);
+            if (provider === "claude") {
+              await routing.recordRouted(threadId, context.hostId);
+            }
           }
           return [...(await serving(token)), ...markerEntries(token)];
         }
-        await bb.storage.kv.delete(`retry-route:${context.threadId}`);
+        if (threadId !== null) {
+          await bb.storage.kv.delete(`retry-route:${threadId}`);
+        }
         return parentPool === null ? [] : neutralized(provider);
       };
     const subscriptionCacheEntries = async (): Promise<PoolEnvEntry[]> =>

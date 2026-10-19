@@ -1804,6 +1804,46 @@ describe("Account Pool plugin", () => {
     expect(await resolveToken(fixture.host)).toBe(fixture.key);
   });
 
+  it("routes thread-less Codex model listing through the hub without recording a thread route", async () => {
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      provider: "codex",
+      source: "import",
+      options: {
+        codexUsageUrl: EMPTY_USAGE_URL,
+        importCodexCredentials: async () => ({
+          accessToken: "sk-codex",
+          refreshToken: "refresh",
+          idToken: null,
+          accountId: "model-list-codex-account",
+          email: null,
+          expiresAt: Date.now() + 24 * 60 * 60 * 1_000,
+        }),
+        fetch: async () => Response.json({}),
+      },
+    });
+    await fixture.host.bb.storage.kv.delete("retry-route:thread-codex");
+
+    const entries = await fixture.host.harness.behavior.resolveProviderEnv(
+      "codex",
+      { threadId: null, projectId: null, hostId: "host-one" },
+    );
+
+    expect(entries.filter((entry) => entry.name.startsWith("CODEX_"))).toEqual([
+      {
+        name: "CODEX_OPENAI_BASE_URL",
+        value: { serverPath: "/api/v1/plugins/account-pool/http/v1" },
+        reason: "Routed through the Account Pooler hub",
+      },
+      {
+        name: "CODEX_POOL_AUTH_TOKEN",
+        value: fixture.key,
+        reason: "Account Pooler hub token for this machine",
+      },
+    ]);
+    expect(await fixture.host.bb.storage.kv.list("retry-route:")).toEqual([]);
+  });
+
   it("restores the 1-hour prompt cache only while a subscription account can serve Claude", async () => {
     const upstream = await startUpstream(async (request, response) => {
       await readRequestBody(request);
