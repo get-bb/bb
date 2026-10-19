@@ -1,3 +1,4 @@
+import { DISCORD_URL } from "../../landing/site";
 import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import {
   BB_ROWS,
@@ -282,9 +283,9 @@ export const comparison: Comparison = {
             <p>
               Yes, free at any team size. Share one bb on an always-on machine
               so everyone sees the same projects and threads, or run separate
-              instances and share work through Git. Check with the bb team about
-              your company’s access and support requirements before adopting it.
-              See the{" "}
+              instances and share work through Git. If your company has access
+              or support requirements, <a href={DISCORD_URL}>ask the bb team</a>{" "}
+              before you adopt bb. See the{" "}
               <a href="/guides/remote-dev-servers">remote setup guide</a>.
             </p>
           ),
