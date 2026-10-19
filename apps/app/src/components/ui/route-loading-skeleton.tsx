@@ -24,7 +24,8 @@ export function isRouteLoadingSkeletonMounted(): boolean {
 }
 
 const SHELL_CLASS = "flex h-full min-h-0 flex-1 flex-col overflow-hidden";
-const STANDALONE_SHELL_BLEED_CLASS = "-mx-4 -mt-4 md:-mx-5 md:-mt-5";
+const STANDALONE_SHELL_BLEED_CLASS =
+  "-mx-4 -mt-4 -mb-4 md:-mx-5 md:-mt-5 md:-mb-5";
 
 export function RouteLoadingSkeleton({
   children,
@@ -70,11 +71,13 @@ export function RouteLoadingSkeleton({
           <Skeleton className="h-4 w-40 max-w-[50%]" />
         </div>
       </div>
-      <div className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-hidden px-4">
+      <div className="mx-auto min-h-0 w-full max-w-[760px] flex-1 overflow-hidden px-4 pt-4">
         {children}
       </div>
       <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-4">
-        <Skeleton className="h-24 w-full rounded-xl" />
+        <div className="pb-7 max-md:pb-6 max-md:pointer-coarse:pb-11">
+          <Skeleton className="h-[151px] w-full rounded-xl" />
+        </div>
       </div>
     </div>
   );
