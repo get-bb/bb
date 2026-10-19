@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import {
   BB_ROWS,
   CLOSER,
@@ -181,11 +182,10 @@ export const comparison: Comparison = {
               bb is an open-source workspace where agents run work for you and
               build plugins that change the app. It works with coding agents
               such as Claude Code, Codex, and Pi. Each runs with its own tools
-              and account, and agents can
-              start and message one another. Devin is a coding agent with a
-              choice of models, local tools, and cloud sessions. bb gives you
-              one place to work with the agents you already use, plus an
-              open-source app you can customize.
+              and account, and agents can start and message one another. Devin
+              is a coding agent with a choice of models, local tools, and cloud
+              sessions. bb gives you one place to work with the agents you
+              already use, plus an open-source app you can customize.
             </p>
           ),
         },
@@ -264,6 +264,7 @@ export const comparison: Comparison = {
         },
         FAQ_REVIEW,
         FAQ_CUSTOMIZE,
+        FAQ_PLUGIN_TRUST,
         {
           question: "Can I schedule work like Devin’s automations?",
           answer: (
@@ -281,8 +282,9 @@ export const comparison: Comparison = {
             <p>
               Yes, free at any team size. Share one bb on an always-on machine
               so everyone sees the same projects and threads, or run separate
-              instances and share work through Git. bb doesn’t offer team plans,
-              SSO, or a support SLA. See the{" "}
+              instances and share work through Git. Check with the bb team about
+              your company’s access and support requirements before adopting it.
+              See the{" "}
               <a href="/guides/remote-dev-servers">remote setup guide</a>.
             </p>
           ),
