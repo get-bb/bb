@@ -2,7 +2,10 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import { useDeletedResourceRouteOwner } from "./cache-owners/resource-route-owner";
+import { createArchivedThreadBrowserOwner } from "./cache-owners/archived-thread-browser-owner";
 import { wsManager } from "../lib/ws";
+import { getDesktopBrowserApi } from "../lib/bb-desktop";
+import { sdk } from "../lib/sdk";
 import { applyThreadTimelineSignal } from "./cache-owners/thread-timeline-push-owner";
 
 export function useWebSocket(): void {
@@ -15,6 +18,11 @@ export function useWebSocket(): void {
 
   useEffect(() => {
     const cacheEffects = createRealtimeCacheEffects({ queryClient });
+    const handleArchivedThreadBrowsers = createArchivedThreadBrowserOwner({
+      desktopBrowser: getDesktopBrowserApi(),
+      readArchivedAt: async (threadId) =>
+        (await sdk.threads.get({ threadId })).archivedAt,
+    });
     const unsubscribeConnected = wsManager.onConnected(
       cacheEffects.handleConnected,
     );
@@ -25,6 +33,7 @@ export function useWebSocket(): void {
     const unsubscribe = wsManager.onChanged((message) => {
       cacheEffects.handleChanged(message);
       deletedResourceRouteChangeRef.current(message);
+      handleArchivedThreadBrowsers(message);
     });
 
     wsManager.connect();

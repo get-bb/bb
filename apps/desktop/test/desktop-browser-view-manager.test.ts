@@ -4887,3 +4887,146 @@ describe("hidden browser retention", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("archived thread discarding", () => {
+  const SWEEP_MS = 30_000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function setDiscarded(
+    manager: DesktopBrowserViewManager,
+    hostWindow: FakeHostWindow,
+    discarded: boolean,
+  ): void {
+    manager.setThreadDiscarded({
+      hostWindow,
+      request: { threadId: "thread-1", discarded },
+    });
+  }
+
+  function hideTab(
+    manager: DesktopBrowserViewManager,
+    hostWindow: FakeHostWindow,
+    tabId: string,
+  ): void {
+    manager.setVisible({ hostWindow, request: { tabId, visible: false } });
+  }
+
+  it("evicts the thread's hidden pages at once, including agent tabs and downloads, and keeps leased pages until the lease ends", () => {
+    vi.useFakeTimers();
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 1,
+      contentBounds: { width: 1000, height: 800 },
+    });
+    for (const [tabId, threadId] of [
+      ["ordinary", "thread-1"],
+      ["download", "thread-1"],
+      ["leased", "thread-1"],
+      ["other", "thread-other"],
+    ] as const) {
+      attachBrowserTab({
+        hostWindow,
+        manager,
+        tabId,
+        threadId,
+        url: `https://example.com/${tabId}`,
+      });
+      hideTab(manager, hostWindow, tabId);
+    }
+    manager.createTab({
+      hostWindow,
+      tabId: "agent",
+      threadId: "thread-1",
+      url: "https://example.com/agent",
+      viewport: { width: 800, height: 600 },
+    });
+    electronMock.fakeSessions[0]!.willDownloadListeners[0]!(
+      { preventDefault() {} },
+      { once() {} },
+      requireFakeView(1).webContents,
+    );
+    const leased = manager
+      .listTabs({ hostWebContentsId: 1, threadId: "thread-1" })
+      .find((tab) => tab.tabId === "leased")!;
+    manager.setTabLeased({ hostWebContentsId: 1, ...leased }, true);
+
+    setDiscarded(manager, hostWindow, true);
+
+    for (const index of [0, 1, 4])
+      expect(requireFakeView(index).webContents.isDestroyed()).toBe(true);
+    for (const index of [2, 3])
+      expect(requireFakeView(index).webContents.isDestroyed()).toBe(false);
+    expect(
+      manager
+        .listTabs({ hostWebContentsId: 1, threadId: "thread-1" })
+        .map((tab) => tab.tabId)
+        .sort(),
+    ).toEqual(["agent", "download", "leased", "ordinary"]);
+
+    manager.setTabLeased({ hostWebContentsId: 1, ...leased }, false);
+    vi.advanceTimersByTime(SWEEP_MS);
+    expect(requireFakeView(2).webContents.isDestroyed()).toBe(true);
+    expect(requireFakeView(3).webContents.isDestroyed()).toBe(false);
+    manager.destroyAll();
+  });
+
+  it("evicts a visible page once it is hidden, and leaves pages to the idle rule after unarchiving", async () => {
+    vi.useFakeTimers();
+    const { manager, hostWindow, view } = createRendererRecoveryFixture(91);
+
+    setDiscarded(manager, hostWindow, true);
+    expect(view.webContents.isDestroyed()).toBe(false);
+    hideTab(manager, hostWindow, "browser:a");
+    await Promise.resolve();
+    expect(view.webContents.isDestroyed()).toBe(true);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    const restored = requireFakeView(1);
+    expect(restored.webContents.navigationHistory.restore).toHaveBeenCalled();
+    setDiscarded(manager, hostWindow, false);
+    hideTab(manager, hostWindow, "browser:a");
+    await Promise.resolve();
+    expect(restored.webContents.isDestroyed()).toBe(false);
+    vi.advanceTimersByTime(6 * 60_000);
+    expect(restored.webContents.isDestroyed()).toBe(true);
+    manager.destroyAll();
+  });
+
+  it("restores an evicted agent tab as an agent tab", async () => {
+    vi.useFakeTimers();
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 1,
+      contentBounds: { width: 1000, height: 800 },
+    });
+    manager.createTab({
+      hostWindow,
+      tabId: "agent",
+      threadId: "thread-1",
+      url: "https://example.com/agent",
+      viewport: { width: 800, height: 600 },
+    });
+    setDiscarded(manager, hostWindow, true);
+    expect(requireFakeView(0).webContents.isDestroyed()).toBe(true);
+    setDiscarded(manager, hostWindow, false);
+
+    await manager.evaluate({
+      hostWindow,
+      request: {
+        tabId: "agent",
+        expression: "null",
+        world: "main",
+        channel: "test",
+      },
+    });
+    vi.advanceTimersByTime(6 * 60_000);
+    expect(requireFakeView(1).webContents.isDestroyed()).toBe(false);
+    manager.destroyAll();
+  });
+});

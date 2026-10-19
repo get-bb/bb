@@ -31,6 +31,7 @@ import {
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
   type BbDesktopBrowserSetBoundsRequest,
+  type BbDesktopBrowserSetThreadDiscardedRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserSnapshot,
   type BbDesktopBrowserState,
@@ -212,6 +213,7 @@ interface ColdBrowserTab {
   faviconUrls: string[];
   history: NavigationEntry[];
   historyIndex: number;
+  agentOwned: boolean;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
@@ -322,6 +324,9 @@ export interface DesktopBrowserViewManager {
   session(): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
+  setThreadDiscarded(
+    args: HostScopedRequestArgs<BbDesktopBrowserSetThreadDiscardedRequest>,
+  ): void;
   focus(args: HostScopedTabArgs): void;
   navigate(args: HostScopedRequestArgs<BbDesktopBrowserNavigateRequest>): void;
   goBack(args: HostScopedTabArgs): void;
@@ -502,6 +507,7 @@ export function createDesktopBrowserViewManager(
     Map<string, ColdBrowserTab>
   >();
   let sweepTimer: ReturnType<typeof setInterval> | null = null;
+  const discardedThreads = new Set<string>();
   const pendingHostFocusReturns = new WeakSet<DesktopBrowserHostWindow>();
 
   function coldTabsFor(
@@ -515,10 +521,18 @@ export function createDesktopBrowserViewManager(
     return tabs;
   }
 
+  function isThreadDiscarded(entry: BrowserViewEntry): boolean {
+    return discardedThreads.has(
+      `${entry.hostWindow.webContents.id}:${entry.threadId}`,
+    );
+  }
+
   function setEntryVisible(entry: BrowserViewEntry, visible: boolean): void {
     if (entry.visible && !visible) entry.idleSince = Date.now();
     entry.visible = visible;
-    if (!visible) scheduleSweep();
+    if (visible) return;
+    scheduleSweep();
+    if (isThreadDiscarded(entry)) queueMicrotask(evictIdleEntries);
   }
 
   function scheduleSweep(): void {
@@ -529,7 +543,8 @@ export function createDesktopBrowserViewManager(
         ...new Set([entries, ...serverEntries.values()]),
       ].some((registry) =>
         [...registry.values()].some(
-          (entry) => !entry.visible && !entry.agentOwned,
+          (entry) =>
+            !entry.visible && (!entry.agentOwned || isThreadDiscarded(entry)),
         ),
       );
       if (!hasHiddenUserPage && sweepTimer !== null) {
@@ -542,15 +557,16 @@ export function createDesktopBrowserViewManager(
 
   function isEvictable(entry: BrowserViewEntry): boolean {
     const webContents = entry.webContents;
+    const discarded = isThreadDiscarded(entry);
     return (
       !entry.visible &&
-      !entry.agentOwned &&
+      (!entry.agentOwned || discarded) &&
       entry.pendingOperations === 0 &&
       entry.popupWindows.size === 0 &&
       !webContents.isDestroyed() &&
       !automationControlled.has(webContents) &&
       !leasedPages.has(webContents) &&
-      !downloadingPages.has(webContents) &&
+      (!downloadingPages.has(webContents) || discarded) &&
       !webContents.debugger.isAttached() &&
       webContents.navigationHistory.length() > 0
     );
@@ -568,6 +584,7 @@ export function createDesktopBrowserViewManager(
       faviconUrls: entry.faviconUrls,
       history: entry.webContents.navigationHistory.getAllEntries(),
       historyIndex: entry.webContents.navigationHistory.getActiveIndex(),
+      agentOwned: entry.agentOwned,
     });
     destroyEntry(entry.hostWindow, key, entry);
   }
@@ -578,14 +595,18 @@ export function createDesktopBrowserViewManager(
       .flatMap((registry) => [...registry])
       .filter(([, entry]) => isEvictable(entry))
       .sort(([, a], [, b]) => b.idleSince - a.idleSince);
-    candidates.forEach(([key, entry], index) => {
+    let retained = 0;
+    for (const [key, entry] of candidates) {
       if (
-        index < HIDDEN_PAGE_LIMIT &&
+        !isThreadDiscarded(entry) &&
+        retained < HIDDEN_PAGE_LIMIT &&
         now - entry.idleSince < HIDDEN_PAGE_IDLE_MS
-      )
-        return;
+      ) {
+        retained += 1;
+        continue;
+      }
       evictEntry(key, entry);
-    });
+    }
   }
 
   function warmEntry(key: string): BrowserViewEntry | undefined {
@@ -599,8 +620,9 @@ export function createDesktopBrowserViewManager(
       hostWindow: cold.hostWindow,
       tabId: cold.state.tabId,
       threadId: cold.threadId,
-      backgroundThrottling: true,
+      backgroundThrottling: !cold.agentOwned,
     });
+    entry.agentOwned = cold.agentOwned;
     entry.generation = cold.generation;
     entry.faviconUrl = cold.faviconUrl;
     entry.faviconUrls = cold.faviconUrls;
@@ -1674,6 +1696,16 @@ export function createDesktopBrowserViewManager(
       }
       pushState(hostWindow, request.tabId, entry);
     },
+    setThreadDiscarded({ hostWindow, request }) {
+      const key = `${hostWindow.webContents.id}:${request.threadId}`;
+      if (!request.discarded) {
+        discardedThreads.delete(key);
+        return;
+      }
+      discardedThreads.add(key);
+      scheduleSweep();
+      evictIdleEntries();
+    },
     detach({ hostWindow, tabId }) {
       coldTabsFor(entries).delete(browserViewKey(hostWindow, tabId));
       destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
@@ -1826,6 +1858,9 @@ export function createDesktopBrowserViewManager(
     releaseWindow(hostWebContentsId) {
       resizingHostIds.delete(hostWebContentsId);
       const prefix = `${hostWebContentsId}:`;
+      for (const key of [...discardedThreads]) {
+        if (key.startsWith(prefix)) discardedThreads.delete(key);
+      }
       for (const registry of new Set([entries, ...serverEntries.values()])) {
         for (const key of [...coldTabsFor(registry).keys()]) {
           if (key.startsWith(prefix)) coldTabsFor(registry).delete(key);
@@ -1839,6 +1874,7 @@ export function createDesktopBrowserViewManager(
     destroyAll() {
       if (sweepTimer !== null) clearInterval(sweepTimer);
       sweepTimer = null;
+      discardedThreads.clear();
       resizingHostIds.clear();
       for (const popupWindow of [...popupWindows]) {
         if (!popupWindow.isDestroyed()) {

@@ -14,6 +14,7 @@ import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
@@ -79,6 +80,9 @@ vi.mock("electron", () => ({
 
 type AttachCall = Parameters<DesktopBrowserViewManager["attach"]>[0];
 type DetachCall = Parameters<DesktopBrowserViewManager["detach"]>[0];
+type SetThreadDiscardedCall = Parameters<
+  DesktopBrowserViewManager["setThreadDiscarded"]
+>[0];
 type FindInPageCall = Parameters<DesktopBrowserViewManager["findInPage"]>[0];
 type StopFindInPageCall = Parameters<
   DesktopBrowserViewManager["stopFindInPage"]
@@ -175,6 +179,12 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   detach(args: DetachCall): void {
     this.detachCalls.push(args);
+  }
+
+  public readonly setThreadDiscardedCalls: SetThreadDiscardedCall[] = [];
+
+  setThreadDiscarded(args: SetThreadDiscardedCall): void {
+    this.setThreadDiscardedCalls.push(args);
   }
 
   endWindowResize(): void {}
@@ -354,6 +364,38 @@ describe("registerDesktopBrowserIpc", () => {
     ]);
     expect(manager.focusCalls).toEqual([
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
+    ]);
+  });
+
+  it("dispatches thread discarding only for valid requests from BrowserWindow-owned senders", () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const channel = BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL;
+    for (const payload of [
+      { threadId: "", discarded: true },
+      { threadId: "thread-1" },
+      { threadId: "thread-1", discarded: true, extra: true },
+      { tabId: "browser:a", discarded: true },
+    ]) {
+      sendBrowserIpc({ channel, payload, sender: renderer.sender });
+    }
+    sendBrowserIpc({
+      channel,
+      payload: { threadId: "thread-1", discarded: true },
+      sender: createUntrustedSender(),
+    });
+    sendBrowserIpc({
+      channel,
+      payload: { threadId: "thread-1", discarded: false },
+      sender: renderer.sender,
+    });
+
+    expect(manager.setThreadDiscardedCalls).toEqual([
+      {
+        hostWindow: renderer.hostWindow,
+        request: { threadId: "thread-1", discarded: false },
+      },
     ]);
   });
 

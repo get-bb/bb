@@ -43,6 +43,13 @@ JavaScript state is lost. Hiding, moving, stopping, focusing, searching, or
 closing a cold tab does not restore it. CDP targets cover only resident pages,
 so a cold tab leaves the target list until it is restored.
 
+Archiving a thread evicts its hidden pages in each desktop window at once,
+including agent-created tabs and pages with downloads; a page on screen is
+evicted once it is hidden. Control leases, attached debuggers, open popups, and
+in-flight evaluations or captures still keep a page until they end. Evicted
+tabs keep their saved tabs and restore like any cold tab. Unarchiving stops the
+immediate eviction and leaves the thread's pages to the idle rules above.
+
 Switching servers hides each server's native pages and popups, pauses media,
 and revokes automation leases. Returning to the same server origin reattaches
 resident pages with their unsaved state; cold pages restore from history when
