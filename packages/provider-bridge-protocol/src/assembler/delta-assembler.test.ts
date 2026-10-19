@@ -122,6 +122,40 @@ describe("delta assembler", () => {
     expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
   });
 
+  it("records main-run state only on an open turn", () => {
+    const assembler = createAssembler();
+    expect(
+      assemble(assembler, { kind: "turn.mainRun", state: "idle" }),
+    ).toEqual([]);
+    expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
+
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    expect(
+      assemble(
+        assembler,
+        { kind: "turn.mainRun", state: "idle" },
+        { kind: "turn.mainRun", state: "running" },
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(turnId),
+        state: "idle",
+      }),
+      expect.objectContaining({
+        type: "turn/mainRun/updated",
+        scope: turnScope(turnId),
+        state: "running",
+      }),
+    ]);
+
+    assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    expect(
+      assemble(assembler, { kind: "turn.mainRun", state: "running" }),
+    ).toEqual([]);
+  });
+
   it("mints a fresh turn id for every turn (never reuses across boundaries)", () => {
     const assembler = createAssembler();
     const first = assemble(assembler, { kind: "turn.open" });
