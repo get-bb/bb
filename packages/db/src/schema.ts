@@ -1187,6 +1187,10 @@ export const terminalSessions = sqliteTable(
       table.environmentId,
       table.status,
     ),
+    index("terminal_sessions_status_thread_idx").on(
+      table.status,
+      table.threadId,
+    ),
     index("terminal_sessions_host_status_idx").on(table.hostId, table.status),
     index("terminal_sessions_daemon_session_idx").on(table.daemonSessionId),
   ],

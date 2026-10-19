@@ -501,6 +501,31 @@ describe("ModelReasoningPicker", () => {
     ).not.toBeNull();
   });
 
+  it.each(["cached", "uncached"])(
+    "keeps the selected model visible while its %s catalog loads",
+    (cache) => {
+      renderPicker({
+        modelIsLoading: true,
+        modelValue: "gpt-5.5",
+        modelOptions: cache === "cached" ? codexModels : [],
+        pickerReasoningOptions: cache === "cached" ? reasoningOptions : [],
+      });
+      const trigger = screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      });
+
+      expect(trigger.textContent).toContain("5.5");
+      expect(trigger.textContent).toContain("Medium");
+      expect(trigger.textContent).not.toContain("Loading models");
+
+      fireEvent.click(trigger);
+
+      expect(
+        screen.getByRole("status", { name: "Loading models" }),
+      ).not.toBeNull();
+    },
+  );
+
   it("holds the trigger and model-list layout with skeletons while loading", () => {
     renderPicker({
       modelOptions: [],

@@ -146,6 +146,14 @@ deltas and owns every timeline invariant:
   (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
   turn; item/stream deltas never do. Accepted input queues until a turn
   opens and drains into it.
+- **Held turns.** A bridge that keeps a logical turn open after the
+  provider's main run ended (Claude Code holds it while background agents
+  or workflows run) sends `turn.mainRun { state: "idle" }`, and
+  `turn.mainRun { state: "running" }` when the main run starts again. The
+  assembler records it as `turn/mainRun/updated` on the open turn. The
+  thread stays active, but the server delivers `queue-if-active` messages
+  into the held turn as steers instead of queueing them until the turn
+  completes.
 - **Item lifecycle.** Delta-first streams get a synthesized `item/started`;
   `item.close` always carries the full terminal item shape and is applied
   uniformly (paired close, reclassifying dual-settle, or bare

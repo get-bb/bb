@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { runVcsProcess } from "@bb/process-utils";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWatchErrorMessage } from "./watch-error.js";
@@ -35,32 +36,39 @@ interface WorkspaceRootIgnores {
 }
 
 function runGitIgnoredMatchingStatus(cwd: string): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    execFile(
-      "git",
-      [
-        "--no-optional-locks",
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--ignored=matching",
-        "--untracked-files=normal",
-      ],
-      {
-        cwd,
-        encoding: "utf8",
-        maxBuffer: REPOSITORY_STATUS_MAX_BUFFER_BYTES,
-        timeout: REPOSITORY_STATUS_TIMEOUT_MS,
-      },
-      (error, stdout) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(stdout);
-      },
-    );
-  });
+  const gitArgs = [
+    "--no-optional-locks",
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--ignored=matching",
+    "--untracked-files=normal",
+  ];
+  return runVcsProcess(
+    "git",
+    gitArgs,
+    () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          "git",
+          gitArgs,
+          {
+            cwd,
+            encoding: "utf8",
+            maxBuffer: REPOSITORY_STATUS_MAX_BUFFER_BYTES,
+            timeout: REPOSITORY_STATUS_TIMEOUT_MS,
+          },
+          (error, stdout) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(stdout);
+          },
+        );
+      }),
+    { priority: "background" },
+  );
 }
 
 function collectStatusDirectories(

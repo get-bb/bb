@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_COUNT_PILL_CLASS,
+  PROMPT_STACK_TRAILING_SLOT_CLASS,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 
 export function QueuedMessagesCountPill({
   arrivals,
@@ -26,17 +29,13 @@ export function QueuedMessagesCountPill({
   }
   const bumped = display.arrivals > 0;
   return (
-    <span
-      className={cn(
-        "ml-auto mr-px flex shrink-0 justify-center",
-        PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
-      )}
-    >
+    <span className={PROMPT_STACK_TRAILING_SLOT_CLASS}>
       <span
         key={display.arrivals}
         data-queued-messages-count=""
         className={cn(
-          "relative inline-flex h-4 min-w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground",
+          PROMPT_STACK_COUNT_PILL_CLASS,
+          "relative overflow-hidden",
           bumped && "bb-count-flash",
         )}
       >

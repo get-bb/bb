@@ -86,7 +86,7 @@ export function createBrowserAutomationCli(deps: {
     name: "browser-automation",
     summary: "Persistent DevBrowser desktop and headless sessions",
     description:
-      "Sessions belong to the thread that opened them and expire after 30 minutes idle.\nA stopped or expired session cannot be resumed; open a new one.",
+      "Sessions belong to the thread that opened them. run, pages, and screenshot renew expiry to 30 minutes after use, capped at 8 hours from creation.\nDesktop sessions also expire at their non-renewable control lease/connection deadline (at most 30 minutes).\nlist and live preview do not renew expiry. A stopped or expired session cannot be resumed; open a new one.",
     commands: {
       open: cliCommand({
         summary:

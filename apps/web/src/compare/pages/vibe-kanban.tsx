@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import type { CompareHighlight, Comparison } from "../compare-types";
 import {
   BB_ROWS,
@@ -83,6 +84,20 @@ export const comparison: Comparison = {
       title: "Switching from Vibe Kanban",
       items: [
         {
+          question: "When should I stay with Vibe Kanban?",
+          answer: (
+            <p>
+              If Vibe Kanban’s local workspaces already meet your needs, staying
+              avoids a migration: those workspaces continue to work after the
+              cloud shutdown.{" "}
+              <a href="https://www.vibekanban.com/blog/shutdown">
+                Vibe Kanban’s shutdown announcement
+              </a>
+              .
+            </p>
+          ),
+        },
+        {
           question: "Is Vibe Kanban shutting down?",
           answer: (
             <p>
@@ -149,6 +164,7 @@ export const comparison: Comparison = {
             </ol>
           ),
         },
+        FAQ_PLUGIN_TRUST,
         FAQ_REVIEW,
         FAQ_AGENTS,
       ],

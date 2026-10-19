@@ -74,6 +74,10 @@ import {
   listArchivedThreadsPendingTeardown,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
+import {
+  countTerminalSessions,
+  listTerminalSessions,
+} from "../src/data/terminal-sessions.js";
 
 type SqliteParameter = string | number | bigint | Buffer | null;
 type LoggedSqlPredicate = (fields: SlowDbQueryLogFields) => boolean;
@@ -1305,6 +1309,42 @@ describe("slow query index plans", () => {
       );
       expect(details).not.toContain("CORRELATED SCALAR SUBQUERY");
       expect(details).not.toContain("SCAN threads");
+      expect(details).not.toContain("SCAN terminal_sessions");
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("lists live terminals without walking exited session history", () => {
+    const { db } = setup();
+    try {
+      const statements = captureStatements(db, () => {
+        listTerminalSessions(db, { scope: { kind: "all" }, visible: true });
+      });
+      const details = queryPlanDetails({ db, ...statements[0]! });
+      expect(details).not.toContain("SCAN terminal_sessions");
+      expect(details).toMatch(
+        /SEARCH terminal_sessions USING INDEX \S+ \(status=\?\)/,
+      );
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("counts standalone terminals by host and live status", () => {
+    const { db, host } = setup();
+    try {
+      const statements = captureStatements(db, () => {
+        countTerminalSessions(db, {
+          scope: { kind: "host-path", hostId: host.id, cwd: null },
+          visible: true,
+        });
+      });
+      const details = queryPlanDetails({ db, ...statements[0]! });
+      expect(details).not.toContain("SCAN terminal_sessions");
+      expect(details).toMatch(
+        /SEARCH terminal_sessions USING INDEX \S+ \(host_id=\? AND status=\?\)/,
+      );
     } finally {
       db.$client.close();
     }

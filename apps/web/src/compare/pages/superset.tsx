@@ -1,3 +1,4 @@
+import { FAQ_PLUGIN_TRUST } from "../plugin-trust";
 import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
 import {
   BB_ROWS,
@@ -215,6 +216,19 @@ export const comparison: Comparison = {
       title: "Switching from Superset",
       items: [
         {
+          question: "When is Superset a better fit?",
+          answer: (
+            <p>
+              Superset is a better fit if you want to see active ports grouped
+              by workspace and stop their processes directly from the app.{" "}
+              <a href="https://docs.superset.sh/ports">
+                Superset’s port management documentation
+              </a>
+              .
+            </p>
+          ),
+        },
+        {
           question: "What’s the difference between bb and Superset?",
           answer: (
             <p>
@@ -279,6 +293,7 @@ export const comparison: Comparison = {
       title: "Working in bb",
       items: [
         FAQ_CUSTOMIZE,
+        FAQ_PLUGIN_TRUST,
         faqScript(null),
         FAQ_REVIEW,
         faqSchedule("Superset’s automations only repeat and need Pro."),

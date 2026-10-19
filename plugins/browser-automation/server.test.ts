@@ -518,6 +518,166 @@ describe("server session cleanup", () => {
   const hostCalls = (h: Awaited<ReturnType<typeof setup>>, method: string) =>
     h.worker.mock.calls.filter(([call]) => call.method === method);
 
+  it("renews real operations beyond 30 minutes and closes after 30 minutes idle", async () => {
+    vi.useFakeTimers();
+    const h = await setup();
+    try {
+      const session = await openLocal(h);
+      expect(hostCalls(h, "open")[0]?.[0]).toMatchObject({
+        input: {
+          expiresAt: session.createdAt + 8 * 60 * 60_000,
+          idleTimeoutMs: 30 * 60_000,
+        },
+      });
+      for (const [index, method] of ["run", "pages", "screenshot"].entries()) {
+        vi.setSystemTime(session.createdAt + (index + 1) * 20 * 60_000);
+        await h.harness.behavior.callRpc(method, {
+          ...ownedBy(session.id),
+          ...(method === "run" ? { script: "1" } : {}),
+        });
+        expect((await listed(h, session.id))?.expiresAt).toBe(
+          Date.now() + 30 * 60_000,
+        );
+      }
+      await vi.advanceTimersByTimeAsync(29 * 60_000);
+      expect((await listed(h, session.id))?.state).toBe("ready");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect((await listed(h, session.id))?.state).toBe("closed");
+      expect(hostCalls(h, "close")).toHaveLength(1);
+    } finally {
+      await h.harness.lifecycle.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let list or automatic preview polling keep an abandoned session alive", async () => {
+    vi.useFakeTimers();
+    const h = await setup();
+    try {
+      const session = await openLocal(h);
+      h.worker.mockResolvedValue({ frame: null });
+      vi.setSystemTime(session.createdAt + 29 * 60_000);
+      await h.harness.behavior.callRpc("preview", ownedBy(session.id));
+      expect((await listed(h, session.id))?.expiresAt).toBe(session.expiresAt);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect((await listed(h, session.id))?.state).toBe("closed");
+    } finally {
+      await h.harness.lifecycle.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("caps renewal at eight hours and closes work still running at the cap", async () => {
+    vi.useFakeTimers();
+    const h = await setup();
+    try {
+      const session = await openLocal(h);
+      const input = { ...ownedBy(session.id), script: "1" };
+      for (let minute = 20; minute <= 460; minute += 20) {
+        vi.setSystemTime(session.createdAt + minute * 60_000);
+        await h.harness.behavior.callRpc("run", input);
+      }
+      const deadline = session.createdAt + 8 * 60 * 60_000;
+      expect((await listed(h, session.id))?.expiresAt).toBe(deadline);
+      vi.setSystemTime(deadline - 60_000);
+      let finishRun!: () => void;
+      const started = new Promise<void>((resolve) => {
+        h.worker.mockImplementation(async ({ method }) => {
+          if (method === "run") {
+            resolve();
+            await new Promise<void>((done) => (finishRun = done));
+            return { text: "done", images: [], exitCode: 0 };
+          }
+          return null;
+        });
+      });
+      const running = h.harness.behavior.callRpc("run", input);
+      await started;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect((await listed(h, session.id))?.state).toBe("closed");
+      finishRun();
+      await running;
+      await expect(h.harness.behavior.callRpc("run", input)).rejects.toThrow(
+        "stopped or expired",
+      );
+    } finally {
+      await h.harness.lifecycle.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["run", "preview"])(
+    "rejects expired %s before the cleanup timer runs",
+    async (method) => {
+      vi.useFakeTimers();
+      const h = await setup();
+      try {
+        const session = await openLocal(h);
+        vi.setSystemTime(session.expiresAt);
+        const operation = h.harness.behavior.callRpc(method, {
+          ...ownedBy(session.id),
+          ...(method === "run" ? { script: "1" } : {}),
+        });
+        if (method === "run")
+          await expect(operation).rejects.toThrow("expired");
+        else expect(await operation).toMatchObject({ frame: null });
+        expect(hostCalls(h, method)).toHaveLength(0);
+        expect((await listed(h, session.id))?.expiresAt).toBe(
+          session.expiresAt,
+        );
+      } finally {
+        await h.harness.lifecycle.dispose();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([
+    [10 * 60_000, 20 * 60_000],
+    [20 * 60_000, 10 * 60_000],
+  ])(
+    "preserves the earlier desktop lease (%i) or connection (%i) deadline",
+    async (leaseMs, connectionMs) => {
+      vi.useFakeTimers();
+      const h = await setup();
+      try {
+        h.harness.sdk.stub(
+          "experimental_desktopBrowsers.acquireControl",
+          async () => ({
+            leaseId: "lease",
+            expiresAt: Date.now() + leaseMs,
+          }),
+        );
+        h.harness.sdk.stub(
+          "experimental_desktopBrowsers.openConnection",
+          async () => ({
+            hostId: "desktop-host",
+            expiresAt: Date.now() + connectionMs,
+            wsEndpoint: "ws://127.0.0.1:9999/cdp",
+          }),
+        );
+        const session = await h.open();
+        expect(session.expiresAt).toBe(session.createdAt + 10 * 60_000);
+        expect(hostCalls(h, "open")[0]?.[0]).toMatchObject({
+          input: { expiresAt: session.expiresAt },
+        });
+        vi.setSystemTime(session.expiresAt - 60_000);
+        await h.harness.behavior.callRpc("run", {
+          ...ownedBy(session.id),
+          script: "1",
+        });
+        expect((await listed(h, session.id))?.expiresAt).toBe(
+          session.expiresAt,
+        );
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect((await listed(h, session.id))?.state).toBe("closed");
+      } finally {
+        await h.harness.lifecycle.dispose();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("rejects close when the host cannot release the browser and retries on the next close", async () => {
     const h = await setup();
     try {

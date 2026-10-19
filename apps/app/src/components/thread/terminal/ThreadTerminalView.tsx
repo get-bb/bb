@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -29,6 +30,7 @@ import type {
   TerminalSession,
 } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -47,7 +49,11 @@ import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
 import { TerminalMobileControls } from "./TerminalMobileControls";
-import { attachTerminalCopyShortcut } from "./terminal-copy-shortcut";
+import {
+  createTerminalClipboardKeyHandler,
+  createTerminalSelectionClipboardHandler,
+  pasteTerminalClipboard,
+} from "./terminal-clipboard";
 import {
   applyTerminalControl,
   encodeTerminalArrow,
@@ -668,8 +674,6 @@ export function ThreadTerminalView({
   const [terminalReady, setTerminalReady] = useState(false);
   const [activeSelection, setActiveSelection] =
     useState<MessageProseSelection | null>(null);
-  const [hoveredTerminalLink, setHoveredTerminalLink] =
-    useState<TerminalLinkTarget | null>(null);
   const [pendingTerminalLink, setPendingTerminalLink] =
     useState<TerminalLinkTarget | null>(null);
   const [connectionNotice, setConnectionNotice] =
@@ -701,6 +705,10 @@ export function ThreadTerminalView({
   const sessionRef = useRef(session);
   const lastStatusNoticeRef = useRef<TerminalSessionStatusNotice | null>(null);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
+  const systemConfig = useSystemConfig();
+  const copyOnSelectRef = useRef(false);
+  copyOnSelectRef.current =
+    systemConfig.data?.generalSettings.terminalCopyOnSelect === true;
   const preferredTheme = usePreferredTheme();
   const appThemeEpoch = useAppThemeEpoch();
   const appNavigation = useAppNavigationHost();
@@ -720,6 +728,17 @@ export function ThreadTerminalView({
   onSessionChangeRef.current = onSessionChange;
   onTitleChangeRef.current = onTitleChange;
 
+  const copySelectedText = useMemo(
+    () =>
+      createTerminalSelectionClipboardHandler((text) => {
+        void copyToClipboardWithToast(text, {
+          successMessage: "Selection copied",
+          errorMessage: "Failed to copy selection",
+        });
+      }),
+    [],
+  );
+
   const reportTerminalSelection = useCallback(
     (anchor: SelectionAnchor | null) => {
       const terminal = terminalRef.current;
@@ -728,15 +747,22 @@ export function ThreadTerminalView({
         setActiveSelection(null);
         return;
       }
+      if (pointerIsDownRef.current) {
+        return;
+      }
+      const text = terminal.getSelection();
+      if (copyOnSelectRef.current) {
+        copySelectedText(text);
+      }
       setActiveSelection(
         buildTerminalSelection({
           anchor,
           containerElement: container,
-          text: terminal.getSelection(),
+          text,
         }),
       );
     },
-    [],
+    [copySelectedText],
   );
 
   const clearTerminalSelection = useCallback(() => {
@@ -747,7 +773,6 @@ export function ThreadTerminalView({
   const updateHoveredTerminalLink = useCallback(
     (target: TerminalLinkTarget | null) => {
       hoveredTerminalLinkRef.current = target;
-      setHoveredTerminalLink(target);
     },
     [],
   );
@@ -797,6 +822,24 @@ export function ThreadTerminalView({
     [],
   );
 
+  const pasteFromClipboard = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (terminal === null || sessionStatusRef.current !== "running") {
+      return;
+    }
+    void pasteTerminalClipboard({
+      terminal,
+      readText: () => navigator.clipboard.readText(),
+      isActive: () =>
+        terminalRef.current === terminal &&
+        sessionStatusRef.current === "running",
+    }).catch(() => {
+      appToast.error(
+        "Unable to read clipboard. Use your keyboard’s Paste action.",
+      );
+    });
+  }, []);
+
   const handleSelectionAddToChat = useCallback(
     (text: string) => {
       onSelectionAddToChat?.(text);
@@ -807,6 +850,12 @@ export function ThreadTerminalView({
 
   const handleTerminalPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) {
+        if (event.button === 1) {
+          terminalRef.current?.focus();
+        }
+        return;
+      }
       pointerIsDownRef.current = true;
       pointerStartPointRef.current = anchorPointFromMouseEvent(event);
     },
@@ -814,7 +863,10 @@ export function ThreadTerminalView({
   );
 
   const handleTerminalPointerRelease = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: Pick<PointerEvent, "button" | "clientX" | "clientY">) => {
+      if (event.button !== 0) {
+        return;
+      }
       const anchor = selectionAnchorFromPointerRelease(
         pointerStartPointRef.current,
         { clientX: event.clientX, clientY: event.clientY },
@@ -836,6 +888,25 @@ export function ThreadTerminalView({
       reportTerminalSelection(lastPointerReleaseAnchorRef.current);
     });
   }, [reportTerminalSelection]);
+
+  useEffect(() => {
+    const release = (event: PointerEvent) => {
+      if (pointerIsDownRef.current) {
+        handleTerminalPointerRelease(event);
+      }
+    };
+    const cancel = () => {
+      if (pointerIsDownRef.current) {
+        handleTerminalPointerCancel();
+      }
+    };
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", cancel);
+    return () => {
+      document.removeEventListener("pointerup", release);
+      document.removeEventListener("pointercancel", cancel);
+    };
+  }, [handleTerminalPointerRelease, handleTerminalPointerCancel]);
 
   const handleTerminalTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
@@ -877,12 +948,13 @@ export function ThreadTerminalView({
   }, []);
 
   useEffect(() => {
+    copySelectedText("");
     touchFocusGestureRef.current = null;
     setActiveSelection(null);
     updateHoveredTerminalLink(null);
     setPendingTerminalLink(null);
     setContextMenuState({ link: null, selectionText: "" });
-  }, [session.id, updateHoveredTerminalLink]);
+  }, [copySelectedText, session.id, updateHoveredTerminalLink]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -953,12 +1025,13 @@ export function ThreadTerminalView({
         theme: buildTerminalTheme(),
       });
       terminalRef.current = terminal;
-      attachTerminalCopyShortcut({
-        copy: (text) => {
-          void copyToClipboardWithToast(text, { successMessage: null });
-        },
-        terminal,
-      });
+      terminal.attachCustomKeyEventHandler(
+        createTerminalClipboardKeyHandler({
+          terminal,
+          copy: (text) => copyTerminalContextValue(text, "Selection copied"),
+          paste: pasteFromClipboard,
+        }),
+      );
       fitAddon = new LoadedFitAddon();
       terminal.loadAddon(fitAddon);
       terminal.loadAddon(new Unicode11Addon());
@@ -1205,6 +1278,8 @@ export function ThreadTerminalView({
       scheduleFitRef.current = null;
     };
   }, [
+    copyTerminalContextValue,
+    pasteFromClipboard,
     reportTerminalSelection,
     requestOpenTerminalLink,
     session.id,
@@ -1257,9 +1332,6 @@ export function ThreadTerminalView({
           : null;
   const contextMenuLink = contextMenuState.link;
   const contextMenuSelectionText = contextMenuState.selectionText;
-  const hasTerminalContextMenuTarget =
-    hoveredTerminalLink !== null || activeSelection !== null;
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ContextMenu
@@ -1269,7 +1341,7 @@ export function ThreadTerminalView({
           }
         }}
       >
-        <ContextMenuTrigger asChild disabled={!hasTerminalContextMenuTarget}>
+        <ContextMenuTrigger asChild>
           <div
             className="relative min-h-0 w-full flex-1 overflow-hidden bg-sidebar p-2"
             onContextMenuCapture={captureTerminalContextMenu}
@@ -1295,7 +1367,13 @@ export function ThreadTerminalView({
             ) : null}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-36">
+        <ContextMenuContent
+          className="min-w-36"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            terminalRef.current?.focus();
+          }}
+        >
           {contextMenuLink !== null ? (
             <>
               <ContextMenuItem
@@ -1327,6 +1405,15 @@ export function ThreadTerminalView({
               Copy
             </ContextMenuItem>
           ) : null}
+          {contextMenuLink !== null || contextMenuSelectionText.length > 0 ? (
+            <ContextMenuSeparator />
+          ) : null}
+          <ContextMenuItem
+            disabled={session.status !== "running"}
+            onSelect={pasteFromClipboard}
+          >
+            Paste
+          </ContextMenuItem>
         </ContextMenuContent>
         <TimelineSelectionMenu
           selection={activeSelection}
@@ -1377,26 +1464,8 @@ export function ThreadTerminalView({
             else terminal.focus();
           }}
           onPaste={() => {
-            const terminal = terminalRef.current;
-            if (!terminal) return;
-            if (!navigator.clipboard?.readText) {
-              appToast.error(
-                "Clipboard unavailable. Use your keyboard’s Paste action.",
-              );
-              return;
-            }
-            void navigator.clipboard
-              .readText()
-              .then((text) => {
-                if (terminalRef.current !== terminal) return;
-                changeControlActive(false);
-                terminal.paste(text);
-              })
-              .catch(() => {
-                appToast.error(
-                  "Clipboard unavailable. Use your keyboard’s Paste action.",
-                );
-              });
+            changeControlActive(false);
+            pasteFromClipboard();
           }}
         />
       ) : null}

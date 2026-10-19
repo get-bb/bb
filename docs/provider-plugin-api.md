@@ -127,7 +127,7 @@ immediately, and refreshes it in the background once it is 10 minutes old.
 `"host"` scope means the bridge answers from account or agent state and
 ignores the workspace path, so bb probes once per machine. A stored answer is
 discarded when the bridge fingerprint changes (plugin bundle digest, bridge
-options, env passthrough). A list that depends on login state, CLI version, or
+options, env passthrough, contributed provider environment). A list that depends on login state, CLI version, or
 environment values is corrected only by the next refresh.
 
 `env.passthrough` names the daemon environment variables the bridge may read:
@@ -144,6 +144,13 @@ directory for an existing thread or a reused environment, and the project's
 checkout on the chosen machine for a new thread in a project. It is absent when
 neither is known (a thread without a project, or a project with no checkout on
 that machine). A `host`-scoped provider never receives it.
+
+Every `model/list` carries `envVars`: the provider environment plugins
+contribute for that machine through `bb.providers.experimental_contributeEnv`,
+resolved with a `null` thread and project and expanded like a session's
+`options.envVars`. A bridge whose catalog depends on credentials or routing,
+such as Codex behind the Account Pooler, launches its listing process with
+these values so the picker matches what new threads can use.
 
 Still experimental on the declaration (see api_to_audit.md):
 

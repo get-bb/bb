@@ -9,6 +9,20 @@ const blockTags = new Set([
   "FOOTER",
 ]);
 
+const blockElements =
+  "p, div, section, article, header, footer, h1, h2, h3, h4, h5, h6, blockquote, details, summary, ul, ol, li, table, thead, tbody, tfoot, tr, th, td";
+const taskCheckbox =
+  ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]';
+const requiredChildren: Record<string, string> = {
+  UL: "li",
+  OL: "li",
+  TR: "th, td",
+  THEAD: "tr",
+  TBODY: "tr",
+  TFOOT: "tr",
+  TABLE: "tr, thead, tbody, tfoot",
+};
+
 const mathElements = ".katex-display, .katex, .katex-error";
 
 function mathRoot(node: Node): Element | null {
@@ -18,6 +32,40 @@ function mathRoot(node: Node): Element | null {
     element?.closest(".katex, .katex-error") ??
     null
   );
+}
+
+function selectedContent(range: Range, node: Node): boolean {
+  if (!range.intersectsNode(node)) return false;
+  if (node instanceof Element) return node.tagName === "IMG";
+  if (!(node instanceof Text) || node.parentElement?.closest(omittedElements))
+    return false;
+  const start = node === range.startContainer ? range.startOffset : 0;
+  const end = node === range.endContainer ? range.endOffset : node.length;
+  return node.data.slice(start, end).trim() !== "";
+}
+
+function trimRangeToContent(range: Range): Range {
+  const walker = document.createTreeWalker(
+    range.commonAncestorContainer,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+    (node) =>
+      selectedContent(range, node)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP,
+  );
+  const first = walker.nextNode();
+  if (!first) return range;
+  let last = first;
+  for (let node = walker.nextNode(); node; node = walker.nextNode())
+    last = node;
+  const trimmed = range.cloneRange();
+  if (first instanceof Text && first !== range.startContainer)
+    trimmed.setStart(first, 0);
+  else if (first instanceof Element) trimmed.setStartBefore(first);
+  if (last instanceof Text && last !== range.endContainer)
+    trimmed.setEnd(last, last.length);
+  else if (last instanceof Element) trimmed.setEndAfter(last);
+  return trimmed;
 }
 
 function expandRangeToMath(range: Range): Range {
@@ -51,6 +99,13 @@ function replaceMathWithMathMl(container: Element): void {
     });
     element.replaceWith(math);
   }
+}
+
+function isBareUrl(link: Element): boolean {
+  const text = link.textContent?.trim() ?? "";
+  return [text, `http://${text}`, `https://${text}`, `mailto:${text}`].includes(
+    link.getAttribute("href") ?? "",
+  );
 }
 
 function safeUrl(value: string): string {
@@ -152,9 +207,7 @@ function nodeMarkdown(node: Node): string {
     return `${node.parentElement?.tagName === "LI" ? "\n" : "\n\n"}${items
       .map((item, index) => {
         const marker = tag === "OL" ? `${start + index}. ` : "- ";
-        const task = item.querySelector(
-          ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]',
-        );
+        const task = item.querySelector(taskCheckbox);
         const value = `${task ? (task.hasAttribute("checked") ? "[x] " : "[ ] ") : ""}${childrenMarkdown(item).trim()}`;
         return marker + value.replace(/\n/g, `\n${" ".repeat(marker.length)}`);
       })
@@ -167,6 +220,7 @@ function nodeMarkdown(node: Node): string {
   if (tag === "EM" || tag === "I") return `*${content}*`;
   if (tag === "DEL" || tag === "S") return `~~${content}~~`;
   if (tag === "A") {
+    if (node.hasAttribute("data-bare-url")) return node.textContent ?? "";
     const href = safeUrl(node.getAttribute("href") ?? "");
     return href
       ? `[${content}](${href.replace(/([\\()])/g, "\\$1")})`
@@ -184,11 +238,30 @@ function nodeMarkdown(node: Node): string {
   return blockTags.has(tag) ? `\n\n${content.trim()}\n\n` : content;
 }
 
+function keepsAncestor(
+  ancestor: Element,
+  contents: Node,
+  common: Element | null,
+): boolean {
+  if (!ancestor.matches(blockElements)) return true;
+  const top =
+    contents instanceof DocumentFragment
+      ? Array.from(contents.childNodes)
+      : [contents];
+  const required =
+    requiredChildren[ancestor.tagName] ??
+    (ancestor === common && !ancestor.matches("th, td") ? blockElements : null);
+  return (
+    required !== null &&
+    top.some((node) => node instanceof Element && node.matches(required))
+  );
+}
+
 export function selectionClipboard(
   selected: Range,
   root: Element,
 ): { text: string; html: string } {
-  const range = expandRangeToMath(selected);
+  const range = expandRangeToMath(trimRangeToContent(selected));
   const start =
     range.startContainer instanceof Element
       ? range.startContainer
@@ -199,24 +272,41 @@ export function selectionClipboard(
       : range.endContainer.parentElement;
   const pre = start?.closest("pre");
   let contents: Node = range.cloneContents();
-  let ancestor =
+  const common =
     range.commonAncestorContainer instanceof Element
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
-  while (ancestor && ancestor !== root && root.contains(ancestor)) {
+  const wrapped: Element[] = [];
+  let ancestor = common;
+  while (
+    ancestor &&
+    ancestor !== root &&
+    root.contains(ancestor) &&
+    keepsAncestor(ancestor, contents, common)
+  ) {
     const wrapper = ancestor.cloneNode(false);
     wrapper.appendChild(contents);
     contents = wrapper;
+    wrapped.push(ancestor);
     ancestor = ancestor.parentElement;
   }
   const container = document.createElement("div");
   container.appendChild(contents);
-  const selectedLists = Array.from(root.querySelectorAll("ol")).filter((list) =>
-    range.intersectsNode(list),
-  );
-  Array.from(container.querySelectorAll("ol")).forEach((list, index) => {
-    const original = selectedLists[index];
-    if (!original) return;
+  const copiedOriginals = (selector: string) => {
+    const originals = Array.from(root.querySelectorAll(selector)).filter(
+      (element) =>
+        wrapped.includes(element) ||
+        (element !== common &&
+          common?.contains(element) &&
+          range.intersectsNode(element)),
+    );
+    return Array.from(
+      container.querySelectorAll(selector),
+      (copy, index) => [copy, originals[index]] as const,
+    );
+  };
+  for (const [list, original] of copiedOriginals("ol")) {
+    if (!original) continue;
     const firstSelected = Array.from(original.children).findIndex((item) =>
       range.intersectsNode(item),
     );
@@ -227,7 +317,14 @@ export function selectionClipboard(
           Math.max(0, firstSelected),
       ),
     );
-  });
+  }
+  for (const [item, original] of copiedOriginals("li")) {
+    const task = original?.querySelector(taskCheckbox);
+    if (task && !item.querySelector(taskCheckbox))
+      item.prepend(task.cloneNode());
+  }
+  for (const [link, original] of copiedOriginals("a"))
+    if (original && isBareUrl(original)) link.setAttribute("data-bare-url", "");
   const text =
     pre && end && pre.contains(end)
       ? range.toString()

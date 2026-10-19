@@ -1,3 +1,4 @@
+import { withVcsProcessPriority } from "@bb/process-utils";
 import { operationEnvironment } from "./operation-environment.js";
 import {
   runEnvironmentHook,
@@ -664,7 +665,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.write_file": writeHostFile,
   "provider.list_models": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
-      options.listModels(args),
+      options.listModels({ ...args, contributedEnv: command.contributedEnv }),
     ),
   "provider.health": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
@@ -773,7 +774,9 @@ export async function dispatchCommand<
   options: CommandDispatchOptions,
 ): Promise<HostDaemonCommandResult<TType>> {
   try {
-    return await commandHandlers[command.type](command, options);
+    return await withVcsProcessPriority("interactive", () =>
+      commandHandlers[command.type](command, options),
+    );
   } catch (error) {
     throwExpectedWorkspacePathNotFoundOrRethrow(error);
   }
@@ -787,7 +790,14 @@ export async function dispatchOnlineRpcCommand<
   signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<TType>> {
   try {
-    return await onlineRpcHandlers[command.type](command, options, signal);
+    return await withVcsProcessPriority(
+      command.type === "workspace.pull_request"
+        ? "background"
+        : command.type === "workspace.status"
+          ? "status"
+          : "interactive",
+      () => onlineRpcHandlers[command.type](command, options, signal),
+    );
   } catch (error) {
     throwExpectedWorkspacePathNotFoundOrRethrow(error);
   }

@@ -2781,7 +2781,7 @@ describe("DesktopBrowserViewManager", () => {
     expect(observedLoads).toEqual([["about:blank"]]);
   });
 
-  it("preserves background navigation when revealing a tab with a stale persisted URL", () => {
+  it("preserves navigation when revealing a tab but loads every explicit navigation", () => {
     const { manager, hostWindow, view } = createRendererRecoveryFixture(91);
     manager.setVisible({
       hostWindow,
@@ -2815,6 +2815,16 @@ describe("DesktopBrowserViewManager", () => {
     });
     expect(view.webContents.loadURLCalls).toEqual([
       "https://example.com/original",
+      "https://example.com/explicit",
+    ]);
+
+    manager.navigate({
+      hostWindow,
+      request: { tabId: "browser:a", url: "https://example.com/explicit" },
+    });
+    expect(view.webContents.loadURLCalls).toEqual([
+      "https://example.com/original",
+      "https://example.com/explicit",
       "https://example.com/explicit",
     ]);
   });

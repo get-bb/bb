@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-browser-automation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",

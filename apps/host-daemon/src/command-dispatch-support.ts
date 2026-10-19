@@ -9,6 +9,7 @@ import {
   COMPETING_TURN_ERROR_CODE,
   type EnvironmentHookProgressMessage,
   type HostDaemonCommand,
+  type HostDaemonContributedEnvEntry,
   type ProviderHealthResult,
   type ProviderUsageResult,
   type HostDaemonBridgeLaunch,
@@ -58,6 +59,7 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];

@@ -131,6 +131,7 @@ const threadEventScopeDefinitionByType = {
   },
   "turn/plan/updated": { policy: "turn" },
   "turn/diff/updated": { policy: "turn" },
+  "turn/mainRun/updated": { policy: "turn" },
   "provider/error": {
     policy: "thread-or-turn",
     rationale:

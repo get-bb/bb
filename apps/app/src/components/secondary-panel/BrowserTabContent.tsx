@@ -789,10 +789,20 @@ export function BrowserTabContent({
 
   const handleAddressKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.nativeEvent.isComposing) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setAddressDraft(currentUrl);
+        const input = event.currentTarget;
+        window.requestAnimationFrame(() => {
+          if (document.activeElement === input) input.select();
+        });
+        return;
+      }
       if (
         onOpenInNewTab === null ||
         event.key !== "Enter" ||
-        event.nativeEvent.isComposing ||
         event.shiftKey ||
         event.ctrlKey
       ) {

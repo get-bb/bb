@@ -39,6 +39,8 @@ import {
   useSystemExecutionOptions,
 } from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
+import { formatModelLabel as formatFallbackModelLabel } from "@/hooks/thread-creation-options/selection-state";
+import { reasoningLevelLabel } from "@/lib/reasoning-labels";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -289,8 +291,13 @@ export function ModelReasoningPicker({
   );
   const ProviderIcon = selectedProvider?.icon;
   const selectedModelOption = modelOptions.find((m) => m.value === modelValue);
-  const selectedModelLabel = selectedModelOption?.label ?? modelValue;
+  const selectedModelLabel =
+    selectedModelOption?.label ??
+    (modelIsLoading
+      ? (formatModelLabel ?? formatFallbackModelLabel)(modelValue)
+      : modelValue);
   const hasSelectedModel = selectedModelLabel.trim().length > 0;
+  const showLoadingTrigger = modelIsLoading && !hasSelectedModel;
   const selectedProviderLabel = selectedProvider?.label ?? selectedProviderId;
   const selectedModelLoadErrorMatches =
     modelLoadError?.providerId === selectedProviderId;
@@ -336,7 +343,7 @@ export function ModelReasoningPicker({
           providerLabel: selectedProviderLabel,
         })
       : "Could not load models.";
-  const triggerModelLabel = modelIsLoading
+  const triggerModelLabel = showLoadingTrigger
     ? "Loading models..."
     : hasSelectedModel
       ? stripModelBrandPrefix(selectedModelLabel, selectedProvider?.brandPrefix)
@@ -358,7 +365,8 @@ export function ModelReasoningPicker({
     (r) => r.value === reasoningValue,
   );
   const triggerReasoningLabel = hasSelectedModel
-    ? (selectedReasoningOption?.label ?? null)
+    ? (selectedReasoningOption?.label ??
+      (modelIsLoading ? reasoningLevelLabel(reasoningValue, undefined) : null))
     : null;
 
   const isPreviewing =
@@ -908,7 +916,7 @@ export function ModelReasoningPicker({
 
   const TriggerIcon =
     hasSelectedModel || modelIsLoading ? ProviderIcon : undefined;
-  const triggerTitleModelLabel = modelIsLoading
+  const triggerTitleModelLabel = showLoadingTrigger
     ? "Loading models..."
     : selectedModelLoadFailed
       ? selectedModelLoadErrorText
@@ -946,7 +954,7 @@ export function ModelReasoningPicker({
       )}
     >
       <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={triggerTitle}>
-        {modelIsLoading ? (
+        {showLoadingTrigger ? (
           <>
             {TriggerIcon ? (
               <TriggerIcon className="size-4 shrink-0" />
@@ -977,7 +985,7 @@ export function ModelReasoningPicker({
         ) : TriggerIcon ? (
           <TriggerIcon className="size-4 shrink-0" />
         ) : null}
-        {modelIsLoading ? null : (
+        {showLoadingTrigger ? null : (
           <>
             <span
               className={cn(

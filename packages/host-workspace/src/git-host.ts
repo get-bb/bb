@@ -593,6 +593,7 @@ export async function getPullRequestForCurrentBranch(
   let stdout: string;
   try {
     ({ stdout } = await execPortableFile("gh", ghArgs, {
+      priority: "background",
       cwd: args.cwd,
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
@@ -665,6 +666,7 @@ export async function runPullRequestActionForCurrentBranch(
   );
   try {
     await execPortableFile("gh", ghArgs, {
+      priority: "interactive",
       cwd: args.cwd,
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,

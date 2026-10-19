@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -35,6 +35,49 @@ it("reuses one initialized app-server across model catalog requests", async () =
   expect(first.error).toBeUndefined();
   expect(second.error).toBeUndefined();
   expect(second.result).toEqual(first.result);
+});
+
+it("launches the catalog app-server on the requested pool route", async () => {
+  const workDir = await mkdtemp(join(tmpdir(), "bb-codex-model-route-"));
+  temporaryDirectories.push(workDir);
+  const scriptPath = join(workDir, "script.json");
+  const launchLogPath = join(workDir, "launches.jsonl");
+  await writeFile(scriptPath, JSON.stringify({ launchLogPath, turns: [] }));
+  stubFakeCodexAppServer(scriptPath);
+  const pooled = {
+    CODEX_OPENAI_BASE_URL: "http://127.0.0.1:1/pool/v1",
+    CODEX_POOL_AUTH_TOKEN: "machine-token",
+  };
+
+  harness.sendRequest(1, "model/list", { envVars: pooled });
+  const first = await harness.waitForResponse(1);
+  harness.sendRequest(2, "model/list", { envVars: pooled });
+  const repeated = await harness.waitForResponse(2);
+  harness.sendRequest(3, "model/list", { envVars: {} });
+  const local = await harness.waitForResponse(3);
+
+  expect([first.error, repeated.error, local.error]).toEqual([
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  expect(repeated.result).toEqual(first.result);
+  expect(local.result).not.toEqual(first.result);
+  const launches = (await readFile(launchLogPath, "utf8"))
+    .trim()
+    .split("\n")
+    .map(
+      (line) =>
+        JSON.parse(line) as { args: string[]; poolToken: string | null },
+    );
+  expect(launches).toHaveLength(2);
+  expect(launches[0]?.args).toContain('model_provider="bb-account-pool"');
+  expect(launches[0]?.args).toContain(
+    'openai_base_url="http://127.0.0.1:1/pool/v1"',
+  );
+  expect(launches[0]?.poolToken).toBe("machine-token");
+  expect(launches[1]?.args).not.toContain('model_provider="bb-account-pool"');
+  expect(launches[1]?.poolToken).toBeNull();
 });
 
 it.each([

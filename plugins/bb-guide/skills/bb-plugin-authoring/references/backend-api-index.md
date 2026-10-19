@@ -344,6 +344,7 @@ Read the installed declarations for exact current signatures.
 - `experimental_readProcessIdentity`
 - `experimental_resolveClaudePluginRoots`
 - `experimental_resolveVendorPluginRoots`
+- `experimental_runVcsProcess`
 - `experimental_sanitizeInheritedChildProcessEnv`
 - `experimental_spawnPortableOutputProcess`
 - `ExperimentalClaudePluginRoots`
@@ -371,6 +372,8 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalQuestionFormHost`
 - `ExperimentalQuestionShortcut`
 - `ExperimentalSanitizeInheritedChildProcessEnvArgs`
+- `ExperimentalVcsProcessOptions`
+- `ExperimentalVcsProcessPriority`
 - `ExperimentalVendorPlugin`
 - `ExperimentalVendorPluginRoots`
 - `ExperimentalVendorPluginRootsArgs`
