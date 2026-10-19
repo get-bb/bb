@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   codexMcpFormContentSchema,
   codexMcpFormFieldSchema,
@@ -15,7 +16,20 @@ export {
 
 export const CODEX_MCP_ELICITATION_KIND = "provider-codex/mcp-elicitation";
 
-const INTERACTION_MAX_TITLE_LENGTH = 160;
+export const CODEX_COMPUTER_USE_SERVER_NAME = "cua_repl";
+
+const TOOL_APPROVAL_MAX_PARAMS = 50;
+const TOOL_APPROVAL_MAX_TEXT_LENGTH = 2000;
+
+export function truncateCodePoints(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let truncated = "";
+  for (const codePoint of text) {
+    if (truncated.length + codePoint.length > maxLength - 1) break;
+    truncated += codePoint;
+  }
+  return `${truncated.trimEnd()}…`;
+}
 
 export function codexMcpElicitationTitle(
   elicitation: CodexMcpElicitation,
@@ -24,19 +38,19 @@ export function codexMcpElicitationTitle(
     elicitation.kind === "computer_use"
       ? `Allow Codex to use ${elicitation.app.name}?`
       : elicitation.message;
-  return title.length <= INTERACTION_MAX_TITLE_LENGTH
-    ? title
-    : `${title.slice(0, INTERACTION_MAX_TITLE_LENGTH - 1).trimEnd()}…`;
+  return truncateCodePoints(title.trim(), PLUGIN_INTERACTION_MAX_TITLE_LENGTH);
 }
 
 const scopeSchema = z.enum(["session", "always"]);
-const scopesSchema = z
+const uniqueScopes = (scopes: string[]) =>
+  new Set(scopes).size === scopes.length;
+const scopesSchema = z.array(scopeSchema).min(1).max(2).refine(uniqueScopes, {
+  message: "Computer Use permission scopes must be unique",
+});
+const toolApprovalScopesSchema = z
   .array(scopeSchema)
-  .min(1)
   .max(2)
-  .refine((scopes) => new Set(scopes).size === scopes.length, {
-    message: "Computer Use permission scopes must be unique",
-  });
+  .refine(uniqueScopes, { message: "Tool approval scopes must be unique" });
 const common = {
   serverName: z.string().min(1),
   message: z.string().trim().min(1),
@@ -62,9 +76,29 @@ export type CodexComputerUsePermission = z.infer<
   typeof codexComputerUsePermissionSchema
 >;
 
+export const codexMcpToolApprovalSchema = z.strictObject({
+  ...common,
+  kind: z.literal("tool_approval"),
+  toolName: z.string().trim().min(1).nullable(),
+  toolDescription: z.string().trim().min(1).nullable(),
+  params: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1),
+        label: z.string().min(1),
+        value: z.string(),
+      }),
+    )
+    .max(TOOL_APPROVAL_MAX_PARAMS),
+  omittedParamCount: z.number().int().min(0),
+  scopes: toolApprovalScopesSchema,
+});
+export type CodexMcpToolApproval = z.infer<typeof codexMcpToolApprovalSchema>;
+
 const httpUrlSchema = z.url({ protocol: /^https?$/ });
 export const codexMcpElicitationSchema = z.discriminatedUnion("kind", [
   codexComputerUsePermissionSchema,
+  codexMcpToolApprovalSchema,
   z.strictObject({
     ...common,
     kind: z.literal("form"),
@@ -87,12 +121,12 @@ export type CodexMcpElicitation = z.infer<typeof codexMcpElicitationSchema>;
 
 const declinedResponseSchema = z.strictObject({ action: z.literal("decline") });
 const cancelledResponseSchema = z.strictObject({ action: z.literal("cancel") });
-const computerUseAcceptedResponseSchema = z.strictObject({
+const persistedAcceptResponseSchema = z.strictObject({
   action: z.literal("accept"),
   persist: scopeSchema,
 });
 export const codexMcpElicitationResponseSchema = z.union([
-  computerUseAcceptedResponseSchema,
+  persistedAcceptResponseSchema,
   z.strictObject({
     action: z.literal("accept"),
     content: codexMcpFormContentSchema,
@@ -116,8 +150,41 @@ const envelopeSchema = z.object({
   _meta: z.unknown().optional(),
 });
 const computerUseMarkerSchema = z.object({
-  connector_id: z.unknown().optional(),
-  connector_name: z.unknown().optional(),
+  connector_id: z.literal("computer-use"),
+});
+const toolApprovalMarkerSchema = z.object({
+  codex_approval_kind: z.literal("mcp_tool_call"),
+});
+const optionalTextSchema = z
+  .string()
+  .nullish()
+  .transform((value) => {
+    const trimmed = value?.trim() ?? "";
+    return trimmed === "" ? null : trimmed;
+  });
+const toolApprovalMetadataSchema = z.object({
+  persist: z
+    .array(z.string())
+    .nullish()
+    .transform((scopes) => [
+      ...new Set(
+        (scopes ?? []).filter((scope) => scopeSchema.safeParse(scope).success),
+      ),
+    ])
+    .pipe(toolApprovalScopesSchema),
+  tool_title: optionalTextSchema,
+  tool_name: optionalTextSchema,
+  tool_description: optionalTextSchema,
+  tool_params: z.record(z.string(), z.unknown()).nullish(),
+  tool_params_display: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        display_name: z.string().nullish(),
+        value: z.unknown(),
+      }),
+    )
+    .nullish(),
 });
 const computerUseMetadataSchema = z.object({
   codex_approval_kind: z.literal("mcp_tool_call"),
@@ -142,6 +209,47 @@ const emptyFormSchema = z.strictObject({
   properties: z.strictObject({}),
 });
 
+function displayToolParamValue(value: unknown): string {
+  const text =
+    typeof value === "string"
+      ? value
+      : (JSON.stringify(value) ?? String(value));
+  return truncateCodePoints(text, TOOL_APPROVAL_MAX_TEXT_LENGTH);
+}
+
+function normalizeToolApproval(
+  base: { serverName: string; message: string },
+  meta: unknown,
+): CodexMcpToolApproval {
+  const metadata = toolApprovalMetadataSchema.parse(meta);
+  const allParams =
+    metadata.tool_params_display?.map((param) => ({
+      name: param.name,
+      label: param.display_name?.trim() || param.name,
+      value: displayToolParamValue(param.value),
+    })) ??
+    Object.entries(metadata.tool_params ?? {}).map(([name, value]) => ({
+      name,
+      label: name,
+      value: displayToolParamValue(value),
+    }));
+  return {
+    ...base,
+    kind: "tool_approval",
+    toolName: metadata.tool_title ?? metadata.tool_name,
+    toolDescription:
+      metadata.tool_description === null
+        ? null
+        : truncateCodePoints(
+            metadata.tool_description,
+            TOOL_APPROVAL_MAX_TEXT_LENGTH,
+          ),
+    params: allParams.slice(0, TOOL_APPROVAL_MAX_PARAMS),
+    omittedParamCount: Math.max(0, allParams.length - TOOL_APPROVAL_MAX_PARAMS),
+    scopes: metadata.persist,
+  };
+}
+
 export function normalizeCodexMcpElicitation(input: unknown): {
   threadId: string;
   turnId: string | null;
@@ -149,11 +257,14 @@ export function normalizeCodexMcpElicitation(input: unknown): {
 } {
   const params = envelopeSchema.parse(input);
   const base = { serverName: params.serverName, message: params.message };
-  const marker = computerUseMarkerSchema.safeParse(params._meta);
   const isComputerUse =
-    marker.success &&
-    (marker.data.connector_id === "computer-use" ||
-      marker.data.connector_name === "Computer Use");
+    params.serverName === CODEX_COMPUTER_USE_SERVER_NAME &&
+    computerUseMarkerSchema.safeParse(params._meta).success;
+  const isToolApproval =
+    !isComputerUse &&
+    params.mode === "form" &&
+    toolApprovalMarkerSchema.safeParse(params._meta).success &&
+    emptyFormSchema.safeParse(params.requestedSchema).success;
   let elicitation: CodexMcpElicitation;
   try {
     if (isComputerUse) {
@@ -173,6 +284,8 @@ export function normalizeCodexMcpElicitation(input: unknown): {
         warning: metadata.subtitle ?? null,
         riskLevel: metadata.riskLevel,
       };
+    } else if (isToolApproval) {
+      elicitation = normalizeToolApproval(base, params._meta);
     } else if (
       params.mode === "form" ||
       params.mode === "openai/form" ||
@@ -202,9 +315,11 @@ export function normalizeCodexMcpElicitation(input: unknown): {
         error instanceof z.ZodError
           ? isComputerUse
             ? "The app permission details are incomplete or unsupported."
-            : params.mode === "url"
-              ? "This link is not a valid HTTP or HTTPS URL, or its request identifier is missing."
-              : "This form uses fields or constraints BB cannot display."
+            : isToolApproval
+              ? "The tool approval details are incomplete or unsupported."
+              : params.mode === "url"
+                ? "This link is not a valid HTTP or HTTPS URL, or its request identifier is missing."
+                : "This form uses fields or constraints BB cannot display."
           : error instanceof Error
             ? error.message
             : "The requested elicitation cannot be represented.",
@@ -212,6 +327,12 @@ export function normalizeCodexMcpElicitation(input: unknown): {
   }
   return { threadId: params.threadId, turnId: params.turnId, elicitation };
 }
+
+export const CODEX_MCP_ELICITATION_CANCEL_RESPONSE = {
+  action: "cancel",
+  content: null,
+  _meta: null,
+} as const satisfies CodexNativeMcpElicitationResponse;
 
 export type CodexNativeMcpElicitationResponse =
   | {
@@ -241,6 +362,21 @@ export function buildCodexMcpElicitationResponse(
         action: "accept",
         content: {},
         _meta: { persist: response.persist },
+      };
+    case "tool_approval":
+      if ("content" in response)
+        throw new Error("Tool approval does not include form values.");
+      if (
+        "persist" in response &&
+        !elicitation.scopes.includes(response.persist)
+      )
+        throw new Error(
+          `Tool approval did not offer the requested scope: ${response.persist}`,
+        );
+      return {
+        action: "accept",
+        content: {},
+        _meta: "persist" in response ? { persist: response.persist } : null,
       };
     case "form": {
       if (!("content" in response))

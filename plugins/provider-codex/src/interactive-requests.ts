@@ -1,7 +1,9 @@
+import { z } from "zod";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
   isApprovalInteractionOutcome,
+  providerInteractionOutcomeSchema,
   userQuestionInteractionOutcomeSchema,
   type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
@@ -20,6 +22,7 @@ import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
 import {
+  CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
   CODEX_MCP_ELICITATION_KIND,
   codexMcpElicitationTitle,
   normalizeCodexMcpElicitation,
@@ -332,6 +335,32 @@ export function decodeCodexInteractiveRequest(
   }
 }
 
+const requestAnswerResolutionSchema = z.object({
+  kind: z.literal("request_answer"),
+});
+
+export function buildCodexInteractiveResult(
+  payload: DecodedInteractiveRequest["payload"],
+  runtimeResult: PromiseSettledResult<unknown>,
+): CodexInteractiveResponse {
+  if (
+    payload.kind === CODEX_MCP_ELICITATION_KIND &&
+    (runtimeResult.status === "rejected" ||
+      !requestAnswerResolutionSchema.safeParse(runtimeResult.value).success)
+  ) {
+    return CODEX_MCP_ELICITATION_CANCEL_RESPONSE;
+  }
+  if (runtimeResult.status === "rejected") {
+    throw runtimeResult.reason;
+  }
+  return buildCodexInteractiveResponse(
+    providerInteractionOutcomeSchema.parse({
+      payload,
+      resolution: runtimeResult.value,
+    }),
+  );
+}
+
 export function buildCodexInteractiveResponse(
   args: ProviderInteractionOutcome,
 ): CodexInteractiveResponse {
@@ -341,14 +370,16 @@ export function buildCodexInteractiveResponse(
     );
   }
   if (!isApprovalInteractionOutcome(args)) {
-    if (
-      args.payload.kind !== CODEX_MCP_ELICITATION_KIND ||
-      !("kind" in args.resolution) ||
-      args.resolution.kind !== "request_answer"
-    ) {
+    if (args.payload.kind !== CODEX_MCP_ELICITATION_KIND) {
       throw new ProviderResponseEncodeError(
         `Unsupported Codex interaction outcome: ${args.payload.kind}`,
       );
+    }
+    if (
+      !("kind" in args.resolution) ||
+      args.resolution.kind !== "request_answer"
+    ) {
+      return CODEX_MCP_ELICITATION_CANCEL_RESPONSE;
     }
     try {
       const elicitation = codexMcpElicitationSchema.parse(args.payload.data);

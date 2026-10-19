@@ -9,6 +9,8 @@ import {
 } from "./mcp-elicitation.js";
 import { decodeCodexInteractiveRequest } from "./interactive-requests.js";
 import computerUseElicitation from "./fixtures/computer-use-elicitation.json";
+import mcpToolApprovalElicitation from "./fixtures/mcp-tool-approval-elicitation.json";
+import spoofedComputerUseElicitation from "./fixtures/spoofed-computer-use-elicitation.json";
 
 const app = await loadPluginApp(() => import("../app.js"));
 const registration = app.pendingInteractions.find(
@@ -87,6 +89,7 @@ describe("Codex app permission interaction", () => {
     expect(slot.getByText(permission.app.name)).toBeTruthy();
     expect(slot.getByText(permission.app.id)).toBeTruthy();
     expect(slot.getByText("Computer Use")).toBeTruthy();
+    expect(slot.getByText("cua_repl")).toBeTruthy();
     expect(slot.queryByText("Low risk")).toBeNull();
     expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Stop turn" })).toBeNull();
@@ -769,4 +772,74 @@ describe("unsupported Codex MCP requests", () => {
       expect(cancel).not.toHaveBeenCalled();
     },
   );
+});
+
+function decodedPayload(
+  request: Parameters<typeof decodeCodexInteractiveRequest>[0],
+) {
+  const decoded = decodeCodexInteractiveRequest(request);
+  if (!decoded || !("data" in decoded.payload))
+    throw new Error("Expected a decoded elicitation");
+  return codexMcpElicitationSchema.parse(decoded.payload.data);
+}
+
+describe("Codex MCP tool-call approvals", () => {
+  const approval = decodedPayload(mcpToolApprovalElicitation);
+  if (approval.kind !== "tool_approval")
+    throw new Error("Expected a tool approval");
+
+  it("names the server and shows the tool arguments", () => {
+    const slot = renderPayload(approval);
+
+    expect(slot.getByText("elicit_e2e")).toBeTruthy();
+    expect(slot.getByText("MCP server · tool call approval")).toBeTruthy();
+    expect(slot.getByText("Delete a widget by id. Destructive.")).toBeTruthy();
+    const args = within(slot.getByLabelText("Tool arguments"));
+    expect(args.getByText("widget_id")).toBeTruthy();
+    expect(args.getByText("w-42")).toBeTruthy();
+    expect(args.getByText("force")).toBeTruthy();
+    expect(args.getByText("true")).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Submit response" })).toBeNull();
+  });
+
+  it.each([
+    ["Allow", { action: "accept" }],
+    ["Allow for this session", { action: "accept", persist: "session" }],
+    ["Always allow", { action: "accept", persist: "always" }],
+    ["Decline", { action: "decline" }],
+  ] as const)("submits %s", (label, response) => {
+    const submit = vi.fn<PluginPendingInteractionProps["submit"]>(
+      async () => {},
+    );
+    const slot = renderPayload(approval, { submit });
+
+    fireEvent.click(slot.getByRole("button", { name: label }));
+
+    expect(submit).toHaveBeenCalledExactlyOnceWith(response);
+  });
+
+  it("offers only Allow and Decline when Codex offers no remembered scope", () => {
+    const slot = renderPayload({ ...approval, scopes: [] });
+
+    expect(
+      slot.getAllByRole("button").map((button) => button.textContent),
+    ).toEqual(["Decline", "Allow"]);
+  });
+
+  it("renders Computer Use metadata from another server as a plain tool approval", () => {
+    const spoofed = decodedPayload(spoofedComputerUseElicitation);
+    const slot = renderPayload(spoofed);
+
+    expect(slot.getByText("elicit_e2e")).toBeTruthy();
+    expect(slot.getByText("get_app_state")).toBeTruthy();
+    expect(slot.queryByText("Computer Use")).toBeNull();
+    expect(slot.getByRole("button", { name: "Allow" })).toBeTruthy();
+  });
+});
+
+it("labels an empty confirmation form as an acceptance", () => {
+  const slot = renderPayload(formPayload({}));
+
+  expect(slot.getByRole("button", { name: "Accept" })).toBeTruthy();
+  expect(slot.queryByRole("button", { name: "Submit response" })).toBeNull();
 });

@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   isStandaloneBuiltinCompactCommand,
-  providerInteractionOutcomeSchema,
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
@@ -54,7 +53,7 @@ import {
   summarizeCodexMacOsPermissions,
 } from "../extension-kinds.js";
 import {
-  buildCodexInteractiveResponse,
+  buildCodexInteractiveResult,
   decodeCodexInteractiveRequest,
   extractCodexMacOsPermissionRequest,
   type CodexMacOsPermissionRequest,
@@ -877,21 +876,18 @@ function handleChildRequest(
       if (currentSession(bbThreadId, serial) !== session) {
         throw new Error("codex session is no longer current");
       }
-      const result = await sendRuntimeRequest(
-        BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
-        {
+      const [runtimeResult] = await Promise.allSettled([
+        sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
           providerThreadId: session.codexThreadId ?? request.providerThreadId,
           threadId: session.bbThreadId,
           turnId: request.turnId,
           payload: request.payload,
           providerNativeIds: true,
-        },
+        }),
+      ]);
+      responder.result(
+        buildCodexInteractiveResult(request.payload, runtimeResult),
       );
-      const outcome = providerInteractionOutcomeSchema.parse({
-        payload: request.payload,
-        resolution: result,
-      });
-      responder.result(buildCodexInteractiveResponse(outcome));
     })
     .catch((error: unknown) => {
       responder.error(

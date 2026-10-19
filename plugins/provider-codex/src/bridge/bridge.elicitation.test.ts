@@ -12,6 +12,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import computerUseElicitation from "../fixtures/computer-use-elicitation.json";
+import mcpToolApprovalElicitation from "../fixtures/mcp-tool-approval-elicitation.json";
 import { CODEX_MCP_ELICITATION_KIND } from "../mcp-elicitation.js";
 import { handleLine } from "./bridge.js";
 
@@ -199,6 +200,7 @@ async function waitForInteractionRequest(
 async function runElicitation(args: {
   answer: JsonValue;
   request: ScriptedElicitationRequest;
+  runtimeError?: string;
 }) {
   const tempDir = mkdtempSync(join(tmpdir(), "bb-codex-elicitation-"));
   const scriptPath = join(tempDir, "script.json");
@@ -243,11 +245,19 @@ async function runElicitation(args: {
     const request = await waitForInteractionRequest(harness);
     const params = interactionRequestParamsSchema.parse(request.params);
     handleLine(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: request.id,
-        result: { kind: "request_answer", value: args.answer },
-      }),
+      JSON.stringify(
+        args.runtimeError === undefined
+          ? {
+              jsonrpc: "2.0",
+              id: request.id,
+              result: { kind: "request_answer", value: args.answer },
+            }
+          : {
+              jsonrpc: "2.0",
+              id: request.id,
+              error: { code: -32000, message: args.runtimeError },
+            },
+      ),
     );
     await harness.waitForResponse(turnRequestId);
     return {
@@ -447,3 +457,59 @@ it.sequential("lets the user decline an unsupported elicitation", async () => {
     result: { action: "decline", content: null, _meta: null },
   });
 }, 30_000);
+
+it.sequential.each([
+  ["a stopped turn", "Thread interrupted"],
+  ["a disconnected runtime", "Runtime connection closed"],
+])(
+  "cancels the native elicitation after %s",
+  async (_name, runtimeError) => {
+    const { nativeResponse } = await runElicitation({
+      request: formElicitation,
+      answer: null,
+      runtimeError,
+    });
+    expect(nativeResponse).toEqual({
+      jsonrpc: "2.0",
+      id: "fx-req-1",
+      result: { action: "cancel", content: null, _meta: null },
+    });
+  },
+  30_000,
+);
+
+it.sequential.each([
+  [{ action: "accept" }, { action: "accept", content: {}, _meta: null }],
+  [
+    { action: "accept", persist: "session" },
+    { action: "accept", content: {}, _meta: { persist: "session" } },
+  ],
+  [{ action: "decline" }, { action: "decline", content: null, _meta: null }],
+])(
+  "round-trips an MCP tool-call approval answer %j",
+  async (answer, native) => {
+    const { interaction, nativeResponse } = await runElicitation({
+      request: mcpToolApprovalElicitation,
+      answer,
+    });
+    expect(interaction.payload).toMatchObject({
+      kind: CODEX_MCP_ELICITATION_KIND,
+      title: mcpToolApprovalElicitation.params.message,
+      data: {
+        kind: "tool_approval",
+        serverName: "elicit_e2e",
+        params: [
+          { name: "force", label: "force", value: "true" },
+          { name: "widget_id", label: "widget_id", value: "w-42" },
+        ],
+        scopes: ["session", "always"],
+      },
+    });
+    expect(nativeResponse).toEqual({
+      jsonrpc: "2.0",
+      id: "fx-req-1",
+      result: native,
+    });
+  },
+  30_000,
+);

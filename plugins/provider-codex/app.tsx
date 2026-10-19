@@ -253,6 +253,10 @@ function CodexMcpElicitation({
                   <span aria-hidden>·</span>
                   <span className="truncate">{payload.app.id}</span>
                 </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  Requested by MCP server{" "}
+                  <span className="font-mono">{payload.serverName}</span>
+                </p>
               </div>
             </div>
           ) : (
@@ -264,7 +268,11 @@ function CodexMcpElicitation({
                 <p className="truncate text-sm font-medium text-foreground">
                   {payload.serverName}
                 </p>
-                <p className="text-xs text-muted-foreground">MCP server</p>
+                <p className="text-xs text-muted-foreground">
+                  {payload.kind === "tool_approval"
+                    ? "MCP server · tool call approval"
+                    : "MCP server"}
+                </p>
               </div>
             </div>
           )}
@@ -334,6 +342,45 @@ function CodexMcpElicitation({
                 </UrlLink>
               ) : null}
             </div>
+          ) : payload.kind === "tool_approval" ? (
+            <div className="min-w-0 space-y-2 rounded-md border border-border bg-surface-raised px-2.5 py-2 text-xs">
+              {payload.toolName !== null ? (
+                <p className="break-words font-mono font-medium text-foreground">
+                  {payload.toolName}
+                </p>
+              ) : null}
+              {payload.toolDescription !== null ? (
+                <p className="whitespace-pre-wrap break-words text-muted-foreground">
+                  {payload.toolDescription}
+                </p>
+              ) : null}
+              {payload.params.length > 0 ? (
+                <dl
+                  aria-label="Tool arguments"
+                  className="grid min-w-0 grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1"
+                >
+                  {payload.params.map((param) => (
+                    <div key={param.name} className="contents">
+                      <dt className="truncate text-muted-foreground">
+                        {param.label}
+                      </dt>
+                      <dd className="min-w-0 whitespace-pre-wrap break-all font-mono text-foreground">
+                        {param.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="text-muted-foreground">No arguments</p>
+              )}
+              {payload.omittedParamCount > 0 ? (
+                <p className="text-muted-foreground">
+                  {payload.omittedParamCount} more{" "}
+                  {payload.omittedParamCount === 1 ? "argument" : "arguments"}{" "}
+                  not shown
+                </p>
+              ) : null}
+            </div>
           ) : payload.kind === "unsupported" ? (
             <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
               {payload.reason}
@@ -342,7 +389,8 @@ function CodexMcpElicitation({
           <footer
             className={`flex flex-wrap items-center justify-between gap-2 ${payload.kind === "form" ? "sticky -bottom-3 z-10 -mx-3 -mb-3 border-t border-border-hairline bg-surface-recessed-solid px-3 pb-3 pt-2.5" : "mt-1"}`}
           >
-            {payload.kind === "computer_use" &&
+            {(payload.kind === "computer_use" ||
+              payload.kind === "tool_approval") &&
             payload.scopes.includes("always") ? (
               <Button
                 type="button"
@@ -379,9 +427,33 @@ function CodexMcpElicitation({
                     Allow for this session
                   </Button>
                 ) : null
+              ) : payload.kind === "tool_approval" ? (
+                <>
+                  {payload.scopes.includes("session") ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
+                        void respond({ action: "accept", persist: "session" })
+                      }
+                    >
+                      Allow for this session
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void respond({ action: "accept" })}
+                  >
+                    Allow
+                  </Button>
+                </>
               ) : payload.kind === "form" ? (
                 <Button type="submit" size="sm" disabled={busy}>
-                  Submit response
+                  {payload.fields.length === 0 ? "Accept" : "Submit response"}
                 </Button>
               ) : payload.kind === "url" ? (
                 <Button

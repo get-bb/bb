@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCodexInteractiveResponse,
+  buildCodexInteractiveResult,
   decodeCodexInteractiveRequest,
   extractCodexMacOsPermissionRequest,
 } from "./interactive-requests.js";
@@ -65,6 +66,89 @@ it("bounds a long elicitation title and keeps the full message", () => {
   expect(payload).toMatchObject({
     title: `${message.slice(0, 159).trimEnd()}…`,
     data: { kind: "form", message },
+  });
+});
+
+it("bounds a long title without splitting a surrogate pair at the limit", () => {
+  const message = `${"a".repeat(158)}😀 and more text after the emoji`;
+  const decoded = decodeCodexInteractiveRequest({
+    id: 43,
+    method: "mcpServer/elicitation/request",
+    params: {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      serverName: "emoji",
+      mode: "url",
+      _meta: null,
+      message,
+      url: "https://example.com/emoji",
+      elicitationId: "emoji-1",
+    },
+  });
+  if (!decoded) throw new Error("Expected a decoded elicitation");
+  expect(interactionRequestPayloadSchema.parse(decoded.payload)).toMatchObject({
+    title: `${"a".repeat(158)}…`,
+  });
+});
+
+describe("buildCodexInteractiveResult", () => {
+  const decoded = decodeCodexInteractiveRequest(computerUseElicitation);
+  if (!decoded) throw new Error("Expected a decoded elicitation");
+  const cancel = { action: "cancel", content: null, _meta: null };
+
+  it("cancels the elicitation when the turn stops or the runtime disconnects", () => {
+    expect(
+      buildCodexInteractiveResult(decoded.payload, {
+        status: "rejected",
+        reason: new Error("Thread interrupted"),
+      }),
+    ).toEqual(cancel);
+  });
+
+  it.each([
+    { decision: "deny" },
+    { kind: "plugin_submitted" },
+    { kind: "user_answer", answers: {} },
+    null,
+  ])("cancels the elicitation for a non-answer resolution %j", (value) => {
+    expect(
+      buildCodexInteractiveResult(decoded.payload, {
+        status: "fulfilled",
+        value,
+      }),
+    ).toEqual(cancel);
+  });
+
+  it("encodes a request answer", () => {
+    expect(
+      buildCodexInteractiveResult(decoded.payload, {
+        status: "fulfilled",
+        value: {
+          kind: "request_answer",
+          value: { action: "accept", persist: "session" },
+        },
+      }),
+    ).toEqual({ action: "accept", content: {}, _meta: { persist: "session" } });
+  });
+
+  it("still surfaces runtime failures for approvals", () => {
+    const error = new Error("Thread interrupted");
+    expect(() =>
+      buildCodexInteractiveResult(
+        {
+          kind: "approval",
+          subject: {
+            kind: "file_change",
+            itemId: "item-1",
+            writeScope: null,
+            sessionGrant: null,
+          },
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+        },
+        { status: "rejected", reason: error },
+      ),
+    ).toThrow(error);
   });
 });
 

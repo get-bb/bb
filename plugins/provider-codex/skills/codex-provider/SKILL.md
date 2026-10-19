@@ -21,10 +21,15 @@ with `bb thread interactions respond <interactionId> <thread> --value
 are numbered from 1 in order; use `"freeText"` for a typed answer.
 
 Codex relays MCP elicitations (`mcpServer/elicitation/request`) as a
-`provider-codex/mcp-elicitation` interaction that pauses the turn. Computer Use
-app access shows the app name and native icon, keeps high-risk warnings
+`provider-codex/mcp-elicitation` interaction that pauses the turn. Every card
+names the requesting MCP server. Computer Use app access (only from Codex's
+`cua_repl` server; Computer Use metadata from any other server shows as a plain
+tool approval) shows the app name and native icon, keeps high-risk warnings
 visible, and offers Allow for this session or Always allow only when Codex
-offers that scope; Codex stores the grant. These are separate from macOS
+offers that scope; Codex stores the grant. MCP tool-call approvals
+(`codex_approval_kind: "mcp_tool_call"`) show the tool and its arguments and
+offer Allow, plus Allow for this session or Always allow when Codex offers
+them. These are separate from macOS
 Accessibility and Screen Recording permissions. Standard forms accept text,
 numbers, integers, booleans, and single or multiple choices with defaults,
 required fields, and supported constraints; answers are validated in the UI
@@ -34,10 +39,11 @@ flow finished. Unsupported schemas offer only Decline. Answer from the CLI with
 `bb thread interactions respond <interactionId> <thread> --value '<json>'`
 (SDK: `threads.interactions.respond`), passing
 `{"action":"accept","persist":"session"}` (or `"always"` when `scopes`
-includes it) for app access, `{"action":"accept","content":{...}}` for forms,
+includes it) for app access, `{"action":"accept"}` or an offered `persist` for
+tool approvals, `{"action":"accept","content":{...}}` for forms,
 `{"action":"accept"}` for URLs after the user opens them, or
 `{"action":"decline"}` / `{"action":"cancel"}`. Invalid responses never grant
-access.
+access. Stopping the turn answers the request with `cancel`.
 
 Unlisted model IDs are accepted by this provider; acceptance does not establish
 account access. Inspect models on the actual execution host with

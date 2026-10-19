@@ -187,3 +187,24 @@ export function Unsupported() {
     />
   );
 }
+
+export function ToolApproval() {
+  return (
+    <Elicitation
+      title='Allow the deploy MCP server to run tool "delete_widget"?'
+      data={{
+        kind: "tool_approval",
+        serverName: "deploy",
+        message: 'Allow the deploy MCP server to run tool "delete_widget"?',
+        toolName: null,
+        toolDescription: "Delete a widget by id. Destructive.",
+        params: [
+          { name: "widget_id", label: "widget_id", value: "w-42" },
+          { name: "force", label: "force", value: "true" },
+        ],
+        omittedParamCount: 0,
+        scopes: ["session", "always"],
+      }}
+    />
+  );
+}

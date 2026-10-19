@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   ProviderRequestDecodeError,
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
   ProviderResponseEncodeError,
   type JsonValue,
   type ProviderInteractionOutcome,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import computerUseElicitation from "./fixtures/computer-use-elicitation.json";
 import computerUseActiveTurnElicitation from "./fixtures/computer-use-active-turn-elicitation.json";
+import mcpToolApprovalElicitation from "./fixtures/mcp-tool-approval-elicitation.json";
+import spoofedComputerUseElicitation from "./fixtures/spoofed-computer-use-elicitation.json";
 import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
@@ -15,7 +18,9 @@ import {
   CODEX_MCP_ELICITATION_KIND,
   normalizeCodexMcpElicitation,
   buildCodexMcpElicitationResponse,
+  codexMcpElicitationTitle,
   type CodexComputerUsePermission,
+  type CodexMcpToolApproval,
 } from "./mcp-elicitation.js";
 
 const capturedParams = computerUseElicitation.params;
@@ -27,6 +32,20 @@ const permission: CodexComputerUsePermission = {
   scopes: ["session", "always"],
   warning: null,
   riskLevel: "low",
+};
+
+const toolApproval: CodexMcpToolApproval = {
+  kind: "tool_approval",
+  serverName: "elicit_e2e",
+  message: mcpToolApprovalElicitation.params.message,
+  toolName: null,
+  toolDescription: "Delete a widget by id. Destructive.",
+  params: [
+    { name: "force", label: "force", value: "true" },
+    { name: "widget_id", label: "widget_id", value: "w-42" },
+  ],
+  omittedParamCount: 0,
+  scopes: ["session", "always"],
 };
 
 function outcome(
@@ -131,13 +150,6 @@ describe("Computer Use elicitation decoding", () => {
       },
     ],
     [
-      "a different connector",
-      {
-        ...capturedParams,
-        _meta: { ...capturedParams._meta, connector_id: "other-connector" },
-      },
-    ],
-    [
       "an unknown permission scope",
       {
         ...capturedParams,
@@ -217,13 +229,170 @@ describe("Computer Use elicitation decoding", () => {
     ).toThrowError(ProviderRequestDecodeError);
   });
 
-  it("recognizes Computer Use through connector identity on another server", () => {
+  it.each([
+    ["another server", { ...capturedParams, serverName: "native-computer" }],
+    [
+      "the captured spoof from a third-party server",
+      spoofedComputerUseElicitation.params,
+    ],
+    [
+      "the Computer Use server without the Computer Use connector",
+      {
+        ...capturedParams,
+        _meta: { ...capturedParams._meta, connector_id: "other-connector" },
+      },
+    ],
+  ])(
+    "shows Computer Use metadata from %s as a plain tool approval",
+    (_name, params) => {
+      const { elicitation } = normalizeCodexMcpElicitation(params);
+      expect(elicitation).toMatchObject({
+        kind: "tool_approval",
+        serverName: params.serverName,
+        toolName: "get_app_state",
+        scopes: ["session", "always"],
+      });
+      expect(codexMcpElicitationTitle(elicitation)).toBe(params.message);
+    },
+  );
+});
+
+describe("MCP tool-call approval decoding", () => {
+  it("decodes the approval Codex sends before an MCP tool call", () => {
+    expect(decodeCodexInteractiveRequest(mcpToolApprovalElicitation)).toEqual({
+      requestId: 0,
+      method: "mcpServer/elicitation/request",
+      providerThreadId: mcpToolApprovalElicitation.params.threadId,
+      turnId: mcpToolApprovalElicitation.params.turnId,
+      payload: {
+        kind: CODEX_MCP_ELICITATION_KIND,
+        title: mcpToolApprovalElicitation.params.message,
+        data: toolApproval,
+      },
+    });
+  });
+
+  it("offers no remembered scope when Codex offers none", () => {
+    const { persist: _persist, ...meta } =
+      mcpToolApprovalElicitation.params._meta;
     expect(
       normalizeCodexMcpElicitation({
-        ...capturedParams,
-        serverName: "native-computer",
+        ...mcpToolApprovalElicitation.params,
+        _meta: meta,
       }).elicitation,
-    ).toEqual({ ...permission, serverName: "native-computer" });
+    ).toMatchObject({ kind: "tool_approval", scopes: [] });
+  });
+
+  it("drops scopes BB cannot encode", () => {
+    expect(
+      normalizeCodexMcpElicitation({
+        ...mcpToolApprovalElicitation.params,
+        _meta: {
+          ...mcpToolApprovalElicitation.params._meta,
+          persist: ["forever", "session", "session"],
+        },
+      }).elicitation,
+    ).toMatchObject({ kind: "tool_approval", scopes: ["session"] });
+  });
+
+  it("falls back to raw tool params and bounds long or numerous values", () => {
+    const toolParams = Object.fromEntries(
+      Array.from({ length: 52 }, (_, index) => [
+        `arg_${index}`,
+        index === 0 ? "x".repeat(3000) : { nested: [index] },
+      ]),
+    );
+    const { elicitation } = normalizeCodexMcpElicitation({
+      ...mcpToolApprovalElicitation.params,
+      _meta: {
+        codex_approval_kind: "mcp_tool_call",
+        tool_title: "Bulk update",
+        tool_params: toolParams,
+      },
+    });
+    if (elicitation.kind !== "tool_approval")
+      throw new Error("Expected a tool approval");
+    expect(elicitation.toolName).toBe("Bulk update");
+    expect(elicitation.toolDescription).toBeNull();
+    expect(elicitation.params).toHaveLength(50);
+    expect(elicitation.omittedParamCount).toBe(2);
+    expect(elicitation.params[0]?.value).toHaveLength(2000);
+    expect(elicitation.params[0]?.value.endsWith("…")).toBe(true);
+    expect(elicitation.params[1]).toEqual({
+      name: "arg_1",
+      label: "arg_1",
+      value: '{"nested":[1]}',
+    });
+  });
+
+  it("keeps an approval-tagged form with fields as a normal form", () => {
+    expect(
+      normalizeCodexMcpElicitation({
+        ...mcpToolApprovalElicitation.params,
+        requestedSchema: {
+          type: "object",
+          properties: { reason: { type: "string" } },
+        },
+      }).elicitation,
+    ).toMatchObject({ kind: "form" });
+  });
+
+  it.each([
+    [{ action: "accept" }, { action: "accept", content: {}, _meta: null }],
+    [
+      { action: "accept", persist: "session" },
+      { action: "accept", content: {}, _meta: { persist: "session" } },
+    ],
+    [
+      { action: "accept", persist: "always" },
+      { action: "accept", content: {}, _meta: { persist: "always" } },
+    ],
+    [{ action: "decline" }, { action: "decline", content: null, _meta: null }],
+  ] as const)("encodes %j for Codex", (response, native) => {
+    expect(buildCodexMcpElicitationResponse(toolApproval, response)).toEqual(
+      native,
+    );
+  });
+
+  it.each([
+    [{ action: "accept", persist: "always" }, /did not offer/],
+    [{ action: "accept", content: {} }, /does not include form values/],
+  ] as const)("rejects %j", (response, message) => {
+    expect(() =>
+      buildCodexMcpElicitationResponse(
+        { ...toolApproval, scopes: ["session"] },
+        response,
+      ),
+    ).toThrowError(message);
+  });
+});
+
+describe("MCP elicitation titles", () => {
+  it("bounds titles to the interaction limit without splitting surrogate pairs", () => {
+    const message = `${"a".repeat(PLUGIN_INTERACTION_MAX_TITLE_LENGTH - 2)}😀😀 tail`;
+    const title = codexMcpElicitationTitle({
+      kind: "form",
+      serverName: "emoji",
+      message,
+      fields: [],
+    });
+    expect(title.length).toBeLessThanOrEqual(
+      PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+    );
+    expect(title).toBe(
+      `${"a".repeat(PLUGIN_INTERACTION_MAX_TITLE_LENGTH - 2)}…`,
+    );
+  });
+
+  it("keeps a title that fits", () => {
+    expect(
+      codexMcpElicitationTitle({
+        kind: "form",
+        serverName: "short",
+        message: "Pick one 😀",
+        fields: [],
+      }),
+    ).toBe("Pick one 😀");
   });
 });
 
