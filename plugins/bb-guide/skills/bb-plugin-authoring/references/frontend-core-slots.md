@@ -93,7 +93,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, fixedTabs?, experimental_useBadge?, headerContent? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_useBadge?, headerContent?, experimental_sidebar? }`.
   The host renders your compact plugin icon + `title` into the shared app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do not
@@ -163,6 +163,18 @@ target? })`. Inside the fixed-tab component,
   replaced the component-based `experimental_sidebarAccessory`; a plugin that
   still passes it keeps loading, and BB ignores the field and logs a warning
   naming `experimental_useBadge`. Experimental: see `docs/api_to_audit.md`.
+
+  `experimental_sidebar` is a component that receives the same `{ subPath }`
+  as the page and replaces the thread list while the panel's route is active,
+  for example a list of the panel's items. BB renders it in the same section
+  sidebar as Settings, Plugins and Skills: it keeps the navigation rail, top
+  chrome and resize handle, and in the Top list layout adds a "Back to app"
+  row and the panel title. Back to app (Escape) returns to the last app page,
+  so call `preventDefault()` on Escape your own UI handles. Navigate with
+  `useBbNavigate()`; on compact screens BB closes the drawer when the sidebar
+  navigates. Other routes keep their usual sidebar. A throw shows a crash
+  notice in the sidebar until `subPath` or the plugin generation changes.
+  Experimental: see `docs/api_to_audit.md`.
 
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
