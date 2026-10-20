@@ -385,7 +385,7 @@ function AppHeader({
       icon={
         <Icon
           name={resourceSection === "plugins" ? "Plug02" : "Zap"}
-          className="text-muted-foreground"
+          className="size-4 shrink-0 text-muted-foreground"
         />
       }
       title={resourceSection === "plugins" ? "Plugins" : "Skills"}
