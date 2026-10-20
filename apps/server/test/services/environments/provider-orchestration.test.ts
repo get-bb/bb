@@ -865,6 +865,7 @@ describe("core environment orchestration", () => {
             status: "attached",
             path: parsed.path,
             branchName: parsed.branch.name,
+            mergeBaseBranch: null,
           };
         },
       });
@@ -2044,7 +2045,12 @@ it("serializes concurrent branchless checkout attaches until the first thread is
       pluginId: "environment-project-checkout",
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host call");
-        return { status: "attached", path: "/tmp/project", branchName: "main" };
+        return {
+          status: "attached",
+          path: "/tmp/project",
+          branchName: "main",
+          mergeBaseBranch: null,
+        };
       },
     });
     try {
