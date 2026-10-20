@@ -70,11 +70,38 @@ export async function handleDownload(
       }),
     );
   }
+  if (requestUrl.searchParams.get("instructions") === "1") {
+    const params = new URLSearchParams();
+    for (const name of [...CAMPAIGN_PARAM_NAMES, "placement"]) {
+      if (name === "gclid" && request.headers.get("Sec-GPC") === "1") {
+        continue;
+      }
+      const value = requestUrl.searchParams.get(name);
+      if (value) {
+        params.set(name, value);
+      }
+    }
+    const search = params.toString();
+    return redirectResponse(
+      `/install/${platform}${search ? `?${search}` : ""}`,
+    );
+  }
+  return handleInstallerDownload(platform, request);
+}
+
+export async function handleInstallerDownload(
+  platform: DesktopPlatform,
+  request: Request,
+): Promise<Response> {
   const asset = await resolveInstallerAsset(platform);
   if (!asset) {
     return redirectResponse(DOWNLOAD_FALLBACK_URL);
   }
-  return streamInstaller(asset, range, request.headers.get("if-range"));
+  return streamInstaller(
+    asset,
+    request.headers.get("range"),
+    request.headers.get("if-range"),
+  );
 }
 
 type InstallerAsset = {
