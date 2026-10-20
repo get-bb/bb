@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { firstPartyPluginId } from "../src/plugin-icons";
 import { SurfaceCard } from "../src/surface-card";
-import { SURFACE_GROUPS } from "../src/surfaces";
+import { SURFACES_BY_ID, SURFACE_GROUPS } from "../src/surfaces";
 import { SurfaceMapContext } from "../src/wireframes";
 
 const surfaces = SURFACE_GROUPS[0]!.surfaces;
@@ -46,6 +46,23 @@ describe("SurfaceCard annotation navigation", () => {
       /href="\/plugins\/provider-codex"[^>]*><img[^>]*src="\/codex.svg"/,
     );
     expect(markup).toContain("Codex provider");
+  });
+
+  it("keeps live RPC behavior in a disclosure below the concise capabilities", () => {
+    const surface = SURFACES_BY_ID.get("wire")!;
+    const markup = renderToStaticMarkup(
+      createElement(SurfaceCard, {
+        surface,
+        number: 1,
+        onDismiss: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain("<summary");
+    expect(markup).toContain("API behavior</summary>");
+    expect(markup).not.toContain("<details open");
+    expect(markup).toContain("mutate, isPending and pendingInputs settle at write acknowledgement");
+    expect(markup).toContain("while disconnected, focus/browser-online events recheck stale active reads");
   });
 
   it("renders compact previous and next annotation actions", () => {

@@ -3,6 +3,7 @@ export interface PluginSurface {
   title: string;
   summary: string;
   bullets: string[];
+  reference?: string[];
   tagline?: string;
   apiSymbols: string[];
   firstParty?: string[];
@@ -941,6 +942,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Call its server from its UI with schema-checked RPC and typed refusals",
           "Receive webhooks and serve HTTP or WebSocket routes",
+          "Share live reads and optimistic updates; finish pending writes at server acknowledgement",
+          "Publish RPC methods other plugins can discover",
+        ],
+        reference: [
           "All live hooks take { contract, method, ... } and infer their types: plain reads add input, keyed reads add keys and optional select, and mutations add optional optimistic",
           "Data retains successful values and shared predictions during refresh errors. Plain reads start undefined; keyed reads expose loaded rows, initially an empty record, through select",
           "isLoading means an enabled read is fetching never-loaded data, including missing requested keys. isFetching includes background attempts; keyed views share their method's activity",
@@ -950,7 +955,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "mutate, isPending and pendingInputs settle at write acknowledgement; matched reads refresh in the background. Shared predictions stay until confirmed reads arrive, or roll back on write failure",
           "Optimistic updaters must be pure and replayable; generate IDs and timestamps before mutate",
           "RPC error codes may grow: switch on error.code with a fallback. Newer server codes become unknown_error with the original serverCode; transport_error and invalid_response cover client failures. CLI output preserves unknown codes",
-          "Publish RPC methods other plugins can discover",
         ],
         apiSymbols: [
           "PluginRpc",
