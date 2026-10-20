@@ -406,6 +406,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add a viewer or editor for the file types you choose. With this, a plugin can:",
         bullets: [
           "Open files such as `.csv` or `.excalidraw` in your own view",
+          "Use lowercase alphanumeric extension names with single `_` or `-` separators between segments",
           "Jump to the linked lines when someone opens a file reference",
           "Hand individual files back to bb's built-in preview",
         ],
