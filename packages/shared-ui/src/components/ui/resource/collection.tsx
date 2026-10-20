@@ -308,6 +308,7 @@ type ResourceBrowseCardProps = {
   footerMeta?: ReactNode;
   footer?: ReactNode;
   pointerOnlyOpen?: boolean;
+  disabled?: boolean;
 } & (
   | { openLabel: string; onOpen: (trigger: HTMLButtonElement) => void }
   | { openLabel?: undefined; onOpen?: undefined }
@@ -325,6 +326,7 @@ export function ResourceBrowseCard({
   footerMeta,
   footer,
   pointerOnlyOpen = false,
+  disabled = false,
   openLabel,
   onOpen,
 }: ResourceBrowseCardProps) {
@@ -335,6 +337,7 @@ export function ResourceBrowseCard({
       className={cn(
         "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr_auto] gap-2 rounded-lg border border-border bg-card p-3 text-left",
         onOpen &&
+          !disabled &&
           "transition-[border-color,box-shadow,background-color] duration-150 hover:border-foreground/30 hover:bg-[color-mix(in_oklab,var(--ink)_2.5%,transparent)] hover:shadow-sm",
         className,
       )}
@@ -342,12 +345,13 @@ export function ResourceBrowseCard({
       {onOpen ? (
         <button
           type="button"
+          disabled={disabled}
           aria-label={pointerOnlyOpen ? undefined : openLabel}
           aria-hidden={pointerOnlyOpen || undefined}
           tabIndex={pointerOnlyOpen ? -1 : undefined}
           data-resource-card-pointer-action={pointerOnlyOpen ? "" : undefined}
           onClick={(event) => onOpen(event.currentTarget)}
-          className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default"
         />
       ) : null}
       {hasLeading ? (

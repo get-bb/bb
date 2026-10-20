@@ -797,13 +797,19 @@ export function OnboardingPluginCard({
       title={name}
       description={unavailableReason ?? description}
       descriptionLines="expandable"
+      disabled={disabled}
       byline={
         <PluginAuthorByline name="BB Official" github={null} official>
           BB Official
         </PluginAuthorByline>
       }
       footerAction={
-        <span className="flex items-center gap-2">
+        <label
+          className={cn(
+            "flex items-center gap-2",
+            !disabled && "cursor-pointer",
+          )}
+        >
           {pending ? (
             <Icon
               name="Spinner"
@@ -821,7 +827,7 @@ export function OnboardingPluginCard({
             onCheckedChange={onToggle}
             aria-label={`Enable ${name}`}
           />
-        </span>
+        </label>
       }
       openLabel={`${enabled ? "Turn off" : "Turn on"} ${name}`}
       onOpen={() => {
