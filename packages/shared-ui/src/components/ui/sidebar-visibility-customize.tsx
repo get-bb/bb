@@ -156,7 +156,7 @@ function SidebarCustomizeItem({
       style={style}
       role="listitem"
       className={cn(
-        "group flex min-h-7 items-center rounded-md px-1 text-xs",
+        "group relative flex min-h-7 select-none items-center rounded-md px-1 text-xs",
         COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         "text-sidebar-foreground hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
       )}
@@ -170,7 +170,7 @@ function SidebarCustomizeItem({
         {...dragBindings.listeners}
         aria-label={`Reorder ${item.title}`}
         className={cn(
-          "flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",
+          "relative z-10 flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
           "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
         )}
@@ -188,7 +188,7 @@ function SidebarCustomizeItem({
         type="button"
         disabled={item.disabled}
         className={cn(
-          "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left outline-none disabled:cursor-default disabled:opacity-50",
+          "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] disabled:cursor-default disabled:opacity-50",
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
         onClick={(event) => {
@@ -212,7 +212,7 @@ function SidebarCustomizeItem({
         htmlFor={checkboxId}
         className={cn(
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          "flex shrink-0 cursor-pointer items-center justify-center",
+          "relative flex shrink-0 cursor-pointer items-center justify-center",
         )}
         onClick={(event) => event.stopPropagation()}
       >

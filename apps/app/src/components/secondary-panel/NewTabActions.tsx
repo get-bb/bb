@@ -70,7 +70,7 @@ interface NewTabActionRowProps {
 
 const ACTIONS_SECTION_LABEL = "Actions";
 const NEW_TAB_ACTION_DRAG_HANDLE_CLASS =
-  "cursor-grab touch-none opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing group-hover:opacity-100 [@media(hover:none)]:opacity-100";
+  "relative cursor-grab touch-none opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing group-hover:opacity-100 [@media(hover:none)]:opacity-100";
 const OPEN_BROWSER_ACTION_ID = "file-search-result-open-browser";
 const START_TERMINAL_ACTION_ID = "file-search-result-start-terminal";
 
@@ -301,7 +301,7 @@ function NewTabActionRow({ action, dragHandle }: NewTabActionRowProps) {
     <div
       className={cn(
         LAUNCHER_ACTION_ROW_BASE_CLASS,
-        "relative scroll-mt-7 focus-within:bg-state-hover focus-within:text-foreground",
+        "relative scroll-mt-7 select-none focus-within:bg-state-hover focus-within:text-foreground",
         !action.disabled && "hover:bg-state-hover",
       )}
     >
@@ -312,7 +312,7 @@ function NewTabActionRow({ action, dragHandle }: NewTabActionRowProps) {
         aria-keyshortcuts={action.shortcut?.ariaKeyshortcuts}
         disabled={action.disabled}
         onClick={action.onSelect}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none disabled:cursor-default"
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none disabled:cursor-default"
       >
         <span className={LAUNCHER_ROW_ICON_CLASS}>{action.icon}</span>
         <span className="min-w-0 flex-1 truncate text-foreground">
@@ -322,7 +322,7 @@ function NewTabActionRow({ action, dragHandle }: NewTabActionRowProps) {
       <AppCommandShortcutHint shortcut={action.shortcut} />
       {dragHandle}
       {action.trailing !== null ? (
-        <div className="flex min-w-0 shrink-0 items-center">
+        <div className="relative flex min-w-0 shrink-0 items-center">
           {action.trailing}
         </div>
       ) : null}
