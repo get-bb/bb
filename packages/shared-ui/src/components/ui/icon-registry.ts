@@ -116,6 +116,7 @@ export const EXTENDED_ICON_NAMES = [
   "SortingZA01",
   "SortingOneNine",
   "SortingNineOne",
+  "Space",
   "Square",
   "SquareUnlock02",
   "Star",

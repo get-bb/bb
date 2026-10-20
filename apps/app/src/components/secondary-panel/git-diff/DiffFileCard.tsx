@@ -28,6 +28,7 @@ import {
   type ParsedGitDiffFile,
 } from "@/components/git-diff/git-diff-parsing";
 import { Button } from "@bb/shared-ui/button";
+import { Checkbox } from "@bb/shared-ui/checkbox";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -119,6 +120,10 @@ function buildBinaryImagePreviewPlan(
 export interface DiffFileCardProps {
   entry: DiffFileEntry;
   presentation: DiffPresentation;
+  ignoreWhitespace: boolean;
+  isViewed: boolean;
+  isViewedDisabled: boolean;
+  onViewedChange: (viewed: boolean) => void;
   filePathRoot?: string | null;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
@@ -147,6 +152,10 @@ function areDiffFileCardPropsEqual(
   return (
     previous.entry === next.entry &&
     previous.presentation === next.presentation &&
+    previous.ignoreWhitespace === next.ignoreWhitespace &&
+    previous.isViewed === next.isViewed &&
+    previous.isViewedDisabled === next.isViewedDisabled &&
+    previous.onViewedChange === next.onViewedChange &&
     previous.filePathRoot === next.filePathRoot &&
     previous.isCollapsed === next.isCollapsed &&
     previous.onToggleCollapsed === next.onToggleCollapsed &&
@@ -248,6 +257,10 @@ function useBinaryImagePreview({
 export const DiffFileCard = memo(function DiffFileCard({
   entry,
   presentation,
+  ignoreWhitespace,
+  isViewed,
+  isViewedDisabled,
+  onViewedChange,
   filePathRoot,
   isCollapsed,
   onToggleCollapsed,
@@ -323,6 +336,7 @@ export const DiffFileCard = memo(function DiffFileCard({
             showStuckHeaderEdge: false,
           }),
           "-mt-px border-t border-border",
+          isViewed && "bg-muted/50",
         )}
       >
         <GitDiffCardHeader
@@ -344,13 +358,27 @@ export const DiffFileCard = memo(function DiffFileCard({
             ) : undefined
           }
           actionSlot={
-            supportsSvgRawToggle ? (
-              <GitDiffCardRawToggle
-                fileLabel={headerModel.label}
-                isRaw={svgDisplayMode === "raw"}
-                onToggle={toggleSvgDisplayMode}
-              />
-            ) : undefined
+            <>
+              {supportsSvgRawToggle ? (
+                <GitDiffCardRawToggle
+                  fileLabel={headerModel.label}
+                  isRaw={svgDisplayMode === "raw"}
+                  onToggle={toggleSvgDisplayMode}
+                />
+              ) : null}
+              <label className="ml-1 flex shrink-0 cursor-pointer items-center gap-1.5 border-l border-border pl-3 whitespace-nowrap text-xs leading-none text-muted-foreground has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+                <Checkbox
+                  checked={isViewed}
+                  className="data-[state=checked]:border-muted-foreground data-[state=checked]:bg-muted data-[state=checked]:text-foreground"
+                  disabled={isViewedDisabled}
+                  onCheckedChange={(checked) =>
+                    onViewedChange(checked === true)
+                  }
+                  aria-label={`Viewed ${headerModel.label}`}
+                />
+                <span>Viewed</span>
+              </label>
+            </>
           }
         />
       </div>
@@ -359,6 +387,7 @@ export const DiffFileCard = memo(function DiffFileCard({
           entry={entry}
           changedLines={changedLines}
           presentation={presentation}
+          ignoreWhitespace={ignoreWhitespace}
           parsedFile={parsedFile}
           patchState={patchState}
           svgDisplayMode={svgDisplayMode}
@@ -382,6 +411,7 @@ interface DiffFileCardBodyProps {
   entry: DiffFileEntry;
   changedLines: number;
   presentation: DiffPresentation;
+  ignoreWhitespace: boolean;
   parsedFile: ParsedGitDiffFile | null;
   patchState: DiffPatchState;
   svgDisplayMode: GitDiffCardSvgDisplayMode;
@@ -429,6 +459,7 @@ function DiffFileCardBody({
   entry,
   changedLines,
   presentation,
+  ignoreWhitespace,
   parsedFile,
   patchState,
   svgDisplayMode,
@@ -513,6 +544,18 @@ function DiffFileCardBody({
   }
 
   if (parsedFile === null) {
+    if (
+      ignoreWhitespace &&
+      patchState.status === "loaded" &&
+      patchState.patch === "" &&
+      !entry.binary
+    ) {
+      return (
+        <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
+          Only whitespace changes.
+        </div>
+      );
+    }
     if (patchState.status === "loaded") {
       return (
         <div className={DIFF_FILE_CARD_NOTICE_CLASS}>

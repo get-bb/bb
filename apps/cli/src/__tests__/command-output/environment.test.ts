@@ -814,6 +814,7 @@ describe("bb environment command output", () => {
       json: {
         target: { type: "branch_committed", mergeBaseBranch: "main" },
         paths: ["src/a.ts", "src/b.ts"],
+        ignoreWhitespace: false,
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
@@ -822,6 +823,158 @@ describe("bb environment command output", () => {
       "File: src/b.ts",
       "@@ -1 +1 @@",
       "(patch truncated)",
+    ]);
+  });
+
+  it("bb environment diff-files and diff-patch forward --ignore-whitespace", async () => {
+    const get = vi.fn(async () => ({
+      outcome: "available",
+      files: [],
+      shortstat: "",
+      mergeBaseRef: null,
+      initialPatches: [],
+      truncated: false,
+    }));
+    const post = vi.fn(async () => ({ outcome: "available", patches: [] }));
+    stubServerApi({
+      "v1.environments.:id.diff.files.$get": get,
+      "v1.environments.:id.diff.patch.$post": post,
+    });
+
+    await runCommand(
+      [
+        "environment",
+        "diff-files",
+        "env-ws",
+        "--target",
+        "uncommitted",
+        "--ignore-whitespace",
+      ],
+      register,
+    );
+    await runCommand(
+      [
+        "environment",
+        "diff-patch",
+        "env-ws",
+        "--target",
+        "uncommitted",
+        "--path",
+        "a.ts",
+        "--ignore-whitespace",
+      ],
+      register,
+    );
+
+    expect(get).toHaveBeenCalledWith({
+      param: { id: "env-ws" },
+      query: { target: "uncommitted", ignoreWhitespace: "true" },
+    });
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "env-ws" },
+      json: {
+        target: { type: "uncommitted" },
+        paths: ["a.ts"],
+        ignoreWhitespace: true,
+      },
+    });
+  });
+
+  it("bb environment diff-viewed mark uses the file's current revision", async () => {
+    const get = vi.fn(async () => ({
+      outcome: "available",
+      files: [
+        {
+          path: "src/a.ts",
+          previousPath: null,
+          changeKind: "modified",
+          additions: 1,
+          deletions: 1,
+          binary: false,
+          origin: "tracked",
+          loadMode: "auto",
+          revision: "100644:aaa:100644:bbb",
+        },
+      ],
+      shortstat: "1 file changed",
+      mergeBaseRef: null,
+      initialPatches: [],
+      truncated: false,
+    }));
+    const post = vi.fn(async () => ({
+      files: [{ path: "src/a.ts", revision: "100644:aaa:100644:bbb" }],
+    }));
+    const put = vi.fn(async () => ({ ok: true }));
+    const del = vi.fn(async () => ({ ok: true }));
+    stubServerApi({
+      "v1.environments.:id.diff.files.$get": get,
+      "v1.environments.:id.diff.viewed.$put": put,
+      "v1.environments.:id.diff.viewed.$post": post,
+      "v1.environments.:id.diff.viewed.$delete": del,
+    });
+
+    await runCommand(
+      [
+        "environment",
+        "diff-viewed",
+        "list",
+        "env-viewed",
+        "--target",
+        "uncommitted",
+        "--path",
+        "src/a.ts",
+        "--path",
+        "src/b.ts",
+      ],
+      register,
+    );
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "env-viewed" },
+      json: { target: "uncommitted", paths: ["src/a.ts", "src/b.ts"] },
+    });
+    await runCommand(
+      [
+        "environment",
+        "diff-viewed",
+        "mark",
+        "env-viewed",
+        "--target",
+        "uncommitted",
+        "--path",
+        "src/a.ts",
+      ],
+      register,
+    );
+    await runCommand(
+      [
+        "environment",
+        "diff-viewed",
+        "unmark",
+        "env-viewed",
+        "--target",
+        "uncommitted",
+        "--path",
+        "src/a.ts",
+      ],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      param: { id: "env-viewed" },
+      json: {
+        target: { type: "uncommitted" },
+        path: "src/a.ts",
+        revision: "100644:aaa:100644:bbb",
+      },
+    });
+    expect(del).toHaveBeenCalledWith({
+      param: { id: "env-viewed" },
+      json: { target: { type: "uncommitted" }, path: "src/a.ts" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "100644:aaa:100644:bbb\tsrc/a.ts",
+      "Viewed state updated.",
+      "Viewed state updated.",
     ]);
   });
 

@@ -49,6 +49,10 @@ function renderCard({
 }) {
   render(
     <DiffFileCard
+      ignoreWhitespace={false}
+      isViewed={false}
+      isViewedDisabled={false}
+      onViewedChange={() => {}}
       entry={entry}
       presentation={{
         view: "unified",

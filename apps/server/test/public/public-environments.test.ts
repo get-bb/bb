@@ -5,6 +5,7 @@ import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -89,13 +90,19 @@ describe("public environments", () => {
       const responsePromise = harness.app.request(
         `/api/v1/environments/${environment.id}/diff/files?target=uncommitted`,
       );
+      const overlappingResponse = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/files?target=uncommitted`,
+      );
       const diffFilesCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
           command.type === "workspace.diffFiles" &&
           command.environmentId === environment.id,
       );
-      expect(diffFilesCommand.command).toMatchObject({ maxFiles: 500 });
+      expect(diffFilesCommand.command).toMatchObject({
+        maxFiles: 500,
+        ignoreWhitespace: false,
+      });
       await reportQueuedCommandSuccess(harness, diffFilesCommand, {
         outcome: "available",
         files: [
@@ -107,6 +114,7 @@ describe("public environments", () => {
             deletions: 0,
             binary: true,
             origin: "untracked",
+            revision: "000000:0000:100644:abcd",
           },
         ],
         shortstat: "1 file changed",
@@ -116,6 +124,7 @@ describe("public environments", () => {
 
       const response = await responsePromise;
       expect(response.status).toBe(200);
+      expect((await overlappingResponse).status).toBe(200);
       await expect(readJson(response)).resolves.toMatchObject({
         outcome: "available",
         truncated: true,
@@ -124,9 +133,231 @@ describe("public environments", () => {
             path: "large.bin",
             origin: "untracked",
             loadMode: "on_demand",
+            revision: "000000:0000:100644:abcd",
           },
         ],
       });
+    });
+  });
+
+  it("stores viewed files per environment and diff target", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-viewed",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-viewed-env",
+        environmentProviderId: "git-worktree",
+      });
+      const other = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-viewed-other-env",
+        environmentProviderId: "git-worktree",
+      });
+      const viewedUrl = (id: string) =>
+        `/api/v1/environments/${id}/diff/viewed`;
+      const send = (
+        id: string,
+        method: "PUT" | "DELETE" | "POST",
+        body: unknown,
+      ) =>
+        harness.app.request(viewedUrl(id), {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      const list = async (id: string, query: string) =>
+        readJson(await harness.app.request(`${viewedUrl(id)}?${query}`));
+
+      const uncommitted = { type: "uncommitted" };
+      await send(environment.id, "PUT", {
+        target: uncommitted,
+        path: "a.ts",
+        revision: "rev-1",
+      });
+      await send(environment.id, "PUT", {
+        target: uncommitted,
+        path: "b.ts",
+        revision: "rev-b",
+      });
+      const remarked = await send(environment.id, "PUT", {
+        target: uncommitted,
+        path: "a.ts",
+        revision: "rev-2",
+      });
+      await expect(readJson(remarked)).resolves.toEqual({ ok: true });
+      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
+        {
+          files: [
+            { path: "a.ts", revision: "rev-2" },
+            { path: "b.ts", revision: "rev-b" },
+          ],
+        },
+      );
+      await expect(
+        readJson(
+          await send(environment.id, "POST", {
+            target: "uncommitted",
+            paths: ["b.ts", "missing.ts", "b.ts"],
+          }),
+        ),
+      ).resolves.toEqual({ files: [{ path: "b.ts", revision: "rev-b" }] });
+      await expect(
+        readJson(
+          await send(environment.id, "POST", {
+            target: "uncommitted",
+            paths: [],
+          }),
+        ),
+      ).resolves.toEqual({ files: [] });
+      expect(
+        (
+          await send(environment.id, "POST", {
+            target: "uncommitted",
+            paths: Array.from({ length: 501 }, (_, i) => `${i}.ts`),
+          })
+        ).status,
+      ).toBe(400);
+      await send(environment.id, "PUT", {
+        target: { type: "commit", sha: "ABCDEF1" },
+        path: "a.ts",
+        revision: "rev-commit",
+      });
+
+      await expect(
+        list(environment.id, "target=commit&sha=abcdef1"),
+      ).resolves.toEqual({ files: [{ path: "a.ts", revision: "rev-commit" }] });
+      await expect(list(other.id, "target=uncommitted")).resolves.toEqual({
+        files: [],
+      });
+
+      await expect(
+        readJson(
+          await send(environment.id, "DELETE", {
+            target: uncommitted,
+            path: "a.ts",
+          }),
+        ),
+      ).resolves.toEqual({ ok: true });
+      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
+        { files: [{ path: "b.ts", revision: "rev-b" }] },
+      );
+      await send(environment.id, "DELETE", { target: uncommitted });
+      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
+        { files: [] },
+      );
+      await expect(
+        list(environment.id, "target=commit&sha=abcdef1"),
+      ).resolves.toEqual({ files: [{ path: "a.ts", revision: "rev-commit" }] });
+
+      const invalid = await send(environment.id, "PUT", {
+        target: uncommitted,
+        path: "",
+        revision: "rev",
+      });
+      expect(invalid.status).toBe(400);
+      const missing = await send("env_missing", "PUT", {
+        target: uncommitted,
+        path: "a.ts",
+        revision: "rev",
+      });
+      expect(missing.status).toBe(404);
+    });
+  });
+
+  it("forwards ignoreWhitespace to the daemon diff file list and patches", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-ignore-whitespace",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/ignore-whitespace-env",
+        environmentProviderId: "git-worktree",
+      });
+
+      const filesPromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/files?target=uncommitted&ignoreWhitespace=true`,
+      );
+      const filesCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.diffFiles" &&
+          command.environmentId === environment.id,
+      );
+      expect(filesCommand.command).toMatchObject({ ignoreWhitespace: true });
+      await reportQueuedCommandSuccess(harness, filesCommand, {
+        outcome: "available",
+        files: [
+          {
+            path: "a.ts",
+            previousPath: null,
+            statusLetter: "M",
+            additions: 0,
+            deletions: 0,
+            binary: false,
+            origin: "tracked",
+            revision: "100644:aaaa:100644:bbbb",
+          },
+        ],
+        shortstat: "1 file changed",
+        mergeBaseRef: null,
+        truncated: false,
+      });
+      const initialPatchCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.diffPatch" &&
+          command.environmentId === environment.id,
+      );
+      expect(initialPatchCommand.command).toMatchObject({
+        paths: ["a.ts"],
+        ignoreWhitespace: true,
+      });
+      await reportQueuedCommandSuccess(harness, initialPatchCommand, {
+        outcome: "available",
+        patches: [{ path: "a.ts", patch: "", truncated: false }],
+      });
+      await expect(readJson(await filesPromise)).resolves.toMatchObject({
+        files: [{ path: "a.ts", revision: "100644:aaaa:100644:bbbb" }],
+        initialPatches: [{ path: "a.ts", patch: "" }],
+      });
+
+      const patchPromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/patch`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            target: { type: "uncommitted" },
+            paths: ["a.ts"],
+            ignoreWhitespace: true,
+          }),
+        },
+      );
+      const patchCommand = await waitForQueuedCommandAfter(
+        harness,
+        initialPatchCommand.row.cursor,
+        ({ command }) =>
+          command.type === "workspace.diffPatch" &&
+          command.environmentId === environment.id,
+      );
+      expect(patchCommand.command).toMatchObject({ ignoreWhitespace: true });
+      await reportQueuedCommandSuccess(harness, patchCommand, {
+        outcome: "available",
+        patches: [{ path: "a.ts", patch: "", truncated: false }],
+      });
+      expect((await patchPromise).status).toBe(200);
     });
   });
 

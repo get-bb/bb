@@ -39,6 +39,7 @@ function makeDiffFile(
     binary: false,
     origin: "tracked",
     loadMode: "auto",
+    revision: `100644:old:100644:${path}`,
   };
 }
 

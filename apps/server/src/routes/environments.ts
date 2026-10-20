@@ -2,14 +2,19 @@ import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { cleanupEnvironment } from "../services/environments/environment-engine.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import {
+  clearDiffViewedFiles,
   countLiveThreadsInEnvironment,
+  listDiffViewedFiles,
   listEnvironments,
+  markDiffViewedFile,
   updateEnvironmentMetadata,
+  type DiffViewedFileScope,
 } from "@bb/db";
 import {
   environmentStatusValues,
   type EnvironmentStatus,
   type ThreadPullRequest,
+  type WorkspaceDiffTarget,
 } from "@bb/domain";
 import {
   publicApiRoutes,
@@ -280,8 +285,36 @@ function resolveGitDiffWorkspaceTarget(deps: AppDeps, environmentId: string) {
   return requireWorkspaceCommandTarget(environment);
 }
 
+function diffViewedTargetKey(target: WorkspaceDiffTarget): string {
+  switch (target.type) {
+    case "uncommitted":
+      return "uncommitted";
+    case "branch_committed":
+    case "all":
+      return `${target.type}:${target.mergeBaseBranch}`;
+    case "commit":
+      return `commit:${target.sha.toLowerCase()}`;
+    default: {
+      const _exhaustive: never = target;
+      return _exhaustive;
+    }
+  }
+}
+
+function resolveDiffViewedScope(
+  deps: AppDeps,
+  environmentId: string,
+  target: WorkspaceDiffTarget,
+): DiffViewedFileScope {
+  const environment = requireEnvironment(deps.db, environmentId);
+  return {
+    environmentId: environment.id,
+    targetKey: diffViewedTargetKey(target),
+  };
+}
+
 export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
-  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, patch, post, put } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
@@ -501,16 +534,28 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     if (target === null) {
       return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }
-    const result = await callHostRetryableOnlineRpc(deps, {
+    const ignoreWhitespace = query.ignoreWhitespace === "true";
+    const result = await deps.workspaceReadCaches.diffFiles.read({
+      environmentId: target.environmentId,
       hostId: target.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "workspace.diffFiles",
-        environmentId: target.environmentId,
-        workspaceContext: target.workspaceContext,
+      key: JSON.stringify({
         target: toWorkspaceDiffTarget(query),
-        maxFiles: WORKSPACE_DIFF_MAX_FILES,
-      },
+        ignoreWhitespace,
+        workspaceContext: target.workspaceContext,
+      }),
+      load: () =>
+        callHostRetryableOnlineRpc(deps, {
+          hostId: target.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "workspace.diffFiles",
+            environmentId: target.environmentId,
+            workspaceContext: target.workspaceContext,
+            target: toWorkspaceDiffTarget(query),
+            maxFiles: WORKSPACE_DIFF_MAX_FILES,
+            ignoreWhitespace,
+          },
+        }),
     });
     if (result.outcome === "unavailable") {
       return context.json({
@@ -532,6 +577,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           target: toWorkspaceDiffTarget(query),
           paths: initialPatchPaths,
           maxBytesPerFile: DIFF_FILE_PATCH_MAX_BYTES,
+          ignoreWhitespace,
         },
       });
       if (patchResult.outcome === "available") {
@@ -563,6 +609,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         target: payload.target,
         paths: payload.paths,
         maxBytesPerFile: DIFF_FILE_PATCH_MAX_BYTES,
+        ignoreWhitespace: payload.ignoreWhitespace ?? false,
       },
     });
     if (result.outcome === "unavailable") {
@@ -575,6 +622,52 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       outcome: "available",
       patches: result.patches,
     });
+  });
+
+  get(routes.diffViewed, (context, query) => {
+    const scope = resolveDiffViewedScope(
+      deps,
+      context.req.param("id"),
+      toWorkspaceDiffTarget(query),
+    );
+    return context.json({ files: listDiffViewedFiles(deps.db, scope, null) });
+  });
+
+  post(routes.queryDiffViewed, (context, payload) => {
+    const scope = resolveDiffViewedScope(
+      deps,
+      context.req.param("id"),
+      toWorkspaceDiffTarget(payload),
+    );
+    return context.json({
+      files: listDiffViewedFiles(deps.db, scope, payload.paths),
+    });
+  });
+
+  put(routes.markDiffViewed, (context, payload) => {
+    const scope = resolveDiffViewedScope(
+      deps,
+      context.req.param("id"),
+      payload.target,
+    );
+    markDiffViewedFile(deps.db, {
+      ...scope,
+      path: payload.path,
+      revision: payload.revision,
+    });
+    deps.hub.notifyEnvironment(scope.environmentId, ["diff-viewed-changed"]);
+    return context.json({ ok: true as const });
+  });
+
+  del(routes.clearDiffViewed, (context, payload) => {
+    const scope = resolveDiffViewedScope(
+      deps,
+      context.req.param("id"),
+      payload.target,
+    );
+    clearDiffViewedFiles(deps.db, { ...scope, path: payload.path ?? null });
+    deps.hub.notifyEnvironment(scope.environmentId, ["diff-viewed-changed"]);
+    return context.json({ ok: true as const });
   });
 
   get(routes.diffFile, async (context, query) => {

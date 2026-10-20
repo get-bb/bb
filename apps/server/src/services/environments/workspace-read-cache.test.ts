@@ -250,7 +250,11 @@ describe("WorkspaceReadCaches", () => {
       type: "changed",
       entity: "environment",
       id: "env-1",
-      changes: ["metadata-changed", "thread-storage-changed"],
+      changes: [
+        "metadata-changed",
+        "thread-storage-changed",
+        "diff-viewed-changed",
+      ],
     });
     expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
   });
@@ -305,5 +309,40 @@ describe("WorkspaceReadCaches", () => {
 
     caches.invalidateHost("host-1");
     expect(await primed.readBoth()).toEqual({ status: 3, pullRequest: 3 });
+  });
+});
+
+describe("diff-file in-flight reads", () => {
+  it("shares concurrent requests, but never reuses a completed result or joins work invalidated by an edit", async () => {
+    const hub = createFakeHub();
+    const caches = new WorkspaceReadCaches({ hub });
+    const result = {
+      outcome: "available" as const,
+      files: [],
+      shortstat: "",
+      mergeBaseRef: null,
+      truncated: false,
+    };
+    const counter = createCounter([result]);
+    const first = caches.diffFiles.read({ ...READ, load: counter.load });
+    const same = caches.diffFiles.read({ ...READ, load: counter.load });
+    expect(counter.loads).toHaveLength(1);
+    await Promise.all([first, same]);
+    const second = caches.diffFiles.read({ ...READ, load: counter.load });
+    expect(counter.loads).toHaveLength(2);
+    hub.emit({
+      type: "changed",
+      entity: "environment",
+      id: READ.environmentId,
+      changes: ["work-status-changed"],
+    });
+    const afterEdit = caches.diffFiles.read({ ...READ, load: counter.load });
+    expect(counter.loads).toHaveLength(3);
+    counter.loads[1]?.resolve(result);
+    await second;
+    const stillPending = caches.diffFiles.read({ ...READ, load: counter.load });
+    expect(counter.loads).toHaveLength(3);
+    counter.loads[2]?.resolve(result);
+    await Promise.all([afterEdit, stillPending]);
   });
 });

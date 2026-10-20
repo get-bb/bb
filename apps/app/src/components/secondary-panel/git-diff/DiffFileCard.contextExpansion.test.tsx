@@ -122,6 +122,10 @@ function stubPointer(kind: "coarse" | "fine") {
 function renderModifiedCard(onRequestFileContents: RequestDiffFileContents) {
   render(
     <DiffFileCard
+      ignoreWhitespace={false}
+      isViewed={false}
+      isViewedDisabled={false}
+      onViewedChange={() => {}}
       entry={buildEntry()}
       presentation={{
         view: "unified",
@@ -264,6 +268,10 @@ describe("DiffFileCard context expansion", () => {
 
     render(
       <DiffFileCard
+        ignoreWhitespace={false}
+        isViewed={false}
+        isViewedDisabled={false}
+        onViewedChange={() => {}}
         entry={buildEntry({
           path: "src/new.ts",
           changeKind: "added",

@@ -38,6 +38,7 @@ interface RequestDiffPatchPathsArgs {
 
 interface UseEnvironmentDiffPatchesArgs {
   target?: WorkspaceDiffTarget;
+  ignoreWhitespace: boolean;
 }
 
 type RequestDiffPatchPaths = (args: RequestDiffPatchPathsArgs) => void;
@@ -128,17 +129,17 @@ function patchPageError(
 
 export function useEnvironmentDiffPatches(
   environmentId: string,
-  { target }: UseEnvironmentDiffPatchesArgs,
+  { target, ignoreWhitespace }: UseEnvironmentDiffPatchesArgs,
 ): UseEnvironmentDiffPatchesResult {
   const queryClient = useQueryClient();
 
   const targetType = target?.type ?? null;
   const targetKey = environmentDiffTargetKey(target);
-  const targetIdentity = `${targetType ?? "none"}:${targetKey ?? ""}`;
+  const targetIdentity = `${targetType ?? "none"}:${targetKey ?? ""}:${ignoreWhitespace}`;
 
   const identity = useMemo<PatchQueryIdentity>(
-    () => ({ environmentId, targetType, targetKey }),
-    [environmentId, targetType, targetKey],
+    () => ({ environmentId, targetType, targetKey, ignoreWhitespace }),
+    [environmentId, targetType, targetKey, ignoreWhitespace],
   );
 
   const [inFlight, setInFlight] = useState<InFlightState>(EMPTY_IN_FLIGHT);
@@ -202,6 +203,7 @@ export function useEnvironmentDiffPatches(
           environmentId,
           target,
           paths,
+          ignoreWhitespace,
           signal: controller.signal,
         });
         if (controller.signal.aborted) {
@@ -280,7 +282,7 @@ export function useEnvironmentDiffPatches(
         abortControllersRef.current.delete(controller);
       }
     },
-    [environmentId, target, identity, queryClient],
+    [environmentId, target, ignoreWhitespace, identity, queryClient],
   );
 
   const dispatchPending = useCallback(() => {

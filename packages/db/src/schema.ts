@@ -1149,6 +1149,24 @@ export const providerModelCatalogs = sqliteTable(
   ],
 );
 
+export const diffViewedFiles = sqliteTable(
+  "diff_viewed_files",
+  {
+    environmentId: text("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    targetKey: text("target_key").notNull(),
+    path: text("path").notNull(),
+    revision: text("revision").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.environmentId, table.targetKey, table.path],
+    }),
+  ],
+);
+
 export const terminalSessions = sqliteTable(
   "terminal_sessions",
   {

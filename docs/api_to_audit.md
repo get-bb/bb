@@ -2618,6 +2618,39 @@ machine re-enrollment, and cleanup retry behavior across unavailable
 providers, concurrent attempts, and environments shared by archived and live
 threads.
 
+## Workspace diff Viewed state (`bb.sdk.environments.experimental_diffViewed`, `experimental_markDiffViewed`, `experimental_clearDiffViewed`)
+
+`GET /environments/:id/diff/viewed` (diff target in the query) lists
+`{ files: { path, revision }[] }` for one environment and diff target.
+`PUT` with `{ target, path, revision }` marks a file Viewed at a revision, and
+`DELETE` with `{ target, path? }` clears one file or the whole target; both
+return `{ ok: true }` and emit the `diff-viewed-changed` environment change.
+`POST` accepts the diff query fields and `paths` (up to 500) for a bounded
+lookup; an empty list returns no records. The SDK selects this path when
+`experimental_diffViewed` receives `paths`. Core uses the loaded diff paths,
+independent of display filters, so marking Viewed cannot hide its own query.
+Records live in `diff_viewed_files`, keyed by environment, target
+(`uncommitted`, `commit:<sha>`, `branch_committed:<branch>`, `all:<branch>`)
+and path. Revisions come from the `revision` field that `diffFiles` now
+returns for every file: `<oldMode>:<oldBlob>:<newMode>:<newBlob>` from
+`git diff --raw`, with the worktree side hashed by `git hash-object`. A file
+counts as Viewed only while the stored revision equals the current one.
+`diffFiles` and `diffPatch` also accept `ignoreWhitespace` (git `-w`).
+
+Core callers: the workspace diff panel's Viewed checkbox
+(`DiffFilesPanel` through `useSetDiffFileViewed` and
+`useEnvironmentDiffViewed`) and `bb environment diff-viewed list|mark|unmark|clear`.
+
+**Audit before stabilizing.**
+
+1. **Revision cost.** Every file list hashes each changed worktree file; check
+   latency on large diffs and very large files, and whether git's index stat
+   cache can supply unchanged blobs.
+2. **Retention.** Records for destroyed environments stay until the row is
+   deleted; decide whether destroy should clear them.
+3. **Shape.** Decide whether the file list should carry `viewed` itself so
+   callers do not join two reads.
+
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
 `experimental_spawnPortableOutputProcess` spawns an output-only child process,

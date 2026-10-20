@@ -122,6 +122,10 @@ function CardStage({
   return (
     <div className="w-full max-w-[640px] min-w-0">
       <DiffFileCard
+        ignoreWhitespace={false}
+        isViewed={false}
+        isViewedDisabled={false}
+        onViewedChange={() => {}}
         entry={buildEntry(entry)}
         presentation={CARD_PRESENTATION}
         isCollapsed={isCollapsed}

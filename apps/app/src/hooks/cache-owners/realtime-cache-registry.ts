@@ -52,6 +52,7 @@ import {
   allThreadQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
+  environmentDiffViewedQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentPullRequestQueryKey,
   environmentWorkStatusQueryKeyPrefix,
@@ -481,6 +482,9 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
   },
   "thread-storage-changed": {
     dirty: [dirtyThreadStorageQueriesForEnvironment],
+  },
+  "diff-viewed-changed": {
+    dirty: [dirtyEnvironmentDiffViewedQueries],
   },
 } satisfies EnvironmentChangeRegistry;
 
@@ -1146,6 +1150,12 @@ function dirtyEnvironmentThreadListQueries({
   }
 
   return queryKeys;
+}
+
+function dirtyEnvironmentDiffViewedQueries({
+  environmentId,
+}: EnvironmentRealtimeDirtyContext): QueryKey[] {
+  return [environmentDiffViewedQueryKeyPrefix(environmentId)];
 }
 
 function dirtyThreadStorageQueriesForEnvironment({

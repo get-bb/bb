@@ -1512,11 +1512,17 @@ describe("createRealtimeCacheEffects", () => {
   it("refetches the active diff TOC and work-status queries while retaining rendered patch cache for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
+    const diffFilesKey = environmentDiffFilesQueryKey(
+      "env-1",
+      "all",
+      "main",
+      false,
+    );
     const diffPatchKey = environmentDiffPatchQueryKey(
       "env-1",
       "all",
       "main",
+      false,
       "file.ts",
     );
     const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");

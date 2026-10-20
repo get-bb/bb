@@ -143,6 +143,8 @@ Making your repo work with bb:
     --target <target>                     uncommitted, branch_committed, all, or commit (required)
     --merge-base-branch <branch>          Required for branch_committed and all
     --sha <sha>                           Required for commit
+    --ignore-whitespace                   Count and diff with git -w; whitespace-only
+                                          files stay listed with +0 -0
 
   bb environment diff-file <id>           Read one side of a changed file
     --target <target>                     Diff target (required)
@@ -156,6 +158,28 @@ Making your repo work with bb:
     --path <path>                         Changed path; repeat for multiple files (required)
     --merge-base-branch <branch>          Required for branch_committed and all
     --sha <sha>                           Required for commit
+    --ignore-whitespace                   Patch with git -w; whitespace-only files
+                                          return an empty patch
+
+  diff-files --json reports each file's revision: old and new git modes and
+  blob ids (<oldMode>:<oldBlob>:<newMode>:<newBlob>). Any content or mode
+  edit, including whitespace, changes it; staging does not.
+
+  bb environment diff-viewed list <id>    List files marked Viewed
+    --path <path>                         Limit to these paths; repeat up to 500 times (revision, path)
+  bb environment diff-viewed mark <id>    Mark a file Viewed
+    --path <path>                         Changed path (required)
+    --revision <revision>                 Defaults to the file's current revision
+  bb environment diff-viewed unmark <id>  Clear Viewed for --path <path>
+  bb environment diff-viewed clear <id>   Clear Viewed for every file in the target
+    All diff-viewed commands take --target, --merge-base-branch, --sha, --json.
+
+  Viewed mutation commands acknowledge success (`{ "ok": true }` with --json);
+  use list to read records. Omitting --path from list returns the whole target.
+
+  Viewed is stored per environment and diff target. A file shows as Viewed
+  only while its current revision equals the stored one, so new edits
+  un-view it.
 
   bb environment update <id>              Update environment metadata
     --merge-base-branch <branch>          Set merge-base branch override

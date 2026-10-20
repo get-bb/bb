@@ -1008,6 +1008,7 @@ const workspaceDiffFilesCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("workspace.diffFiles"),
   target: workspaceDiffTargetSchema,
   maxFiles: z.number().int().positive(),
+  ignoreWhitespace: z.boolean(),
 });
 
 const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
@@ -1015,6 +1016,7 @@ const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   target: workspaceDiffTargetSchema,
   paths: z.array(z.string()),
   maxBytesPerFile: z.number().int().positive(),
+  ignoreWhitespace: z.boolean(),
 });
 
 const workspacePullRequestCommandSchema =

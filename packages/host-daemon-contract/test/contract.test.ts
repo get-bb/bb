@@ -626,6 +626,7 @@ const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
       deletions: 1,
       binary: false,
       origin: "tracked",
+      revision: "100644:aaaa:100644:bbbb",
     },
   ],
   shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
@@ -1265,7 +1266,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(245);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(246);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

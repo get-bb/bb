@@ -1,5 +1,8 @@
 import { Command } from "commander";
-import type { CommitActionResponse } from "@bb/server-contract";
+import type {
+  CommitActionResponse,
+  EnvironmentDiffViewedResponse,
+} from "@bb/server-contract";
 import type {
   EnvironmentDiffArgs,
   EnvironmentDiffFileArgs,
@@ -10,6 +13,7 @@ import {
   environmentStatusSchema,
   environmentStatusValues,
   type EnvironmentStatus,
+  type WorkspaceDiffTarget,
 } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -77,8 +81,17 @@ interface EnvironmentDiffFileCommandOptions {
   target: string;
 }
 
-interface EnvironmentDiffPatchCommandOptions extends EnvironmentDiffCommandOptions {
+interface EnvironmentDiffFilesCommandOptions extends EnvironmentDiffCommandOptions {
+  ignoreWhitespace?: boolean;
+}
+
+interface EnvironmentDiffPatchCommandOptions extends EnvironmentDiffFilesCommandOptions {
   path: string[];
+}
+
+interface EnvironmentDiffViewedCommandOptions extends EnvironmentDiffCommandOptions {
+  path?: string;
+  revision?: string;
 }
 
 interface EnvironmentUpdateCommandOptions {
@@ -253,6 +266,23 @@ function addDiffTargetOptions(command: Command): Command {
     .option("--sha <sha>", "Commit target SHA");
 }
 
+function toWorkspaceDiffTarget(
+  diffArgs: EnvironmentDiffArgs,
+): WorkspaceDiffTarget {
+  switch (diffArgs.target) {
+    case "uncommitted":
+      return { type: "uncommitted" };
+    case "branch_committed":
+    case "all":
+      return {
+        type: diffArgs.target,
+        mergeBaseBranch: diffArgs.mergeBaseBranch,
+      };
+    case "commit":
+      return { type: "commit", sha: diffArgs.sha };
+  }
+}
+
 function buildEnvironmentDiffPatchArgs(
   id: string,
   opts: EnvironmentDiffPatchCommandOptions,
@@ -260,31 +290,41 @@ function buildEnvironmentDiffPatchArgs(
   if (opts.path.length === 0) {
     throw new Error("Provide at least one --path.");
   }
-  const diffArgs = buildEnvironmentDiffArgs(id, opts);
-  switch (diffArgs.target) {
-    case "uncommitted":
-      return {
-        environmentId: id,
-        paths: opts.path,
-        target: { type: "uncommitted" },
-      };
-    case "branch_committed":
-    case "all":
-      return {
-        environmentId: id,
-        paths: opts.path,
-        target: {
-          type: diffArgs.target,
-          mergeBaseBranch: diffArgs.mergeBaseBranch,
-        },
-      };
-    case "commit":
-      return {
-        environmentId: id,
-        paths: opts.path,
-        target: { type: "commit", sha: diffArgs.sha },
-      };
+  return {
+    environmentId: id,
+    paths: opts.path,
+    target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
+    ignoreWhitespace: opts.ignoreWhitespace === true,
+  };
+}
+
+function printDiffViewedFiles(result: EnvironmentDiffViewedResponse): void {
+  if (result.files.length === 0) {
+    console.log("No files marked Viewed.");
+    return;
   }
+  for (const file of result.files) {
+    console.log(`${file.revision}\t${file.path}`);
+  }
+}
+
+async function resolveCurrentDiffRevision(
+  url: string,
+  diffArgs: EnvironmentDiffArgs,
+  path: string,
+): Promise<string> {
+  const result = await createCliBbSdk(url).environments.diffFiles(diffArgs);
+  if (result.outcome === "not_applicable") {
+    throw new Error(`Diff files unavailable: ${result.message}`);
+  }
+  if (result.outcome === "unavailable") {
+    throw new Error(`Diff files unavailable: ${result.failure.message}`);
+  }
+  const file = result.files.find((entry) => entry.path === path);
+  if (file === undefined) {
+    throw new Error(`${path} is not a changed file in this diff.`);
+  }
+  return file.revision;
 }
 
 function buildEnvironmentUpdateArgs({
@@ -659,12 +699,14 @@ export function registerEnvironmentCommands(
       .command("diff-files <id>")
       .description("List changed files in an environment"),
   )
+    .option("--ignore-whitespace", "Hide whitespace-only changes (git -w)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string, opts: EnvironmentDiffCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.diffFiles(
-          buildEnvironmentDiffArgs(id, opts),
-        );
+      action(async (id: string, opts: EnvironmentDiffFilesCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).environments.diffFiles({
+          ...buildEnvironmentDiffArgs(id, opts),
+          ignoreWhitespace: opts.ignoreWhitespace === true,
+        });
         if (outputJson(opts, result)) return;
         if (result.outcome === "not_applicable") {
           console.log(`Diff files unavailable: ${result.message}`);
@@ -739,6 +781,7 @@ export function registerEnvironmentCommands(
     )
     .option("--merge-base-branch <branch>", "Branch-based target base")
     .option("--sha <sha>", "Commit target SHA")
+    .option("--ignore-whitespace", "Hide whitespace-only changes (git -w)")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentDiffPatchCommandOptions) => {
@@ -759,6 +802,109 @@ export function registerEnvironmentCommands(
           console.log(patch.patch);
           if (patch.truncated) console.log("(patch truncated)");
         }
+      }),
+    );
+
+  const diffViewed = environment
+    .command("diff-viewed")
+    .description(
+      "List or change the files marked Viewed in an environment diff",
+    );
+
+  addDiffTargetOptions(
+    diffViewed.command("list <id>").description("List files marked Viewed"),
+  )
+    .option(
+      "--path <path>",
+      "Limit to a changed path; repeat up to 500 times",
+      collectOption,
+      [],
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string,
+          opts: EnvironmentDiffCommandOptions & { path: string[] },
+        ) => {
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).environments.experimental_diffViewed({
+            ...buildEnvironmentDiffArgs(id, opts),
+            ...(opts.path.length ? { paths: opts.path } : {}),
+          });
+          if (outputJson(opts, result)) return;
+          printDiffViewedFiles(result);
+        },
+      ),
+    );
+
+  addDiffTargetOptions(
+    diffViewed
+      .command("mark <id>")
+      .description("Mark a changed file Viewed at its current revision"),
+  )
+    .requiredOption("--path <path>", "Changed file path")
+    .option(
+      "--revision <revision>",
+      "Revision to mark (default: the file's current revision from diff-files)",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
+        const diffArgs = buildEnvironmentDiffArgs(id, opts);
+        const path = opts.path ?? "";
+        const revision =
+          opts.revision ??
+          (await resolveCurrentDiffRevision(getUrl(), diffArgs, path));
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.experimental_markDiffViewed({
+          environmentId: id,
+          target: toWorkspaceDiffTarget(diffArgs),
+          path,
+          revision,
+        });
+        if (outputJson(opts, result)) return;
+        console.log("Viewed state updated.");
+      }),
+    );
+
+  addDiffTargetOptions(
+    diffViewed.command("unmark <id>").description("Clear Viewed for one file"),
+  )
+    .requiredOption("--path <path>", "Changed file path")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.experimental_clearDiffViewed({
+          environmentId: id,
+          target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
+          path: opts.path,
+        });
+        if (outputJson(opts, result)) return;
+        console.log("Viewed state updated.");
+      }),
+    );
+
+  addDiffTargetOptions(
+    diffViewed
+      .command("clear <id>")
+      .description("Clear Viewed for every file in the diff target"),
+  )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.experimental_clearDiffViewed({
+          environmentId: id,
+          target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
+        });
+        if (outputJson(opts, result)) return;
+        console.log("Viewed state updated.");
       }),
     );
 

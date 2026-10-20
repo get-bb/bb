@@ -23,6 +23,9 @@ import type {
   EnvironmentDiffQuery,
   EnvironmentDiffResponse,
   EnvironmentDiffFilesResponse,
+  EnvironmentDiffViewedClearRequest,
+  EnvironmentDiffViewedMarkRequest,
+  EnvironmentDiffViewedResponse,
   EnvironmentPathsQuery,
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
@@ -83,6 +86,10 @@ export type EnvironmentDiffArgs = EnvironmentDiffQuery & {
   signal?: AbortSignal;
 };
 
+export type EnvironmentDiffFilesArgs = EnvironmentDiffArgs & {
+  ignoreWhitespace?: boolean;
+};
+
 export type EnvironmentDiffFileArgs = EnvironmentDiffFileQuery & {
   environmentId: string;
   signal?: AbortSignal;
@@ -107,6 +114,15 @@ export type EnvironmentDiffPatchArgs = EnvironmentDiffPatchRequest & {
   signal?: AbortSignal;
 };
 
+export type EnvironmentDiffViewedMarkArgs = EnvironmentDiffViewedMarkRequest & {
+  environmentId: string;
+};
+
+export type EnvironmentDiffViewedClearArgs =
+  EnvironmentDiffViewedClearRequest & {
+    environmentId: string;
+  };
+
 export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
   environmentId: string;
   signal?: AbortSignal;
@@ -119,6 +135,7 @@ export type EnvironmentDiffBranchesResult = EnvironmentDiffBranchesResponse;
 export type EnvironmentDiffFileResult = EnvironmentDiffFileResponse;
 export type EnvironmentDiffFilesResult = EnvironmentDiffFilesResponse;
 export type EnvironmentDiffPatchResult = EnvironmentDiffPatchResponse;
+export type EnvironmentDiffViewedResult = EnvironmentDiffViewedResponse;
 export type EnvironmentGetResult = Environment;
 export type EnvironmentMarkPullRequestDraftResult =
   PullRequestDraftActionResponse;
@@ -165,10 +182,21 @@ export interface EnvironmentsArea {
     args: EnvironmentDiffBranchesArgs,
   ): Promise<EnvironmentDiffBranchesResult>;
   diffFile(args: EnvironmentDiffFileArgs): Promise<EnvironmentDiffFileResult>;
-  diffFiles(args: EnvironmentDiffArgs): Promise<EnvironmentDiffFilesResult>;
+  diffFiles(
+    args: EnvironmentDiffFilesArgs,
+  ): Promise<EnvironmentDiffFilesResult>;
   diffPatch(
     args: EnvironmentDiffPatchArgs,
   ): Promise<EnvironmentDiffPatchResult>;
+  experimental_diffViewed(
+    args: EnvironmentDiffArgs & { paths?: string[] },
+  ): Promise<EnvironmentDiffViewedResult>;
+  experimental_markDiffViewed(
+    args: EnvironmentDiffViewedMarkArgs,
+  ): Promise<{ ok: true }>;
+  experimental_clearDiffViewed(
+    args: EnvironmentDiffViewedClearArgs,
+  ): Promise<{ ok: true }>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
@@ -335,7 +363,12 @@ export function createEnvironmentsArea(
         transport.api.v1.environments[":id"].diff.files.$get(
           {
             param: { id: input.environmentId },
-            query: environmentDiffQuery(input),
+            query: {
+              ...environmentDiffQuery(input),
+              ...(input.ignoreWhitespace === true
+                ? { ignoreWhitespace: "true" as const }
+                : {}),
+            },
           },
           ...signalRequestArgs(input.signal),
         ),
@@ -349,10 +382,53 @@ export function createEnvironmentsArea(
             json: {
               paths: input.paths,
               target: input.target,
+              ignoreWhitespace: input.ignoreWhitespace,
             },
           },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async experimental_diffViewed(input) {
+      if (input.paths !== undefined) {
+        return transport.readJson(
+          transport.api.v1.environments[":id"].diff.viewed.$post(
+            {
+              param: { id: input.environmentId },
+              json: { ...environmentDiffQuery(input), paths: input.paths },
+            },
+            ...signalRequestArgs(input.signal),
+          ),
+        );
+      }
+      return transport.readJson(
+        transport.api.v1.environments[":id"].diff.viewed.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentDiffQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_markDiffViewed(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"].diff.viewed.$put({
+          param: { id: input.environmentId },
+          json: {
+            target: input.target,
+            path: input.path,
+            revision: input.revision,
+          },
+        }),
+      );
+    },
+    async experimental_clearDiffViewed(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"].diff.viewed.$delete({
+          param: { id: input.environmentId },
+          json: { target: input.target, path: input.path },
+        }),
       );
     },
     async list(input) {

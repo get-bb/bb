@@ -1334,9 +1334,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use bb's own API from plugin server code. With this, a plugin can:",
         bullets: [
           "Create threads, send messages, and manage projects and machines",
-          "Do what the [bb CLI](cli) and the app can do",
           "Have the threads it creates attributed to the plugin",
           "Start plugin updates in the background and follow their progress or rollback",
+          "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
         ],
         apiSymbols: [
           "BbPluginApi",
@@ -1345,6 +1345,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
           "PluginBbSdk.environments.experimental_cleanup",
+          "PluginBbSdk.environments.experimental_diffViewed",
+          "PluginBbSdk.environments.experimental_markDiffViewed",
+          "PluginBbSdk.environments.experimental_clearDiffViewed",
           "PluginBbSdk.plugins.experimental_getSafeMode",
           "PluginBbSdk.plugins.experimental_setSafeMode",
           "PluginBbSdk.plugins.experimental_pruneCache",

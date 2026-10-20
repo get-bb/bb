@@ -23,6 +23,7 @@ import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSub
 import {
   environmentDiffFilesQueryKey,
   environmentDiffTargetKey,
+  environmentDiffViewedQueryKey,
   environmentFilePreviewQueryKey,
   environmentMergeBaseBranchesQueryKey,
   environmentPullRequestQueryKey,
@@ -57,6 +58,7 @@ interface BranchQueryOptions extends QueryOptions {
 
 interface UseEnvironmentDiffFilesOptions extends QueryOptions {
   target?: WorkspaceDiffTarget;
+  ignoreWhitespace: boolean;
 }
 
 const ENVIRONMENT_PULL_REQUEST_STALE_MS = 30_000;
@@ -336,7 +338,7 @@ export function useEnvironmentDiffFiles(
   environmentId: string,
   options: UseEnvironmentDiffFilesOptions,
 ) {
-  const target = options.target;
+  const { target, ignoreWhitespace } = options;
   const enabled =
     (options.enabled ?? true) && Boolean(environmentId) && target !== undefined;
   useEnvironmentDetailRealtimeSubscription(environmentId, { enabled });
@@ -346,6 +348,7 @@ export function useEnvironmentDiffFiles(
       environmentId,
       target?.type ?? null,
       environmentDiffTargetKey(target),
+      ignoreWhitespace,
     ),
     queryFn: ({ signal }) =>
       sdk.environments.diffFiles({
@@ -357,6 +360,7 @@ export function useEnvironmentDiffFiles(
             argName: "target",
           }),
         ),
+        ignoreWhitespace,
         signal,
       }),
     enabled,
@@ -368,6 +372,46 @@ export function useEnvironmentDiffFiles(
       ),
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     staleTime: ENVIRONMENT_DIFF_STALE_MS,
+  });
+}
+
+export function useEnvironmentDiffViewed(
+  environmentId: string,
+  options: {
+    target?: WorkspaceDiffTarget;
+    enabled: boolean;
+    paths: readonly string[];
+  },
+) {
+  const { target } = options;
+  const paths = [...new Set(options.paths)].sort();
+  const enabled =
+    options.enabled &&
+    Boolean(environmentId) &&
+    target !== undefined &&
+    paths.length > 0;
+  return useQuery({
+    queryKey: environmentDiffViewedQueryKey(
+      environmentId,
+      target?.type ?? null,
+      environmentDiffTargetKey(target),
+      paths,
+    ),
+    queryFn: ({ signal }) =>
+      sdk.environments.experimental_diffViewed({
+        ...buildEnvironmentDiffArgs(
+          environmentId,
+          requireEnabledQueryArg({
+            value: target,
+            hookName: "useEnvironmentDiffViewed",
+            argName: "target",
+          }),
+        ),
+        signal,
+        paths,
+      }),
+    enabled,
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
 }
 

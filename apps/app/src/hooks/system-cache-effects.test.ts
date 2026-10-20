@@ -376,11 +376,17 @@ describe("system cache effects", () => {
 
   it("refetches an active diff TOC query but evicts the observer-less patch cache after reconnect", async () => {
     const queryClient = createCacheEffectQueryClient();
-    const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
+    const diffFilesKey = environmentDiffFilesQueryKey(
+      "env-1",
+      "all",
+      "main",
+      false,
+    );
     const diffPatchKey = environmentDiffPatchQueryKey(
       "env-1",
       "all",
       "main",
+      false,
       "file.ts",
     );
     queryClient.setQueryData(diffFilesKey, {

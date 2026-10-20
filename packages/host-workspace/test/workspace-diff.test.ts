@@ -129,11 +129,13 @@ describe("Workspace.diffFiles", () => {
     const files = await workspace.diffFiles({
       target: UNCOMMITTED,
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
     const patches = await workspace.diffPatch({
       target: UNCOMMITTED,
       paths: ["staged.txt", "untracked.txt"],
       maxBytesPerFile: 64 * 1024,
+      ignoreWhitespace: false,
     });
 
     expect(diff.files).toContain("staged.txt");
@@ -186,6 +188,7 @@ describe("Workspace.diffFiles", () => {
     const result = await workspace.diffFiles({
       target: UNCOMMITTED,
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
 
     const added = findFile(result.files, "added.txt");
@@ -197,6 +200,7 @@ describe("Workspace.diffFiles", () => {
       deletions: 0,
       binary: false,
       origin: "tracked",
+      revision: expect.stringMatching(/^000000:0+:100644:[0-9a-f]+$/u),
     });
 
     const modified = findFile(result.files, "keep.txt");
@@ -227,6 +231,7 @@ describe("Workspace.diffFiles", () => {
     const result = await workspace.diffFiles({
       target: { type: "commit", sha: "HEAD" },
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
 
     const renamed = findFile(result.files, "renamed.txt");
@@ -249,6 +254,7 @@ describe("Workspace.diffFiles", () => {
     const result = await workspace.diffFiles({
       target: UNCOMMITTED,
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
 
     const typeChanged = findFile(result.files, "thing");
@@ -272,6 +278,7 @@ describe("Workspace.diffFiles", () => {
     const result = await workspace.diffFiles({
       target: UNCOMMITTED,
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
 
     const binary = findFile(result.files, "image.bin");
@@ -295,6 +302,7 @@ describe("Workspace.diffFiles", () => {
     const result = await workspace.diffFiles({
       target: UNCOMMITTED,
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
 
     const tracked = findFile(result.files, "tracked.txt");
@@ -309,6 +317,7 @@ describe("Workspace.diffFiles", () => {
       deletions: 0,
       binary: false,
       origin: "untracked",
+      revision: expect.stringMatching(/^000000:0+:100644:[0-9a-f]+$/u),
     });
   });
 
@@ -331,11 +340,16 @@ describe("Workspace.diffFiles", () => {
         target: UNCOMMITTED,
         maxUntrackedFiles: 500,
       }),
-      workspace.diffFiles({ target: UNCOMMITTED, maxFiles: 500 }),
+      workspace.diffFiles({
+        target: UNCOMMITTED,
+        maxFiles: 500,
+        ignoreWhitespace: false,
+      }),
       workspace.diffPatch({
         target: UNCOMMITTED,
         paths: ["outside/new.txt"],
         maxBytesPerFile: 64 * 1024,
+        ignoreWhitespace: false,
       }),
     ]);
 
@@ -366,6 +380,7 @@ describe("Workspace.diffFiles", () => {
         new Workspace(repoPath).diffFiles({
           target: UNCOMMITTED,
           maxFiles: 500,
+          ignoreWhitespace: false,
         }),
     );
 
@@ -394,6 +409,7 @@ describe("Workspace.diffFiles", () => {
     const result = await new Workspace(repoPath).diffFiles({
       target: UNCOMMITTED,
       maxFiles: 2,
+      ignoreWhitespace: false,
     });
 
     expect(result.files).toHaveLength(2);
@@ -420,6 +436,7 @@ describe("Workspace.diffFiles", () => {
     const result = await new Workspace(repoPath).diffFiles({
       target: UNCOMMITTED,
       maxFiles: 2,
+      ignoreWhitespace: false,
     });
 
     expect(result.files).toHaveLength(2);
@@ -449,6 +466,7 @@ describe("Workspace.diffFiles", () => {
     const result = await new Workspace(repoPath).diffFiles({
       target: UNCOMMITTED,
       maxFiles: 2,
+      ignoreWhitespace: false,
     });
 
     expect(result.truncated).toBe(true);
@@ -497,6 +515,7 @@ describe("Workspace.diffFiles", () => {
     const result = await new Workspace(repoPath).diffFiles({
       target: UNCOMMITTED,
       maxFiles: 10,
+      ignoreWhitespace: false,
     });
 
     expect(result.truncated).toBe(true);
@@ -531,6 +550,7 @@ describe("Workspace.diffFiles", () => {
     const result = await workspace.diffFiles({
       target: { type: "commit", sha: "HEAD" },
       maxFiles: 5000,
+      ignoreWhitespace: false,
     });
 
     expect(findFile(result.files, "b.txt")).toBeDefined();
@@ -562,6 +582,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["alpha.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches).toHaveLength(1);
@@ -599,6 +620,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["logo.png", "alpha.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     const binary = patches.find((patch) => patch.path === "logo.png");
@@ -622,6 +644,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: [untrackedPath],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches).toHaveLength(1);
@@ -649,6 +672,7 @@ describe("Workspace.diffPatch", () => {
           target: UNCOMMITTED,
           paths: ["gone.txt", "keep.txt"],
           maxBytesPerFile: BIG_BUDGET,
+          ignoreWhitespace: false,
         }),
     );
 
@@ -678,6 +702,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["untracked.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches[0]?.patch).toBe(expected);
@@ -697,6 +722,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["untracked.txt", "tracked.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches.map((entry) => entry.path)).toEqual([
@@ -723,6 +749,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["huge.txt"],
       maxBytesPerFile: budget,
+      ignoreWhitespace: false,
     });
 
     expect(patches).toHaveLength(1);
@@ -758,6 +785,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths,
       maxBytesPerFile: budget,
+      ignoreWhitespace: false,
     });
 
     expect(patches.map((entry) => entry.path)).toEqual(paths);
@@ -799,6 +827,7 @@ describe("Workspace.diffPatch", () => {
       target,
       paths: ["after.txt", "mod.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches.find((p) => p.path === "after.txt")?.patch).toBe(
@@ -820,6 +849,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["real.txt", "does-not-exist.txt"],
       maxBytesPerFile: 10_000_000,
+      ignoreWhitespace: false,
     });
 
     expect(patches.map((p) => p.path)).toEqual([
@@ -863,6 +893,7 @@ describe("Workspace.diffPatch", () => {
       target,
       paths: ["new name.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches).toHaveLength(1);
@@ -901,6 +932,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["my file.txt", "normal.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches.map((entry) => entry.path)).toEqual([
@@ -958,6 +990,7 @@ describe("Workspace.diffPatch", () => {
       target,
       paths: ["after.txt", "edit.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches.find((p) => p.path === "after.txt")?.patch).toBe(
@@ -989,6 +1022,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["café.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
 
     expect(patches).toHaveLength(1);
@@ -1014,6 +1048,7 @@ describe("Workspace.diffPatch", () => {
       target: UNCOMMITTED,
       paths: ["multibyte.txt"],
       maxBytesPerFile: BIG_BUDGET,
+      ignoreWhitespace: false,
     });
     const fullPatch = full?.patch ?? "";
     const fullBytes = Buffer.from(fullPatch, "utf8");
@@ -1025,6 +1060,7 @@ describe("Workspace.diffPatch", () => {
         target: UNCOMMITTED,
         paths: ["multibyte.txt"],
         maxBytesPerFile: maxBytes,
+        ignoreWhitespace: false,
       });
 
       expect(entry?.truncated).toBe(true);
@@ -1038,5 +1074,199 @@ describe("Workspace.diffPatch", () => {
           .toString("utf8"),
       ).toBe(entry?.patch);
     }
+  });
+});
+
+describe("Workspace diff ignoreWhitespace", () => {
+  it("keeps whitespace-only files listed and maps later patches to their own paths", async () => {
+    const repoPath = await initRepo(await makeTempDir("bb-diff-ws-"));
+    await write(repoPath, "a.txt", "alpha  beta\n");
+    await write(repoPath, "b.txt", "one\n");
+    await write(repoPath, "c.txt", "two\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "a.txt", "alpha beta\n");
+    await write(repoPath, "b.txt", "one changed\n");
+    await write(repoPath, "c.txt", "two changed\n");
+    await write(repoPath, "new.txt", "fresh\n");
+    const workspace = new Workspace(repoPath);
+
+    const listed = await workspace.diffFiles({
+      target: UNCOMMITTED,
+      maxFiles: 50,
+      ignoreWhitespace: true,
+    });
+    expect(findFile(listed.files, "a.txt")).toMatchObject({
+      additions: 0,
+      deletions: 0,
+    });
+    expect(findFile(listed.files, "b.txt")).toMatchObject({
+      additions: 1,
+      deletions: 1,
+    });
+
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["a.txt", "b.txt", "c.txt", "new.txt"],
+      maxBytesPerFile: 64 * 1024,
+      ignoreWhitespace: true,
+    });
+    const byPath = new Map(patches.map((entry) => [entry.path, entry.patch]));
+    expect(byPath.get("a.txt")).toBe("");
+    expect(byPath.get("b.txt")).toContain("+one changed");
+    expect(byPath.get("b.txt")).not.toContain("two");
+    expect(byPath.get("c.txt")).toContain("+two changed");
+    expect(byPath.get("new.txt")).toContain("+fresh");
+
+    const unfiltered = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["a.txt"],
+      maxBytesPerFile: 64 * 1024,
+      ignoreWhitespace: false,
+    });
+    expect(unfiltered[0]?.patch).toContain("+alpha beta");
+  });
+
+  it("filters whitespace for committed targets", async () => {
+    const repoPath = await initRepo(await makeTempDir("bb-diff-ws-commit-"));
+    await write(repoPath, "a.txt", "x  y\n");
+    await write(repoPath, "b.txt", "one\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "a.txt", "x y\n");
+    await write(repoPath, "b.txt", "uno\n");
+    await commitAll(repoPath, "edit");
+    const sha = (
+      await runGit(["rev-parse", "HEAD"], { cwd: repoPath })
+    ).stdout.trim();
+    const workspace = new Workspace(repoPath);
+
+    const patches = await workspace.diffPatch({
+      target: { type: "commit", sha },
+      paths: ["a.txt", "b.txt"],
+      maxBytesPerFile: 64 * 1024,
+      ignoreWhitespace: true,
+    });
+    expect(patches.find((entry) => entry.path === "a.txt")?.patch).toBe("");
+    expect(patches.find((entry) => entry.path === "b.txt")?.patch).toContain(
+      "+uno",
+    );
+  });
+});
+
+describe("Workspace diff revisions", () => {
+  async function revisionOf(
+    workspace: Workspace,
+    filePath: string,
+    target: WorkspaceDiffTarget = UNCOMMITTED,
+  ): Promise<string | undefined> {
+    const listed = await workspace.diffFiles({
+      target,
+      maxFiles: 50,
+      ignoreWhitespace: false,
+    });
+    return findFile(listed.files, filePath)?.revision;
+  }
+
+  async function blobOf(repoPath: string, spec: string): Promise<string> {
+    return (await runGit(["rev-parse", spec], { cwd: repoPath })).stdout.trim();
+  }
+
+  it("recomputes revisions after same-size replacements and Git clean-filter changes", async () => {
+    const repoPath = await initRepo(
+      await makeTempDir("bb-diff-revision-fresh-"),
+    );
+    await write(repoPath, "a.txt", "base\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "a.txt", "one!\n");
+    const workspace = new Workspace(repoPath);
+    const original = await revisionOf(workspace, "a.txt");
+    const stat = await fs.stat(path.join(repoPath, "a.txt"));
+    await write(repoPath, "replacement", "two!\n");
+    await fs.utimes(path.join(repoPath, "replacement"), stat.atime, stat.mtime);
+    await fs.rename(
+      path.join(repoPath, "replacement"),
+      path.join(repoPath, "a.txt"),
+    );
+    const replaced = await revisionOf(workspace, "a.txt");
+    expect(replaced).toBeDefined();
+    expect(replaced).not.toBe(original);
+    await runGit(["config", "filter.review.clean", "sed s/two/NEW/"], {
+      cwd: repoPath,
+    });
+    await write(repoPath, ".gitattributes", "*.txt filter=review\n");
+    const filtered = await revisionOf(workspace, "a.txt");
+    expect(filtered).not.toBe(replaced);
+    await runGit(["config", "filter.review.clean", "cat"], { cwd: repoPath });
+    expect(await revisionOf(workspace, "a.txt")).toBe(replaced);
+  });
+
+  it("identifies worktree content by its git blob and ignores staging", async () => {
+    const repoPath = await initRepo(await makeTempDir("bb-diff-rev-"));
+    await write(repoPath, "a.txt", "one\n");
+    await commitAll(repoPath, "base");
+    const baseBlob = await blobOf(repoPath, "HEAD:a.txt");
+    await write(repoPath, "a.txt", "two\n");
+    const workspace = new Workspace(repoPath);
+
+    const unstaged = await revisionOf(workspace, "a.txt");
+    const worktreeBlob = (
+      await runGit(["hash-object", "a.txt"], { cwd: repoPath })
+    ).stdout.trim();
+    expect(unstaged).toBe(`100644:${baseBlob}:100644:${worktreeBlob}`);
+
+    await runGit(["add", "a.txt"], { cwd: repoPath });
+    expect(await revisionOf(workspace, "a.txt")).toBe(unstaged);
+
+    await write(repoPath, "a.txt", "two \n");
+    const whitespaceEdit = await revisionOf(workspace, "a.txt");
+    expect(whitespaceEdit).not.toBe(unstaged);
+
+    await fs.chmod(path.join(repoPath, "a.txt"), 0o755);
+    const modeEdit = await revisionOf(workspace, "a.txt");
+    if (process.platform === "win32") {
+      expect(modeEdit).toBe(whitespaceEdit);
+    } else {
+      expect(modeEdit).toMatch(/^100644:[0-9a-f]+:100755:/u);
+      expect(modeEdit).not.toBe(whitespaceEdit);
+    }
+  });
+
+  it("covers untracked files, symlinks, deletions and commits", async () => {
+    const repoPath = await initRepo(await makeTempDir("bb-diff-rev-kinds-"));
+    await write(repoPath, "gone.txt", "bye\n");
+    await commitAll(repoPath, "base");
+    await fs.rm(path.join(repoPath, "gone.txt"));
+    await write(repoPath, "fresh.txt", "hello\n");
+    await fs.symlink("fresh.txt", path.join(repoPath, "link"));
+    const workspace = new Workspace(repoPath);
+    const listed = await workspace.diffFiles({
+      target: UNCOMMITTED,
+      maxFiles: 50,
+      ignoreWhitespace: false,
+    });
+
+    const freshBlob = (
+      await runGit(["hash-object", "fresh.txt"], { cwd: repoPath })
+    ).stdout.trim();
+    expect(findFile(listed.files, "fresh.txt")?.revision).toMatch(
+      new RegExp(`^000000:0+:100644:${freshBlob}$`, "u"),
+    );
+    const linkBlob = (
+      await runGit(["hash-object", "--stdin"], {
+        cwd: repoPath,
+        input: "fresh.txt",
+      })
+    ).stdout.trim();
+    expect(findFile(listed.files, "link")?.revision).toMatch(
+      new RegExp(`:120000:${linkBlob}$`, "u"),
+    );
+    expect(findFile(listed.files, "gone.txt")?.revision).toMatch(
+      /^100644:[0-9a-f]+:000000:0+$/u,
+    );
+
+    await commitAll(repoPath, "next");
+    const sha = await blobOf(repoPath, "HEAD");
+    expect(
+      await revisionOf(workspace, "fresh.txt", { type: "commit", sha }),
+    ).toMatch(new RegExp(`^000000:0+:100644:${freshBlob}$`, "u"));
   });
 });

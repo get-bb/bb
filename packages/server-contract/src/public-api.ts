@@ -125,6 +125,11 @@ import type {
   EnvironmentDiffPatchRequest,
   EnvironmentDiffPatchResponse,
   EnvironmentDiffQuery,
+  EnvironmentDiffFilesQuery,
+  EnvironmentDiffViewedClearRequest,
+  EnvironmentDiffViewedQueryRequest,
+  EnvironmentDiffViewedMarkRequest,
+  EnvironmentDiffViewedResponse,
   EnvironmentDiffResponse,
   EnvironmentPathsQuery,
   EnvironmentPullRequestResponse,
@@ -337,6 +342,10 @@ import {
   environmentDiffFileQuerySchema,
   environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
+  environmentDiffFilesQuerySchema,
+  environmentDiffViewedClearRequestSchema,
+  environmentDiffViewedQueryRequestSchema,
+  environmentDiffViewedMarkRequestSchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
@@ -1196,8 +1205,8 @@ export const publicApiRoutes = {
     diffFiles: defineRoute({
       path: "/environments/:id/diff/files",
       method: "get",
-      request: queryRequest<PathId, EnvironmentDiffQuery>(
-        environmentDiffQuerySchema,
+      request: queryRequest<PathId, EnvironmentDiffFilesQuery>(
+        environmentDiffFilesQuerySchema,
       ),
       response: jsonResponse<EnvironmentDiffFilesResponse>(),
     }),
@@ -1208,6 +1217,38 @@ export const publicApiRoutes = {
         environmentDiffPatchRequestSchema,
       ),
       response: jsonResponse<EnvironmentDiffPatchResponse>(),
+    }),
+    diffViewed: defineRoute({
+      path: "/environments/:id/diff/viewed",
+      method: "get",
+      request: queryRequest<PathId, EnvironmentDiffQuery>(
+        environmentDiffQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentDiffViewedResponse>(),
+    }),
+    queryDiffViewed: defineRoute({
+      path: "/environments/:id/diff/viewed",
+      method: "post",
+      request: jsonRequest<PathId, EnvironmentDiffViewedQueryRequest>(
+        environmentDiffViewedQueryRequestSchema,
+      ),
+      response: jsonResponse<EnvironmentDiffViewedResponse>(),
+    }),
+    markDiffViewed: defineRoute({
+      path: "/environments/:id/diff/viewed",
+      method: "put",
+      request: jsonRequest<PathId, EnvironmentDiffViewedMarkRequest>(
+        environmentDiffViewedMarkRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    clearDiffViewed: defineRoute({
+      path: "/environments/:id/diff/viewed",
+      method: "delete",
+      request: jsonRequest<PathId, EnvironmentDiffViewedClearRequest>(
+        environmentDiffViewedClearRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     diffFile: defineRoute({
       path: "/environments/:id/diff/file",

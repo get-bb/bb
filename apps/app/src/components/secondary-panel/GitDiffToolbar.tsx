@@ -1,3 +1,8 @@
+import {
+  DEFAULT_DIFF_FILE_FILTERS,
+  hasDiffFileFilters,
+  type DiffFileFilters,
+} from "./git-diff/diff-file-filters";
 import { useEffect, useRef } from "react";
 import { useResizeObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
@@ -10,6 +15,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
@@ -29,8 +37,6 @@ import {
   renderChangeSummary,
 } from "@/components/workspace/workspace-change-summary";
 import {
-  getNextCodeOverflowMode,
-  LINE_WRAP_LABEL,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
@@ -213,6 +219,9 @@ interface GitDiffToolbarProps {
   isTruncated: boolean;
 
   fileFilter: string | null;
+  filters: DiffFileFilters;
+  onFiltersChange: (filters: DiffFileFilters) => void;
+  extensionCounts: readonly (readonly [string, number])[];
   onFileFilterChange: (value: string | null) => void;
 
   areAllFilesCollapsed: boolean;
@@ -225,6 +234,9 @@ interface GitDiffToolbarProps {
 
   lineOverflowMode: CodeOverflowMode;
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
+
+  ignoreWhitespace: boolean;
+  onIgnoreWhitespaceChange: (ignoreWhitespace: boolean) => void;
 }
 
 export function GitDiffToolbar({
@@ -237,6 +249,9 @@ export function GitDiffToolbar({
   totalFilesCount,
   isTruncated,
   fileFilter,
+  filters,
+  onFiltersChange,
+  extensionCounts,
   onFileFilterChange,
   areAllFilesCollapsed,
   isCollapseAllDisabled,
@@ -246,6 +261,8 @@ export function GitDiffToolbar({
   onDisplayModeChange,
   lineOverflowMode,
   onLineOverflowModeChange,
+  ignoreWhitespace,
+  onIgnoreWhitespaceChange,
 }: GitDiffToolbarProps) {
   const collapseAllLabel = areAllFilesCollapsed
     ? "Expand all files"
@@ -259,7 +276,8 @@ export function GitDiffToolbar({
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
   const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
-  const isFiltering = Boolean(fileFilter?.trim());
+  const isFiltering =
+    Boolean(fileFilter?.trim()) || hasDiffFileFilters(filters);
   const filteredFilesLabel = `${stats.filesCount} of ${totalFilesCount}${isTruncated ? "+" : ""} files`;
 
   return (
@@ -281,12 +299,12 @@ export function GitDiffToolbar({
           />
         </div>
         <div
-          className="flex min-w-0 flex-1 basis-auto items-center gap-3"
+          className="flex min-w-0 flex-1 basis-auto flex-wrap items-center gap-x-3 gap-y-2"
           data-testid="git-diff-toolbar-details"
         >
           <span
             className={cn(
-              "min-w-0 shrink truncate pl-2.5 text-muted-foreground",
+              "min-w-0 max-w-full shrink-0 truncate pl-2.5 text-muted-foreground",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
             data-testid="git-diff-toolbar-summary"
@@ -338,28 +356,115 @@ export function GitDiffToolbar({
             className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
             data-testid="git-diff-toolbar-actions"
           >
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                      "text-muted-foreground",
-                    )}
-                    onClick={() =>
-                      onFileFilterChange(fileFilter === null ? "" : null)
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "text-muted-foreground",
+              )}
+              onClick={() =>
+                onFileFilterChange(fileFilter === null ? "" : null)
+              }
+              aria-label={
+                fileFilter === null
+                  ? "Search filenames"
+                  : "Close filename search"
+              }
+              aria-pressed={fileFilter !== null}
+            >
+              <Icon name="Search" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                    "relative text-muted-foreground",
+                  )}
+                  aria-label="Filter files"
+                  aria-pressed={isFiltering}
+                >
+                  <Icon name="Filter" />
+                  {isFiltering ? (
+                    <span className="absolute right-1 top-1 size-1.5 rounded-full bg-foreground" />
+                  ) : null}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="max-h-80 overflow-y-auto min-w-48"
+              >
+                <DropdownMenuLabel>File extensions</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={filters.selectedExtensions.length === 0}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={() =>
+                    onFiltersChange({ ...filters, selectedExtensions: [] })
+                  }
+                >
+                  All types
+                </DropdownMenuCheckboxItem>
+                {extensionCounts.map(([extension, count]) => (
+                  <DropdownMenuCheckboxItem
+                    key={extension}
+                    checked={filters.selectedExtensions.includes(extension)}
+                    onSelect={(event) => event.preventDefault()}
+                    onCheckedChange={(checked) =>
+                      onFiltersChange({
+                        ...filters,
+                        selectedExtensions: checked
+                          ? [...filters.selectedExtensions, extension]
+                          : filters.selectedExtensions.filter(
+                              (value) => value !== extension,
+                            ),
+                      })
                     }
-                    aria-label="Filter files"
-                    aria-pressed={fileFilter !== null}
                   >
-                    <Icon name="Filter" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Filter files</TooltipContent>
-              </Tooltip>
+                    <span className="flex w-full items-center justify-between gap-6">
+                      <span>{extension || "No extension"}</span>
+                      <span className="rounded-full bg-muted px-1.5 text-muted-foreground tabular-nums">
+                        {count}
+                      </span>
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={filters.showDeleted}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(showDeleted) =>
+                    onFiltersChange({ ...filters, showDeleted })
+                  }
+                >
+                  Deleted files
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={filters.showViewed}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(showViewed) =>
+                    onFiltersChange({ ...filters, showViewed })
+                  }
+                >
+                  Viewed files
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={!isFiltering}
+                  onSelect={() => {
+                    onFiltersChange(DEFAULT_DIFF_FILE_FILTERS);
+                    onFileFilterChange(fileFilter === null ? null : "");
+                  }}
+                >
+                  Reset filters
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
@@ -396,74 +501,52 @@ export function GitDiffToolbar({
                   {collapseAllDisabledReason ?? collapseAllLabel}
                 </TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                      "text-muted-foreground",
-                    )}
-                    onClick={() =>
-                      onLineOverflowModeChange(
-                        getNextCodeOverflowMode(lineOverflowMode),
-                      )
-                    }
-                    aria-label={LINE_WRAP_LABEL}
-                    aria-pressed={lineOverflowMode === "wrap"}
-                  >
-                    <Icon name="TextWrap" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{LINE_WRAP_LABEL}</TooltipContent>
-              </Tooltip>
-              <div
-                className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
-                role="tablist"
-                aria-label="Diff view mode"
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                        "text-muted-foreground",
-                      )}
-                      onClick={() => onDisplayModeChange("unified")}
-                      aria-label="Unified view"
-                      aria-pressed={displayMode === "unified"}
-                    >
-                      <Icon name="Rows2" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Unified view</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                        "text-muted-foreground",
-                      )}
-                      onClick={() => onDisplayModeChange("split")}
-                      aria-label="Split view"
-                      aria-pressed={displayMode === "split"}
-                    >
-                      <Icon name="Columns2" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Split view</TooltipContent>
-                </Tooltip>
-              </div>
             </TooltipProvider>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                    "text-muted-foreground",
+                  )}
+                  aria-label="Diff settings"
+                >
+                  <Icon name="Settings" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuCheckboxItem
+                  checked={displayMode === "unified"}
+                  onCheckedChange={() => onDisplayModeChange("unified")}
+                >
+                  Unified
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={displayMode === "split"}
+                  onCheckedChange={() => onDisplayModeChange("split")}
+                >
+                  Split
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={lineOverflowMode === "wrap"}
+                  onCheckedChange={(checked) =>
+                    onLineOverflowModeChange(checked ? "wrap" : "scroll")
+                  }
+                >
+                  Wrap lines
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={ignoreWhitespace}
+                  onCheckedChange={onIgnoreWhitespaceChange}
+                >
+                  Hide whitespace
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

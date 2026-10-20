@@ -7,7 +7,7 @@ import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ServerChangedMessage } from "../../ws/hub.js";
 
 const IGNORED_ENVIRONMENT_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set(
-  ["metadata-changed", "thread-storage-changed"],
+  ["metadata-changed", "thread-storage-changed", "diff-viewed-changed"],
 );
 
 interface EnvironmentReadCacheReadArgs<TValue> {
@@ -65,6 +65,9 @@ interface WorkspaceReadCachesDeps {
 }
 
 export class WorkspaceReadCaches {
+  readonly diffFiles: EnvironmentReadCache<
+    HostDaemonOnlineRpcResult<"workspace.diffFiles">
+  >;
   readonly status: EnvironmentReadCache<
     HostDaemonOnlineRpcResult<"workspace.status">
   >;
@@ -74,6 +77,7 @@ export class WorkspaceReadCaches {
 
   constructor(deps: WorkspaceReadCachesDeps) {
     const now = deps.now ?? Date.now;
+    this.diffFiles = new EnvironmentReadCache({ now, ttlMs: 0 });
     this.status = new EnvironmentReadCache({
       now,
       ttlMs: WORKSPACE_STATUS_CACHE_TTL_MS,
@@ -88,7 +92,7 @@ export class WorkspaceReadCaches {
   }
 
   private get caches(): EnvironmentReadCacheInvalidation[] {
-    return [this.status, this.pullRequest];
+    return [this.status, this.pullRequest, this.diffFiles];
   }
 
   invalidateEnvironment(environmentId: string): void {
@@ -111,6 +115,7 @@ export class WorkspaceReadCaches {
       if (relevantChanges.length === 0) {
         return;
       }
+      this.diffFiles.invalidateEnvironment(message.id);
       this.status.invalidateEnvironment(message.id);
       if (relevantChanges.some((change) => change !== "work-status-changed")) {
         this.pullRequest.invalidateEnvironment(message.id);
