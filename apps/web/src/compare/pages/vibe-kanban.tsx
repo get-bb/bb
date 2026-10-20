@@ -48,7 +48,7 @@ export const comparison: Comparison = {
           competitor: linkedCell(
             "partial",
             "Last release April 2026 (0.1.44)",
-            "https://github.com/BloopAI/vibe-kanban/releases/tag/v0.1.44",
+            "https://github.com/BloopAI/vibe-kanban/releases/tag/v0.1.44-20260424091429",
           ),
         },
       ],
