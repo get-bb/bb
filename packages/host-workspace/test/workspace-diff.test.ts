@@ -1222,8 +1222,12 @@ describe("Workspace diff revisions", () => {
 
     await fs.chmod(path.join(repoPath, "a.txt"), 0o755);
     const modeEdit = await revisionOf(workspace, "a.txt");
-    expect(modeEdit).toMatch(/^100644:[0-9a-f]+:100755:/u);
-    expect(modeEdit).not.toBe(whitespaceEdit);
+    if (process.platform === "win32") {
+      expect(modeEdit).toBe(whitespaceEdit);
+    } else {
+      expect(modeEdit).toMatch(/^100644:[0-9a-f]+:100755:/u);
+      expect(modeEdit).not.toBe(whitespaceEdit);
+    }
   });
 
   it("covers untracked files, symlinks, deletions and commits", async () => {

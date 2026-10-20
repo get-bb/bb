@@ -21,6 +21,7 @@ const loading = vi.hoisted(() => ({ current: false }));
 vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({ data: { path: "/workspace" } }),
   useEnvironmentDiffFiles: () => ({ data: undefined, isLoading: false }),
+  useEnvironmentDiffViewed: () => ({ data: undefined }),
   useEnvironmentWorkStatus: () => ({ data: undefined }),
   useEnvironmentFilePreview: (_environmentId: string, path: string) => ({
     data: loading.current
