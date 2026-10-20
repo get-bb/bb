@@ -335,7 +335,7 @@ export const DiffFileCard = memo(function DiffFileCard({
             isStuck: isHeaderStuck,
             showStuckHeaderEdge: false,
           }),
-          "-mt-px border-t border-border",
+          "@container/diff-card-header -mt-px border-t border-border",
         )}
       >
         <GitDiffCardHeader
@@ -374,7 +374,7 @@ export const DiffFileCard = memo(function DiffFileCard({
                   }
                   aria-label={`Viewed ${headerModel.label}`}
                 />
-                Viewed
+                <span className="@max-sm/diff-card-header:sr-only">Viewed</span>
               </label>
             </>
           }
