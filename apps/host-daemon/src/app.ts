@@ -78,7 +78,7 @@ type IdleProviderSessionReaperIntervalFn = (
 ) => IdleProviderSessionReaperTimer;
 
 interface IdleProviderSessionReaper {
-  setTimeoutMinutes(value: number | null): void;
+  setTimeoutMinutes(value: number): void;
   stop(): void;
 }
 

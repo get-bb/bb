@@ -55,7 +55,7 @@ describe("searchSettings", () => {
     ]);
     expect(searchTitles("dark mode")).toEqual(["Appearance › Theme"]);
     expect(searchTitles("idle timeout")).toEqual([
-      "General › Release idle agent sessions",
+      "Providers › Release idle agent sessions",
     ]);
   });
 

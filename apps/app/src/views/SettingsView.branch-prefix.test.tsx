@@ -12,8 +12,6 @@ import { GeneralSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
-  idleProviderSessionTimeoutMinutes?: number | null;
-  onIdleProviderSessionTimeoutMinutesChange?: (minutes: number | null) => void;
   terminalCopyOnSelect?: boolean;
   onTerminalCopyOnSelectChange?: (enabled: boolean) => void;
   generalSettingsDisabled?: boolean;
@@ -22,14 +20,6 @@ function renderSection(overrides?: {
 }) {
   return render(
     <GeneralSettingsSection
-      idleProviderSessionTimeoutMinutes={
-        overrides?.idleProviderSessionTimeoutMinutes === undefined
-          ? 30
-          : overrides.idleProviderSessionTimeoutMinutes
-      }
-      onIdleProviderSessionTimeoutMinutesChange={
-        overrides?.onIdleProviderSessionTimeoutMinutesChange ?? vi.fn()
-      }
       showGitChanges={true}
       onShowGitChangesChange={vi.fn()}
       confirmThreadArchive={true}
@@ -68,44 +58,6 @@ function branchPrefixInput() {
   }
   return input;
 }
-
-describe("idle agent session setting", () => {
-  it.each([0, 5, null])("saves %s from the menu", async (minutes) => {
-    const onChange = vi.fn();
-    renderSection({ onIdleProviderSessionTimeoutMinutesChange: onChange });
-    const trigger = screen.getByRole("button", {
-      name: "Release idle agent sessions",
-    });
-    expect(trigger.textContent).toContain("30 minutes");
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    const label =
-      minutes === null
-        ? "Never"
-        : minutes === 0
-          ? "Next cleanup"
-          : `${minutes} minutes`;
-    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
-    expect(onChange).toHaveBeenCalledWith(minutes);
-    cleanup();
-    renderSection({ idleProviderSessionTimeoutMinutes: minutes });
-    expect(
-      screen.getByRole("button", { name: "Release idle agent sessions" })
-        .textContent,
-    ).toContain(label);
-  });
-
-  it("displays custom CLI values and disables changes while loading", () => {
-    renderSection({
-      idleProviderSessionTimeoutMinutes: 17,
-      generalSettingsDisabled: true,
-    });
-    const trigger = screen.getByRole("button", {
-      name: "Release idle agent sessions",
-    });
-    expect(trigger.textContent).toContain("17 minutes");
-    expect(trigger.hasAttribute("disabled")).toBe(true);
-  });
-});
 
 describe("terminal copy-on-select setting", () => {
   it("displays the saved value and allows opting out", () => {

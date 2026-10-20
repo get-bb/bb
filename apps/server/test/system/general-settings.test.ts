@@ -19,7 +19,7 @@ describe("general settings", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(settings),
         });
-      for (const minutes of [5, 0, null]) {
+      for (const minutes of [5, 60, 0]) {
         const response = await put({
           ...defaultAppSettings,
           idleProviderSessionTimeoutMinutes: minutes,
@@ -46,9 +46,9 @@ describe("general settings", () => {
         legacySettings;
       expect(idleProviderSessionTimeoutMinutes).toBe(30);
       expect((await put(legacyPayload)).status).toBe(200);
-      expect(
-        getAppSettings(harness.db).idleProviderSessionTimeoutMinutes,
-      ).toBeNull();
+      expect(getAppSettings(harness.db).idleProviderSessionTimeoutMinutes).toBe(
+        0,
+      );
 
       const reconnected = createMockHubSocket();
       harness.hub.registerDaemon(session.id, host.id, reconnected);
@@ -56,10 +56,10 @@ describe("general settings", () => {
         reconnected.messages.map((message) => JSON.parse(message)),
       ).toContainEqual({
         type: "provider-session-policy.replace",
-        idleProviderSessionTimeoutMinutes: null,
+        idleProviderSessionTimeoutMinutes: 0,
       });
 
-      for (const invalid of [-1, 0.5, "never"]) {
+      for (const invalid of [-1, 17, null, "never"]) {
         expect(
           (
             await put({
@@ -69,9 +69,9 @@ describe("general settings", () => {
           ).status,
         ).toBe(400);
       }
-      expect(
-        getAppSettings(harness.db).idleProviderSessionTimeoutMinutes,
-      ).toBeNull();
+      expect(getAppSettings(harness.db).idleProviderSessionTimeoutMinutes).toBe(
+        0,
+      );
     });
   });
 

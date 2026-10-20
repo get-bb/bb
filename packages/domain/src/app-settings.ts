@@ -6,12 +6,13 @@ export const MANAGED_BRANCH_PREFIX_MAX_LENGTH = 64;
 
 export const DEFAULT_MANAGED_BRANCH_PREFIX = "bb/";
 
-export const idleProviderSessionTimeoutMinutesSchema = z
-  .number()
-  .int()
-  .nonnegative()
-  .max(Math.floor(Number.MAX_SAFE_INTEGER / 60_000))
-  .nullable();
+export const IDLE_PROVIDER_SESSION_TIMEOUT_MINUTES = [
+  0, 5, 10, 30, 60,
+] as const;
+
+export const idleProviderSessionTimeoutMinutesSchema = z.literal(
+  IDLE_PROVIDER_SESSION_TIMEOUT_MINUTES,
+);
 
 export const managedBranchPrefixSchema = z
   .string()

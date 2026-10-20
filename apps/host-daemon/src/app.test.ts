@@ -810,10 +810,6 @@ describe("createHostDaemonApp", () => {
       "Idle provider session reaper failed",
     );
 
-    reaper.setTimeoutMinutes(null);
-    triggerTick();
-    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
-
     reaper.setTimeoutMinutes(0);
     triggerTick();
     await settleReaperPromiseChain();

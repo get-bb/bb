@@ -24,7 +24,7 @@ interface CreateWebSocketFixtureArgs {
 }
 
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
-  onIdleProviderSessionTimeout?: (minutes: number | null) => void;
+  onIdleProviderSessionTimeout?: (minutes: number) => void;
   autoReconnect?: boolean;
   serverHeaders?: Record<string, string>;
   protocolSelfUpdater?: ProtocolSelfUpdater;
@@ -226,7 +226,7 @@ describe("ServerConnection", () => {
       expect(onIdleProviderSessionTimeout).toHaveBeenLastCalledWith(30);
       const socket = webSocket.sockets[0];
       if (!socket) throw new Error("Expected test socket");
-      for (const minutes of [5, null, 0]) {
+      for (const minutes of [5, 0, 60]) {
         socket.onmessage?.({
           data: JSON.stringify({
             type: "provider-session-policy.replace",

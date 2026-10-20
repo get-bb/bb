@@ -91,6 +91,75 @@ describe("ProvidersSettingsSection", () => {
     });
   });
 
+  it.each([
+    [0, "ASAP"],
+    [5, "5 minutes"],
+    [60, "60 minutes"],
+  ] as const)(
+    "saves the idle session timeout %s from the menu",
+    (minutes, label) => {
+      mocks.providers = [];
+      const onChange = vi.fn();
+      const { unmount } = render(
+        <ProvidersSettingsSection
+          disabled={false}
+          generalSettings={defaultAppSettings}
+          onGeneralSettingsChange={onChange}
+        />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "Release idle agent sessions",
+      });
+      expect(trigger.textContent).toBe("30 minutes");
+      fireEvent.keyDown(trigger, { key: "Enter" });
+      expect(
+        screen.getAllByRole("menuitem").map((item) => item.textContent),
+      ).toEqual([
+        "ASAP",
+        "5 minutes",
+        "10 minutes",
+        "30 minutes (default)",
+        "60 minutes",
+      ]);
+      fireEvent.click(screen.getByRole("menuitem", { name: label }));
+      expect(onChange).toHaveBeenCalledWith({
+        idleProviderSessionTimeoutMinutes: minutes,
+      });
+      unmount();
+
+      render(
+        <ProvidersSettingsSection
+          disabled={false}
+          generalSettings={{
+            ...defaultAppSettings,
+            idleProviderSessionTimeoutMinutes: minutes,
+          }}
+          onGeneralSettingsChange={onChange}
+        />,
+      );
+      expect(
+        screen.getByRole("button", { name: "Release idle agent sessions" })
+          .textContent,
+      ).toContain(label);
+    },
+  );
+
+  it("disables the idle session timeout while settings load", () => {
+    mocks.providers = [];
+    render(
+      <ProvidersSettingsSection
+        disabled
+        generalSettings={defaultAppSettings}
+        onGeneralSettingsChange={vi.fn()}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Release idle agent sessions" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("shows reorder handles and writes the default as a user setting", () => {
     mocks.providers = [
       provider("alpha", "Alpha"),

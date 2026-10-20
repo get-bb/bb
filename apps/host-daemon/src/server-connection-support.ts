@@ -106,7 +106,7 @@ export interface ServerConnectionOptions {
   onSessionOpened?: (
     session: HostDaemonSessionOpenResponse,
   ) => void | Promise<void>;
-  onIdleProviderSessionTimeout?: (minutes: number | null) => void;
+  onIdleProviderSessionTimeout?: (minutes: number) => void;
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;
