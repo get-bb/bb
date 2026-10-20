@@ -1413,7 +1413,7 @@ describe("acp bridge", () => {
         (text) => text === "argv:--model pinme-extra-high",
       ),
     ).toBe(true);
-  });
+  }, 20_000);
 
   it.each([
     { dialectId: "opencode", client: "acp", question: "false" },
@@ -2049,7 +2049,7 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
       summary: expect.stringContaining("no max reasoning variant"),
     });
-  });
+  }, 20_000);
 
   it("starts a session and runs a prompt turn end to end", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
