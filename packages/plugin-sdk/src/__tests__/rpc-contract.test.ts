@@ -56,7 +56,7 @@ function assertFrontendInference(
   >();
   expectTypeOf(client.call("ping")).toEqualTypeOf<Promise<{ ok: true }>>();
 
-  const keyed = defineRpcContract({
+  const declared = defineRpcContract({
     rows: {
       input: z.object({ keys: z.array(z.string()) }),
       output: z.record(z.string(), z.object({ title: z.string() })),
@@ -68,6 +68,7 @@ function assertFrontendInference(
       output: z.record(z.string(), z.number()),
     },
   });
+  const keyed = defineRpcContract({ ...declared });
   const plain = app.experimental_useRpcQuery({
     contract: keyed,
     method: "plain",

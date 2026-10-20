@@ -215,6 +215,21 @@ export type ExperimentalRpcKeyedMethod<Contract extends PluginRpcContract> = {
 export type ExperimentalRpcKeyedValue<Method extends PluginRpcMethodContract> =
   PluginRpcResult<Method> extends Record<string, infer Value> ? Value : never;
 
+type KeyedContractShape<
+  Inputs extends Record<string, StandardSchemaV1>,
+  Outputs extends Record<string, StandardSchemaV1>,
+> = {
+  readonly [Method in keyof Inputs]: StandardSchemaV1InferOutput<
+    Inputs[Method]
+  > extends { keys: string[] }
+    ? string extends keyof StandardSchemaV1InferOutput<
+        Outputs[Method & keyof Outputs]
+      >
+      ? unknown
+      : { keyTags?: never }
+    : { keyTags?: never };
+};
+
 type PluginRpcContractDefinition<
   Inputs extends Record<string, StandardSchemaV1>,
   Outputs extends Record<string, StandardSchemaV1>,
@@ -225,17 +240,7 @@ type PluginRpcContractDefinition<
     Inputs[Method],
     Outputs[Method & keyof Outputs]
   >;
-} & NoInfer<{
-    readonly [Method in keyof Inputs]: StandardSchemaV1InferOutput<
-      Inputs[Method]
-    > extends { keys: string[] }
-      ? string extends keyof StandardSchemaV1InferOutput<
-          Outputs[Method & keyof Outputs]
-        >
-        ? unknown
-        : { keyTags?: never }
-      : { keyTags?: never };
-  }>;
+} & NoInfer<KeyedContractShape<Inputs, Outputs>>;
 
 /**
  * Define a shared RPC contract while preserving exact method/schema types.
@@ -253,7 +258,7 @@ export function defineRpcContract<
     Inputs[Method],
     Outputs[Method & keyof Outputs]
   >;
-} {
+} & KeyedContractShape<Inputs, Outputs> {
   return contract;
 }
 
