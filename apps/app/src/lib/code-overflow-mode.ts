@@ -12,5 +12,5 @@ export function getNextCodeOverflowMode(
 }
 
 export function getLineWrapToggleLabel(mode: CodeOverflowMode): string {
-  return mode === "wrap" ? "Turn off line wrap" : "Turn on line wrap";
+  return mode === "wrap" ? "Disable line wrap" : "Enable line wrap";
 }

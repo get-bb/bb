@@ -1422,7 +1422,7 @@ describe("QueuedMessagesList", () => {
     ]);
 
     expect(queryByLabelText("Copy code")).toBeNull();
-    expect(queryByLabelText("Turn on line wrap")).toBeNull();
+    expect(queryByLabelText("Enable line wrap")).toBeNull();
     expect(container.querySelector("pre")).toBeNull();
     expect(container.querySelector("code")?.textContent).toContain(
       "const value = 1;",
