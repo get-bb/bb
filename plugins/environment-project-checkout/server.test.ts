@@ -286,7 +286,12 @@ it.each([false, true])(
       pluginId: "environment-project-checkout",
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
-        return { status: "attached", path: CHECKOUT_PATH, branchName: "main" };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: "main",
+          mergeBaseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
@@ -315,6 +320,65 @@ it.each([false, true])(
         path: CHECKOUT_PATH,
         ownsPath: owned,
       });
+    } finally {
+      await harness.lifecycle.dispose();
+    }
+  },
+);
+
+it.each([
+  [
+    "a new branch",
+    { branch: { kind: "new", baseBranch: "dev" } },
+    "dev",
+    "dev",
+  ],
+  [
+    "an existing branch",
+    { branch: { kind: "existing", name: "release" } },
+    null,
+    undefined,
+  ],
+] as const)(
+  "reports the merge base the host names for %s",
+  async (_case, inputs, hostMergeBaseBranch, mergeBaseBranch) => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "environment-project-checkout",
+      experimental_callHostRpc: (call) => {
+        if (call.method !== "attach") throw new Error("Unexpected host method");
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: "bb/test",
+          mergeBaseBranch: hostMergeBaseBranch,
+        };
+      },
+      sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
+    });
+    try {
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      if (!provider) throw new Error("Missing provider");
+      const result = await provider.create({
+        project: PROJECT,
+        host: HOST,
+        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: false },
+        gitRemote: null,
+        inputs,
+        thread: makeThreadResponse(),
+        suggestedBranchName: "bb/test",
+        attempt: 1,
+        pathKey: "fixture",
+        experimental_claimPath: async () => true,
+        report: { step() {}, log() {} },
+        signal: new AbortController().signal,
+      });
+      expect(result).toMatchObject({ status: "created", path: CHECKOUT_PATH });
+      expect(
+        result.status === "created" ? result.mergeBaseBranch : "failed",
+      ).toBe(mergeBaseBranch);
     } finally {
       await harness.lifecycle.dispose();
     }
@@ -408,6 +472,7 @@ describe("restoring a destroyed checkout environment", () => {
   async function restoreWith(args: {
     inputs: PluginEnvironmentProviderRestoreContext["inputs"];
     branchName: string | null;
+    mergeBaseBranch?: string | null;
   }) {
     const attachCalls: unknown[] = [];
     const { bb, harness } = createFakePluginHost({
@@ -415,7 +480,12 @@ describe("restoring a destroyed checkout environment", () => {
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
         attachCalls.push(call.input);
-        return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: null,
+          mergeBaseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
@@ -441,6 +511,7 @@ describe("restoring a destroyed checkout environment", () => {
             ...environmentAt(CHECKOUT_PATH),
             status: "destroyed",
             branchName: args.branchName,
+            mergeBaseBranch: args.mergeBaseBranch ?? null,
           },
           resource: null,
         },
@@ -466,6 +537,24 @@ describe("restoring a destroyed checkout environment", () => {
       }),
     ]);
   });
+
+  it.each([
+    ["the merge base it had", "origin/dev", "origin/dev"],
+    ["no merge base when it had none", null, undefined],
+  ] as const)(
+    "keeps %s on the thread's own branch",
+    async (_case, previous, mergeBaseBranch) => {
+      const { result } = await restoreWith({
+        inputs: { branch: { kind: "new", baseBranch: "dev" } },
+        branchName: "bb/thread-branch",
+        mergeBaseBranch: previous,
+      });
+      expect(result).toMatchObject({ status: "created", path: CHECKOUT_PATH });
+      expect(
+        result.status === "created" ? result.mergeBaseBranch : "failed",
+      ).toBe(mergeBaseBranch);
+    },
+  );
 
   it("re-attaches a checkout used as-is without switching branches", async () => {
     const { attachCalls } = await restoreWith({

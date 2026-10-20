@@ -72,6 +72,7 @@ describe("checkout host entry", () => {
       status: "attached",
       path: repo,
       branchName: "main",
+      mergeBaseBranch: null,
     });
     expect(progressText(harness)).not.toContain("Using");
     await harness.experimental_dispose();
@@ -87,7 +88,11 @@ describe("checkout host entry", () => {
       path: repo,
       branch: { kind: "existing", name: "release" },
     });
-    expect(existing.status).toBe("attached");
+    expect(existing).toMatchObject({
+      status: "attached",
+      branchName: "release",
+      mergeBaseBranch: null,
+    });
     expect((await git(repo, "rev-parse", "--abbrev-ref", "HEAD")).trim()).toBe(
       "release",
     );
@@ -98,7 +103,11 @@ describe("checkout host entry", () => {
       path: repo,
       branch: { kind: "new", name: "bb/feature-thr_1", baseBranch: "main" },
     });
-    expect(created.status).toBe("attached");
+    expect(created).toMatchObject({
+      status: "attached",
+      branchName: "bb/feature-thr_1",
+      mergeBaseBranch: "main",
+    });
     expect((await git(repo, "rev-parse", "--abbrev-ref", "HEAD")).trim()).toBe(
       "bb/feature-thr_1",
     );

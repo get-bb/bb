@@ -28,6 +28,7 @@ interface AttachCheckoutArgs {
 export interface AttachedCheckout {
   path: string;
   branchName: string | null;
+  mergeBaseBranch: string | null;
 }
 
 function checkoutLabel(
@@ -251,12 +252,14 @@ export async function attachCheckout(
     await switchBranch({ ...args, branch: args.branch });
   }
   if (!isGitRepo) {
-    return { path: args.path, branchName: null };
+    return { path: args.path, branchName: null, mergeBaseBranch: null };
   }
   const ref = await getCheckoutRef(args.path);
   return {
     path: args.path,
     branchName:
       ref.kind === "branch" || ref.kind === "unborn" ? ref.branchName : null,
+    mergeBaseBranch:
+      args.branch?.kind === "new" ? args.branch.baseBranch : null,
   };
 }

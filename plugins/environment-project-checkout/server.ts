@@ -199,6 +199,9 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         ownsPath:
           result.path === context.projectCheckout.path &&
           context.projectCheckout.experimental_ownsPath === true,
+        ...(result.mergeBaseBranch === null
+          ? {}
+          : { mergeBaseBranch: result.mergeBaseBranch }),
       };
     } catch (error) {
       if (context.signal.aborted) throw error;
@@ -281,10 +284,14 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
             "The removed workspace had no branch checked out, so there is no branch to restore it on.",
         };
       }
-      return attachWorkspace(context, {
+      const restored = await attachWorkspace(context, {
         path,
         branch: { kind: "existing", name: branchName },
       });
+      const mergeBaseBranch = context.previous.environment.mergeBaseBranch;
+      return restored.status === "created" && mergeBaseBranch !== null
+        ? { ...restored, mergeBaseBranch }
+        : restored;
     },
     async remove() {
       return { status: "removed" };
