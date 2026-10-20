@@ -81,6 +81,7 @@
     "postcss": "^8.5.26",
     "sf-symbols-typescript": "^2.2.0",
     "tailwindcss": "^4.3.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"
   }
