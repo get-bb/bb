@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Retry turns after transient provider overloads and subscription limits reset.",
+  "description": "Retry turns after transient provider errors and when subscription limits reset.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Provider retry",
-    "description": "Retry turns after transient provider overloads and subscription limits reset.",
+    "description": "Retry turns after transient provider errors and when subscription limits reset.",
     "branding": {
       "icon": "ArrowReloadHorizontal"
     },

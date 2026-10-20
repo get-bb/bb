@@ -98,9 +98,10 @@ or forked provider sessions. Claude Code plugin settings (`disable1MContext`,
 `bb plugin config provider-claude-code set <key> <value>` and documented in the
 claude-code-provider skill.
 
-Automatic retries after provider overloads and subscription-window limits
-come from the bundled Provider retry plugin (`bb provider-retry status`); see
-`bb guide plugins`. For a manual retry of a failed turn, use `bb thread retry`.
+Automatic retries after provider overloads, server or connection errors, and
+subscription-window limits come from the bundled Provider retry plugin
+(`bb provider-retry status`); see `bb guide plugins`. For a manual retry of a
+failed turn, use `bb thread retry`.
 
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI

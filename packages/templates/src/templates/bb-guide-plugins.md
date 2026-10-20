@@ -149,7 +149,7 @@ Each bundled plugin documents its commands and behavior in its own skill.
   `bb concurrency-limit status|global|host`; see the `concurrency-limit`
   skill.
 - Provider retry (builtin): queues an automatic retry after provider
-  overloads and subscription-window limits.
+  overloads, server or connection errors, and subscription-window limits.
   `bb provider-retry status|explain|retry|cancel`; see the `provider-retry`
   skill.
 - Thread list (builtin): owns the sidebar's layout preferences, synced to

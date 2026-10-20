@@ -1,6 +1,6 @@
 ---
 name: provider-retry
-description: "Diagnose automatic retries of BB turns after provider overloads and subscription-window limits."
+description: "Diagnose automatic retries of BB turns after provider overloads, server or connection errors, and subscription-window limits."
 ---
 
 # Provider retry
@@ -9,10 +9,13 @@ The plugin is enabled on fresh installations. It reacts only to failed Codex
 and Claude Code turns and never blocks a send; prior output or tool activity
 does not prevent a retry. It queues a retry of the failed turn, which core
 runs by continuing accepted input or re-sending input the provider never
-accepted, for one of two failures:
+accepted, for one of three failures:
 
 - A structured provider overload: retried after a short delay that doubles on
   each attempt.
+- An unavailable provider (HTTP 500, 502, 503, or 504, an internal error, or a
+  failed or dropped connection, including an Account Pooler that could not
+  reach the provider): retried after about a minute, doubling on each attempt.
 - A subscription-window limit with a reported reset time: retried shortly
   after the window opens, with random spread so threads on one account do not
   wake together. Credit and spend limits are not retried.

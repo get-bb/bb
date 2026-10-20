@@ -9,6 +9,8 @@ export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 
 export const OVERLOAD_RETRY_BASE_MS = 5_000;
 
+export const UNAVAILABLE_RETRY_BASE_MS = 60_000;
+
 export const MAX_RETRY_ATTEMPTS = 5;
 
 export type RetryDeclineReason =
@@ -24,7 +26,7 @@ export type RetryDecision =
   | {
       kind: "retry";
       sendAt: number;
-      reason: "Rate limited" | "Provider overloaded";
+      reason: "Rate limited" | "Provider overloaded" | "Provider unavailable";
     };
 
 export interface RetryPolicyInput {
@@ -57,13 +59,30 @@ export function sendAtMs(args: {
   return base + RESET_BUFFER_MS + Math.floor(args.random * RESET_JITTER_MS);
 }
 
-export function overloadedSendAtMs(args: {
+export function backoffSendAtMs(args: {
+  baseMs: number;
   attemptNumber: number;
   now: number;
   random: number;
 }): number {
-  const delay = OVERLOAD_RETRY_BASE_MS * 2 ** (args.attemptNumber - 1);
+  const delay = args.baseMs * 2 ** (args.attemptNumber - 1);
   return args.now + delay + Math.floor(args.random * delay);
+}
+
+const UNAVAILABLE_HTTP_STATUS_CODES = new Set([500, 502, 503, 504]);
+
+const UNAVAILABLE_CATEGORIES = new Set<
+  NonNullable<PluginTurnFailedEvent["errorInfo"]>["category"]
+>(["connection-failed", "internal", "stream-disconnected"]);
+
+export function isUnavailableFailure(failure: PluginTurnFailedEvent): boolean {
+  const errorInfo = failure.errorInfo;
+  if (errorInfo === null) return false;
+  return (
+    UNAVAILABLE_CATEGORIES.has(errorInfo.category) ||
+    (errorInfo.httpStatusCode !== null &&
+      UNAVAILABLE_HTTP_STATUS_CODES.has(errorInfo.httpStatusCode))
+  );
 }
 
 export function isRateLimitFailure(failure: PluginTurnFailedEvent): boolean {
@@ -81,7 +100,8 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
   if (failure.errorInfo?.category === "overloaded") {
     return {
       kind: "retry",
-      sendAt: overloadedSendAtMs({
+      sendAt: backoffSendAtMs({
+        baseMs: OVERLOAD_RETRY_BASE_MS,
         attemptNumber: failure.attemptNumber,
         now: input.now,
         random: input.random,
@@ -90,7 +110,18 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
     };
   }
   if (!isRateLimitFailure(failure)) {
-    return { kind: "decline", reason: "not-retryable" };
+    if (!isUnavailableFailure(failure))
+      return { kind: "decline", reason: "not-retryable" };
+    return {
+      kind: "retry",
+      sendAt: backoffSendAtMs({
+        baseMs: UNAVAILABLE_RETRY_BASE_MS,
+        attemptNumber: failure.attemptNumber,
+        now: input.now,
+        random: input.random,
+      }),
+      reason: "Provider unavailable",
+    };
   }
   if (input.availability.kind !== "not-routed") {
     if (input.availability.kind === "unavailable")

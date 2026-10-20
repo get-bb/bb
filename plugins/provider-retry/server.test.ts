@@ -16,6 +16,7 @@ import {
   OVERLOAD_RETRY_BASE_MS,
   RESET_BUFFER_MS,
   RESET_JITTER_MS,
+  UNAVAILABLE_RETRY_BASE_MS,
   decideRetry,
 } from "./src/retry-policy.js";
 
@@ -293,15 +294,77 @@ describe("provider retry policy", () => {
     expect(fourthAttempt.sendAt).toBeLessThan(NOW_MS + fourthDelay * 2);
   });
 
+  it.each<{ name: string; errorInfo: PluginTurnFailedEvent["errorInfo"] }>([
+    {
+      name: "Claude Code behind an unreachable Account Pooler",
+      errorInfo: {
+        category: "internal",
+        providerCode: null,
+        httpStatusCode: 502,
+      },
+    },
+    {
+      name: "Codex behind an unreachable Account Pooler",
+      errorInfo: {
+        category: "stream-disconnected",
+        providerCode: "responseStreamDisconnected",
+        httpStatusCode: 502,
+      },
+    },
+    {
+      name: "Codex native retry exhaustion on a gateway error",
+      errorInfo: {
+        category: "too-many-failed-attempts",
+        providerCode: "responseTooManyFailedAttempts",
+        httpStatusCode: 503,
+      },
+    },
+    {
+      name: "a provider connection failure",
+      errorInfo: {
+        category: "connection-failed",
+        providerCode: "httpConnectionFailed",
+        httpStatusCode: null,
+      },
+    },
+  ])("retries $name with backoff that starts at a minute", ({ errorInfo }) => {
+    const unavailable = failure({ errorInfo, rateLimits: null });
+    expect(
+      decideRetry({
+        availability: { kind: "not-routed" },
+        failure: unavailable,
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({
+      kind: "retry",
+      sendAt: NOW_MS + UNAVAILABLE_RETRY_BASE_MS,
+      reason: "Provider unavailable",
+    });
+    const fourthAttempt = decideRetry({
+      availability: { kind: "not-routed" },
+      failure: { ...unavailable, attemptNumber: 4 },
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0.999_999,
+    });
+    expect(fourthAttempt.kind).toBe("retry");
+    if (fourthAttempt.kind !== "retry") return;
+    const fourthDelay = UNAVAILABLE_RETRY_BASE_MS * 2 ** 3;
+    expect(fourthAttempt.sendAt).toBeGreaterThan(NOW_MS + fourthDelay);
+    expect(fourthAttempt.sendAt).toBeLessThan(NOW_MS + fourthDelay * 2);
+  });
+
   it("declines failures that are not retryable, and limits that do not reset", () => {
     expect(
       decideRetry({
         availability: { kind: "not-routed" },
         failure: failure({
           errorInfo: {
-            category: "internal",
+            category: "unauthorized",
             providerCode: null,
-            httpStatusCode: 500,
+            httpStatusCode: 401,
           },
         }),
         maximumWaitMs: null,
@@ -507,6 +570,29 @@ describe("provider retry plugin", () => {
     expect(host.retries).toHaveLength(1);
     expect(host.retries[0]?.sendAt).toBeGreaterThanOrEqual(
       RESET_AT_MS + RESET_BUFFER_MS,
+    );
+    await host.harness.dispose();
+  });
+
+  it("retries a turn the Account Pooler failed because it could not reach the provider", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+    const result = await host.harness.behavior.emitThreadEvent(
+      "turn.failed",
+      failure({
+        errorInfo: {
+          category: "internal",
+          providerCode: null,
+          httpStatusCode: 502,
+        },
+        rateLimits: null,
+      }),
+    );
+    expect(result.errors).toEqual([]);
+    expect(host.retries).toHaveLength(1);
+    expect(host.retries[0]?.reason).toBe("Provider unavailable");
+    expect(host.retries[0]?.sendAt).toBeGreaterThanOrEqual(
+      NOW_MS + UNAVAILABLE_RETRY_BASE_MS,
     );
     await host.harness.dispose();
   });
