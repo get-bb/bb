@@ -1,3 +1,4 @@
+import { useToolsPageTitle } from "@/components/layout/page-title";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,7 +15,6 @@ import {
   ResourceShelfAction,
   ResourceSourceShelf,
   ResourceTabDescription,
-  useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
 import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
@@ -105,7 +105,7 @@ export function BrowsePluginsTab({
           }).find((shelf) => shelf.key === shelfKey),
     [catalog.categories, catalog.collections, entries, shelfKey],
   );
-  useResourceRouteLabel(selectedShelf?.label ?? null);
+  useToolsPageTitle(selectedShelf?.label ?? null);
   const shelfEntries = useMemo(
     () => (shelfKey === null ? entries : (selectedShelf?.entries ?? [])),
     [entries, selectedShelf, shelfKey],

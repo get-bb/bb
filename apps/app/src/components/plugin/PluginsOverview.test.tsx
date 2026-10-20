@@ -4,7 +4,8 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderReact,
+  type RenderOptions,
   screen,
   waitFor,
   within,
@@ -23,6 +24,16 @@ import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
+
+import type { ReactNode } from "react";
+import { PageTitleProvider } from "@/components/layout/page-title";
+
+function render(ui: ReactNode, options?: RenderOptions) {
+  return renderReact(
+    <PageTitleProvider scope="plugins">{ui}</PageTitleProvider>,
+    options,
+  );
+}
 
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
   PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (

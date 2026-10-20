@@ -270,10 +270,6 @@
       "type": "registry:ui"
     },
     {
-      "name": "resource-route-label",
-      "type": "registry:ui"
-    },
-    {
       "name": "resource-row",
       "type": "registry:ui"
     },

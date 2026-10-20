@@ -86,9 +86,7 @@ import {
   HEADER_ICON_BUTTON_CLASS,
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
-import { AppBreadcrumbs } from "@/components/layout/AppBreadcrumbs";
-import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
-import { resolveAutomationBreadcrumbs } from "@/components/tools/tools-navigation";
+import { PageTitleProvider } from "@/components/layout/page-title";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -1109,14 +1107,19 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
   if (content.kind !== "thread") {
     return (
       <PaneContext.Provider value={value}>
-        <NonThreadPaneContent
-          content={content}
-          onRequestClose={onRequestClose}
-          beginPaneDrag={beginPaneDrag}
-          isBoundedPane={isBoundedPane}
-          isTopRow={isTopRow}
-          ownsWindowTopLeft={ownsWindowTopLeft}
-        />
+        <PageTitleProvider
+          scope={paneContentRoute(content)}
+          focused={isFocused}
+        >
+          <NonThreadPaneContent
+            content={content}
+            onRequestClose={onRequestClose}
+            beginPaneDrag={beginPaneDrag}
+            isBoundedPane={isBoundedPane}
+            isTopRow={isTopRow}
+            ownsWindowTopLeft={ownsWindowTopLeft}
+          />
+        </PageTitleProvider>
       </PaneContext.Provider>
     );
   }
@@ -1245,7 +1248,6 @@ function NonThreadPaneContent({
   ownsWindowTopLeft: boolean;
 }) {
   const navPanelChrome = usePluginNavPanelChrome();
-  const resourceRouteLabel = useAtomValue(resourceRouteLabelAtom);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const { reservesWindowPanelToggle, isFocused } = useOptionalPaneContext() ?? {
     reservesWindowPanelToggle: false,
@@ -1265,13 +1267,6 @@ function NonThreadPaneContent({
       : undefined;
   const panel = panelEntry?.panel ?? undefined;
   const panelChrome = panelEntry?.chrome;
-  const automationBreadcrumbs =
-    content.kind === "plugin-panel"
-      ? resolveAutomationBreadcrumbs(
-          paneContentRoute(content),
-          isFocused ? resourceRouteLabel : null,
-        )
-      : null;
   const label =
     panelChrome?.title ??
     (content.kind === "plugin-detail" ? "Extension" : "New thread");
@@ -1360,12 +1355,7 @@ function NonThreadPaneContent({
               )}
               onPointerDown={beginPaneDrag ? handlePointerDown : undefined}
             >
-              {automationBreadcrumbs ? (
-                <AppBreadcrumbs
-                  breadcrumbs={automationBreadcrumbs}
-                  usesDesktopChrome={usesDesktopChrome}
-                />
-              ) : panelChrome ? (
+              {panelChrome ? (
                 <PluginPanelHeaderCenter chrome={panelChrome} />
               ) : (
                 <p

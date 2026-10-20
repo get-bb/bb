@@ -1,3 +1,4 @@
+import { useToolsPageTitle } from "@/components/layout/page-title";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   matchPath,
@@ -16,7 +17,6 @@ import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
 import {
   ResourceListState,
-  useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import {
   RegistrySkillDetailView,
@@ -391,7 +391,7 @@ export function SkillsLibrary() {
   });
   const selectedRegistrySkill =
     registrySkillOnPage ?? registryEntryQuery.data ?? null;
-  useResourceRouteLabel(
+  useToolsPageTitle(
     selectedSkill?.name ?? selectedRegistrySkill?.name ?? null,
   );
   const registryDetailQuery = useQuery({

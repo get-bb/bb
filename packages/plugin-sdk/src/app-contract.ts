@@ -78,6 +78,17 @@ export interface PluginSettingsSectionProps {}
  */
 export interface ExperimentalAppOverlayProps {}
 
+export type ExperimentalPageTitle = (
+  | { title: string; breadcrumbs?: never }
+  | { title?: never; breadcrumbs: readonly ExperimentalPageBreadcrumb[] }
+) & { windowTitle?: string };
+
+export interface ExperimentalPageBreadcrumb {
+  label: string;
+  /** Absolute app route, starting with a single slash. */
+  to?: string;
+}
+
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
   /**
@@ -4114,6 +4125,11 @@ export interface PluginSdkApp {
    */
   useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
+  /** Sets text after the page icon/name in this pane. Links use app routes.
+   * Pass null to clear. The focused pane supplies the window title, defaulting
+   * to the leaf/title followed by the panel name. Call once per page; updates
+   * and unmount clean up automatically. Outside a page host this throws. */
+  experimental_usePageTitle(value: ExperimentalPageTitle | null): void;
   useBbContext(): BbContext;
   /**
    * The id of the plugin that owns the calling component: the same id

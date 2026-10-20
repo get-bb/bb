@@ -14,7 +14,6 @@ import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { useRedirectRetiredPluginPaths } from "@/lib/retired-plugin-redirect";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-route-label";
 import {
   SidebarInset,
   SidebarProvider,
@@ -30,13 +29,16 @@ import {
 import { CommandPalette } from "@/components/commands/CommandPalette";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
-  resolveAutomationBreadcrumbs,
   resolvePluginsWorkspaceHeaderMeta,
   resolveSkillsWorkspaceHeaderMeta,
   resolveToolsBreadcrumbs,
 } from "@/components/tools/tools-navigation";
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
-import { resourceRouteLabelAtom } from "./resourceRouteLabelAtom";
+import {
+  PageTitleProvider,
+  usePageTitleValue,
+  focusedPageTitleAtom,
+} from "./page-title";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -362,9 +364,14 @@ function AppHeader({
   pluginPanelSubPath,
   meta,
 }: AppHeaderProps) {
-  const headerBreadcrumbs = meta.breadcrumbs;
+  const pageTitle = usePageTitleValue();
+  const headerBreadcrumbs = pluginPanelChrome
+    ? undefined
+    : (pageTitle?.breadcrumbs ?? meta.breadcrumbs);
   const headerTitle =
-    headerBreadcrumbs || usesProjectChromeStyle ? undefined : meta.title;
+    headerBreadcrumbs || usesProjectChromeStyle
+      ? undefined
+      : (pageTitle?.title ?? meta.title);
 
   const hasCenterContent = Boolean(headerBreadcrumbs) || Boolean(headerTitle);
 
@@ -422,6 +429,25 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const location = useLocation();
+  const fallback = useMemo(() => {
+    const breadcrumbs = resolveToolsBreadcrumbs(
+      location.pathname,
+      location.search,
+    );
+    return breadcrumbs ? { breadcrumbs } : null;
+  }, [location.pathname, location.search]);
+  return (
+    <PageTitleProvider
+      scope={location.pathname + location.search}
+      fallback={fallback}
+    >
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </PageTitleProvider>
+  );
+}
+
+function AppLayoutContent({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
   const store = useStore();
@@ -439,35 +465,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   useRedirectRetiredPluginPaths();
   const { projectId, threadId, isThreadView, isArchivedView, isRootView } =
     useRouteState();
-  const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
-    resourceRouteLabelAtom,
-  );
-  useEffect(() => {
-    setResourceRouteLabel(null);
-    function handleResourceRouteLabel(event: Event) {
-      if (!(event instanceof CustomEvent)) return;
-      const detail = event.detail;
-      if (
-        typeof detail !== "object" ||
-        detail === null ||
-        !("label" in detail) ||
-        (typeof detail.label !== "string" && detail.label !== null)
-      ) {
-        return;
-      }
-      setResourceRouteLabel(detail.label);
-    }
-    window.addEventListener(
-      RESOURCE_ROUTE_LABEL_EVENT,
-      handleResourceRouteLabel,
-    );
-    return () => {
-      window.removeEventListener(
-        RESOURCE_ROUTE_LABEL_EVENT,
-        handleResourceRouteLabel,
-      );
-    };
-  }, [location.pathname, setResourceRouteLabel]);
+  const focusedPageTitle = useAtomValue(focusedPageTitleAtom);
   const navigate = useNavigate();
   const navPanelChrome = usePluginNavPanelChrome();
   const isGlobalSettingsView =
@@ -626,16 +624,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  const toolsBreadcrumbs = resolveToolsBreadcrumbs(
-    location.pathname,
-    location.search,
-    resourceRouteLabel,
-  );
-  const automationBreadcrumbs = resolveAutomationBreadcrumbs(
-    location.pathname,
-    resourceRouteLabel,
-  );
-  const documentTitleBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
   const resourceWorkspaceHeaderMeta =
     resolvePluginsWorkspaceHeaderMeta(location.pathname, location.search) ??
     resolveSkillsWorkspaceHeaderMeta(location.pathname);
@@ -647,49 +635,49 @@ export function AppLayout({ children }: AppLayoutProps) {
             title: "",
             breadcrumbs: resourceWorkspaceHeaderMeta.breadcrumbs,
           }
-        : automationBreadcrumbs !== null
-          ? { title: "", breadcrumbs: automationBreadcrumbs }
-          : isArchivedView && projectId
-            ? isProjectlessProjectId(projectId)
-              ? {
-                  title: "",
-                  breadcrumbs: [
-                    { label: "Threads", to: getRootComposeRoutePath() },
-                    ...(archivedSectionName
-                      ? [{ label: archivedSectionName }]
-                      : []),
-                    { label: "Archived" },
-                  ],
-                }
-              : {
-                  title: "",
-                  breadcrumbs: [
-                    {
-                      label: projectLabel ?? projectId,
-                      to: getLegacyProjectComposeRoutePath(projectId),
-                    },
-                    { label: "Archived" },
-                  ],
-                }
-            : projectId
-              ? {
-                  title: projectLabel ?? projectId,
-                }
-              : (resolveRouteTitle(location.pathname) ?? { title: "" });
+        : isArchivedView && projectId
+          ? isProjectlessProjectId(projectId)
+            ? {
+                title: "",
+                breadcrumbs: [
+                  { label: "Threads", to: getRootComposeRoutePath() },
+                  ...(archivedSectionName
+                    ? [{ label: archivedSectionName }]
+                    : []),
+                  { label: "Archived" },
+                ],
+              }
+            : {
+                title: "",
+                breadcrumbs: [
+                  {
+                    label: projectLabel ?? projectId,
+                    to: getLegacyProjectComposeRoutePath(projectId),
+                  },
+                  { label: "Archived" },
+                ],
+              }
+          : projectId
+            ? {
+                title: projectLabel ?? projectId,
+              }
+            : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
+    if (focusedPageTitle) {
+      if (focusedPageTitle.windowTitle !== undefined)
+        return focusedPageTitle.windowTitle;
+      const leaf =
+        focusedPageTitle.title ?? focusedPageTitle.breadcrumbs?.at(-1)?.label;
+      const base =
+        pluginPanel?.title ?? focusedPageTitle.breadcrumbs?.[0]?.label;
+      if (leaf) return base && base !== leaf ? `${leaf} · ${base}` : leaf;
+    }
     if (isThreadView) {
       return threadDisplayTitle;
     }
     if (pluginPanel) {
       return pluginPanel.title;
-    }
-    if (documentTitleBreadcrumbs) {
-      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "BB";
-      const pageLabel = documentTitleBreadcrumbs.at(-1)?.label ?? sectionLabel;
-      return pageLabel === sectionLabel
-        ? sectionLabel
-        : `${pageLabel} · ${sectionLabel}`;
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {

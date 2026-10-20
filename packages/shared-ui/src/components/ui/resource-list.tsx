@@ -5,7 +5,6 @@ export {
   ResourceStatus,
   type ResourceStatusTone,
 } from "./resource/atoms";
-export { useResourceRouteLabel } from "./resource-route-label";
 export {
   ResourceControlButton,
   ResourceMultiSelectMenuItems,

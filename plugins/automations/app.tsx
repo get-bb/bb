@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   definePluginApp,
+  experimental_usePageTitle,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -500,6 +501,12 @@ function DetailView({
 }) {
   const navigate = useBbNavigate();
   const { automation, error, refetch } = useAutomation(route);
+  experimental_usePageTitle({
+    breadcrumbs: [
+      { label: "Installed", to: "/plugins/automations/automations" },
+      { label: automation?.name ?? route.automationId },
+    ],
+  });
   const [editingRequested, setEditingRequested] = useState(initialEditing);
   const overviewState = useOverview();
   const runsState = useRuns(route);
@@ -708,6 +715,11 @@ function AutomationsPageFrame({
 function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
+  experimental_usePageTitle(
+    parsedRoute
+      ? null
+      : { title: subPath === "browse" ? "Browse" : "Installed" },
+  );
   const collectionMode: AutomationCollectionMode =
     subPath === "browse" ? "browse" : "installed";
   const openDetail = useCallback(

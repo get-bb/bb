@@ -1,3 +1,4 @@
+import { useToolsPageTitle } from "@/components/layout/page-title";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useAtom } from "jotai";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
@@ -31,10 +32,7 @@ import {
   pluginDetailLocation,
   withoutPluginListing,
 } from "@/components/plugin/plugin-detail-key";
-import {
-  ResourceListState,
-  useResourceRouteLabel,
-} from "@bb/shared-ui/resource-list";
+import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import {
@@ -267,11 +265,12 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
       catalogQuery.data?.entries ?? [],
       { allowSourceFallback: false },
     );
-  useResourceRouteLabel(
+  useToolsPageTitle(
     selectedPlugin?.name ??
       selectedPlugin?.id ??
       selectedCatalogEntry?.displayName ??
       null,
+    routeOwnsDetail,
   );
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables

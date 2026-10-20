@@ -24,6 +24,7 @@ import {
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
 import {
+  type ExperimentalPageTitle,
   type BbContext,
   type BbNavigate,
   type BranchesState,
@@ -285,6 +286,8 @@ interface TestComposerStore {
 
 interface SlotEnv {
   rpcQueryHost: RpcQueryHost;
+
+  pageTitle: { owner: object; value: ExperimentalPageTitle } | null;
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
   realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
@@ -1277,6 +1280,18 @@ const testPluginSdkApp = {
   useSettings(): PluginSettingsState {
     return useSlotEnv("useSettings").settingsState;
   },
+  experimental_usePageTitle(value: ExperimentalPageTitle | null): void {
+    const env = useSlotEnv("experimental_usePageTitle");
+    const serialized = JSON.stringify(value);
+    useLayoutEffect(() => {
+      const owner = {};
+      const parsed: ExperimentalPageTitle | null = JSON.parse(serialized);
+      if (parsed !== null) env.pageTitle = { owner, value: parsed };
+      return () => {
+        if (env.pageTitle?.owner === owner) env.pageTitle = null;
+      };
+    }, [env, serialized]);
+  },
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
@@ -1957,6 +1972,8 @@ export interface RenderedSlotBehaviorDrivers {
 
 /** Read-only call/write logs produced while the slot is mounted. */
 export interface RenderedSlotInspectionState {
+  /** The mounted page's current title contribution; null after clear/unmount. */
+  readonly experimental_pageTitle: ExperimentalPageTitle | null;
   /** Every `useRpc().call`, in order. */
   readonly rpcCalls: RpcCall[];
   /** Every `useBbNavigate()` call, in order. */
@@ -2645,6 +2662,8 @@ export function renderSlot<
   };
   const env: SlotEnv = {
     rpcQueryHost,
+
+    pageTitle: null,
     rpcClient,
     rpcCalls,
     realtimeHandlers,
@@ -2790,6 +2809,9 @@ export function renderSlot<
       setComposerScope,
     },
     inspection: {
+      get experimental_pageTitle() {
+        return env.pageTitle?.value ?? null;
+      },
       rpcCalls,
       navigateCalls,
       experimental_fixedTabOpenCalls,
@@ -2799,6 +2821,9 @@ export function renderSlot<
       sdkCalls,
       experimental_clipboardWrites,
       composer: composerLog,
+    },
+    get experimental_pageTitle() {
+      return env.pageTitle?.value ?? null;
     },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };

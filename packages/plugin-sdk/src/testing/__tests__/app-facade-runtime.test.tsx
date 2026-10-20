@@ -7,6 +7,7 @@ import {
   experimental_usePluginId,
   experimental_useQuestionFormHost,
   useBbContext,
+  experimental_usePageTitle,
 } from "../../app.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
 
@@ -114,5 +115,29 @@ describe("@get-bb/plugin-sdk/app without a runtime at import time", () => {
     installTestPluginRuntime();
     render(<Icon name="Zap" aria-label="zap" />);
     expect(screen.getByLabelText("zap").getAttribute("data-icon")).toBe("Zap");
+  });
+});
+
+describe("page title test host", () => {
+  it("isolates page contributions and clears them on update and unmount", () => {
+    function Page({ title }: { title: string | null }) {
+      experimental_usePageTitle(title ? { title } : null);
+      return null;
+    }
+    const first = renderSlot({ component: Page }, { title: "First page" });
+    const second = renderSlot({ component: Page }, { title: "Second page" });
+    expect(first.inspection.experimental_pageTitle).toEqual({
+      title: "First page",
+    });
+    expect(second.inspection.experimental_pageTitle).toEqual({
+      title: "Second page",
+    });
+    first.lifecycle.rerender(<Page title={null} />);
+    expect(first.inspection.experimental_pageTitle).toBeNull();
+    expect(second.inspection.experimental_pageTitle).toEqual({
+      title: "Second page",
+    });
+    second.lifecycle.unmount();
+    expect(second.inspection.experimental_pageTitle).toBeNull();
   });
 });
