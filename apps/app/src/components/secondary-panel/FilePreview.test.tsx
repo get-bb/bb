@@ -603,7 +603,7 @@ describe("FilePreview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Raw" }));
     fireEvent.click(screen.getByRole("button", { name: "File actions" }));
     const wrap = await screen.findByRole("menuitemcheckbox", {
-      name: "Line wrap",
+      name: "Wrap lines",
     });
     expect(wrap.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(wrap);
@@ -611,7 +611,7 @@ describe("FilePreview", () => {
     expect(
       (
         await screen.findByRole("menuitemcheckbox", {
-          name: "Line wrap",
+          name: "Wrap lines",
         })
       ).getAttribute("aria-checked"),
     ).toBe("true");
@@ -724,19 +724,19 @@ describe("FilePreview", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Enable line wrap" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrap lines" }));
     await waitFor(() => {
       expect(
         screen
-          .getByRole("button", { name: "Disable line wrap" })
+          .getByRole("button", { name: "Wrap lines" })
           .getAttribute("aria-pressed"),
       ).toBe("true");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Disable line wrap" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrap lines" }));
     expect(
       screen
-        .getByRole("button", { name: "Enable line wrap" })
+        .getByRole("button", { name: "Wrap lines" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
   });

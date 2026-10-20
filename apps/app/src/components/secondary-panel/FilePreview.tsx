@@ -54,7 +54,7 @@ import type {
 } from "@bb/client-core";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
-  getLineWrapToggleLabel,
+  LINE_WRAP_LABEL,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
@@ -949,7 +949,7 @@ function FilePreviewHeader({
                         }
                       >
                         <Icon name="TextWrap" aria-hidden />
-                        Line wrap
+                        {LINE_WRAP_LABEL}
                       </DropdownMenuCheckboxItem>
                     </>
                   ) : null}
@@ -971,8 +971,6 @@ function FilePreviewLineWrapButton({
     return null;
   }
 
-  const label = getLineWrapToggleLabel(lineOverflowMode);
-
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -985,7 +983,7 @@ function FilePreviewLineWrapButton({
               FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
               "text-muted-foreground",
             )}
-            aria-label={label}
+            aria-label={LINE_WRAP_LABEL}
             aria-pressed={lineOverflowMode === "wrap"}
             onClick={() => {
               onLineOverflowModeChange(
@@ -996,7 +994,7 @@ function FilePreviewLineWrapButton({
             <Icon name="TextWrap" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
+        <TooltipContent side="bottom">{LINE_WRAP_LABEL}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

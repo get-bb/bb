@@ -30,7 +30,7 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import {
   getNextCodeOverflowMode,
-  getLineWrapToggleLabel,
+  LINE_WRAP_LABEL,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
@@ -250,7 +250,6 @@ export function GitDiffToolbar({
     ref: rootRef,
     box: "content-box",
   });
-  const lineWrapLabel = getLineWrapToggleLabel(lineOverflowMode);
   const changeTally = { ...stats, lineStatsComplete: true };
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
@@ -348,17 +347,13 @@ export function GitDiffToolbar({
                     onClick={() =>
                       onFileFilterChange(fileFilter === null ? "" : null)
                     }
-                    aria-label={
-                      fileFilter === null ? "Filter files" : "Close file filter"
-                    }
+                    aria-label="Filter files"
                     aria-pressed={fileFilter !== null}
                   >
                     <Icon name="Filter" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {fileFilter === null ? "Filter files" : "Close file filter"}
-                </TooltipContent>
+                <TooltipContent side="bottom">Filter files</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -411,13 +406,13 @@ export function GitDiffToolbar({
                         getNextCodeOverflowMode(lineOverflowMode),
                       )
                     }
-                    aria-label={lineWrapLabel}
+                    aria-label={LINE_WRAP_LABEL}
                     aria-pressed={lineOverflowMode === "wrap"}
                   >
                     <Icon name="TextWrap" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{lineWrapLabel}</TooltipContent>
+                <TooltipContent side="bottom">{LINE_WRAP_LABEL}</TooltipContent>
               </Tooltip>
               <div
                 className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
