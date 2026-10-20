@@ -2807,7 +2807,7 @@ export async function runBbServer(
 Usage:
   bb-server [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>]
 
-Service stdout and stderr append to <data-dir>/logs/server-stdio.log.
+Logs rotate in <data-dir>/logs/server.N.log. Startup errors and crashes append to <data-dir>/logs/server-stdio.log.
 Exits with code 3 without starting when the server on this data directory moved to another machine, unless a move back to this computer is in progress.
 `);
     return;
