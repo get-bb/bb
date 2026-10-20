@@ -28,6 +28,8 @@ function renderToolbar(isStatsLoading: boolean) {
         onDisplayModeChange={() => undefined}
         lineOverflowMode="scroll"
         onLineOverflowModeChange={() => undefined}
+        ignoreWhitespace={false}
+        onIgnoreWhitespaceChange={() => undefined}
       />
     </TooltipProvider>,
   );

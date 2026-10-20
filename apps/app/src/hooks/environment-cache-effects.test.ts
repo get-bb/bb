@@ -84,22 +84,26 @@ describe("environment cache effects", () => {
       "env-removed",
       "all",
       "main",
+      false,
     );
     const removedDiffPatchKey = environmentDiffPatchQueryKey(
       "env-removed",
       "all",
       "main",
+      false,
       "file.ts",
     );
     const retainedDiffFilesKey = environmentDiffFilesQueryKey(
       "env-retained",
       "all",
       "main",
+      false,
     );
     const retainedDiffPatchKey = environmentDiffPatchQueryKey(
       "env-retained",
       "all",
       "main",
+      false,
       "file.ts",
     );
     queryClient.setQueryData(removedDiffFilesKey, {

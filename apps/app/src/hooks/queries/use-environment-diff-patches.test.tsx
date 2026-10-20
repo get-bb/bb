@@ -28,7 +28,13 @@ const TARGET: WorkspaceDiffTarget = { type: "all", mergeBaseBranch: "main" };
 const PATH = "file.ts";
 
 function patchKey() {
-  return environmentDiffPatchQueryKey(ENVIRONMENT_ID, "all", "main", PATH);
+  return environmentDiffPatchQueryKey(
+    ENVIRONMENT_ID,
+    "all",
+    "main",
+    false,
+    PATH,
+  );
 }
 
 function availableResponse(
@@ -57,7 +63,11 @@ describe("useEnvironmentDiffPatches", () => {
     vi.mocked(sdk.environments.diffPatch).mockReturnValue(firstFetch.promise);
 
     const { result, rerender } = renderHook(
-      ({ target }) => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target }),
+      ({ target }) =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target,
+          ignoreWhitespace: false,
+        }),
       { wrapper, initialProps: { target: TARGET as WorkspaceDiffTarget } },
     );
 
@@ -74,6 +84,56 @@ describe("useEnvironmentDiffPatches", () => {
 
     expect(request?.signal?.aborted).toBe(true);
     expect(result.current.getPatchState(PATH).status).toBe("idle");
+  });
+
+  it("keeps whitespace-filtered patches separate from full patches", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const fullPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+full\n",
+      truncated: false,
+    };
+    const filteredPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "",
+      truncated: false,
+    };
+    vi.mocked(sdk.environments.diffPatch)
+      .mockResolvedValueOnce(availableResponse(fullPatch))
+      .mockResolvedValueOnce(availableResponse(filteredPatch));
+
+    const { result, rerender } = renderHook(
+      ({ ignoreWhitespace }) =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target: TARGET,
+          ignoreWhitespace,
+        }),
+      { wrapper, initialProps: { ignoreWhitespace: false } },
+    );
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() => {
+      expect(result.current.getPatchState(PATH).patch).toBe(fullPatch.patch);
+    });
+
+    rerender({ ignoreWhitespace: true });
+    expect(result.current.getPatchState(PATH).status).toBe("idle");
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() => {
+      expect(result.current.getPatchState(PATH)).toMatchObject({
+        status: "loaded",
+        patch: "",
+      });
+    });
+    expect(
+      vi.mocked(sdk.environments.diffPatch).mock.calls[1]?.[0],
+    ).toMatchObject({ ignoreWhitespace: true });
+
+    rerender({ ignoreWhitespace: false });
+    expect(result.current.getPatchState(PATH).patch).toBe(fullPatch.patch);
   });
 
   it("drops a patch fetch that resolves after a mid-flight eviction and re-fetches fresh", async () => {
@@ -96,7 +156,11 @@ describe("useEnvironmentDiffPatches", () => {
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
     const { result } = renderHook(
-      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      () =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target: TARGET,
+          ignoreWhitespace: false,
+        }),
       { wrapper },
     );
 
@@ -163,7 +227,11 @@ describe("useEnvironmentDiffPatches", () => {
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
     const { result } = renderHook(
-      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      () =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target: TARGET,
+          ignoreWhitespace: false,
+        }),
       { wrapper },
     );
 
@@ -218,6 +286,7 @@ describe("useEnvironmentDiffPatches", () => {
       RECONNECT_ENV,
       "all",
       "main",
+      false,
       PATH,
     );
 
@@ -238,7 +307,11 @@ describe("useEnvironmentDiffPatches", () => {
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
     const { result } = renderHook(
-      () => useEnvironmentDiffPatches(RECONNECT_ENV, { target: TARGET }),
+      () =>
+        useEnvironmentDiffPatches(RECONNECT_ENV, {
+          target: TARGET,
+          ignoreWhitespace: false,
+        }),
       { wrapper },
     );
 
@@ -295,7 +368,11 @@ describe("useEnvironmentDiffPatches", () => {
     vi.mocked(sdk.environments.diffPatch).mockReturnValue(refresh.promise);
 
     const { result } = renderHook(
-      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      () =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target: TARGET,
+          ignoreWhitespace: false,
+        }),
       { wrapper },
     );
     act(() => {
@@ -342,7 +419,11 @@ describe("useEnvironmentDiffPatches", () => {
       .mockRejectedValueOnce(new Error("Failed to fetch"))
       .mockResolvedValueOnce(availableResponse(patch));
     const { result } = renderHook(
-      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      () =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target: TARGET,
+          ignoreWhitespace: false,
+        }),
       { wrapper },
     );
 
@@ -387,7 +468,11 @@ describe("useEnvironmentDiffPatches", () => {
       .mockReturnValueOnce(staleRequest.promise)
       .mockReturnValueOnce(freshRequest.promise);
     const { result } = renderHook(
-      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      () =>
+        useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+          target: TARGET,
+          ignoreWhitespace: false,
+        }),
       { wrapper },
     );
     act(() => {
@@ -430,7 +515,11 @@ describe("useEnvironmentDiffPatches cache retention", () => {
       };
 
       const first = renderHook(
-        () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+        () =>
+          useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+            target: TARGET,
+            ignoreWhitespace: false,
+          }),
         { wrapper },
       );
       act(() => {
@@ -444,7 +533,11 @@ describe("useEnvironmentDiffPatches cache retention", () => {
       expect(queryClient.getQueryData(patchKey())).toEqual(patch);
 
       const second = renderHook(
-        () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+        () =>
+          useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+            target: TARGET,
+            ignoreWhitespace: false,
+          }),
         { wrapper },
       );
       first.unmount();
@@ -460,7 +553,11 @@ describe("useEnvironmentDiffPatches cache retention", () => {
       expect(queryClient.getQueryData(patchKey())).toEqual(patch);
 
       const third = renderHook(
-        () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+        () =>
+          useEnvironmentDiffPatches(ENVIRONMENT_ID, {
+            target: TARGET,
+            ignoreWhitespace: false,
+          }),
         { wrapper },
       );
       act(() => {

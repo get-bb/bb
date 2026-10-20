@@ -736,6 +736,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       workspace.diffFiles({
         target: command.target,
         maxFiles: command.maxFiles,
+        ignoreWhitespace: command.ignoreWhitespace,
       }),
     ),
   "workspace.diffPatch": (command, options) =>
@@ -744,6 +745,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         target: command.target,
         paths: command.paths,
         maxBytesPerFile: command.maxBytesPerFile,
+        ignoreWhitespace: command.ignoreWhitespace,
       }),
     })),
   "workspace.pull_request": async (command, options) => {

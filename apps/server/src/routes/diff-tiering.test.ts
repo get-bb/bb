@@ -21,6 +21,7 @@ function makeEntry(overrides: Partial<DiffFileEntry>): DiffFileEntry {
     binary: false,
     origin: "tracked",
     loadMode: "auto",
+    revision: "100644:a:100644:b",
     ...overrides,
   };
 }
@@ -34,6 +35,7 @@ function makeStat(overrides: Partial<RawDiffFileStat>): RawDiffFileStat {
     deletions: 0,
     binary: false,
     origin: "tracked",
+    revision: "100644:a:100644:b",
     ...overrides,
   };
 }

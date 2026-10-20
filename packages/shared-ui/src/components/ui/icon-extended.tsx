@@ -103,6 +103,7 @@ import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
 import SquareUnlock02Icon from "@hugeicons/core-free-icons/SquareUnlock02Icon";
 import StarIcon from "@hugeicons/core-free-icons/StarIcon";
 import TestTube01Icon from "@hugeicons/core-free-icons/TestTube01Icon";
+import SpaceIcon from "@hugeicons/core-free-icons/SpaceIcon";
 import TextWrapIcon from "@hugeicons/core-free-icons/TextWrapIcon";
 import TimeScheduleIcon from "@hugeicons/core-free-icons/TimeScheduleIcon";
 import Unarchive03Icon from "@hugeicons/core-free-icons/Unarchive03Icon";
@@ -338,6 +339,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   SortingZA01: SortingZA01Icon,
   SortingOneNine: SortingOneNineIcon,
   SortingNineOne: SortingNineOneIcon,
+  Space: SpaceIcon,
   Square: SquareIcon,
   SquareUnlock02: SquareUnlock02Icon,
   Star: StarIcon,

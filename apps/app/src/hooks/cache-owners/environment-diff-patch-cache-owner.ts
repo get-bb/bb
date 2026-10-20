@@ -10,6 +10,7 @@ export interface PatchQueryIdentity {
   environmentId: string;
   targetType: string | null;
   targetKey: string | null;
+  ignoreWhitespace: boolean;
 }
 
 const diffPatchEvictionGenerations = new Map<string, number>();
@@ -79,7 +80,12 @@ function diffPatchEntryFreshnessKey(
   identity: PatchQueryIdentity,
   path: string,
 ): string {
-  return JSON.stringify([identity.targetType, identity.targetKey, path]);
+  return JSON.stringify([
+    identity.targetType,
+    identity.targetKey,
+    identity.ignoreWhitespace,
+    path,
+  ]);
 }
 
 export function isDiffPatchEntryFresh({
@@ -109,6 +115,7 @@ export function readDiffPatchEntry({
       identity.environmentId,
       identity.targetType,
       identity.targetKey,
+      identity.ignoreWhitespace,
       path,
     ),
   );
@@ -131,6 +138,7 @@ export function writeDiffPatchEntry({
     identity.environmentId,
     identity.targetType,
     identity.targetKey,
+    identity.ignoreWhitespace,
     entry.path,
   );
   queryClient
@@ -158,14 +166,16 @@ export function pruneDiffPatchEntries({
     identity.environmentId,
   );
   for (const key of Array.from(entries.keys())) {
-    const [targetType, targetKey, path] = JSON.parse(key) as [
+    const [targetType, targetKey, ignoreWhitespace, path] = JSON.parse(key) as [
       string | null,
       string | null,
+      boolean,
       string,
     ];
     if (
       targetType !== identity.targetType ||
       targetKey !== identity.targetKey ||
+      ignoreWhitespace !== identity.ignoreWhitespace ||
       retainedPaths.has(path)
     ) {
       continue;
@@ -177,6 +187,7 @@ export function pruneDiffPatchEntries({
         identity.environmentId,
         identity.targetType,
         identity.targetKey,
+        identity.ignoreWhitespace,
         path,
       ),
     });

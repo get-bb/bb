@@ -43,6 +43,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles`
   `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft`
   `markPullRequestReady` `mergePullRequest` `experimental_cleanup`
+  `experimental_diffViewed` `experimental_markDiffViewed`
+  `experimental_clearDiffViewed`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
   `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
   `retryUpdate` `experimental_listProviders` `experimental_create`

@@ -54,6 +54,7 @@ interface GitDiffTabContentProps {
   target: WorkspaceDiffTarget | undefined;
   isPanelOpen: boolean;
   gitDiffPresentation: DiffPresentation;
+  ignoreWhitespace: boolean;
   fileFilter: string;
   onClearPendingGitDiffIntent?: () => void;
   onOpenFileInEditor?: (path: string) => void;
@@ -151,21 +152,23 @@ export function GitDiffLoadingSkeleton() {
   return (
     <GitDiffMessageSlot>
       <div className="space-y-2 pt-2" role="status" aria-label="Loading diff">
-      {Array.from({ length: GIT_DIFF_SKELETON_FILE_COUNT }).map((_, index) => (
-        <div
-          key={`git-diff-skeleton-${index}`}
-          className="overflow-clip rounded-lg border border-border bg-background"
-        >
-          <div className="flex h-8 items-center justify-between gap-2 py-1.5 pl-2 pr-3">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <Skeleton className="size-4 shrink-0 rounded-sm" />
-              <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
+        {Array.from({ length: GIT_DIFF_SKELETON_FILE_COUNT }).map(
+          (_, index) => (
+            <div
+              key={`git-diff-skeleton-${index}`}
+              className="overflow-clip rounded-lg border border-border bg-background"
+            >
+              <div className="flex h-8 items-center justify-between gap-2 py-1.5 pl-2 pr-3">
+                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <Skeleton className="size-4 shrink-0 rounded-sm" />
+                  <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
+                </div>
+                <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
+              </div>
+              <DiffLoadingSkeleton />
             </div>
-            <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
-          </div>
-          <DiffLoadingSkeleton />
-        </div>
-      ))}
+          ),
+        )}
       </div>
     </GitDiffMessageSlot>
   );
@@ -176,6 +179,7 @@ export function GitDiffTabContent({
   target,
   isPanelOpen,
   gitDiffPresentation,
+  ignoreWhitespace,
   fileFilter,
   onClearPendingGitDiffIntent,
   onOpenFileInEditor,
@@ -195,6 +199,7 @@ export function GitDiffTabContent({
   } = useEnvironmentDiffFiles(environmentId ?? "", {
     enabled: isQueryEnabled,
     target,
+    ignoreWhitespace,
   });
 
   const mergeBaseRef =
@@ -310,6 +315,7 @@ export function GitDiffTabContent({
         initialPatches={diffFilesResponse.initialPatches}
         filesUpdatedAt={diffFilesUpdatedAt}
         presentation={gitDiffPresentation}
+        ignoreWhitespace={ignoreWhitespace}
         filePathRoot={workspaceRootPath}
         isPanelOpen={isPanelOpen}
         isPlaceholderData={isDiffFilesPlaceholder}

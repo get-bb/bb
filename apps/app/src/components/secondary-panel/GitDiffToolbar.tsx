@@ -217,6 +217,9 @@ interface GitDiffToolbarProps {
 
   lineOverflowMode: CodeOverflowMode;
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
+
+  ignoreWhitespace: boolean;
+  onIgnoreWhitespaceChange: (ignoreWhitespace: boolean) => void;
 }
 
 export function GitDiffToolbar({
@@ -237,6 +240,8 @@ export function GitDiffToolbar({
   onDisplayModeChange,
   lineOverflowMode,
   onLineOverflowModeChange,
+  ignoreWhitespace,
+  onIgnoreWhitespaceChange,
 }: GitDiffToolbarProps) {
   const rootRef = useRef<HTMLDivElement>(null!);
   const { width: rootWidth = 0 } = useResizeObserver({
@@ -385,6 +390,24 @@ export function GitDiffToolbar({
               aria-pressed={lineOverflowMode === "wrap"}
             >
               <Icon name="TextWrap" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "text-muted-foreground",
+              )}
+              onClick={() => onIgnoreWhitespaceChange(!ignoreWhitespace)}
+              aria-label={
+                ignoreWhitespace
+                  ? "Show whitespace changes"
+                  : "Hide whitespace changes"
+              }
+              aria-pressed={ignoreWhitespace}
+            >
+              <Icon name="Space" />
             </Button>
             <div
               className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"

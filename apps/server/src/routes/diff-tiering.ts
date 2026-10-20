@@ -18,6 +18,7 @@ export function rawDiffFileStatToEntry(stat: RawDiffFileStat): DiffFileEntry {
     binary: stat.binary,
     origin: stat.origin,
     loadMode,
+    revision: stat.revision,
   };
 }
 

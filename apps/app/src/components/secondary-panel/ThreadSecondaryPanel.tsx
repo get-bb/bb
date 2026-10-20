@@ -56,7 +56,10 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
-import { useGitDiffLineOverflowModePreference } from "@/lib/git-diff-view-preferences";
+import {
+  useGitDiffIgnoreWhitespacePreference,
+  useGitDiffLineOverflowModePreference,
+} from "@/lib/git-diff-view-preferences";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
@@ -414,6 +417,8 @@ function ThreadSecondaryPanelContent({
     pendingGitDiffCommitSha,
     pendingGitDiffScrollPath,
   });
+  const [gitDiffIgnoreWhitespace, setGitDiffIgnoreWhitespace] =
+    useGitDiffIgnoreWhitespacePreference();
   const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
     useEnvironmentDiffFiles(environmentId ?? "", {
       enabled:
@@ -421,6 +426,7 @@ function ThreadSecondaryPanelContent({
         Boolean(environmentId) &&
         gitDiffTarget !== undefined,
       target: gitDiffTarget,
+      ignoreWhitespace: gitDiffIgnoreWhitespace,
     });
   const diffFiles = useMemo(
     () =>
@@ -935,6 +941,8 @@ function ThreadSecondaryPanelContent({
               onDisplayModeChange={handleGitDiffDisplayModeChange}
               lineOverflowMode={gitDiffLineOverflowMode}
               onLineOverflowModeChange={setGitDiffLineOverflowMode}
+              ignoreWhitespace={gitDiffIgnoreWhitespace}
+              onIgnoreWhitespaceChange={setGitDiffIgnoreWhitespace}
             />
           ) : null}
         </div>
@@ -1005,6 +1013,7 @@ function ThreadSecondaryPanelContent({
               target={gitDiffTarget}
               isPanelOpen={isLayoutOpen}
               gitDiffPresentation={gitDiffPresentation}
+              ignoreWhitespace={gitDiffIgnoreWhitespace}
               fileFilter={gitDiffFileFilter ?? ""}
               onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
               onOpenFileInEditor={onOpenFileInEditor}

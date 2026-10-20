@@ -27,6 +27,7 @@ export const rawDiffFileStatSchema = z.object({
   deletions: z.number().int().nonnegative(),
   binary: z.boolean(),
   origin: z.enum(["tracked", "untracked"]),
+  revision: z.string().min(1),
 });
 export type RawDiffFileStat = z.infer<typeof rawDiffFileStatSchema>;
 

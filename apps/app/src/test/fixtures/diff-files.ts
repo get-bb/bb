@@ -12,6 +12,7 @@ export function makeDiffFileEntry(
     binary: false,
     origin: "tracked",
     loadMode: "auto",
+    revision: "100644:aaaa:100644:bbbb",
     ...overrides,
   };
 }

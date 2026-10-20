@@ -122,8 +122,8 @@ export function GitDiffCardHeader({
     isCollapsed !== undefined && onToggleCollapsed !== undefined;
 
   return (
-    <div className="flex w-full min-w-0 items-center justify-between gap-2">
-      <span className="flex min-w-0 items-center">
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
+      <span className="flex min-w-0 grow basis-48 items-center">
         {supportsCollapse ? (
           <button
             type="button"
@@ -192,7 +192,7 @@ export function GitDiffCardHeader({
           ) : null}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-1">
+      <span className="ml-auto flex shrink-0 items-center gap-2">
         {actionSlot}
         {statSlot ?? (
           <DiffStatsTally

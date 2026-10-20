@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DiffFileEntry, DiffPatchEntry } from "@bb/server-contract";
+import { useEnvironmentDiffViewed } from "@/hooks/queries/environment-queries";
+import { useSetDiffFileViewed } from "@/hooks/mutations/environment-mutations";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
@@ -34,6 +36,7 @@ interface DiffFilesPanelProps {
   initialPatches: DiffPatchEntry[];
   filesUpdatedAt: number;
   presentation: DiffPresentation;
+  ignoreWhitespace: boolean;
   filePathRoot?: string | null;
   isPanelOpen: boolean;
   isPlaceholderData?: boolean;
@@ -54,6 +57,7 @@ export function DiffFilesPanel({
   initialPatches,
   filesUpdatedAt,
   presentation,
+  ignoreWhitespace,
   filePathRoot,
   isPanelOpen,
   isPlaceholderData,
@@ -72,7 +76,34 @@ export function DiffFilesPanel({
     loadPath,
     seedInitialPatches,
     prunePaths,
-  } = useEnvironmentDiffPatches(environmentId, { target });
+  } = useEnvironmentDiffPatches(environmentId, { target, ignoreWhitespace });
+  const { data: viewedResponse } = useEnvironmentDiffViewed(environmentId, {
+    target,
+    enabled: isPanelOpen,
+  });
+  const viewedRevisionByPath = useMemo(
+    () =>
+      new Map(
+        (viewedResponse?.files ?? []).map(
+          (file) => [file.path, file.revision] as const,
+        ),
+      ),
+    [viewedResponse],
+  );
+  const isViewedDisabled =
+    viewedResponse === undefined || isPlaceholderData === true;
+  const { mutate: setDiffFileViewed } = useSetDiffFileViewed();
+  const setViewed = useCallback(
+    (entry: DiffFileEntry, viewed: boolean) =>
+      setDiffFileViewed({
+        environmentId,
+        target,
+        path: entry.path,
+        revision: entry.revision,
+        viewed,
+      }),
+    [environmentId, setDiffFileViewed, target],
+  );
 
   useEffect(() => {
     if (initialPatches.length > 0) {
@@ -195,6 +226,12 @@ export function DiffFilesPanel({
                 diffIdentity={diffIdentity}
                 fileCount={files.length}
                 presentation={presentation}
+                ignoreWhitespace={ignoreWhitespace}
+                isViewed={
+                  viewedRevisionByPath.get(entry.path) === entry.revision
+                }
+                isViewedDisabled={isViewedDisabled}
+                setViewed={setViewed}
                 filePathRoot={filePathRoot}
                 patchState={getPatchState(entry.path)}
                 loadPath={loadPath}
@@ -220,6 +257,10 @@ interface DiffFileRowProps {
   diffIdentity: string;
   fileCount: number;
   presentation: DiffPresentation;
+  ignoreWhitespace: boolean;
+  isViewed: boolean;
+  isViewedDisabled: boolean;
+  setViewed: (entry: DiffFileEntry, viewed: boolean) => void;
   filePathRoot?: string | null;
   patchState: DiffPatchState;
   loadPath: LoadDiffPatchPath;
@@ -235,6 +276,10 @@ function DiffFileRow({
   diffIdentity,
   fileCount,
   presentation,
+  ignoreWhitespace,
+  isViewed,
+  isViewedDisabled,
+  setViewed,
   filePathRoot,
   patchState,
   loadPath,
@@ -267,10 +312,19 @@ function DiffFileRow({
     retry(entry.path);
   }, [entry.path, retry]);
 
+  const handleViewedChange = useCallback(
+    (viewed: boolean) => setViewed(entry, viewed),
+    [entry, setViewed],
+  );
+
   return (
     <DiffFileCard
       entry={entry}
       presentation={presentation}
+      ignoreWhitespace={ignoreWhitespace}
+      isViewed={isViewed}
+      isViewedDisabled={isViewedDisabled}
+      onViewedChange={handleViewedChange}
       filePathRoot={filePathRoot}
       isCollapsed={collapsed}
       onToggleCollapsed={handleToggleCollapsed}
