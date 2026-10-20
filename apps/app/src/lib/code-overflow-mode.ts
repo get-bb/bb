@@ -10,3 +10,7 @@ export function getNextCodeOverflowMode(
 ): CodeOverflowMode {
   return mode === "wrap" ? "scroll" : "wrap";
 }
+
+export function getLineWrapToggleLabel(mode: CodeOverflowMode): string {
+  return mode === "wrap" ? "Turn off line wrap" : "Turn on line wrap";
+}

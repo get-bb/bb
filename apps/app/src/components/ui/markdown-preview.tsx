@@ -49,6 +49,7 @@ import {
 } from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { getLineWrapToggleLabel } from "@/lib/code-overflow-mode";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import { RouteAnchor } from "./app-route-anchor.js";
 import {
@@ -822,7 +823,7 @@ function MarkdownCodeBlock({
           <button
             type="button"
             aria-pressed={softWrap}
-            aria-label={softWrap ? "Turn off line wrap" : "Turn on line wrap"}
+            aria-label={getLineWrapToggleLabel(softWrap ? "wrap" : "scroll")}
             onClick={() => {
               setSoftWrap((value) => !value);
             }}

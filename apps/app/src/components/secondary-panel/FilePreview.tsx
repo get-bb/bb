@@ -54,6 +54,7 @@ import type {
 } from "@bb/client-core";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
+  getLineWrapToggleLabel,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
@@ -292,10 +293,6 @@ function getFileContentsCopyLabel(kind: FilePreviewToggleKind | null): string {
     return "Copy HTML source";
   }
   return "Copy file contents";
-}
-
-function getLineWrapToggleLabel(lineOverflowMode: CodeOverflowMode): string {
-  return lineOverflowMode === "wrap" ? "Disable line wrap" : "Wrap lines";
 }
 
 function getFilePreviewLineRange(
@@ -951,7 +948,8 @@ function FilePreviewHeader({
                           onLineOverflowModeChange(checked ? "wrap" : "scroll")
                         }
                       >
-                        <Icon name="TextWrap" aria-hidden /> Wrap lines
+                        <Icon name="TextWrap" aria-hidden />
+                        {getLineWrapToggleLabel(lineOverflowMode)}
                       </DropdownMenuCheckboxItem>
                     </>
                   ) : null}

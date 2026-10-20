@@ -17,7 +17,12 @@ import { Icon } from "@bb/shared-ui/icon";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import {
   formatChangeSummary,
@@ -25,6 +30,7 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import {
   getNextCodeOverflowMode,
+  getLineWrapToggleLabel,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
@@ -244,6 +250,7 @@ export function GitDiffToolbar({
     ref: rootRef,
     box: "content-box",
   });
+  const lineWrapLabel = getLineWrapToggleLabel(lineOverflowMode);
   const changeTally = { ...stats, lineStatsComplete: true };
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
@@ -327,98 +334,7 @@ export function GitDiffToolbar({
             className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
             data-testid="git-diff-toolbar-actions"
           >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                    "text-muted-foreground",
-                  )}
-                  onClick={() =>
-                    onFileFilterChange(fileFilter === null ? "" : null)
-                  }
-                  aria-label={
-                    fileFilter === null ? "Filter files" : "Close file filter"
-                  }
-                  aria-pressed={fileFilter !== null}
-                >
-                  <Icon name="Filter" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {fileFilter === null ? "Filter files" : "Close file filter"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                    "text-muted-foreground",
-                  )}
-                  onClick={onToggleAllCollapsed}
-                  disabled={isCollapseAllDisabled}
-                  aria-label={
-                    areAllFilesCollapsed
-                      ? "Expand all files"
-                      : "Collapse all files"
-                  }
-                >
-                  {areAllFilesCollapsed ? (
-                    <Icon name="ChevronsDown" />
-                  ) : (
-                    <Icon name="ChevronsUp" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {areAllFilesCollapsed
-                  ? "Expand all files"
-                  : "Collapse all files"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                    "text-muted-foreground",
-                  )}
-                  onClick={() =>
-                    onLineOverflowModeChange(
-                      getNextCodeOverflowMode(lineOverflowMode),
-                    )
-                  }
-                  aria-label={
-                    lineOverflowMode === "wrap"
-                      ? "Turn off line wrap"
-                      : "Turn on line wrap"
-                  }
-                  aria-pressed={lineOverflowMode === "wrap"}
-                >
-                  <Icon name="TextWrap" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {lineOverflowMode === "wrap"
-                  ? "Turn off line wrap"
-                  : "Turn on line wrap"}
-              </TooltipContent>
-            </Tooltip>
-            <div
-              className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
-              role="tablist"
-              aria-label="Diff view mode"
-            >
+            <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -429,14 +345,20 @@ export function GitDiffToolbar({
                       COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
                       "text-muted-foreground",
                     )}
-                    onClick={() => onDisplayModeChange("unified")}
-                    aria-label="Unified diff view"
-                    aria-pressed={displayMode === "unified"}
+                    onClick={() =>
+                      onFileFilterChange(fileFilter === null ? "" : null)
+                    }
+                    aria-label={
+                      fileFilter === null ? "Filter files" : "Close file filter"
+                    }
+                    aria-pressed={fileFilter !== null}
                   >
-                    <Icon name="Rows2" />
+                    <Icon name="Filter" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Unified diff view</TooltipContent>
+                <TooltipContent side="bottom">
+                  {fileFilter === null ? "Filter files" : "Close file filter"}
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -448,16 +370,95 @@ export function GitDiffToolbar({
                       COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
                       "text-muted-foreground",
                     )}
-                    onClick={() => onDisplayModeChange("split")}
-                    aria-label="Split diff view"
-                    aria-pressed={displayMode === "split"}
+                    onClick={onToggleAllCollapsed}
+                    disabled={isCollapseAllDisabled}
+                    aria-label={
+                      areAllFilesCollapsed
+                        ? "Expand all files"
+                        : "Collapse all files"
+                    }
                   >
-                    <Icon name="Columns2" />
+                    {areAllFilesCollapsed ? (
+                      <Icon name="ChevronsDown" />
+                    ) : (
+                      <Icon name="ChevronsUp" />
+                    )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Split diff view</TooltipContent>
+                <TooltipContent side="bottom">
+                  {areAllFilesCollapsed
+                    ? "Expand all files"
+                    : "Collapse all files"}
+                </TooltipContent>
               </Tooltip>
-            </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                      "text-muted-foreground",
+                    )}
+                    onClick={() =>
+                      onLineOverflowModeChange(
+                        getNextCodeOverflowMode(lineOverflowMode),
+                      )
+                    }
+                    aria-label={lineWrapLabel}
+                    aria-pressed={lineOverflowMode === "wrap"}
+                  >
+                    <Icon name="TextWrap" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{lineWrapLabel}</TooltipContent>
+              </Tooltip>
+              <div
+                className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
+                role="tablist"
+                aria-label="Diff view mode"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                        "text-muted-foreground",
+                      )}
+                      onClick={() => onDisplayModeChange("unified")}
+                      aria-label="Unified view"
+                      aria-pressed={displayMode === "unified"}
+                    >
+                      <Icon name="Rows2" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Unified view</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                        "text-muted-foreground",
+                      )}
+                      onClick={() => onDisplayModeChange("split")}
+                      aria-label="Split view"
+                      aria-pressed={displayMode === "split"}
+                    >
+                      <Icon name="Columns2" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Split view</TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
           </div>
         </div>
       </div>
