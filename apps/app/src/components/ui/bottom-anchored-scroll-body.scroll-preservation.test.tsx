@@ -120,6 +120,7 @@ interface RenderArgs {
   showCapturePrependAnchorControl?: boolean;
   showScrollToBottomControl?: boolean;
   scrollIntoViewRowId?: string;
+  clampedRevealRowId?: string;
   virtualized?: boolean;
   onBottomAnchor?: (anchor: BottomAnchorContextValue | null) => void;
 }
@@ -173,12 +174,32 @@ function ScrollRowIntoViewControl({ rowId }: { rowId: string }) {
   );
 }
 
+function ClampedRevealRowControl({ rowId }: { rowId: string }) {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const element = bottomAnchor
+          ?.getScrollElement()
+          ?.querySelector(`[data-timeline-row-id="${rowId}"]`);
+        if (element instanceof HTMLElement) {
+          bottomAnchor?.scrollElementIntoViewClampedToMaxScroll({ element });
+        }
+      }}
+    >
+      Reveal row clamped
+    </button>
+  );
+}
+
 function renderTimeline({
   threadId,
   rowIds,
   showCapturePrependAnchorControl = false,
   showScrollToBottomControl = false,
   scrollIntoViewRowId,
+  clampedRevealRowId,
   virtualized = false,
   onBottomAnchor,
 }: RenderArgs) {
@@ -201,6 +222,9 @@ function renderTimeline({
         {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
         {scrollIntoViewRowId ? (
           <ScrollRowIntoViewControl rowId={scrollIntoViewRowId} />
+        ) : null}
+        {clampedRevealRowId ? (
+          <ClampedRevealRowControl rowId={clampedRevealRowId} />
         ) : null}
         {onBottomAnchor ? (
           <BottomAnchorProbe onBottomAnchor={onBottomAnchor} />
@@ -669,7 +693,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(300);
   });
 
-  it.each(["bottom", "message"])(
+  it.each(["bottom", "message", "clamped message"])(
     "does not let a pending saved-row restore undo an explicit %s scroll",
     (destination) => {
       getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
@@ -683,6 +707,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
         rowIds: ["row-a", "row-b", "row-c"],
         showScrollToBottomControl: true,
         scrollIntoViewRowId: "row-a",
+        clampedRevealRowId: "row-a",
       });
       mockScrollAreaRect(scrollArea);
       mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
@@ -700,11 +725,13 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       row.scrollIntoView = vi.fn(() => {
         scrollArea.scrollTop = expectedScrollTop;
       });
-      fireEvent.click(
-        getByRole("button", {
-          name: destination === "bottom" ? "Bottom" : "Reveal row",
-        }),
-      );
+      mockRowRect(row, { top: 150, bottom: 250 });
+      const buttonNames: Record<string, string> = {
+        bottom: "Bottom",
+        message: "Reveal row",
+        "clamped message": "Reveal row clamped",
+      };
+      fireEvent.click(getByRole("button", { name: buttonNames[destination] }));
       expect(scrollArea.scrollTop).toBe(expectedScrollTop);
 
       getLatestResizeObserver().trigger();

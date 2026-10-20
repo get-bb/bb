@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1068,12 +1069,12 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
   const dividerRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!autoScroll || !bottomAnchor || hasScrolledRef.current) {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    const frameId = window.requestAnimationFrame(() => {
       const divider = dividerRef.current;
       if (!divider) {
         return;
@@ -1083,9 +1084,9 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       bottomAnchor.scrollElementIntoViewClampedToMaxScroll({
         element: divider,
       });
-    }, 0);
+    });
 
-    return () => window.clearTimeout(timeoutId);
+    return () => window.cancelAnimationFrame(frameId);
   }, [autoScroll, bottomAnchor]);
 
   return (
