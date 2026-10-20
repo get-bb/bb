@@ -3,9 +3,10 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { InstallPage } from "../landing/install-page";
 import installCss from "../landing/install.css?url";
 import { siteHeadLinks } from "../landing/page-head";
+import type { DesktopPlatform } from "../landing/site";
 
 export const Route = createFileRoute("/install/$platform")({
-  loader: ({ params }) => {
+  loader: ({ params }): { platform: DesktopPlatform } => {
     const { platform } = params;
     if (
       platform !== "macos" &&
