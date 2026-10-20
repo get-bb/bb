@@ -19,8 +19,29 @@ const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
 
+export const LOOKUP_JOIN_TIMEOUT_MS = 2_000;
+const LOOKUP_POLL_MS = 10;
+
+type LookupOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+interface InFlightLookup<T> {
+  startedAt: number;
+  outcome: LookupOutcome<T> | null;
+}
+
+async function awaitOutcome<T>(
+  lookup: InFlightLookup<T>,
+): Promise<LookupOutcome<T> | null> {
+  const deadline = lookup.startedAt + LOOKUP_JOIN_TIMEOUT_MS;
+  while (lookup.outcome === null && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, LOOKUP_POLL_MS));
+  }
+  return lookup.outcome;
+}
+
 export class SettledLookupCache<T> {
   private readonly entries = new Map<string, { value: T; expires: number }>();
+  private readonly lookups = new Map<string, InFlightLookup<T>>();
   private generation = 0;
 
   async read(
@@ -33,20 +54,43 @@ export class SettledLookupCache<T> {
     },
   ): Promise<T> {
     if (!options.fresh) {
-      const hit = this.entries.get(key);
-      if (hit && hit.expires > options.now) return hit.value;
-      if (hit) this.entries.delete(key);
+      for (;;) {
+        const hit = this.entries.get(key);
+        if (hit && hit.expires > options.now) return hit.value;
+        if (hit) this.entries.delete(key);
+        const inFlight = this.lookups.get(key);
+        if (
+          inFlight === undefined ||
+          Date.now() - inFlight.startedAt >= LOOKUP_JOIN_TIMEOUT_MS
+        ) {
+          break;
+        }
+        const outcome = await awaitOutcome(inFlight);
+        if (outcome?.ok === true) return outcome.value;
+        if (outcome?.ok === false) throw outcome.error;
+      }
     }
     const generation = this.generation;
-    const value = await options.load();
-    if (generation === this.generation) {
-      this.entries.set(key, { value, expires: options.expires(value) });
+    const lookup: InFlightLookup<T> = { startedAt: Date.now(), outcome: null };
+    this.lookups.set(key, lookup);
+    try {
+      const value = await options.load();
+      lookup.outcome = { ok: true, value };
+      if (generation === this.generation) {
+        this.entries.set(key, { value, expires: options.expires(value) });
+      }
+      return value;
+    } catch (error) {
+      lookup.outcome = { ok: false, error };
+      throw error;
+    } finally {
+      if (this.lookups.get(key) === lookup) this.lookups.delete(key);
     }
-    return value;
   }
 
   delete(key: string): void {
     this.entries.delete(key);
+    this.lookups.delete(key);
     this.generation += 1;
   }
 }

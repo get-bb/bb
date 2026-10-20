@@ -3393,6 +3393,8 @@ describe("gate error response", () => {
       expect.objectContaining({
         method: "GET",
         path: "/api/v1/threads/thr_x/child-summary",
+        error:
+          "Error: D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
       }),
     );
     logged.mockRestore();
