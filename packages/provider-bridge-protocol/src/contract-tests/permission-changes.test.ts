@@ -15,7 +15,16 @@ const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }));
 vi.mock(
   "../../../../plugins/provider-claude-code/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
   () => ({
-    query: queryMock,
+    query: (args: {
+      options: { forkSession?: boolean; persistSession?: boolean };
+    }) =>
+      args.options.forkSession && args.options.persistSession === false
+        ? {
+            initializationResult: async () => ({}),
+            getContextUsage: async () => null,
+            close: () => {},
+          }
+        : queryMock(args),
     forkSession: vi.fn(),
     createSdkMcpServer: vi.fn(() => ({})),
     tool: vi.fn((_name, _description, _schema, handler) => handler),
