@@ -200,6 +200,21 @@ describe("sidebar split layout", () => {
     expect(unknownScope.fullScreenScope).toBe("pane");
   });
 
+  it("writes the scope only for whole-panel full screen so older builds keep reading layouts", () => {
+    const split = splitOff(
+      createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
+      "file-a",
+    );
+    expect(JSON.parse(serializeSidebarSplitState(split))).not.toHaveProperty(
+      "fullScreenScope",
+    );
+    expect(
+      JSON.parse(
+        serializeSidebarSplitState(setSidebarFullScreenScope(split, "panel")),
+      ),
+    ).toHaveProperty("fullScreenScope", "panel");
+  });
+
   it("treats a whole-panel scope as a non-canonical layout worth persisting", () => {
     const canonical = createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID);
     expect(

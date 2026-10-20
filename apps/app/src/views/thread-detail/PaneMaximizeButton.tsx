@@ -69,6 +69,19 @@ function ArrangementGlyph({ side }: { side: SplitSide }) {
   );
 }
 
+function AllPanesGlyph() {
+  return (
+    <span
+      data-pane-arrangement-glyph="all-panes"
+      aria-hidden
+      className="relative block size-4 shrink-0 rounded-[3px] border-[1.5px] border-current"
+    >
+      <span className="absolute inset-y-0 left-1/2 w-[1.5px] -translate-x-1/2 bg-current" />
+      <span className="absolute inset-x-0 top-1/2 h-[1.5px] -translate-y-1/2 bg-current" />
+    </span>
+  );
+}
+
 export function PaneMaximizeButton() {
   const { isMaximized, onToggleMaximize, onMoveToSide } = usePaneContext();
   const shortcut = useAppCommandShortcut("pane.maximize.toggle");
@@ -212,7 +225,7 @@ export function PaneArrangementButton({
               onToggleFullScreenAllPanes();
             }}
           >
-            <Icon name="Columns2" />
+            <AllPanesGlyph />
             <span className="flex-1">{FULL_SCREEN_ALL_PANES_LABEL}</span>
             {fullScreenAllPanesShortcut ? (
               <span className="text-subtle-foreground">

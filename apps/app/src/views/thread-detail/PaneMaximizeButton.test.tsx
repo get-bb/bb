@@ -325,7 +325,9 @@ describe("PaneArrangementButton full screen with all panes", () => {
     const allPanes = screen.getByRole("menuitem", {
       name: /Full Screen all panes/,
     });
-    expect(allPanes.querySelector("[data-icon-root]")).not.toBeNull();
+    expect(
+      allPanes.querySelector('[data-pane-arrangement-glyph="all-panes"]'),
+    ).not.toBeNull();
 
     fireEvent.click(allPanes);
     expect(onToggleFullScreenAllPanes).toHaveBeenCalledOnce();

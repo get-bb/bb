@@ -1092,7 +1092,44 @@ describe("ThreadSecondaryPanel full-screen control", () => {
 });
 
 describe("ThreadSecondaryPanel full screen with all panes", () => {
-  function FullScreenAllPanesHarness() {
+  function DispatchAllPanesCommand() {
+    const { dispatch } = useAppCommandRunner();
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          dispatch("panel.fullScreenAllPanes.toggle", document.activeElement)
+        }
+      >
+        Run all-panes command
+      </button>
+    );
+  }
+
+  function persistTwoPaneSplit() {
+    const initial = createSidebarSplitState(
+      [infoFixedTab.id, diffFixedTab.id],
+      diffFixedTab.id,
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey("full-screen-all-panes"),
+      serializeSidebarSplitState(
+        moveSidebarTab(
+          initial,
+          initial.layout.focusedPaneId,
+          diffFixedTab.id,
+          { paneId: initial.layout.focusedPaneId, zone: "right" },
+          { groupId: "group-diff" },
+        ),
+      ),
+    );
+  }
+
+  function FullScreenAllPanesHarness({
+    canToggleFullScreen = false,
+  }: {
+    canToggleFullScreen?: boolean;
+  }) {
     const [isConversationCollapsed, setIsConversationCollapsed] =
       useState(false);
     return (
@@ -1103,6 +1140,7 @@ describe("ThreadSecondaryPanel full screen with all panes", () => {
         <PanelGroup direction="horizontal">
           <ThreadSecondaryPanel
             activeTab={diffFixedTab}
+            canToggleFullScreen={canToggleFullScreen}
             canUseGitUi
             fixedTabs={infoAndDiffFixedTabs}
             tabs={[]}
@@ -1196,6 +1234,44 @@ describe("ThreadSecondaryPanel full screen with all panes", () => {
       screen.getAllByRole("button", { name: "Maximize pane" }),
     ).toHaveLength(2);
   });
+
+  it.each([
+    [true, "collapsed"],
+    [false, "visible"],
+  ])(
+    "routes the all-panes command through the panel only when the host allows it (%s)",
+    (canToggleFullScreen, expectedState) => {
+      persistTwoPaneSplit();
+      const { wrapper: Wrapper } = createQueryClientTestHarness();
+      render(
+        <Wrapper>
+          <AppCommandProvider>
+            <SidebarProvider>
+              <TooltipProvider>
+                <DispatchAllPanesCommand />
+                <FullScreenAllPanesHarness
+                  canToggleFullScreen={canToggleFullScreen}
+                />
+              </TooltipProvider>
+            </SidebarProvider>
+          </AppCommandProvider>
+        </Wrapper>,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Run all-panes command" }),
+      );
+
+      expect(screen.getByTestId("conversation-state").textContent).toBe(
+        expectedState,
+      );
+      expect(
+        document.querySelectorAll(
+          '[data-split-pane-id][data-maximized="true"]',
+        ),
+      ).toHaveLength(0);
+    },
+  );
 });
 
 describe("ThreadSecondaryPanel full-screen shortcut", () => {

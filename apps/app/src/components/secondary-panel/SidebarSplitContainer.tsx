@@ -334,6 +334,11 @@ export function SidebarSplitContainer({
     commitState((current) => applyFullScreen(current, isFullScreen));
   }, [commitState, isFullScreen]);
 
+  useEffect(() => {
+    if (isFullScreen || state.fullScreenScope === "pane") return;
+    commitState((current) => setSidebarFullScreenScope(current, "pane"));
+  }, [commitState, isFullScreen, state.fullScreenScope]);
+
   const selectTab = useCallback(
     (paneId: string, tabId: string) => {
       commitState((current) => selectSidebarTab(current, paneId, tabId));
@@ -632,7 +637,8 @@ export function SidebarSplitContainer({
         {renderPane({
           group,
           isFocused: true,
-          isFullScreenAllPanes: false,
+          isFullScreenAllPanes:
+            isFullScreen && state.fullScreenScope === "panel",
           isLeftEdge: true,
           isMaximized: isFullScreen,
           isTopRow: true,

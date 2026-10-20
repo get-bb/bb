@@ -1030,5 +1030,8 @@ export function parseSidebarSplitState(
 }
 
 export function serializeSidebarSplitState(state: SidebarSplitState): string {
-  return JSON.stringify(state);
+  const { fullScreenScope, ...stored } = state;
+  return JSON.stringify(
+    fullScreenScope === "pane" ? stored : { ...stored, fullScreenScope },
+  );
 }
