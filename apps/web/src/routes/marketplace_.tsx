@@ -70,10 +70,18 @@ function MarketplaceRoute() {
           <PublicMarketplacePage
             manifest={marketplace.manifest}
             stats={marketplace.stats}
-            state={{ category: search.category, sort: search.sort }}
+            state={{
+              category: search.category,
+              collection: search.collection,
+              sort: search.sort,
+            }}
             onStateChange={(next) =>
               void navigate({
-                search: { category: next.category, sort: next.sort },
+                search: {
+                  category: next.category,
+                  collection: next.collection,
+                  sort: next.sort,
+                },
               })
             }
           />

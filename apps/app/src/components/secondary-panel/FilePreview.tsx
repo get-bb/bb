@@ -54,6 +54,7 @@ import type {
 } from "@bb/client-core";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
+  LINE_WRAP_LABEL,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
@@ -292,10 +293,6 @@ function getFileContentsCopyLabel(kind: FilePreviewToggleKind | null): string {
     return "Copy HTML source";
   }
   return "Copy file contents";
-}
-
-function getLineWrapToggleLabel(lineOverflowMode: CodeOverflowMode): string {
-  return lineOverflowMode === "wrap" ? "Disable line wrap" : "Wrap lines";
 }
 
 function getFilePreviewLineRange(
@@ -951,7 +948,8 @@ function FilePreviewHeader({
                           onLineOverflowModeChange(checked ? "wrap" : "scroll")
                         }
                       >
-                        <Icon name="TextWrap" aria-hidden /> Wrap lines
+                        <Icon name="TextWrap" aria-hidden />
+                        {LINE_WRAP_LABEL}
                       </DropdownMenuCheckboxItem>
                     </>
                   ) : null}
@@ -973,8 +971,6 @@ function FilePreviewLineWrapButton({
     return null;
   }
 
-  const label = getLineWrapToggleLabel(lineOverflowMode);
-
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -987,7 +983,7 @@ function FilePreviewLineWrapButton({
               FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
               "text-muted-foreground",
             )}
-            aria-label={label}
+            aria-label={LINE_WRAP_LABEL}
             aria-pressed={lineOverflowMode === "wrap"}
             onClick={() => {
               onLineOverflowModeChange(
@@ -998,7 +994,7 @@ function FilePreviewLineWrapButton({
             <Icon name="TextWrap" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
+        <TooltipContent side="bottom">{LINE_WRAP_LABEL}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

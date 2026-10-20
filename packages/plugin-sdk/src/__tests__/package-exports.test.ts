@@ -44,6 +44,8 @@ describe("packed plugin SDK exports", () => {
       "./testing",
       "./testing/app",
       "./testing/host",
+      "./internal/rpc-tags",
+      "./internal/rpc-query-host",
     ]);
 
     for (const entry of Object.values(packageJson.exports)) {

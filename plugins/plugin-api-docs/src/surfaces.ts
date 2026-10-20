@@ -3,6 +3,7 @@ export interface PluginSurface {
   title: string;
   summary: string;
   bullets: string[];
+  reference?: string[];
   tagline?: string;
   apiSymbols: string[];
   firstParty?: string[];
@@ -52,7 +53,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Arrange New thread, Search, Plugins, Skills, and plugin pages in any layout",
           "Choose the rail or list placement, and get bb's layout around it",
-          "Keep the user's saved order, hidden items, badges, and split-view behavior",
+          "Keep saved order and badges; Cmd/Ctrl-click splits supported pages or opens Plugins/Skills in tabs",
           "Add controls to the header row beside the sidebar toggle",
         ],
         apiSymbols: [
@@ -69,6 +70,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarNavigationIconProps",
           "ExperimentalSidebarNavigationShortcut",
           "ExperimentalSidebarNavigationActivationOptions",
+          "ExperimentalSidebarNavigationTarget",
           "experimental_useSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplitOptions",
@@ -82,13 +84,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add a navigation rail destination that opens a full page your plugin renders. With this, a plugin can:",
         bullets: [
-          "Build a whole page, such as a dashboard, a board, or an inbox",
+          "Build dashboards, boards or inboxes with a custom sidebar on their own routes",
           "Give the page a URL that can be shared and works with back and forward",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
           "Show a live count or dot on its navigation entry",
         ],
         apiSymbols: [
           "PluginNavPanelRegistration",
+          "PluginNavPanelRegistration.experimental_sidebar",
           "PluginNavPanelProps",
           "ExperimentalBadge",
           "ExperimentalBadgeTone",
@@ -406,6 +409,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add a viewer or editor for the file types you choose. With this, a plugin can:",
         bullets: [
           "Open files such as `.csv` or `.excalidraw` in your own view",
+          "Use lowercase alphanumeric extension names with single `_` or `-` separators between segments",
           "Jump to the linked lines when someone opens a file reference",
           "Hand individual files back to bb's built-in preview",
         ],
@@ -936,10 +940,21 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Use RPC, HTTP, WebSocket, and realtime messages to connect the plugin. With this, a plugin can:",
         bullets: [
-          "Call its server from its UI with schema-checked RPC",
+          "Call its server from its UI with schema-checked RPC and typed refusals",
           "Receive webhooks and serve HTTP or WebSocket routes",
-          "Push live updates to open bb windows",
+          "Share live reads and optimistic updates; finish pending writes at server acknowledgement",
           "Publish RPC methods other plugins can discover",
+        ],
+        reference: [
+          "All live hooks take { contract, method, ... } and infer their types: plain reads add input, keyed reads add keys and optional select, and mutations add optional optimistic",
+          "Data retains successful values and shared predictions during refresh errors. Plain reads start undefined; keyed reads expose loaded rows, initially an empty record, through select",
+          "isLoading means an enabled read is fetching never-loaded data, including missing requested keys. isFetching includes background attempts; keyed views share their method's activity",
+          "error is an experimental_PluginRpcCallError or null. Success clears it; retrying a first load clears its previous error while loading. refetch forces a read, waits through retries, and records failures in error without rejecting",
+          "Reads stay fresh for two seconds without polling. Focus does not refetch while BB's realtime connection is healthy; while disconnected, focus/browser-online events recheck stale active reads. BB reconnect invalidates all plugin reads. Page hiding cancels active attempts and resume restarts those cancelled reads",
+          "Invalidations refresh immediately. Network/abort failures retry twice at 250 ms, HTTP failures never retry, and writes never retry automatically. Tags are plain strings shared between read dependencies and write invalidations",
+          "mutate, isPending and pendingInputs settle at write acknowledgement; matched reads refresh in the background. Shared predictions stay until confirmed reads arrive, or roll back on write failure",
+          "Optimistic updaters must be pure and replayable; generate IDs and timestamps before mutate",
+          "RPC error codes may grow: switch on error.code with a fallback. Newer server codes become unknown_error with the original serverCode; transport_error and invalid_response cover client failures. CLI output preserves unknown codes",
         ],
         apiSymbols: [
           "PluginRpc",
@@ -951,6 +966,21 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginHttp",
           "PluginRealtime",
           "useRpc",
+          "experimental_useRpcQuery",
+          "experimental_useRpcKeyedQuery",
+          "experimental_useRpcMutation",
+          "experimental_useRpcRefresh",
+          "ExperimentalRpcQueryState",
+          "ExperimentalRpcKeyedMethod",
+          "ExperimentalRpcKeyedValue",
+          "experimental_PluginRpcCallError",
+          "ExperimentalRpcKeyedQueryState",
+          "ExperimentalRpcQueryOptions",
+          "ExperimentalRpcMutationOptions",
+          "ExperimentalRpcOptimisticCache",
+          "ExperimentalRpcMutationState",
+          "PluginRpc.experimental_invalidate",
+          "PluginRpc.experimental_invalidateAll",
           "PluginRpcClient",
           "useRealtime",
           "useRealtimeConnectionState",
@@ -962,6 +992,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "defineRpcContract",
           "PluginRpcContract",
           "PluginRpcError",
+          "PluginRpcErrorCode",
+          "experimental_PluginRpcRefusal",
           "PluginRpcHandlers",
         ],
         firstParty: [
@@ -1114,6 +1146,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.hosts.experimental_reconcile",
           "PluginBbSdk.hosts.experimental_resume",
           "PluginBbSdk.hosts.experimental_retryCleanup",
+          "PluginBbSdk.hosts.delete",
           "PluginMachines.getResource",
           "MachineExecutorRequest",
           "MachineExecutor",

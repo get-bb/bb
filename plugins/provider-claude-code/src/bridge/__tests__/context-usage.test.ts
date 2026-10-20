@@ -210,9 +210,17 @@ describe("Claude context usage capture", () => {
       publish,
       providerSessionId: "session-1",
     };
-    const capture = collector.capture({ ...args, read: () => pending.promise });
+    let readSignal: AbortSignal | undefined;
+    const capture = collector.capture({
+      ...args,
+      read: (signal) => {
+        readSignal = signal;
+        return pending.promise;
+      },
+    });
     await vi.advanceTimersByTimeAsync(5_000);
     await capture;
+    expect(readSignal?.aborted).toBe(true);
     pending.resolve(report);
     await collector.capture({
       ...args,

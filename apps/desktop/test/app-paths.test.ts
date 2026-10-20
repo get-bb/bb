@@ -57,6 +57,7 @@ describe("desktop app paths", () => {
 
     expect(
       resolveDesktopIconPath({
+        devIcon: false,
         packagedIconFileName: "icon-nightly.png",
         paths,
       }),
@@ -76,6 +77,7 @@ describe("desktop app paths", () => {
 
     expect(
       resolveDesktopIconPath({
+        devIcon: true,
         packagedIconFileName: "icon-nightly.png",
         paths,
       }),

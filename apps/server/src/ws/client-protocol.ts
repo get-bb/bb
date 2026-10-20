@@ -35,12 +35,18 @@ export function onClientSocketMessage(
 
   switch (parsed.type) {
     case "subscribe":
-      deps.hub.subscribe(socket, parsed.target);
-      deps.watchInterests.subscribe(socket, parsed.target);
+      for (const target of parsed.targets ??
+        (parsed.target ? [parsed.target] : [])) {
+        deps.hub.subscribe(socket, target);
+        deps.watchInterests.subscribe(socket, target);
+      }
       break;
     case "unsubscribe":
-      deps.hub.unsubscribe(socket, parsed.target);
-      deps.watchInterests.unsubscribe(socket, parsed.target);
+      for (const target of parsed.targets ??
+        (parsed.target ? [parsed.target] : [])) {
+        deps.hub.unsubscribe(socket, target);
+        deps.watchInterests.unsubscribe(socket, target);
+      }
       break;
     case "ping":
       socket.send(JSON.stringify(PONG_MESSAGE));

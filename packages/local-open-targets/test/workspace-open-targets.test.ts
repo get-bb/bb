@@ -2434,13 +2434,15 @@ describe("workspace open targets", () => {
         args: powershellArgs(
           "Start-Process -FilePath explorer.exe -ArgumentList ('/select,\"' + $env:WORKSPACE_OPEN_TARGET_PATH + '\"')",
         ),
-        env: { WORKSPACE_OPEN_TARGET_PATH: filePath },
+        env: { WORKSPACE_OPEN_TARGET_PATH: path.win32.normalize(filePath) },
       });
       expect(await open("file-manager", workspacePath, null)).toMatchObject({
         args: powershellArgs(
           "Invoke-Item -LiteralPath $env:WORKSPACE_OPEN_TARGET_PATH",
         ),
-        env: { WORKSPACE_OPEN_TARGET_PATH: workspacePath },
+        env: {
+          WORKSPACE_OPEN_TARGET_PATH: path.win32.normalize(workspacePath),
+        },
       });
       expect(await open("terminal", filePath, null)).toMatchObject({
         file: powershell,

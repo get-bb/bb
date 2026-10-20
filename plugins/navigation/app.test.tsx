@@ -153,19 +153,27 @@ describe("Rail", () => {
     ).toBeNull();
   });
 
-  it("activates through the host, opening in a split on a modifier click", () => {
+  it("requests split navigation through the host on a modifier click", () => {
     const view = renderRail([NEW_THREAD, PLUGINS, DOCS]);
 
     fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
       metaKey: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plugins" }), {
+      metaKey: true,
+    });
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }), {
+      ctrlKey: true,
+    });
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "activate", itemId: DOCS.id, openInSplit: true },
-      { method: "activate", itemId: PLUGINS.id, openInSplit: false },
-      { method: "goHome" },
+      { method: "activate", itemId: DOCS.id, target: "split" },
+      { method: "activate", itemId: PLUGINS.id, target: "current" },
+      { method: "activate", itemId: PLUGINS.id, target: "split" },
+      { method: "goHome", target: "current" },
+      { method: "goHome", target: "tab" },
     ]);
   });
 
@@ -262,7 +270,7 @@ describe("Rail header", () => {
     fireEvent.click(screen.getByRole("button", { name: "New thread (⌘N)" }));
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "activate", itemId: NEW_THREAD.id, openInSplit: false },
+      { method: "activate", itemId: NEW_THREAD.id, target: "current" },
     ]);
   });
 
@@ -315,7 +323,7 @@ describe("Top list", () => {
     );
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "activate", itemId: SEARCH.id, openInSplit: false },
+      { method: "activate", itemId: SEARCH.id, target: "current" },
     ]);
   });
 

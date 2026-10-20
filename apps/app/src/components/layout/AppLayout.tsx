@@ -12,6 +12,7 @@ import {
 } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
+import { useRedirectRetiredPluginPaths } from "@/lib/retired-plugin-redirect";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-route-label";
 import {
@@ -26,7 +27,6 @@ import {
   ThreadTitleMentionResourcesProvider,
   useSidebarThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
@@ -74,7 +74,6 @@ import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
   MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
@@ -95,9 +94,7 @@ import {
   getSettingsProjectRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
-  isPluginsRoutePath,
   isProjectlessProjectId,
-  isSkillsRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -107,6 +104,7 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
+import { resolveRouteSidebar } from "./routeSidebar";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
 import { useSidebarNavigationPlacement } from "@/components/sidebar/sidebarNavigationProvider";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
@@ -275,13 +273,7 @@ function SidebarTriggerOverlay({
           )}
         >
           <SidebarHistoryNavigationControls className="gap-0" />
-          <div className="relative flex items-center">
-            <SidebarTrigger {...triggerProps} />
-            <AppCommandShortcutHint
-              shortcut={shortcut}
-              className="absolute left-full ml-1"
-            />
-          </div>
+          <SidebarTrigger {...triggerProps} />
         </div>
       </div>
     );
@@ -308,13 +300,6 @@ function SidebarTriggerOverlay({
           className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
           {...triggerProps}
         />
-        <AppCommandShortcutHint
-          shortcut={shortcut}
-          className={cn(
-            "absolute left-full ml-1",
-            MACOS_CHROME_CONTROL_AXIS_CLASS,
-          )}
-        />
       </div>
     );
   }
@@ -335,10 +320,6 @@ function SidebarTriggerOverlay({
       )}
     >
       <SidebarTrigger {...triggerProps} />
-      <AppCommandShortcutHint
-        shortcut={shortcut}
-        className="absolute left-full ml-1"
-      />
     </div>
   );
 }
@@ -455,6 +436,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
+  useRedirectRetiredPluginPaths();
   const { projectId, threadId, isThreadView, isArchivedView, isRootView } =
     useRouteState();
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
@@ -487,8 +469,37 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
-  const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
-    useAppSettingsRouteMemory();
+  const navPanelChrome = usePluginNavPanelChrome();
+  const isGlobalSettingsView =
+    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
+  const pluginPanelMatch = matchPath(
+    PLUGIN_PANEL_ROUTE_PATH,
+    location.pathname,
+  );
+  const pluginPanelEntry = pluginPanelMatch
+    ? navPanelChrome.find(
+        (candidate) =>
+          candidate.chrome.pluginId === pluginPanelMatch.params.pluginId &&
+          candidate.chrome.path === pluginPanelMatch.params.panelPath,
+      )
+    : undefined;
+  const pluginPanel = pluginPanelEntry?.panel ?? undefined;
+  const pluginPanelChrome = pluginPanelEntry?.chrome;
+  const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
+  const routeSidebar = resolveRouteSidebar(
+    location.pathname,
+    pluginPanel === undefined
+      ? null
+      : { panel: pluginPanel, subPath: pluginPanelSubPath },
+  );
+  const { appRoutePath, settingsRoutePath, sectionBackRoutePath } =
+    useAppSettingsRouteMemory(routeSidebar !== null);
+  const backToAppRoutePath =
+    routeSidebar === null
+      ? null
+      : isGlobalSettingsView
+        ? appRoutePath
+        : sectionBackRoutePath;
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -539,30 +550,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;
-  const navPanelChrome = usePluginNavPanelChrome();
-  const isGlobalSettingsView =
-    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
-  const isPluginsWorkspace = isPluginsRoutePath(location.pathname);
-  const isSkillsWorkspace = isSkillsRoutePath(location.pathname);
-  const backToAppRoutePath = isGlobalSettingsView
-    ? appRoutePath
-    : isPluginsWorkspace || isSkillsWorkspace
-      ? toolsBackRoutePath
-      : null;
-  const pluginPanelMatch = matchPath(
-    PLUGIN_PANEL_ROUTE_PATH,
-    location.pathname,
-  );
-  const pluginPanelEntry = pluginPanelMatch
-    ? navPanelChrome.find(
-        (candidate) =>
-          candidate.chrome.pluginId === pluginPanelMatch.params.pluginId &&
-          candidate.chrome.path === pluginPanelMatch.params.panelPath,
-      )
-    : undefined;
-  const pluginPanel = pluginPanelEntry?.panel ?? undefined;
-  const pluginPanelChrome = pluginPanelEntry?.chrome;
-  const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -835,15 +822,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 ) : null}
                 <HistoryCommandHandlers />
                 <AppLayoutSidebar
-                  mode={
-                    isGlobalSettingsView
-                      ? "settings"
-                      : isPluginsWorkspace
-                        ? "plugins"
-                        : isSkillsWorkspace
-                          ? "skills"
-                          : "app"
-                  }
+                  routeSidebar={routeSidebar}
+                  isSettingsActive={isGlobalSettingsView}
                   onResizeMouseDown={handleResizeMouseDown}
                   isResizing={isSidebarResizing}
                   settingsRoutePath={settingsRoutePath}

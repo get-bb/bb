@@ -439,13 +439,13 @@ function AccountRow({
       </Button>
       <div
         className={cn(
-          "group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+          "group relative -mx-2 flex min-w-0 flex-1 select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
           !account.enabled && "opacity-55",
         )}
       >
         <button
           type="button"
-          className="grid min-w-0 flex-1 grid-cols-1 items-center gap-y-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring @min-[32rem]/account-row:grid-cols-[minmax(0,1fr)_auto] @min-[32rem]/account-row:gap-y-0"
+          className="grid min-w-0 flex-1 grid-cols-1 items-center gap-y-1.5 rounded-md text-left outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:ring-2 focus-visible:ring-ring @min-[32rem]/account-row:grid-cols-[minmax(0,1fr)_auto] @min-[32rem]/account-row:gap-y-0"
           aria-label={`Open ${account.label}`}
           onClick={onOpen}
         >
@@ -491,7 +491,7 @@ function AccountRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active"
+              className="relative h-7 w-7 shrink-0 data-[state=open]:bg-state-active"
               aria-label={`${account.label} actions`}
             >
               <Icon name="MoreHorizontal" className="size-4" />
@@ -533,6 +533,7 @@ function AccountRow({
         <button
           type="button"
           aria-label={`Open ${account.label} details`}
+          className="relative"
           onClick={onOpen}
         >
           <ResourceRowDetailChevron />

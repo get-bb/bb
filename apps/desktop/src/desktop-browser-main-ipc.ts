@@ -6,6 +6,7 @@ import {
   bbDesktopBrowserFindInPageRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
+  bbDesktopBrowserSetThreadDiscardedRequestSchema,
   bbDesktopBrowserSetVisibleRequestSchema,
   bbDesktopBrowserStopFindInPageRequestSchema,
   bbDesktopBrowserTabRefSchema,
@@ -22,6 +23,8 @@ import {
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
+  BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
@@ -97,6 +100,19 @@ export function registerDesktopBrowserIpc(
     ({ hostWindow, request }) =>
       manager.detach({ hostWindow, tabId: request.tabId }),
   );
+  registerRequestCommand(
+    BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
+    bbDesktopBrowserSetThreadDiscardedRequestSchema,
+    (args) => manager.setThreadDiscarded(args),
+  );
+  ipcMain.handle(BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL, (event) => {
+    if (BrowserWindow.fromWebContents(event.sender) === null) return [];
+    const tabs = manager.listTabs({
+      hostWebContentsId: event.sender.id,
+      threadId: null,
+    });
+    return [...new Set(tabs.map((tab) => tab.threadId))];
+  });
   registerRequestCommand(
     BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
     bbDesktopBrowserTabRefSchema,

@@ -11,9 +11,9 @@ import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
-const COMMAND = "until gh pr checks 5487 | grep -qv pending; do sleep 30; done";
+const COMMAND = "grep -qv pending checks.log";
 const SUMMARY = [
-  { type: "search", command: COMMAND, query: "pending", path: null },
+  { type: "search", command: COMMAND, query: "pending", path: "checks.log" },
 ];
 
 function seedTurnWithCommand(

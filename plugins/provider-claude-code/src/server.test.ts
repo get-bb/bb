@@ -33,7 +33,7 @@ function providerOptions(
 }
 
 describe("the Claude Code provider settings", () => {
-  it.each(["chromeEnabled", "disable1MContext"])(
+  it.each(["chromeEnabled", "disable1MContext", "artifactsEnabled"])(
     "keeps %s off by default and derives an explicit opt-in",
     (key) => {
       const { declaration, host } = loadClaudeCodePlugin();

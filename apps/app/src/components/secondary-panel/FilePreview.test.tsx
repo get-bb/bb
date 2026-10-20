@@ -610,7 +610,9 @@ describe("FilePreview", () => {
     fireEvent.click(screen.getByRole("button", { name: "File actions" }));
     expect(
       (
-        await screen.findByRole("menuitemcheckbox", { name: "Wrap lines" })
+        await screen.findByRole("menuitemcheckbox", {
+          name: "Wrap lines",
+        })
       ).getAttribute("aria-checked"),
     ).toBe("true");
   });
@@ -726,12 +728,12 @@ describe("FilePreview", () => {
     await waitFor(() => {
       expect(
         screen
-          .getByRole("button", { name: "Disable line wrap" })
+          .getByRole("button", { name: "Wrap lines" })
           .getAttribute("aria-pressed"),
       ).toBe("true");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Disable line wrap" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrap lines" }));
     expect(
       screen
         .getByRole("button", { name: "Wrap lines" })

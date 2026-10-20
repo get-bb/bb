@@ -241,10 +241,8 @@ export function MachinesSettingsSection() {
     ({ issue }) => issue.offline,
   );
   const [firstAttentionHost] = attentionHosts;
-  const singleOfflineHost =
-    attentionHosts.length === 1 && firstAttentionHost?.issue.offline
-      ? firstAttentionHost.host
-      : null;
+  const singleAttentionHost =
+    attentionHosts.length === 1 ? firstAttentionHost : undefined;
   const sandboxHosts = hosts?.filter((host) => host.type === "ephemeral");
   const visibleHosts =
     showAllMachines && sandboxHosts !== undefined
@@ -360,36 +358,38 @@ export function MachinesSettingsSection() {
         {attentionHosts.length > 0 ? (
           <AttentionBanner
             title={
-              singleOfflineHost !== null
-                ? `${singleOfflineHost.name} is offline`
+              singleAttentionHost !== undefined
+                ? singleAttentionHost.issue.label
                 : allAttentionHostsOffline
                   ? `${attentionHosts.length} machines are offline`
-                  : "Machines need attention"
+                  : `${attentionHosts.length} machines need attention`
             }
           >
-            {singleOfflineHost === null ? (
+            {singleAttentionHost !== undefined ? (
+              singleAttentionHost.issue.offline ||
+              singleAttentionHost.host.lifecycle.message === null ? null : (
+                <p className="line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
+                  {singleAttentionHost.host.lifecycle.message}
+                </p>
+              )
+            ) : (
               <ul className="space-y-2">
                 {attentionHosts.map(({ host, issue }) => (
-                  <li key={host.id} className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">
-                        {allAttentionHostsOffline ? host.name : issue.label}
+                  <li key={host.id} className="min-w-0">
+                    <p className="font-medium">{host.name}</p>
+                    {allAttentionHostsOffline ? null : (
+                      <p className="line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                        {issue.offline
+                          ? "Offline"
+                          : host.lifecycle.message === null
+                            ? "Cleanup failed"
+                            : `Cleanup failed: ${host.lifecycle.message}`}
                       </p>
-                      {!issue.offline && host.lifecycle.message ? (
-                        <details className="text-xs text-muted-foreground">
-                          <summary className="cursor-pointer">
-                            Error details
-                          </summary>
-                          <p className="whitespace-pre-wrap py-1">
-                            {host.lifecycle.message}
-                          </p>
-                        </details>
-                      ) : null}
-                    </div>
+                    )}
                   </li>
                 ))}
               </ul>
-            ) : null}
+            )}
           </AttentionBanner>
         ) : null}
         <div

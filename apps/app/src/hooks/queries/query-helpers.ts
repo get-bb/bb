@@ -61,6 +61,8 @@ export function isTransientReadError(error: unknown): boolean {
     return false;
   }
 
+  if (typeof record.status === "number") return false;
+  if (record.code === "transport_error") return true;
   const message = normalizeErrorMessage(record.message);
   return (
     message.includes("failed to fetch") ||

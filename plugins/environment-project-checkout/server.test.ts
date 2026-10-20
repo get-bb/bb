@@ -286,7 +286,12 @@ it.each([false, true])(
       pluginId: "environment-project-checkout",
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
-        return { status: "attached", path: CHECKOUT_PATH, branchName: "main" };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: "main",
+          mergeBaseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
@@ -404,10 +409,77 @@ describe("checkout provider existing path", () => {
   );
 });
 
+describe("checkout provider merge base", () => {
+  it.each([
+    [
+      { branch: { kind: "existing", name: "release" } },
+      { mergeBaseBranch: null },
+      null,
+    ],
+    [{}, {}, null],
+    [
+      { branch: { kind: "new", baseBranch: "dev" } },
+      { mergeBaseBranch: "origin/dev" },
+      "origin/dev",
+    ],
+  ] as const)(
+    "reports %j as %j so a reused environment drops or keeps its base",
+    async (inputs, expected, resolvedBase) => {
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+        experimental_callHostRpc: (call) => {
+          if (call.method !== "attach")
+            throw new Error("Unexpected host method");
+          return {
+            status: "attached",
+            path: CHECKOUT_PATH,
+            branchName: null,
+            mergeBaseBranch: resolvedBase,
+          };
+        },
+        sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
+      });
+      try {
+        await plugin(bb);
+        const provider = harness.registrations.environmentProviders.get(
+          PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+        );
+        if (!provider) throw new Error("Missing provider");
+        const result = await provider.create({
+          project: PROJECT,
+          host: HOST,
+          projectCheckout: {
+            path: CHECKOUT_PATH,
+            experimental_ownsPath: false,
+          },
+          gitRemote: null,
+          inputs,
+          thread: makeThreadResponse(),
+          suggestedBranchName: "bb/thread-branch",
+          attempt: 1,
+          pathKey: "merge-base",
+          experimental_claimPath: async () => true,
+          report: { step() {}, log() {} },
+          signal: new AbortController().signal,
+        });
+        expect(result).toEqual({
+          status: "created",
+          path: CHECKOUT_PATH,
+          ownsPath: false,
+          ...expected,
+        });
+      } finally {
+        await harness.lifecycle.dispose();
+      }
+    },
+  );
+});
+
 describe("restoring a destroyed checkout environment", () => {
   async function restoreWith(args: {
     inputs: PluginEnvironmentProviderRestoreContext["inputs"];
     branchName: string | null;
+    mergeBaseBranch?: string | null;
   }) {
     const attachCalls: unknown[] = [];
     const { bb, harness } = createFakePluginHost({
@@ -415,7 +487,12 @@ describe("restoring a destroyed checkout environment", () => {
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
         attachCalls.push(call.input);
-        return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: null,
+          mergeBaseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
@@ -441,6 +518,7 @@ describe("restoring a destroyed checkout environment", () => {
             ...environmentAt(CHECKOUT_PATH),
             status: "destroyed",
             branchName: args.branchName,
+            mergeBaseBranch: args.mergeBaseBranch ?? null,
           },
           resource: null,
         },
@@ -455,10 +533,15 @@ describe("restoring a destroyed checkout environment", () => {
 
   it("switches back to the thread's own branch instead of recreating it from its base", async () => {
     const { attachCalls, result } = await restoreWith({
-      inputs: { branch: { kind: "new", baseBranch: "main" } },
+      inputs: { branch: { kind: "new", baseBranch: "origin/dev" } },
       branchName: "bb/thread-branch",
+      mergeBaseBranch: "origin/dev",
     });
-    expect(result).toMatchObject({ status: "created", path: CHECKOUT_PATH });
+    expect(result).toMatchObject({
+      status: "created",
+      path: CHECKOUT_PATH,
+      mergeBaseBranch: "origin/dev",
+    });
     expect(attachCalls).toEqual([
       expect.objectContaining({
         path: CHECKOUT_PATH,

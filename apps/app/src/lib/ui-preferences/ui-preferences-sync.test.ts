@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -8,10 +8,7 @@ import {
   type UiPreferenceValue,
 } from "@bb/domain";
 import type { UiPreferencesResponse } from "@bb/server-contract";
-import {
-  getCachedUiPreferences,
-  setCachedUiPreferences,
-} from "@/hooks/cache-owners/ui-preferences-cache-owner";
+import { uiPreferencesQueryOptions } from "@/hooks/queries/system-queries";
 import { createSyncedPreferenceAtom } from "./synced-preference-atom";
 import {
   hasPendingUiPreferenceWrite,
@@ -61,6 +58,18 @@ function serverResponse(
     ]),
   ) as UiPreferencesResponse["preferences"];
   return { preferences: { ...preferences, ...overrides } };
+}
+
+function setCachedUiPreferences(
+  client: QueryClient,
+  response: UiPreferencesResponse,
+): void {
+  client.setQueryData(uiPreferencesQueryOptions(client).queryKey, response);
+}
+function getCachedUiPreferences(
+  client: QueryClient,
+): UiPreferencesResponse | undefined {
+  return client.getQueryData(uiPreferencesQueryOptions(client).queryKey);
 }
 
 function conflict(currentRevision: number): BbHttpError {
@@ -204,11 +213,15 @@ describe("ui preferences sync", () => {
     store.set(orderAtom, ["threads"]);
     await waitForUiPreferenceWrites();
 
-    expect(
-      getCachedUiPreferences(queryClient)?.preferences["sidebar.sectionOrder"],
-    ).toEqual({ revision: 1, value: ["threads"] });
+    store.set(orderAtom, ["projects"]);
+    await waitForUiPreferenceWrites();
+    expect(mocks.set).toHaveBeenLastCalledWith({
+      expectedRevision: 1,
+      key: "sidebar.sectionOrder",
+      value: ["projects"],
+    });
     expect(mocks.toastError).not.toHaveBeenCalled();
-    expect(store.get(orderAtom)).toEqual(["threads"]);
+    expect(store.get(orderAtom)).toEqual(["projects"]);
   });
 
   it("keeps writes local when no sync context has started", () => {
@@ -245,7 +258,7 @@ describe("ui preferences sync", () => {
     });
   });
 
-  it("writes with the cached revision and records the new entry", async () => {
+  it("writes with the cached revision and uses the saved revision for subsequent writes", async () => {
     const { orderAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     setCachedUiPreferences(
@@ -265,10 +278,45 @@ describe("ui preferences sync", () => {
       key: "sidebar.sectionOrder",
       value: ["threads", "pinned", "projects"],
     });
-    expect(
-      getCachedUiPreferences(queryClient)?.preferences["sidebar.sectionOrder"],
-    ).toEqual({ revision: 4, value: ["threads", "pinned", "projects"] });
+    store.set(orderAtom, ["projects"]);
+    await waitForUiPreferenceWrites();
+    expect(mocks.set).toHaveBeenLastCalledWith({
+      expectedRevision: 4,
+      key: "sidebar.sectionOrder",
+      value: ["projects"],
+    });
     expect(mocks.list).not.toHaveBeenCalled();
+  });
+
+  it("keeps an acknowledged choice and its revision when refreshing fails", async () => {
+    const { modeAtom, queryClient, store } = createHarness();
+    mocks.list.mockResolvedValueOnce(serverResponse());
+    const observer = new QueryObserver(queryClient, {
+      ...uiPreferencesQueryOptions(queryClient),
+      retry: false,
+    });
+    const stop = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().isSuccess).toBe(true),
+      );
+      startUiPreferencesSync({ queryClient, store });
+      mocks.list.mockRejectedValue(new Error("offline"));
+      store.set(modeAtom, "machine");
+      await waitForUiPreferenceWrites();
+      reconcileUiPreferences(serverResponse());
+      expect(store.get(modeAtom)).toBe("machine");
+      store.set(modeAtom, "project");
+      await waitForUiPreferenceWrites();
+      expect(mocks.set).toHaveBeenLastCalledWith({
+        expectedRevision: 1,
+        key: "sidebar.organizationMode",
+        value: "project",
+      });
+      expect(mocks.toastError).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
   });
 
   it("fetches the current revision when nothing is cached", async () => {
@@ -602,10 +650,49 @@ describe("ui preferences sync", () => {
       key: "sidebar.sectionOrder",
       value: ["remote", "other", "a", "b"],
     });
-    expect(
-      getCachedUiPreferences(queryClient)?.preferences["sidebar.sectionOrder"],
-    ).toEqual({ revision: 4, value: ["remote", "other", "a", "b"] });
+
     expect(store.get(orderAtom)).toEqual(["remote", "other", "a", "b"]);
+  });
+
+  it("ends pending at write acknowledgement and keeps the mirror while its refresh is held", async () => {
+    const { orderAtom, queryClient, store } = createHarness();
+    const previous = serverResponse({
+      "sidebar.sectionOrder": { revision: 1, value: ["old"] },
+    });
+    setCachedUiPreferences(queryClient, previous);
+    startUiPreferencesSync({ queryClient, store });
+    let release!: (response: UiPreferencesResponse) => void;
+    mocks.list.mockReturnValueOnce(
+      new Promise<UiPreferencesResponse>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const observer = new QueryObserver(
+      queryClient,
+      uiPreferencesQueryOptions(queryClient),
+    );
+    const stop = observer.subscribe(() => {});
+    try {
+      store.set(orderAtom, ["chosen"]);
+      await waitForUiPreferenceWrites();
+      expect(hasPendingUiPreferenceWrite("sidebar.sectionOrder")).toBe(false);
+      expect(mocks.list).toHaveBeenCalledTimes(1);
+      expect(observer.getCurrentResult().isFetching).toBe(true);
+      reconcileUiPreferences(previous);
+      expect(store.get(orderAtom)).toEqual(["chosen"]);
+      const confirmed = serverResponse({
+        "sidebar.sectionOrder": { revision: 2, value: ["confirmed"] },
+      });
+      release(confirmed);
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().isFetching).toBe(false),
+      );
+      reconcileUiPreferences(confirmed);
+      expect(store.get(orderAtom)).toEqual(["confirmed"]);
+    } finally {
+      stop();
+      queryClient.clear();
+    }
   });
 
   it("reconciles the mirror to the cached entry once the pending write settles", async () => {

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
@@ -204,6 +210,10 @@ export function getMobileRecentAncestorIds({
     remainingHops -= 1;
   }
   return ancestorIds;
+}
+
+function getFirstPaintMobileRecentRowCount(): number {
+  return Math.ceil(window.innerHeight / MOBILE_RECENT_ROW_HEIGHT_PX) + 1;
 }
 
 export function getMobileRecentThreads({
@@ -460,6 +470,10 @@ export function RootComposeMobileRecents({
       }),
     [collapsedThreadIds, draftThreadIds, threads],
   );
+  const hasMountedAllRows = useDeferredValue(true, false);
+  const renderedThreads = hasMountedAllRows
+    ? recentThreads
+    : recentThreads.slice(0, getFirstPaintMobileRecentRowCount());
 
   if (!showCreatingRow && recentThreads.length === 0) {
     return null;
@@ -504,7 +518,7 @@ export function RootComposeMobileRecents({
       ) : null}
       {recentThreads.length > 0 ? (
         <ul className="space-y-px">
-          {recentThreads.map((row) => (
+          {renderedThreads.map((row) => (
             <MobileRecentThreadRow
               key={row.thread.id}
               highlighted={row.thread.id === highlightedThreadId}

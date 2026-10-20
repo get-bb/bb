@@ -41,6 +41,7 @@ import {
   sidebarNavigationItemMenuLabel,
   SidebarNavigationMoreMenu,
 } from "./ItemMenus.js";
+import { clickTarget } from "./target.js";
 
 const MORE_MENU_SIDE_OFFSET = 4;
 
@@ -111,7 +112,7 @@ function NavigationListRow({
         {...split.splitProps}
         onClick={(event) =>
           actions.activate(item.id, {
-            openInSplit: event.metaKey || event.ctrlKey,
+            target: clickTarget(event),
           })
         }
       >

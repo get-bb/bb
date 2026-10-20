@@ -32,6 +32,7 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadTimelineResponse,
   ThreadResponse,
+  UnmanagedBranchSpec,
   UpdateThreadRequest,
   WorkspaceArgs,
 } from "@bb/server-contract";
@@ -62,7 +63,7 @@ export interface CreateHostThreadOptions {
   workspace:
     | { type: "managed-worktree" }
     | { type: "personal" }
-    | { path: string | null; type: "unmanaged" };
+    | { branch?: UnmanagedBranchSpec; path: string | null; type: "unmanaged" };
 }
 
 export interface CreateReuseThreadOptions {

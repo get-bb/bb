@@ -109,6 +109,7 @@ function renderWindowedItems(options?: {
           getScrollElement={() => scrollElement}
           itemKeys={ITEM_KEYS}
           measurements={measurements}
+          positionKeeper={null}
           pinnedToEnd={options?.pinnedToEnd ?? false}
           renderItem={(
             index: number,
@@ -200,6 +201,7 @@ describe("TimelineWindowedItems", () => {
           getScrollElement={() => root}
           itemKeys={ITEM_KEYS}
           measurements={new Map()}
+          positionKeeper={null}
           pinnedToEnd={false}
           renderItem={(index, state) => {
             rendered.add(index);
@@ -238,6 +240,7 @@ describe("TimelineWindowedItems", () => {
         getScrollElement={() => scrollElement}
         itemKeys={ITEM_KEYS}
         measurements={measurements}
+        positionKeeper={null}
         pinnedToEnd={false}
         renderItem={(index, state) => (
           <div
@@ -272,6 +275,7 @@ describe("TimelineWindowedItems", () => {
         getScrollElement={getScrollElement}
         itemKeys={ITEM_KEYS.slice(0, count)}
         measurements={measurements}
+        positionKeeper={null}
         pinnedToEnd={false}
         renderItem={(index, state) => (
           <div

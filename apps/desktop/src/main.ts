@@ -2897,7 +2897,10 @@ async function runDesktopApp(): Promise<void> {
   }
 
   const paths = createDesktopPathContext();
+  const devIcon =
+    !paths.isPackaged || process.env.BB_DESKTOP_DEV_ICON === "1";
   const iconPath = resolveDesktopIconPath({
+    devIcon,
     packagedIconFileName: DESKTOP_RELEASE_INFO.iconFileName,
     paths,
   });
@@ -2964,11 +2967,7 @@ async function runDesktopApp(): Promise<void> {
   });
   assertPathExists({ label: "app icon", path: iconPath });
 
-  if (
-    process.platform === "darwin" &&
-    app.dock !== undefined &&
-    !paths.isPackaged
-  ) {
+  if (process.platform === "darwin" && app.dock !== undefined && devIcon) {
     app.dock.setIcon(iconPath);
   }
   await reapStaleOwnedRuntime({

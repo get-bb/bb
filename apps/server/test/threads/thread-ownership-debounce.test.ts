@@ -1,4 +1,5 @@
 import { archiveThread, getThread, updateThread } from "@bb/db";
+import type { ThreadParentNotifications } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { handleThreadOwnershipChange } from "../../src/services/threads/thread-ownership.js";
@@ -30,6 +31,7 @@ async function withOwnershipFixture(
     secondChildId: string;
     parents: string[];
     move: (childId: string, parentId: string | null) => Promise<void>;
+    setParentNotifications: (value: ThreadParentNotifications) => void;
     archive: () => void;
   }) => Promise<void>,
 ) {
@@ -74,6 +76,11 @@ async function withOwnershipFixture(
           expect(getThread(harness.db, childId)?.parentThreadId).toBe(
             parentThreadId,
           );
+        },
+        setParentNotifications(parentNotifications) {
+          updateThread(harness.db, harness.deps.hub, child.id, {
+            parentNotifications,
+          });
         },
         archive() {
           archiveThread(harness.db, harness.deps.hub, child.id);
@@ -189,4 +196,26 @@ describe("ownership notice debounce", () => {
       },
     );
   });
+
+  it.each(["stuck", "off"] as const)(
+    "skips the unassignment notice when parent notifications are %s",
+    async (value) => {
+      await withOwnershipFixture(
+        async ({ childId, parents: [a, b], move, setParentNotifications }) => {
+          setParentNotifications(value);
+          await move(childId, null);
+          await vi.advanceTimersByTimeAsync(2_000);
+          expect(notices()).toEqual([]);
+          await move(childId, a);
+          await vi.advanceTimersByTimeAsync(2_000);
+          vi.mocked(queueParentSystemMessage).mockClear();
+          await move(childId, b);
+          await vi.advanceTimersByTimeAsync(2_000);
+          expect(notices()).toEqual([
+            { parent: b, kind: "ownership-assigned" },
+          ]);
+        },
+      );
+    },
+  );
 });

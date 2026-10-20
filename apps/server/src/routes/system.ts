@@ -307,6 +307,10 @@ export function registerSystemRoutes(
         : undefined;
     const updatedSettings = appSettingsSchema.parse({
       ...settings,
+      idleProviderSessionTimeoutMinutes:
+        settings.idleProviderSessionTimeoutMinutes === undefined
+          ? current.idleProviderSessionTimeoutMinutes
+          : settings.idleProviderSessionTimeoutMinutes,
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,

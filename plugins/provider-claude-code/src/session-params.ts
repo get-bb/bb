@@ -76,6 +76,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
   disable1MContext: boolean;
+  artifactsEnabled: boolean;
   sandboxEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
@@ -137,6 +138,7 @@ function buildInternalSessionParams(
     workflowsEnabled: args.options.workflowsEnabled,
     chromeEnabled: args.options.chromeEnabled,
     disable1MContext: args.options.disable1MContext,
+    artifactsEnabled: args.options.artifactsEnabled,
     sandboxEnabled: args.options.sandboxEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
@@ -150,6 +152,7 @@ const claudeProviderOptionsSchema = z
     workflowsEnabled: z.boolean().optional(),
     chromeEnabled: z.boolean().optional(),
     disable1MContext: z.boolean().optional(),
+    artifactsEnabled: z.boolean().optional(),
     sandboxEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
@@ -196,6 +199,7 @@ export function buildClaudeSessionParams(
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
       chromeEnabled: providerOptions.chromeEnabled ?? false,
       disable1MContext: providerOptions.disable1MContext ?? false,
+      artifactsEnabled: providerOptions.artifactsEnabled ?? false,
       sandboxEnabled: providerOptions.sandboxEnabled ?? true,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
@@ -251,6 +255,7 @@ export function buildClaudeTurnParams(
     workflowsEnabled: providerOptions.workflowsEnabled,
     chromeEnabled: providerOptions.chromeEnabled,
     disable1MContext: providerOptions.disable1MContext,
+    artifactsEnabled: providerOptions.artifactsEnabled,
     sandboxEnabled: providerOptions.sandboxEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,

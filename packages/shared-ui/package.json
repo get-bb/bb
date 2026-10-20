@@ -382,7 +382,7 @@
   },
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   },
   "bb": {
     "pluginTailwindContent": [
@@ -449,8 +449,8 @@
     "react-hook-form": "^7.80.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.4",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "vaul": "^1.1.2"
   }
 }

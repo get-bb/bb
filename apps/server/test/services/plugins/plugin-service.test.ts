@@ -121,6 +121,7 @@ describe("plugin service", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -140,6 +141,7 @@ describe("plugin service", () => {
       db: fixture.db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -639,6 +641,7 @@ describe("plugin service", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -692,6 +695,7 @@ describe("plugin service", () => {
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,
+          notifyPluginChanged: () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },
@@ -782,6 +786,7 @@ describe("plugin service", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -811,6 +816,7 @@ describe("plugin service", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -1285,6 +1291,7 @@ describe("plugin service", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -1548,6 +1555,7 @@ describe("plugins-changed broadcast", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem,
       },

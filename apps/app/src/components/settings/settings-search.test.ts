@@ -54,6 +54,9 @@ describe("searchSettings", () => {
       "General › Share anonymous usage data",
     ]);
     expect(searchTitles("dark mode")).toEqual(["Appearance › Theme"]);
+    expect(searchTitles("idle timeout")).toEqual([
+      "Providers › Release idle agent sessions",
+    ]);
   });
 
   it("matches words in any order and ignores case and extra spaces", () => {

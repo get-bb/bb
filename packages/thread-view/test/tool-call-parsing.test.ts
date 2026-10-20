@@ -104,20 +104,13 @@ describe("tool-call shell parsing", () => {
     ]);
   });
 
-  it("treats unquoted newlines as shell segment boundaries", () => {
+  it("does not promote later searches after a non-exploratory first command", () => {
     const command =
       "git ls-tree -d main packages/ | head -30\n" +
       'echo "==="\n' +
       "git show main:.gitignore 2>/dev/null | grep -E 'legacy-audit|timeline-replay' || echo \"(no matches)\"";
 
-    expect(parseShellCommandIntents(command)).toEqual([
-      {
-        type: "search",
-        cmd: command,
-        query: "legacy-audit|timeline-replay",
-        path: null,
-      },
-    ]);
+    expect(parseShellCommandIntents(command)).toEqual([]);
   });
 });
 

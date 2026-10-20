@@ -34,7 +34,10 @@ import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
-import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
+import {
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
+  RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
+} from "@/components/secondary-panel/panelToggleControlState";
 import {
   getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -218,7 +221,7 @@ export function SplitWorkspaceSecondaryPanelHost({
         >
           <AppCommandShortcutHint
             shortcut={shortcut}
-            className="absolute right-0 top-full mt-1"
+            className={RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS}
           />
           <Button
             type="button"

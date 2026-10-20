@@ -16,6 +16,7 @@ import {
   type DesktopWindowWebContents,
 } from "../src/desktop-window-factory.js";
 import type { DesktopContextMenuWebContents } from "../src/desktop-context-menu.js";
+import { BB_DESKTOP_ZOOM_CHANGED_CHANNEL } from "../src/desktop-update-ipc.js";
 import { readPersistedWindowStateEntries } from "../src/window-state.js";
 import {
   MIN_WINDOW_HEIGHT,
@@ -73,10 +74,18 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public readonly themeColorListeners: Array<
     (event: Event, color: string | null) => void
   > = [];
+  public readonly ipcListeners = new Map<string, () => void>();
+  public zoomFactor = 1;
 
   constructor(id: number) {
     this.id = id;
   }
+
+  public readonly ipc = {
+    on: (channel: string, listener: () => void) => {
+      this.ipcListeners.set(channel, listener);
+    },
+  };
 
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void {
     if (options.mode === "detach") {
@@ -113,6 +122,10 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   setZoomFactor(factor: number): void {
     this.zoomFactors.push(factor);
   }
+
+  getZoomFactor(): number {
+    return this.zoomFactor;
+  }
 }
 
 class FakeDesktopWindow implements DesktopBrowserWindow {
@@ -121,6 +134,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   public readonly options: BrowserWindowConstructorOptions;
   public readonly webContents: FakeDesktopWindowWebContents;
   public backgroundColor: string;
+  public windowButtonPositions: Array<{ x: number; y: number }> = [];
   public fullScreen = false;
   public maximized = false;
   public minimized = false;
@@ -214,6 +228,10 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
     this.backgroundColor = color;
   }
 
+  setWindowButtonPosition(position: { x: number; y: number }): void {
+    this.windowButtonPositions.push(position);
+  }
+
   setFullScreen(isFullScreen: boolean): void {
     this.fullScreen = isFullScreen;
   }
@@ -266,6 +284,36 @@ async function createFactoryHarness(
 }
 
 describe("desktop window factory", () => {
+  it.each([
+    [0.5, 4],
+    [1.5, 26],
+    [2, 37],
+  ])("updates macOS traffic lights at zoom %s", async (zoomFactor, y) => {
+    const { createdWindows, factory } = await createFactoryHarness({
+      isMac: true,
+    });
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const window = createdWindows[0];
+    if (!window) throw new Error("Expected a window");
+    window.webContents.zoomFactor = zoomFactor;
+    window.webContents.ipcListeners.get(BB_DESKTOP_ZOOM_CHANGED_CHANNEL)?.();
+    expect(window.windowButtonPositions).toEqual([
+      { x: MACOS_TRAFFIC_LIGHT_INSET_PX, y },
+    ]);
+  });
+
+  it("does not register the zoom event for non-Mac windows", async () => {
+    const { createdWindows, factory } = await createFactoryHarness({
+      isMac: false,
+    });
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const window = createdWindows[0];
+    if (!window) throw new Error("Expected a window");
+    expect(
+      window.webContents.ipcListeners.has(BB_DESKTOP_ZOOM_CHANGED_CHANNEL),
+    ).toBe(false);
+  });
+
   it.each([true, false])(
     "matches each window's page color without resetting on missing metadata (dark: %s)",
     async (dark) => {

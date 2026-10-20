@@ -15,6 +15,7 @@ import {
 } from "@/hooks/cache-owners/terminal-cache-owner";
 import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
+import { useTerminalStart, type TerminalStart } from "./pending-terminals";
 
 export const DEFAULT_TERMINAL_COLS = 100;
 export const DEFAULT_TERMINAL_ROWS = 30;
@@ -35,6 +36,7 @@ export interface ThreadTerminalController {
   hasTerminalQueryError: boolean;
   isPanelOpen: boolean;
   shouldMountTerminalView: boolean;
+  start: TerminalStart | null;
   terminalBodyMessage: string;
 }
 
@@ -120,6 +122,7 @@ export function useThreadTerminalController({
     enabled: panelMount.shouldFetchTerminals,
   });
   const renameTerminal = useRenameTerminal();
+  const start = useTerminalStart(terminalId);
   const activeSession = selectActiveTerminalSession({
     sessions: terminalsQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS,
     target,
@@ -212,6 +215,7 @@ export function useThreadTerminalController({
       terminalsQuery.error !== null && terminalsQuery.data === undefined,
     isPanelOpen,
     shouldMountTerminalView,
+    start,
     terminalBodyMessage,
   };
 }

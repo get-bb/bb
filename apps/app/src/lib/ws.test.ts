@@ -186,11 +186,7 @@ describe("WebSocketManager subscriptions", () => {
     expect(readClientMessages(socket)).toEqual([
       {
         type: "subscribe",
-        target: THREAD_TARGET,
-      },
-      {
-        type: "subscribe",
-        target: PROJECT_TARGET,
+        targets: [THREAD_TARGET, PROJECT_TARGET],
       },
     ]);
   });
@@ -614,7 +610,7 @@ describe("WebSocketManager liveness", () => {
     replacement.open();
 
     expect(readClientMessages(replacement)).toEqual([
-      { type: "subscribe", target: THREAD_TARGET },
+      { type: "subscribe", targets: [THREAD_TARGET] },
     ]);
     expect(manager.getConnectionState()).toBe("connected");
   });

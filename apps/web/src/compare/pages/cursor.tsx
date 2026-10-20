@@ -13,6 +13,7 @@ import {
   FAQ_REVIEW,
   FAQ_SUBSCRIPTIONS,
   cell,
+  linkedCell,
   faqFree,
   faqPhone,
   faqPlatforms,
@@ -58,7 +59,8 @@ export const comparison: Comparison = {
   heroVisual: <AgentSplit />,
   tailored: PLANS_SECTION,
   sections: [spawnSection(SPAWN_COPY), anywhereSection(ANYWHERE_COPY)],
-  tableNote: "marks features that need a paid Cursor plan, from $20 a month.",
+  tableNote:
+    "marks features that need a paid Cursor plan: Premium, from $30 a month.",
   table: [
     {
       title: "Agents",
@@ -89,10 +91,13 @@ export const comparison: Comparison = {
         {
           ...BB_ROWS.pricing,
           bb: price("$0", "You pay agent providers directly"),
-          competitor: price(
-            "$0 Hobby",
-            "Pro $20 / mo, Teams from $40 per user / month",
-          ),
+          competitor: {
+            ...price(
+              "$0 Free",
+              "Plus $8, Premium $30, Super $100, Ultra $200 / mo; Teams from $30 per user / month",
+            ),
+            href: "https://cursor.com/pricing",
+          },
         },
         { ...BB_ROWS.license, competitor: cell("no", "Closed source") },
       ],
@@ -111,7 +116,11 @@ export const comparison: Comparison = {
         },
         {
           ...BB_ROWS.mobile,
-          competitor: cell("partial", "iPhone and iPad only"),
+          competitor: linkedCell(
+            "partial",
+            "iPhone and iPad only, local and cloud agents",
+            "https://cursor.com/changelog/remote-control-local-agents",
+          ),
         },
         {
           ...BB_ROWS.automations,
@@ -152,14 +161,21 @@ export const comparison: Comparison = {
           question: "What’s the difference between bb and Cursor?",
           answer: (
             <p>
-              Cursor is a code editor and agents app built around its own agent,
-              with cloud agents, Projects, and automations on its paid plans,
-              and it bills Claude and GPT models at API rates. bb is a free,
-              open-source app for running coding agents: Claude Code and Codex
-              run directly on your Claude and ChatGPT subscriptions, next to
-              Cursor’s agent and others, on your own machines, and they can
-              start and message each other. Plugins let you change almost
-              anything, including adding a code editor.
+              Cursor,{" "}
+              <a href="https://cursor.com/blog/joining-spacex">
+                now owned by SpaceX
+              </a>
+              , is sold as part of The X Subscription with Grok and X. It is a
+              code editor and agents app built around its own agent.{" "}
+              <a href="https://cursor.com/docs/models-and-pricing">
+                Plans include usage of Cursor’s own Grok and Composer models;
+                Claude, GPT, and Gemini cost extra at API rates, from Premium up
+              </a>
+              . bb is a free, open-source app for running coding agents: Claude
+              Code and Codex run directly on your Claude and ChatGPT
+              subscriptions, next to Cursor’s agent and others, on your own
+              machines, and they can start and message each other. Plugins let
+              you change almost anything, including adding a code editor.
             </p>
           ),
         },

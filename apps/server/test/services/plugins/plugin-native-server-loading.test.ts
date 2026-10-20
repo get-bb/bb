@@ -109,7 +109,7 @@ const service = createPluginService({
   db,
   hub: {
     getDaemonSessionIdForHost: () => null,
-    notifyPluginSignal: () => 0,
+    notifyPluginChanged: () => {}, notifyPluginSignal: () => 0,
     notifySystem: () => {}
   },
   logger: pino({ enabled: false }),
@@ -208,7 +208,7 @@ const service = createPluginService({
   db,
   hub: {
     getDaemonSessionIdForHost: () => null,
-    notifyPluginSignal: () => 0,
+    notifyPluginChanged: () => {}, notifyPluginSignal: () => 0,
     notifySystem: () => {}
   },
   logger: pino({ enabled: false }),
@@ -329,7 +329,7 @@ const service = createPluginService({
   db,
   hub: {
     getDaemonSessionIdForHost: () => null,
-    notifyPluginSignal: () => 0,
+    notifyPluginChanged: () => {}, notifyPluginSignal: () => 0,
     notifySystem: () => {}
   },
   logger: pino({ enabled: false }),

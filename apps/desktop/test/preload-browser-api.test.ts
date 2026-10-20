@@ -20,6 +20,7 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
@@ -116,6 +117,9 @@ const electronMock = vi.hoisted(() => {
           return Promise.resolve([
             { id: "builtin", name: "Local", active: true },
           ]);
+        if (channel === "bb-desktop:browser:list-threads-with-tabs") {
+          return Promise.resolve(["thread-1", "thread-2"]);
+        }
         if (channel === "bb-desktop:get-window-state") {
           return Promise.resolve(desktopWindowState);
         }
@@ -254,6 +258,7 @@ describe("desktop preload browser API", () => {
       "goForward",
       "importCookies",
       "listImportSources",
+      "listThreadIdsWithTabs",
       "navigate",
       "onControl",
       "onFindResult",
@@ -268,6 +273,7 @@ describe("desktop preload browser API", () => {
       "releaseControl",
       "reload",
       "setBounds",
+      "setThreadDiscarded",
       "setVisible",
       "setVisibleWithoutFocus",
       "stop",
@@ -278,6 +284,11 @@ describe("desktop preload browser API", () => {
 
     api.browser.attach(attachRequest);
     api.browser.detach("browser:a");
+    api.browser.setThreadDiscarded?.({ threadId: "thread-1", discarded: true });
+    await expect(api.browser.listThreadIdsWithTabs?.()).resolves.toEqual([
+      "thread-1",
+      "thread-2",
+    ]);
     api.browser.navigate(navigateRequest);
     api.browser.goBack("browser:a");
     api.browser.goForward("browser:a");
@@ -303,6 +314,10 @@ describe("desktop preload browser API", () => {
       {
         channel: BB_DESKTOP_BROWSER_DETACH_CHANNEL,
         payload: { tabId: "browser:a" },
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
+        payload: { threadId: "thread-1", discarded: true },
       },
       {
         channel: BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,

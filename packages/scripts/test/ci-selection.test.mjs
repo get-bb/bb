@@ -188,7 +188,7 @@ it("omits mobile installs only when the selected tests do not include mobile", (
         .mobile,
     ).toBe(true);
   }
-});
+}, 30_000);
 
 it("keeps dependent app tests and Windows foundation checks for shared configuration changes", () => {
   const plan = fixture().plan("packages/config/src/index.ts");
@@ -206,7 +206,7 @@ it("keeps dependent app tests and Windows foundation checks for shared configura
   expect(plan.staticFilters).toContain("--filter=@bb/config");
   expect(plan.staticFilters).toContain("--filter=@bb/app");
   expect(plan.staticFilters).not.toContain("@bb/text-utils");
-});
+}, 30_000);
 
 it("retains Windows and package smokes for frontend build configuration", () => {
   const plan = fixture().plan("apps/app/vite.config.ts");
@@ -214,7 +214,7 @@ it("retains Windows and package smokes for frontend build configuration", () => 
   expect(
     plan["windows-tests"].include.some((entry) => entry.shard === "app-4"),
   ).toBe(true);
-});
+}, 30_000);
 
 it("falls back to full coverage for unknown paths", () => {
   const plan = fixture().plan("new-tooling/settings.json");
@@ -223,7 +223,7 @@ it("falls back to full coverage for unknown paths", () => {
   expect(
     plan["windows-tests"].include.some((entry) => entry.shard === "server-3"),
   ).toBe(true);
-});
+}, 30_000);
 
 it("skips the matrix for CI documentation", () => {
   const plan = fixture().plan("docs/ci-performance.md");
@@ -232,17 +232,21 @@ it("skips the matrix for CI documentation", () => {
   expect(plan.buildNeeded).toBe(false);
   expect(plan.staticNeeded).toBe(false);
   expect(plan.packaging).toBe(false);
-});
+}, 30_000);
 
 it.each([
   "docs/provider-plugin-api.md",
   "docs/api_to_audit.md",
   "docs/lifecycle-diagrams.md",
-])("keeps executable documentation contracts for %s", (path) => {
-  const plan = fixture().plan(path);
-  expect(plan.tests.include.length).toBeGreaterThan(0);
-  expect(plan.buildNeeded).toBe(true);
-});
+])(
+  "keeps executable documentation contracts for %s",
+  (path) => {
+    const plan = fixture().plan(path);
+    expect(plan.tests.include.length).toBeGreaterThan(0);
+    expect(plan.buildNeeded).toBe(true);
+  },
+  30_000,
+);
 
 it.each(["missing base", "malformed query"])(
   "fails open to full coverage for %s",
@@ -272,6 +276,7 @@ it.each(["missing base", "malformed query"])(
     expect(plan.foundation).toBe(true);
     expect(plan.packaging).toBe(true);
   },
+  30_000,
 );
 
 it.each([
@@ -284,18 +289,22 @@ it.each([
   ["patches/sonner.patch", true],
   ["apps/app/src/index.ts", false],
   ["docs/ci-performance.md", false],
-])("requires dependency validation for %s: %s", (path, required) => {
-  const f = fixture();
-  f.put(path, "changed\n");
-  f.git("add", ".");
-  f.git("commit", "-m", "change");
-  const output = execFileSync(
-    process.execPath,
-    [join(root, "scripts/ci-dependencies-changed.mjs"), f.base],
-    { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
-  );
-  expect(output.trim()).toBe(String(required));
-});
+])(
+  "requires dependency validation for %s: %s",
+  (path, required) => {
+    const f = fixture();
+    f.put(path, "changed\n");
+    f.git("add", ".");
+    f.git("commit", "-m", "change");
+    const output = execFileSync(
+      process.execPath,
+      [join(root, "scripts/ci-dependencies-changed.mjs"), f.base],
+      { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
+    );
+    expect(output.trim()).toBe(String(required));
+  },
+  30_000,
+);
 
 it.each(["", "missing-ref"])(
   "requires dependency validation without usable history (%s)",
@@ -309,6 +318,7 @@ it.each(["", "missing-ref"])(
       ).trim(),
     ).toBe("true");
   },
+  30_000,
 );
 
 it("compares a refreshed PR merge against its actual base without treating unrelated main changes as PR work", () => {

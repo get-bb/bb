@@ -202,10 +202,6 @@ export class SdkSession {
     await this.query?.applyFlagSettings(settings);
   }
 
-  async getContextUsage(): Promise<unknown> {
-    return this.query ? this.query.getContextUsage() : null;
-  }
-
   async supportedCommands(): Promise<SlashCommand[]> {
     return this.query ? this.query.supportedCommands() : [];
   }

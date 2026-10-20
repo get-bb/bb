@@ -14,12 +14,17 @@ const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
 const WIRE_SOURCE = `
-  import { defineRpcContract } from "@get-bb/plugin-sdk";
+  import { defineRpcContract, experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
   import { z } from "zod";
   const rpcContract = defineRpcContract({
     echo: {
       input: z.object({ x: z.number().optional(), kept: z.boolean().optional() }),
       output: z.object({ echoed: z.unknown() }),
+    },
+    refuse: {
+      input: z.enum(["forbidden", "not_found", "conflict", "invalid"]),
+      output: z.null(),
+      invalidates: () => ["private"],
     },
     boom: { input: z.record(z.string(), z.unknown()), output: z.null() },
     publish: {
@@ -119,6 +124,9 @@ const WIRE_SOURCE = `
       },
     }), { auth: "none" });
     bb.rpc.register(rpcContract, {
+      refuse: async (code: any) => {
+        throw new experimental_PluginRpcRefusal({ code, message: "Cannot change this item", issues: [{ path: ["id"], message: "Unavailable" }] });
+      },
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
         throw new Error("rpc boom");
@@ -554,6 +562,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await oldRpc.json()).toEqual({
       ok: true,
       result: { echoed: { kept: true } },
+      tags: [],
+      keyTags: {},
+      invalidated: [],
     });
     const candidateRoute = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/candidate`,
@@ -572,7 +583,13 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   it("rpc: happy path, handler error → 500 envelope, unknown method → 404", async () => {
     const ok = await rpc(harness, "echo", { x: 1 });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ ok: true, result: { echoed: { x: 1 } } });
+    expect(await ok.json()).toEqual({
+      ok: true,
+      result: { echoed: { x: 1 } },
+      tags: [],
+      keyTags: {},
+      invalidated: [],
+    });
 
     const boom = await rpc(harness, "boom", {});
     expect(boom.status).toBe(500);
@@ -581,6 +598,12 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       error: { code: "handler_error", message: "rpc boom" },
     });
 
+    expect(
+      harness.pluginService.list().find((p) => p.id === "wire"),
+    ).toMatchObject({
+      handlerStats: { errorCount: 1 },
+      statusDetail: "rpc boom failed: rpc boom",
+    });
     const missing = await rpc(harness, "missing", {});
     expect(missing.status).toBe(404);
     expect(await missing.json()).toMatchObject({
@@ -591,6 +614,39 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       },
     });
   });
+
+  it.each([
+    ["forbidden", 403],
+    ["not_found", 404],
+    ["conflict", 409],
+    ["invalid", 422],
+  ])(
+    "rpc refusal %s returns %s without crash accounting or invalidation",
+    async (code, status) => {
+      const changed = vi.spyOn(harness.hub, "notifyPluginChanged");
+      const before = harness.pluginService.list().find((p) => p.id === "wire");
+      const response = await rpc(harness, "refuse", code);
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: {
+          code,
+          message: "Cannot change this item",
+          issues: [{ path: ["id"], message: "Unavailable" }],
+        },
+      });
+      const after = harness.pluginService.list().find((p) => p.id === "wire");
+      expect(after?.handlerStats.count).toBe(
+        (before?.handlerStats.count ?? 0) + 1,
+      );
+      expect(after?.handlerStats.errorCount).toBe(
+        before?.handlerStats.errorCount,
+      );
+      expect(after?.statusDetail).toBe(before?.statusDetail);
+      expect(changed).not.toHaveBeenCalled();
+      changed.mockRestore();
+    },
+  );
 
   it("rpc rejects invalid input before invocation and rejects invalid output", async () => {
     delete (globalThis as Record<string, unknown>).__validatedRpcCalls;
@@ -673,7 +729,13 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       payload: { count: 42 },
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, result: "published" });
+    expect(await response.json()).toEqual({
+      ok: true,
+      result: "published",
+      tags: [],
+      keyTags: {},
+      invalidated: [],
+    });
 
     for (const socket of [systemSocket, threadSocket]) {
       expect(socket.messages).toHaveLength(1);
@@ -746,6 +808,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: { gen: firstGen + 1 },
+      tags: [],
+      keyTags: {},
+      invalidated: [],
     });
   });
 });

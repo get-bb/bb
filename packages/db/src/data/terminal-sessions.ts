@@ -16,6 +16,7 @@ export interface CreateTerminalSessionInput {
   daemonSessionId: string | null;
   environmentId: string | null;
   hostId: string;
+  id?: string;
   initialCwd: string;
   now?: number;
   rows: number;
@@ -202,7 +203,7 @@ export function createTerminalSession(
   return db
     .insert(terminalSessions)
     .values({
-      id: createTerminalSessionId(),
+      id: input.id ?? createTerminalSessionId(),
       threadId: input.threadId,
       environmentId: input.environmentId,
       hostId: input.hostId,

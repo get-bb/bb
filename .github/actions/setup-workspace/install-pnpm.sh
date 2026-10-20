@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Installs the pinned pnpm release binary straight from GitHub Releases.
-#
-# pnpm/action-setup bootstraps pnpm with `npm ci` against the npm registry and
-# then runs `pnpm self-update`, so every job paid two registry round trips
-# before doing any work: 30 s on a good day, and 7 minutes on the runs where
-# the registry stalled (the same stall hit every job of the run at once). A
-# GitHub release asset is a single download from the CDN the runner already
-# talks to for checkout, and the pinned sha256 gives the same integrity the
-# action's committed lockfile did.
 set -euo pipefail
 
 version="${PNPM_VERSION:?PNPM_VERSION is required}"
@@ -46,20 +37,31 @@ install_dir="${RUNNER_TEMP:-/tmp}/pnpm-${version}"
 mkdir -p "${install_dir}/bin"
 binary="${install_dir}/bin/pnpm"
 
-url="https://github.com/pnpm/pnpm/releases/download/v${version}/${asset}"
-curl --fail --silent --show-error --location \
-  --retry 2 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
-  --connect-timeout 10 --max-time 60 \
-  --output "${binary}" "${url}"
+checksum() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  fi
+}
 
-if command -v sha256sum >/dev/null 2>&1; then
-  actual="$(sha256sum "${binary}" | awk '{ print $1 }')"
+url="https://github.com/pnpm/pnpm/releases/download/v${version}/${asset}"
+if [[ -f "${binary}" && "$(checksum "${binary}")" == "${expected}" ]]; then
+  echo "Reusing checksum-verified pnpm ${version}."
 else
-  actual="$(shasum -a 256 "${binary}" | awk '{ print $1 }')"
-fi
-if [[ "${actual}" != "${expected}" ]]; then
-  echo "::error::sha256 mismatch for ${asset}: expected ${expected}, got ${actual}."
-  exit 1
+  rm -f "${binary}"
+  download="${binary}.download"
+  trap 'rm -f "${download}"' EXIT
+  curl --fail --silent --show-error --location \
+    --retry 2 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
+    --connect-timeout 10 --max-time 60 \
+    --output "${download}" "${url}"
+  actual="$(checksum "${download}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "::error::sha256 mismatch for ${asset}: expected ${expected}, got ${actual}."
+    exit 1
+  fi
+  mv "${download}" "${binary}"
 fi
 
 chmod +x "${binary}"

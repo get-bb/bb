@@ -37,6 +37,13 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { getPluginPanelRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  MAX_PANES,
+  countPanes,
+  findPaneByContent,
+  type SplitLayout,
+} from "@/lib/split-layout";
 import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
 import {
   SidebarNavigationProviderMount,
@@ -83,7 +90,7 @@ function PluginNavigation({ placement }: ExperimentalSidebarNavigationProps) {
           <button
             key={item.id}
             type="button"
-            onClick={() => actions.activate(item.id, { openInSplit: false })}
+            onClick={() => actions.activate(item.id, { target: "current" })}
           >
             {item.badge ? `${item.label} (${item.badge.label})` : item.label}
           </button>
@@ -123,14 +130,14 @@ function registerDocsPanel() {
   );
 }
 
-function Harness() {
+function Harness({ splitEnabled = false }: { splitEnabled?: boolean }) {
   const location = useLocation();
   const resolved = useResolvedSidebarNavigation();
   const customize = useSidebarNavigationCustomize();
   return (
     <SidebarNavigationModelProvider
       onOpenCustomize={customize.open}
-      splitEnabled={false}
+      splitEnabled={splitEnabled}
     >
       <SidebarNavigationRegion
         placement={sidebarNavigationPlacement(resolved)}
@@ -143,16 +150,25 @@ function Harness() {
   );
 }
 
-function renderHost(preference = "__automatic__") {
-  const store = createStore();
+function renderHost(
+  preference = "__automatic__",
+  options: {
+    splitEnabled?: boolean;
+    compact?: boolean;
+    store?: ReturnType<typeof createStore>;
+  } = {},
+) {
+  const store = options.store ?? createStore();
   store.set(sidebarNavigationProviderAtom, preference);
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={[THREAD_PATH]}>
-        <CompactViewportOverrideProvider isCompactViewport={false}>
+        <CompactViewportOverrideProvider
+          isCompactViewport={options.compact ?? false}
+        >
           <TooltipProvider>
             <SidebarProvider>
-              <Harness />
+              <Harness splitEnabled={options.splitEnabled} />
             </SidebarProvider>
           </TooltipProvider>
         </CompactViewportOverrideProvider>
@@ -192,6 +208,265 @@ afterEach(() => {
 });
 
 describe("sidebar navigation providers", () => {
+  describe.each(["navigation/rail", "navigation/top-list"])(
+    "%s destination activation",
+    (layout) => {
+      it.each([
+        ["Plugins", "/plugins", { metaKey: true }],
+        ["Plugins", "/plugins", { ctrlKey: true }],
+        ["Skills", "/skills", { metaKey: true }],
+        ["Skills", "/skills", { ctrlKey: true }],
+      ])("opens %s (%s) in a browser tab with %j", (label, path, modifier) => {
+        const open = vi.spyOn(window, "open").mockReturnValue(null);
+        renderHost(layout);
+
+        fireEvent.click(screen.getByRole("button", { name: label }), modifier);
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          path,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        expect(screen.getByTestId("pathname").textContent).toBe(THREAD_PATH);
+      });
+
+      it("opens a plugin panel in a browser tab with a modifier when it cannot split", () => {
+        const open = vi.spyOn(window, "open").mockReturnValue(null);
+        renderHost(layout);
+
+        fireEvent.click(
+          screen.getByRole("button", { name: "Docs, 2 drafts" }),
+          {
+            metaKey: true,
+          },
+        );
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          getPluginPanelRoutePath({ pluginId: "garden", path: "docs" }),
+          "_blank",
+          "noopener,noreferrer",
+        );
+        expect(screen.getByTestId("pathname").textContent).toBe(THREAD_PATH);
+      });
+
+      it.each([
+        ["Plugins", "/plugins"],
+        ["Skills", "/skills"],
+      ])("opens %s in place without a modifier", (label, path) => {
+        const open = vi.spyOn(window, "open").mockReturnValue(null);
+        renderHost(layout);
+
+        fireEvent.click(screen.getByRole("button", { name: label }));
+
+        expect(open).not.toHaveBeenCalled();
+        expect(screen.getByTestId("pathname").textContent).toBe(path);
+      });
+    },
+  );
+
+  it.each([
+    ["Plugins", "/plugins", true],
+    ["Skills", "/skills", true],
+    ["Plugins", "/plugins", false],
+    [
+      "Docs",
+      getPluginPanelRoutePath({ pluginId: "garden", path: "docs" }),
+      true,
+    ],
+  ])(
+    "preserves legacy activation for %s at %s with openInSplit=%s",
+    (label, path, openInSplit) => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      function LegacyNavigation() {
+        const { items, actions } = useNavigation();
+        return items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              // @ts-expect-error Legacy bundles still send the removed activation field.
+              actions.activate(item.id, { openInSplit });
+            }}
+          >
+            {item.label}
+          </button>
+        ));
+      }
+      registerPlugin((app) =>
+        app.slots.experimental_sidebarNavigation({
+          id: "legacy",
+          title: "Legacy navigation",
+          component: LegacyNavigation,
+        }),
+      );
+      renderHost();
+
+      fireEvent.click(screen.getByRole("button", { name: label }));
+
+      if (openInSplit) {
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          path,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        expect(screen.getByTestId("pathname").textContent).toBe(THREAD_PATH);
+      } else {
+        expect(open).not.toHaveBeenCalled();
+        expect(screen.getByTestId("pathname").textContent).toBe(path);
+      }
+    },
+  );
+
+  describe.each(["explicit", "legacy"])("%s split requests", (api) => {
+    it.each([
+      {
+        reason: "disabled",
+        enabled: false,
+        compact: false,
+        panes: 1,
+        label: "Docs",
+        result: "tab",
+      },
+      {
+        reason: "compact",
+        enabled: true,
+        compact: true,
+        panes: 1,
+        label: "Docs",
+        result: "tab",
+      },
+      {
+        reason: "missing layout",
+        enabled: true,
+        compact: false,
+        panes: 0,
+        label: "Docs",
+        result: "tab",
+      },
+      {
+        reason: "pane limit",
+        enabled: true,
+        compact: false,
+        panes: MAX_PANES,
+        label: "Docs",
+        result: "replace",
+      },
+      {
+        reason: "unsupported destination",
+        enabled: true,
+        compact: false,
+        panes: 1,
+        label: "Plugins",
+        result: "tab",
+      },
+      {
+        reason: "available",
+        enabled: true,
+        compact: false,
+        panes: 1,
+        label: "Docs",
+        result: "split",
+      },
+      {
+        reason: "already open at limit",
+        enabled: true,
+        compact: false,
+        panes: MAX_PANES,
+        label: "Docs",
+        result: "focus",
+      },
+    ])("handles $reason", ({ enabled, compact, panes, label, result }) => {
+      const store = createStore();
+      const docs = {
+        kind: "plugin-panel" as const,
+        pluginId: "garden",
+        panelPath: "docs",
+        subPath: "",
+      };
+      const children = Array.from({ length: panes }, (_, i) => ({
+        type: "pane" as const,
+        paneId: `pane-${i}`,
+        content:
+          result === "focus" && i === 1
+            ? docs
+            : {
+                kind: "thread" as const,
+                projectId: "proj_one",
+                threadId: `thr_${i}`,
+              },
+      }));
+      const layout: SplitLayout | null =
+        panes === 0
+          ? null
+          : {
+              focusedPaneId: "pane-0",
+              root:
+                children.length === 1
+                  ? children[0]!
+                  : {
+                      type: "split",
+                      dir: "row",
+                      sizes: children.map(() => 1 / panes),
+                      children,
+                    },
+            };
+      store.set(splitLayoutAtom, layout);
+      function SplitNavigation() {
+        const { items, actions } = useNavigation();
+        return items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              if (api === "explicit")
+                actions.activate(item.id, { target: "split" });
+              else {
+                // @ts-expect-error Legacy bundles still send the removed activation field.
+                actions.activate(item.id, { openInSplit: true });
+              }
+            }}
+          >
+            {item.label}
+          </button>
+        ));
+      }
+      registerPlugin((app) =>
+        app.slots.experimental_sidebarNavigation({
+          id: "split",
+          title: "Split navigation",
+          component: SplitNavigation,
+        }),
+      );
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      renderHost("__automatic__", { store, splitEnabled: enabled, compact });
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      const path =
+        label === "Plugins"
+          ? "/plugins"
+          : getPluginPanelRoutePath({ pluginId: "garden", path: "docs" });
+      if (result === "tab") {
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          path,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        expect(store.get(splitLayoutAtom)).toEqual(layout);
+        expect(screen.getByTestId("pathname").textContent).toBe(THREAD_PATH);
+      } else {
+        expect(open).not.toHaveBeenCalled();
+        const next = store.get(splitLayoutAtom)!;
+        expect(countPanes(next.root)).toBe(result === "split" ? 2 : panes);
+        expect(findPaneByContent(next.root, docs)?.paneId).toBe(
+          next.focusedPaneId,
+        );
+        if (result === "replace") expect(next.focusedPaneId).toBe("pane-0");
+        if (result === "focus") {
+          expect(next.root).toEqual(layout?.root);
+          expect(next.focusedPaneId).toBe("pane-1");
+        }
+        expect(screen.getByTestId("pathname").textContent).toBe(path);
+      }
+    });
+  });
+
   it("draws the bundled Rail when no other plugin provides navigation", () => {
     renderHost();
 

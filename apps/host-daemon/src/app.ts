@@ -64,7 +64,6 @@ interface SessionState {
 
 const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const INTERACTIVE_INTERRUPT_MAX_RETRY_DELAY_MS = 60_000;
-const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
 
@@ -79,6 +78,7 @@ type IdleProviderSessionReaperIntervalFn = (
 ) => IdleProviderSessionReaperTimer;
 
 interface IdleProviderSessionReaper {
+  setTimeoutMinutes(value: number): void;
   stop(): void;
 }
 
@@ -146,15 +146,16 @@ interface PendingInteractiveInterruptRequest {
 export function startIdleProviderSessionReaper(
   args: StartIdleProviderSessionReaperArgs,
 ): IdleProviderSessionReaper {
+  let timeoutMinutes: number | null = null;
   let running = false;
   const timer = args.setIntervalFn(() => {
-    if (running) {
+    if (running || timeoutMinutes === null) {
       return;
     }
     running = true;
     void args.runtimeManager
       .reapIdleProviderSessions({
-        idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
+        idleForMs: timeoutMinutes * 60_000,
         nowMs: args.nowMs(),
       })
       .then((result) => {
@@ -188,6 +189,9 @@ export function startIdleProviderSessionReaper(
   }, IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS);
   timer.unref();
   return {
+    setTimeoutMinutes(value) {
+      timeoutMinutes = value;
+    },
     stop() {
       timer.clear();
     },
@@ -823,6 +827,8 @@ export async function createHostDaemonApp(
     onServerMoved: (notice) => serverMove.handleServerMoved(notice),
     onMachineEnvironment: (environment) =>
       machineEnvironment.replace(environment.entries),
+    onIdleProviderSessionTimeout: (value) =>
+      idleProviderSessionReaper.setTimeoutMinutes(value),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getUndeliveredEventThreadIds: () => eventSink.listUndeliveredThreadIds(),

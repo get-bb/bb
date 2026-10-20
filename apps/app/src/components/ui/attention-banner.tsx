@@ -6,7 +6,7 @@ export function AttentionBanner({
   children,
 }: {
   title: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <section

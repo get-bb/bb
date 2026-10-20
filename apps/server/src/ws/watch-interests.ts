@@ -353,6 +353,8 @@ export class WatchInterestCoordinator {
       case "project":
       case "host":
       case "system":
+      case "plugin":
+      case "tags":
         return keys;
     }
   }

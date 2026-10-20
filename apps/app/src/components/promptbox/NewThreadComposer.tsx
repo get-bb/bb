@@ -1,5 +1,8 @@
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
-import { usePendingAttachmentUploads } from "./usePendingAttachmentUploads";
+import {
+  readPendingAttachmentUploads,
+  usePendingAttachmentUploads,
+} from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
@@ -1390,16 +1393,15 @@ export function NewThreadComposer({
     seedInitialPrompt(initialPromptDraft);
   }, [initialPromptDraft, seedInitialPrompt]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const pendingUploadCountRef = useRef(0);
   const isCopyingAttachmentsRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const uploadTargetKey = `${projectId}\0${promptDraft.storageKey}`;
   const { pendingUploads, startUploads, finishUploads } =
     usePendingAttachmentUploads(uploadTargetKey);
+  const isUploading = pendingUploads.length > 0;
   const currentUploadTargetRef = useRef(uploadTargetKey);
   useEffect(() => {
     currentUploadTargetRef.current = uploadTargetKey;
@@ -1410,8 +1412,6 @@ export function NewThreadComposer({
       if (!projectId || files.length === 0) return added;
       const capturedTarget = `${projectId}\0${promptDraft.storageKey}`;
       setAttachmentError(null);
-      pendingUploadCountRef.current += 1;
-      setIsUploading(true);
       const uploads = startUploads(files);
       try {
         for (const upload of uploads) {
@@ -1420,9 +1420,10 @@ export function NewThreadComposer({
               projectId,
               file: upload.file,
             });
-            if (currentUploadTargetRef.current !== capturedTarget) return added;
             promptDraft.addAttachment(uploaded);
-            added.push(uploaded);
+            if (currentUploadTargetRef.current === capturedTarget) {
+              added.push(uploaded);
+            }
           } catch (error) {
             if (currentUploadTargetRef.current === capturedTarget) {
               setAttachmentError(
@@ -1439,8 +1440,6 @@ export function NewThreadComposer({
         }
       } finally {
         finishUploads(uploads);
-        pendingUploadCountRef.current -= 1;
-        setIsUploading(pendingUploadCountRef.current > 0);
       }
       return added;
     },
@@ -1461,7 +1460,8 @@ export function NewThreadComposer({
       }
       if (
         isCopyingAttachmentsRef.current ||
-        pendingUploadCountRef.current > 0 ||
+        readPendingAttachmentUploads(currentUploadTargetRef.current).length >
+          0 ||
         isSubmittingRef.current
       ) {
         return "refused";

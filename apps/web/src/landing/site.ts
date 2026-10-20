@@ -38,8 +38,8 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
   },
   windows: {
     label: "Windows (Alpha)",
-    buttonLabel: "Download for Windows (Alpha)",
-    note: "x64, alpha",
+    buttonLabel: "Download for Windows",
+    note: "x64 · alpha",
     installerExtension: ".exe",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-windows.json`,
     redirectPath: "/download/windows",
@@ -70,7 +70,7 @@ export function downloadHref(
   platform: DesktopPlatform,
   placement: CtaPlacement,
 ): string {
-  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}`;
+  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}&instructions=1`;
 }
 
 declare const __SITE_ORIGIN__: string;

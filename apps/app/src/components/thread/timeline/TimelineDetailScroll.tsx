@@ -46,8 +46,11 @@ export function TimelineDetailScroll({
     overflow.scrollRef,
   );
   const windowingScrollRoot = useMemo<TimelineWindowingScrollRoot>(
-    () => ({ getScrollElement: () => sticky.ref.current }),
-    [sticky.ref],
+    () => ({
+      getScrollElement: () => sticky.ref.current,
+      positionKeeper: sticky.positionKeeper,
+    }),
+    [sticky.positionKeeper, sticky.ref],
   );
 
   return (

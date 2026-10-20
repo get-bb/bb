@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -43,9 +44,11 @@ const FAKE_AGENT_PATH = resolve(
 let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
 let nextThreadSerial = 0;
-const startedProviderThreadIds: string[] = [];
 let nextRequestId = 1;
 const realSetTimeout = setTimeout;
+let testSignal: AbortSignal;
+const sentRequestIds = new Set<number>();
+const threadStartRequests = new Map<number, string>();
 
 function requestId(): number {
   nextRequestId += 1;
@@ -54,6 +57,16 @@ function requestId(): number {
 
 function sendRequest(method: string, params: object): number {
   const id = requestId();
+  sentRequestIds.add(id);
+  if (
+    (method === "thread/start" ||
+      method === "thread/resume" ||
+      method === "thread/fork") &&
+    "threadId" in params &&
+    typeof params.threadId === "string"
+  ) {
+    threadStartRequests.set(id, params.threadId);
+  }
   handleLine(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   return id;
 }
@@ -62,9 +75,11 @@ async function waitFor<T>(
   resolveValue: () => T | undefined,
   description: string,
   timeoutMs = 15_000,
+  signal: AbortSignal | null = testSignal,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    signal?.throwIfAborted();
     const value = resolveValue();
     if (value !== undefined) {
       return value;
@@ -77,7 +92,9 @@ async function waitFor<T>(
 }
 
 async function waitForFileWithRealTimer(path: string): Promise<void> {
+  const signal = testSignal;
   for (let attempt = 0; attempt < 100; attempt += 1) {
+    signal.throwIfAborted();
     if (existsSync(path)) {
       return;
     }
@@ -296,7 +313,6 @@ async function startThread(args?: StartThreadArgs): Promise<{
   ) {
     throw new Error("thread/start did not return a providerThreadId");
   }
-  startedProviderThreadIds.push(result.providerThreadId);
   bbThreadIdByProviderThreadId.set(result.providerThreadId, bbThreadId);
   return { bbThreadId, providerThreadId: result.providerThreadId };
 }
@@ -378,10 +394,11 @@ function contextWindowDeltasFor(
 }
 
 function sendModelList(
-  args: AgentLaunchArgs & { modelLines?: string } = {},
+  args: AgentLaunchArgs & { modelLines?: string; cwd?: string } = {},
 ): number {
-  const { modelLines, ...launch } = args;
+  const { modelLines, cwd, ...launch } = args;
   return sendRequest("model/list", {
+    ...(cwd === undefined ? {} : { cwd }),
     providerOptions: {
       ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
       ...(launch.parameterizedModelPicker === true
@@ -455,6 +472,14 @@ function loggedAcpRequests(path: string): LoggedAcpRequest[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as LoggedAcpRequest);
+}
+
+async function advanceBusyQuietTimer(): Promise<void> {
+  await waitFor(
+    () => (vi.getTimerCount() > 0 ? true : undefined),
+    "the busy-quiet timer to be scheduled",
+  );
+  await vi.advanceTimersByTimeAsync(2_000);
 }
 
 async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
@@ -611,20 +636,60 @@ async function waitForAgentExit(readyFile: string): Promise<void> {
   );
 }
 
-beforeEach(() => {
+beforeEach(({ signal }) => {
+  testSignal = signal;
   bbThreadIdByProviderThreadId.clear();
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
   output = captureBridgeJsonRpcOutput();
 });
 
 afterEach(async () => {
-  for (const providerThreadId of startedProviderThreadIds.splice(0)) {
-    await stopThread(providerThreadId);
+  try {
+    await waitFor(
+      () =>
+        [...threadStartRequests.keys()].every(
+          (id) => findResponse(id) !== undefined,
+        )
+          ? true
+          : undefined,
+      "pending thread starts before cleanup",
+      20_000,
+      null,
+    );
+    for (const [startId, threadId] of threadStartRequests) {
+      const started = findResponse(startId);
+      if (!started || started.error) continue;
+      const id = sendRequest("thread/stop", {
+        threadId,
+        providerThreadId: providerThreadIdOf(started),
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      const response = await waitFor(
+        () => findResponse(id),
+        `cleanup response ${id}`,
+        15_000,
+        null,
+      );
+      expect(response.error).toBeUndefined();
+    }
+    await waitFor(
+      () =>
+        [...sentRequestIds].every((id) => findResponse(id) !== undefined)
+          ? true
+          : undefined,
+      "pending bridge requests after cleanup",
+      20_000,
+      null,
+    );
+  } finally {
+    sentRequestIds.clear();
+    threadStartRequests.clear();
+    vi.unstubAllEnvs();
+    output.restore();
+    rmSync(workspaceDir, { recursive: true, force: true });
   }
-  vi.unstubAllEnvs();
-  output.restore();
-  rmSync(workspaceDir, { recursive: true, force: true });
-});
+}, 30_000);
 
 describe("acp bridge", () => {
   it("answers initialize and lists grouped models without spawning an agent", async () => {
@@ -969,7 +1034,6 @@ describe("acp bridge", () => {
         selectedModel === "default" ? [] : [selectedModel, "high", "true"],
       );
       const providerThreadId = providerThreadIdOf(response);
-      startedProviderThreadIds.push(providerThreadId);
       bbThreadIdByProviderThreadId.set(providerThreadId, threadId);
     },
   );
@@ -1123,7 +1187,7 @@ describe("acp bridge", () => {
     ]);
   });
 
-  it("times out hung ACP-native discovery, kills the child, and falls back to the synthetic model", async () => {
+  it("times out hung ACP-native discovery, kills the child, and reports the timeout", async () => {
     const readyFile = join(workspaceDir, "discovery-agent-ready.txt");
     let modelListId: number;
 
@@ -1141,13 +1205,60 @@ describe("acp bridge", () => {
       vi.useRealTimers();
     }
 
-    expect((await waitForResponse(modelListId!)).result).toMatchObject({
-      models: [
-        { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
-      ],
-      selectedOnlyModels: [],
-    });
+    const response = await waitForResponse(modelListId!);
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toBe(
+      "The agent did not answer within 30 seconds while bb asked it for its models",
+    );
     await waitForAgentExit(readyFile);
+  });
+
+  it("reports the agent's own error when it cannot open a session to list models, instead of a placeholder model", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        envVars: {
+          FAKE_ACP_SESSION_NEW_ERROR:
+            "Could not start pi: executable not found (command: pi)",
+        },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      "Could not start pi: executable not found (command: pi)",
+    );
+  });
+
+  it("fails model/list with a clear error when the agent itself is missing", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        agent: { command: "/nonexistent/acp-agent", args: [] },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toMatch(
+      /spawn \/nonexistent\/acp-agent ENOENT/,
+    );
+  });
+
+  it("tells a signed-out user how to sign in when listing models, with the agent's terminal command", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        envVars: {
+          FAKE_ACP_AUTH_METHODS: "agent.login",
+          FAKE_ACP_TERMINAL_AUTH_ARGS: "login --device",
+        },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toMatch(
+      /^Authentication required.* To sign in, run this in a terminal on the machine that hosts the thread, then try again: \S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u,
+    );
+    expect(response.error?.data).toMatchObject({
+      recovery: { kind: "authRequired", retryable: false },
+    });
   });
 
   it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
@@ -1302,7 +1413,7 @@ describe("acp bridge", () => {
         (text) => text === "argv:--model pinme-extra-high",
       ),
     ).toBe(true);
-  });
+  }, 20_000);
 
   it.each([
     { dialectId: "opencode", client: "acp", question: "false" },
@@ -1326,6 +1437,55 @@ describe("acp bridge", () => {
       );
     },
   );
+
+  it("launches OpenCode with a permission policy that follows the thread's permission mode", async () => {
+    const policy = (shell: "allow" | "ask") =>
+      `permission:${JSON.stringify({
+        edit: "allow",
+        bash: shell,
+        webfetch: shell,
+        external_directory: shell,
+      })}`;
+    const { providerThreadId } = await startThread({
+      dialectId: "opencode",
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-permission-env",
+        executionOptions({
+          permissionMode: "full",
+          envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+        }),
+      ),
+    ).toBe(policy("allow"));
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-permission-env",
+        executionOptions({
+          permissionMode: "accept-edits",
+          envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+        }),
+      ),
+    ).toBe(policy("ask"));
+    expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+      providerThreadId,
+      contextLost: false,
+    });
+  });
+
+  it("gives agents other than OpenCode no OpenCode permission policy", async () => {
+    const { providerThreadId } = await startThread();
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-permission-env",
+        executionOptions({ permissionMode: "accept-edits" }),
+      ),
+    ).toBe("permission:unset");
+  });
 
   it("launches ACP agents with a configured reasoning CLI flag", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
@@ -1424,7 +1584,7 @@ describe("acp bridge", () => {
         (text) => text === "argv:--model pinme --reasoning-effort high",
       ),
     ).toBe(true);
-  });
+  }, 20_000);
 
   it.each<{ label: string; env: Record<string, string> }>([
     { label: "model config option", env: { FAKE_ACP_MODEL_CONFIG: "1" } },
@@ -1711,7 +1871,7 @@ describe("acp bridge", () => {
       ),
     ).toBe("selected-model:fake/strong");
     expect(notifications("session/replaced")).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("relaunches a CLI-selected ACP agent when a follow-up changes its model", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
@@ -1740,7 +1900,87 @@ describe("acp bridge", () => {
       ),
     ).toBe("argv:--model other");
     expect(notifications("session/replaced")).toHaveLength(1);
-  });
+  }, 30_000);
+
+  it.each([
+    { setting: "model", restorable: false },
+    { setting: "reasoning", restorable: false },
+    { setting: "model", restorable: true },
+    { setting: "reasoning", restorable: true },
+  ])(
+    "preserves the session across CLI $setting changes (restorable=$restorable)",
+    async ({ setting, restorable }) => {
+      chmodSync(FAKE_AGENT_PATH, 0o755);
+      const promptLog = join(workspaceDir, "settings-prompts.log");
+      const launch: AgentLaunchArgs = {
+        agent: { command: FAKE_AGENT_PATH, args: [] },
+        modelListArgs: ["--list-models"],
+        selectFlag: "--model",
+        reasoningCli: {
+          flag: "--reasoning-effort",
+          supportedLevels: ["low", "high"],
+          defaultLevel: "low",
+        },
+        envVars: {
+          FAKE_ACP_LOAD_SESSION: restorable ? "1" : "0",
+          FAKE_ACP_MODEL_LINES: "pinme - Pin Me\nother - Other",
+          FAKE_ACP_PROMPT_LOG: promptLog,
+        },
+      };
+      const originalOptions = executionOptions({
+        model: "pinme",
+        reasoningLevel: "low",
+        providerOptions: launchProviderOptions(launch),
+      });
+      const { providerThreadId } = await startThread({
+        ...launch,
+        model: "pinme",
+        reasoningLevel: "low",
+      });
+      const originalArgv = "argv:--model pinme --reasoning-effort low";
+      expect(
+        await completeTurnWith(providerThreadId, "echo-argv", originalOptions),
+      ).toBe(originalArgv);
+      const changedOptions = executionOptions({
+        model: setting === "model" ? "other" : "pinme",
+        reasoningLevel: setting === "reasoning" ? "high" : "low",
+        providerOptions: launchProviderOptions(launch),
+      });
+      if (restorable) {
+        expect(
+          await completeTurnWith(providerThreadId, "echo-argv", changedOptions),
+        ).toBe(
+          setting === "model"
+            ? "argv:--model other --reasoning-effort low"
+            : "argv:--model pinme --reasoning-effort high",
+        );
+        expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+          providerThreadId,
+          contextLost: false,
+        });
+        return;
+      }
+      const changedTurnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "echo-argv", mentions: [] }],
+        options: changedOptions,
+      });
+      const response = await waitForResponse(changedTurnId);
+      expect(
+        response.error,
+        JSON.stringify({
+          response,
+          replacements: notifications("session/replaced"),
+        }),
+      ).toMatchObject({
+        message: expect.stringContaining("cannot restore"),
+      });
+      expect(notifications("session/replaced")).toHaveLength(0);
+      expect(loggedPrompts(promptLog)).toEqual(["echo-argv"]);
+      expect(
+        await completeTurnWith(providerThreadId, "echo-argv", originalOptions),
+      ).toBe(originalArgv);
+    },
+  );
 
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
@@ -1803,7 +2043,7 @@ describe("acp bridge", () => {
     ).toEqual([{ reasoningEffort: "medium", description: expect.any(String) }]);
   });
 
-  it("keeps reasoning empty when an ACP-native model advertises only unmapped thought levels", async () => {
+  it("lists an ACP-native model's own thought levels when none of them are standard levels", async () => {
     const modelListId = sendModelList({
       envVars: {
         FAKE_ACP_MODEL_CONFIG: "1",
@@ -1817,13 +2057,16 @@ describe("acp bridge", () => {
         models: {
           id: string;
           supportedReasoningEfforts: { reasoningEffort: string }[];
+          defaultReasoningEffort: string;
         }[];
       }
     ).models;
-    expect(
-      models.find((model) => model.id === "fake/strong")
-        ?.supportedReasoningEfforts,
-    ).toEqual([]);
+    const strong = models.find((model) => model.id === "fake/strong");
+    expect(strong?.supportedReasoningEfforts).toEqual([
+      { reasoningEffort: "smart", description: "smart" },
+      { reasoningEffort: "fast", description: "fast" },
+    ]);
+    expect(strong?.defaultReasoningEffort).toBe("smart");
   });
 
   it("shows configured native reasoning for ACP-native models without thought_level", async () => {
@@ -1935,7 +2178,7 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
       summary: expect.stringContaining("no max reasoning variant"),
     });
-  });
+  }, 20_000);
 
   it("starts a session and runs a prompt turn end to end", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
@@ -2026,6 +2269,38 @@ describe("acp bridge", () => {
     expect(response.error?.message).toContain("Authentication required");
     expect(response.error?.message).not.toContain("does not support");
     expect(response.error?.data).toMatchObject({
+      recovery: { kind: "authRequired", retryable: false },
+    });
+  });
+
+  it("tells the user how to sign in, from the methods the agent advertised", async () => {
+    const start = async (envVars: Record<string, string>) => {
+      nextThreadSerial += 1;
+      return waitForResponse(
+        sendRequest("thread/start", {
+          threadId: `thread-${nextThreadSerial}`,
+          cwd: workspaceDir,
+          instructionMode: "append",
+          options: executionOptions({
+            providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+          }),
+        }),
+      );
+    };
+
+    const named = await start({ FAKE_ACP_AUTH_METHODS: "agent.login" });
+    expect(named.error?.message).toMatch(
+      /^Authentication required[^.]*\. The agent offers these ways to sign in: Sign in \(agent\.login\)\. Sign in with the agent's own command/u,
+    );
+
+    const terminal = await start({
+      FAKE_ACP_AUTH_METHODS: "agent.login",
+      FAKE_ACP_TERMINAL_AUTH_ARGS: "login --device",
+    });
+    expect(terminal.error?.message).toMatch(
+      /To sign in, run this in a terminal on the machine that hosts the thread, then try again: \S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u,
+    );
+    expect(terminal.error?.data).toMatchObject({
       recovery: { kind: "authRequired", retryable: false },
     });
   });
@@ -2469,7 +2744,6 @@ describe("acp bridge", () => {
       typeof startResponse.result.providerThreadId === "string"
         ? startResponse.result.providerThreadId
         : "";
-    startedProviderThreadIds.push(providerThreadId);
 
     const turnId = sendRequest("turn/start", {
       threadId,
@@ -2802,6 +3076,7 @@ describe("acp bridge", () => {
         rmSync(outsideDir, { recursive: true, force: true });
       }
     },
+    30_000,
   );
 
   it("rejects simultaneous starts while reconciling unchanged permissions", async () => {
@@ -2963,7 +3238,6 @@ describe("acp bridge", () => {
         typeof startResponse.result.providerThreadId === "string"
           ? startResponse.result.providerThreadId
           : "";
-      startedProviderThreadIds.push(providerThreadId);
 
       const turnId = sendRequest("turn/start", {
         threadId,
@@ -3100,6 +3374,38 @@ describe("acp bridge", () => {
     expect(agentMessageTexts().join("")).toContain("echo:second-steer");
     expect(threadEventsOfType("turn/started")).toHaveLength(1);
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
+  });
+
+  it("closes a command left open by a steered-away prompt as interrupted", async () => {
+    const { providerThreadId } = await startThread();
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang-with-open-command", mentions: [] }],
+      }),
+    );
+    await waitFor(
+      () => (threadEventsOfType("item/started").length > 0 ? true : undefined),
+      "the command to start",
+    );
+    await waitForResponse(
+      sendTurnRequest("turn/steer", providerThreadId, {
+        expectedTurnId: "turn-1",
+        input: [{ type: "text", text: "first-steer", mentions: [] }],
+      }),
+    );
+
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    const command = threadEventsOfType("item/completed")
+      .map((event) => event.item)
+      .find(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          "type" in item &&
+          item.type === "commandExecution",
+      );
+    expect(command).toMatchObject({ status: "interrupted" });
+    expect(agentMessageTexts().join("")).toContain("echo:first-steer");
   });
 
   it("cancels a stacked steer prompt that also hangs", async () => {
@@ -3299,7 +3605,6 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
-    startedProviderThreadIds.pop();
   });
 
   it("rejects steers when no turn is active", async () => {
@@ -3331,7 +3636,6 @@ describe("acp bridge", () => {
 
     const completed = await waitForTurnCompleted();
     expect(completed).toMatchObject({ status: "interrupted" });
-    startedProviderThreadIds.pop();
   });
 
   it("settles the interrupted turn itself when the agent ignores session/cancel", async () => {
@@ -3365,7 +3669,6 @@ describe("acp bridge", () => {
     await new Promise((resolveTick) => realSetTimeout(resolveTick, 200));
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
     expect(notifications("error")).toEqual([]);
-    startedProviderThreadIds.pop();
   }, 15_000);
 
   it("forks an advertised ACP session with the target cwd and MCP servers", async () => {
@@ -3405,7 +3708,6 @@ describe("acp bridge", () => {
     ) {
       throw new Error("thread/fork did not return a providerThreadId");
     }
-    startedProviderThreadIds.push(result.providerThreadId);
     expect(result.providerThreadId).toMatch(/^fake-fork-/u);
 
     await waitForFileWithRealTimer(forkLog);
@@ -3551,7 +3853,6 @@ describe("acp bridge", () => {
     expect(resetIndexesFor(first.bbThreadId)).toHaveLength(1);
 
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
       cwd: workspaceDir,
@@ -3567,7 +3868,6 @@ describe("acp bridge", () => {
     });
     const resumeResponse = await waitForResponse(resumeId);
     expect(resumeResponse.error).toBeUndefined();
-    startedProviderThreadIds.push(first.providerThreadId);
     const resets = resetIndexesFor(first.bbThreadId);
     const identities = identityIndexesFor(first.bbThreadId);
     expect(resets).toHaveLength(2);
@@ -3598,7 +3898,6 @@ describe("acp bridge", () => {
     ) {
       throw new Error("thread/fork did not return a providerThreadId");
     }
-    startedProviderThreadIds.push(forkResult.providerThreadId);
     bbThreadIdByProviderThreadId.set(
       forkResult.providerThreadId,
       "thread-fork-reset",
@@ -3645,7 +3944,7 @@ describe("acp bridge", () => {
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([]);
   });
 
-  it("holds an agent update written with the session/new response until thread/identity is out", async () => {
+  it("holds an agent update written with the session/new response until thread/identity is out, and leaves out what the agent said before any prompt", async () => {
     const { bbThreadId } = await startThread({
       envVars: { FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1" },
     });
@@ -3661,7 +3960,8 @@ describe("acp bridge", () => {
     expect(firstDeltaIndex).toBeGreaterThan(identityIndex);
     const kinds = wire.flatMap(deltaKindsOf);
     expect(kinds[0]).toBe("session.reset");
-    expect(kinds).toContain("item.textDelta");
+    expect(kinds).not.toContain("item.textDelta");
+    expect(kinds).not.toContain("turn.open");
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([
       { used: 12_345, size: 200_000 },
     ]);
@@ -3691,7 +3991,6 @@ describe("acp bridge", () => {
     const forkedProviderThreadId = providerThreadIdOf(
       await waitForResponse(forkId),
     );
-    startedProviderThreadIds.push(forkedProviderThreadId);
     bbThreadIdByProviderThreadId.set(forkedProviderThreadId, forkThreadId);
 
     const wire = messagesForThread(forkThreadId);
@@ -3713,7 +4012,6 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3746,7 +4044,6 @@ describe("acp bridge", () => {
       },
     });
     expect(threadEventsOfType("provider/warning")).toHaveLength(0);
-    startedProviderThreadIds.push(first.providerThreadId);
   });
 
   it("ignores load-time context usage for a different session", async () => {
@@ -3754,7 +4051,6 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3779,7 +4075,6 @@ describe("acp bridge", () => {
       sessionRestorable: true,
     });
     expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
-    startedProviderThreadIds.push(first.providerThreadId);
   });
 
   it("discards load-time context usage when session/load fails", async () => {
@@ -3787,7 +4082,6 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3818,7 +4112,6 @@ describe("acp bridge", () => {
     expect(result.providerThreadId).not.toBe(first.providerThreadId);
     expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
-    startedProviderThreadIds.push(result.providerThreadId);
   });
 
   it("re-applies ACP-native reasoning after session/load resume", async () => {
@@ -3830,7 +4123,6 @@ describe("acp bridge", () => {
       },
     });
     await stopThread(first.providerThreadId);
-    startedProviderThreadIds.pop();
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
@@ -3856,7 +4148,6 @@ describe("acp bridge", () => {
       providerThreadId: first.providerThreadId,
       sessionRestorable: true,
     });
-    startedProviderThreadIds.push(first.providerThreadId);
 
     sendTurnRequest("turn/start", first.providerThreadId, {
       input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
@@ -3889,7 +4180,6 @@ describe("acp bridge", () => {
       throw new Error("thread/resume did not return a providerThreadId");
     }
     expect(result.providerThreadId).not.toBe("fake-sess-stale");
-    startedProviderThreadIds.push(result.providerThreadId);
 
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
   });
@@ -4169,7 +4459,6 @@ describe("acp bridge", () => {
     const liveProviderThreadId = providerThreadIdOf(
       await waitForResponse(secondStartId),
     );
-    startedProviderThreadIds.push(liveProviderThreadId);
     bbThreadIdByProviderThreadId.set(liveProviderThreadId, threadId);
 
     const first = await waitForResponse(firstStartId);
@@ -4221,5 +4510,954 @@ describe("acp bridge", () => {
       code: -32602,
       message: expect.stringContaining("acpLaunchSpec"),
     });
+  });
+});
+
+describe("acp bridge: work the agent starts on its own", () => {
+  const FAKED_TIMERS = ["setTimeout", "clearTimeout"] as const;
+
+  async function runPromptedTurn(
+    providerThreadId: string,
+    text: string,
+    options: Record<string, unknown> = executionOptions({}),
+  ): Promise<void> {
+    const completedBefore = threadEventsOfType("turn/completed").length;
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text, mentions: [] }],
+      options,
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length > completedBefore
+          ? true
+          : undefined,
+      "prompted turn completion",
+    );
+  }
+
+  async function waitForTurnStartedCount(count: number): Promise<void> {
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/started").length >= count ? true : undefined,
+      `turn/started #${count}`,
+    );
+  }
+
+  function turnStatuses(): unknown[] {
+    return threadEventsOfType("turn/completed").map((event) => event.status);
+  }
+
+  it("does not show what an agent says before its first prompt, and does not open a turn that would block the prompt", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_STARTUP_BANNER: "fake agent v1\n\n## Skills" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(threadEventsOfType("turn/started")).toHaveLength(0);
+
+    await runPromptedTurn(providerThreadId, "hello");
+
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(turnStatuses()).toEqual(["completed"]);
+    expect(threadEventsOfType("provider/warning")).toEqual([]);
+    const texts = agentMessageTexts();
+    expect(texts).toHaveLength(1);
+    expect(texts.join("")).not.toContain("fake agent v1");
+  });
+
+  it("says so when the agent ends a prompted turn without sending anything, and stays quiet when it replied", async () => {
+    const { providerThreadId } = await startThread();
+
+    await runPromptedTurn(providerThreadId, "hello");
+    expect(threadEventsOfType("provider/warning")).toEqual([]);
+
+    await runPromptedTurn(providerThreadId, "end-silently");
+    expect(threadEventsOfType("provider/warning")).toMatchObject([
+      { summary: "The agent ended the turn without replying" },
+    ]);
+    expect(turnStatuses()).toEqual(["completed", "completed"]);
+  });
+
+  it("opens a turn for unprompted output and closes it after a quiet window", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(providerThreadId, "then-unprompted-stream");
+      await waitForTurnStartedCount(2);
+      await waitFor(
+        () =>
+          agentMessageTexts().includes(" unprompted two") ? true : undefined,
+        "unprompted output",
+      );
+      expect(turnStatuses()).toEqual(["completed"]);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+      );
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      expect(agentMessageTexts()).toEqual([
+        "prompted reply",
+        "unprompted one",
+        " unprompted two",
+      ]);
+      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
+      const backgroundJob = threadEventsOfType("item/completed").find(
+        (event) =>
+          JSON.stringify(event.item ?? {}).includes("Background job") ||
+          JSON.stringify(event).includes("unprompted-tool"),
+      );
+      expect(backgroundJob).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the agent's turn open while a tool it announced is running, and settles it as interrupted when the user sends a message", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
+      await waitForTurnStartedCount(2);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(turnStatuses()).toEqual(["completed"]);
+
+      await runPromptedTurn(providerThreadId, "after the build");
+      await waitFor(
+        () => (turnStatuses().length === 3 ? true : undefined),
+        "prompted turn after the interrupted agent turn",
+      );
+      expect(turnStatuses()).toEqual(["completed", "interrupted", "completed"]);
+      expect(agentMessageTexts().at(-1)).toBe("echo:after the build");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs a steer that arrives during the agent's own turn as a prompt inside that turn", async () => {
+    const { providerThreadId } = await startThread();
+    await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
+    await waitForTurnStartedCount(2);
+
+    const steer = await waitForResponse(
+      sendTurnRequest("turn/steer", providerThreadId, {
+        expectedTurnId: "turn-2",
+        input: [{ type: "text", text: "what is running?", mentions: [] }],
+      }),
+    );
+    expect(steer.error).toBeUndefined();
+    await waitFor(
+      () => (turnStatuses().length === 2 ? true : undefined),
+      "steered turn completion",
+    );
+    expect(threadEventsOfType("turn/started")).toHaveLength(2);
+    expect(turnStatuses()).toEqual(["completed", "completed"]);
+    expect(agentMessageTexts().at(-1)).toBe("echo:what is running?");
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(2);
+  });
+
+  it("shows a permission request the agent raises with no prompt in flight instead of cancelling it", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
+    });
+    await runPromptedTurn(
+      providerThreadId,
+      "then-unprompted-permission",
+      executionOptions({ permissionMode: "accept-edits" }),
+    );
+
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded unprompted permission request",
+    );
+    expect(forwarded.params).toMatchObject({
+      threadId: bbThreadId,
+      payload: { kind: "approval" },
+    });
+    expect(threadEventsOfType("turn/started")).toHaveLength(2);
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { decision: "allow_once", grantedPermissions: null },
+      }),
+    );
+    await waitFor(
+      () =>
+        agentMessageTexts().includes("permission:allow") ? true : undefined,
+      "agent's reaction to the approval",
+    );
+  });
+
+  it("fails the agent's own turn when the agent exits during it", async () => {
+    const readyFile = join(workspaceDir, "agent-ready");
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_READY_FILE: readyFile },
+    });
+    await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
+    await waitForTurnStartedCount(2);
+
+    process.kill(Number(readFileSync(readyFile, "utf8")), "SIGKILL");
+    await waitFor(
+      () => (turnStatuses().length === 2 ? true : undefined),
+      "failed agent turn",
+    );
+    expect(turnStatuses()).toEqual(["completed", "failed"]);
+  });
+});
+
+describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
+  it("waits for a busy agent to go quiet and resends the prompt once", async () => {
+    const promptLog = join(workspaceDir, "prompts.log");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_BUSY_PROMPTS: "1",
+        FAKE_ACP_PROMPT_LOG: promptLog,
+      },
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hello", mentions: [] }],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+      await waitFor(
+        () => (loggedPrompts(promptLog).length === 1 ? true : undefined),
+        "busy rejection",
+      );
+      expect(threadEventsOfType("turn/completed")).toEqual([]);
+
+      await advanceBusyQuietTimer();
+      expect(await waitForTurnCompleted()).toMatchObject({
+        status: "completed",
+      });
+      expect(loggedPrompts(promptLog)).toEqual(["hello", "hello"]);
+      expect(agentMessageTexts()).toEqual(["echo:hello"]);
+      expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails the turn with the agent's own error when it stays busy", async () => {
+    const promptLog = join(workspaceDir, "prompts.log");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_BUSY_PROMPTS: "10",
+        FAKE_ACP_PROMPT_LOG: promptLog,
+      },
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hello", mentions: [] }],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+      for (let attempt = 1; attempt <= 4; attempt += 1) {
+        await waitFor(
+          () =>
+            loggedPrompts(promptLog).length === attempt ? true : undefined,
+          `prompt attempt ${attempt}`,
+        );
+        if (attempt < 4) {
+          await advanceBusyQuietTimer();
+        }
+      }
+      expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+      expect(loggedPrompts(promptLog)).toHaveLength(4);
+      expect(JSON.stringify(threadEventsOfType("provider/error"))).toContain(
+        "already processing",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores a session with session/resume when the agent offers it, without replaying history", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    const envVars = {
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const first = await startThread({ envVars });
+    await stopThread(first.providerThreadId);
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      providerThreadId: first.providerThreadId,
+    });
+    expect((await waitForResponse(resumeId)).result).toEqual({
+      providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
+    });
+
+    const methods = loggedAcpRequests(requestLog).map(
+      (request) => request.method,
+    );
+    expect(methods).toContain("session/resume");
+    expect(methods).not.toContain("session/load");
+    expect(threadEventsOfType("provider/warning")).toEqual([]);
+  });
+
+  it("reports a session as restorable when the agent offers only session/resume", async () => {
+    const response = await startThreadResponse({
+      FAKE_ACP_RESUME_SESSION: "1",
+    });
+    expect(response.result).toMatchObject({ sessionRestorable: true });
+  });
+
+  it("does not send the instructions again to a session the agent restored", async () => {
+    const promptLog = join(workspaceDir, "prompts.log");
+    const envVars = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_PROMPT_LOG: promptLog,
+    };
+    const first = await startThread({ envVars, instructions: "Be terse." });
+    await completeTurnWith(
+      first.providerThreadId,
+      "first",
+      executionOptions({}),
+    );
+    await stopThread(first.providerThreadId);
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        instructions: "Be terse.",
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      providerThreadId: first.providerThreadId,
+    });
+    expect((await waitForResponse(resumeId)).error).toBeUndefined();
+    await completeTurnWith(
+      first.providerThreadId,
+      "second",
+      executionOptions({}),
+    );
+
+    expect(loggedPrompts(promptLog)).toEqual([
+      "<system_instructions>\nBe terse.\n</system_instructions>\nfirst",
+      "second",
+    ]);
+  });
+
+  it("sends the instructions again when the agent could not restore the session", async () => {
+    const promptLog = join(workspaceDir, "prompts.log");
+    const envVars = { FAKE_ACP_PROMPT_LOG: promptLog };
+    const first = await startThread({ envVars, instructions: "Be terse." });
+    await stopThread(first.providerThreadId);
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        instructions: "Be terse.",
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      providerThreadId: first.providerThreadId,
+    });
+    const resumed = await waitForResponse(resumeId);
+    const resumedProviderThreadId = providerThreadIdOf(resumed);
+    bbThreadIdByProviderThreadId.set(resumedProviderThreadId, first.bbThreadId);
+    await completeTurnWith(
+      resumedProviderThreadId,
+      "second",
+      executionOptions({}),
+    );
+
+    expect(loggedPrompts(promptLog)).toEqual([
+      "<system_instructions>\nBe terse.\n</system_instructions>\nsecond",
+    ]);
+  });
+
+  it.each([
+    ["max_tokens", "The agent stopped at its output limit"],
+    ["refusal", "The agent declined to continue"],
+    ["paused_by_vendor", "The agent stopped the turn"],
+  ])(
+    "ends a turn that stops with %s as completed with a notice",
+    async (stopReason, summary) => {
+      const { providerThreadId } = await startThread();
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [
+          { type: "text", text: `stop-reason:${stopReason}`, mentions: [] },
+        ],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+      expect(await waitForTurnCompleted()).toMatchObject({
+        status: "completed",
+      });
+      expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
+        summary,
+      });
+    },
+  );
+});
+
+describe("acp bridge: questions the agent asks", () => {
+  it("tells the agent it can ask form questions", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    await startThread({ envVars: { FAKE_ACP_REQUEST_LOG: requestLog } });
+    const initialize = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "initialize",
+    );
+    expect(initialize?.params?.["clientCapabilities"]).toMatchObject({
+      elicitation: { form: {} },
+    });
+  });
+
+  it("shows a form question as a user question and returns typed answers to the agent", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "ask-form", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded question",
+    );
+    expect(forwarded.params).toMatchObject({
+      threadId: bbThreadId,
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "strategy",
+            prompt: "How should I proceed?\n\nStrategy",
+            options: [{ value: "conservative" }, { value: "balanced" }],
+          },
+          { id: "dryRun", options: [{ value: "true" }, { value: "false" }] },
+        ],
+      },
+    });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          kind: "user_answer",
+          answers: {
+            strategy: { selected: ["balanced"] },
+            dryRun: { selected: ["true"] },
+          },
+        },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      'elicitation:{"action":"accept","content":{"strategy":"balanced","dryRun":true}}',
+    );
+  });
+
+  it("declines a form it cannot show and says why", async () => {
+    const { providerThreadId } = await startThread();
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "ask-form-too-large", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain('elicitation:{"action":"decline"}');
+    expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
+      summary: "The agent asked a question bb could not show",
+      details:
+        "The request was declined because the form has 5 fields and bb shows at most 4.",
+    });
+    expect(
+      output.messages.filter(
+        (message) => message.method === "interaction/request",
+      ),
+    ).toEqual([]);
+  });
+
+  it("answers a pending question with cancel when the turn is stopped", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "ask-form", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitFor(
+      () =>
+        output.messages.find(
+          (message) => message.method === "interaction/request",
+        ),
+      "forwarded question",
+    );
+
+    await stopThread(providerThreadId);
+    await waitFor(
+      () =>
+        readFileSync(requestLog, "utf8").includes(
+          '{"elicitationResult":{"action":"cancel"}}',
+        )
+          ? true
+          : undefined,
+      "cancel answer reaching the agent",
+    );
+  });
+});
+
+describe("acp bridge: live session state", () => {
+  function threadStates(kind: string): unknown[] {
+    return threadEventsOfType("thread/extensionState/updated")
+      .filter((event) => event.kind === kind)
+      .map((event) => event.payload);
+  }
+
+  it("publishes the agent's slash commands once per distinct list", async () => {
+    const { providerThreadId } = await startThread();
+    await completeTurnWith(
+      providerThreadId,
+      "advertise-commands",
+      executionOptions({}),
+    );
+    expect(threadStates("bb/provider-commands")).toEqual([
+      {
+        commands: [
+          { name: "review", description: "Review the current diff" },
+          { name: "web", description: "Search the web", inputHint: "query" },
+        ],
+      },
+    ]);
+  });
+
+  function setConfigRequests(requestLog: string): unknown[] {
+    return loggedAcpRequests(requestLog)
+      .filter((request) => request.method === "session/set_config_option")
+      .map((request) => request.params);
+  }
+
+  it("publishes the session's own options and leaves the model and reasoning to bb's pickers", async () => {
+    await startThread({ envVars: { FAKE_ACP_SESSION_OPTIONS: "1" } });
+    expect(threadStates("bb/session-options")).toEqual([
+      {
+        options: [
+          {
+            id: "approach",
+            label: "Approach",
+            description: "How the agent works on a task",
+            category: "mode",
+            type: "select",
+            value: "build",
+            values: [
+              { id: "build", label: "Build" },
+              { id: "plan", label: "Plan", description: "Read only" },
+            ],
+          },
+          { id: "web", label: "Web search", type: "boolean", value: false },
+        ],
+      },
+    ]);
+  });
+
+  it("lists the agent's options on every model before any thread exists, whichever way the models were found", async () => {
+    const expected = [
+      {
+        id: "approach",
+        label: "Approach",
+        description: "How the agent works on a task",
+        category: "mode",
+        type: "select",
+        value: "build",
+        values: [
+          { id: "build", label: "Build" },
+          { id: "plan", label: "Plan", description: "Read only" },
+        ],
+      },
+      { id: "web", label: "Web search", type: "boolean", value: false },
+    ];
+    const optionsOf = async (id: number) =>
+      (
+        (await waitForResponse(id)).result as {
+          models: { id: string; sessionOptions?: unknown }[];
+        }
+      ).models.map((model) => model.sessionOptions);
+
+    const fromSession = await optionsOf(
+      sendModelList({ envVars: { FAKE_ACP_SESSION_OPTIONS: "1" } }),
+    );
+    expect(fromSession).toEqual([expected]);
+
+    const fromListCommand = await optionsOf(
+      sendModelList({
+        modelLines: "alpha - Alpha\nbeta - Beta",
+        envVars: { FAKE_ACP_SESSION_OPTIONS: "1" },
+      }),
+    );
+    expect(fromListCommand).toEqual([expected, expected]);
+
+    const none = await optionsOf(sendModelList({}));
+    expect(none).toEqual([undefined]);
+  }, 20_000);
+
+  it("asks the agent for its models and options in the workspace bb names", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "bb-acp-project-"));
+    try {
+      const sessionCwds = async (
+        requestLog: string,
+        cwd: string | undefined,
+      ): Promise<unknown[]> => {
+        await waitForResponse(
+          sendModelList({
+            ...(cwd === undefined ? {} : { cwd }),
+            envVars: {
+              FAKE_ACP_SESSION_OPTIONS: "1",
+              FAKE_ACP_REQUEST_LOG: requestLog,
+            },
+          }),
+        );
+        return loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/new")
+          .map((request) => request.params?.cwd);
+      };
+
+      expect(
+        await sessionCwds(join(workspaceDir, "project.jsonl"), projectDir),
+      ).toEqual([projectDir]);
+      expect(
+        await sessionCwds(
+          join(workspaceDir, "missing.jsonl"),
+          join(projectDir, "gone"),
+        ),
+      ).toEqual([process.cwd()]);
+      expect(
+        await sessionCwds(join(workspaceDir, "none.jsonl"), undefined),
+      ).toEqual([process.cwd()]);
+
+      const listCwdLog = join(workspaceDir, "list-cwd.txt");
+      await waitForResponse(
+        sendModelList({
+          cwd: projectDir,
+          modelLines: "alpha - Alpha",
+          envVars: { FAKE_ACP_MODEL_LIST_CWD_LOG: listCwdLog },
+        }),
+      );
+      expect(realpathSync(readFileSync(listCwdLog, "utf8"))).toBe(
+        realpathSync(projectDir),
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("deletes the session it opened to read an agent's options when the agent can delete sessions", async () => {
+    const methodsFor = async (
+      requestLog: string,
+      envVars: Record<string, string>,
+    ): Promise<LoggedAcpRequest[]> => {
+      await waitForResponse(
+        sendModelList({
+          envVars: { ...envVars, FAKE_ACP_REQUEST_LOG: requestLog },
+        }),
+      );
+      return loggedAcpRequests(requestLog).filter(
+        (request) =>
+          request.method === "session/new" ||
+          request.method === "session/delete",
+      );
+    };
+
+    const deleting = await methodsFor(join(workspaceDir, "delete.jsonl"), {
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_DELETE_SESSION: "1",
+    });
+    expect(deleting.map((request) => request.method)).toEqual([
+      "session/new",
+      "session/delete",
+    ]);
+    expect(deleting[1]?.params?.sessionId).toMatch(/^fake-sess-/u);
+
+    const withModels = await methodsFor(
+      join(workspaceDir, "delete-models.jsonl"),
+      { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_DELETE_SESSION: "1" },
+    );
+    expect(withModels.map((request) => request.method)).toEqual([
+      "session/new",
+      "session/delete",
+    ]);
+
+    const unsupported = await methodsFor(join(workspaceDir, "keep.jsonl"), {
+      FAKE_ACP_SESSION_OPTIONS: "1",
+    });
+    expect(unsupported.map((request) => request.method)).toEqual([
+      "session/new",
+    ]);
+  }, 20_000);
+
+  it("deletes its discovery session through opencode's own CLI when the agent cannot delete sessions over ACP", async () => {
+    const discover = async (
+      deleteLog: string,
+      launch: AgentLaunchArgs,
+    ): Promise<void> => {
+      await waitForResponse(
+        sendModelList({
+          ...launch,
+          envVars: {
+            ...launch.envVars,
+            FAKE_ACP_SESSION_OPTIONS: "1",
+            FAKE_ACP_SESSION_DELETE_LOG: deleteLog,
+          },
+        }),
+      );
+    };
+    const acpAgent = {
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH, "acp"],
+    };
+    const otherAgentLog = join(workspaceDir, "cli-delete-other-agent.log");
+    const otherArgsLog = join(workspaceDir, "cli-delete-other-args.log");
+    const overAcpLog = join(workspaceDir, "cli-delete-over-acp.log");
+    const opencodeLog = join(workspaceDir, "cli-delete-opencode.log");
+
+    await discover(otherAgentLog, { agent: acpAgent });
+    await discover(otherArgsLog, { dialectId: "opencode" });
+    await discover(overAcpLog, {
+      dialectId: "opencode",
+      agent: acpAgent,
+      envVars: { FAKE_ACP_DELETE_SESSION: "1" },
+    });
+    await discover(opencodeLog, { dialectId: "opencode", agent: acpAgent });
+
+    const deleted = await waitFor(
+      () =>
+        existsSync(opencodeLog) ? readFileSync(opencodeLog, "utf8") : undefined,
+      "opencode session delete",
+    );
+    expect(deleted).toMatch(/^fake-sess-\d+\n$/u);
+    expect(
+      [otherAgentLog, otherArgsLog, overAcpLog].filter((log) =>
+        existsSync(log),
+      ),
+    ).toEqual([]);
+  }, 20_000);
+
+  it("publishes no session options for an agent whose only options are its model and thought level", async () => {
+    await startThread({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+      },
+      model: "fake/strong",
+      reasoningLevel: "high",
+    });
+    expect(threadStates("bb/session-options")).toEqual([]);
+  });
+
+  it("applies requested session options before the prompt and does not repeat a value the session already has", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_OPTIONS: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const sessionOptions = {
+      approach: "plan",
+      web: true,
+      absent: "anything",
+    };
+
+    await completeTurnWith(providerThreadId, "hello", {
+      ...executionOptions({}),
+      sessionOptions,
+    });
+
+    const sessionId = providerThreadId;
+    expect(setConfigRequests(requestLog)).toEqual([
+      { sessionId, configId: "approach", value: "plan" },
+      { sessionId, configId: "web", type: "boolean", value: true },
+    ]);
+    const requests = loggedAcpRequests(requestLog).map(
+      (request) => request.method,
+    );
+    expect(requests.lastIndexOf("session/set_config_option")).toBeLessThan(
+      requests.indexOf("session/prompt"),
+    );
+    expect(threadStates("bb/session-options").at(-1)).toMatchObject({
+      options: [
+        { id: "approach", value: "plan" },
+        { id: "web", value: true },
+      ],
+    });
+
+    await completeTurnWith(providerThreadId, "again", {
+      ...executionOptions({}),
+      sessionOptions,
+    });
+    expect(setConfigRequests(requestLog)).toHaveLength(2);
+  });
+
+  it("never sends a value the option does not offer", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_OPTIONS: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    await completeTurnWith(providerThreadId, "hello", {
+      ...executionOptions({}),
+      sessionOptions: { approach: "yolo", web: "true" },
+    });
+
+    expect(setConfigRequests(requestLog)).toEqual([]);
+  });
+
+  it("warns and keeps the agent's value when the agent rejects a requested option", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_SESSION_OPTIONS: "1",
+        FAKE_ACP_SESSION_OPTION_REJECTED_VALUE: "plan",
+      },
+    });
+
+    await completeTurnWith(providerThreadId, "hello", {
+      ...executionOptions({}),
+      sessionOptions: { approach: "plan" },
+    });
+
+    expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
+      summary: "The agent did not apply Approach",
+      details: expect.stringContaining("approach unavailable: plan"),
+    });
+    expect(threadStates("bb/session-options").at(-1)).toMatchObject({
+      options: [{ id: "approach", value: "build" }, { id: "web" }],
+    });
+  });
+
+  it("spells out bb skill commands the agent did not advertise, wherever they appear, so the agent does not swallow them as unknown commands", async () => {
+    expect(
+      (
+        await waitForResponse(
+          sendRequest("skills/configure", {
+            roots: [
+              {
+                id: "root_bb",
+                path: "/staged/acp-skills",
+                skills: [
+                  { name: "example-skill", description: "Example." },
+                  { name: "deploy", description: "Ship the app." },
+                  { name: "review", description: "bb review." },
+                ],
+              },
+            ],
+          }),
+        )
+      ).error,
+    ).toBeUndefined();
+    try {
+      const promptLog = join(workspaceDir, "prompts.log");
+      const { providerThreadId } = await startThread({
+        envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+      });
+      const command = (name: string, start: number) => ({
+        start,
+        end: start + name.length + 1,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name,
+          source: "skill",
+          origin: "user",
+          label: name,
+          argumentHint: null,
+        },
+      });
+      const run = async (input: unknown[]) => {
+        const completedBefore = threadEventsOfType("turn/completed").length;
+        await waitForResponse(
+          sendTurnRequest("turn/start", providerThreadId, { input }),
+        );
+        await waitFor(
+          () =>
+            threadEventsOfType("turn/completed").length > completedBefore
+              ? true
+              : undefined,
+          "turn completion",
+        );
+      };
+      const text = (value: string, mentions: unknown[]) => ({
+        type: "text",
+        text: value,
+        mentions,
+      });
+
+      await run([
+        text("/example-skill summarize the repo", [
+          command("example-skill", 0),
+        ]),
+      ]);
+      await run([
+        text("first /deploy, then /example-skill", [
+          command("deploy", 6),
+          command("example-skill", 20),
+        ]),
+      ]);
+      await run([
+        text("/native-only go", [command("native-only", 0)]),
+        text("and /deploy", [command("deploy", 4)]),
+      ]);
+      await run([text("/deploy", [{ ...command("deploy", 0), end: 5 }])]);
+      await run([text("advertise-commands", [])]);
+      await run([
+        text("/review this and /deploy", [
+          command("review", 0),
+          command("deploy", 17),
+        ]),
+      ]);
+
+      expect(
+        loggedPrompts(promptLog).map((prompt) =>
+          prompt.replace(
+            /^<system_instructions>[\s\S]*?<\/system_instructions>\n/u,
+            "",
+          ),
+        ),
+      ).toEqual([
+        'Use the bb skill "example-skill": summarize the repo',
+        'first Use the bb skill "deploy", then Use the bb skill "example-skill"',
+        '/native-only go\nand Use the bb skill "deploy"',
+        "/deploy",
+        "advertise-commands",
+        '/review this and Use the bb skill "deploy"',
+      ]);
+    } finally {
+      await waitForResponse(sendRequest("skills/configure", { roots: [] }));
+    }
+  });
+
+  it("publishes nothing for an agent with no commands or options", async () => {
+    const { providerThreadId } = await startThread();
+    await completeTurnWith(providerThreadId, "hello", executionOptions({}));
+    expect(threadEventsOfType("thread/extensionState/updated")).toEqual([]);
   });
 });

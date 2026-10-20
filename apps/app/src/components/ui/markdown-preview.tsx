@@ -49,6 +49,13 @@ import {
 } from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { LINE_WRAP_LABEL } from "@/lib/code-overflow-mode";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import { RouteAnchor } from "./app-route-anchor.js";
 import {
@@ -819,17 +826,24 @@ function MarkdownCodeBlock({
           {language ?? ""}
         </span>
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            aria-pressed={softWrap}
-            aria-label={softWrap ? "Disable line wrap" : "Wrap long lines"}
-            onClick={() => {
-              setSoftWrap((value) => !value);
-            }}
-            className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground aria-pressed:text-foreground"
-          >
-            <Icon name="TextWrap" className="size-3" />
-          </button>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-pressed={softWrap}
+                  aria-label={LINE_WRAP_LABEL}
+                  onClick={() => {
+                    setSoftWrap((value) => !value);
+                  }}
+                  className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground aria-pressed:text-foreground"
+                >
+                  <Icon name="TextWrap" className="size-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{LINE_WRAP_LABEL}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <CopyButton text={codeText} label="Copy code" />
         </div>
       </div>

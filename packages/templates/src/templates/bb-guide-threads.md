@@ -100,8 +100,9 @@ Spawning:
   reports every finished, failed, or interrupted turn and every blocker. stuck
   skips completed turns and keeps failures, interruptions, and blockers on an
   approval or question; the child sends its results with `bb thread tell`, so
-  say so in its prompt. off reports nothing. `bb status` and `bb thread show`
-  print the value for a child thread.
+  say so in its prompt. off reports nothing. Under stuck and off, unassigning
+  the child does not notify the former parent either. `bb status` and
+  `bb thread show` print the value for a child thread.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that

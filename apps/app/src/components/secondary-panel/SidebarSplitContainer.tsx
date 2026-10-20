@@ -315,9 +315,9 @@ export function SidebarSplitContainer({
   const selectTab = useCallback(
     (paneId: string, tabId: string) => {
       commitState((current) => selectSidebarTab(current, paneId, tabId));
-      if (tabId !== activeTabId) onActivateTab(tabId);
+      onActivateTab(tabId);
     },
-    [activeTabId, commitState, onActivateTab],
+    [commitState, onActivateTab],
   );
 
   const navigateTab = (direction: -1 | 1, origin: EventTarget | null) => {

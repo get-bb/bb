@@ -4,15 +4,13 @@ import {
   sidebarNavigationPlacement,
   useResolvedSidebarNavigation,
 } from "@/components/sidebar/sidebarNavigationProvider";
-import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useMobileRecentsThreadReveal } from "@/views/useMobileRecentsThreadReveal";
-
-export type AppLayoutSidebarMode = "app" | "settings" | "plugins" | "skills";
+import type { RouteSidebar } from "./routeSidebar";
 
 interface AppLayoutSidebarProps {
-  mode: AppLayoutSidebarMode;
+  routeSidebar: RouteSidebar | null;
+  isSettingsActive: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   settingsRoutePath: string;
@@ -20,7 +18,8 @@ interface AppLayoutSidebarProps {
 }
 
 export function AppLayoutSidebar({
-  mode,
+  routeSidebar,
+  isSettingsActive,
   onResizeMouseDown,
   isResizing,
   settingsRoutePath,
@@ -29,16 +28,21 @@ export function AppLayoutSidebar({
   useMobileRecentsThreadReveal();
   const navigation = useResolvedSidebarNavigation();
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
-  const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
-  const [lastVisible, setLastVisible] = useState({ mode, backToAppRoutePath });
+  const holdCurrentSidebar = isCompactViewport && isMobileSidebarClosing;
+  const [lastVisible, setLastVisible] = useState({
+    routeSidebar,
+    backToAppRoutePath,
+  });
   if (
-    !holdCurrentMode &&
-    (lastVisible.mode !== mode ||
+    !holdCurrentSidebar &&
+    (lastVisible.routeSidebar?.id !== routeSidebar?.id ||
       lastVisible.backToAppRoutePath !== backToAppRoutePath)
   ) {
-    setLastVisible({ mode, backToAppRoutePath });
+    setLastVisible({ routeSidebar, backToAppRoutePath });
   }
-  const rendered = holdCurrentMode ? lastVisible : { mode, backToAppRoutePath };
+  const rendered = holdCurrentSidebar
+    ? lastVisible
+    : { routeSidebar, backToAppRoutePath };
   const backTo =
     sidebarNavigationPlacement(navigation) === "list"
       ? rendered.backToAppRoutePath
@@ -48,26 +52,16 @@ export function AppLayoutSidebar({
     <AppSidebar
       onResizeMouseDown={onResizeMouseDown}
       isResizing={isResizing}
-      isBodyHidden={rendered.mode !== "app"}
+      isBodyHidden={rendered.routeSidebar !== null}
       navigation={navigation}
       settingsRoutePath={settingsRoutePath}
-      isSettingsActive={mode === "settings"}
+      isSettingsActive={isSettingsActive}
       alternateBody={
-        rendered.mode === "settings" ? (
-          <SettingsSidebar
-            backTo={backTo}
-            onResizeMouseDown={onResizeMouseDown}
-            isResizing={isResizing}
-          />
-        ) : rendered.mode === "plugins" || rendered.mode === "skills" ? (
-          <ResourceSidebar
-            key={rendered.mode}
-            workspace={rendered.mode}
-            backTo={backTo}
-            onResizeMouseDown={onResizeMouseDown}
-            isResizing={isResizing}
-          />
-        ) : null
+        rendered.routeSidebar?.render({
+          backTo,
+          isResizing,
+          onResizeMouseDown,
+        }) ?? null
       }
     />
   );

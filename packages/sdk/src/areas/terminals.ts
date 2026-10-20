@@ -60,6 +60,7 @@ export interface TerminalListArgs {
 
 export interface TerminalCreateArgs {
   cols: number;
+  id?: CreateTerminalRequest["id"];
   rows: number;
   scope: TerminalCreateScope;
   start?: CreateTerminalRequest["start"];
@@ -210,6 +211,7 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
       transport.api.v1.terminals.$post({
         json: {
           cols: input.cols,
+          id: input.id,
           rows: input.rows,
           start: input.start,
           target: terminalCreateTarget(input.scope),

@@ -16,6 +16,7 @@ import {
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { RouteNavigationCallbackContext } from "@/components/ui/app-route-anchor";
 
 export function SectionSidebarIcon({ name }: { name: IconName }) {
   return <Icon name={name} className={COARSE_POINTER_ICON_SIZE_CLASS} />;
@@ -116,6 +117,7 @@ export function SectionSidebar({
   title: string;
 }) {
   const isFramed = useIsSidebarFramed();
+  const closeOnMobile = useCloseMobileSidebar();
   return (
     <div
       data-testid={`${testIdPrefix}-sidebar-body`}
@@ -152,7 +154,9 @@ export function SectionSidebar({
           {backTo === null ? null : (
             <SectionSidebarLabel>{title}</SectionSidebarLabel>
           )}
-          {children}
+          <RouteNavigationCallbackContext.Provider value={closeOnMobile}>
+            {children}
+          </RouteNavigationCallbackContext.Provider>
         </div>
       </SidebarContent>
       <SidebarResizeHandle

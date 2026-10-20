@@ -226,17 +226,15 @@ For an ACP agent, use `@get-bb/plugin-sdk/provider-bridge/acp`. Re-export
 `experimental_acpProviderBridge` as `experimental_providerBridge`. Supply a
 validated `acpLaunchSpec` and an ACP dialect in the static bridge options. The
 public ACP entrypoint includes the bridge, launch schema, agent probe, model
-catalog, tool, and dialect contracts. It supports the `generic`, `cursor`, and
-`grok` dialects.
+catalog, tool, and dialect contracts. It ships the `acp` (generic), `cursor`,
+`grok`, `omp`, and `opencode` dialects. To read another agent's own side
+channels, call `experimental_registerAcpDialect({ id, ...hooks })` at module
+load in the host artifact and name that id as `acpDialect`; a built-in id
+cannot be replaced. `@get-bb/plugin-sdk/provider-bridge/acp-next` is a
+deprecated alias of the same entrypoint; import every member from one subpath,
+since a dialect registered through one is not seen by the other's bridge.
 
 ### Testing a bridge
-
-`@get-bb/plugin-sdk/provider-bridge/acp-next` is a preview of the rebuilt ACP
-bridge with the same exports plus `experimental_registerAcpDialect({ id,
-...hooks })`. Call it at module load in the host artifact and name that id as
-`acpDialect` to read an agent's own side channels; a built-in id (`acp`,
-`cursor`, `grok`, `omp`, `opencode`) cannot be replaced. The subpath will be
-folded into `provider-bridge/acp` when the rebuilt bridge becomes the default.
 
 **Conformance.** Ship a test that drives the published kit,
 `@get-bb/plugin-sdk/provider-bridge/testing`, against your bridge

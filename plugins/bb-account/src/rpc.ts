@@ -1,4 +1,7 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_PluginRpcRefusal,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { AccountError, type AccountService } from "./account.js";
 import { normalizeOrigin, type BaseUrlAllowed } from "./base-url.js";
 import {
@@ -75,21 +78,29 @@ export function registerAccountRpc(args: {
   bb.rpc.register(accountPrivateRpcContract, {
     [ADOPT_CONNECT_CREDENTIAL_METHOD]: (input, context) => {
       if (!isConnectPlugin(context.experimental_caller)) {
-        throw new Error("only the connect plugin can hand over its pairing");
+        throw new experimental_PluginRpcRefusal({
+          code: "forbidden",
+          message: "only the connect plugin can hand over its pairing",
+        });
       }
       return account.adoptConnectCredential(input);
     },
     [CONNECT_CREDENTIAL_METHOD]: (_input, context) => {
       if (!isConnectPlugin(context.experimental_caller)) {
-        throw new Error("only the connect plugin can read the server credential");
+        throw new experimental_PluginRpcRefusal({
+          code: "forbidden",
+          message: "only the connect plugin can read the server credential",
+        });
       }
       return { credential: account.connectCredential() };
     },
     [CONFIRM_REFUSED_CREDENTIAL_METHOD]: (input, context) => {
       if (!isConnectPlugin(context.experimental_caller)) {
-        throw new Error(
-          "only the connect plugin can report a refused server credential",
-        );
+        throw new experimental_PluginRpcRefusal({
+          code: "forbidden",
+          message:
+            "only the connect plugin can report a refused server credential",
+        });
       }
       return account.confirmRefusedCredential(input.credential);
     },

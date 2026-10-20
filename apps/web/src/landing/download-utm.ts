@@ -1,7 +1,7 @@
 import { CAMPAIGN_PARAM_NAMES } from "./site";
 
 const SAVED_UTM_KEY = "bb:landing-utm";
-const DOWNLOAD_PATH_PREFIX = "/download/";
+const DOWNLOAD_PATH = /^\/download\/(macos|windows|linux)$/;
 const CARRY_EVENTS = ["pointerdown", "click"] as const;
 
 type UtmStorage = Pick<Storage, "getItem" | "setItem">;
@@ -77,7 +77,7 @@ export function carryUtmToDownloadLinks(): () => void {
     if (
       !(link instanceof HTMLAnchorElement) ||
       link.origin !== window.location.origin ||
-      !link.pathname.startsWith(DOWNLOAD_PATH_PREFIX)
+      !DOWNLOAD_PATH.test(link.pathname)
     ) {
       return;
     }
@@ -97,7 +97,9 @@ export function carryUtmToDownloadLinks(): () => void {
       const query = params.toString();
       linkSearch = query ? `?${query}` : "";
     }
-    const search = addSavedUtmParams(linkSearch, saved);
+    const params = new URLSearchParams(addSavedUtmParams(linkSearch, saved));
+    params.set("instructions", "1");
+    const search = `?${params.toString()}`;
     if (search !== link.search) {
       link.search = search;
     }

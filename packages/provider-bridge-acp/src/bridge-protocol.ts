@@ -103,6 +103,7 @@ export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
 
 export const ACP_TURN_STARTED_METHOD = "acp/turn/started";
 export const ACP_TURN_COMPLETED_METHOD = "acp/turn/completed";
+export const ACP_PROMPT_INTERRUPTED_METHOD = "acp/prompt/interrupted";
 export const ACP_COMPACTION_STARTED_METHOD = "acp/compaction/started";
 export const ACP_COMPACTION_COMPLETED_METHOD = "acp/compaction/completed";
 export const ACP_UPDATE_METHOD = "acp/update";

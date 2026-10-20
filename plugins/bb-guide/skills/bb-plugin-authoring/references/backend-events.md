@@ -288,7 +288,9 @@ a fresh environment. It is one long call with no overall timeout and must be
 idempotent for `pathKey`: after a process or plugin restart, core calls it
 again with the same attempt and pathKey. Return `created` with `path`,
 explicit `ownsPath` and optional `mergeBaseBranch`, or `failed` with a
-message; a failed create is terminal, and a retry is an explicit new attempt
+message. When core reuses an environment row your provider already owns at
+that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
+clears it, and omitting it keeps it; a failed create is terminal, and a retry is an explicit new attempt
 on the same environment row after cleanup. `report.step` and `report.log`
 stream durable progress while the call runs.
 
@@ -437,7 +439,13 @@ Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
 also carry normalized `{ message, path? }[]` issues. Unknown methods return
 404, invalid JSON/input returns 400, and handler/output/serialization failures
-return 500. Results must be strict JSON values: cyclic objects, bigint,
+return 500. Throw `new experimental_PluginRpcRefusal({ code, message, issues? })`
+from `@get-bb/plugin-sdk` for expected refusals:
+`forbidden` → 403, `not_found` → 404, `conflict` → 409, `invalid` → 422.
+Codes and optional `PluginRpcValidationIssue[]` issues reach callers in the error envelope.
+Refusals do not increment handler error counts or change status detail.
+A refused mutation rejects, rolls back shared optimistic updates, and publishes no invalidations. `bb plugin rpc call` prints the code and message and exits non-zero.
+Results must be strict JSON values: cyclic objects, bigint,
 undefined/functions, class instances, symbol keys, and non-finite numbers are
 rejected rather than coerced or silently dropped.
 

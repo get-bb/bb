@@ -9,6 +9,7 @@ import {
   PluginDetailRouteNavigationProvider,
   RouteAnchor,
   RouteNavigationProvider,
+  RouteNavigationCallbackContext,
   useIsRouteNavigationPending,
   useRouteAnchorDelegate,
 } from "./app-route-anchor";
@@ -70,6 +71,48 @@ function CurrentPath() {
 }
 
 describe("RouteAnchor transition navigation", () => {
+  it.each([false, true])(
+    "notifies a scoped host only for handled route navigation (delegate: %s)",
+    (delegate) => {
+      const onNavigate = vi.fn();
+      function Links() {
+        const onClick = useRouteAnchorDelegate();
+        const Link = delegate ? "a" : RouteAnchor;
+        return (
+          <div onClick={delegate ? onClick : undefined}>
+            <Link href="/threads/thr-new">Next thread</Link>
+            <Link
+              href="/threads/thr-declined"
+              onClick={(event) => event.preventDefault()}
+            >
+              Declined
+            </Link>
+          </div>
+        );
+      }
+      render(
+        <MemoryRouter initialEntries={["/threads/thr-old"]}>
+          <RouteNavigationProvider>
+            <RouteNavigationCallbackContext.Provider value={onNavigate}>
+              <Links />
+            </RouteNavigationCallbackContext.Provider>
+            <CurrentPath />
+          </RouteNavigationProvider>
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByRole("link", { name: "Declined" }));
+      expect(onNavigate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("link", { name: "Next thread" }), {
+        ctrlKey: true,
+      });
+      expect(onNavigate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("link", { name: "Next thread" }));
+      expect(onNavigate).toHaveBeenCalledOnce();
+      expect(screen.getByTestId("current-path").textContent).toBe(
+        "/threads/thr-new",
+      );
+    },
+  );
   it("swaps the route in a later commit than the tap and signals pending in between", () => {
     samples.length = 0;
     render(

@@ -59,6 +59,7 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
+  BB_DESKTOP_ZOOM_CHANGED_CHANNEL,
   BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
@@ -69,6 +70,8 @@ import {
   BB_DESKTOP_BROWSER_RELEASE_CONTROL_CHANNEL,
   BB_DESKTOP_BROWSER_REVEAL_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
@@ -236,12 +239,18 @@ const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
 const zoomListeners = new Set<BbDesktopZoomChangeHandler>();
 let lastZoomFactor = webFrame.getZoomFactor();
 
+function publishZoomFactor(factor: number): void {
+  document.documentElement.style.setProperty("--bb-zoom", String(factor));
+  ipcRenderer.send(BB_DESKTOP_ZOOM_CHANGED_CHANNEL);
+}
+
 function notifyZoomChangeIfChanged(): void {
   const zoomFactor = webFrame.getZoomFactor();
   if (zoomFactor === lastZoomFactor) {
     return;
   }
   lastZoomFactor = zoomFactor;
+  publishZoomFactor(zoomFactor);
   for (const listener of zoomListeners) {
     listener(zoomFactor);
   }
@@ -328,6 +337,18 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   detach(tabId): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_DETACH_CHANNEL, { tabId });
+  },
+  setThreadDiscarded(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL, request);
+  },
+  async listThreadIdsWithTabs() {
+    return z
+      .array(z.string().min(1))
+      .parse(
+        await ipcRenderer.invoke(
+          BB_DESKTOP_BROWSER_LIST_THREADS_WITH_TABS_CHANNEL,
+        ),
+      );
   },
   navigate(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, request);
@@ -617,6 +638,7 @@ forwardParsed(
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   window.addEventListener("resize", notifyZoomChangeIfChanged);
   window.addEventListener("DOMContentLoaded", () => {
+    publishZoomFactor(webFrame.getZoomFactor());
     for (const button of document.querySelectorAll<HTMLElement>(
       "[data-startup-action]",
     )) {

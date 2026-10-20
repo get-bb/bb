@@ -116,9 +116,10 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
+    importRetryDelaysMs: [] as readonly number[],
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
     resetCrashedSlots: vi.fn(),
@@ -244,6 +245,7 @@ describe("reconcilePluginFrontends", () => {
     const deps: PluginFrontendReconcileDeps = {
       fetchCandidates,
       importModule: async () => pluginModule("hello"),
+      importRetryDelaysMs: [],
       applyCss: vi.fn(),
       retainCss: vi.fn(() => vi.fn()),
       resetCrashedSlots: vi.fn(),
@@ -565,6 +567,32 @@ describe("reconcilePluginFrontends", () => {
       "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=1",
     );
     expect(state.records.get("hello")?.status).toBe("loaded");
+  });
+
+  it("retries a failed import with a fresh module URL within the same reconcile", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    deps.importRetryDelaysMs = [0, 0];
+    deps.importModule
+      .mockRejectedValueOnce(
+        new TypeError("Failed to fetch dynamically imported module"),
+      )
+      .mockRejectedValueOnce(
+        new TypeError("Failed to fetch dynamically imported module"),
+      );
+
+    await reconcilePluginFrontends(state, deps);
+
+    expect(deps.importModule.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/plugins/hello/assets/app.js?h=v1",
+      "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=1",
+      "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=2",
+    ]);
+    expect(state.records.get("hello")?.status).toBe("loaded");
+    expect(deps.setRegistrations).toHaveBeenCalledWith(
+      "hello",
+      expect.anything(),
+    );
   });
 
   it("mounts once, skips repeated reconciliation, and disposes exactly once on reload and removal", async () => {

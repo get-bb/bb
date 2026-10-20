@@ -217,33 +217,6 @@ export const acpSessionNotificationParamsSchema = z
   })
   .passthrough();
 
-export const ACP_PROTOCOL_VERSION = 1;
-
-export const acpInitializeResultSchema = z
-  .object({
-    protocolVersion: z.number(),
-    agentCapabilities: z
-      .object({
-        loadSession: z.boolean().optional(),
-        sessionCapabilities: z
-          .object({
-            fork: z.object({}).passthrough().nullable().optional(),
-          })
-          .passthrough()
-          .optional(),
-        promptCapabilities: z
-          .object({
-            image: z.boolean().optional(),
-          })
-          .passthrough()
-          .optional(),
-      })
-      .passthrough()
-      .optional(),
-    authMethods: z.array(z.object({ id: z.string() }).passthrough()).optional(),
-  })
-  .passthrough();
-
 const acpOptionalString = z
   .union([z.string(), z.null()])
   .transform((value) => value ?? undefined)
@@ -402,13 +375,7 @@ export const acpSessionForkResultSchema = acpConfigStateResultSchema.extend({
   sessionId: z.string(),
 });
 
-export const acpStopReasonSchema = z.enum([
-  "end_turn",
-  "max_tokens",
-  "max_turn_requests",
-  "refusal",
-  "cancelled",
-]);
+export const acpStopReasonSchema = z.string();
 export type AcpStopReason = z.infer<typeof acpStopReasonSchema>;
 
 export const acpPromptResultSchema = z

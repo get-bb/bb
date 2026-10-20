@@ -188,6 +188,19 @@ export function SurfaceCard({
         ))}
       </ul>
 
+      {surface.reference ? (
+        <details className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          <summary className={`cursor-pointer rounded-sm ${FOCUS_RING_CLASS}`}>
+            API behavior
+          </summary>
+          <div className="mt-2 space-y-2">
+            {surface.reference.map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
       {(surface.firstParty && surface.firstParty.length > 0) ||
       onCopyForAgent ? (
         <div className="mt-3 flex min-w-0 items-center gap-2 border-t border-border-hairline pt-2.5">

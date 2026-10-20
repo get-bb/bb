@@ -160,7 +160,13 @@ explicitly.
 suspend/resume operations. They return the updated public Host (HTTP 202)
 once the tracked operation starts; read its lifecycle state for completion.
 `bb.sdk.hosts.experimental_retryCleanup({ hostId })` retries failed provider
-teardown. `bb.sdk.hosts.get({ hostId })` also returns nullable
+teardown. `bb.sdk.hosts.delete({ hostId, force: true })` finishes a
+removal of a persistent machine whose environment cleanup failed while it is
+disconnected: it marks the machine's environments destroyed without on-machine
+cleanup (emitting `experimental_environment.removed` for each), then runs the
+provider's `remove` and revokes the machine. It refuses (409) while the
+machine is connected, before teardown has failed, or when no environment
+cleanup is blocking removal. `bb.sdk.hosts.get({ hostId })` also returns nullable
 `connectMachineId` from trusted gate metadata; host lists do not expose it.
 
 ### Machine enrollment and bootstrap

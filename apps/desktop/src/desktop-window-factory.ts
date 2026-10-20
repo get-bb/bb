@@ -19,8 +19,10 @@ import { resolveDesktopExternalUrl } from "./desktop-external-url.js";
 import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET_PX,
+  MACOS_TRAFFIC_LIGHT_SIZE_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
 } from "@bb/desktop-contract";
+import { BB_DESKTOP_ZOOM_CHANGED_CHANNEL } from "./desktop-update-ipc.js";
 
 type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 
@@ -28,6 +30,16 @@ const MACOS_TRAFFIC_LIGHT_POSITION = {
   x: MACOS_TRAFFIC_LIGHT_INSET_PX,
   y: MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
 };
+
+function getMacosTrafficLightPosition(zoomFactor: number) {
+  const halfSize = MACOS_TRAFFIC_LIGHT_SIZE_PX / 2;
+  return {
+    x: MACOS_TRAFFIC_LIGHT_INSET_PX,
+    y: Math.round(
+      (MACOS_TRAFFIC_LIGHT_TOP_INSET_PX + halfSize) * zoomFactor - halfSize,
+    ),
+  };
+}
 
 interface DesktopWindowOpenDetails {
   url: string;
@@ -55,6 +67,8 @@ export interface DesktopWindowWebContents extends DesktopContextMenuWebContents 
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void;
   setZoomFactor(factor: number): void;
+  getZoomFactor(): number;
+  ipc: { on(channel: string, listener: () => void): void };
 }
 
 export interface DesktopBrowserWindow extends StatefulBrowserWindow {
@@ -71,6 +85,7 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   restore(): void;
   setFullScreen(isFullScreen: boolean): void;
   setBackgroundColor(color: string): void;
+  setWindowButtonPosition(position: { x: number; y: number }): void;
   show(): void;
   webContents: DesktopWindowWebContents;
 }
@@ -258,6 +273,15 @@ export function createDesktopWindowFactory(
               browserWindow.setBackgroundColor(color);
             }
           },
+        );
+      }
+      if (args.isMac) {
+        browserWindow.webContents.ipc.on(BB_DESKTOP_ZOOM_CHANGED_CHANNEL, () =>
+          browserWindow.setWindowButtonPosition(
+            getMacosTrafficLightPosition(
+              browserWindow.webContents.getZoomFactor(),
+            ),
+          ),
         );
       }
       browserWindow.webContents.session.setSpellCheckerEnabled(true);

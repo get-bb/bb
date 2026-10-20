@@ -111,9 +111,20 @@ function isObject(value: JsonValue): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 const jsonSchemaValueSchema = z.union([
   z.boolean(),
-  z.record(z.string(), z.json()),
+  z.record(z.string(), jsonValueSchema),
 ]);
 
 const storedAgentOptionsSchema = z

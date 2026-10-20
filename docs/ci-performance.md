@@ -77,6 +77,19 @@ resolution.
 
 ## Setup budgets
 
+The pnpm executable cache is keyed by version, OS, architecture, and committed
+checksums. Setup verifies restored bytes before reuse; a missing or corrupt
+executable triggers a bounded download into a temporary file. Only a verified
+complete download replaces the executable, and failed partial downloads are removed.
+
+Bun setup similarly caches and verifies pinned release archives before extraction.
+Downloads use direct GitHub release URLs with bounded retries, and the setup step
+has a four-minute limit. Cache restore failures fall back to downloading. Archive
+checksums come from official release metadata, with portable baseline builds on
+x64 runners. These changes reduce exposure to bootstrap download stalls; they do
+not establish a reduction in total successful CI time.
+
+
 CI installs Node and the checksum-verified pnpm executable before restoring
 caches. Turbo restores have a one-minute step budget. Linux and Windows skip
 pnpm store archives; macOS restores pnpm separately with its own one-minute

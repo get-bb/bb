@@ -16,6 +16,7 @@ import {
 } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { collectSearchedMessageAncestorRowIds } from "./useScrollToSearchedMessage";
+import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 function rect(top: number, height: number): DOMRect {
   return {
@@ -179,7 +180,7 @@ describe("ThreadTimelineRows windowing", () => {
       const scrollElement = document.createElement("div");
       scrollElement.setAttribute("data-test-main-scroll", "");
       const bottomAnchor: BottomAnchorContextValue = {
-        captureScrollAnchor: vi.fn(),
+        positionKeeper: createInertScrollPositionKeeper(),
         holdContentPosition: vi.fn(),
         getScrollElement: () => scrollElement,
         isAtBottom: false,
@@ -239,7 +240,7 @@ describe("ThreadTimelineRows windowing", () => {
     Object.defineProperty(scrollElement, "scrollHeight", { value: 8_000 });
     const scrollElementIntoView = vi.fn();
     const bottomAnchor: BottomAnchorContextValue = {
-      captureScrollAnchor: vi.fn(),
+      positionKeeper: createInertScrollPositionKeeper(),
       holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,
@@ -294,7 +295,7 @@ describe("ThreadTimelineRows windowing", () => {
     Object.defineProperty(scrollElement, "scrollHeight", { value: 8_000 });
     const scrollElementIntoView = vi.fn();
     const bottomAnchor: BottomAnchorContextValue = {
-      captureScrollAnchor: vi.fn(),
+      positionKeeper: createInertScrollPositionKeeper(),
       holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,

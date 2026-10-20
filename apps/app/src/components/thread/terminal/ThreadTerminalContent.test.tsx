@@ -29,6 +29,8 @@ const session: TerminalSession = makeTerminalSession({
   updatedAt: 1,
 });
 
+function noop(): void {}
+
 function controller(
   isPanelOpen: boolean,
   shouldMountTerminalView: boolean = isPanelOpen,
@@ -40,6 +42,7 @@ function controller(
     hasTerminalQueryError: false,
     isPanelOpen,
     shouldMountTerminalView,
+    start: null,
     terminalBodyMessage: "No terminals",
   };
 }
@@ -53,6 +56,8 @@ describe("ThreadTerminalContent", () => {
   it("does not mount the terminal view until the panel opens", () => {
     const rendered = render(
       <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
         autoFocus={false}
         controller={controller(false)}
       />,
@@ -62,7 +67,12 @@ describe("ThreadTerminalContent", () => {
     expect(rendered.container.firstChild).toBeNull();
 
     rendered.rerender(
-      <ThreadTerminalContent autoFocus controller={controller(true)} />,
+      <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
+        autoFocus
+        controller={controller(true)}
+      />,
     );
 
     expect(threadTerminalView).toHaveBeenCalledOnce();
@@ -74,12 +84,19 @@ describe("ThreadTerminalContent", () => {
 
   it("keeps the mounted terminal view alive while a persisted panel is hidden", () => {
     const rendered = render(
-      <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
+      <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
+        autoFocus={false}
+        controller={controller(true)}
+      />,
     );
     const mountedView = rendered.getByTestId("terminal-view");
 
     rendered.rerender(
       <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
         autoFocus={false}
         controller={controller(false, true)}
       />,
@@ -90,19 +107,31 @@ describe("ThreadTerminalContent", () => {
     expect(hiddenView.dataset.panelOpen).toBe("false");
 
     rendered.rerender(
-      <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
+      <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
+        autoFocus={false}
+        controller={controller(true)}
+      />,
     );
     expect(rendered.getByTestId("terminal-view")).toBe(mountedView);
   });
 
   it("unmounts the terminal view once the panel is neither open nor persisted", () => {
     const rendered = render(
-      <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
+      <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
+        autoFocus={false}
+        controller={controller(true)}
+      />,
     );
     expect(rendered.queryByTestId("terminal-view")).not.toBeNull();
 
     rendered.rerender(
       <ThreadTerminalContent
+        onCloseStart={noop}
+        onRetryStart={noop}
         autoFocus={false}
         controller={controller(false, false)}
       />,

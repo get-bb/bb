@@ -46,6 +46,14 @@ export function setPluginKvValue(
     .run();
 }
 
+export function deleteAllPluginKvValues(
+  db: DbConnection,
+  pluginId: string,
+): number {
+  return db.delete(pluginKv).where(eq(pluginKv.pluginId, pluginId)).run()
+    .changes;
+}
+
 export function deletePluginKvValue(
   db: DbConnection,
   pluginId: string,

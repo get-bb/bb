@@ -23,7 +23,7 @@
   },
   "scripts": {
     "build": "node ../../apps/cli/dist/index.js plugin build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
     "test": "vitest run --config vitest.config.ts",
     "smoke": "tsx --tsconfig tsconfig.smoke.json smoke.ts",
@@ -49,6 +49,7 @@
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.21.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"

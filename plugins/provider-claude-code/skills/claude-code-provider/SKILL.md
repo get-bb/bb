@@ -16,6 +16,16 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   Claude in Chrome tools. The host needs the extension and a claude.ai login.
   A change restarts the thread's Claude process before its next turn, preserving
   context.
+- `artifactsEnabled` defaults to `false`. Enable with
+  `bb plugin config provider-claude-code set artifactsEnabled true` to set
+  `CLAUDE_CODE_ARTIFACT=1`, which gives threads Claude Code's `Artifact`,
+  `ArtifactComments`, and `ArtifactData` tools for reading `claude.ai/artifact/`
+  links and publishing pages. Claude Code withholds them from SDK sessions
+  unless opted in. Claude may publish private pages to claude.ai without asking.
+  The claude.ai account's plan and organization policy still decide whether the
+  tools load. When off, bb leaves an inherited `CLAUDE_CODE_ARTIFACT` (shell,
+  environment, or `~/.claude/settings.json` `env`) untouched. A change restarts
+  the thread's Claude process before its next turn, preserving context.
 - Select the Fast service tier in the model picker or pass `--service-tier fast`
   to `bb thread spawn` for supported Opus models. Use
   `bb thread tell --service-tier fast` to change a thread on its next turn;
@@ -45,3 +55,8 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 
 Inspect the thread and provider state after a change; do not restart unrelated
 threads or change settings merely to answer a question.
+
+Automatic context breakdowns run in a separate, non-persisted fork of the saved
+conversation. Reporting never sends prompts or control requests to the live
+Claude session. A timeout, replacement, or thread stop closes the reporter;
+the live conversation does not wait for reporting or restart because of it.

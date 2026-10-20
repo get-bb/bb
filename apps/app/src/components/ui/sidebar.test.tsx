@@ -7,7 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { memo } from "react";
+import { memo, startTransition, useState } from "react";
 import { flushSync } from "react-dom";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -934,6 +934,71 @@ describe("mobile sidebar persistence", () => {
     fireEvent.click(trigger);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
+  });
+
+  it("slides closed in the commit that shows the destination of a pending navigation", async () => {
+    vi.useFakeTimers();
+    let isDestinationReady = false;
+    let resolveDestination = () => {};
+    const destinationReady = new Promise<void>((resolve) => {
+      resolveDestination = resolve;
+    });
+    function Destination() {
+      if (!isDestinationReady) throw destinationReady;
+      return <p>Destination</p>;
+    }
+    function NavigationHarness() {
+      const { closeMobileSidebar } = useSidebar();
+      const [route, setRoute] = useState<"origin" | "destination">("origin");
+      return (
+        <>
+          <Sidebar>
+            <button
+              type="button"
+              onClick={() => {
+                closeMobileSidebar();
+                startTransition(() => {
+                  setRoute("destination");
+                });
+              }}
+            >
+              Open destination
+            </button>
+          </Sidebar>
+          <SidebarInset>
+            <SidebarTrigger />
+            {route === "origin" ? <p>Origin</p> : <Destination />}
+          </SidebarInset>
+        </>
+      );
+    }
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <NavigationHarness />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+    fireEvent.click(screen.getByRole("button", { name: "Open destination" }));
+
+    expect(screen.getByText("Origin")).toBeTruthy();
+    expect(getShelfRevealTranslate()).not.toBe(SHELF_CLOSED_TRANSLATE);
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+
+    isDestinationReady = true;
+    await act(async () => {
+      resolveDestination();
+      await destinationReady;
+    });
+
+    expect(screen.getByText("Destination")).toBeTruthy();
+    expect(getShelfRevealTranslate()).toBe(SHELF_CLOSED_TRANSLATE);
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
   });
 
   it("traps Tab between the trigger and the open drawer", () => {

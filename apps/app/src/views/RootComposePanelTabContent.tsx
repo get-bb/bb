@@ -57,8 +57,10 @@ interface RootComposePanelTabContentProps {
   onActivateTab: (tabId: string) => void;
   onAutoFocusNewTabHandled: () => void;
   onAutoFocusTerminalHandled: () => void;
+  onCloseTerminal: (terminalId: string) => void;
   onOpenBrowser: (() => void) | null;
   onOpenPanelLink: MarkdownPreviewLinkHandler;
+  onRetryTerminalStart: (terminalId: string) => void;
   onSelectFileSearchResult: (selection: FileSearchSelection) => void;
   onSelectionAddToChat: (text: string) => void;
   onStartTerminal: () => void;
@@ -142,8 +144,10 @@ export function RootComposePanelTabContent({
   onActivateTab,
   onAutoFocusNewTabHandled,
   onAutoFocusTerminalHandled,
+  onCloseTerminal,
   onOpenBrowser,
   onOpenPanelLink,
+  onRetryTerminalStart,
   onSelectFileSearchResult,
   onSelectionAddToChat,
   onStartTerminal,
@@ -184,7 +188,9 @@ export function RootComposePanelTabContent({
           isPanelOpen={isPanelOpen}
           isPanelPersistedOpen={isPanelPersistedOpen}
           onAutoFocusHandled={onAutoFocusTerminalHandled}
+          onCloseStart={() => onCloseTerminal(tab.terminalId)}
           onOpenLink={onOpenPanelLink}
+          onRetryStart={() => onRetryTerminalStart(tab.terminalId)}
           onSelectionAddToChat={onSelectionAddToChat}
           target={terminalTarget}
           terminalId={tab.terminalId}

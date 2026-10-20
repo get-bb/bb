@@ -20,8 +20,10 @@ export const MARKETPLACE_PAGE_DESCRIPTION =
 
 export function validateMarketplaceSearch(search: Record<string, unknown>) {
   const category = parseMarketplaceCategory(search.category);
+  const collection = parseMarketplaceCategory(search.collection);
   return {
     ...(category === undefined ? {} : { category }),
+    ...(collection === undefined ? {} : { collection }),
     ...(isMarketplaceSort(search.sort) ? { sort: search.sort } : {}),
   };
 }

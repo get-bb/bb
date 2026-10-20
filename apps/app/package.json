@@ -13,7 +13,7 @@
     "storybook": "ladle serve",
     "storybook:build": "ladle build",
     "lint": "oxlint src vite.config.ts vite.dev.config.ts vite-bundle-stats.ts vite-font-preload.ts vite-split-prefetch.ts vite-forkable-plugin-paths.ts vite-shared-ui-seam.ts vite-react-compiler.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "tsrs --noEmit && tsrs --noEmit -p tsconfig.node.json",
     "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts",
     "bench": "cross-env BB_SIDEBAR_BENCH=1 PROMPTBOX_PERF=1 vitest run --config vitest.config.ts src/components/sidebar/sidebar.bench.test.tsx src/components/promptbox/editor/prompt-paste-performance.test.ts"
   },
@@ -26,6 +26,7 @@
     "@bb/fuzzy-match": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/mobile-bridge": "workspace:*",
+    "@bb/query-tags": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/shared-ui": "workspace:*",
@@ -137,8 +138,8 @@
     "remark-parse": "^11.0.0",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.3.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "unified": "^11.0.5",
     "vite": "^8.0.12"
   }

@@ -622,61 +622,50 @@ policy at the server boundary.
 
 ## The ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp`)
 
-**Kept experimental (2026-08-22).** Four members remain, each with an open
+**Kept experimental (2026-08-22).** Five members remain, each with an open
 question below. The kit grows with a consumer, not ahead of one.
 
 `experimental_acpProviderBridge` is the generic Agent Client Protocol bridge a
-plugin re-exports. It launches the agent named by
-`providerOptions.acpLaunchSpec` with a dialect (`generic`, `cursor`, `grok`)
-from bridge options. `experimental_probeAcpAgent` asks an installed agent for
-its `agentCapabilities`, and `experimental_acpAgentProbeSchema` validates the
-answer across a host RPC boundary. `experimental_acpLaunchSpecSchema` /
-`AcpLaunchSpec` is the launch spec the bridge parses.
+plugin re-exports, backed by `packages/provider-bridge-acp` (the official
+`@agentclientprotocol/sdk` transport, turns for agent-started work, slash
+commands and session options as bb thread state, elicitation forms as
+question cards, sign-in guidance from advertised auth methods). It launches
+the agent named by `providerOptions.acpLaunchSpec` with the dialect named by
+`acpDialect` in bridge options. `experimental_probeAcpAgent` asks an installed
+agent for its `agentCapabilities`, and `experimental_acpAgentProbeSchema`
+validates the answer across a host RPC boundary.
+`experimental_acpLaunchSpecSchema` / `AcpLaunchSpec` is the launch spec the
+bridge parses.
 
-Docs: `providers.md` (ACP agents). No doc covers the probe or launch-spec
-contracts.
+`experimental_registerAcpDialect` adds a dialect. A plugin calls it at module
+load in its `bb.host` artifact with an `AcpDialect` and names the id as
+`acpDialect` in its registration. Empty and built-in ids (`acp`, `cursor`,
+`grok`, `omp`, `opencode`) throw, re-registering an id replaces it, and an
+unregistered id resolves to the generic dialect. bb's own dialects resolve
+through the same registry (`resolveAcpDialect`).
+
+`@get-bb/plugin-sdk/provider-bridge/acp-next`, the subpath the kit was
+previewed under (2026-10-09), re-exports this kit unchanged and is
+deprecated. Each subpath is bundled with its own dialect registry, so a
+plugin must import every member from one of them. Remove it at the next
+major.
+
+Docs: `providers.md` (ACP agents), `provider-bridge-api-index.md`. No doc
+covers the probe or launch-spec contracts.
 
 **Audit before stabilizing.** Decide what `probeAcpAgent` owes a caller.
 Today it spawns the agent with a 10 s timeout, advertises the bridge's own
 client capabilities, and answers `-32601` to anything the agent asks. Settle
 whether the timeout, the client capabilities and the refusal are the caller's
 to choose. Decide whether `AcpDialect` is the right shape for a third-party
-agent before a dialect registry becomes public again. It has four optional
-hooks (`toolIdentity`, `classifyToolCall`, `handleClientRequest`,
-`maintenance`) and no versioning, so a fifth is a silent capability change for
-every dialect. Decide whether a dialect should be named by value in the
-provider registration instead of by id. Settle whether the bridge should be a
-factory rather than a module singleton before a host artifact needs two
-configured differently. For `acpLaunchSpecSchema`, the shape is stored in the
-ACP plugin's `customAgents` setting and in registrations' bridge options. A
-change therefore migrates stored agents; decide what a plugin is owed when the
-spec grows a field.
-
-## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
-
-**Experimental preview (2026-10-09).** Published beside the original kit so
-the two can be compared. The built-in "ACP providers (new adapter)" plugin
-(`plugins/provider-acp-next`, off by default and mutually exclusive with the
-original ACP plugin) re-exports its `experimental_acpProviderBridge`.
-
-The same members as the original kit, backed by
-`packages/provider-bridge-acp-next` (the official `@agentclientprotocol/sdk`
-transport, turns for agent-started work, slash commands and session options
-as bb thread state, elicitation forms as question cards, sign-in guidance
-from advertised auth methods), plus `experimental_registerAcpDialect`. A
-plugin calls it at module load in its `bb.host` artifact with an `AcpDialect`
-and names the id as `acpDialect` in its registration. Empty and built-in ids
-(`acp`, `cursor`, `grok`, `omp`, `opencode`) throw, re-registering an id
-replaces it, and an unregistered id resolves to the generic dialect. bb's own
-dialects resolve through the same registry (`resolveAcpDialect`).
-
-Docs: `providers.md`, `provider-bridge-api-index.md`.
-
-**Audit before stabilizing.** Decide when this kit replaces the original;
-the subpath is then removed and its members move to `provider-bridge/acp`.
-The original kit's open questions apply unchanged (what `probeAcpAgent` owes
-a caller, hook versioning for `AcpDialect`, naming a dialect by value, a
-bridge factory instead of a module-level registry).
+agent: its hooks are optional and unversioned, so a new one is a silent
+capability change for every dialect. Decide whether a dialect should be named
+by value in the provider registration instead of by id. Settle whether the
+bridge and its dialect registry should be a factory rather than a module
+singleton before a host artifact needs two configured differently. For
+`acpLaunchSpecSchema`, the shape is stored in the ACP plugin's `customAgents`
+setting and in registrations' bridge options. A change therefore migrates
+stored agents; decide what a plugin is owed when the spec grows a field.
 
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
@@ -1352,11 +1341,27 @@ the removed `experimental_Accessory` item field show no counts until they read
 `badge`. Item ids are the keys stored in
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, and items keep
 their identity while unchanged. `actions` covers
-`activate(id, { openInSplit })`, `goHome()`, `setVisible`, `setOrder` (unknown
+`activate(id, { target })`, `goHome({ target })`, `setVisible`,
+`setOrder` (unknown
 ids are dropped and omitted ids keep their relative order at the end),
 `openCustomize()` (bb's editor in a popover beside the navigation, after open
 menus close, returning focus to the opener), `openDetails`, and
-`disablePlugin`. Calls after the caller unmounts do nothing; outside the
+`disablePlugin`. `target` is `current`, `split`, or `tab` and the host handles
+the navigation: `split` opens or focuses a pane, replacing the focused pane
+at the pane limit. It opens a browser tab instead when the destination cannot
+be a pane, splitting is disabled, the viewport is compact, or no split layout
+exists. `tab` always opens a browser tab. Both require a synchronous user
+gesture. Home accepts `current` or `tab`, with `tab` opening the new thread
+screen. `goHome()` without options navigates in place. The bundled Navigation
+plugin requests `split` on Cmd/Ctrl-click; the host owns the fallback.
+Search remains a command at every target. Native shells
+retain their window-open policy.
+Existing plugin bundles using `activate(id, { openInSplit })` map `true`
+to `target: "split"` and `false` to `target: "current"`, using the same
+fallback rules. The SDK types only accept `{ target }`, so rebuilt plugins
+must migrate. An explicit `target` takes precedence.
+
+Calls after the caller unmounts do nothing; outside the
 sidebar the hook returns no items and inert actions.
 `experimental_useSidebarNavigationSplit(id, options?)` mirrors
 `experimental_useSidebarThreadSplit` and accepts `activation: "distance"` and
@@ -1371,8 +1376,9 @@ Appearance → Navigation picker reads the same registrations.
 
 1. **Semantic items.** Confirm the action and icon variants cover current
    navigation without exposing routes or host elements.
-2. **Home.** Confirm `isHomeActive` and `goHome()` are the right Home contract
-   for rail providers, including after Settings closes the compact drawer.
+2. **Home.** Confirm `isHomeActive` and `goHome({ target })` are the
+   right Home contract for rail providers, including after Settings closes the
+   compact drawer.
 3. **Order semantics.** Confirm `setOrder`'s partial-order rule works for
    drag-and-drop providers.
 4. **Accessibility.** Validate labels, badges in accessible names,
@@ -2875,7 +2881,12 @@ later project-checkout/worktree reuse.
 `bb.sdk.hosts.experimental_create`, `experimental_getEnrollmentCommand`,
 `experimental_listProviders`, `experimental_reconnect`, `experimental_suspend`,
 `experimental_resume` and `experimental_retryCleanup` have no unprefixed
-aliases.
+aliases. `hosts.delete({ hostId, force: true })` is the path core's machine
+removal dialog and `bb machine remove --force` use to finish a persistent
+machine's removal whose environment cleanup failed while the machine is
+disconnected; it skips on-machine environment cleanup, emits
+`experimental_environment.removed` for each environment, and still runs the
+provider's `remove`.
 `experimental_getEnrollmentCommand` serves the in-memory manual setup command
 and expiry only while that host is creating. Completion, removal, expiry and
 server restart drop the command, which never enters persisted progress or
@@ -3174,3 +3185,51 @@ classification should cover more network commands (for example `git lfs`), and
 whether work that escapes an admitted operation's async context should regain
 admission. Verify that every caller holds permits until its last admitted child
 exits, including pipelines.
+
+## Navigation-panel route sidebar
+
+`PluginNavPanelRegistration.experimental_sidebar` is an optional component
+receiving `PluginNavPanelProps`. `AppLayout` resolves one route sidebar per
+location with `resolveRouteSidebar`: Settings, Plugins and Skills are core
+entries, and a live navigation panel with `experimental_sidebar` is a plugin
+entry. `AppLayoutSidebar` mounts whichever entry resolves in the alternate
+sidebar body, holds the outgoing entry while a compact drawer closes, and
+retains the native rail and mounted thread-list state. Every entry renders in
+`SectionSidebar`, which owns the top chrome and history controls, the "Back to
+app" row and title in the top-list layout, compact-drawer dismissal for SDK and
+delegated-link navigation, and the resize handle. Panel sidebar routes are
+section routes in `useAppSettingsRouteMemory`, so Back to app and the `app.back`
+command return to the last core app route, as from Plugins and Skills. A crash
+shows the plugin crash notice inside the section until the subPath or plugin
+generation changes. Registration and route switching change no setting, thread,
+draft or execution state.
+
+Docs: Plugin Guide Full-page panels surface. Stabilization requires exact route,
+back/forward, disable/reload/crash, compact focus and single-sidebar replay with
+real plugin CSS in both navigation layouts. The API is generic; no plugin-id
+special case exists in core. CLI navigation uses the existing panel URL; this
+field introduces no separate backend or headless side effect.
+
+## Plugin contract live reads and writes
+
+- `experimental_useRpcQuery`, `experimental_useRpcKeyedQuery`, `experimental_useRpcMutation`, and `experimental_useRpcRefresh` use the core `@bb/query-tags` cache mechanism per client. Query state keeps previous data during refresh errors; consumers show an inline Retry using `refetch`. Successful reads clear the error. Keyed calls accept `{ keys }` and return a record containing every requested key; consumers share one observer per plugin/method and requests batch up to 200 keys. A pure `select` projection retains unchanged JSON subobjects across key and fetch-state changes, so default rows do not republish unchanged notification levels.
+- `ExperimentalRpcMutationState.pendingInputs` contains every in-flight input for that hook instance until the server acknowledges its write. Background rereads are excluded. `isPending` remains true while any input is pending. Core `useTaggedMutation` exposes the same state from TanStack's mutation cache. Stabilization requires hook-instance isolation, concurrent targets, failure cleanup, and pending feedback surviving row moves between groups.
+- `ExperimentalRpcMutationOptions.optimistic(input, cache)` predicts loaded cached values before the write. `cache.update(method, input, updater)` targets a plain read, and `cache.updateKey(method, key, updater)` targets one keyed row. `cache` is an `ExperimentalRpcOptimisticCache`. Pure updaters receive the currently visible value and return its prediction; absent reads/rows are skipped. Predictions are shared by every reader on that client. The core route mutation accepts the same core optimistic descriptors and uses the same `@bb/query-tags` implementation. Ui-preferences already updates its shared Jotai atoms optimistically, which remains unchanged.
+- Predictions remain over incoming reads until confirmed matched reads arrive, independently of mutation pending state. A rejected write rolls back its layer and surfaces the mutation error. An accepted write whose refresh fails keeps its prediction with the read error and Retry; a successful refresh replaces it. Later predictions and confirmed values are protected from older mutation settles and rollbacks. Inverted completion retains the later confirmed value until a subsequent fresh read can replace it. Keyed refresh receipts release only the rows actually read. Stabilization includes overlapping writes, external invalidation, refresh failures, plain/keyed targets and completion without stale flicker.
+- `defineRpcContract` accepts the core `ContractTagDeclarations`: `tags(input, output)`, `keyTags(key, value)`, and `invalidates(input, output)` receive validated values. Tags are in the RPC envelope; successful writes broadcast their invalidated tags and return `invalidated`. Tagged mutations resolve at write acknowledgement while matching active reads refresh in the background.
+- `bb.rpc.experimental_invalidate(tags)` requires nonempty tags; `experimental_invalidateAll()` refreshes all reads of that plugin, including untagged reads. Load, reload, disable and reconnect refresh plugin reads through the same cache path. Plugin changed messages are scoped to `{ kind: "plugin", pluginId }` subscribers; reconnect batches subscriptions and unknown targets are ignored.
+- Core uses the same tagged reads, invalidation and mutation implementation for UI preferences. Push-notifications thread levels are the first plugin caller; delivery retains `useRealtime`. Stabilization requires additional plugin callers and validation of scoped tags, failures, reconnects, batching and sidebar observer counts. Watching and cache seeding remain outside this API.
+
+## Typed RPC refusals (`experimental_PluginRpcRefusal`)
+
+- Handlers throw `new experimental_PluginRpcRefusal({ code, message, issues? })` from `@get-bb/plugin-sdk`. Codes map to HTTP statuses: `forbidden` 403, `not_found` 404, `conflict` 409, `invalid` 422. Issues use `PluginRpcValidationIssue[]`. The existing `{ ok: false, error: { code, message, issues? } }` envelope carries the refusal to app hooks, SDK calls and CLI errors.
+- Refusals count as invocations, but do not increment handler errors or change plugin status detail. Ordinary throws remain `handler_error` / 500. Refused writes publish no invalidations and reject so shared optimistic updates roll back.
+- Core caller: bb-account's connect-only credential RPC handlers use the same runtime, HTTP route and caller contract as third-party plugins. The fake host and `renderSlot` accept the same thrown refusal.
+- Stabilize after validating caller-gated refusals and optional issue propagation across HTTP, app queries/mutations, SDK watches and CLI, including rollback and crash accounting. Watching is added by the next stack PR; its `onError` receives the SDK error carrying the refusal code.
+
+## Plugin RPC contract and client-state guarantees
+
+- All three live hooks use `{ contract, method, ... }` with contract/method inference and no explicit generic arguments. Plain reads add `input`, keyed reads add `keys` and optional `select`, and mutations add optional `optimistic`. `experimental_useRpcKeyedQuery({ contract, method, keys, select? })` infers rows and selection results from the contract value. `ExperimentalRpcKeyedMethod` restricts methods to schemas accepting only `{ keys: string[] }` plus optional/defaulted fields and returning string-indexed records; `ExperimentalRpcKeyedValue` derives their row values. `defineRpcContract` rejects `keyTags` unless parsed input has string keys and output is a string-indexed record. Push-notifications is the first caller. Stabilization includes transformed schemas, invalid shapes and projected selections.
+- `experimental_PluginRpcCallError` is exported from the SDK root and app entry and is the error of live read/mutation hooks and every rejected `mutate`. It always has `code: PluginRpcErrorCode`, `message`, optional validated issues and optional HTTP status. `transport_error`, `invalid_response` and `unknown_error` cover client failures. The union may grow: consumers need a fallback; unknown server codes map to `unknown_error` and remain in `serverCode`. CLI output preserves newer codes without assuming an exhaustive list. Core callers use the same HTTP, SDK and command error boundaries; bb-account exercises expected refusals. Stabilize after version-skew, transport, malformed-response and refusal checks.
+- `mutate`, `isPending` and `pendingInputs` finish at write acknowledgement. Core `runRouteMutation` has the same semantics through `runTaggedMutation`; ui-preferences saves the acknowledged revision independently of refresh completion. Cache predictions survive background refreshes and failed rereads until fresh confirmed data arrives. Write rejection rolls back. Owner tests cover acknowledgement, held refreshes, reconciliation and concurrent predictions.
+- BB read state means: `data` is the latest successful value plus predictions, retained during refresh errors (plain reads start undefined; keyed selections receive loaded rows, initially an empty record). `isLoading` means an enabled read is fetching never-loaded requested data. `isFetching` includes background attempts; keyed views share method activity. `error` records the completed read failure and clears on success; retrying a first load clears its old error while loading. `refetch` forces a read and waits through retries; failure remains in `error` and its promise resolves. Production freshness is two seconds without polling. Focus does not refetch while BB's realtime connection is healthy; while disconnected, focus/browser-online events recheck stale active reads. BB reconnect invalidates all plugin reads regardless of freshness. Page hiding cancels active attempts and resume restarts cancelled reads. Invalidations refresh immediately. Tags remain plain strings. Network/abort failures retry twice with 250 ms delay, HTTP failures never retry, and writes never retry automatically. No query-library options are exposed.

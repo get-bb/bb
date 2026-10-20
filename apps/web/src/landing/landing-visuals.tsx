@@ -72,14 +72,19 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            <DownloadLink
-              placement={placement}
-              platform="windows"
-              className="install-note-link"
-            >
-              {DESKTOP_DOWNLOADS.windows.label}
-            </DownloadLink>
-            , Intel Macs &amp; remote machines
+            {platform !== "windows" && (
+              <>
+                <DownloadLink
+                  placement={placement}
+                  platform="windows"
+                  className="install-note-link"
+                >
+                  {DESKTOP_DOWNLOADS.windows.label}
+                </DownloadLink>
+                ,{" "}
+              </>
+            )}
+            Intel Macs &amp; remote machines
           </span>
         </span>
       </div>

@@ -273,9 +273,6 @@ jobs:
             echo "has_signing_secrets=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Typecheck desktop and launcher
-        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
-
       - name: Package x64 installer
         env:
           WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}

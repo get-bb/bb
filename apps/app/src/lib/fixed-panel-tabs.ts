@@ -63,7 +63,14 @@ type FixedPanelTerminalIdSetter = (
   terminalId: string,
   target?: TerminalCreateTarget,
 ) => void;
-type FixedPanelTerminalIdRemover = (terminalId: string) => void;
+type FixedPanelTerminalIdRemover = (
+  terminalId: string,
+) => RemovedTerminalTab | null;
+
+export interface RemovedTerminalTab {
+  index: number;
+  tab: FixedPanelTab;
+}
 
 function touchFixedPanelTabsState(
   state: FixedPanelTabsState,
@@ -146,6 +153,47 @@ export function removeFixedRightTerminalTabInState(
     state,
     createTerminalFixedPanelTab({ terminalId }).id,
   );
+}
+
+export function restoreFixedRightTerminalTabInState(
+  state: FixedPanelTabsState,
+  removed: RemovedTerminalTab,
+): FixedPanelTabsState {
+  if (state.secondary.tabs.some((tab) => tab.id === removed.tab.id)) {
+    return state;
+  }
+  const tabs = [...state.secondary.tabs];
+  tabs.splice(Math.min(removed.index, tabs.length), 0, removed.tab);
+  return setSecondaryPanelTabsInState({
+    state,
+    tabs,
+    activeTabId: state.secondary.activeTabId ?? removed.tab.id,
+    isOpen: state.secondary.isOpen || state.secondary.tabs.length === 0,
+  });
+}
+
+export function replaceFixedRightTerminalTabInState(
+  state: FixedPanelTabsState,
+  terminalId: string,
+  nextTerminalId: string,
+  target?: TerminalCreateTarget,
+): FixedPanelTabsState {
+  const replacedTabId = createTerminalFixedPanelTab({ terminalId }).id;
+  const nextTab = createTerminalFixedPanelTab({
+    terminalId: nextTerminalId,
+    target,
+  });
+  const tabs = state.secondary.tabs.some((tab) => tab.id === replacedTabId)
+    ? state.secondary.tabs.map((tab) =>
+        tab.id === replacedTabId ? nextTab : tab,
+      )
+    : upsertTerminalTab(state.secondary.tabs, nextTerminalId, target);
+  return setSecondaryPanelTabsInState({
+    state,
+    tabs,
+    activeTabId: nextTab.id,
+    isOpen: true,
+  });
 }
 
 function ensureSecondaryPanelTab(
@@ -495,13 +543,21 @@ export function useRemoveFixedRightTerminalTab(
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (terminalId: string) => {
+      const result: { removed: RemovedTerminalTab | null } = { removed: null };
       let isPanelEmpty = false;
       updateState((current) => {
+        const tabId = createTerminalFixedPanelTab({ terminalId }).id;
+        const index = current.secondary.tabs.findIndex(
+          (tab) => tab.id === tabId,
+        );
+        const tab = current.secondary.tabs[index];
+        result.removed = tab === undefined ? null : { index, tab };
         const next = removeFixedRightTerminalTabInState(current, terminalId);
         isPanelEmpty = next.secondary.tabs.length === 0;
         return next;
       });
       if (isPanelEmpty) onCloseLastTab?.();
+      return result.removed;
     },
     [onCloseLastTab, updateState],
   );

@@ -1,4 +1,9 @@
 import type {
+  ExperimentalRpcKeyedMethod,
+  ExperimentalRpcKeyedValue,
+} from "./rpc-contract.js";
+import type { experimental_PluginRpcCallError } from "./rpc-contract.js";
+import type {
   ComponentPropsWithRef,
   ComponentPropsWithoutRef,
   ComponentType,
@@ -34,6 +39,8 @@ import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
   PluginRpcContract,
+  PluginRpcMethodContract,
+  StandardSchemaV1InferInput,
   PluginRpcResult,
 } from "./rpc-contract.js";
 
@@ -255,9 +262,15 @@ export interface ExperimentalSidebarNavigationItem {
   badge: ExperimentalBadge | null;
 }
 
+/**
+ * Where the host opens a sidebar navigation destination: `current` in the
+ * current view, `split` in a pane with browser-tab fallback, `tab` in a new browser tab.
+ */
+export type ExperimentalSidebarNavigationTarget = "current" | "split" | "tab";
+
 /** How the host should activate a sidebar navigation item. */
 export interface ExperimentalSidebarNavigationActivationOptions {
-  openInSplit: boolean;
+  target: ExperimentalSidebarNavigationTarget;
 }
 
 /**
@@ -267,10 +280,16 @@ export interface ExperimentalSidebarNavigationActivationOptions {
  */
 export interface ExperimentalSidebarNavigationActions {
   /**
-   * Run the item's host behavior. Plugin panels close the mobile sidebar
-   * drawer; Plugins and Skills swap the list beside the navigation.
-   * `openInSplit` is ignored where splits are unavailable, and disabled or
-   * loading items do nothing.
+   * Run the item's host behavior at `target`. Plugin panels close the
+   * mobile sidebar drawer; Plugins and Skills swap the list beside the
+   * navigation. `split` opens a pane, or focuses the destination's existing
+   * pane. At the pane limit it replaces the focused pane. If the destination
+   * cannot be a pane, splitting is disabled, the viewport is compact, or no
+   * split layout exists, it opens a browser tab instead. Callers do not need
+   * to check availability. Search remains a
+   * command at every target. Disabled or loading items do nothing. `split` and `tab`
+   * must run synchronously from a user gesture; native shells handle the
+   * new-window request using their existing policy.
    */
   activate(
     itemId: string,
@@ -279,9 +298,13 @@ export interface ExperimentalSidebarNavigationActions {
   /**
    * Return to the thread list and the last thread or new thread screen the
    * user had open before visiting Settings, Plugins, Skills, or a plugin
-   * panel.
+   * panel. Target `tab` instead opens the new thread screen in a browser
+   * tab, with the same user-gesture requirement as `activate`. Omitting
+   * `options` navigates in place.
    */
-  goHome(): void;
+  goHome(options?: {
+    target: Exclude<ExperimentalSidebarNavigationTarget, "split">;
+  }): void;
   /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
   setVisible(itemId: string, isVisible: boolean): void;
   /**
@@ -909,6 +932,17 @@ export interface PluginNavPanelRegistration {
   /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
   path: string;
   component: ComponentType<PluginNavPanelProps>;
+  /**
+   * Sidebar shown instead of the thread list while this panel's route is
+   * active, in the same section sidebar as Settings, Plugins and Skills. BB
+   * keeps the navigation rail, top chrome and resize handle; in the top-list
+   * layout it adds a "Back to app" row and the panel title, and Back to app
+   * (Escape) returns to the last app page. Receives the page's current
+   * subPath. Other routes keep their usual sidebar. A crash shows a crash
+   * notice until the subPath or plugin generation changes.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sidebar?: ComponentType<PluginNavPanelProps>;
   /**
    * Ordered, non-closable tabs shown in this page's host-owned right panel.
    * BB owns selection and persistence and always includes its native Browser
@@ -2057,8 +2091,8 @@ export interface PluginThreadListRegistration {
  *
  * - `rail`: a fixed-width column on the sidebar's left edge that stays when
  *   the sidebar collapses. bb draws Settings at the bottom of the column;
- *   draw Home with `actions.goHome()`. On macOS, wide windows frame the
- *   sidebar and page below a title bar.
+ *   draw Home with `actions.goHome({ target })`. On macOS, wide windows
+ *   frame the sidebar and page below a title bar.
  * - `list` (the default): the area above the thread list. Settings is a
  *   footer action, the Settings, Plugins, and Skills lists start with a Back
  *   to app row, and collapsing hides the whole sidebar.
@@ -2101,7 +2135,7 @@ export interface PluginFileOpenerRegistration {
   id: string;
   /** Label in the "Open with" menu (e.g. "Notes editor"). */
   title: string;
-  /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
+  /** Lowercase alphanumeric extensions without the dot; single underscores or hyphens may separate segments. */
   extensions: readonly string[];
   component: ComponentType<PluginFileOpenerProps>;
 }
@@ -3912,11 +3946,152 @@ export interface BbNavigate {
 // ---------------------------------------------------------------------------
 
 /**
+ * BB live reads are fresh for two seconds, with no polling when freshness expires.
+ * Focus does not refetch while BB's realtime connection is healthy. While
+ * disconnected, focus/browser-online events recheck stale active reads; BB
+ * reconnect invalidates all plugin reads regardless of freshness. Page hiding
+ * cancels active attempts; resuming restarts those cancelled reads.
+ * Invalidations refresh immediately. Network/abort failures retry twice at
+ * 250 ms; HTTP failures, including refusals, do not retry. Writes never retry
+ * automatically.
+ */
+export interface ExperimentalRpcQueryState<T> {
+  /** Latest successful value plus shared predictions; retained during refresh and refresh errors. Plain reads are undefined before first success; keyed reads expose loaded rows (initially an empty record) through select. */
+  data: T | undefined;
+  /** Last completed read failure, or null. Success clears it; retrying a first load clears the old error while loading. Refresh errors preserve data. */
+  error: experimental_PluginRpcCallError | null;
+  /** An enabled read is fetching data it has never loaded. For keyed reads this includes missing requested rows; empty/disabled keyed reads are not loading. */
+  isLoading: boolean;
+  /** A read attempt is active, including background refreshes. Keyed consumers share this activity for their method; offline-paused reads are not fetching. */
+  isFetching: boolean;
+  /** Force a read regardless of freshness and wait for its attempt/retries. Keyed reads refresh the method's subscribed keys. Failures update error and retain data; this promise resolves rather than rejecting. */
+  refetch(): Promise<void>;
+}
+
+export interface ExperimentalRpcKeyedQueryState<
+  T,
+  Selection = Record<string, T>,
+> extends ExperimentalRpcQueryState<Selection> {}
+
+export interface ExperimentalRpcQueryOptions<
+  Contract extends PluginRpcContract,
+  Method extends keyof Contract & string,
+> {
+  contract: Contract;
+  pluginId?: string;
+  method: Method;
+  input: StandardSchemaV1InferInput<Contract[Method]["input"]>;
+  enabled?: boolean;
+}
+
+/**
+ * Predict loaded reads with pure, synchronous update callbacks. Callbacks passed
+ * to `update` and `updateKey` may run many times as pending predictions replay
+ * over a new confirmed base or another prediction rolls back. Return a new
+ * value without mutating `current` or captured inputs, performing side effects,
+ * or generating IDs, timestamps, or random values. Generate any such values
+ * once before calling `mutate` and include them in the mutation input.
+ */
+export interface ExperimentalRpcOptimisticCache<
+  Contract extends PluginRpcContract,
+> {
+  update<Method extends keyof Contract & string>(
+    method: Method,
+    input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+    update: (
+      current: PluginRpcResult<Contract[Method]>,
+    ) => PluginRpcResult<Contract[Method]>,
+  ): void;
+  updateKey<Method extends ExperimentalRpcKeyedMethod<Contract>>(
+    method: Method,
+    key: string,
+    update: (
+      current: PluginRpcResult<Contract[Method]> extends Record<
+        string,
+        infer Value
+      >
+        ? Value
+        : never,
+    ) => PluginRpcResult<Contract[Method]> extends Record<string, infer Value>
+      ? Value
+      : never,
+  ): void;
+}
+
+export interface ExperimentalRpcMutationOptions<
+  Contract extends PluginRpcContract,
+  Method extends keyof Contract & string,
+> {
+  contract: Contract;
+  pluginId?: string;
+  method: Method;
+  /** Predict loaded reads synchronously; shared predictions survive accepted writes whose refresh fails. */
+  optimistic?(
+    input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+    cache: ExperimentalRpcOptimisticCache<Contract>,
+  ): void;
+}
+
+/**
+ * One mutation hook's state. `mutate` calls the RPC, invalidates the
+ * response's `invalidated` tags on this client immediately, and resolves when
+ * the server acknowledges the write. Matched reads refresh in the background. `error` holds the last failure
+ * until the next `mutate` or `reset`.
+ */
+export interface ExperimentalRpcMutationState<
+  Method extends PluginRpcMethodContract,
+> {
+  /** Resolves at write acknowledgement; rejects with experimental_PluginRpcCallError. Refreshes continue in the background without releasing predictions before confirmed reads. */
+  mutate(...args: PluginRpcCallArgs<Method>): Promise<PluginRpcResult<Method>>;
+  isPending: boolean;
+  /** Inputs of every pending call made by this hook, until server acknowledgement. Refreshes are excluded; other hook instances are excluded. */
+  pendingInputs: readonly StandardSchemaV1InferInput<Method["input"]>[];
+  error: experimental_PluginRpcCallError | null;
+  reset(): void;
+}
+
+/**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  experimental_PluginRpcCallError: typeof experimental_PluginRpcCallError;
+  experimental_useRpcRefresh(): { refresh(): void; isRefreshing: boolean };
+  /** Read tagged plugin data through BB's shared query cache and realtime lifecycle. */
+  experimental_useRpcQuery<
+    Contract extends PluginRpcContract,
+    Method extends keyof Contract & string,
+  >(
+    options: ExperimentalRpcQueryOptions<Contract, Method>,
+  ): ExperimentalRpcQueryState<PluginRpcResult<Contract[Method]>>;
+  /** Call a mutating RPC through BB's query client; pending until the server acknowledges the write; matched reads refresh in the background. */
+  experimental_useRpcMutation<
+    Contract extends PluginRpcContract,
+    Method extends keyof Contract & string,
+  >(
+    options: ExperimentalRpcMutationOptions<Contract, Method>,
+  ): ExperimentalRpcMutationState<Contract[Method]>;
+  /** Cache each key independently and batch missing or invalidated keys in the same render. */
+  experimental_useRpcKeyedQuery<
+    Contract extends PluginRpcContract,
+    Method extends ExperimentalRpcKeyedMethod<Contract>,
+    Selection = Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
+  >(options: {
+    contract: Contract;
+    pluginId?: string;
+    method: Method;
+    keys: readonly string[];
+    enabled?: boolean;
+    /** Pure projection; the selection type is inferred from its return value. */
+    select?(
+      data: Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
+    ): Selection;
+  }): ExperimentalRpcKeyedQueryState<
+    ExperimentalRpcKeyedValue<Contract[Method]>,
+    Selection
+  >;
+
   experimental_Icon: ComponentType<ExperimentalIconProps>;
   /**
    * Render provider slot override, then its logo, then its glyph, then fallback.

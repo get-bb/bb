@@ -202,6 +202,8 @@ configuration.
 
 ## General settings
 
+`idleProviderSessionTimeoutMinutes` (default `30`) sets how long an agent can sit idle after its last turn before every machine stops its provider process to free memory. Allowed values are `0` (ASAP), `5`, `10`, `30`, and `60`. Use Settings → Providers → Configuration → Release idle agent sessions, `bb settings general idleProviderSessionTimeoutMinutes 5`, or SDK `system.updateGeneralSettings({ ...config.generalSettings, idleProviderSessionTimeoutMinutes: 5 })`. Read `config` with `system.config()` or inspect the value with `bb settings show`. Changes apply live and on reconnect. Machines check every five minutes, so release can take up to five minutes beyond the timeout. Only restorable sessions without active, pending, or background work are eligible; threads keep their history and resume on the next message. Manual `bb thread stop` still works. This is not a memory or loaded-process limit.
+
 Server-wide preferences, stored in the bb database and applied live to every
 client. Set them in Settings, with `bb settings general <key> <value>`, or with
 SDK `system.updateGeneralSettings`, which takes the full settings object (read
@@ -509,12 +511,9 @@ code execution and only works with a co-located daemon. The `customAcpAgents`
 key in `config.json` is no longer read. Known agents, OpenCode launch settings,
 and OpenCode Go usage are covered by the `acp-provider` skill.
 
-The rebuilt adapter ships as the builtin plugin "ACP providers [New adapter]"
-(`bb--provider-acp-next`), off by default. It registers the same provider ids,
-and only one ACP plugin runs at a time: enabling it disables "ACP providers",
-disabling it re-enables that plugin, and `customAgents` follows the switch. It
-adds the official ACP registry (`bb acp registry`, `bb acp add <agent-id>`,
-`bb acp remove <agent-id>`); an added agent is a `customAgents` entry running
+Agents from the official ACP registry can be added in the same settings
+section or with `bb acp registry`, `bb acp add <agent-id>`, and
+`bb acp remove <agent-id>`. An added agent is a `customAgents` entry running
 the registry's `npx` or `uvx` package on the thread's host.
 
 ## Custom Models
@@ -880,11 +879,12 @@ skills.
 
 ### Claude Code provider
 
-| Setting            | Default | Effect                                                                                                                                                                                                                            |
-| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                           |
-| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off). |
-| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                       |
+| Setting            | Default | Effect                                                                                                                                                                                                                                                                |
+| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
+| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
+| `artifactsEnabled` | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
+| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
 
 Set them with `bb plugin config provider-claude-code set <key> <value>`. A
 change restarts the thread's Claude process before its next turn, keeping the

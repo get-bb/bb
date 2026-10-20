@@ -28,6 +28,8 @@ function describeResolved(resolved: ResolvedSidebarNavigation): string {
         : `${resolved.slot.title} over ${resolved.fallback.title}`;
     case "loading":
       return `loading:${resolved.placement}`;
+    case "failed":
+      return "failed";
     case "missing":
       return "missing";
   }
@@ -136,10 +138,20 @@ describe("resolveSidebarNavigation", () => {
       lastResolved: { key: "navigation/rail", placement: "rail" },
       expected: "missing",
     },
+    {
+      name: "reports a failed load instead of no navigation when a plugin frontend failed to load",
+      preference: "__automatic__",
+      slots: [],
+      settled: true,
+      loadFailed: true,
+      lastResolved: { key: "navigation/rail", placement: "rail" },
+      expected: "failed",
+    },
   ] as const)("$name", ({ expected, ...input }) => {
     expect(
       describeResolved(
         resolveSidebarNavigation({
+          loadFailed: false,
           ...input,
           builtinPluginIds: new Set(["navigation"]),
         }),

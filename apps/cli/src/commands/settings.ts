@@ -246,16 +246,18 @@ function updateGeneralSetting(
     );
   }
 
+  let message: string | null = null;
   for (const candidate of generalSettingValueCandidates(value)) {
     const updated = appSettingsSchema.strip().safeParse({
       ...settings,
       [settingKey.data]: candidate,
     });
     if (updated.success) return updated.data;
+    message ??= updated.error.issues[0]?.message ?? null;
   }
 
   throw new Error(
-    `Invalid value '${value}' for '${settingKey.data}'. Booleans take true, false, on, or off, null clears a nullable setting, and structured values take JSON.`,
+    `Invalid value '${value}' for '${settingKey.data}'${message === null ? "" : `: ${message}`}. Booleans take true, false, on, or off, null clears a nullable setting, and structured values take JSON.`,
   );
 }
 

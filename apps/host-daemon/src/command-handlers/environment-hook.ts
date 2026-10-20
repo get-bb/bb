@@ -2,6 +2,7 @@ import type {
   CommandDispatchOptions,
   CommandOf,
 } from "../command-dispatch-support.js";
+import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 import {
   LifecycleScriptTerminationUnverifiedError,
   runSetupScript,
@@ -42,7 +43,10 @@ export async function runEnvironmentHook(
   const active = controllers(options);
   const existing = active.get(command.operationId);
   if (existing === "cancelled")
-    throw new Error("Environment hook cancelled before dispatch");
+    throw new ExpectedCommandDispatchError(
+      "command_failed",
+      "Environment hook cancelled before dispatch",
+    );
   if (existing !== undefined) {
     if (existing.path !== command.path || existing.kind !== command.kind)
       throw new Error("Environment hook identity mismatch");

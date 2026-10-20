@@ -52,16 +52,7 @@ export const clientNotificationSchema = z
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;
 
-export const THREAD_NOTIFICATIONS_CHANNEL = "threadNotifications";
 export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
-export const threadNotificationsUpdateSchema = z
-  .object({
-    threads: z.record(z.string(), threadNotificationInputsSchema),
-  })
-  .strict();
-export type ThreadNotificationsUpdate = z.infer<
-  typeof threadNotificationsUpdateSchema
->;
 
 const emptyInputSchema = z.object({}).strict();
 export const listPushSubscriptionsOutputSchema = z
@@ -100,7 +91,20 @@ export const pushNotificationsRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  "threadNotifications.keyed": {
+    input: z
+      .object({
+        keys: z
+          .array(z.string().min(1))
+          .min(1)
+          .max(THREAD_NOTIFICATIONS_LIST_MAX_IDS),
+      })
+      .strict(),
+    output: z.record(z.string(), threadNotificationInputsSchema),
+    keyTags: (key) => [`thread:${key}`],
+  },
   "threadNotifications.set": {
+    invalidates: ({ threadId }) => [`thread:${threadId}`],
     input: z
       .object({
         threadId: z.string().min(1),

@@ -15,7 +15,7 @@ before your bundle loads:
 
 - `rail` — a fixed-width column on the sidebar's left edge that stays when
   the sidebar collapses. bb draws Settings at the bottom of the column; draw
-  Home with `actions.goHome()` and `isHomeActive`.
+  Home with `actions.goHome({ target })` and `isHomeActive`.
 - `list` (the default) — the area above the thread list. bb adds Settings to
   the footer and a Back to app row to the Settings, Plugins, and Skills
   lists, and a collapse hides the whole sidebar. Draw a divider below your
@@ -52,13 +52,15 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
   return (
     <button
       type="button"
-      aria-label={item.badge ? `${item.label}, ${item.badge.label}` : item.label}
+      aria-label={
+        item.badge ? `${item.label}, ${item.badge.label}` : item.label
+      }
       aria-current={item.id === activeItemId ? "page" : undefined}
       disabled={item.isDisabled || item.isLoading}
       {...split.splitProps}
       onClick={(event) =>
         actions.activate(item.id, {
-          openInSplit: event.metaKey || event.ctrlKey,
+          target: event.metaKey || event.ctrlKey ? "split" : "current",
         })
       }
     >
@@ -68,14 +70,21 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
 }
 ```
 
-`actions` runs host behavior: `activate(id, { openInSplit })`, `goHome()`,
-`setVisible(id, isVisible)`, `setOrder(ids)`, `openCustomize()`,
-`openDetails(id)`, and `disablePlugin(id)`. Visibility and order persist to
-`sidebar.visiblePluginPanels` and `sidebar.pluginPanelOrder`, so they carry
-over when the user switches providers. `openCustomize()` opens bb's editor in
-a popover beside your navigation once any open menu closes, and returns focus
-to the control that opened it. Actions called after your component unmounts
-do nothing.
+`actions` runs host behavior: `activate(id, { target })`,
+`goHome({ target })`, `setVisible(id, isVisible)`, `setOrder(ids)`,
+`openCustomize()`, `openDetails(id)`, and `disablePlugin(id)`. Visibility
+and order persist to `sidebar.visiblePluginPanels` and
+`sidebar.pluginPanelOrder`, so they carry over when the user switches
+providers. `openCustomize()` opens bb's editor in a popover beside your
+navigation once any open menu closes, and returns focus to the control that
+opened it. `target` is `current`, `split`, or `tab`. `split` opens or focuses a pane, replacing the focused
+pane at the pane limit. It opens a browser tab instead when the destination
+cannot be a pane, splitting is disabled, the viewport is compact, or no split
+layout exists. `tab` always opens a browser tab. Call `split` and `tab`
+synchronously from the click; the host handles fallback without an
+availability check. `goHome` accepts `current` or `tab`, where `tab` opens the
+new thread screen, and `goHome()` without options navigates in place.
+Actions called after your component unmounts do nothing.
 
 `experimental_useSidebarNavigationSplit(id, options?)` works like
 `experimental_useSidebarThreadSplit`: spread `splitProps` onto the item, gate
@@ -119,3 +128,8 @@ To turn your navigation on when your plugin is installed, set
 `sidebar.navigationProvider` to `<plugin-id>/<slot-id>` from `bb.onInstall`
 (see backend-ui-lifecycle.md); later choices in Settings → Appearance stick.
 Users do the same with `bb settings ui set`.
+
+Existing plugin bundles using `activate(id, { openInSplit })` map `true`
+to `target: "split"` and `false` to `target: "current"`, using the same
+fallback rules. The SDK types only accept `{ target }`, so rebuilt plugins
+must migrate. An explicit `target` takes precedence.

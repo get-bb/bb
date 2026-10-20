@@ -168,10 +168,9 @@ export interface NotificationPreferences {
 export function createNotificationPreferences(args: {
   bb: BbPluginApi;
   getDefaults(): Promise<NotificationDefaults>;
-  publish(threads: Record<string, ThreadNotificationInputs>): void;
+  publish(threadIds: readonly string[]): void;
 }): NotificationPreferences {
   const { bb, getDefaults, publish } = args;
-  let publicationQueue: Promise<void> = Promise.resolve();
 
   async function readOwnLevels(
     threadIds: readonly string[],
@@ -235,29 +234,11 @@ export function createNotificationPreferences(args: {
     return resolved;
   }
 
-  function publishSubtree(
-    threadId: string,
-  ): Promise<Map<string, ResolvedThreadInputs>> {
-    const result = publicationQueue.then(async () => {
-      const { threads } = await bb.sdk.threads.experimental_listDescendants({
-        threadIds: [threadId],
-      });
-      const resolved = await resolveInputs([
-        threadId,
-        ...(threads[0]?.descendantIds ?? []),
-      ]);
-      for (const batch of chunk([...resolved])) {
-        publish(
-          Object.fromEntries(batch.map(([id, { inputs }]) => [id, inputs])),
-        );
-      }
-      return resolved;
+  async function publishSubtree(threadId: string): Promise<void> {
+    const { threads } = await bb.sdk.threads.experimental_listDescendants({
+      threadIds: [threadId],
     });
-    publicationQueue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
+    publish([threadId, ...(threads[0]?.descendantIds ?? [])]);
   }
 
   return {
@@ -282,9 +263,8 @@ export function createNotificationPreferences(args: {
           ? { threadId, remove: [NOTIFICATIONS_METADATA_KEY] }
           : { threadId, set: { [NOTIFICATIONS_METADATA_KEY]: { own: level } } },
       );
-      const resolved = (await publishSubtree(threadId)).get(threadId);
-      if (resolved === undefined) throw new Error("Thread not found");
-      return resolved.inputs;
+      await publishSubtree(threadId);
+      return (await requireInputs(threadId)).inputs;
     },
     async effectiveLevel(thread) {
       const [resolved, defaults] = await Promise.all([

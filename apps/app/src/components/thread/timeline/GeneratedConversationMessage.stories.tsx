@@ -84,6 +84,16 @@ const SYSTEM_ROWS: readonly SystemRowFixture[] = [
     text: "Migrate sessions table was unassigned from you.",
   },
   {
+    label: "environment-directory-updated (title-only)",
+    hint: "next turn started automatically after update_environment_directory",
+    systemMessageKind: "environment-directory-updated",
+    systemMessageSubject: {
+      kind: "directory",
+      path: "/Users/demo/code/app-worktrees/session-migration",
+    },
+    text: "This thread now runs in `/Users/demo/code/app-worktrees/session-migration`. Continue the task from your previous turn in this directory.",
+  },
+  {
     label: "child-needs-attention",
     hint: "child blocked on a pending interaction",
     systemMessageKind: "child-needs-attention",

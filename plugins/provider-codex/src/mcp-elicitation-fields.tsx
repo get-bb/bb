@@ -75,12 +75,12 @@ export function CodexMcpElicitationField({
           {[true, false].map((choice) => (
             <div
               key={String(choice)}
-              className={`flex min-h-8 items-center gap-2.5 rounded-md px-2.5 py-1.5 ${value === choice ? "bg-surface-selected" : "hover:bg-state-hover"}`}
+              className={`relative flex min-h-8 select-none items-center gap-2.5 rounded-md px-2.5 py-1.5 ${value === choice ? "bg-surface-selected" : "hover:bg-state-hover"}`}
             >
               <RadioGroupItem value={String(choice)} id={`${id}-${choice}`} />
               <Label
                 htmlFor={`${id}-${choice}`}
-                className="cursor-pointer text-sm font-medium"
+                className="cursor-pointer text-sm font-medium after:absolute after:inset-0 after:rounded-md after:content-['']"
               >
                 {choice ? "Yes" : "No"}
               </Label>
@@ -110,12 +110,12 @@ export function CodexMcpElicitationField({
           {field.options.map((option, index) => (
             <div
               key={option.value}
-              className={`flex min-h-8 items-center gap-2.5 rounded-md px-2.5 py-1.5 ${value === option.value ? "bg-surface-selected" : "hover:bg-state-hover"}`}
+              className={`relative flex min-h-8 select-none items-center gap-2.5 rounded-md px-2.5 py-1.5 ${value === option.value ? "bg-surface-selected" : "hover:bg-state-hover"}`}
             >
               <RadioGroupItem value={String(index)} id={`${id}-${index}`} />
               <Label
                 htmlFor={`${id}-${index}`}
-                className="flex-1 cursor-pointer text-sm font-medium"
+                className="flex-1 cursor-pointer text-sm font-medium after:absolute after:inset-0 after:rounded-md after:content-['']"
               >
                 {option.label}
               </Label>
@@ -136,7 +136,7 @@ export function CodexMcpElicitationField({
             return (
               <div
                 key={option.value}
-                className={`flex min-h-8 items-center gap-2.5 rounded-md px-2.5 py-1.5 ${selected.includes(option.value) ? "bg-surface-selected" : "hover:bg-state-hover"}`}
+                className={`relative flex min-h-8 select-none items-center gap-2.5 rounded-md px-2.5 py-1.5 ${selected.includes(option.value) ? "bg-surface-selected" : "hover:bg-state-hover"}`}
               >
                 <Checkbox
                   id={`${id}-${index}`}
@@ -152,7 +152,7 @@ export function CodexMcpElicitationField({
                 />
                 <Label
                   htmlFor={`${id}-${index}`}
-                  className="flex-1 cursor-pointer text-sm font-medium"
+                  className="flex-1 cursor-pointer text-sm font-medium after:absolute after:inset-0 after:rounded-md after:content-['']"
                 >
                   {option.label}
                 </Label>

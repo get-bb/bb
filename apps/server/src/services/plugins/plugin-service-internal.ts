@@ -21,7 +21,7 @@ import type { TelemetryService } from "../system/telemetry.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import type {
   BundledPluginRegistration,
-  BundledPluginReplacement,
+  RetiredBundledPlugin,
 } from "./builtin-registry.js";
 import type { PluginManifest } from "./manifest.js";
 import type {
@@ -94,7 +94,10 @@ export interface PluginServiceDeps {
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
     NotificationHub,
-    "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
+    | "getDaemonSessionIdForHost"
+    | "notifyPluginSignal"
+    | "notifySystem"
+    | "notifyPluginChanged"
   >;
   logger: ServerLogger;
   telemetry: TelemetryService;
@@ -108,7 +111,7 @@ export interface PluginServiceDeps {
   dataDir: string;
   appVersion: string;
   bundledPlugins?: readonly BundledPluginRegistration[];
-  bundledPluginReplacements?: readonly BundledPluginReplacement[];
+  retiredBundledPlugins?: readonly RetiredBundledPlugin[];
   watchBuiltinPluginSources?: boolean;
   loadTimeoutMs?: number;
   /** How long an install waits for `bb.onInstall` handlers. Defaults to 30s. */

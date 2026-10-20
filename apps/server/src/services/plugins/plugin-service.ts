@@ -1,3 +1,4 @@
+import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -34,18 +35,16 @@ import {
   enforcePluginCliOutputLimit,
   normalizePluginAgentConfiguration,
   normalizeRpcJsonResult,
+  readPluginRpcRefusal,
   RESERVED_AGENT_TOOL_NAMES,
   adoptHttpRouteResponse,
   validatePluginProviderEnvEntries,
   validateRpcValue,
   validateSettingsUpdate,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import {
-  buildPluginApp,
-  buildPluginHost,
-  createPluginDevLoop,
-} from "@bb/plugin-build";
+import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import { buildMutablePluginHost } from "./mutable-plugin-artifacts.js";
 import {
   marketplacePublisherLabel,
   pluginPublisherLabel,
@@ -64,12 +63,14 @@ import {
 } from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
+  deleteAllPluginKvValues,
   deleteAllPluginSettings,
   deleteInstalledPlugin,
   deletePluginSchedules,
   forgetPluginProviders,
   getDisabledPluginProviderCatalog,
   getInstalledPlugin,
+  getInstalledPluginRegistration,
   getPluginSafeMode,
   getThread,
   getLatestThreadSequence,
@@ -81,6 +82,7 @@ import {
   listThreadPluginMetadataRows,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
+  restoreRemovedInstalledPlugin,
   setDisabledPluginProviderCatalog,
   getPluginSettingsValues,
   setInstalledPluginEnabled,
@@ -120,7 +122,7 @@ import {
 } from "./plugin-artifact-gc.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
-  BUNDLED_PLUGIN_REPLACEMENTS,
+  RETIRED_BUNDLED_PLUGINS,
   listBundledPluginRegistrations,
 } from "./builtin-registry.js";
 import {
@@ -405,7 +407,14 @@ export interface PluginService {
     input: unknown,
     caller: ExperimentalPluginRpcCaller,
   ): Promise<
-    { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
+    | {
+        ok: true;
+        result: JsonValue;
+        tags: string[];
+        keyTags: Record<string, string[]>;
+        invalidated: string[];
+      }
+    | { ok: false; error: PluginRpcError }
   >;
   httpToken(
     id: string,
@@ -594,8 +603,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
-  const pluginReplacements =
-    deps.bundledPluginReplacements ?? BUNDLED_PLUGIN_REPLACEMENTS;
+  const retiredBundledPlugins =
+    deps.retiredBundledPlugins ?? RETIRED_BUNDLED_PLUGINS;
   function isOrphanedBuiltinRow(row: InstalledPluginRow): boolean {
     return (
       row.sourceKind === "builtin" &&
@@ -1279,6 +1288,44 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     });
   }
 
+  async function handOverRetiredBuiltins(): Promise<void> {
+    for (const retired of retiredBundledPlugins) {
+      const row = getInstalledPlugin(deps.db, retired.pluginId);
+      if (row === undefined || !isOrphanedBuiltinRow(row)) continue;
+      if (row.enabled) {
+        const stored = getPluginSettingsValues(deps.db, row.id);
+        const carried = Object.fromEntries(
+          retired.carriedSettings.flatMap((key) =>
+            Object.hasOwn(stored, key) ? [[key, stored[key]]] : [],
+          ),
+        );
+        if (Object.keys(carried).length > 0) {
+          setPluginSettingsValues(deps.db, retired.successorPluginId, carried);
+        }
+        const successor = getInstalledPluginRegistration(
+          deps.db,
+          retired.successorPluginId,
+        );
+        if (
+          successor?.removedAt !== null &&
+          successor?.removedAt !== undefined
+        ) {
+          restoreRemovedInstalledPlugin(deps.db, successor.id);
+        } else if (successor !== undefined && !successor.enabled) {
+          setInstalledPluginEnabled(deps.db, successor.id, true);
+        }
+      }
+      await deleteRemovedPluginData(row, new Set());
+      deleteAllPluginKvValues(deps.db, row.id);
+      deleteInstalledPlugin(deps.db, row.id);
+      logger.info(
+        row.enabled
+          ? `plugin ${row.id} retired; its settings moved to ${retired.successorPluginId}, which is now enabled`
+          : `plugin ${row.id} retired because bb no longer bundles ${row.source}`,
+      );
+    }
+  }
+
   async function removeUnbundledBuiltins(): Promise<void> {
     for (const row of listInstalledPlugins(deps.db)) {
       if (!isOrphanedBuiltinRow(row)) continue;
@@ -1459,6 +1506,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           }
           await recoverIncompletePluginRollbacks();
         });
+        await handOverRetiredBuiltins();
         await reconcileBundled();
         await removeUnbundledBuiltins();
         await loadAll();
@@ -1507,11 +1555,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             },
             buildHost: async () => {
               try {
-                await buildPluginHost(
-                  bundled.rootDir,
-                  deps.appVersion,
-                  await getPluginBuildToolchain(deps),
-                );
+                await buildMutablePluginHost({
+                  dataDir: deps.dataDir,
+                  pluginId: row.id,
+                  rootDir: bundled.rootDir,
+                  bbVersion: deps.appVersion,
+                  toolchain: await getPluginBuildToolchain(deps),
+                });
                 setDevBuildProblem(row.id, "host", null);
                 notifyPluginsChanged();
               } catch (error) {
@@ -1575,25 +1625,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
     providerCatalog() {
-      const rows = listInstalledPlugins(deps.db);
-      const enabledIds = new Set(
-        rows.filter((row) => row.enabled).map((row) => row.id),
+      return listInstalledPlugins(deps.db).flatMap((row) =>
+        pluginProviderCatalog(row).map((provider) => ({
+          ...provider,
+          pluginId: row.id,
+        })),
       );
-      const standsAside = (row: InstalledPluginRow): boolean =>
-        !row.enabled &&
-        pluginReplacements.some(
-          (pair) =>
-            (pair.pluginId === row.id && enabledIds.has(pair.replaces)) ||
-            (pair.replaces === row.id && enabledIds.has(pair.pluginId)),
-        );
-      return rows
-        .filter((row) => !standsAside(row))
-        .flatMap((row) =>
-          pluginProviderCatalog(row).map((provider) => ({
-            ...provider,
-            pluginId: row.id,
-          })),
-        );
     },
 
     async install(source, selection) {
@@ -1780,45 +1817,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         };
 
         if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
-        const replacement =
-          pluginReplacements.find(
-            (pair) => pair.pluginId === id || pair.replaces === id,
-          ) ?? null;
-        const counterpartId =
-          replacement === null
-            ? null
-            : replacement.pluginId === id
-              ? replacement.replaces
-              : replacement.pluginId;
-        const counterpart =
-          counterpartId === null
-            ? undefined
-            : getInstalledPlugin(deps.db, counterpartId);
-        const carrySettings = (fromId: string, toId: string): void => {
-          const stored = getPluginSettingsValues(deps.db, fromId);
-          const carried = Object.fromEntries(
-            (replacement?.carriedSettings ?? []).flatMap((key) =>
-              Object.hasOwn(stored, key) ? [[key, stored[key]]] : [],
-            ),
-          );
-          if (Object.keys(carried).length > 0) {
-            setPluginSettingsValues(deps.db, toId, carried);
-          }
-        };
-        if (enabled && counterpart?.enabled === true) {
-          await applyEnabled(counterpart.id, false);
-          carrySettings(counterpart.id, id);
-        }
         if (!(await applyEnabled(id, enabled))) return undefined;
-        if (
-          !enabled &&
-          replacement?.pluginId === id &&
-          counterpart !== undefined &&
-          !counterpart.enabled
-        ) {
-          carrySettings(id, counterpart.id);
-          await applyEnabled(counterpart.id, true);
-        }
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
@@ -2149,18 +2148,36 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "input",
           throwRpcBoundaryError,
         );
-        const result = await handler.handler(parsedInput, {
-          experimental_caller: caller,
-        });
+        let result: unknown;
+        try {
+          result = await handler.handler(parsedInput, {
+            experimental_caller: caller,
+          });
+        } catch (error) {
+          const refusal = readPluginRpcRefusal(error);
+          if (refusal === null) throw error;
+          return { ok: false as const, error: refusal };
+        }
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
           result,
           "output",
           throwRpcBoundaryError,
         );
-        return normalizeRpcJsonResult(parsedOutput, throwRpcBoundaryError);
+        const resultValue = normalizeRpcJsonResult(
+          parsedOutput,
+          throwRpcBoundaryError,
+        );
+        const envelope = rpcResponseTags(
+          handler.declarations,
+          parsedInput,
+          parsedOutput,
+        );
+        if (envelope.invalidated.length > 0)
+          deps.hub.notifyPluginChanged(id, envelope.invalidated);
+        return { ok: true as const, result: resultValue, ...envelope };
       });
-      if (outcome.ok) return { ok: true, result: outcome.value };
+      if (outcome.ok) return outcome.value;
       if (outcome.cause instanceof PluginRpcBoundaryError) {
         return { ok: false, error: outcome.cause.rpcError };
       }

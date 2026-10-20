@@ -35,6 +35,7 @@ const acpRawInputPathSchema = z
 
 export interface AcpToolCallPathOptions {
   cwd?: string | undefined;
+  existedBefore?: ReadonlyMap<string, boolean | undefined> | undefined;
 }
 
 export function resolveAcpToolCallPath(

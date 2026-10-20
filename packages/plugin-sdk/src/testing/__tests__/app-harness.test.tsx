@@ -2241,11 +2241,11 @@ function NavigationProbe({ id }: { id: string }) {
       aria-current={item.id === activeItemId ? "page" : undefined}
       {...split.splitProps}
       onClick={() => {
-        actions.activate(item.id, { openInSplit: true });
+        actions.activate(item.id, { target: "split" });
         actions.setVisible(item.id, false);
         actions.setOrder([item.id]);
         actions.openCustomize();
-        actions.goHome();
+        actions.goHome({ target: "tab" });
       }}
     >
       <SidebarNavigationIcon icon={item.icon} />
@@ -2296,11 +2296,11 @@ describe("sidebar navigation test runtime", () => {
 
     expect(slot.inspection.sidebarNavigationCalls).toEqual([
       { method: "beginSplitDrag", itemId: "garden/docs" },
-      { method: "activate", itemId: "garden/docs", openInSplit: true },
+      { method: "activate", itemId: "garden/docs", target: "split" },
       { method: "setVisible", itemId: "garden/docs", isVisible: false },
       { method: "setOrder", itemIds: ["garden/docs"] },
       { method: "openCustomize" },
-      { method: "goHome" },
+      { method: "goHome", target: "tab" },
     ]);
   });
 

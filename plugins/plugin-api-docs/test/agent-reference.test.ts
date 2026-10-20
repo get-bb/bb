@@ -44,6 +44,14 @@ describe("Plugin Guide agent references", () => {
     expect(pluginSurfaceAgentContext("missing-surface")).toBeNull();
   });
 
+  it("includes live read and mutation semantics in the RPC agent reference", () => {
+    const context = pluginSurfaceAgentContext("wire");
+
+    expect(context).toContain("isLoading means an enabled read is fetching never-loaded data");
+    expect(context).toContain("Shared predictions stay until confirmed reads arrive");
+    expect(context).toContain("Newer server codes become unknown_error");
+  });
+
   it("serializes one surface as bb's existing structured composer pill", () => {
     const surface = SURFACES_BY_ID.get("composer-actions");
     if (!surface) throw new Error("composer-actions surface missing");

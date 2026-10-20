@@ -420,6 +420,10 @@ Use the View menu to toggle DevTools. To open them automatically on launch, set
 BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/bb
 ```
 
+Unpackaged runs use `assets/icon-dev.png` for the Dock and window icon. Set
+`BB_DESKTOP_DEV_ICON=1` to use it in a packaged build too; `pnpm
+desktop:worktree` sets it. The bundle's own icon in Finder is unchanged.
+
 Desktop main-process logs are written immediately to `desktop.log` under
 `~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set, including
 updater, Connect, and startup failures from launches without a terminal.

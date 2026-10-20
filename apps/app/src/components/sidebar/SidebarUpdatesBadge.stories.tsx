@@ -125,7 +125,8 @@ export function MachineNotices() {
       ) : (
         <SidebarProvider className="h-screen bg-background">
           <AppLayoutSidebar
-            mode="app"
+            routeSidebar={null}
+            isSettingsActive={false}
             isResizing={false}
             onResizeMouseDown={() => {}}
             settingsRoutePath="/settings/machines"

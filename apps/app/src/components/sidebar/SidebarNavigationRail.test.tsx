@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
 import type { ExperimentalBadge } from "@get-bb/plugin-sdk";
+import { experimental_useSidebarNavigation } from "@get-bb/plugin-sdk/app";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import {
@@ -29,6 +30,7 @@ import {
   useCloseMobileSidebar,
 } from "@/components/ui/sidebar";
 import { AppLayoutSidebar } from "@/components/layout/AppLayoutSidebar";
+import { resolveRouteSidebar } from "@/components/layout/routeSidebar";
 import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
@@ -40,11 +42,13 @@ import {
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
+  type ExperimentalSidebarNavigationSlot,
 } from "@/lib/plugin-slots";
 import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
+  getRootComposeRoutePath,
   getThreadRoutePath,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -158,7 +162,13 @@ function RailNewThreadButton() {
   return <Header width={200} controlSize={28} isCompactViewport={false} />;
 }
 
-function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
+function RailHarness({
+  useLayout = false,
+  slot = bundledNavigationSlot("rail"),
+}: {
+  useLayout?: boolean;
+  slot?: ExperimentalSidebarNavigationSlot;
+}) {
   const closeMobileSidebar = useCloseMobileSidebar();
   const location = useLocation();
   const isSettings = location.pathname.startsWith(SETTINGS_ROUTE_PATH);
@@ -173,7 +183,8 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
       {useLayout ? (
         <>
           <AppLayoutSidebar
-            mode={isSettings ? "settings" : "app"}
+            routeSidebar={resolveRouteSidebar(location.pathname, null)}
+            isSettingsActive={isSettings}
             onResizeMouseDown={() => {}}
             isResizing={false}
             settingsRoutePath={SETTINGS_ROUTE_PATH}
@@ -186,11 +197,7 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
         <>
           <SidebarNavigationRegion placement="rail" customize={customize}>
             <SidebarNavigationProviderMount
-              resolved={{
-                kind: "plugin",
-                slot: bundledNavigationSlot("rail"),
-                fallback: null,
-              }}
+              resolved={{ kind: "plugin", slot, fallback: null }}
             />
           </SidebarNavigationRegion>
           <NavRailSettingsButton
@@ -212,6 +219,7 @@ function renderRail(
     isCompactViewport?: boolean;
     isFramed?: boolean;
     useLayout?: boolean;
+    slot?: ExperimentalSidebarNavigationSlot;
   } = {},
 ) {
   const store = createStore();
@@ -227,7 +235,7 @@ function renderRail(
         >
           <TooltipProvider>
             <SidebarProvider framed={options.isFramed ?? false}>
-              <RailHarness useLayout={options.useLayout} />
+              <RailHarness useLayout={options.useLayout} slot={options.slot} />
             </SidebarProvider>
           </TooltipProvider>
         </CompactViewportOverrideProvider>
@@ -338,6 +346,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   resetAllCrashedPluginSlotsForTest();
   vi.useRealTimers();
   resetPluginFrontendBootStateForTest();
@@ -346,6 +355,23 @@ afterEach(() => {
 });
 
 describe("Rail", () => {
+  it.each([{ metaKey: true }, { ctrlKey: true }])(
+    "opens Settings in a browser tab with %j even when already active",
+    (modifier) => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      renderRail(SETTINGS_ROUTE_PATH);
+
+      fireEvent.click(railButton("Settings"), modifier);
+
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        SETTINGS_ROUTE_PATH,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
+    },
+  );
+
   it("lists Home, the visible destinations, More, and Settings, with New thread left to the header", () => {
     renderRail(THREAD_PATH);
 
@@ -469,6 +495,44 @@ describe("Rail", () => {
 
     expect(pathname()).toBe(THREAD_PATH);
     expect(currentRailLabels()).toEqual(["Home"]);
+  });
+
+  it.each([{ metaKey: true }, { ctrlKey: true }])(
+    "opens the new thread screen in a browser tab from Home with %j",
+    (modifier) => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      renderRail(THREAD_PATH);
+
+      fireEvent.click(railButton("Settings"));
+      fireEvent.click(railButton("Home"), modifier);
+
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        getRootComposeRoutePath(),
+        "_blank",
+        "noopener,noreferrer",
+      );
+      expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
+    },
+  );
+
+  it("navigates Home in place when a rail plugin calls goHome without options", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    function LegacyHomeRail() {
+      const { actions } = experimental_useSidebarNavigation();
+      return (
+        <button type="button" onClick={() => actions.goHome()}>
+          Legacy Home
+        </button>
+      );
+    }
+    renderRail(SETTINGS_ROUTE_PATH, {
+      slot: { ...bundledNavigationSlot("rail"), component: LegacyHomeRail },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Legacy Home" }));
+
+    expect(open).not.toHaveBeenCalled();
+    expect(pathname()).toBe(getRootComposeRoutePath());
   });
 
   it("returns Home to the last thread after settings navigation closes the compact sidebar", () => {

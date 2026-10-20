@@ -15,8 +15,8 @@ export interface AppRouteHistoryState {
 interface AppRouteHistoryNavigation {
   canGoBack: boolean;
   canGoForward: boolean;
-  goBack: () => void;
-  goForward: () => void;
+  goBack: (onTraversed?: () => void) => void;
+  goForward: (onTraversed?: () => void) => void;
 }
 
 export type AppRouteNavigationType = "POP" | "PUSH" | "REPLACE";
@@ -138,23 +138,35 @@ export function useRouteStateHistoryNavigation(): AppRouteHistoryNavigation {
     () => historyState,
   );
 
-  const goBack = useCallback(() => {
-    const current = historyState;
-    const target = findBackTargetIndex(current);
-    if (target === null) {
-      return;
-    }
-    void navigate(target - current.index);
-  }, [navigate]);
+  const goBack = useCallback(
+    (onTraversed?: () => void) => {
+      const current = historyState;
+      const target = findBackTargetIndex(current);
+      if (target === null) {
+        return;
+      }
+      if (onTraversed !== undefined) {
+        window.addEventListener("popstate", onTraversed, { once: true });
+      }
+      void navigate(target - current.index);
+    },
+    [navigate],
+  );
 
-  const goForward = useCallback(() => {
-    const current = historyState;
-    const target = findForwardTargetIndex(current);
-    if (target === null) {
-      return;
-    }
-    void navigate(target - current.index);
-  }, [navigate]);
+  const goForward = useCallback(
+    (onTraversed?: () => void) => {
+      const current = historyState;
+      const target = findForwardTargetIndex(current);
+      if (target === null) {
+        return;
+      }
+      if (onTraversed !== undefined) {
+        window.addEventListener("popstate", onTraversed, { once: true });
+      }
+      void navigate(target - current.index);
+    },
+    [navigate],
+  );
 
   return {
     canGoBack: findBackTargetIndex(state) !== null,

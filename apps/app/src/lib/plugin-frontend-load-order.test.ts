@@ -55,6 +55,7 @@ function makeDeps(
   return {
     fetchCandidates: async () => candidates,
     importModule: async () => pluginModule(),
+    importRetryDelaysMs: [],
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
     resetCrashedSlots: vi.fn(),

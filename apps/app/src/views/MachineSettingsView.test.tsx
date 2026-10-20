@@ -325,6 +325,42 @@ describe("MachineSettingsView", () => {
     );
   });
 
+  it("offers removal without cleanup from the danger zone for a stranded machine", async () => {
+    const stranded = host({ status: "disconnected" });
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      {
+        ...stranded,
+        lifecycle: {
+          ...stranded.lifecycle,
+          phase: "removing",
+          message: "Host is not connected",
+          teardown: { status: "failed", attempt: 0 },
+        },
+      },
+    ]);
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
+    stubSupportingFetches();
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove machine" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/The machine provider's removal still runs/),
+    ).toBeDefined();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Remove anyway" }),
+    );
+    await waitFor(() =>
+      expect(sdk.hosts.delete).toHaveBeenCalledWith({
+        hostId: HOST_ID,
+        force: true,
+      }),
+    );
+  });
+
   it("shows client-local identity only when several machines need disambiguation", async () => {
     hostDaemon.localDaemonHostId = HOST_ID;
     hostDaemon.platform = "linux";

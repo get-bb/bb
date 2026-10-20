@@ -2917,9 +2917,6 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
       logDir: args.context.logDir,
       processName: "daemon",
     });
-  const firstRun = startDaemon();
-  let currentRun: ManagedProcessRun = firstRun;
-
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -2937,6 +2934,9 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
       void shutdown(signal);
     },
   );
+
+  const firstRun = startDaemon();
+  let currentRun: ManagedProcessRun = firstRun;
 
   const supervise = args.supervise && command.kind === "start";
   const readiness = new AbortController();

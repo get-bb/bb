@@ -262,6 +262,7 @@ const NAV_PANEL_REGISTRATION_KEYS: ReadonlySet<string> = new Set(
     component: true,
     fixedTabs: true,
     experimental_useBadge: true,
+    experimental_sidebar: true,
     headerContent: true,
   } satisfies Record<keyof PluginNavPanelRegistration, true>),
 );
@@ -695,6 +696,14 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_useBadge" must be a React hook function when set`,
           );
         }
+        if (
+          registration.experimental_sidebar !== undefined &&
+          typeof registration.experimental_sidebar !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_sidebar" must be a React component function when set`,
+          );
+        }
         const fixedTabs: PluginNavPanelFixedTabRegistration[] = (() => {
           if (registration.fixedTabs === undefined) return [];
           if (!Array.isArray(registration.fixedTabs)) {
@@ -771,6 +780,9 @@ export function collectPluginAppRegistrations(
             ? {
                 experimental_useBadge: registration.experimental_useBadge,
               }
+            : {}),
+          ...(registration.experimental_sidebar !== undefined
+            ? { experimental_sidebar: registration.experimental_sidebar }
             : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
@@ -923,9 +935,12 @@ export function collectPluginAppRegistrations(
           );
         }
         const extensions = rawExtensions.map((extension) => {
-          if (typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension)) {
+          if (
+            typeof extension !== "string" ||
+            !/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(extension)
+          ) {
             throw new Error(
-              `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
+              `${kind}: extensions must be lowercase alphanumerics with single underscores or hyphens between segments, without the dot, got ${JSON.stringify(extension)}`,
             );
           }
           return extension;
