@@ -326,7 +326,7 @@ export function SidebarNavigationModelProvider({
         const current = latest.current;
         if (options?.openInSplit) {
           window.open(
-            homeRoutePathRef.current,
+            getRootComposeRoutePath(),
             "_blank",
             "noopener,noreferrer",
           );

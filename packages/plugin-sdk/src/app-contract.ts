@@ -283,9 +283,9 @@ export interface ExperimentalSidebarNavigationActions {
   /**
    * Return to the thread list and the last thread or new thread screen the
    * user had open before visiting Settings, Plugins, Skills, or a plugin
-   * panel. `openInSplit` opens that screen in a browser tab instead because
-   * Home does not support splits, with the same user-gesture requirement as
-   * `activate`. Omitting `options` navigates in place.
+   * panel. `openInSplit` instead opens the new thread screen in a browser
+   * tab, with the same user-gesture requirement as `activate`. Omitting
+   * `options` navigates in place.
    */
   goHome(options?: ExperimentalSidebarNavigationActivationOptions): void;
   /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */

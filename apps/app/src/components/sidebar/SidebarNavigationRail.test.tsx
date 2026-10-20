@@ -496,7 +496,7 @@ describe("Rail", () => {
   });
 
   it.each([{ metaKey: true }, { ctrlKey: true }])(
-    "opens Home's last thread in a browser tab with %j",
+    "opens the new thread screen in a browser tab from Home with %j",
     (modifier) => {
       const open = vi.spyOn(window, "open").mockReturnValue(null);
       renderRail(THREAD_PATH);
@@ -505,7 +505,7 @@ describe("Rail", () => {
       fireEvent.click(railButton("Home"), modifier);
 
       expect(open).toHaveBeenCalledExactlyOnceWith(
-        THREAD_PATH,
+        getRootComposeRoutePath(),
         "_blank",
         "noopener,noreferrer",
       );
