@@ -414,11 +414,17 @@ describe("checkout provider merge base", () => {
     [
       { branch: { kind: "existing", name: "release" } },
       { mergeBaseBranch: null },
+      null,
     ],
-    [{}, {}],
+    [{}, {}, null],
+    [
+      { branch: { kind: "new", baseBranch: "dev" } },
+      { mergeBaseBranch: "origin/dev" },
+      "origin/dev",
+    ],
   ] as const)(
     "reports %j as %j so a reused environment drops or keeps its base",
-    async (inputs, expected) => {
+    async (inputs, expected, resolvedBase) => {
       const { bb, harness } = createFakePluginHost({
         pluginId: "environment-project-checkout",
         experimental_callHostRpc: (call) => {
@@ -428,7 +434,7 @@ describe("checkout provider merge base", () => {
             status: "attached",
             path: CHECKOUT_PATH,
             branchName: null,
-            mergeBaseBranch: null,
+            mergeBaseBranch: resolvedBase,
           };
         },
         sdk: { environments: { list: () => [] }, threads: { list: () => [] } },

@@ -36,6 +36,14 @@ async function cloneWithDevBranch(
   await runGit({ cwd: reposRoot, args: ["clone", "--bare", seed, origin] });
   const clone = path.join(reposRoot, name);
   await runGit({ cwd: reposRoot, args: ["clone", origin, clone] });
+  await runGit({
+    cwd: clone,
+    args: ["config", "user.email", "integration-tests@example.com"],
+  });
+  await runGit({
+    cwd: clone,
+    args: ["config", "user.name", "BB Integration Tests"],
+  });
   return clone;
 }
 
@@ -79,8 +87,18 @@ describe.sequential("project checkout branches", () => {
         },
       });
 
+      await createTestFile({
+        filePath: path.join(clone, "thread.txt"),
+        content: "thread\n",
+      });
+      await runGit({ cwd: clone, args: ["add", "thread.txt"] });
+      await runGit({
+        cwd: clone,
+        args: ["commit", "-m", "Commit by the thread"],
+      });
+
       const diff = await getEnvironmentDiff(harness.api, environment.id);
-      expect(diff.files).toBe("");
+      expect(diff.files).toBe("A\tthread.txt\n");
       expect(environment.mergeBaseBranch).toBe("origin/dev");
     }));
 
