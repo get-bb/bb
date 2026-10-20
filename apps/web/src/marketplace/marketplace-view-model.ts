@@ -14,6 +14,7 @@ export const UNCATEGORIZED_CATEGORY_ID = "uncategorized";
 export type MarketplaceSort = "recently-added" | "most-installed";
 
 export interface MarketplaceIndexState {
+  collection?: string;
   category?: string;
   sort?: MarketplaceSort;
 }

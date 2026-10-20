@@ -190,6 +190,18 @@ describe("marketplace routes", () => {
     expect(stringifySiteSearch({ category: undefined })).toBe("");
   });
 
+  it("round-trips a collection URL and rejects invalid collection IDs", () => {
+    const search = validateMarketplaceSearch({
+      collection: ["Bad ID", "launch"],
+    });
+    const params = new URLSearchParams(stringifySiteSearch(search));
+    expect(params.get("collection")).toBe("launch");
+    expect(
+      validateMarketplaceSearch({ collection: params.get("collection") }),
+    ).toEqual({ collection: "launch" });
+    expect(validateMarketplaceSearch({ collection: "../launch" })).toEqual({});
+  });
+
   it("keeps an empty catalog available", async () => {
     const marketplace = await createPublicMarketplaceCache(async (path) => ({
       etag: path,
