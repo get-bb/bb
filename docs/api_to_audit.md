@@ -1352,17 +1352,20 @@ the removed `experimental_Accessory` item field show no counts until they read
 `badge`. Item ids are the keys stored in
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, and items keep
 their identity while unchanged. `actions` covers
-`activate(id, { openInSplit })`, `goHome({ openInSplit })`, `setVisible`,
+`activate(id, { target })`, `goHome({ target })`, `setVisible`,
 `setOrder` (unknown
 ids are dropped and omitted ids keep their relative order at the end),
 `openCustomize()` (bb's editor in a popover beside the navigation, after open
 menus close, returning focus to the opener), `openDetails`, and
-`disablePlugin`. `activate(id, { openInSplit: true })` opens Plugins and Skills
-in a browser tab synchronously from the user gesture, and
-`goHome({ openInSplit: true })` opens the new thread screen in a browser tab
-(`goHome()` without options navigates in place); New thread and plugin
-panels retain their existing split, compact-screen and pane-limit rules.
-Search remains a command. Native shells retain their window-open policy.
+`disablePlugin`. `target` is `current`, `split`, or `tab` and the host does
+exactly that: `split` keeps the existing split, compact-screen and pane-limit
+rules and does nothing for Plugins, Skills, and Home, which cannot split;
+`tab` opens the destination in a browser tab synchronously from the user
+gesture, with Home opening the new thread screen. `goHome()` without options
+navigates in place. The bundled Navigation plugin maps Cmd/Ctrl-click to
+`split` where `experimental_useSidebarNavigationSplit(id).isAvailable`, and
+to `tab` otherwise. Search remains a command at every target. Native shells
+retain their window-open policy.
 Calls after the caller unmounts do nothing; outside the
 sidebar the hook returns no items and inert actions.
 `experimental_useSidebarNavigationSplit(id, options?)` mirrors
@@ -1378,7 +1381,7 @@ Appearance → Navigation picker reads the same registrations.
 
 1. **Semantic items.** Confirm the action and icon variants cover current
    navigation without exposing routes or host elements.
-2. **Home.** Confirm `isHomeActive` and `goHome({ openInSplit })` are the
+2. **Home.** Confirm `isHomeActive` and `goHome({ target })` are the
    right Home contract for rail providers, including after Settings closes the
    compact drawer.
 3. **Order semantics.** Confirm `setOrder`'s partial-order rule works for

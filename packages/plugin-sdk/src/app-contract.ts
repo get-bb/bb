@@ -255,9 +255,15 @@ export interface ExperimentalSidebarNavigationItem {
   badge: ExperimentalBadge | null;
 }
 
+/**
+ * Where the host opens a sidebar navigation destination: `current` in the
+ * current view, `split` in a new pane, `tab` in a new browser tab.
+ */
+export type ExperimentalSidebarNavigationTarget = "current" | "split" | "tab";
+
 /** How the host should activate a sidebar navigation item. */
 export interface ExperimentalSidebarNavigationActivationOptions {
-  openInSplit: boolean;
+  target: ExperimentalSidebarNavigationTarget;
 }
 
 /**
@@ -267,14 +273,15 @@ export interface ExperimentalSidebarNavigationActivationOptions {
  */
 export interface ExperimentalSidebarNavigationActions {
   /**
-   * Run the item's host behavior. Plugin panels close the mobile sidebar
-   * drawer; Plugins and Skills swap the list beside the navigation.
-   * `openInSplit` opens Plugins and Skills in a browser tab because those
-   * destinations do not support splits. New thread and plugin panels retain
-   * their split placement rules, including in-place navigation on compact
-   * screens. Search remains a command. Disabled or loading items do nothing.
-   * Browser-tab activation must run synchronously from a user gesture;
-   * native shells handle the new-window request using their existing policy.
+   * Run the item's host behavior at `target`. Plugin panels close the
+   * mobile sidebar drawer; Plugins and Skills swap the list beside the
+   * navigation. `split` follows the split placement rules, including
+   * in-place navigation on compact screens, and does nothing for items that
+   * cannot open in a pane (see
+   * {@link ExperimentalSidebarNavigationSplit.isAvailable}). Search remains a
+   * command at every target. Disabled or loading items do nothing. `tab`
+   * must run synchronously from a user gesture; native shells handle the
+   * new-window request using their existing policy.
    */
   activate(
     itemId: string,
@@ -283,11 +290,13 @@ export interface ExperimentalSidebarNavigationActions {
   /**
    * Return to the thread list and the last thread or new thread screen the
    * user had open before visiting Settings, Plugins, Skills, or a plugin
-   * panel. `openInSplit` instead opens the new thread screen in a browser
+   * panel. Target `tab` instead opens the new thread screen in a browser
    * tab, with the same user-gesture requirement as `activate`. Omitting
    * `options` navigates in place.
    */
-  goHome(options?: ExperimentalSidebarNavigationActivationOptions): void;
+  goHome(options?: {
+    target: Exclude<ExperimentalSidebarNavigationTarget, "split">;
+  }): void;
   /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
   setVisible(itemId: string, isVisible: boolean): void;
   /**
@@ -2063,7 +2072,7 @@ export interface PluginThreadListRegistration {
  *
  * - `rail`: a fixed-width column on the sidebar's left edge that stays when
  *   the sidebar collapses. bb draws Settings at the bottom of the column;
- *   draw Home with `actions.goHome({ openInSplit })`. On macOS, wide windows
+ *   draw Home with `actions.goHome({ target })`. On macOS, wide windows
  *   frame the sidebar and page below a title bar.
  * - `list` (the default): the area above the thread list. Settings is a
  *   footer action, the Settings, Plugins, and Skills lists start with a Back

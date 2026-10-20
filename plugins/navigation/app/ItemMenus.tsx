@@ -63,7 +63,7 @@ function SidebarNavigationItemMenuItems({
         <>
           {canOpenInSplit ? (
             <Item
-              onSelect={() => actions.activate(item.id, { openInSplit: true })}
+              onSelect={() => actions.activate(item.id, { target: "split" })}
             >
               <Icon name="Columns2" aria-hidden="true" />
               Open in split
@@ -195,7 +195,7 @@ export function SidebarNavigationMoreMenu({
           <DropdownMenuItem
             key={item.id}
             disabled={item.isDisabled || item.isLoading}
-            onSelect={() => actions.activate(item.id, { openInSplit: false })}
+            onSelect={() => actions.activate(item.id, { target: "current" })}
           >
             <SidebarNavigationIcon icon={item.icon} />
             {item.label}

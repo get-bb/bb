@@ -29,6 +29,7 @@ import {
   SidebarNavigationItemContextMenu,
   SidebarNavigationMoreMenu,
 } from "./ItemMenus.js";
+import { clickTarget, isNewViewClick } from "./target.js";
 
 export const NEW_THREAD_ITEM_ID = "__bb__/new-thread";
 
@@ -89,7 +90,7 @@ function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
           {...split.splitProps}
           onClick={(event) =>
             actions.activate(item.id, {
-              openInSplit: event.metaKey || event.ctrlKey,
+              target: clickTarget(event, split.isAvailable),
             })
           }
         >
@@ -135,7 +136,9 @@ export function Rail() {
             label="Home"
             active={isHomeActive}
             onClick={(event) =>
-              actions.goHome({ openInSplit: event.metaKey || event.ctrlKey })
+              actions.goHome({
+                target: isNewViewClick(event) ? "tab" : "current",
+              })
             }
           >
             <Icon name="Home" aria-hidden="true" />
@@ -195,7 +198,7 @@ export function RailNewThreadButton() {
       {...split.splitProps}
       onClick={(event) =>
         actions.activate(item.id, {
-          openInSplit: event.metaKey || event.ctrlKey,
+          target: clickTarget(event, split.isAvailable),
         })
       }
     >

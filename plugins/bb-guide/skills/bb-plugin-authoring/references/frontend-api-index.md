@@ -195,6 +195,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarNavigationIcon`
 - `ExperimentalSidebarNavigationItem`
 - `ExperimentalSidebarNavigationActivationOptions`
+- `ExperimentalSidebarNavigationTarget`
 - `ExperimentalSidebarNavigationActions`
 - `ExperimentalSidebarNavigationState`
 - `ExperimentalSidebarNavigationSplit`

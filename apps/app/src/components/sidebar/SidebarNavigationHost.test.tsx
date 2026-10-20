@@ -83,7 +83,7 @@ function PluginNavigation({ placement }: ExperimentalSidebarNavigationProps) {
           <button
             key={item.id}
             type="button"
-            onClick={() => actions.activate(item.id, { openInSplit: false })}
+            onClick={() => actions.activate(item.id, { target: "current" })}
           >
             {item.badge ? `${item.label} (${item.badge.label})` : item.label}
           </button>
@@ -208,6 +208,22 @@ describe("sidebar navigation providers", () => {
 
         expect(open).toHaveBeenCalledExactlyOnceWith(
           path,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        expect(screen.getByTestId("pathname").textContent).toBe(THREAD_PATH);
+      });
+
+      it("opens a plugin panel in a browser tab with a modifier when it cannot split", () => {
+        const open = vi.spyOn(window, "open").mockReturnValue(null);
+        renderHost(layout);
+
+        fireEvent.click(screen.getByRole("button", { name: "Docs, 2 drafts" }), {
+          metaKey: true,
+        });
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          getPluginPanelRoutePath({ pluginId: "garden", path: "docs" }),
           "_blank",
           "noopener,noreferrer",
         );

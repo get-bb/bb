@@ -69,6 +69,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarNavigationIconProps",
           "ExperimentalSidebarNavigationShortcut",
           "ExperimentalSidebarNavigationActivationOptions",
+          "ExperimentalSidebarNavigationTarget",
           "experimental_useSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplitOptions",

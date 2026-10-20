@@ -28,6 +28,7 @@ import {
   type ComposerView,
   type ExperimentalAppOverlayRegistration,
   type ExperimentalSidebarNavigationActions,
+  type ExperimentalSidebarNavigationTarget,
   type ExperimentalSidebarNavigationIconProps,
   type ExperimentalSidebarNavigationItem,
   type ExperimentalSidebarNavigationRegistration,
@@ -357,7 +358,7 @@ export interface SidebarNavigationCall {
   itemId?: string;
   itemIds?: string[];
   isVisible?: boolean;
-  openInSplit?: boolean;
+  target?: ExperimentalSidebarNavigationTarget;
 }
 
 function TestSidebarNavigationIcon({
@@ -1428,20 +1429,26 @@ const testPluginSdkApp = {
     _options,
   ): ExperimentalSidebarNavigationSplit {
     const env = useSlotEnv("experimental_useSidebarNavigationSplit");
+    const kind = env.sidebarNavigation.items.find(
+      (item) => item.id === itemId,
+    )?.action.kind;
+    const isAvailable = kind === "new-thread" || kind === "open-plugin-panel";
     return useMemo(
       () => ({
-        splitProps: {
-          onPointerDown: () => {
-            env.sidebarNavigationCalls.push({
-              method: "beginSplitDrag",
-              itemId,
-            });
-          },
-        },
-        isAvailable: true,
+        splitProps: isAvailable
+          ? {
+              onPointerDown: () => {
+                env.sidebarNavigationCalls.push({
+                  method: "beginSplitDrag",
+                  itemId,
+                });
+              },
+            }
+          : {},
+        isAvailable,
         layout: null,
       }),
-      [env, itemId],
+      [env, isAvailable, itemId],
     );
   },
   experimental_SidebarNavigationIcon: TestSidebarNavigationIcon,
@@ -2158,13 +2165,13 @@ export function renderSlot<
         sidebarNavigationCalls.push({
           method: "activate",
           itemId,
-          openInSplit: activationOptions.openInSplit,
+          target: activationOptions.target,
         });
       },
       goHome(activationOptions) {
         sidebarNavigationCalls.push({
           method: "goHome",
-          openInSplit: activationOptions?.openInSplit ?? false,
+          target: activationOptions?.target ?? "current",
         });
       },
       setVisible(itemId, isVisible) {

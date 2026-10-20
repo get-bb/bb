@@ -276,6 +276,9 @@ export function SidebarNavigationModelProvider({
         label,
         onNavigate: current.host.onNavigate,
       });
+    const openInBrowserTab = (routePath: string) => {
+      window.open(routePath, "_blank", "noopener,noreferrer");
+    };
     return {
       activate(itemId, options) {
         const found = lookup(itemId);
@@ -284,8 +287,12 @@ export function SidebarNavigationModelProvider({
         const content = getSidebarNavigationRowContent(row);
         switch (row.action.kind) {
           case "new-thread":
-            if (options.openInSplit && content) {
-              openInSplit(current, content, item.label);
+            if (options.target === "split") {
+              if (content) openInSplit(current, content, item.label);
+              return;
+            }
+            if (options.target === "tab") {
+              openInBrowserTab(getRootComposeRoutePath());
               return;
             }
             current.host.onNewChat?.();
@@ -297,9 +304,9 @@ export function SidebarNavigationModelProvider({
           case "open-extensions":
           case "open-skills": {
             const routePath = getResourceNavigationRoutePath(row.action);
-            if (routePath === null) return;
-            if (options.openInSplit) {
-              window.open(routePath, "_blank", "noopener,noreferrer");
+            if (routePath === null || options.target === "split") return;
+            if (options.target === "tab") {
+              openInBrowserTab(routePath);
               return;
             }
             void current.navigate(routePath);
@@ -308,28 +315,27 @@ export function SidebarNavigationModelProvider({
           case "open-plugin-panel": {
             const chrome = row.panelEntry?.chrome;
             if (!chrome) return;
-            if (options.openInSplit && content) {
-              openInSplit(current, content, item.label);
+            if (options.target === "split") {
+              if (content) openInSplit(current, content, item.label);
+              return;
+            }
+            const routePath = getPluginPanelRoutePath({
+              pluginId: chrome.pluginId,
+              path: chrome.path,
+            });
+            if (options.target === "tab") {
+              openInBrowserTab(routePath);
               return;
             }
             current.host.onNavigate?.();
-            void current.navigate(
-              getPluginPanelRoutePath({
-                pluginId: chrome.pluginId,
-                path: chrome.path,
-              }),
-            );
+            void current.navigate(routePath);
           }
         }
       },
       goHome(options) {
         const current = latest.current;
-        if (options?.openInSplit) {
-          window.open(
-            getRootComposeRoutePath(),
-            "_blank",
-            "noopener,noreferrer",
-          );
+        if (options?.target === "tab") {
+          openInBrowserTab(getRootComposeRoutePath());
           return;
         }
         if (current.isHomeActive) return;

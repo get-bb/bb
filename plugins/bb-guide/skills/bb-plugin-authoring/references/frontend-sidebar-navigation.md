@@ -15,7 +15,7 @@ before your bundle loads:
 
 - `rail` — a fixed-width column on the sidebar's left edge that stays when
   the sidebar collapses. bb draws Settings at the bottom of the column; draw
-  Home with `actions.goHome({ openInSplit })` and `isHomeActive`.
+  Home with `actions.goHome({ target })` and `isHomeActive`.
 - `list` (the default) — the area above the thread list. bb adds Settings to
   the footer and a Back to app row to the Settings, Plugins, and Skills
   lists, and a collapse hides the whole sidebar. Draw a divider below your
@@ -58,7 +58,12 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
       {...split.splitProps}
       onClick={(event) =>
         actions.activate(item.id, {
-          openInSplit: event.metaKey || event.ctrlKey,
+          target:
+            event.metaKey || event.ctrlKey
+              ? split.isAvailable
+                ? "split"
+                : "tab"
+              : "current",
         })
       }
     >
@@ -68,15 +73,18 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
 }
 ```
 
-`actions` runs host behavior: `activate(id, { openInSplit })`,
-`goHome({ openInSplit })`, `setVisible(id, isVisible)`, `setOrder(ids)`,
+`actions` runs host behavior: `activate(id, { target })`,
+`goHome({ target })`, `setVisible(id, isVisible)`, `setOrder(ids)`,
 `openCustomize()`, `openDetails(id)`, and `disablePlugin(id)`. Visibility
 and order persist to `sidebar.visiblePluginPanels` and
 `sidebar.pluginPanelOrder`, so they carry over when the user switches
 providers. `openCustomize()` opens bb's editor in a popover beside your
 navigation once any open menu closes, and returns focus to the control that
-opened it. `goHome()` without options navigates in place. Actions called
-after your component unmounts do nothing.
+opened it. `target` is `current`, `split` (a new pane; does nothing for
+items that cannot split), or `tab` (a new browser tab; call it synchronously
+from the click). `goHome` accepts `current` or `tab`, where `tab` opens the
+new thread screen, and `goHome()` without options navigates in place.
+Actions called after your component unmounts do nothing.
 
 `experimental_useSidebarNavigationSplit(id, options?)` works like
 `experimental_useSidebarThreadSplit`: spread `splitProps` onto the item, gate
