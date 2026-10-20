@@ -288,7 +288,9 @@ a fresh environment. It is one long call with no overall timeout and must be
 idempotent for `pathKey`: after a process or plugin restart, core calls it
 again with the same attempt and pathKey. Return `created` with `path`,
 explicit `ownsPath` and optional `mergeBaseBranch`, or `failed` with a
-message; a failed create is terminal, and a retry is an explicit new attempt
+message. When core reuses an environment row your provider already owns at
+that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
+clears it, and omitting it keeps it; a failed create is terminal, and a retry is an explicit new attempt
 on the same environment row after cleanup. `report.step` and `report.log`
 stream durable progress while the call runs.
 

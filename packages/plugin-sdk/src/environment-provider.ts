@@ -88,7 +88,8 @@ export type PluginEnvironmentProviderCreateResult =
       status: "created";
       path: string;
       ownsPath: boolean;
-      mergeBaseBranch?: string;
+      /** Ref the workspace's changes are compared against. Null clears the value recorded on a reused environment; omit to keep it. */
+      mergeBaseBranch?: string | null;
       resource?: JsonValue;
     }
   | { status: "failed"; message: string };

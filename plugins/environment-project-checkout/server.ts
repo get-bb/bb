@@ -157,10 +157,14 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
 
   async function attachWorkspace(
     context: CheckoutOperation,
-    target: { path: string; branch: CheckoutBranch | null },
+    target: {
+      path: string;
+      branch: CheckoutBranch | null;
+      mergeBaseBranch?: string | null;
+    },
   ): Promise<PluginEnvironmentProviderCreateResult> {
     const hostId = context.host.id;
-    const { path, branch } = target;
+    const { path, branch, mergeBaseBranch } = target;
     const claimDeadline = Date.now() + ATTACH_TIMEOUT_MS;
     while (!(await context.experimental_claimPath(path))) {
       context.signal.throwIfAborted();
@@ -196,9 +200,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       return {
         status: "created",
         path: result.path,
-        ...(branch?.kind === "new"
-          ? { mergeBaseBranch: branch.baseBranch }
-          : {}),
+        ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
         ownsPath:
           result.path === context.projectCheckout.path &&
           context.projectCheckout.experimental_ownsPath === true,
@@ -257,18 +259,25 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     },
     async create(context) {
       const branchInput = context.inputs.branch;
+      const path = context.inputs.path ?? context.projectCheckout.path;
+      if (branchInput === undefined) {
+        return attachWorkspace(context, { path, branch: null });
+      }
+      if (branchInput.kind === "existing") {
+        return attachWorkspace(context, {
+          path,
+          branch: { kind: "existing", name: branchInput.name },
+          mergeBaseBranch: null,
+        });
+      }
       return attachWorkspace(context, {
-        path: context.inputs.path ?? context.projectCheckout.path,
-        branch:
-          branchInput === undefined
-            ? null
-            : branchInput.kind === "existing"
-              ? { kind: "existing", name: branchInput.name }
-              : {
-                  kind: "new",
-                  name: context.suggestedBranchName,
-                  baseBranch: branchInput.baseBranch,
-                },
+        path,
+        branch: {
+          kind: "new",
+          name: context.suggestedBranchName,
+          baseBranch: branchInput.baseBranch,
+        },
+        mergeBaseBranch: branchInput.baseBranch,
       });
     },
     async restore(context) {
@@ -287,6 +296,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       return attachWorkspace(context, {
         path,
         branch: { kind: "existing", name: branchName },
+        mergeBaseBranch: context.previous.environment.mergeBaseBranch,
       });
     },
     async remove() {

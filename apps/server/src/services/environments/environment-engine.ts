@@ -149,7 +149,7 @@ const createResultSchema = z.discriminatedUnion("status", [
     status: z.literal("created"),
     path: z.string().min(1),
     ownsPath: z.boolean().default(false),
-    mergeBaseBranch: z.string().min(1).optional(),
+    mergeBaseBranch: z.string().min(1).nullable().optional(),
     resource: resourceSchema.optional(),
   }),
   z.object({
@@ -509,6 +509,8 @@ async function runCreate(
           if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
             row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
             row.resource = produced.resource ?? null;
+          } else if (produced.mergeBaseBranch !== undefined) {
+            row.mergeBaseBranch = produced.mergeBaseBranch;
           }
         },
       );
