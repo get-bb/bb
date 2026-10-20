@@ -14,6 +14,7 @@ import {
 } from "@bb/db";
 import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
 import type {
+  ProviderSessionLifetime,
   Thread,
   ThreadActivityState,
   ThreadChangeMetadata,
@@ -146,7 +147,7 @@ function hasOpenDaemonSessionForHost(
 }
 
 function toPublicThread(
-  thread: Thread & { providerSessionLifetime?: "persistent" | "disposable" },
+  thread: Thread & { providerSessionLifetime?: ProviderSessionLifetime },
 ): Thread {
   return {
     id: thread.id,

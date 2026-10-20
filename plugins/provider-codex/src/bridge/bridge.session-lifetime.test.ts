@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -14,12 +20,15 @@ const THREAD_ID = "thr_session_lifetime";
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 let requestLogPath: string;
+let scriptPath: string;
+let processLogPath: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-lifetime-"));
   requestLogPath = join(workspaceDir, "requests.jsonl");
-  const scriptPath = join(workspaceDir, "script.json");
-  writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
+  scriptPath = join(workspaceDir, "script.json");
+  processLogPath = join(workspaceDir, "process.log");
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath, processLogPath }));
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -48,8 +57,11 @@ function recordedRequests() {
     .map((line) => schema.parse(JSON.parse(line)));
 }
 
-function start(providerSessionLifetime?: "persistent" | "disposable") {
-  harness.sendRequest(1, "thread/start", {
+function start(
+  providerSessionLifetime?: "persistent" | "disposable",
+  requestId = 1,
+) {
+  harness.sendRequest(requestId, "thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
@@ -58,7 +70,7 @@ function start(providerSessionLifetime?: "persistent" | "disposable") {
       : { providerSessionLifetime }),
     options: FULL_ACCESS_SESSION_OPTIONS,
   });
-  return harness.waitForResponse(1);
+  return harness.waitForResponse(requestId);
 }
 
 it("keeps persistent storage and the same UUID on resume by default", async () => {
@@ -111,6 +123,101 @@ it("constructs disposable sessions without persistence and reports them nonresto
       params: expect.objectContaining({ sessionRestorable: false }),
     }),
   );
+}, 30_000);
+
+it.each([
+  { ephemeral: false, path: null },
+  { path: null },
+  { ephemeral: true },
+  { ephemeral: true, path: "/tmp/unexpected-persistent-rollout.jsonl" },
+])(
+  "rejects unconfirmed disposable storage %j without publishing an identity",
+  async (threadStartStorage) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({ requestLogPath, processLogPath, threadStartStorage }),
+    );
+    const started = await start("disposable");
+    expect(started.error).toMatchObject({
+      message: expect.stringContaining(
+        "did not confirm disposable session storage",
+      ),
+    });
+    expect(harness.messages).not.toContainEqual(
+      expect.objectContaining({ method: "thread/identity" }),
+    );
+    expect(harness.messages).not.toContainEqual(
+      expect.objectContaining({ method: "thread/delta" }),
+    );
+    expect(readFileSync(processLogPath, "utf8")).toMatch(/exit:\d+:\d+/);
+    expect(
+      recordedRequests().filter((request) =>
+        ["thread/archive", "thread/delete"].includes(request.method),
+      ),
+    ).toEqual([]);
+  },
+  30_000,
+);
+
+it("buffers early thread notifications until disposable storage is confirmed", async () => {
+  const gatePath = join(workspaceDir, "release-start-response");
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      processLogPath,
+      threadStartResponseGatePath: gatePath,
+    }),
+  );
+  const started = start("disposable");
+  await vi.waitFor(() => {
+    expect(existsSync(processLogPath)).toBe(true);
+    expect(readFileSync(processLogPath, "utf8")).toContain("thread-started:");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(harness.messages).not.toContainEqual(
+    expect.objectContaining({ method: "thread/identity" }),
+  );
+  expect(harness.messages).not.toContainEqual(
+    expect.objectContaining({ method: "thread/delta" }),
+  );
+  writeFileSync(gatePath, "release");
+  expect((await started).result).toMatchObject({ sessionRestorable: false });
+  const identityIndex = harness.messages.findIndex(
+    (message) => "method" in message && message.method === "thread/identity",
+  );
+  const deltaIndex = harness.messages.findIndex(
+    (message) => "method" in message && message.method === "thread/delta",
+  );
+  expect(identityIndex).toBeGreaterThanOrEqual(0);
+  expect(deltaIndex).toBeGreaterThan(identityIndex);
+}, 30_000);
+
+it("starts a fresh disposable worker after storage confirmation fails", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      processLogPath,
+      threadStartStorage: { ephemeral: false, path: "/tmp/unexpected.jsonl" },
+    }),
+  );
+  expect((await start("disposable")).error).toBeDefined();
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath, processLogPath }));
+  expect((await start("disposable", 2)).result).toMatchObject({
+    sessionRestorable: false,
+  });
+  expect(
+    harness.messages.filter(
+      (message) => "method" in message && message.method === "thread/identity",
+    ),
+  ).toHaveLength(1);
+  expect(
+    recordedRequests().filter((request) => request.method === "thread/start"),
+  ).toHaveLength(2);
+  expect(
+    recordedRequests().filter((request) => request.method === "thread/resume"),
+  ).toEqual([]);
 }, 30_000);
 
 it("rejects cold disposable resume before constructing a native session", async () => {

@@ -481,8 +481,21 @@ async function handleRequest(message) {
       }
       threadCounter += 1;
       const threadId = `codex-fx-${processInstanceId}-${threadCounter}`;
-      notify("thread/started", { thread: { id: threadId } });
-      respond(id, { thread: { id: threadId } });
+      const thread = {
+        id: threadId,
+        ...(script?.threadStartStorage ?? {
+          ephemeral: params.ephemeral === true,
+          path: params.ephemeral === true ? null : `/tmp/${threadId}.jsonl`,
+        }),
+      };
+      notify("thread/started", { thread });
+      logProcessStep("thread-started");
+      if (script?.threadStartResponseGatePath) {
+        while (!existsSync(script.threadStartResponseGatePath)) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+      }
+      respond(id, { thread });
       return;
     }
     case "thread/resume": {

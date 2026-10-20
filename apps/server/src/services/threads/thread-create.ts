@@ -362,7 +362,7 @@ function requireLiveSourceThread(
     projectId: string;
     sourceThreadId: string;
   },
-) {
+): NonNullable<ReturnType<typeof getThread>> {
   const sourceThread = getThread(deps.db, args.sourceThreadId);
   if (sourceThread === null) {
     throw new ApiError(400, "invalid_request", "sourceThreadId not found");

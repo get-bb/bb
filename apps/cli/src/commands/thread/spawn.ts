@@ -1,7 +1,7 @@
-import { z } from "zod";
 import { Command } from "commander";
 import {
   jsonValueSchema,
+  providerSessionLifetimeSchema,
   PERSONAL_PROJECT_ID,
   threadVisibilitySchema,
   type GitBranchSelection,
@@ -563,9 +563,7 @@ export function registerSpawnCommand(
         const providerSessionLifetime =
           opts.providerSessionLifetime === undefined
             ? undefined
-            : z
-                .enum(["persistent", "disposable"])
-                .parse(opts.providerSessionLifetime);
+            : providerSessionLifetimeSchema.parse(opts.providerSessionLifetime);
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const sessionOptions = parseSpawnSessionOptions(opts.option ?? []);

@@ -3,6 +3,7 @@ import {
   dynamicToolSchema,
   instructionModeSchema,
   promptInputSchema,
+  providerSessionLifetimeSchema,
   threadProviderCommandsStateSchema,
 } from "@bb/domain";
 import { z } from "zod";
@@ -31,9 +32,7 @@ export const BRIDGE_REQUEST_METHODS = {
 } as const;
 
 const sessionConstructionFields = {
-  providerSessionLifetime: z
-    .enum(["persistent", "disposable"])
-    .default("persistent"),
+  providerSessionLifetime: providerSessionLifetimeSchema.default("persistent"),
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   options: bridgeExecutionOptionsSchema,

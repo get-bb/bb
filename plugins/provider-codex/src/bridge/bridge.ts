@@ -477,6 +477,7 @@ interface CodexBridgeSession {
   turnSettledWaiters: Map<string, Array<() => void>>;
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
+  storageConfirmed: boolean;
   pendingPreIdentityDeltas: ThreadDelta[];
   turnRateLimits: ProviderRateLimitState | null;
   quotaRecoveryAttempted: boolean;
@@ -671,7 +672,7 @@ function announceSessionIdentity(
   if (session.codexThreadId === null) {
     session.codexThreadId = codexThreadId;
   }
-  if (session.identityAnnounced) {
+  if (session.identityAnnounced || !session.storageConfirmed) {
     return;
   }
   session.identityAnnounced = true;
@@ -1251,6 +1252,7 @@ async function constructThreadSession(
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
+    storageConfirmed: args.providerSessionLifetime === "persistent",
     pendingPreIdentityDeltas: [],
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
@@ -1388,6 +1390,14 @@ async function constructThreadSession(
       method,
       params,
     );
+    if (args.providerSessionLifetime === "disposable") {
+      if (result.thread.ephemeral !== true || result.thread.path !== null) {
+        throw new Error(
+          "Codex did not confirm disposable session storage (ephemeral: true, path: null); the provider process was stopped. Unexpected persistent history may require manual review",
+        );
+      }
+      session.storageConfirmed = true;
+    }
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
     translator.activateThreadGitWritableRoots({
@@ -1461,6 +1471,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
+    storageConfirmed: session.storageConfirmed,
     pendingPreIdentityDeltas: [],
     turnRateLimits: null,
     quotaRecoveryAttempted: false,

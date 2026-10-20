@@ -1,6 +1,7 @@
 import type {
   JsonObject,
   PromptInput,
+  ProviderSessionLifetime,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
   ThreadOriginKind,
@@ -56,7 +57,7 @@ export interface ThreadCreateServiceRequest extends Omit<
   environment: EnvironmentArgs | ProviderEnvironmentArgs;
   pluginMetadata: { pluginId: string; metadata: JsonObject } | null;
   providerId: string;
-  providerSessionLifetime: "persistent" | "disposable";
+  providerSessionLifetime: ProviderSessionLifetime;
   parentNotifications: ThreadParentNotifications;
   titleFallback: string | null;
   visibility: ThreadVisibility;

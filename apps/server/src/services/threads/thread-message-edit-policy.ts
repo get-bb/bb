@@ -1,4 +1,4 @@
-import type { Thread } from "@bb/domain";
+import type { ProviderSessionLifetime, Thread } from "@bb/domain";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 
 export interface ThreadMessageEditPolicyDeps {
@@ -8,7 +8,7 @@ export interface ThreadMessageEditPolicyDeps {
 type MessageEditCandidateThread = Pick<
   Thread,
   "archivedAt" | "deletedAt" | "providerId"
-> & { providerSessionLifetime?: "persistent" | "disposable" };
+> & { providerSessionLifetime?: ProviderSessionLifetime };
 
 export function resolveThreadMessageEditRefusal(
   deps: ThreadMessageEditPolicyDeps,

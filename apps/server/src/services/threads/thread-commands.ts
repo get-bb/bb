@@ -1,6 +1,6 @@
 import {
   environments,
-  getThread,
+  getThreadProviderSessionLifetime,
   hasStoredSpawnAgentToolCall,
   threads,
 } from "@bb/db";
@@ -437,8 +437,7 @@ export function dispatchThreadRenameCommand(
   args: DispatchThreadRenameCommandArgs,
 ): void {
   if (
-    getThread(deps.db, args.threadId)?.providerSessionLifetime ===
-      "disposable" ||
+    getThreadProviderSessionLifetime(deps.db, args.threadId) === "disposable" ||
     !providerSupportsThreadRename(deps.providerRegistry, args.providerId)
   ) {
     return;
@@ -555,7 +554,7 @@ export function dispatchThreadUnarchiveCommand(
   args: DispatchThreadUnarchiveCommandArgs,
 ): boolean {
   if (
-    getThread(deps.db, args.thread.id)?.providerSessionLifetime === "disposable"
+    getThreadProviderSessionLifetime(deps.db, args.thread.id) === "disposable"
   )
     return false;
   if (
