@@ -92,7 +92,7 @@ function OpenInTasksButton({
   const navigate = useBbNavigate();
   return (
     <Button
-      className="size-8 shrink-0"
+      className="relative z-10 size-8 shrink-0"
       size="icon"
       variant="ghost"
       aria-label={label}
@@ -110,9 +110,11 @@ function OpenInTasksButton({
 
 function CardShell({
   dashed = false,
+  interactive = false,
   children,
 }: {
   dashed?: boolean;
+  interactive?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -120,7 +122,7 @@ function CardShell({
       className={
         dashed
           ? "my-3 flex h-11 items-center gap-1 rounded-lg border border-dashed border-border bg-surface-recessed-solid px-2"
-          : "my-3 flex h-11 items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm transition-colors hover:bg-state-hover"
+          : `relative my-3 flex h-11 items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm${interactive ? " select-none transition-colors hover:bg-state-hover" : ""}`
       }
     >
       {children}
@@ -234,10 +236,10 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   };
 
   return (
-    <CardShell>
+    <CardShell interactive>
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-1 focus-visible:after:ring-ring"
         aria-label={embedAriaLabel(task)}
         onClick={openInSidePanel}
       >
