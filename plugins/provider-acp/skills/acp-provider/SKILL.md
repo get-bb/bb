@@ -91,11 +91,15 @@ on that machine, then refresh its OpenCode tab. Verify with
 BB reports Go's five-hour, weekly, and monthly usage and reset times, not local
 session token totals or other OpenCode providers' subscriptions.
 
-The collector checks `OPENCODE_API_KEY`, then the active official Console account
-and organization in `$XDG_DATA_HOME/opencode/opencode.db`, then active v2
-`credential` table API keys or official Console OAuth credentials
-(`opencode-go` before `opencode`), then
-`OPENCODE_AUTH_CONTENT` or `$XDG_DATA_HOME/opencode/auth.json`.
+The collector checks `OPENCODE_API_KEY` first. For an OpenCode 2 database at
+`$XDG_DATA_HOME/opencode/opencode.db`, it then reads the `credential` table API
+key or official Console OAuth credential that OpenCode selects for each
+integration (`opencode-go` before `opencode`). Otherwise it reads the active
+official Console account and organization in that database, then
+`OPENCODE_AUTH_CONTENT` or `$XDG_DATA_HOME/opencode/auth.json`. OpenCode 2
+imports `auth.json` once when it upgrades an OpenCode 1 database and never reads
+`auth.json`, `OPENCODE_AUTH_CONTENT`, or the OpenCode 1 Console account, so the
+collector reads them only when there is no OpenCode 2 database.
 The default data directory is `~/.local/share/opencode`. Database storage is read
 only; expired Console sessions must be refreshed by OpenCode. V2 OAuth requires
 the device login method and account/organization metadata for the official
