@@ -16,6 +16,29 @@ describe("bb settings commands", () => {
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
 
+  it.each(["5", "0", "null"])(
+    "sets the idle timeout to %s through general settings",
+    async (value) => {
+      const put = vi.fn(async ({ json }) => json);
+      stubServerApi({
+        "v1.system.config.$get": vi.fn(async () => ({
+          generalSettings: defaultAppSettings,
+        })),
+        "v1.settings.general.$put": put,
+      });
+      await runCommand(
+        ["settings", "general", "idleProviderSessionTimeoutMinutes", value],
+        register,
+      );
+      expect(put).toHaveBeenCalledWith({
+        json: {
+          ...defaultAppSettings,
+          idleProviderSessionTimeoutMinutes: JSON.parse(value),
+        },
+      });
+    },
+  );
+
   it("clears the setup guide completion time and keeps every other setting", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({

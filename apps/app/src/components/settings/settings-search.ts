@@ -38,6 +38,10 @@ export const SETTINGS_SEARCH_INDEX: Record<
     keywords: ["preferences"],
     settings: [
       {
+        title: "Release idle agent sessions",
+        keywords: ["memory", "RAM", "timeout", "retention", "cleanup"],
+      },
+      {
         title: "Navigate to threads on creation",
         keywords: ["new thread", "open", "background"],
       },

@@ -140,6 +140,7 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
 - `providerOrder` (default `[]`) is a JSON array of provider ids, and
   `defaultProviderId` (default `null`) names the default provider; `null`
   clears it.
+- `idleProviderSessionTimeoutMinutes` (default `30`; Settings → General → Release idle agent sessions) controls when all machines release eligible idle provider processes. Set a nonnegative whole number of minutes, `0` for the next cleanup, or `null` for Never. For example: `bb settings general idleProviderSessionTimeoutMinutes 5`. The daemon checks every five minutes, so release can take up to five minutes beyond the timeout. Changes apply live and on reconnect. Only restorable sessions without active or pending work are eligible; their saved history remains for the next message. `bb thread stop` still releases a runtime manually. This is not a limit on loaded processes or memory. Read the value with `bb settings show`; SDK callers use `system.config()` and `system.updateGeneralSettings({ ...config.generalSettings, idleProviderSessionTimeoutMinutes: 5 })`.
 - `telemetryEnabled`: see Telemetry below.
 
 `bb settings replay-onboarding` clears `onboardingCompletedAt`, so the

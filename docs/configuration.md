@@ -202,6 +202,8 @@ configuration.
 
 ## General settings
 
+`idleProviderSessionTimeoutMinutes` (default `30`) controls idle provider retention on all machines. Set nonnegative whole minutes, `0` for the next cleanup, or `null` for Never. Use Settings → General → Release idle agent sessions, `bb settings general idleProviderSessionTimeoutMinutes 5`, or SDK `system.updateGeneralSettings({ ...config.generalSettings, idleProviderSessionTimeoutMinutes: 5 })`. Read `config` with `system.config()` or inspect the value with `bb settings show`. Changes apply live and on reconnect. Cleanup runs every five minutes, so release can take up to five minutes beyond the timeout. Only restorable sessions without active, pending, or background work are eligible; saved history remains for resumption. Manual `bb thread stop` still works. This is not a memory or loaded-process limit.
+
 Server-wide preferences, stored in the bb database and applied live to every
 client. Set them in Settings, with `bb settings general <key> <value>`, or with
 SDK `system.updateGeneralSettings`, which takes the full settings object (read

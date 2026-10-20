@@ -132,6 +132,10 @@ function useSettingsStoryState() {
   const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
+  const [
+    idleProviderSessionTimeoutMinutes,
+    setIdleProviderSessionTimeoutMinutes,
+  ] = useState<number | null>(30);
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
     defaultAppSettings.managedBranchPrefix,
   );
@@ -145,6 +149,8 @@ function useSettingsStoryState() {
     appearance,
     directoryTargetId,
     fileTargetId,
+    idleProviderSessionTimeoutMinutes,
+    setIdleProviderSessionTimeoutMinutes,
     managedBranchPrefix,
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
@@ -203,6 +209,12 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
+        idleProviderSessionTimeoutMinutes={
+          state.idleProviderSessionTimeoutMinutes
+        }
+        onIdleProviderSessionTimeoutMinutesChange={
+          state.setIdleProviderSessionTimeoutMinutes
+        }
         showGitChanges={state.showGitChanges}
         onShowGitChangesChange={state.setShowGitChanges}
         confirmThreadArchive={state.confirmThreadArchive}

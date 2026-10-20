@@ -169,6 +169,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  idleProviderSessionTimeoutMinutes: number | null;
+  onIdleProviderSessionTimeoutMinutesChange: (minutes: number | null) => void;
   showGitChanges: boolean;
   onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
@@ -860,6 +862,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  idleProviderSessionTimeoutMinutes,
+  onIdleProviderSessionTimeoutMinutesChange,
   showGitChanges,
   onShowGitChangesChange,
   confirmThreadArchive,
@@ -891,6 +895,61 @@ export function GeneralSettingsSection({
     <>
       <SettingsSection title="Threads & editing">
         <div className="space-y-5">
+          <SettingsWithControl
+            label="Release idle agent sessions"
+            description="Free memory after this idle time on all machines. Checked every five minutes; active work stays loaded. Saved sessions resume on the next message."
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
+                  disabled={generalSettingsDisabled}
+                  aria-label="Release idle agent sessions"
+                >
+                  {idleProviderSessionTimeoutMinutes === null
+                    ? "Never"
+                    : idleProviderSessionTimeoutMinutes === 0
+                      ? "Next cleanup"
+                      : `${idleProviderSessionTimeoutMinutes} minutes`}
+                  <Icon
+                    name="ChevronDown"
+                    className="size-3.5 text-muted-foreground"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+              >
+                {[0, 5, 10, 30, 60, null].map((minutes) => (
+                  <DropdownMenuItem
+                    key={minutes ?? "never"}
+                    onSelect={() =>
+                      onIdleProviderSessionTimeoutMinutesChange(minutes)
+                    }
+                  >
+                    {minutes === null
+                      ? "Never"
+                      : minutes === 0
+                        ? "Next cleanup"
+                        : `${minutes} minutes`}
+                    <Icon
+                      name="Check"
+                      className={cn(
+                        "ml-auto",
+                        minutes !== idleProviderSessionTimeoutMinutes &&
+                          "opacity-0",
+                        COARSE_POINTER_ICON_SIZE_CLASS,
+                      )}
+                    />
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SettingsWithControl>
+
           <SettingsWithControl
             label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
           >
@@ -1424,6 +1483,14 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          idleProviderSessionTimeoutMinutes={
+            generalSettings.idleProviderSessionTimeoutMinutes
+          }
+          onIdleProviderSessionTimeoutMinutesChange={(minutes) =>
+            updateGeneralSettingsMutation.mutate({
+              idleProviderSessionTimeoutMinutes: minutes,
+            })
+          }
           showGitChanges={generalSettings.showGitChanges}
           onShowGitChangesChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
