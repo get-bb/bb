@@ -26,9 +26,8 @@ function renderToolbar(
         fileFilter={null}
         onFileFilterChange={() => undefined}
         areAllFilesCollapsed={false}
-        collapseAllDisabledReason={
-          isStatsLoading ? "Loading changes" : "No changes"
-        }
+        isCollapseAllDisabled
+        collapseAllDisabledReason={isStatsLoading ? null : "No changes"}
         onToggleAllCollapsed={() => undefined}
         displayMode="unified"
         onDisplayModeChange={() => undefined}
@@ -40,11 +39,24 @@ function renderToolbar(
   );
 }
 
-it("does not report no changes while the changed files are still loading", () => {
-  renderToolbar(true);
+it("keeps the disabled action name while skeletons report loading", async () => {
+  const onToggleAllCollapsed = vi.fn();
+  renderToolbar(true, { onToggleAllCollapsed });
 
   expect(screen.queryByText("No changes")).toBeNull();
   expect(screen.getByRole("status", { name: "Loading changes" })).toBeTruthy();
+  const button = screen.getByRole("button", { name: "Collapse all files" });
+  const trigger = screen.getByRole("group", { name: "Collapse all files" });
+  expect(button.hasAttribute("disabled")).toBe(true);
+  fireEvent.pointerMove(trigger, { pointerType: "mouse" });
+  expect((await screen.findByRole("tooltip")).textContent).toBe(
+    "Collapse all files",
+  );
+  trigger.focus();
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);
+  fireEvent.click(button);
+  expect(onToggleAllCollapsed).not.toHaveBeenCalled();
 });
 
 it("reports no changes once an empty file list has loaded", () => {
@@ -54,7 +66,7 @@ it("reports no changes once an empty file list has loaded", () => {
   expect(screen.queryByRole("status", { name: "Loading changes" })).toBeNull();
 });
 
-it.each(["Loading changes", "No changes", "No files match filter"] as const)(
+it.each(["No changes", "No files match filter"] as const)(
   "explains %s on hover and keyboard focus without activating the disabled button",
   async (collapseAllDisabledReason) => {
     const onToggleAllCollapsed = vi.fn();
@@ -88,6 +100,7 @@ it.each([
     const onToggleAllCollapsed = vi.fn();
     renderToolbar(false, {
       areAllFilesCollapsed,
+      isCollapseAllDisabled: false,
       collapseAllDisabledReason: null,
       onToggleAllCollapsed,
     });

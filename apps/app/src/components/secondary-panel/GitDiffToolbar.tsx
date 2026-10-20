@@ -216,11 +216,8 @@ interface GitDiffToolbarProps {
   onFileFilterChange: (value: string | null) => void;
 
   areAllFilesCollapsed: boolean;
-  collapseAllDisabledReason:
-    | "Loading changes"
-    | "No changes"
-    | "No files match filter"
-    | null;
+  isCollapseAllDisabled: boolean;
+  collapseAllDisabledReason: "No changes" | "No files match filter" | null;
   onToggleAllCollapsed: () => void;
 
   displayMode: GitDiffDisplayMode;
@@ -242,6 +239,7 @@ export function GitDiffToolbar({
   fileFilter,
   onFileFilterChange,
   areAllFilesCollapsed,
+  isCollapseAllDisabled,
   collapseAllDisabledReason,
   onToggleAllCollapsed,
   displayMode,
@@ -249,7 +247,6 @@ export function GitDiffToolbar({
   lineOverflowMode,
   onLineOverflowModeChange,
 }: GitDiffToolbarProps) {
-  const isCollapseAllDisabled = collapseAllDisabledReason !== null;
   const collapseAllLabel = areAllFilesCollapsed
     ? "Expand all files"
     : "Collapse all files";
@@ -368,7 +365,11 @@ export function GitDiffToolbar({
                   <span
                     className="inline-flex shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     role={isCollapseAllDisabled ? "group" : undefined}
-                    aria-label={collapseAllDisabledReason ?? undefined}
+                    aria-label={
+                      isCollapseAllDisabled
+                        ? (collapseAllDisabledReason ?? collapseAllLabel)
+                        : undefined
+                    }
                     tabIndex={isCollapseAllDisabled ? 0 : undefined}
                   >
                     <Button
