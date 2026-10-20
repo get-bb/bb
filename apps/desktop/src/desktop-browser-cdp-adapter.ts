@@ -1,4 +1,5 @@
 import type { Event, WebContents } from "electron";
+import { jsonObjectSchema } from "@bb/domain";
 import { z } from "zod";
 import { captureDesktopBrowserCdpScreenshot } from "./desktop-browser-capture.js";
 import type {
@@ -12,10 +13,9 @@ import {
   setDesktopBrowserThrottling,
 } from "./desktop-browser-throttling.js";
 
-const cdpObjectSchema = z.record(z.string(), z.json());
 const cdpMessageSchema = z.object({
   method: z.string().min(1),
-  params: cdpObjectSchema,
+  params: jsonObjectSchema,
   sessionId: z.string(),
 });
 
@@ -99,7 +99,7 @@ function createPage(
       const ready = nativeDebugger
         .sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true })
         .then((result) => {
-          cdpObjectSchema.parse(result);
+          jsonObjectSchema.parse(result);
           if (generation === attachmentGeneration) attachmentReady = null;
         });
       attachmentReady = ready;
@@ -152,7 +152,7 @@ function createPage(
         }
       }
       signal?.throwIfAborted();
-      const result = cdpObjectSchema.parse(
+      const result = jsonObjectSchema.parse(
         await (method === "Page.captureScreenshot"
           ? captureDesktopBrowserCdpScreenshot(webContents, params, sessionId)
           : nativeDebugger.sendCommand(method, params, sessionId)),

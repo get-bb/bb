@@ -1,3 +1,4 @@
+import { jsonValueSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   desktopBrowserImportSelectionSchema,
@@ -293,7 +294,7 @@ export type BbDesktopBrowserEvaluateRequest = z.infer<
 >;
 
 export const bbDesktopBrowserEvaluateResultSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), value: z.json() }).strict(),
+  z.object({ ok: z.literal(true), value: jsonValueSchema }).strict(),
   z.object({ ok: z.literal(false), error: z.string() }).strict(),
 ]);
 export type BbDesktopBrowserEvaluateResult = z.infer<
@@ -304,7 +305,7 @@ export const bbDesktopBrowserPageMessageSchema = z
   .object({
     tabId: z.string().min(1),
     channel: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_PAGE_CHANNEL_LENGTH),
-    data: z.json(),
+    data: jsonValueSchema,
   })
   .strict();
 export type BbDesktopBrowserPageMessage = z.infer<

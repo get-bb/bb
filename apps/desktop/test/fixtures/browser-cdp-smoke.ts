@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { app, BrowserWindow, nativeImage } from "electron";
 import { WebSocket, WebSocketServer } from "ws";
+import { jsonObjectSchema } from "@bb/domain";
 import { z } from "zod";
 import { desktopBrowserResultSchemas } from "@bb/host-daemon-contract";
 import {
@@ -22,8 +23,7 @@ import { createDesktopBrowserBroker } from "../../src/desktop-browser-broker.js"
 const execute = promisify(execFile);
 const keepAlive = setInterval(() => {}, 1000);
 app.once("quit", () => clearInterval(keepAlive));
-const objectSchema = z.record(z.string(), z.json());
-type CdpObject = z.infer<typeof objectSchema>;
+type CdpObject = z.infer<typeof jsonObjectSchema>;
 const configSchema = z.object({
   artifacts: z.string().min(1),
   devBrowser: z.string().min(1),
@@ -37,7 +37,7 @@ const targetListSchema = z.object({
 });
 const responseSchema = z.object({
   id: z.number().optional(),
-  result: objectSchema.optional(),
+  result: jsonObjectSchema.optional(),
   error: z.object({ message: z.string() }).optional(),
   method: z.string().optional(),
 });
@@ -275,7 +275,7 @@ async function main() {
         .object({
           id: z.number(),
           method: z.string(),
-          params: objectSchema.optional(),
+          params: jsonObjectSchema.optional(),
           sessionId: z.string().optional(),
         })
         .parse(JSON.parse(bytes.toString()));
@@ -296,7 +296,7 @@ async function main() {
       else queued.push(bytes);
     });
     upstream.on("message", (data) => {
-      const message = objectSchema.parse(JSON.parse(data.toString()));
+      const message = jsonObjectSchema.parse(JSON.parse(data.toString()));
       if (message.method === "Target.attachedToTarget") {
         const info = z
           .object({
@@ -594,7 +594,7 @@ async function main() {
     );
     assert.deepEqual(
       z
-        .object({ result: z.object({ value: objectSchema }) })
+        .object({ result: z.object({ value: jsonObjectSchema }) })
         .parse(hiddenResult).result.value,
       {
         title: "Other thread sentinel",

@@ -1,7 +1,18 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, JsonValue } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const ACCOUNT_PLUGIN_ID = "bb-account";
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
 
 const accountSchema = z.object({
   userId: z.string(),
@@ -57,7 +68,7 @@ export const loginPollOutputSchema = z.object({
 
 const fetchResultSchema = z.object({
   status: z.number().int(),
-  body: z.json().nullable(),
+  body: jsonValueSchema.nullable(),
 });
 
 export type AccountFetchResult = z.infer<typeof fetchResultSchema>;

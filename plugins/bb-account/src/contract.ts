@@ -1,4 +1,4 @@
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import { defineRpcContract, type JsonValue } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   accountStatusSchema,
@@ -33,6 +33,17 @@ export const FETCH_TIMEOUT_MIN_MS = 1_000;
 export const FETCH_TIMEOUT_DEFAULT_MS = 15_000;
 export const FETCH_TIMEOUT_MAX_MS = 65_000;
 
+export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 const emptyInputSchema = z.object({}).strict().nullable();
 
 export const fetchInputSchema = z
@@ -48,7 +59,7 @@ export const fetchInputSchema = z
       .describe(
         'Starts with "/api/ai/" ("/api/connect/" is reserved for the connect plugin); no query, fragment, "..", or "//"',
       ),
-    body: z.json().nullable().default(null),
+    body: jsonValueSchema.nullable().default(null),
     timeoutMs: z
       .number()
       .int()
@@ -64,7 +75,7 @@ export type AccountFetchInput = z.infer<typeof fetchInputSchema>;
 export const fetchOutputSchema = z
   .object({
     status: z.number().int(),
-    body: z.json().nullable(),
+    body: jsonValueSchema.nullable(),
   })
   .strict();
 

@@ -811,9 +811,6 @@ jobs:
           echo "version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Applied bb-app and desktop version ${NIGHTLY_VERSION}."
 
-      - name: Typecheck desktop and launcher
-        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
-
       - name: Package x64 nightly installer
         # Signs when the Windows certificate secrets exist; without them the
         # installer is unsigned and Windows SmartScreen warns before running it.

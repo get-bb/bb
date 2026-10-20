@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
+import { jsonObjectSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   createDesktopBrowserCdpBridge,
@@ -11,8 +12,7 @@ import {
 } from "../src/desktop-browser-cdp.js";
 import { createDeferredPromise } from "@bb/test-helpers";
 
-const messageSchema = z.record(z.string(), z.json());
-type Message = z.infer<typeof messageSchema>;
+type Message = z.infer<typeof jsonObjectSchema>;
 const disposers: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
@@ -143,7 +143,7 @@ async function connect(endpoint: string) {
   await once(socket, "open");
   const messages: Message[] = [];
   socket.on("message", (data) =>
-    messages.push(messageSchema.parse(JSON.parse(data.toString()))),
+    messages.push(jsonObjectSchema.parse(JSON.parse(data.toString()))),
   );
   disposers.push(async () => {
     if (socket.readyState === WebSocket.CLOSED) return;
@@ -164,7 +164,7 @@ async function connect(endpoint: string) {
         2000,
       );
       const onMessage = (data: Buffer) => {
-        const message = messageSchema.parse(JSON.parse(data.toString()));
+        const message = jsonObjectSchema.parse(JSON.parse(data.toString()));
         if (message.id !== requestId) return;
         clearTimeout(timer);
         socket.off("message", onMessage);
