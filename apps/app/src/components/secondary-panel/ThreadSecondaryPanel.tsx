@@ -42,6 +42,7 @@ import {
 } from "./secondaryPanelSizing";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
+  RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
@@ -103,6 +104,7 @@ import type {
   SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -551,6 +553,7 @@ function ThreadSecondaryPanelContent({
           ? PANEL_TAB_CONTROL_CLASS
           : SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
         CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+        "relative",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
         isPanelInFrame && MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
       )}
@@ -563,6 +566,10 @@ function ThreadSecondaryPanelContent({
       aria-keyshortcuts={togglePanelShortcut?.ariaKeyshortcuts}
     >
       <Icon name={RIGHT_PANEL_TOGGLE_ICON_NAME} />
+      <AppCommandShortcutHint
+        shortcut={togglePanelShortcut}
+        className={RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS}
+      />
     </Button>
   );
 
