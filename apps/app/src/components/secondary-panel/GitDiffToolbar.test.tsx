@@ -26,7 +26,9 @@ function renderToolbar(
         fileFilter={null}
         onFileFilterChange={() => undefined}
         areAllFilesCollapsed={false}
-        isCollapseAllDisabled
+        collapseAllDisabledReason={
+          isStatsLoading ? "Loading changes" : "No changes"
+        }
         onToggleAllCollapsed={() => undefined}
         displayMode="unified"
         onDisplayModeChange={() => undefined}
@@ -52,26 +54,49 @@ it("reports no changes once an empty file list has loaded", () => {
   expect(screen.queryByRole("status", { name: "Loading changes" })).toBeNull();
 });
 
-it.each([
-  { areAllFilesCollapsed: false, label: "Collapse all files" },
-  { areAllFilesCollapsed: true, label: "Expand all files" },
-])(
-  "shows $label on hover while disabled without activating it",
-  async ({ areAllFilesCollapsed, label }) => {
+it.each(["Loading changes", "No changes", "No files match filter"] as const)(
+  "explains %s on hover and keyboard focus without activating the disabled button",
+  async (collapseAllDisabledReason) => {
     const onToggleAllCollapsed = vi.fn();
-    renderToolbar(false, { areAllFilesCollapsed, onToggleAllCollapsed });
-    const button = screen.getByRole("button", { name: label });
-    const trigger = button.parentElement!;
+    renderToolbar(false, { collapseAllDisabledReason, onToggleAllCollapsed });
+    const button = screen.getByRole("button", { name: "Collapse all files" });
+    const trigger = screen.getByRole("group", {
+      name: collapseAllDisabledReason,
+    });
 
     expect(button.hasAttribute("disabled")).toBe(true);
     fireEvent.pointerMove(trigger, { pointerType: "mouse" });
 
-    expect((await screen.findByRole("tooltip")).textContent).toBe(label);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      collapseAllDisabledReason,
+    );
     fireEvent.click(trigger);
     fireEvent.click(button);
     expect(onToggleAllCollapsed).not.toHaveBeenCalled();
 
     trigger.focus();
     expect(document.activeElement).toBe(trigger);
+  },
+);
+
+it.each([
+  { areAllFilesCollapsed: false, label: "Collapse all files" },
+  { areAllFilesCollapsed: true, label: "Expand all files" },
+])(
+  "keeps the enabled $label action and tooltip",
+  async ({ areAllFilesCollapsed, label }) => {
+    const onToggleAllCollapsed = vi.fn();
+    renderToolbar(false, {
+      areAllFilesCollapsed,
+      collapseAllDisabledReason: null,
+      onToggleAllCollapsed,
+    });
+    const button = screen.getByRole("button", { name: label });
+
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.pointerMove(button, { pointerType: "mouse" });
+    expect((await screen.findByRole("tooltip")).textContent).toBe(label);
+    fireEvent.click(button);
+    expect(onToggleAllCollapsed).toHaveBeenCalledOnce();
   },
 );

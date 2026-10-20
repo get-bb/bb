@@ -216,7 +216,11 @@ interface GitDiffToolbarProps {
   onFileFilterChange: (value: string | null) => void;
 
   areAllFilesCollapsed: boolean;
-  isCollapseAllDisabled: boolean;
+  collapseAllDisabledReason:
+    | "Loading changes"
+    | "No changes"
+    | "No files match filter"
+    | null;
   onToggleAllCollapsed: () => void;
 
   displayMode: GitDiffDisplayMode;
@@ -238,13 +242,17 @@ export function GitDiffToolbar({
   fileFilter,
   onFileFilterChange,
   areAllFilesCollapsed,
-  isCollapseAllDisabled,
+  collapseAllDisabledReason,
   onToggleAllCollapsed,
   displayMode,
   onDisplayModeChange,
   lineOverflowMode,
   onLineOverflowModeChange,
 }: GitDiffToolbarProps) {
+  const isCollapseAllDisabled = collapseAllDisabledReason !== null;
+  const collapseAllLabel = areAllFilesCollapsed
+    ? "Expand all files"
+    : "Collapse all files";
   const rootRef = useRef<HTMLDivElement>(null!);
   const { width: rootWidth = 0 } = useResizeObserver({
     ref: rootRef,
@@ -359,6 +367,8 @@ export function GitDiffToolbar({
                 <TooltipTrigger asChild>
                   <span
                     className="inline-flex shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    role={isCollapseAllDisabled ? "group" : undefined}
+                    aria-label={collapseAllDisabledReason ?? undefined}
                     tabIndex={isCollapseAllDisabled ? 0 : undefined}
                   >
                     <Button
@@ -371,11 +381,7 @@ export function GitDiffToolbar({
                       )}
                       onClick={onToggleAllCollapsed}
                       disabled={isCollapseAllDisabled}
-                      aria-label={
-                        areAllFilesCollapsed
-                          ? "Expand all files"
-                          : "Collapse all files"
-                      }
+                      aria-label={collapseAllLabel}
                     >
                       {areAllFilesCollapsed ? (
                         <Icon name="ChevronsDown" />
@@ -386,9 +392,7 @@ export function GitDiffToolbar({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {areAllFilesCollapsed
-                    ? "Expand all files"
-                    : "Collapse all files"}
+                  {collapseAllDisabledReason ?? collapseAllLabel}
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
