@@ -5,6 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 export type ThreadListPlaceholderState =
   | { kind: "loading" }
   | { kind: "missing" }
+  | { kind: "failed"; onRetry: () => void }
   | { kind: "crashed"; pluginTitle: string; onReload: () => void };
 
 function LoadingRow({ textWidthClassName }: { textWidthClassName: string }) {
@@ -54,21 +55,33 @@ export function ThreadListPlaceholder({
       </div>
     );
   }
+  const alert =
+    state.kind === "failed"
+      ? {
+          message: "Thread list couldn't load.",
+          action: "Retry",
+          onClick: state.onRetry,
+        }
+      : {
+          message: `${state.pluginTitle} stopped working.`,
+          action: "Reload",
+          onClick: state.onReload,
+        };
   return (
     <div
       role="alert"
-      data-thread-list-placeholder="crashed"
+      data-thread-list-placeholder={state.kind}
       className="flex flex-col gap-2 px-3 py-2 text-sm text-muted-foreground"
     >
-      <span>{state.pluginTitle} stopped working.</span>
+      <span>{alert.message}</span>
       <Button
         type="button"
         variant="outline"
         size="sm"
         className="self-start"
-        onClick={state.onReload}
+        onClick={alert.onClick}
       >
-        Reload
+        {alert.action}
       </Button>
     </div>
   );

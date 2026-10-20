@@ -8,7 +8,11 @@ import { useRouteState } from "@/hooks/useRouteState";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import { appToast } from "@/components/ui/app-toast";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
+import {
+  usePluginFrontendLoadFailed,
+  usePluginFrontendsSettled,
+} from "@/lib/plugin-frontend-boot-state";
+import { schedulePluginFrontendReconcile } from "@/lib/plugin-frontend-lazy";
 import { ThreadListPlaceholder } from "./ThreadListPlaceholder";
 
 const THREAD_LIST_SLOT_KIND = "threadList";
@@ -25,6 +29,7 @@ export function PluginThreadList({
   const { projectId, threadId } = useRouteState();
   const { isCompactViewport } = useSidebar();
   const bootSettled = usePluginFrontendsSettled();
+  const loadFailed = usePluginFrontendLoadFailed();
   const [attempt, setAttempt] = useState(0);
   const registration =
     replacement.kind === "plugin" ? replacement.registration : null;
@@ -47,7 +52,13 @@ export function PluginThreadList({
   if (registration === null) {
     return (
       <ThreadListPlaceholder
-        state={bootSettled ? { kind: "missing" } : { kind: "loading" }}
+        state={
+          !bootSettled
+            ? { kind: "loading" }
+            : loadFailed
+              ? { kind: "failed", onRetry: schedulePluginFrontendReconcile }
+              : { kind: "missing" }
+        }
       />
     );
   }

@@ -6,6 +6,7 @@ let phase: PluginFrontendBootPhase = "idle";
 let settleFloorReached = false;
 let serverPluginsStarting = false;
 let reconcilePending = false;
+let loadFailed = false;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -42,6 +43,12 @@ export function setPluginFrontendReconcilePending(pending: boolean): void {
   notify();
 }
 
+export function setPluginFrontendLoadFailed(failed: boolean): void {
+  if (loadFailed === failed) return;
+  loadFailed = failed;
+  notify();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -69,6 +76,18 @@ export function usePluginFrontendsSettled(): boolean {
   );
 }
 
+function getLoadFailedSnapshot(): boolean {
+  return loadFailed;
+}
+
+export function usePluginFrontendLoadFailed(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    getLoadFailedSnapshot,
+    getLoadFailedSnapshot,
+  );
+}
+
 export function usePluginFrontendBootComplete(): boolean {
   return useSyncExternalStore(
     subscribe,
@@ -82,4 +101,5 @@ export function resetPluginFrontendBootStateForTest(): void {
   settleFloorReached = false;
   serverPluginsStarting = false;
   reconcilePending = false;
+  loadFailed = false;
 }
