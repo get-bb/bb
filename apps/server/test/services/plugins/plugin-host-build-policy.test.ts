@@ -1,11 +1,14 @@
 import {
+  appendFile,
   mkdir,
   mkdtemp,
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -27,13 +30,11 @@ describe("mutable plugin host build policy", () => {
   let artifactPath: string;
   let metaPath: string;
 
-  beforeEach(async () => {
-    db = createMigratedConnection();
-    workDir = await mkdtemp(join(tmpdir(), "bb-host-build-policy-"));
-    service = createPluginService({
+  function createService(appVersion: string): PluginService {
+    return createPluginService({
       db,
       dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
+      appVersion,
       bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
@@ -44,6 +45,12 @@ describe("mutable plugin host build policy", () => {
         notifySystem: () => {},
       },
     });
+  }
+
+  beforeEach(async () => {
+    db = createMigratedConnection();
+    workDir = await mkdtemp(join(tmpdir(), "bb-host-build-policy-"));
+    service = createService("0.9.0");
     rootDir = join(workDir, "bb-plugin-host-policy");
     artifactPath = join(rootDir, "dist", "host.js");
     metaPath = join(rootDir, "dist", "host.meta.json");
@@ -66,9 +73,29 @@ describe("mutable plugin host build policy", () => {
       join(rootDir, "server.ts"),
       "export default function plugin() {}",
     );
+    const dependencyDir = join(workDir, "shared-dependency");
+    await mkdir(dependencyDir, { recursive: true });
+    await writeFile(
+      join(dependencyDir, "package.json"),
+      JSON.stringify({
+        name: "shared-dependency",
+        version: "1.0.0",
+        type: "module",
+        main: "./index.js",
+      }),
+    );
+    await writeFile(
+      join(dependencyDir, "index.js"),
+      'export const marker = "dependency-initial";',
+    );
+    await mkdir(join(rootDir, "node_modules"), { recursive: true });
+    await symlink(
+      dependencyDir,
+      join(rootDir, "node_modules", "shared-dependency"),
+    );
     await writeFile(
       join(rootDir, "host.ts"),
-      'export default { experimental_apiVersion: 1, value: "initial" };',
+      'import { marker } from "shared-dependency";\nexport default { experimental_apiVersion: 1, value: "initial", marker };',
     );
     const installed = await service.installPath(rootDir);
     expect(installed.status).toBe("running");
@@ -105,7 +132,7 @@ describe("mutable plugin host build policy", () => {
       if (target === "source") {
         await writeFile(
           join(rootDir, "host.ts"),
-          'export default { experimental_apiVersion: 1, value: "updated" };',
+          'import { marker } from "shared-dependency";\nexport default { experimental_apiVersion: 1, value: "updated", marker };',
         );
       } else if (target === "artifact") {
         await rm(artifactPath);
@@ -127,4 +154,40 @@ describe("mutable plugin host build policy", () => {
       expect(artifact).toContain(target === "source" ? "updated" : "initial");
     },
   );
+
+  it("rebuilds when a bundled dependency outside the plugin root changes", async () => {
+    await writeFile(
+      join(workDir, "shared-dependency", "index.js"),
+      'export const marker = "dependency-updated";',
+    );
+
+    await service.stop();
+    await service.start();
+
+    expect(await readFile(artifactPath, "utf8")).toContain(
+      "dependency-updated",
+    );
+  });
+
+  it("rebuilds when the artifact bytes no longer match the metadata", async () => {
+    await appendFile(artifactPath, "\n");
+
+    expect(await service.reload("host-policy")).toMatchObject({ ok: true });
+    const metadata = JSON.parse(await readFile(metaPath, "utf8"));
+    expect(metadata.artifactDigest).toBe(
+      createHash("sha256")
+        .update(await readFile(artifactPath))
+        .digest("hex"),
+    );
+  });
+
+  it("rebuilds after bb is upgraded", async () => {
+    await service.stop();
+    service = createService("0.9.1");
+    await service.start();
+
+    expect(JSON.parse(await readFile(metaPath, "utf8"))).toMatchObject({
+      builtWith: { bbVersion: "0.9.1" },
+    });
+  });
 });

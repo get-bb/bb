@@ -40,12 +40,9 @@ import {
   validateRpcValue,
   validateSettingsUpdate,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import {
-  buildPluginApp,
-  buildPluginHost,
-  createPluginDevLoop,
-} from "@bb/plugin-build";
+import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import { buildMutablePluginHost } from "./mutable-plugin-artifacts.js";
 import {
   marketplacePublisherLabel,
   pluginPublisherLabel,
@@ -1549,11 +1546,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             },
             buildHost: async () => {
               try {
-                await buildPluginHost(
-                  bundled.rootDir,
-                  deps.appVersion,
-                  await getPluginBuildToolchain(deps),
-                );
+                await buildMutablePluginHost({
+                  dataDir: deps.dataDir,
+                  pluginId: row.id,
+                  rootDir: bundled.rootDir,
+                  bbVersion: deps.appVersion,
+                  toolchain: await getPluginBuildToolchain(deps),
+                });
                 setDevBuildProblem(row.id, "host", null);
                 notifyPluginsChanged();
               } catch (error) {
