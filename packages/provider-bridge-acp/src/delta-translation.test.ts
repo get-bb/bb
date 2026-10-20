@@ -34,8 +34,13 @@ interface AcpEquivalenceHarness {
 
 const SESSION_CWD = "/workspace";
 
-function createHarness(): AcpEquivalenceHarness {
-  const translator = createAcpDeltaTranslator({ cwd: SESSION_CWD });
+function createHarness(
+  fileCreatedThisTurn?: (path: string) => boolean | undefined,
+): AcpEquivalenceHarness {
+  const translator = createAcpDeltaTranslator({
+    cwd: SESSION_CWD,
+    fileCreatedThisTurn,
+  });
   const assembler = createDeltaAssembler({
     providerId: "acp",
     entropyPrefix: ENTROPY,
@@ -106,6 +111,154 @@ function completedItems(events: ThreadEvent[]) {
     event.type === "item/completed" ? [event.item] : [],
   );
 }
+
+describe("acp file change kinds", () => {
+  function fileChangesFor(
+    updates: Record<string, unknown>[],
+    fileCreatedThisTurn?: (path: string) => boolean | undefined,
+  ) {
+    const harness = createHarness(fileCreatedThisTurn);
+    harness.translate(turnStartedEvent());
+    const events = updates.flatMap((update) =>
+      harness.translate(updateEvent(update)),
+    );
+    const item = completedItems(events).find(
+      (candidate) => candidate.type === "fileChange",
+    );
+    if (item?.type !== "fileChange") {
+      throw new Error("Expected a completed fileChange item");
+    }
+    return item.changes;
+  }
+
+  it("reads Cursor's /dev/null diff as a new file and drops its header line", () => {
+    expect(
+      fileChangesFor([
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "c1",
+          title: "Edit File",
+          kind: "edit",
+          status: "pending",
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "c1",
+          status: "completed",
+          content: [
+            {
+              type: "diff",
+              path: "/workspace/fresh.txt",
+              oldText: "-- /dev/null",
+              newText: "++ b//workspace/fresh.txt\nhello",
+            },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        path: "/workspace/fresh.txt",
+        kind: "add",
+        diff: "--- /dev/null\n+++ b/workspace/fresh.txt\n+hello\n",
+      },
+    ]);
+  });
+
+  it("keeps an edit of existing text as an update", () => {
+    expect(
+      fileChangesFor([
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "c2",
+          title: "Edit File",
+          kind: "edit",
+          status: "pending",
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "c2",
+          status: "completed",
+          content: [
+            {
+              type: "diff",
+              path: "/workspace/a.txt",
+              oldText: "one\n",
+              newText: "two\n",
+            },
+          ],
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        path: "/workspace/a.txt",
+        kind: "update",
+      }),
+    ]);
+  });
+
+  const writeTo = (toolCallId: string, path: string) => [
+    {
+      sessionUpdate: "tool_call",
+      toolCallId,
+      title: "write",
+      kind: "edit",
+      status: "pending",
+    },
+    {
+      sessionUpdate: "tool_call_update",
+      toolCallId,
+      status: "in_progress",
+      locations: [{ path }],
+    },
+    {
+      sessionUpdate: "tool_call_update",
+      toolCallId,
+      status: "completed",
+      content: [
+        {
+          type: "content",
+          content: { type: "text", text: "Wrote file successfully." },
+        },
+      ],
+    },
+  ];
+
+  it.each([
+    { created: true, kind: "add" },
+    { created: false, kind: "update" },
+    { created: undefined, kind: "update" },
+  ])(
+    "marks a write without a diff as $kind when created-this-turn is $created",
+    ({ created, kind }) => {
+      const checked: string[] = [];
+      const changes = fileChangesFor(
+        writeTo("w1", "/workspace/fresh.txt"),
+        (path) => {
+          checked.push(path);
+          return created;
+        },
+      );
+      expect(changes).toEqual([{ path: "/workspace/fresh.txt", kind }]);
+      expect(checked).toEqual(["/workspace/fresh.txt"]);
+    },
+  );
+
+  it("adds a file created this turn once, then reports later writes to it as updates", () => {
+    const harness = createHarness(() => true);
+    harness.translate(turnStartedEvent());
+    const events = [
+      ...writeTo("w1", "/workspace/fresh.txt"),
+      ...writeTo("w2", "/workspace/fresh.txt"),
+    ].flatMap((update) => harness.translate(updateEvent(update)));
+    expect(
+      completedItems(events).flatMap((item) =>
+        item.type === "fileChange"
+          ? item.changes.map((change) => change.kind)
+          : [],
+      ),
+    ).toEqual(["add", "update"]);
+  });
+});
 
 describe("acp delta translation (bridge-shared invariants)", () => {
   it("does not synthesize a turn for updates that arrive after turn completion", () => {

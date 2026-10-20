@@ -49,7 +49,7 @@ import type {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
-import { promises as fs, readFileSync } from "node:fs";
+import { promises as fs, readFileSync, statSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,7 @@ import {
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,
+  ACP_PROMPT_INTERRUPTED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
@@ -219,6 +220,7 @@ interface AcpThreadSession {
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
+  turnStartedAtMs: number | undefined;
   restartAfterCancelError: boolean;
   loading: boolean;
   loadingSessionId: string | undefined;
@@ -2203,6 +2205,21 @@ type AcpSessionStartRequest =
       sourceProviderThreadId: string;
     };
 
+function fileCreatedSince(
+  path: string,
+  sinceMs: number | undefined,
+): boolean | undefined {
+  if (sinceMs === undefined) {
+    return undefined;
+  }
+  try {
+    const { birthtimeMs } = statSync(path);
+    return birthtimeMs > 0 ? birthtimeMs >= sinceMs : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function dialectLaunchEnv(
   dialectId: string,
   permissionMode: AcpSessionParams["permissionMode"],
@@ -2241,6 +2258,8 @@ async function startAgentSession(
   const translator = createAcpDeltaTranslator({
     cwd: params.cwd,
     dialect,
+    fileCreatedThisTurn: (path) =>
+      fileCreatedSince(path, session.turnStartedAtMs),
   });
   translator.configureInjectedTools(
     (params.dynamicTools ?? []).map((tool) => ({
@@ -2344,6 +2363,7 @@ async function startAgentSession(
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
+    turnStartedAtMs: undefined,
     restartAfterCancelError: false,
     loading: false,
     loadingSessionId: undefined,
@@ -2955,6 +2975,7 @@ function finishTurn(
   if (session.activePromptKind !== "turn") {
     return;
   }
+  session.turnStartedAtMs = undefined;
   for (const controller of session.pendingToolCalls) controller.abort();
   setActivePromptKind(session, null);
   dropQueuedTurnInputs(session, "ACP turn ended before the steer was sent");
@@ -3056,6 +3077,7 @@ function runTurn(
         const prompt = buildPromptContentBlocks(session, pending.input);
         let inputAccepted = false;
         let busyRetries = 0;
+        session.turnStartedAtMs ??= Date.now();
         for (;;) {
           session.promptRequestPending = true;
           const promptResult = session.connection.request({
@@ -3123,6 +3145,11 @@ function runTurn(
       if (!session.stopping) {
         const next = session.queuedInputs.shift();
         if (next) {
+          if (stopReason === "cancelled") {
+            emitForSession(session, ACP_PROMPT_INTERRUPTED_METHOD, {
+              threadId: session.bbThreadId,
+            });
+          }
           pending = next;
           continue;
         }

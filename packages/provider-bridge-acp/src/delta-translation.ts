@@ -26,6 +26,7 @@ import {
   ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,
+  ACP_PROMPT_INTERRUPTED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
@@ -77,6 +78,7 @@ interface AcpDeltaTranslationContext {
 export interface AcpDeltaTranslatorOptions {
   cwd?: string | undefined;
   dialect?: AcpDialect | undefined;
+  fileCreatedThisTurn?: ((path: string) => boolean | undefined) | undefined;
 }
 
 export interface AcpPermissionToolCallInput {
@@ -172,6 +174,36 @@ export function createAcpDeltaTranslator(
   const dialect = options.dialect ?? GENERIC_ACP_DIALECT;
   const pathOptions = { cwd: options.cwd };
   const mergedToolCalls = new Map<string, AcpOpenToolCall>();
+  const fileExistence = new Map<string, Map<string, boolean | undefined>>();
+  const filesAddedThisTurn = new Set<string>();
+
+  function noteEditedPaths(key: string, event: AcpToolCallUpdateEvent): void {
+    const fileCreatedThisTurn = options.fileCreatedThisTurn;
+    if (fileCreatedThisTurn === undefined || event.kind !== "edit") {
+      return;
+    }
+    const seen =
+      fileExistence.get(key) ?? new Map<string, boolean | undefined>();
+    for (const location of event.locations ?? []) {
+      const resolved = resolveAcpToolCallPath(location.path, pathOptions);
+      if (seen.has(resolved)) {
+        continue;
+      }
+      const created = fileCreatedThisTurn(resolved);
+      if (created === undefined) {
+        seen.set(resolved, undefined);
+        continue;
+      }
+      const added = created && !filesAddedThisTurn.has(resolved);
+      if (added) {
+        filesAddedThisTurn.add(resolved);
+      }
+      seen.set(resolved, !added);
+    }
+    if (seen.size > 0) {
+      fileExistence.set(key, seen);
+    }
+  }
 
   let lastUsageCost: ThreadUsageCost | undefined;
   let lastAgentTitle: string | undefined;
@@ -292,7 +324,10 @@ export function createAcpDeltaTranslator(
         return dialectShape;
       }
     }
-    return classifyAcpToolCall(event, injected, pathOptions);
+    return classifyAcpToolCall(event, injected, {
+      ...pathOptions,
+      existedBefore: fileExistence.get(callKey(context, event.toolCallId)),
+    });
   }
 
   interface AcpFsWriteSnapshot {
@@ -522,6 +557,7 @@ export function createAcpDeltaTranslator(
       args.permissionTitle,
     );
     injectedToolBindings.delete(callKey(args.context, args.event.toolCallId));
+    fileExistence.delete(callKey(args.context, args.event.toolCallId));
     const closeFields =
       classified.item.type === "command"
         ? commandCloseFields(args.event, args.status)
@@ -655,6 +691,7 @@ export function createAcpDeltaTranslator(
         if (bound !== undefined) {
           injectedToolBindings.set(announcedKey, bound);
         }
+        noteEditedPaths(announcedKey, event);
         if (isTerminalAcpStatus(event.status)) {
           return [
             ...flush,
@@ -697,6 +734,7 @@ export function createAcpDeltaTranslator(
           mergeAcpToolCallEvents(open?.event, event),
           open?.clientFileWrites ?? [],
         );
+        noteEditedPaths(key, merged);
         if (isTerminalAcpStatus(merged.status)) {
           mergedToolCalls.delete(key);
           return [
@@ -925,7 +963,18 @@ export function createAcpDeltaTranslator(
           return [];
         }
         clearThreadCalls(context);
+        filesAddedThisTurn.clear();
         return [{ kind: "turn.open" }];
+      }
+
+      case ACP_PROMPT_INTERRUPTED_METHOD: {
+        const params = acpTurnStartedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        return drainOpenToolCalls(context, "interrupted");
       }
 
       case ACP_TURN_COMPLETED_METHOD: {

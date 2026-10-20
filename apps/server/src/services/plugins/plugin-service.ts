@@ -64,6 +64,7 @@ import {
 } from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
+  deleteAllPluginKvValues,
   deleteAllPluginSettings,
   deleteInstalledPlugin,
   deletePluginSchedules,
@@ -1299,13 +1300,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           deps.db,
           retired.successorPluginId,
         );
-        if (successor?.removedAt !== null && successor?.removedAt !== undefined) {
+        if (
+          successor?.removedAt !== null &&
+          successor?.removedAt !== undefined
+        ) {
           restoreRemovedInstalledPlugin(deps.db, successor.id);
         } else if (successor !== undefined && !successor.enabled) {
           setInstalledPluginEnabled(deps.db, successor.id, true);
         }
       }
       await deleteRemovedPluginData(row, new Set());
+      deleteAllPluginKvValues(deps.db, row.id);
       deleteInstalledPlugin(deps.db, row.id);
       logger.info(
         row.enabled

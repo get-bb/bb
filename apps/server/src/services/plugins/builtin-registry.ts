@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RETIRED_PLUGIN_SUCCESSORS } from "@bb/domain";
 
 export interface BundledPluginDefinition {
   name: string;
@@ -271,13 +272,20 @@ export interface RetiredBundledPlugin {
   carriedSettings: readonly string[];
 }
 
-export const RETIRED_BUNDLED_PLUGINS: readonly RetiredBundledPlugin[] = [
-  {
-    pluginId: "bb--provider-acp-next",
-    successorPluginId: "provider-acp",
-    carriedSettings: ["customAgents"],
-  },
-];
+const RETIRED_PLUGIN_CARRIED_SETTINGS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  "bb--provider-acp-next": ["customAgents"],
+};
+
+export const RETIRED_BUNDLED_PLUGINS: readonly RetiredBundledPlugin[] =
+  Object.entries(RETIRED_PLUGIN_SUCCESSORS).map(
+    ([pluginId, successorPluginId]) => ({
+      pluginId,
+      successorPluginId,
+      carriedSettings: RETIRED_PLUGIN_CARRIED_SETTINGS[pluginId] ?? [],
+    }),
+  );
 
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 

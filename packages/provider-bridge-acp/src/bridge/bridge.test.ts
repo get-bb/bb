@@ -3376,6 +3376,38 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
+  it("closes a command left open by a steered-away prompt as interrupted", async () => {
+    const { providerThreadId } = await startThread();
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang-with-open-command", mentions: [] }],
+      }),
+    );
+    await waitFor(
+      () => (threadEventsOfType("item/started").length > 0 ? true : undefined),
+      "the command to start",
+    );
+    await waitForResponse(
+      sendTurnRequest("turn/steer", providerThreadId, {
+        expectedTurnId: "turn-1",
+        input: [{ type: "text", text: "first-steer", mentions: [] }],
+      }),
+    );
+
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    const command = threadEventsOfType("item/completed")
+      .map((event) => event.item)
+      .find(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          "type" in item &&
+          item.type === "commandExecution",
+      );
+    expect(command).toMatchObject({ status: "interrupted" });
+    expect(agentMessageTexts().join("")).toContain("echo:first-steer");
+  });
+
   it("cancels a stacked steer prompt that also hangs", async () => {
     const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {

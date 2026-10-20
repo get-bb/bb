@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getDisabledProviderIds,
   getInstalledPluginRegistration,
+  getPluginKvValue,
   getPluginSettingsValues,
   markInstalledPluginRemoved,
   setDisabledPluginProviderCatalog,
   setDisabledProviderIds,
+  setPluginKvValue,
   setPluginSettingsValues,
   upsertInstalledPlugin,
   type DbConnection,
@@ -147,6 +149,7 @@ describe("retired bundled plugins", () => {
       agents: JSON.stringify("[new]"),
       other: JSON.stringify("dropped"),
     });
+    setPluginKvValue(db, "retired", "registry-cache", JSON.stringify({}));
 
     await restart();
 
@@ -157,6 +160,7 @@ describe("retired bundled plugins", () => {
     });
     expect(getInstalledPluginRegistration(db, "retired")).toBeUndefined();
     expect(getPluginSettingsValues(db, "retired")).toEqual({});
+    expect(getPluginKvValue(db, "retired", "registry-cache")).toBeUndefined();
   });
 
   it("leaves the successor alone when the retired plugin was off, and keeps the user's disabled providers", async () => {
