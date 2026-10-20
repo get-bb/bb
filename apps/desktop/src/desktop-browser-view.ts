@@ -11,6 +11,7 @@ import {
   systemPreferences,
   type BrowserWindowConstructorOptions,
   type NavigationEntry,
+  type MenuItemConstructorOptions,
   type Session,
   type WebContents,
   type WebPreferences,
@@ -1094,7 +1095,22 @@ export function createDesktopBrowserViewManager(
         return;
       }
       const { editFlags } = params;
-      const menu = Menu.buildFromTemplate([
+      const template: MenuItemConstructorOptions[] = [];
+      if (params.mediaType === "image") {
+        template.push(
+          {
+            label: "Copy Image",
+            enabled: params.hasImageContents,
+            click: () => {
+              if (entry.registry !== entries || webContents.isDestroyed())
+                return;
+              webContents.copyImageAt(params.x, params.y);
+            },
+          },
+          { type: "separator" },
+        );
+      }
+      template.push(
         {
           role: "cut",
           enabled: editFlags.canCut,
@@ -1112,8 +1128,8 @@ export function createDesktopBrowserViewManager(
           role: "selectAll",
           enabled: editFlags.canSelectAll,
         },
-      ]);
-      menu.popup();
+      );
+      Menu.buildFromTemplate(template).popup();
     });
 
     webContents.on("found-in-page", (_event, result) => {

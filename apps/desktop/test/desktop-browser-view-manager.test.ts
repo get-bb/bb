@@ -1,4 +1,9 @@
-import type { RenderProcessGoneDetails, WebContentsView } from "electron";
+import type {
+  MenuItemConstructorOptions,
+  RenderProcessGoneDetails,
+  WebContentsView,
+} from "electron";
+import { Menu } from "electron";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -101,6 +106,11 @@ type FakeDidFailLoadListener = (
 ) => void;
 
 interface FakeContextMenuParams {
+  mediaType: "image" | "none";
+  hasImageContents: boolean;
+  selectionText: string;
+  x: number;
+  y: number;
   editFlags: {
     canCopy: boolean;
     canCut: boolean;
@@ -386,6 +396,11 @@ const electronMock = vi.hoisted(() => {
 
   class FakeWebContents {
     public readonly debugger = new FakeDebugger();
+    public readonly copyImageAt = vi.fn<(x: number, y: number) => void>();
+    emitContextMenu(params: FakeContextMenuParams): void {
+      for (const listener of this.listeners["context-menu"])
+        listener({}, params);
+    }
     public audioMuted = false;
     public readonly mainFrame = {
       framesInSubtree: [
@@ -923,6 +938,11 @@ const electronMock = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
+  Menu: {
+    buildFromTemplate: vi.fn<
+      (template: MenuItemConstructorOptions[]) => { popup(): void }
+    >(() => ({ popup() {} })),
+  },
   BaseWindow: electronMock.BaseWindow,
   BrowserWindow: electronMock.FakeBrowserWindow,
   WebContentsView: electronMock.FakeWebContentsView,
@@ -1008,6 +1028,7 @@ class FakeHostWindow implements DesktopBrowserHostWindow {
 
 beforeEach(() => {
   vi.useRealTimers();
+  vi.mocked(Menu.buildFromTemplate).mockClear();
   electronMock.showMessageBox.mockReset().mockResolvedValue({ response: 1 });
   electronMock.askForMediaAccess.mockReset().mockResolvedValue(true);
   electronMock.fakeSessions.length = 0;
@@ -1929,6 +1950,55 @@ describe("DesktopBrowserCdpAdapter", () => {
 });
 
 describe("DesktopBrowserViewManager", () => {
+  it.each([
+    { mediaType: "image", hasImageContents: true, offersCopy: true },
+    { mediaType: "image", hasImageContents: false, offersCopy: true },
+    { mediaType: "none", hasImageContents: false, offersCopy: false },
+  ] as const)(
+    "handles image copying for $mediaType with contents=$hasImageContents",
+    ({ mediaType, hasImageContents, offersCopy }) => {
+      const hostWindow = new FakeHostWindow({
+        webContentsId: 1,
+        contentBounds: { width: 1000, height: 800 },
+      });
+      const manager = createDesktopBrowserViewManager();
+      attachBrowserTab({
+        hostWindow,
+        manager,
+        tabId: "browser:image",
+        url: "https://example.com/image.png",
+      });
+      const contents = requireFakeView(0).webContents;
+      contents.emitContextMenu({
+        mediaType,
+        hasImageContents,
+        x: 42,
+        y: 63,
+        selectionText: "",
+        editFlags: {
+          canCopy: false,
+          canCut: false,
+          canPaste: false,
+          canRedo: false,
+          canSelectAll: true,
+          canUndo: false,
+        },
+      });
+      const template = vi.mocked(Menu.buildFromTemplate).mock.calls.at(-1)?.[0];
+      const item = template?.find((entry) => entry.label === "Copy Image");
+      expect(Boolean(item)).toBe(offersCopy);
+      if (offersCopy) {
+        expect(item?.enabled).toBe(hasImageContents);
+        if (hasImageContents) {
+          if (!item?.click) throw new Error("Missing image copy action");
+          Reflect.apply(item.click, undefined, []);
+          expect(contents.copyImageAt).toHaveBeenCalledWith(42, 63);
+        }
+      }
+      manager.destroyAll();
+    },
+  );
+
   it("pauses media inside nested open shadow roots when hidden", async () => {
     const hostWindow = new FakeHostWindow({
       webContentsId: 1,
