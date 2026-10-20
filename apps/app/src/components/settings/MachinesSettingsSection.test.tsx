@@ -238,7 +238,7 @@ describe("MachinesSettingsSection", () => {
     stubSidebarBootstrapFetch();
     renderSection();
     const banner = await screen.findByRole("region", {
-      name: "Machines need attention",
+      name: "dev-vm cleanup failed",
     });
     expect(
       within(banner).getByText("Provider credentials expired."),
