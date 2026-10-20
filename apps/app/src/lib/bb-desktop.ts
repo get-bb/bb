@@ -123,10 +123,6 @@ export function applyAppFrameGeometry(
         MACOS_TRAFFIC_LIGHT_TOP_INSET_PX) +
       MACOS_TRAFFIC_LIGHT_SIZE_PX / 2;
     const titleBarHeight = 2 * centerY;
-    const reserve =
-      inset +
-      MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX +
-      MACOS_TRAFFIC_LIGHT_CLEARANCE_PX;
     Object.assign(properties, {
       "--bb-macos-traffic-light-center-y": `${centerY}px`,
       "--bb-window-title-bar-height": `${titleBarHeight}px`,
@@ -135,9 +131,9 @@ export function applyAppFrameGeometry(
         titleBarHeight,
         true,
       ),
-      "--bb-macos-traffic-light-reserve": `${reserve}px`,
-      "--bb-window-title-bar-controls-end": `${reserve + TITLE_BAR_CONTROL_COUNT * TITLE_BAR_CONTROL_SIZE_PX + TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px`,
-      "--bb-macos-collapsed-top-left-reserve": `${reserve + TITLE_BAR_CONTROL_SIZE_PX + COLLAPSED_SIDEBAR_TRIGGER_GAP_PX - PAGE_HEADER_BASE_INSET_PX}px`,
+      "--bb-macos-traffic-light-reserve": `calc(${MACOS_TRAFFIC_LIGHT_CLEARANCE_PX}px + ${inset + MACOS_TRAFFIC_LIGHT_CLUSTER_WIDTH_PX}px / var(--bb-zoom, 1))`,
+      "--bb-window-title-bar-controls-end": `calc(var(--bb-macos-traffic-light-reserve) + ${TITLE_BAR_CONTROL_COUNT * TITLE_BAR_CONTROL_SIZE_PX + TITLE_BAR_SIDEBAR_TOGGLE_GAP_PX}px)`,
+      "--bb-macos-collapsed-top-left-reserve": `calc(var(--bb-macos-traffic-light-reserve) + ${TITLE_BAR_CONTROL_SIZE_PX + COLLAPSED_SIDEBAR_TRIGGER_GAP_PX - PAGE_HEADER_BASE_INSET_PX}px)`,
     });
   }
   for (const [name, value] of Object.entries(properties)) {
