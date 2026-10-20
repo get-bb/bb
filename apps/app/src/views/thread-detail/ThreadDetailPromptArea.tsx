@@ -583,6 +583,7 @@ export function ThreadDetailPromptArea({
     inlinePendingUploads,
   } = useComposerAttachmentUploads({
     projectId,
+    draftStorageKey: promptDraft.storageKey,
     addDraftAttachment: promptDraft.addAttachment,
     inlineEditSessionId: inlineDraftSession?.editSessionId ?? null,
     inlineSessionRef: inlineDraftSessionRef,
