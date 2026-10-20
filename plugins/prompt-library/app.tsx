@@ -549,13 +549,13 @@ function PromptLibraryPopup() {
         role="option"
         aria-selected={selected}
         className={cn(
-          "group flex items-center gap-1 rounded px-2 py-1.5 text-xs",
+          "group relative flex select-none items-center gap-1 rounded px-2 py-1.5 text-xs",
           selected ? "bg-state-active" : "hover:bg-state-hover",
         )}
       >
         <button
           type="button"
-          className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
+          className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left after:absolute after:inset-0 after:rounded after:content-['']"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => choose(row)}
         >
@@ -587,7 +587,7 @@ function PromptLibraryPopup() {
             aria-pressed={starred}
             title={starred ? "Unstar" : "Star prompt"}
             className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded text-subtle-foreground hover:text-foreground",
+              "relative flex size-6 shrink-0 items-center justify-center rounded text-subtle-foreground hover:text-foreground",
               !selected && [
                 "opacity-0 group-hover:opacity-100",
                 HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
