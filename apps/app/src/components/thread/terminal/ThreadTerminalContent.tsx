@@ -1,5 +1,9 @@
 import { Button } from "@bb/shared-ui/button";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
+import {
+  SHORT_LIVED_STATUS_DELAY_MS,
+  useSustainedFlag,
+} from "@/hooks/useSustainedFlag";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
@@ -28,7 +32,7 @@ export function ThreadTerminalContent({
 
   if (!controller.activeSession && controller.start !== null) {
     if (controller.start.error === null) {
-      return <TerminalStatusMessage>Terminal starting</TerminalStatusMessage>;
+      return <TerminalStarting />;
     }
     return (
       <div
@@ -78,11 +82,14 @@ export function ThreadTerminalContent({
   }
 
   const status = controller.activeSession.status;
-  if (status !== "running" && status !== "disconnected") {
+  if (status === "starting") {
+    return <TerminalStarting />;
+  }
+  if (status === "exited") {
     return (
-      <TerminalStatusMessage>
-        {status === "exited" ? "Terminal exited" : "Terminal starting"}
-      </TerminalStatusMessage>
+      <div className="flex h-full items-center justify-center px-4 text-center text-sm">
+        <p className="font-medium text-foreground">Terminal exited</p>
+      </div>
     );
   }
 
@@ -100,10 +107,15 @@ export function ThreadTerminalContent({
   );
 }
 
-function TerminalStatusMessage({ children }: { children: string }) {
+function TerminalStarting() {
+  const isSlow = useSustainedFlag(true, SHORT_LIVED_STATUS_DELAY_MS);
   return (
-    <div className="flex h-full items-center justify-center px-4 text-center text-sm">
-      <p className="font-medium text-foreground">{children}</p>
+    <div
+      aria-busy="true"
+      aria-label="Starting terminal"
+      className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground"
+    >
+      {isSlow ? "Starting terminal…" : null}
     </div>
   );
 }
