@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -287,6 +288,48 @@ describe("foreign DOM mutation guard", () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+
+  it("lets React commit into its root and portal containers while an async plugin mount is pending", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+
+    const container = document.createElement("div");
+    const portalTarget = document.createElement("div");
+    document.body.append(container, portalTarget);
+    const root = createRoot(container);
+    act(() => {
+      root.render(<span data-testid="before-mount" />);
+    });
+
+    let finishMount: () => void = () => undefined;
+    const mount = runWithPluginDomIsolationAsync(
+      () => new Promise<void>((resolve) => (finishMount = resolve)),
+      "slow-mount",
+    );
+    await act(async () => {
+      root.render(
+        <>
+          <div data-testid="overlays" />
+          {createPortal(<div data-testid="portal-child" />, portalTarget)}
+        </>,
+      );
+    });
+
+    expect(container.querySelector("[data-testid='overlays']")).toBeInstanceOf(
+      HTMLDivElement,
+    );
+    expect(
+      portalTarget.querySelector("[data-testid='portal-child']"),
+    ).toBeInstanceOf(HTMLDivElement);
+    expect(pluginHostNodeMoveRefusalCount()).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+
+    finishMount();
+    await mount;
+    act(() => root.unmount());
+    container.remove();
+    portalTarget.remove();
   });
 
   it("preserves MutationObserver subclass identity", () => {

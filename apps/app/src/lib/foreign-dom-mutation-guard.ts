@@ -5,6 +5,11 @@ const REACT_FIBER_PREFIXES = [
   "__reactInternalInstance$",
 ] as const;
 
+const REACT_CONTAINER_PREFIXES = [
+  "__reactContainer$",
+  "_reactListening",
+] as const;
+
 type RemoveChild = <T extends Node>(child: T) => T;
 type InsertBefore = <T extends Node>(node: T, child: Node | null) => T;
 type ReplaceChild = <T extends Node>(node: Node, child: T) => T;
@@ -51,13 +56,23 @@ function isHierarchyRequestError(error: unknown): boolean {
   );
 }
 
-function isReactHostNode(node: Node): boolean {
+function hasOwnKeyWithPrefix(node: Node, prefixes: readonly string[]): boolean {
   for (const key of Object.getOwnPropertyNames(node)) {
-    for (const prefix of REACT_FIBER_PREFIXES) {
+    for (const prefix of prefixes) {
       if (key.startsWith(prefix)) return true;
     }
   }
   return false;
+}
+
+function isReactHostNode(node: Node): boolean {
+  return hasOwnKeyWithPrefix(node, REACT_FIBER_PREFIXES);
+}
+
+function isReactParent(node: Node): boolean {
+  return (
+    isReactHostNode(node) || hasOwnKeyWithPrefix(node, REACT_CONTAINER_PREFIXES)
+  );
 }
 
 function recordSuppression(
@@ -98,7 +113,7 @@ function refusePluginReparent(node: Node, newParent: Node): boolean {
   if (isolationDepth === 0) return false;
   if (node.parentNode === newParent) return false;
   if (!isReactHostNode(node)) return false;
-  if (node.parentNode === null && isReactHostNode(newParent)) return false;
+  if (node.parentNode === null && isReactParent(newParent)) return false;
   recordRefusedMove(node, newParent);
   return true;
 }
