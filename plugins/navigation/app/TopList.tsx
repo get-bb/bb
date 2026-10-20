@@ -112,7 +112,7 @@ function NavigationListRow({
         {...split.splitProps}
         onClick={(event) =>
           actions.activate(item.id, {
-            target: clickTarget(event, split.isAvailable),
+            target: clickTarget(event),
           })
         }
       >

@@ -7,8 +7,6 @@ export function isNewViewClick(event: MouseEvent): boolean {
 
 export function clickTarget(
   event: MouseEvent,
-  isSplitAvailable: boolean,
 ): ExperimentalSidebarNavigationTarget {
-  if (!isNewViewClick(event)) return "current";
-  return isSplitAvailable ? "split" : "tab";
+  return isNewViewClick(event) ? "split" : "current";
 }

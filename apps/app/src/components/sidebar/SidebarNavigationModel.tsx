@@ -8,6 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useStore } from "jotai";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import type {
   ExperimentalSidebarNavigationActions,
@@ -145,6 +147,7 @@ export function SidebarNavigationModelProvider({
   children,
   ...host
 }: SidebarNavigationHostOptions & { children: ReactNode }) {
+  const store = useStore();
   const panelEntries = usePluginNavPanelChrome();
   const rows = useMemo(
     () => createSidebarNavigationRows(panelEntries),
@@ -285,13 +288,24 @@ export function SidebarNavigationModelProvider({
         if (!found || found.item.isDisabled || found.item.isLoading) return;
         const { current, row, item } = found;
         const content = getSidebarNavigationRowContent(row);
+        const legacySplit =
+          "openInSplit" in options && options.openInSplit === true;
+        const requestedTarget =
+          options.target ?? (legacySplit ? "split" : "current");
+        const canSplit =
+          content !== null &&
+          current.host.splitEnabled &&
+          !current.splitActions.isCompact &&
+          store.get(splitLayoutAtom) !== null;
+        const target =
+          requestedTarget === "split" && !canSplit ? "tab" : requestedTarget;
         switch (row.action.kind) {
           case "new-thread":
-            if (options.target === "split") {
+            if (target === "split") {
               if (content) openInSplit(current, content, item.label);
               return;
             }
-            if (options.target === "tab") {
+            if (target === "tab") {
               openInBrowserTab(getRootComposeRoutePath());
               return;
             }
@@ -304,8 +318,8 @@ export function SidebarNavigationModelProvider({
           case "open-extensions":
           case "open-skills": {
             const routePath = getResourceNavigationRoutePath(row.action);
-            if (routePath === null || options.target === "split") return;
-            if (options.target === "tab") {
+            if (routePath === null) return;
+            if (target === "tab") {
               openInBrowserTab(routePath);
               return;
             }
@@ -315,7 +329,7 @@ export function SidebarNavigationModelProvider({
           case "open-plugin-panel": {
             const chrome = row.panelEntry?.chrome;
             if (!chrome) return;
-            if (options.target === "split") {
+            if (target === "split") {
               if (content) openInSplit(current, content, item.label);
               return;
             }
@@ -323,7 +337,7 @@ export function SidebarNavigationModelProvider({
               pluginId: chrome.pluginId,
               path: chrome.path,
             });
-            if (options.target === "tab") {
+            if (target === "tab") {
               openInBrowserTab(routePath);
               return;
             }
@@ -384,7 +398,7 @@ export function SidebarNavigationModelProvider({
         }
       },
     };
-  }, []);
+  }, [store]);
 
   const state = useMemo<ExperimentalSidebarNavigationState>(
     () => ({

@@ -257,7 +257,7 @@ export interface ExperimentalSidebarNavigationItem {
 
 /**
  * Where the host opens a sidebar navigation destination: `current` in the
- * current view, `split` in a new pane, `tab` in a new browser tab.
+ * current view, `split` in a pane with browser-tab fallback, `tab` in a new browser tab.
  */
 export type ExperimentalSidebarNavigationTarget = "current" | "split" | "tab";
 
@@ -275,11 +275,12 @@ export interface ExperimentalSidebarNavigationActions {
   /**
    * Run the item's host behavior at `target`. Plugin panels close the
    * mobile sidebar drawer; Plugins and Skills swap the list beside the
-   * navigation. `split` follows the split placement rules, including
-   * in-place navigation on compact screens, and does nothing for items that
-   * cannot open in a pane (see
-   * {@link ExperimentalSidebarNavigationSplit.isAvailable}). Search remains a
-   * command at every target. Disabled or loading items do nothing. `tab`
+   * navigation. `split` opens a pane, or focuses the destination's existing
+   * pane. At the pane limit it replaces the focused pane. If the destination
+   * cannot be a pane, splitting is disabled, the viewport is compact, or no
+   * split layout exists, it opens a browser tab instead. Callers do not need
+   * to check availability. Search remains a
+   * command at every target. Disabled or loading items do nothing. `split` and `tab`
    * must run synchronously from a user gesture; native shells handle the
    * new-window request using their existing policy.
    */

@@ -90,7 +90,7 @@ function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
           {...split.splitProps}
           onClick={(event) =>
             actions.activate(item.id, {
-              target: clickTarget(event, split.isAvailable),
+              target: clickTarget(event),
             })
           }
         >
@@ -198,7 +198,7 @@ export function RailNewThreadButton() {
       {...split.splitProps}
       onClick={(event) =>
         actions.activate(item.id, {
-          target: clickTarget(event, split.isAvailable),
+          target: clickTarget(event),
         })
       }
     >

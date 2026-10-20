@@ -1357,15 +1357,21 @@ their identity while unchanged. `actions` covers
 ids are dropped and omitted ids keep their relative order at the end),
 `openCustomize()` (bb's editor in a popover beside the navigation, after open
 menus close, returning focus to the opener), `openDetails`, and
-`disablePlugin`. `target` is `current`, `split`, or `tab` and the host does
-exactly that: `split` keeps the existing split, compact-screen and pane-limit
-rules and does nothing for Plugins, Skills, and Home, which cannot split;
-`tab` opens the destination in a browser tab synchronously from the user
-gesture, with Home opening the new thread screen. `goHome()` without options
-navigates in place. The bundled Navigation plugin maps Cmd/Ctrl-click to
-`split` where `experimental_useSidebarNavigationSplit(id).isAvailable`, and
-to `tab` otherwise. Search remains a command at every target. Native shells
+`disablePlugin`. `target` is `current`, `split`, or `tab` and the host handles
+the navigation: `split` opens or focuses a pane, replacing the focused pane
+at the pane limit. It opens a browser tab instead when the destination cannot
+be a pane, splitting is disabled, the viewport is compact, or no split layout
+exists. `tab` always opens a browser tab. Both require a synchronous user
+gesture. Home accepts `current` or `tab`, with `tab` opening the new thread
+screen. `goHome()` without options navigates in place. The bundled Navigation
+plugin requests `split` on Cmd/Ctrl-click; the host owns the fallback.
+Search remains a command at every target. Native shells
 retain their window-open policy.
+Existing plugin bundles using `activate(id, { openInSplit })` map `true`
+to `target: "split"` and `false` to `target: "current"`, using the same
+fallback rules. The SDK types only accept `{ target }`, so rebuilt plugins
+must migrate. An explicit `target` takes precedence.
+
 Calls after the caller unmounts do nothing; outside the
 sidebar the hook returns no items and inert actions.
 `experimental_useSidebarNavigationSplit(id, options?)` mirrors

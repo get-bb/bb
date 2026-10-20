@@ -153,7 +153,7 @@ describe("Rail", () => {
     ).toBeNull();
   });
 
-  it("activates through the host, opening a split or a browser tab on a modifier click", () => {
+  it("requests split navigation through the host on a modifier click", () => {
     const view = renderRail([NEW_THREAD, PLUGINS, DOCS]);
 
     fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
@@ -171,7 +171,7 @@ describe("Rail", () => {
     expect(view.inspection.sidebarNavigationCalls).toEqual([
       { method: "activate", itemId: DOCS.id, target: "split" },
       { method: "activate", itemId: PLUGINS.id, target: "current" },
-      { method: "activate", itemId: PLUGINS.id, target: "tab" },
+      { method: "activate", itemId: PLUGINS.id, target: "split" },
       { method: "goHome", target: "current" },
       { method: "goHome", target: "tab" },
     ]);
