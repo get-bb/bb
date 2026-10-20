@@ -121,6 +121,12 @@ export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("environment-pull-request"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("environment-list"),
     })
     .strict(),
@@ -224,6 +230,8 @@ export function realtimeSubscriptionTargetKey(
       return "project-list";
     case "environment-detail":
       return `environment-detail:${target.environmentId}`;
+    case "environment-pull-request":
+      return `environment-pull-request:${target.environmentId}`;
     case "environment-list":
       return "environment-list";
     case "host-detail":

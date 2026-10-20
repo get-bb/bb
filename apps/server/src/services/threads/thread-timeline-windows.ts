@@ -227,7 +227,9 @@ export function createThreadTimelineWindows(
   }
 
   function pushThread(threadId: string): void {
-    const targets = deps.hub.listThreadTimelineTargets(threadId);
+    const targets = deps.hub
+      .listWatchedTargets("thread-timeline")
+      .filter((target) => target.threadId === threadId);
     if (targets.length === 0) {
       return;
     }
@@ -308,7 +310,9 @@ export function createThreadTimelineWindows(
     }
     if (
       message.changes.includes("events-appended") &&
-      deps.hub.listThreadTimelineTargets(message.id).length > 0
+      deps.hub
+        .listWatchedTargets("thread-timeline")
+        .some((target) => target.threadId === message.id)
     ) {
       schedulePush(message.id);
     }

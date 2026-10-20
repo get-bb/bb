@@ -40,6 +40,7 @@ const socket = {
     messages++;
   },
 };
+const clientSocket = { close() {}, send() {} };
 try {
   db.transaction(() => {
     for (let i = 0; i < hostCount; i++) {
@@ -70,13 +71,13 @@ try {
   });
   for (const { host, environment } of hosts) {
     hub.registerDaemon(host.id, host.id, socket);
-    coordinator.subscribe(socket, {
+    hub.subscribe(clientSocket, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
   }
   for (const thread of threads)
-    coordinator.subscribe(socket, {
+    hub.subscribe(clientSocket, {
       kind: "thread-detail",
       threadId: thread.id,
     });
