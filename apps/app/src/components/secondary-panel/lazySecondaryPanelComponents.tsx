@@ -4,6 +4,7 @@ import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { preloadTerminalModules } from "@/components/thread/terminal/terminal-modules";
 import { FilePreviewLoading } from "./FilePreviewChrome";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import {
@@ -164,10 +165,12 @@ export function preloadThreadSecondaryPanel(): void {
 
 export const LazyThreadTerminalPanel = defineSplit({
   id: "thread-terminal-panel",
-  load: () =>
-    import("@/components/thread/terminal/ThreadTerminalPanel").then(
+  load: () => {
+    preloadTerminalModules();
+    return import("@/components/thread/terminal/ThreadTerminalPanel").then(
       (module) => module.ThreadTerminalPanel,
-    ),
+    );
+  },
   loading: () => (
     <div role="status" aria-label="Loading terminal">
       <SecondaryPanelContentSkeleton />
