@@ -32,7 +32,7 @@ const pluginSdkEntry = join(
   "src",
   "index.ts",
 );
-const tsc = join(repoRoot, "node_modules", "typescript-7", "bin", "tsc");
+const tsrs = join(repoRoot, "node_modules", "tsrs", "bin", "tsrs");
 
 interface SdkReference {
   path: string;
@@ -165,7 +165,7 @@ describe("bb-plugin-authoring skill examples", () => {
       "utf8",
     );
 
-    const result = spawnSync(process.execPath, [tsc, "--project", workDir], {
+    const result = spawnSync(process.execPath, [tsrs, "--project", workDir], {
       encoding: "utf8",
     });
     if (result.error !== undefined) throw result.error;

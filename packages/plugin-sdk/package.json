@@ -137,7 +137,7 @@
     "clean": "rimraf bundled-types dist tsconfig.tsbuildinfo",
     "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
     "cross-spawn": "^7.0.6",
@@ -164,8 +164,8 @@
     "react-dom": "^19.0.0",
     "rollup": "^4.62.2",
     "rollup-plugin-dts": "^6.4.1",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   },
   "peerDependencies": {

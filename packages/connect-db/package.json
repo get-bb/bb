@@ -20,7 +20,7 @@
   ],
   "scripts": {
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
@@ -32,8 +32,8 @@
     "@types/node": "^22.0.0",
     "better-sqlite3": "12.10.0",
     "drizzle-kit": "^0.30.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   }
 }

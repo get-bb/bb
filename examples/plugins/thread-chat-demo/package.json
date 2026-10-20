@@ -26,6 +26,6 @@
     "typescript": "^5.7.0"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   }
 }

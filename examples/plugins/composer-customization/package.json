@@ -20,7 +20,7 @@
     "bb-plugin"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",

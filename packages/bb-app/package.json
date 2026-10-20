@@ -67,7 +67,7 @@
     "prepack": "node dist/prune-bb-chunks.mjs",
     "smoke:boot": "node scripts/smoke-boot.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
@@ -95,8 +95,8 @@
     "rollup": "^4.62.2",
     "rollup-plugin-dts": "^6.4.1",
     "semver": "^7.7.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   },
   "engines": {

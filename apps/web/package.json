@@ -8,7 +8,7 @@
     "build": "vite build",
     "og:card": "node scripts/generate-og-card.mjs",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "preview": "vite preview --host 0.0.0.0"
   },
@@ -47,8 +47,8 @@
     "@vitejs/plugin-react": "^6.0.1",
     "better-sqlite3": "12.10.0",
     "tailwindcss": "^4.3.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "vite": "^8.0.12",
     "wrangler": "^4.107.0"
   }
