@@ -1,4 +1,3 @@
-import { useToolsPageTitle } from "@/components/layout/page-title";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useAtom } from "jotai";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
@@ -265,13 +264,6 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
       catalogQuery.data?.entries ?? [],
       { allowSourceFallback: false },
     );
-  useToolsPageTitle(
-    selectedPlugin?.name ??
-      selectedPlugin?.id ??
-      selectedCatalogEntry?.displayName ??
-      null,
-    routeOwnsDetail,
-  );
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id

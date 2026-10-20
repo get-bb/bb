@@ -4,14 +4,13 @@ import {
   act,
   cleanup,
   fireEvent,
-  render as renderReact,
-  type RenderOptions,
+  render,
   screen,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode } from "react";
 import { appToast } from "@/components/ui/app-toast";
 import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type {
@@ -24,15 +23,6 @@ import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PLUGINS_BROWSE_DESCRIPTION } from "../plugins-collection-copy";
-
-import { PageTitleProvider } from "@/components/layout/page-title";
-
-function render(ui: ReactNode, options?: RenderOptions) {
-  return renderReact(
-    <PageTitleProvider scope="plugins">{ui}</PageTitleProvider>,
-    options,
-  );
-}
 
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
   PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (

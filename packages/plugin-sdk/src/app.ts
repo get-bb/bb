@@ -167,9 +167,6 @@ export const useRealtimeConnectionState = runtimeFunction(
   "useRealtimeConnectionState",
 );
 export const useSettings = runtimeFunction("useSettings");
-export const experimental_usePageTitle = runtimeFunction(
-  "experimental_usePageTitle",
-);
 export const useBbContext = runtimeFunction("useBbContext");
 export const experimental_usePluginId = runtimeFunction(
   "experimental_usePluginId",

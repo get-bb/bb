@@ -104,7 +104,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalOpenFixedTabOptions",
           "experimental_useFixedTabTarget",
           "ExperimentalFixedTabTargetState",
-          "experimental_usePageTitle",
+          "PluginNavPanelRegistration.experimental_usePageTitle",
           "ExperimentalPageTitle",
           "ExperimentalPageBreadcrumb",
           "useBbContext",

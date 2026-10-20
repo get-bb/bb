@@ -1,4 +1,3 @@
-import { useToolsPageTitle } from "@/components/layout/page-title";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -105,7 +104,6 @@ export function BrowsePluginsTab({
           }).find((shelf) => shelf.key === shelfKey),
     [catalog.categories, catalog.collections, entries, shelfKey],
   );
-  useToolsPageTitle(selectedShelf?.label ?? null);
   const shelfEntries = useMemo(
     () => (shelfKey === null ? entries : (selectedShelf?.entries ?? [])),
     [entries, selectedShelf, shelfKey],

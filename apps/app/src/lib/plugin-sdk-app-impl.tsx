@@ -90,10 +90,7 @@ function useArchiveEnvironmentThreads(): (
   return useThreadActions().archiveEnvironmentThreads;
 }
 
-import { usePageTitle } from "@/components/layout/page-title";
-
 export const pluginSdkAppImplementation = {
-  experimental_usePageTitle: usePageTitle,
   definePluginApp,
   experimental_Icon: Icon,
   experimental_ProviderIcon: ProviderIcon,

@@ -286,8 +286,6 @@ interface TestComposerStore {
 
 interface SlotEnv {
   rpcQueryHost: RpcQueryHost;
-
-  pageTitle: { owner: object; value: ExperimentalPageTitle } | null;
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
   realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
@@ -1280,18 +1278,6 @@ const testPluginSdkApp = {
   useSettings(): PluginSettingsState {
     return useSlotEnv("useSettings").settingsState;
   },
-  experimental_usePageTitle(value: ExperimentalPageTitle | null): void {
-    const env = useSlotEnv("experimental_usePageTitle");
-    const serialized = JSON.stringify(value);
-    useLayoutEffect(() => {
-      const owner = {};
-      const parsed: ExperimentalPageTitle | null = JSON.parse(serialized);
-      if (parsed !== null) env.pageTitle = { owner, value: parsed };
-      return () => {
-        if (env.pageTitle?.owner === owner) env.pageTitle = null;
-      };
-    }, [env, serialized]);
-  },
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
@@ -1972,7 +1958,7 @@ export interface RenderedSlotBehaviorDrivers {
 
 /** Read-only call/write logs produced while the slot is mounted. */
 export interface RenderedSlotInspectionState {
-  /** The mounted page's current title contribution; null after clear/unmount. */
+  /** The registered page title hook's current result; null after unmount. */
   readonly experimental_pageTitle: ExperimentalPageTitle | null;
   /** Every `useRpc().call`, in order. */
   readonly rpcCalls: RpcCall[];
@@ -2070,7 +2056,10 @@ export function renderSlot<
   Props extends object,
   Contract extends PluginRpcContract = PluginRpcContract,
 >(
-  registration: { component: ComponentType<Props> },
+  registration: {
+    component: ComponentType<Props>;
+    experimental_usePageTitle?: (props: Props) => ExperimentalPageTitle | null;
+  },
   props: Props,
   options: RenderSlotOptions<Contract> = {},
 ): RenderedSlot {
@@ -2662,8 +2651,6 @@ export function renderSlot<
   };
   const env: SlotEnv = {
     rpcQueryHost,
-
-    pageTitle: null,
     rpcClient,
     rpcCalls,
     realtimeHandlers,
@@ -2724,10 +2711,22 @@ export function renderSlot<
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
   };
+  let pageTitle: ExperimentalPageTitle | null = null;
+  const usePageTitle = registration.experimental_usePageTitle;
+  function SlotPageTitle({ children }: { children: ReactNode }) {
+    const value = usePageTitle ? usePageTitle(props) : null;
+    useLayoutEffect(() => {
+      pageTitle = value;
+      return () => {
+        pageTitle = null;
+      };
+    }, [value]);
+    return <>{children}</>;
+  }
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>
       <SlotLifecycleGuard onUnmount={releaseComposerOwnership}>
-        {ui}
+        <SlotPageTitle>{ui}</SlotPageTitle>
       </SlotLifecycleGuard>
     </SlotEnvContext.Provider>
   );
@@ -2810,7 +2809,7 @@ export function renderSlot<
     },
     inspection: {
       get experimental_pageTitle() {
-        return env.pageTitle?.value ?? null;
+        return pageTitle;
       },
       rpcCalls,
       navigateCalls,
@@ -2823,7 +2822,7 @@ export function renderSlot<
       composer: composerLog,
     },
     get experimental_pageTitle() {
-      return env.pageTitle?.value ?? null;
+      return pageTitle;
     },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };

@@ -7,7 +7,6 @@ import {
   experimental_usePluginId,
   experimental_useQuestionFormHost,
   useBbContext,
-  experimental_usePageTitle,
 } from "../../app.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
 
@@ -118,26 +117,21 @@ describe("@get-bb/plugin-sdk/app without a runtime at import time", () => {
   });
 });
 
-describe("page title test host", () => {
-  it("isolates page contributions and clears them on update and unmount", () => {
-    function Page({ title }: { title: string | null }) {
-      experimental_usePageTitle(title ? { title } : null);
-      return null;
+describe("registered page title test host", () => {
+  it("evaluates registered hooks in the slot scope and clears the result on unmount", () => {
+    function usePageTitle({ subPath }: { subPath: string }) {
+      const { projectId } = useBbContext();
+      return { title: `${projectId}/${subPath}` };
     }
-    const first = renderSlot({ component: Page }, { title: "First page" });
-    const second = renderSlot({ component: Page }, { title: "Second page" });
-    expect(first.inspection.experimental_pageTitle).toEqual({
-      title: "First page",
+    const slot = renderSlot(
+      { component: () => null, experimental_usePageTitle: usePageTitle },
+      { subPath: "detail" },
+      { context: { projectId: "proj_1" } },
+    );
+    expect(slot.inspection.experimental_pageTitle).toEqual({
+      title: "proj_1/detail",
     });
-    expect(second.inspection.experimental_pageTitle).toEqual({
-      title: "Second page",
-    });
-    first.lifecycle.rerender(<Page title={null} />);
-    expect(first.inspection.experimental_pageTitle).toBeNull();
-    expect(second.inspection.experimental_pageTitle).toEqual({
-      title: "Second page",
-    });
-    second.lifecycle.unmount();
-    expect(second.inspection.experimental_pageTitle).toBeNull();
+    slot.lifecycle.unmount();
+    expect(slot.inspection.experimental_pageTitle).toBeNull();
   });
 });

@@ -8,8 +8,7 @@ import {
   act,
   cleanup,
   fireEvent,
-  render as renderReact,
-  type RenderOptions,
+  render,
   screen,
   waitFor,
   within,
@@ -53,15 +52,6 @@ import {
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
 import { LocationProbe } from "@/test/location-probe";
-
-import { PageTitleProvider } from "@/components/layout/page-title";
-
-function render(ui: ReactNode, options?: RenderOptions) {
-  return renderReact(
-    <PageTitleProvider scope="plugins">{ui}</PageTitleProvider>,
-    options,
-  );
-}
 
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,

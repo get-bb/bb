@@ -1,4 +1,3 @@
-import { useToolsPageTitle } from "@/components/layout/page-title";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   matchPath,
@@ -391,9 +390,6 @@ export function SkillsLibrary() {
   });
   const selectedRegistrySkill =
     registrySkillOnPage ?? registryEntryQuery.data ?? null;
-  useToolsPageTitle(
-    selectedSkill?.name ?? selectedRegistrySkill?.name ?? null,
-  );
   const registryDetailQuery = useQuery({
     queryKey: ["skills-registry-detail", selectedRegistrySkill?.id ?? "none"],
     queryFn: ({ signal }) =>

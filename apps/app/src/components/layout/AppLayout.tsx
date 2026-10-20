@@ -1,3 +1,4 @@
+import { useCorePageTitle } from "./core-page-title";
 import { type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -31,11 +32,10 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import {
   resolvePluginsWorkspaceHeaderMeta,
   resolveSkillsWorkspaceHeaderMeta,
-  resolveToolsBreadcrumbs,
 } from "@/components/tools/tools-navigation";
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
 import {
-  PageTitleProvider,
+  PageTitleHookHost,
   usePageTitleValue,
   focusedPageTitleAtom,
 } from "./page-title";
@@ -430,20 +430,13 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
-  const fallback = useMemo(() => {
-    const breadcrumbs = resolveToolsBreadcrumbs(
-      location.pathname,
-      location.search,
-    );
-    return breadcrumbs ? { breadcrumbs } : null;
-  }, [location.pathname, location.search]);
   return (
-    <PageTitleProvider
-      scope={location.pathname + location.search}
-      fallback={fallback}
+    <PageTitleHookHost
+      usePageTitle={useCorePageTitle}
+      subPath={location.pathname + location.search}
     >
       <AppLayoutContent>{children}</AppLayoutContent>
-    </PageTitleProvider>
+    </PageTitleHookHost>
   );
 }
 

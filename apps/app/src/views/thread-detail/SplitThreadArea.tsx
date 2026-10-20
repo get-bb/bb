@@ -86,7 +86,7 @@ import {
   HEADER_ICON_BUTTON_CLASS,
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
-import { PageTitleProvider } from "@/components/layout/page-title";
+import { PluginPageTitleHost } from "@/components/plugin/PluginPageTitleHost";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -1107,19 +1107,14 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
   if (content.kind !== "thread") {
     return (
       <PaneContext.Provider value={value}>
-        <PageTitleProvider
-          scope={paneContentRoute(content)}
-          focused={isFocused}
-        >
-          <NonThreadPaneContent
-            content={content}
-            onRequestClose={onRequestClose}
-            beginPaneDrag={beginPaneDrag}
-            isBoundedPane={isBoundedPane}
-            isTopRow={isTopRow}
-            ownsWindowTopLeft={ownsWindowTopLeft}
-          />
-        </PageTitleProvider>
+        <NonThreadPaneContent
+          content={content}
+          onRequestClose={onRequestClose}
+          beginPaneDrag={beginPaneDrag}
+          isBoundedPane={isBoundedPane}
+          isTopRow={isTopRow}
+          ownsWindowTopLeft={ownsWindowTopLeft}
+        />
       </PaneContext.Provider>
     );
   }
@@ -1199,36 +1194,44 @@ function StandalonePaneContent({
     </Button>
   ) : null;
   return (
-    <PluginPagePanelHost
-      flushPageInsets
+    <PluginPageTitleHost
       pluginId={content.pluginId}
       panelPath={content.panelPath}
-      paneId={paneId}
       subPath={content.subPath}
     >
-      {panelChrome ? (
-        <div className="flex h-full min-h-0 flex-col">
-          <AppPageHeader
-            center={<PluginPanelHeaderCenter chrome={panelChrome} />}
-            actions={
-              panel ? (
-                <PluginPanelHeaderActions
-                  panel={panel}
-                  paneId={paneId}
-                  subPath={content.subPath}
-                  paneActions={paneActions}
-                />
-              ) : (
-                paneActions
-              )
-            }
-          />
-          <div className="flex min-h-0 flex-1 flex-col p-4 md:p-5">{body}</div>
-        </div>
-      ) : (
-        body
-      )}
-    </PluginPagePanelHost>
+      <PluginPagePanelHost
+        flushPageInsets
+        pluginId={content.pluginId}
+        panelPath={content.panelPath}
+        paneId={paneId}
+        subPath={content.subPath}
+      >
+        {panelChrome ? (
+          <div className="flex h-full min-h-0 flex-col">
+            <AppPageHeader
+              center={<PluginPanelHeaderCenter chrome={panelChrome} />}
+              actions={
+                panel ? (
+                  <PluginPanelHeaderActions
+                    panel={panel}
+                    paneId={paneId}
+                    subPath={content.subPath}
+                    paneActions={paneActions}
+                  />
+                ) : (
+                  paneActions
+                )
+              }
+            />
+            <div className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+              {body}
+            </div>
+          </div>
+        ) : (
+          body
+        )}
+      </PluginPagePanelHost>
+    </PluginPageTitleHost>
   );
 }
 
@@ -1400,14 +1403,21 @@ function NonThreadPaneContent({
   );
 
   return content.kind === "plugin-panel" ? (
-    <PluginPagePanelHost
-      flushPageInsets={!isBoundedPane}
+    <PluginPageTitleHost
       pluginId={content.pluginId}
       panelPath={content.panelPath}
       subPath={content.subPath}
+      focused={isFocused}
     >
-      {contentMarkup}
-    </PluginPagePanelHost>
+      <PluginPagePanelHost
+        flushPageInsets={!isBoundedPane}
+        pluginId={content.pluginId}
+        panelPath={content.panelPath}
+        subPath={content.subPath}
+      >
+        {contentMarkup}
+      </PluginPagePanelHost>
+    </PluginPageTitleHost>
   ) : (
     contentMarkup
   );

@@ -3203,19 +3203,22 @@ field introduces no separate backend or headless side effect.
 
 ## Page titles
 
-`experimental_usePageTitle(ExperimentalPageTitle | null)` publishes either
-`title` or `breadcrumbs: { label, to? }[]` after a page's icon and name in its
-own pane. `to` is an absolute app route starting with a single slash.
-`windowTitle` overrides the focused pane's window title; otherwise the
-leaf/title is combined with the panel name.
-Null, navigation and unmount clear the contribution. Use one publisher per
-page; nested pages may replace their parent's contribution. A page host is
-required. Core Tools, Skills and Plugins use the same hook and provider;
-Automations owns all its route breadcrumbs.
+`PluginNavPanelRegistration.experimental_usePageTitle(props)` returns
+`ExperimentalPageTitle | null`: either `title` or
+`breadcrumbs: { label, to? }[]`, with an optional `windowTitle` override.
+The host calls this React hook in each pane's plugin scope with its own
+`subPath`. Content appears after the panel icon/name. Breadcrumb links must
+be absolute app routes starting with a single slash. The focused pane supplies
+the window title, defaulting to the leaf/title combined with the panel name.
+Null restores defaults. A title hook failure clears the title without crashing
+the body; navigation and plugin reload retry it. The host isolates hook
+lifecycles by pane, route and plugin generation.
 
-Before stabilization, audit focus changes, same-plugin split panes, loading,
-route transitions, crash/reload cleanup, breadcrumb navigation and overflow.
+Core Tools, Skills and Plugins use the same hook host and title provider;
+Automations registers its own hook and shares its detail query with the body.
 The Plugin Guide full-page panels card owns the API documentation.
-The test harness exposes the current contribution as
-`RenderedSlotInspectionState.experimental_pageTitle`; audit lifecycle parity
-with the real page host before stabilization.
+`renderSlot` evaluates the registered hook in its slot scope and exposes its
+current result as `RenderedSlotInspectionState.experimental_pageTitle`;
+audit test-host lifecycle parity before stabilization.
+Before stabilization, audit focus changes, same-plugin splits, loading,
+back/forward navigation, crash/reload recovery, links and overflow.

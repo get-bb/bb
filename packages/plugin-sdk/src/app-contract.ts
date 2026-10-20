@@ -955,6 +955,16 @@ export interface PluginNavPanelRegistration {
    */
   experimental_sidebar?: ComponentType<PluginNavPanelProps>;
   /**
+   * React hook evaluated in each pane's plugin scope with its current subPath.
+   * Returns text after the panel icon/name and the focused pane's window title.
+   * Null restores the default panel title. May use SDK hooks to load data.
+   * A crash or invalid result clears the title without crashing the page;
+   * navigation or plugin reload retries the hook. Experimental.
+   */
+  experimental_usePageTitle?: (
+    props: PluginNavPanelProps,
+  ) => ExperimentalPageTitle | null;
+  /**
    * Ordered, non-closable tabs shown in this page's host-owned right panel.
    * BB owns selection and persistence and always includes its native Browser
    * and Terminal tools beside them. One tab is active in each visible split
@@ -4125,11 +4135,6 @@ export interface PluginSdkApp {
    */
   useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
-  /** Sets text after the page icon/name in this pane. Links use app routes.
-   * Pass null to clear. The focused pane supplies the window title, defaulting
-   * to the leaf/title followed by the panel name. Call once per page; updates
-   * and unmount clean up automatically. Outside a page host this throws. */
-  experimental_usePageTitle(value: ExperimentalPageTitle | null): void;
   useBbContext(): BbContext;
   /**
    * The id of the plugin that owns the calling component: the same id

@@ -34,7 +34,6 @@ import {
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
-import { usePageTitle } from "@/components/layout/page-title";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -2716,15 +2715,6 @@ describe("SplitThreadArea", () => {
   });
 
   it("uses page-owned breadcrumbs in the split-owned plugin header", async () => {
-    function AutomationPage() {
-      usePageTitle({
-        breadcrumbs: [
-          { label: "Installed", to: "/plugins/automations/automations" },
-          { label: "Weekly review" },
-        ],
-      });
-      return <div>Automation detail</div>;
-    }
     setPluginSlotRegistrations(
       "automations",
       makePluginRegistrationSet({
@@ -2734,7 +2724,13 @@ describe("SplitThreadArea", () => {
             title: "Automations",
             icon: "Clock",
             path: "automations",
-            component: AutomationPage,
+            component: () => <div>Automation detail</div>,
+            experimental_usePageTitle: () => ({
+              breadcrumbs: [
+                { label: "Installed", to: "/plugins/automations/automations" },
+                { label: "Weekly review" },
+              ],
+            }),
           },
         ],
         threadPanelActions: [],

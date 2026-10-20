@@ -1,154 +1,251 @@
 // @vitest-environment jsdom
 
-import { StrictMode } from "react";
+import { StrictMode, useMemo } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExperimentalPageTitle } from "@get-bb/plugin-sdk/app";
-import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
+import type {
+  ExperimentalPageTitle,
+  PluginNavPanelProps,
+} from "@get-bb/plugin-sdk/app";
 import { PluginPanelHeaderCenter } from "@/components/plugin/PluginPanelHeader";
+import { PluginPageTitleHost } from "@/components/plugin/PluginPageTitleHost";
 import {
-  focusedPageTitleAtom,
-  PageTitleProvider,
-  usePageTitle,
-} from "./page-title";
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import {
+  PaneContext,
+  type PaneContextValue,
+} from "@/views/thread-detail/PaneContext";
+import { focusedPageTitleAtom, PageTitleHookHost } from "./page-title";
+import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
+});
 
-for (const [surface, useTitle] of Object.entries({
-  core: usePageTitle,
-  sdk: pluginSdkAppImplementation.experimental_usePageTitle,
-})) {
-  describe(`${surface} page titles`, () => {
-    function Page({ value }: { value: ExperimentalPageTitle | null }) {
-      useTitle(value);
-      return null;
-    }
-    it("keeps same-plugin panes independent through updates, focus changes, navigation and unmount", () => {
+const chrome = { pluginId: "demo", title: "Demo", icon: "Clock" } as const;
+const body = (
+  <>
+    <PluginPanelHeaderCenter chrome={chrome} />
+    <p>Page body survives</p>
+  </>
+);
+function useTitle({
+  subPath,
+}: PluginNavPanelProps): ExperimentalPageTitle | null {
+  return useMemo(
+    () =>
+      subPath === "clear"
+        ? null
+        : {
+            breadcrumbs: [
+              { label: "Installed", to: "/plugins/demo/main" },
+              { label: subPath },
+            ],
+            windowTitle: subPath,
+          },
+    [subPath],
+  );
+}
+
+for (const surface of ["core", "plugin"] as const) {
+  describe(`${surface} registered page title`, () => {
+    it("isolates pane hooks and updates only the focused window title through route changes and unmount", () => {
       const store = createStore();
-      const left = {
-        breadcrumbs: [
-          { label: "Installed", to: "/plugins/demo/main" },
-          { label: "Weekly review" },
-        ],
-      };
-      const right = { title: "Monthly report", windowTitle: "Report window" };
+      setPluginSlotRegistrations(
+        "demo",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "main",
+              path: "main",
+              title: "Demo",
+              icon: "Clock",
+              component: () => null,
+              experimental_usePageTitle: useTitle,
+            },
+          ],
+        }),
+      );
+      function TitleHost({
+        subPath,
+        focused,
+        paneId,
+      }: {
+        subPath: string;
+        focused: boolean;
+        paneId: string;
+      }) {
+        const pane: PaneContextValue = {
+          paneId,
+          isFocused: focused,
+          isSplitPane: true,
+          secondaryPanelHost: null,
+          reservesWindowPanelToggle: false,
+          onRequestClose: null,
+          isMaximized: false,
+          onToggleMaximize: null,
+          isBoundedPane: true,
+          isTopRow: true,
+          ownsWindowTopLeft: false,
+          navigateInPane: () => {},
+        };
+        return (
+          <PaneContext.Provider value={pane}>
+            {surface === "plugin" ? (
+              <PluginPageTitleHost
+                pluginId="demo"
+                panelPath="main"
+                subPath={subPath}
+                focused={focused}
+              >
+                {body}
+              </PluginPageTitleHost>
+            ) : (
+              <PageTitleHookHost
+                usePageTitle={useTitle}
+                subPath={subPath}
+                focused={focused}
+              >
+                {body}
+              </PageTitleHookHost>
+            )}
+          </PaneContext.Provider>
+        );
+      }
       function Layout({
         focus = "left",
-        scope = "detail",
+        leftPath = "Weekly review",
         show = true,
-        leftValue = left,
       }: {
         focus?: string;
-        scope?: string;
+        leftPath?: string;
         show?: boolean;
-        leftValue?: ExperimentalPageTitle;
       }) {
         return (
           <StrictMode>
             <Provider store={store}>
               <MemoryRouter>
-                <PageTitleProvider scope="outer">
+                {show ? (
                   <section aria-label="left">
-                    <PageTitleProvider scope={scope} focused={focus === "left"}>
-                      <PluginPanelHeaderCenter
-                        chrome={{
-                          pluginId: "demo",
-                          title: "Demo",
-                          icon: "Clock",
-                        }}
-                      />
-                      {show ? <Page value={leftValue} /> : null}
-                    </PageTitleProvider>
+                    <TitleHost
+                      subPath={leftPath}
+                      focused={focus === "left"}
+                      paneId="left"
+                    />
                   </section>
-                  <section aria-label="right">
-                    <PageTitleProvider
-                      scope="right"
-                      focused={focus === "right"}
-                    >
-                      <PluginPanelHeaderCenter
-                        chrome={{
-                          pluginId: "demo",
-                          title: "Demo",
-                          icon: "Clock",
-                        }}
-                      />
-                      <Page value={right} />
-                    </PageTitleProvider>
-                  </section>
-                </PageTitleProvider>
+                ) : null}
+                <section aria-label="right">
+                  <TitleHost
+                    subPath="Monthly report"
+                    focused={focus === "right"}
+                    paneId="right"
+                  />
+                </section>
               </MemoryRouter>
             </Provider>
           </StrictMode>
         );
       }
       const view = render(<Layout />);
-      const leftPane = within(screen.getByRole("region", { name: "left" }));
-      const rightPane = within(screen.getByRole("region", { name: "right" }));
+      const left = within(screen.getByRole("region", { name: "left" }));
+      const right = within(screen.getByRole("region", { name: "right" }));
       expect(
-        leftPane.getByRole("link", { name: "Installed" }).getAttribute("href"),
+        left.getByRole("link", { name: "Installed" }).getAttribute("href"),
       ).toBe("/plugins/demo/main");
-      expect(leftPane.getByText("Weekly review")).toBeTruthy();
-      expect(leftPane.queryByText("Monthly report")).toBeNull();
-      expect(rightPane.getByText("Monthly report")).toBeTruthy();
-      expect(store.get(focusedPageTitleAtom)).toEqual(left);
-      view.rerender(<Layout focus="right" />);
-      expect(store.get(focusedPageTitleAtom)).toEqual(right);
-      expect(leftPane.getByText("Weekly review")).toBeTruthy();
-      view.rerender(
-        <Layout
-          focus="right"
-          leftValue={{ title: "Updated background page" }}
-        />,
+      expect(left.getByText("Weekly review")).toBeTruthy();
+      expect(left.queryByText("Monthly report")).toBeNull();
+      expect(right.getByText("Monthly report")).toBeTruthy();
+      expect(store.get(focusedPageTitleAtom)?.windowTitle).toBe(
+        "Weekly review",
       );
-      expect(leftPane.getByText("Updated background page")).toBeTruthy();
-      expect(store.get(focusedPageTitleAtom)).toEqual(right);
-      view.rerender(<Layout scope="other-route" show={false} />);
-      expect(leftPane.queryByText("Updated background page")).toBeNull();
+      view.rerender(<Layout focus="right" />);
+      expect(store.get(focusedPageTitleAtom)?.windowTitle).toBe(
+        "Monthly report",
+      );
+      view.rerender(
+        <Layout focus="right" leftPath="Updated background page" />,
+      );
+      expect(left.getByText("Updated background page")).toBeTruthy();
+      expect(store.get(focusedPageTitleAtom)?.windowTitle).toBe(
+        "Monthly report",
+      );
+      view.rerender(<Layout leftPath="clear" />);
+      expect(left.queryByRole("navigation")).toBeNull();
       expect(store.get(focusedPageTitleAtom)).toBeNull();
+      view.rerender(<Layout focus="right" show={false} />);
+      expect(store.get(focusedPageTitleAtom)?.windowTitle).toBe(
+        "Monthly report",
+      );
       view.unmount();
-      expect(store.get(focusedPageTitleAtom)).toBeNull();
-    });
-    it("rejects malformed JavaScript plugin data before it can reach the core header", () => {
-      expect(() =>
-        render(
-          <PageTitleProvider scope="invalid">
-            <Page
-              value={JSON.parse(
-                '{"breadcrumbs":[{"label":{"invalid":"node"}}]}',
-              )}
-            />
-          </PageTitleProvider>,
-        ),
-      ).toThrow();
-      expect(() =>
-        render(
-          <PageTitleProvider scope="invalid">
-            <Page
-              value={{
-                breadcrumbs: [{ label: "Unsafe link", to: "//example.com" }],
-              }}
-            />
-          </PageTitleProvider>,
-        ),
-      ).toThrow();
-    });
-    it("clears a title when the page passes null", () => {
-      const store = createStore();
-      function Layout({ value }: { value: ExperimentalPageTitle | null }) {
-        return (
-          <Provider store={store}>
-            <PageTitleProvider scope="page">
-              <Page value={value} />
-            </PageTitleProvider>
-          </Provider>
-        );
-      }
-      const view = render(<Layout value={{ title: "Editing" }} />);
-      expect(store.get(focusedPageTitleAtom)).toEqual({ title: "Editing" });
-      view.rerender(<Layout value={null} />);
       expect(store.get(focusedPageTitleAtom)).toBeNull();
     });
   });
 }
+
+describe("plugin title failure isolation", () => {
+  it.each(["throw", "invalid label", "invalid link"])(
+    "keeps the page alive after %s and retries on navigation or reload",
+    (failure) => {
+      const store = createStore();
+      function useBrokenTitle({
+        subPath,
+      }: PluginNavPanelProps): ExperimentalPageTitle {
+        if (subPath !== "broken") return { title: subPath };
+        if (failure === "throw") throw new Error("Title failed");
+        return failure === "invalid label"
+          ? JSON.parse('{"title":{"invalid":"node"}}')
+          : { breadcrumbs: [{ label: "Unsafe", to: "//example.com" }] };
+      }
+      function register(usePageTitle: typeof useBrokenTitle) {
+        setPluginSlotRegistrations(
+          "demo",
+          makePluginRegistrationSet({
+            navPanels: [
+              {
+                id: "main",
+                path: "main",
+                title: "Demo",
+                icon: "Clock",
+                component: () => null,
+                experimental_usePageTitle: usePageTitle,
+              },
+            ],
+          }),
+        );
+      }
+      register(useBrokenTitle);
+      function Layout({ subPath }: { subPath: string }) {
+        return (
+          <Provider store={store}>
+            <MemoryRouter>
+              <PluginPageTitleHost
+                pluginId="demo"
+                panelPath="main"
+                subPath={subPath}
+              >
+                {body}
+              </PluginPageTitleHost>
+            </MemoryRouter>
+          </Provider>
+        );
+      }
+      const view = render(<Layout subPath="broken" />);
+      expect(screen.getByText("Page body survives")).toBeTruthy();
+      expect(store.get(focusedPageTitleAtom)).toBeNull();
+      view.rerender(<Layout subPath="Recovered" />);
+      expect(screen.getByText("Recovered")).toBeTruthy();
+      view.rerender(<Layout subPath="broken" />);
+      expect(store.get(focusedPageTitleAtom)).toBeNull();
+      register(() => ({ title: "Reloaded" }));
+      view.rerender(<Layout subPath="broken" />);
+      expect(screen.getByText("Reloaded")).toBeTruthy();
+    },
+  );
+});
