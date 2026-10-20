@@ -777,6 +777,10 @@ async function handlePrompt(message) {
   } else if (text.includes("slow")) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
+  } else if (text.includes("echo-permission-env")) {
+    notifyUpdate(
+      messageChunk(`permission:${process.env.OPENCODE_PERMISSION ?? "unset"}`),
+    );
   } else if (text.includes("echo-question-env")) {
     notifyUpdate(
       messageChunk(

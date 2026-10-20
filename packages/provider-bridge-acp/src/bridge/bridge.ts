@@ -2203,6 +2203,26 @@ type AcpSessionStartRequest =
       sourceProviderThreadId: string;
     };
 
+function dialectLaunchEnv(
+  dialectId: string,
+  permissionMode: AcpSessionParams["permissionMode"],
+): Record<string, string> {
+  if (dialectId !== "opencode") {
+    return {};
+  }
+  const outsideEdits = permissionMode === "full" ? "allow" : "ask";
+  return {
+    OPENCODE_CLIENT: "acp",
+    OPENCODE_ENABLE_QUESTION_TOOL: "false",
+    OPENCODE_PERMISSION: JSON.stringify({
+      edit: "allow",
+      bash: outsideEdits,
+      webfetch: outsideEdits,
+      external_directory: outsideEdits,
+    }),
+  };
+}
+
 async function startAgentSession(
   request: AcpSessionStartRequest,
 ): Promise<AcpThreadSession> {
@@ -2262,9 +2282,7 @@ async function startAgentSession(
   const childEnv = {
     ...withoutBridgeRuntimeEnv(process.env),
     ...params.envVars,
-    ...(dialect.id === "opencode"
-      ? { OPENCODE_CLIENT: "acp", OPENCODE_ENABLE_QUESTION_TOOL: "false" }
-      : {}),
+    ...dialectLaunchEnv(dialect.id, params.permissionMode),
   };
   const connection = createBridgeAgentConnection({
     command: params.agent.command,
@@ -3187,7 +3205,12 @@ function reconcileExecutionSettings(
         construction.permissionCli,
         construction.permissionMode,
       ),
-    ) || launchModelChanged;
+    ) ||
+    !isDeepStrictEqual(
+      dialectLaunchEnv(session.dialect.id, session.construction.permissionMode),
+      dialectLaunchEnv(session.dialect.id, construction.permissionMode),
+    ) ||
+    launchModelChanged;
   const restart =
     session.connection.exited ||
     session.restartAfterCancelError ||

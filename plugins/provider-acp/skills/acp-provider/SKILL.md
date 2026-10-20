@@ -79,6 +79,13 @@ values. Native questions have no ACP interaction handler in BB; agents use the
 ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
 custom agents with `dialect: "opencode"` and does not change OpenCode config files.
 
+BB also sets `OPENCODE_PERMISSION` from the thread's permission mode, which
+OpenCode merges over the `permission` keys of its own config. In `accept-edits`
+OpenCode edits files without asking and asks before shell commands, web fetches
+and paths outside the workspace; BB shows those requests as approvals. In `full`
+all four are allowed. Changing a thread's permission mode restarts the OpenCode
+session with the new policy; the conversation is restored.
+
 OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
 does not expose compatible compaction. Check the actual agent's capabilities
 before attempting provider-specific recovery.

@@ -1438,6 +1438,55 @@ describe("acp bridge", () => {
     },
   );
 
+  it("launches OpenCode with a permission policy that follows the thread's permission mode", async () => {
+    const policy = (shell: "allow" | "ask") =>
+      `permission:${JSON.stringify({
+        edit: "allow",
+        bash: shell,
+        webfetch: shell,
+        external_directory: shell,
+      })}`;
+    const { providerThreadId } = await startThread({
+      dialectId: "opencode",
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-permission-env",
+        executionOptions({
+          permissionMode: "full",
+          envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+        }),
+      ),
+    ).toBe(policy("allow"));
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-permission-env",
+        executionOptions({
+          permissionMode: "accept-edits",
+          envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+        }),
+      ),
+    ).toBe(policy("ask"));
+    expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+      providerThreadId,
+      contextLost: false,
+    });
+  });
+
+  it("gives agents other than OpenCode no OpenCode permission policy", async () => {
+    const { providerThreadId } = await startThread();
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-permission-env",
+        executionOptions({ permissionMode: "accept-edits" }),
+      ),
+    ).toBe("permission:unset");
+  });
+
   it("launches ACP agents with a configured reasoning CLI flag", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
 
