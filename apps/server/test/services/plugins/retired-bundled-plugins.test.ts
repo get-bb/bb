@@ -90,6 +90,7 @@ describe("retired bundled plugins", () => {
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
