@@ -30,12 +30,23 @@ export type CodexSessionOptions = {
   envVars?: Record<string, string>;
 } & RuntimePermissionPolicy;
 
-interface CodexPermissionSettings {
+type CodexPermissionSettings = {
   approvalPolicy: AskForApproval;
   approvalsReviewer: ApprovalsReviewer;
-  sandbox: CodexSandboxMode;
-  sandboxPolicy: SandboxPolicy;
-}
+} & (
+  | {
+      sandbox: CodexSandboxMode;
+      sandboxPolicy: SandboxPolicy;
+      permissions?: never;
+      runtimeWorkspaceRoots?: never;
+    }
+  | {
+      permissions: string;
+      runtimeWorkspaceRoots: string[];
+      sandbox?: never;
+      sandboxPolicy?: never;
+    }
+);
 
 export interface CodexThreadPermissionSettings {
   approvalPolicy: AskForApproval;
@@ -47,6 +58,8 @@ export type BbThreadStartParams = ThreadStartParams & {
   experimentalRawEvents?: boolean;
   dynamicTools?: DynamicToolSpec[];
   daybreakEnabled?: boolean;
+  permissions?: string;
+  runtimeWorkspaceRoots?: string[];
 };
 
 export type BbThreadForkParams = {
@@ -62,9 +75,12 @@ export type BbThreadForkParams = {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
   dynamicTools?: DynamicToolSpec[];
+  permissions?: string;
+  runtimeWorkspaceRoots?: string[];
 };
 
 interface ToCodexPermissionSettingsArgs {
+  workspacePermissionProfile?: { id: string; cwd: string };
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options: CodexSessionOptions;
@@ -494,12 +510,6 @@ function combineWorkspaceWriteRoots(
   return [...new Set([...additionalRoots, ...roots])];
 }
 
-export function shouldCaptureWorkspaceWriteGitRoots(
-  options: CodexSessionOptions,
-): boolean {
-  return options.permissionScope === "workspace";
-}
-
 function toCodexApprovalsReviewer(
   options: CodexSessionOptions,
 ): ApprovalsReviewer {
@@ -529,17 +539,37 @@ export function toCodexThreadPermissionSettings(
 export function toCodexPermissionSettings(
   args: ToCodexPermissionSettingsArgs,
 ): CodexPermissionSettings {
+  if (
+    args.options.permissionScope === "workspace" &&
+    args.workspacePermissionProfile
+  ) {
+    const { approvalPolicy, approvalsReviewer } =
+      toCodexThreadPermissionSettings(args.options);
+    return {
+      approvalPolicy,
+      approvalsReviewer,
+      permissions: args.workspacePermissionProfile.id,
+      runtimeWorkspaceRoots: [
+        ...new Set([
+          args.workspacePermissionProfile.cwd,
+          ...args.additionalWorkspaceWriteRoots,
+          ...args.gitWritableRoots,
+        ]),
+      ],
+    };
+  }
+  const sandboxPolicy: SandboxPolicy =
+    args.options.permissionScope === "workspace"
+      ? toWorkspaceWriteCodexSandboxPolicy(
+          combineWorkspaceWriteRoots(
+            args.gitWritableRoots,
+            args.additionalWorkspaceWriteRoots,
+          ),
+        )
+      : { type: "dangerFullAccess" };
   return {
     ...toCodexThreadPermissionSettings(args.options),
-    sandboxPolicy:
-      args.options.permissionScope === "workspace"
-        ? toWorkspaceWriteCodexSandboxPolicy(
-            combineWorkspaceWriteRoots(
-              args.gitWritableRoots,
-              args.additionalWorkspaceWriteRoots,
-            ),
-          )
-        : { type: "dangerFullAccess" },
+    sandboxPolicy,
   };
 }
 

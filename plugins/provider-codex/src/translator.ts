@@ -29,10 +29,7 @@ import {
 import {
   buildCodexConfig,
   gitWritableRootsForWorkspace,
-  shouldCaptureWorkspaceWriteGitRoots,
-  toCodexThreadPermissionSettings,
   type CodexSessionOptions,
-  type CodexThreadPermissionSettings,
 } from "./session-params.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 import { subAgentPresentation } from "./presentation.js";
@@ -367,7 +364,7 @@ interface ClearGitWritableRootsByProviderThreadIdArgs {
 
 interface PreparedWorkspaceWriteGitRoots {
   config: { [key in string]?: JsonValue } | undefined;
-  permissionSettings: CodexThreadPermissionSettings;
+  gitWritableRoots: string[];
 }
 
 interface PrepareWorkspaceWriteGitRootsArgs {
@@ -475,20 +472,11 @@ export function createCodexEventTranslator(
     args: PrepareWorkspaceWriteGitRootsArgs,
   ): PreparedWorkspaceWriteGitRoots {
     const command = args.command;
-    const captureWorkspaceWriteGitRoots = shouldCaptureWorkspaceWriteGitRoots(
-      command.options,
-    );
-    const writableRoots = captureWorkspaceWriteGitRoots
-      ? gitWritableRootsForWorkspace(command.cwd)
-      : [];
-    if (captureWorkspaceWriteGitRoots) {
-      stageThreadGitWritableRoots({
-        threadId: command.threadId,
-        writableRoots,
-      });
-    } else {
-      clearGitWritableRootsByBbThreadId({ threadId: command.threadId });
-    }
+    const writableRoots = gitWritableRootsForWorkspace(command.cwd);
+    stageThreadGitWritableRoots({
+      threadId: command.threadId,
+      writableRoots,
+    });
     return {
       config: buildCodexConfig({
         additionalWorkspaceWriteRoots,
@@ -496,7 +484,7 @@ export function createCodexEventTranslator(
         options: command.options,
         threadId: command.threadId,
       }),
-      permissionSettings: toCodexThreadPermissionSettings(command.options),
+      gitWritableRoots: writableRoots,
     };
   }
 

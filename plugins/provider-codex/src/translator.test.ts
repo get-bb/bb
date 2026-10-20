@@ -169,6 +169,7 @@ describe("codex workspace-write git-root staging", () => {
       expect(prepared.config).toMatchObject({
         "sandbox_workspace_write.writable_roots": fixture.expectedWritableRoots,
       });
+      expect(prepared.gitWritableRoots).toEqual(fixture.expectedWritableRoots);
 
       expect(translator.getThreadGitWritableRoots("bb-thread-1")).toEqual([]);
 
@@ -179,6 +180,38 @@ describe("codex workspace-write git-root staging", () => {
       unlinkWorkspaceGitDir(fixture);
 
       expect(translator.getThreadGitWritableRoots("bb-thread-1")).toEqual(
+        fixture.expectedWritableRoots,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("captures linked Git roots during a full-access start for a later workspace turn", () => {
+    const fixture = createLinkedWorktreeFixture();
+    const translator = createTranslator();
+    try {
+      const prepared = translator.prepareWorkspaceWriteGitRoots({
+        command: {
+          threadId: "bb-thread-full",
+          cwd: fixture.workspacePath,
+          options: {
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+        },
+      });
+      expect(prepared.gitWritableRoots).toEqual(fixture.expectedWritableRoots);
+      expect(prepared.config).not.toHaveProperty(
+        "sandbox_workspace_write.writable_roots",
+      );
+      translator.activateThreadGitWritableRoots({
+        providerThreadId: "codex-thread-full",
+        threadId: "bb-thread-full",
+      });
+      expect(translator.getThreadGitWritableRoots("bb-thread-full")).toEqual(
         fixture.expectedWritableRoots,
       );
     } finally {

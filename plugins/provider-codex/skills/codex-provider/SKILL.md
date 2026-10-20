@@ -74,5 +74,21 @@ current state is disabled in the picker. The `gpt-daybreak-*-latest` alias
 models leave the main list when the switch is available and stay selectable
 only on threads that already use them.
 
+In workspace modes, bb preserves named configured `default_permissions` profiles,
+including their filesystem and network rules. Named inheritance chains and
+profiles with explicit rules are supported. Plain `:workspace` defaults and
+older Codex builds without native profile support keep bb's legacy workspace
+sandbox with networking enabled. Read-only defaults fail with a clear error
+because these modes require write access; full mode remains explicit.
+
+The current workspace, bb thread storage, and validated linked-worktree Git
+paths are supplied as runtime workspace roots. The effective native policy must
+remain a workspace sandbox and cannot grant writes covering the home directory
+or Codex configuration. bb refreshes profile selection before workspace turns
+and reconstructs the session to revalidate changed rules before model work.
+Named profiles retain their configured network restrictions; enabling network
+requires the profile's network rule. Unsupported or disallowed profiles fail
+rather than silently widening access.
+
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.

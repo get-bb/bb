@@ -96,13 +96,22 @@ import {
   type CodexAppServerRequestResponder,
 } from "./app-server-connection.js";
 import {
+  codexPermissionConfigSchema,
+  configuredWorkspacePermissionProfile,
+  validateWorkspaceProfileSandbox,
+} from "../workspace-permissions.js";
+import {
   getCodexProviderHealth,
   getCodexProviderInstallationRun,
   getCodexProviderInstallationStatus,
   getCodexProviderUsage,
 } from "./provider-maintenance.js";
 
-type BbThreadResumeParams = ThreadResumeParams & { excludeTurns: boolean };
+type BbThreadResumeParams = ThreadResumeParams & {
+  excludeTurns: boolean;
+  permissions?: string;
+  runtimeWorkspaceRoots?: string[];
+};
 
 const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -470,6 +479,9 @@ interface CodexBridgeSession {
   construction: CodexSessionConstruction;
   constructionSignature: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
+  workspacePermissionProfile:
+    | { id: string; cwd: string; configSignature: string }
+    | undefined;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
@@ -1020,6 +1032,58 @@ async function initializeChild(
   }
 }
 
+async function resolveWorkspacePermissionProfile(
+  connection: CodexAppServerConnection,
+  cwd: string,
+): Promise<{ id: string; cwd: string; configSignature: string } | undefined> {
+  const profileConfig = await connection
+    .request({
+      method: "config/read",
+      params: { cwd },
+      resultSchema: codexPermissionConfigSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    })
+    .catch((error: unknown) => {
+      if (error instanceof CodexAppServerRpcError && error.code === -32601)
+        return null;
+      throw error;
+    });
+  const profileId =
+    profileConfig === null
+      ? null
+      : configuredWorkspacePermissionProfile(profileConfig.config);
+  if (profileId === null) return undefined;
+  const profiles = await connection
+    .request({
+      method: "permissionProfile/list",
+      params: { cwd },
+      resultSchema: z.object({
+        data: z.array(z.object({ id: z.string(), allowed: z.boolean() })),
+      }),
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    })
+    .catch((error: unknown) => {
+      if (error instanceof CodexAppServerRpcError && error.code === -32601)
+        return null;
+      throw error;
+    });
+  if (profiles === null) return undefined;
+  if (
+    !profiles.data.some(
+      (profile) => profile.id === profileId && profile.allowed,
+    )
+  ) {
+    throw new Error(
+      "Configured permissions profile is unavailable or disallowed.",
+    );
+  }
+  return {
+    id: profileId,
+    cwd,
+    configSignature: JSON.stringify(profileConfig?.config),
+  };
+}
+
 const codexThreadIdentityResultSchema = z
   .object({
     thread: z
@@ -1222,6 +1286,7 @@ async function constructThreadSession(
       gitWritableRoots: [],
       options: decoded.sessionOptions,
     }),
+    workspacePermissionProfile: undefined,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
@@ -1291,6 +1356,10 @@ async function constructThreadSession(
 
   try {
     await initializeChild(connection);
+    session.workspacePermissionProfile =
+      decoded.sessionOptions.permissionScope === "workspace"
+        ? await resolveWorkspacePermissionProfile(connection, args.cwd)
+        : undefined;
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       command: {
@@ -1304,10 +1373,27 @@ async function constructThreadSession(
       instructionMode: args.instructionMode,
       options: decoded.sessionOptions,
     });
+    const permissionSettings = toCodexPermissionSettings({
+      options: decoded.sessionOptions,
+      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
+      gitWritableRoots: preparedGitRoots.gitWritableRoots,
+      workspacePermissionProfile: session.workspacePermissionProfile,
+    });
+    if (
+      permissionSettings.permissions !== undefined &&
+      preparedGitRoots.config
+    ) {
+      delete preparedGitRoots.config["sandbox_workspace_write.writable_roots"];
+    }
     const sharedConstructionParams = {
-      approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
-      approvalsReviewer: preparedGitRoots.permissionSettings.approvalsReviewer,
-      sandbox: preparedGitRoots.permissionSettings.sandbox,
+      approvalPolicy: permissionSettings.approvalPolicy,
+      approvalsReviewer: permissionSettings.approvalsReviewer,
+      ...(permissionSettings.permissions === undefined
+        ? { sandbox: permissionSettings.sandbox }
+        : {
+            permissions: permissionSettings.permissions,
+            runtimeWorkspaceRoots: permissionSettings.runtimeWorkspaceRoots,
+          }),
       cwd: args.cwd,
       ...instructionOverrides,
       model: decoded.sessionOptions.model ?? undefined,
@@ -1365,6 +1451,27 @@ async function constructThreadSession(
       method,
       params,
     );
+    if (permissionSettings.permissions !== undefined) {
+      const activeProfile = z
+        .object({
+          activePermissionProfile: z.object({ id: z.string() }),
+        })
+        .safeParse(result);
+      if (
+        !activeProfile.success ||
+        activeProfile.data.activePermissionProfile.id !==
+          permissionSettings.permissions
+      ) {
+        throw new Error(
+          "Codex did not activate the configured permissions profile.",
+        );
+      }
+      validateWorkspaceProfileSandbox(
+        result,
+        args.cwd,
+        buildAppServerEnv(decoded.sessionOptions.envVars),
+      );
+    }
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
     translator.activateThreadGitWritableRoots({
@@ -1372,6 +1479,7 @@ async function constructThreadSession(
       threadId: args.threadId,
     });
     session.turnPermissionSettings = toCodexPermissionSettings({
+      workspacePermissionProfile: session.workspacePermissionProfile,
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots: translator.getThreadGitWritableRoots(args.threadId),
       options: decoded.sessionOptions,
@@ -1430,6 +1538,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     construction: session.construction,
     constructionSignature: session.constructionSignature,
     turnPermissionSettings: session.turnPermissionSettings,
+    workspacePermissionProfile: session.workspacePermissionProfile,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
@@ -1764,6 +1873,21 @@ async function requireLiveSessionForTurn(
   if (session.connection === null) {
     throw new Error(`No active codex session for thread "${params.threadId}"`);
   }
+  if (decoded.sessionOptions.permissionScope === "workspace") {
+    const profile = await resolveWorkspacePermissionProfile(
+      session.connection,
+      session.construction.cwd,
+    );
+    if (!isDeepStrictEqual(profile, session.workspacePermissionProfile)) {
+      session = await rebuildThreadSession(
+        session,
+        params.options,
+        "Configured permissions changed; the effective workspace policy was revalidated.",
+      );
+    }
+  }
+  if (session.connection === null)
+    throw new Error("Codex session is unavailable.");
   return { session, connection: session.connection };
 }
 
@@ -2044,12 +2168,25 @@ async function handleTurnStart(
       });
     } else {
       const permissionSettings = toCodexPermissionSettings({
+        workspacePermissionProfile: session.workspacePermissionProfile,
         additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
         gitWritableRoots: session.translator.getThreadGitWritableRoots(
           params.threadId,
         ),
         options: decoded.sessionOptions,
       });
+      if (permissionSettings.permissions !== undefined) {
+        validateWorkspaceProfileSandbox(
+          {
+            sandbox: {
+              type: "workspaceWrite",
+              writableRoots: permissionSettings.runtimeWorkspaceRoots,
+            },
+          },
+          session.construction.cwd,
+          buildAppServerEnv(decoded.sessionOptions.envVars),
+        );
+      }
       const cyberAccessProgram = await resolveTurnCyberAccessProgram(
         session,
         connection,
@@ -2066,7 +2203,13 @@ async function handleTurnStart(
             input: toCodexUserInput(input),
             approvalPolicy: permissionSettings.approvalPolicy,
             approvalsReviewer: permissionSettings.approvalsReviewer,
-            sandboxPolicy: permissionSettings.sandboxPolicy,
+            ...(permissionSettings.permissions === undefined
+              ? { sandboxPolicy: permissionSettings.sandboxPolicy }
+              : {
+                  permissions: permissionSettings.permissions,
+                  runtimeWorkspaceRoots:
+                    permissionSettings.runtimeWorkspaceRoots,
+                }),
             model: decoded.sessionOptions.model ?? undefined,
             serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
             ...(cyberAccessProgram === null ? {} : { cyberAccessProgram }),
@@ -2124,7 +2267,15 @@ async function handleTurnSteer(
   }
   try {
     const decoded = decodeCodexOptions(params.options);
+    const profile =
+      decoded.sessionOptions.permissionScope === "workspace"
+        ? await resolveWorkspacePermissionProfile(
+            session.connection,
+            session.construction.cwd,
+          )
+        : session.workspacePermissionProfile;
     const permissionSettings = toCodexPermissionSettings({
+      workspacePermissionProfile: session.workspacePermissionProfile,
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots: session.translator.getThreadGitWritableRoots(
         params.threadId,
@@ -2132,7 +2283,8 @@ async function handleTurnSteer(
       options: decoded.sessionOptions,
     });
     if (
-      !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)
+      !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings) ||
+      !isDeepStrictEqual(profile, session.workspacePermissionProfile)
     ) {
       if (!session.openCodexTurnIds.has(params.expectedTurnId)) {
         throw new Error("The turn to steer is no longer active");
