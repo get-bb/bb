@@ -15,6 +15,12 @@ import {
   useAppCommandHandler,
 } from "@/components/commands/AppCommandProvider";
 import { SidebarSplitContainer } from "./SidebarSplitContainer";
+import {
+  createSidebarSplitState,
+  moveSidebarTab,
+  serializeSidebarSplitState,
+  sidebarSplitStorageKey,
+} from "./sidebarSplitLayout";
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -29,6 +35,7 @@ vi.mock("@/hooks/usePluginCommandBindings", () => ({
         ["panel.nextTab", "ArrowRight", true, false],
         ["pane.focus.left", "ArrowLeft", false, true],
         ["pane.focus.right", "ArrowRight", false, true],
+        ["panel.fullScreenAllPanes.toggle", "k", true, false],
       ] as const
     ).map(([command, key, control, shift]) => ({
       command,
@@ -139,5 +146,99 @@ describe("panel tab commands", () => {
     press("ArrowLeft");
     expect(screen.getByTestId("first").textContent).toBe("b");
     expect(screen.getByTestId("second").textContent).toBe("b");
+  });
+});
+
+describe("panel full screen with all panes command", () => {
+  const panelStateId = "full-screen-all-panes";
+
+  function persistTwoPanes() {
+    const initial = createSidebarSplitState(["a", "b"], "a");
+    const split = moveSidebarTab(
+      initial,
+      initial.layout.focusedPaneId,
+      "b",
+      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { groupId: "group-b" },
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(panelStateId),
+      serializeSidebarSplitState(split),
+    );
+  }
+
+  function FullScreenPanel({ enabled }: { enabled: boolean }) {
+    const [isFullScreen, setIsFullScreen] = useState(false);
+    return (
+      <>
+        <output data-testid="full-screen-state">
+          {isFullScreen ? "full screen" : "conversation visible"}
+        </output>
+        <SidebarSplitContainer
+          activeTabId="a"
+          canToggleFullScreen={enabled}
+          isFullScreen={isFullScreen}
+          onActivateTab={() => {}}
+          onGlobalTabReorder={() => {}}
+          onToggleFullScreen={() => setIsFullScreen((current) => !current)}
+          panelStateId={panelStateId}
+          tabs={[
+            { id: "a", label: "A", restoresPlacementAfterRemoval: true },
+            { id: "b", label: "B", restoresPlacementAfterRemoval: true },
+          ]}
+          renderPane={({ group, isMaximized, onToggleMaximize }) => (
+            <button type="button" onClick={onToggleMaximize}>
+              {isMaximized ? "Exit" : "Maximize"} {group.activeTabId}
+            </button>
+          )}
+        />
+      </>
+    );
+  }
+
+  function fullScreenState() {
+    return screen.getByTestId("full-screen-state").textContent;
+  }
+
+  function maximizedPaneCount() {
+    return document.querySelectorAll(
+      '[data-split-pane-id][data-maximized="true"]',
+    ).length;
+  }
+
+  it("ignores the command while the panel cannot take it", () => {
+    persistTwoPanes();
+    render(
+      <AppCommandProvider>
+        <FullScreenPanel enabled={false} />
+      </AppCommandProvider>,
+    );
+    press("k");
+    expect(fullScreenState()).toBe("conversation visible");
+  });
+
+  it("toggles full screen with every pane visible, including from one maximized pane", () => {
+    persistTwoPanes();
+    render(
+      <AppCommandProvider>
+        <FullScreenPanel enabled />
+      </AppCommandProvider>,
+    );
+
+    press("k");
+    expect(fullScreenState()).toBe("full screen");
+    expect(maximizedPaneCount()).toBe(0);
+    press("k");
+    expect(fullScreenState()).toBe("conversation visible");
+
+    fireEvent.click(screen.getByRole("button", { name: "Maximize a" }));
+    expect(fullScreenState()).toBe("full screen");
+    expect(maximizedPaneCount()).toBe(1);
+    press("k");
+    expect(fullScreenState()).toBe("full screen");
+    expect(maximizedPaneCount()).toBe(0);
+    expect(screen.getAllByRole("button", { name: /^Exit / })).toHaveLength(2);
+    press("k");
+    expect(fullScreenState()).toBe("conversation visible");
   });
 });

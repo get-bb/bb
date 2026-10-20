@@ -53,6 +53,7 @@ import {
   restoreSidebarTabPlacement,
   selectSidebarTab,
   serializeSidebarSplitState,
+  setSidebarFullScreenScope,
   setSidebarPaneMaximized,
   sidebarPaneGroupId,
   sidebarSplitStorageKey,
@@ -88,9 +89,37 @@ export interface SidebarSplitPaneRenderArgs {
   onRemoveSplit?: () => void;
   onMoveActiveTabToSide?: (side: SplitSide) => void;
   onSelectTab: (tabId: string) => void;
+  onToggleFullScreenAllPanes?: () => void;
   onToggleMaximize: () => void;
   paneId: string;
   showOuterControls: boolean;
+}
+
+function isPanelFullScreen(
+  state: SidebarSplitState,
+  isFullScreen: boolean,
+): boolean {
+  return (
+    isFullScreen &&
+    state.fullScreenScope === "panel" &&
+    state.maximizedPaneId === null
+  );
+}
+
+function applyFullScreen(
+  state: SidebarSplitState,
+  isFullScreen: boolean,
+): SidebarSplitState {
+  if (!isFullScreen) {
+    return setSidebarFullScreenScope(
+      setSidebarPaneMaximized(state, null),
+      "pane",
+    );
+  }
+  return setSidebarPaneMaximized(
+    state,
+    state.fullScreenScope === "panel" ? null : state.layout.focusedPaneId,
+  );
 }
 
 function canMoveSidebarActiveTab(
@@ -103,6 +132,7 @@ function canMoveSidebarActiveTab(
 interface SidebarSplitContainerProps {
   activeTabId: string;
   canNavigateTabs?: boolean;
+  canToggleFullScreen?: boolean;
   fixedTabIds?: readonly string[];
   hasNewTabButton?: boolean;
   onTabNavigated?: (paneId: string, isNewTabButton: boolean) => void;
@@ -118,6 +148,7 @@ interface SidebarSplitContainerProps {
 export function SidebarSplitContainer({
   activeTabId,
   canNavigateTabs = true,
+  canToggleFullScreen = false,
   fixedTabIds = [],
   hasNewTabButton = false,
   onTabNavigated,
@@ -144,10 +175,7 @@ export function SidebarSplitContainer({
             availableTabIds,
             activeTabId,
           );
-    return setSidebarPaneMaximized(
-      restored,
-      isFullScreen ? restored.layout.focusedPaneId : null,
-    );
+    return applyFullScreen(restored, isFullScreen);
   });
   const stateRef = useRef(state);
   const lastPersistedValueRef = useRef({
@@ -302,12 +330,7 @@ export function SidebarSplitContainer({
   useEffect(() => {
     if (previousFullScreen.current === isFullScreen) return;
     previousFullScreen.current = isFullScreen;
-    commitState((current) =>
-      setSidebarPaneMaximized(
-        current,
-        isFullScreen ? current.layout.focusedPaneId : null,
-      ),
-    );
+    commitState((current) => applyFullScreen(current, isFullScreen));
   }, [commitState, isFullScreen]);
 
   const selectTab = useCallback(
@@ -373,7 +396,9 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.previousNewTabItem", () =>
+    navigateNewTabItem(-1),
+  );
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(
@@ -405,7 +430,7 @@ export function SidebarSplitContainer({
             { paneId, zone: side },
             { groupId: nextSidebarSplitGroupId(focused) },
           );
-          return isFullScreen
+          return isFullScreen && moved.fullScreenScope === "pane"
             ? setSidebarPaneMaximized(moved, moved.layout.focusedPaneId)
             : moved;
         }
@@ -441,6 +466,10 @@ export function SidebarSplitContainer({
   const toggleMaximizePane = useCallback(
     (paneId: string) => {
       const current = stateRef.current;
+      if (isPanelFullScreen(current, isFullScreen)) {
+        onToggleFullScreen();
+        return;
+      }
       const next = commitState((latest) =>
         toggleSidebarPaneMaximize(latest, paneId),
       );
@@ -454,6 +483,26 @@ export function SidebarSplitContainer({
     [commitState, isFullScreen, onToggleFullScreen],
   );
 
+  const toggleFullScreenAllPanes = useCallback(() => {
+    if (isPanelFullScreen(stateRef.current, isFullScreen)) {
+      onToggleFullScreen();
+      return;
+    }
+    commitState((current) =>
+      setSidebarFullScreenScope(
+        setSidebarPaneMaximized(current, null),
+        "panel",
+      ),
+    );
+    if (!isFullScreen) onToggleFullScreen();
+  }, [commitState, isFullScreen, onToggleFullScreen]);
+
+  useAppCommandHandler("panel.fullScreenAllPanes.toggle", () => {
+    if (!canToggleFullScreen) return false;
+    toggleFullScreenAllPanes();
+    return true;
+  });
+
   const moveTab = useCallback(
     (sourcePaneId: string, tabId: string, target: SplitDropTarget) => {
       const groupId = nextSidebarSplitGroupId(stateRef.current);
@@ -461,7 +510,7 @@ export function SidebarSplitContainer({
         const moved = moveSidebarTab(current, sourcePaneId, tabId, target, {
           groupId,
         });
-        return isFullScreen
+        return isFullScreen && moved.fullScreenScope === "pane"
           ? setSidebarPaneMaximized(moved, moved.layout.focusedPaneId)
           : moved;
       }, true);
@@ -632,6 +681,7 @@ export function SidebarSplitContainer({
             isRightEdge={rect.x + rect.w >= 1 - PANE_EDGE_EPSILON}
             isTopRow={rect.y <= PANE_EDGE_EPSILON}
             maximizedPaneId={state.maximizedPaneId}
+            isPanelFullScreen={isPanelFullScreen(state, isFullScreen)}
             pane={pane}
             rect={rect}
             renderPane={renderPane}
@@ -642,6 +692,7 @@ export function SidebarSplitContainer({
             onMoveActiveTabToSide={moveActiveTabToSide}
             onReorderTab={reorderTab}
             onSelectTab={selectTab}
+            onToggleFullScreenAllPanes={toggleFullScreenAllPanes}
             onToggleMaximize={toggleMaximizePane}
           />
         );
@@ -717,6 +768,7 @@ interface SidebarSplitLeafProps {
   dimsInactiveSplits: boolean;
   focusedPaneId: string;
   isLeftEdge: boolean;
+  isPanelFullScreen: boolean;
   isRightEdge: boolean;
   isTopRow: boolean;
   maximizedPaneId: string | null;
@@ -733,6 +785,7 @@ interface SidebarSplitLeafProps {
     request: SecondaryPanelTabReorderRequest,
   ) => void;
   onSelectTab: (paneId: string, tabId: string) => void;
+  onToggleFullScreenAllPanes: () => void;
   onToggleMaximize: (paneId: string) => void;
   pane: Extract<LayoutNode, { type: "pane" }>;
   rect: { h: number; w: number; x: number; y: number };
@@ -800,7 +853,7 @@ function SidebarSplitLeaf(props: SidebarSplitLeafProps) {
             group,
             isFocused,
             isLeftEdge: isMaximized || props.isLeftEdge,
-            isMaximized,
+            isMaximized: isMaximized || props.isPanelFullScreen,
             isTopRow: isMaximized || props.isTopRow,
             onBeginTabDrag: (tabId, event) =>
               props.onBeginTabDrag(pane.paneId, tabId, event),
@@ -811,6 +864,10 @@ function SidebarSplitLeaf(props: SidebarSplitLeafProps) {
               ? (side) => props.onMoveActiveTabToSide(pane.paneId, side)
               : undefined,
             onSelectTab: (tabId) => props.onSelectTab(pane.paneId, tabId),
+            onToggleFullScreenAllPanes:
+              props.maximizedPaneId === null && !props.isPanelFullScreen
+                ? props.onToggleFullScreenAllPanes
+                : undefined,
             onToggleMaximize: () => props.onToggleMaximize(pane.paneId),
             paneId: pane.paneId,
             showOuterControls,
