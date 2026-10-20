@@ -616,6 +616,9 @@ export function createPiDeltaTranslator(
           size: toPositiveNumber(size) ?? null,
           estimated: contextWindowUsage.estimated,
           attach: "currentOrLast",
+          ...(contextWindowUsage.cost === undefined
+            ? {}
+            : { cost: contextWindowUsage.cost }),
         },
       ];
     }

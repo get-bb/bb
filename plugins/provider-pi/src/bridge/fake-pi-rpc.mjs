@@ -170,6 +170,7 @@ let leafCounter = 0;
 let leafId = null;
 let turnCounter = 0;
 let tokens = 0;
+let cost = 0;
 let holdAbort = null;
 const followUp = [];
 const steering = [];
@@ -510,6 +511,7 @@ async function runPrompt(text) {
     event({ type: "message_end", message: assistant });
     event({ type: "turn_end", message: assistant, toolResults: [] });
     tokens += 17;
+    cost += 0.25;
     leafCounter += 1;
     leafId = `leaf-${leafCounter}`;
     const messages = [{ role: "user", content: text }, assistant];
@@ -610,6 +612,7 @@ async function runPrompt(text) {
   event({ type: "message_end", message: assistant });
   event({ type: "turn_end", message: assistant, toolResults: [] });
   tokens += 17;
+  cost += 0.25;
   leafCounter += 1;
   leafId = `leaf-${leafCounter}`;
   const messages = [{ role: "user", content: text }, assistant];
@@ -734,7 +737,10 @@ async function handle(command) {
           cacheWrite: 0,
           total: tokens,
         },
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        cost:
+          process.env.FAKE_PI_SESSION_COST === undefined
+            ? cost
+            : JSON.parse(process.env.FAKE_PI_SESSION_COST),
         contextUsage: {
           tokens,
           contextWindow: model.contextWindow,

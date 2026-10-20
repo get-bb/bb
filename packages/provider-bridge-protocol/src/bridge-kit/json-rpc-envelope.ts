@@ -1,3 +1,4 @@
+import { threadUsageCostSchema } from "@bb/domain";
 import { z } from "zod";
 
 const recordSchema = z.record(z.string(), z.unknown());
@@ -48,6 +49,7 @@ export const threadContextWindowUsageEnvelopeSchema = z
           usedTokens: z.number().nullable(),
           modelContextWindow: z.number().nullable(),
           estimated: z.boolean(),
+          cost: threadUsageCostSchema.optional(),
         }),
       })
       .passthrough(),

@@ -158,6 +158,12 @@ export interface PiRpcSessionState {
   sessionFile?: string;
 }
 
+export interface PiContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  cost: number | null;
+}
+
 export class PiRpcSession {
   private child: PiRpcChild | undefined;
   private isProcessing = false;
@@ -203,10 +209,7 @@ export class PiRpcSession {
     resolve: () => void;
     reject: (error: Error) => void;
   } = createDeferred();
-  private lastContextUsage: {
-    tokens: number | null;
-    contextWindow: number;
-  } | null = null;
+  private lastContextUsage: PiContextUsage | null = null;
   private liveModel: PiRpcSessionState["model"] | undefined;
   private closed = false;
 
@@ -232,7 +235,7 @@ export class PiRpcSession {
     return this.liveModel;
   }
 
-  getContextUsage(): { tokens: number | null; contextWindow: number } | null {
+  getContextUsage(): PiContextUsage | null {
     return this.lastContextUsage;
   }
 
@@ -886,14 +889,20 @@ export class PiRpcSession {
     }
     const data = (await child.requestOk({ type: "get_session_stats" })) as
       | {
+          cost?: number;
           contextUsage?: { tokens?: number | null; contextWindow?: number };
         }
       | undefined;
     const usage = data?.contextUsage;
     if (usage && typeof usage.contextWindow === "number") {
+      const cost = data.cost;
       this.lastContextUsage = {
         tokens: typeof usage.tokens === "number" ? usage.tokens : null,
         contextWindow: usage.contextWindow,
+        cost:
+          typeof cost === "number" && Number.isFinite(cost) && cost >= 0
+            ? cost
+            : null,
       };
     }
   }

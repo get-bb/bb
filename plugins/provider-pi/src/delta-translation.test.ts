@@ -1830,6 +1830,41 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
+  it("keeps the session cost on bridge context-window usage updates", () => {
+    const harness = createHarness();
+
+    harness.translate(loadFixture("agent-start.json"));
+    const turnId = harness.openTurnId();
+    harness.translate(loadFixture("agent-end-with-message.json"));
+
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: "thread/contextWindowUsage/updated",
+      params: {
+        threadId: THREAD_ID,
+        contextWindowUsage: {
+          usedTokens: 54321,
+          modelContextWindow: 123456,
+          estimated: true,
+          cost: { amount: 0.42, currency: "USD" },
+        },
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "thread/contextWindowUsage/updated",
+        scope: turnScope(turnId),
+        contextWindowUsage: {
+          usedTokens: 54321,
+          modelContextWindow: 123456,
+          estimated: true,
+          cost: { amount: 0.42, currency: "USD" },
+        },
+      }),
+    );
+  });
+
   it("clears stale tool state when a turn ends without tool results", () => {
     const harness = createHarness();
 

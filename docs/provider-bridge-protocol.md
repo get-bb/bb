@@ -205,7 +205,9 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   each `usage`). It may carry the session's cumulative `cost`
   (`{ amount, currency }`); only the latest is kept, so a bridge that reports
   cost repeats the current total on every `contextWindow` delta (the ACP
-  bridge does, from `usage_update.cost`). It may carry an optional `snapshot` (`ContextSnapshot`,
+  bridge does, from `usage_update.cost`; the Pi bridge does, from the USD
+  `cost` of `get_session_stats`, and omits it while that total is zero). It
+  may carry an optional `snapshot` (`ContextSnapshot`,
   validated by `contextSnapshotSchema`): capture time, provider session/turn
   identity, model, token totals, compaction threshold, estimate status, and
   categories. Each `ContextCategory` has a provider-defined id and label,
