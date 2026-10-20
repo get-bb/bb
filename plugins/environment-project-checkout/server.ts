@@ -200,7 +200,9 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       return {
         status: "created",
         path: result.path,
-        ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
+        ...(branch === null
+          ? {}
+          : { mergeBaseBranch: mergeBaseBranch ?? result.mergeBaseBranch }),
         ownsPath:
           result.path === context.projectCheckout.path &&
           context.projectCheckout.experimental_ownsPath === true,
@@ -267,7 +269,6 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         return attachWorkspace(context, {
           path,
           branch: { kind: "existing", name: branchInput.name },
-          mergeBaseBranch: null,
         });
       }
       return attachWorkspace(context, {
@@ -277,7 +278,6 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
           name: context.suggestedBranchName,
           baseBranch: branchInput.baseBranch,
         },
-        mergeBaseBranch: branchInput.baseBranch,
       });
     },
     async restore(context) {

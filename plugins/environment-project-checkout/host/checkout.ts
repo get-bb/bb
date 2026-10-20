@@ -13,7 +13,7 @@ import {
   getCheckoutRef,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
-  listLocalBranches,
+  locateBranch,
   pathExists,
 } from "./git.js";
 import type { CheckoutBranch, CheckoutInspection } from "../contract.js";
@@ -28,6 +28,7 @@ interface AttachCheckoutArgs {
 export interface AttachedCheckout {
   path: string;
   branchName: string | null;
+  mergeBaseBranch: string | null;
 }
 
 function checkoutLabel(
@@ -83,14 +84,14 @@ async function assertSwitchable(
         `Cannot inspect current checkout: ${ref.reason}`,
       );
   }
-  if (branch.kind === "existing") {
-    const branches = await listLocalBranches(cwd);
-    if (!branches.includes(branch.name)) {
-      throw new WorkspaceError(
-        "checkout_missing_branch",
-        `Cannot checkout missing branch ${branch.name}`,
-      );
-    }
+  if (
+    branch.kind === "existing" &&
+    (await locateBranch(cwd, branch.name)) === "missing"
+  ) {
+    throw new WorkspaceError(
+      "checkout_missing_branch",
+      `Cannot checkout missing branch ${branch.name}`,
+    );
   }
   const operation = await getWorkspaceGitOperation(cwd);
   if (operation.kind !== "none" && operation.hasConflicts) {
@@ -114,14 +115,33 @@ async function assertSwitchable(
   return "ready";
 }
 
+async function planSwitch(
+  cwd: string,
+  branch: CheckoutBranch,
+): Promise<{ switchArgs: string[]; startPoint: string | null }> {
+  if (branch.kind === "existing") {
+    return {
+      switchArgs:
+        (await locateBranch(cwd, branch.name)) === "origin"
+          ? ["switch", "--track", `origin/${branch.name}`]
+          : ["switch", branch.name],
+      startPoint: null,
+    };
+  }
+  const startPoint =
+    (await locateBranch(cwd, branch.baseBranch)) === "origin"
+      ? `origin/${branch.baseBranch}`
+      : branch.baseBranch;
+  return {
+    switchArgs: ["switch", "--no-track", "-C", branch.name, startPoint],
+    startPoint,
+  };
+}
+
 async function switchBranch(
   args: AttachCheckoutArgs & { branch: CheckoutBranch },
-): Promise<void> {
+): Promise<string | null> {
   const { path: cwd, branch, onProgress, signal } = args;
-  const switchArgs =
-    branch.kind === "new"
-      ? ["switch", "-C", branch.name, branch.baseBranch]
-      : ["switch", branch.name];
   const waitingStartedAt = Date.now();
   emitStep({
     onProgress,
@@ -133,6 +153,7 @@ async function switchBranch(
   let startedAt = waitingStartedAt;
   let waitingCompleted = false;
   let alreadyOnTarget = false;
+  let startPoint: string | null = null;
   try {
     const locked = await tryWithCheckoutMutationLock(
       cwd,
@@ -149,6 +170,8 @@ async function switchBranch(
         });
         waitingCompleted = true;
         startedAt = lockAcquiredAt;
+        const plan = await planSwitch(cwd, branch);
+        startPoint = plan.startPoint;
         if ((await assertSwitchable(cwd, branch)) === "already-current") {
           alreadyOnTarget = true;
           return;
@@ -160,7 +183,7 @@ async function switchBranch(
           status: "started",
           startedAt,
         });
-        await runGit(switchArgs, {
+        await runGit(plan.switchArgs, {
           cwd,
           ...(signal !== undefined ? { signal } : {}),
         });
@@ -206,6 +229,7 @@ async function switchBranch(
     });
     throw error;
   }
+  return startPoint;
 }
 
 export async function inspectCheckout(args: {
@@ -241,6 +265,7 @@ export async function attachCheckout(
     );
   }
   const isGitRepo = await detectGitRepo(args.path);
+  let mergeBaseBranch: string | null = null;
   if (args.branch !== null) {
     if (!isGitRepo) {
       throw new WorkspaceError(
@@ -248,15 +273,16 @@ export async function attachCheckout(
         `Cannot checkout branch on non-git workspace: ${args.path}`,
       );
     }
-    await switchBranch({ ...args, branch: args.branch });
+    mergeBaseBranch = await switchBranch({ ...args, branch: args.branch });
   }
   if (!isGitRepo) {
-    return { path: args.path, branchName: null };
+    return { path: args.path, branchName: null, mergeBaseBranch: null };
   }
   const ref = await getCheckoutRef(args.path);
   return {
     path: args.path,
     branchName:
       ref.kind === "branch" || ref.kind === "unborn" ? ref.branchName : null,
+    mergeBaseBranch,
   };
 }

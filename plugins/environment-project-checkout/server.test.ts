@@ -286,7 +286,12 @@ it.each([false, true])(
       pluginId: "environment-project-checkout",
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
-        return { status: "attached", path: CHECKOUT_PATH, branchName: "main" };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: "main",
+          mergeBaseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
@@ -419,7 +424,12 @@ describe("checkout provider merge base", () => {
         experimental_callHostRpc: (call) => {
           if (call.method !== "attach")
             throw new Error("Unexpected host method");
-          return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+          return {
+            status: "attached",
+            path: CHECKOUT_PATH,
+            branchName: null,
+            mergeBaseBranch: null,
+          };
         },
         sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
       });
@@ -471,7 +481,12 @@ describe("restoring a destroyed checkout environment", () => {
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
         attachCalls.push(call.input);
-        return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: null,
+          mergeBaseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
