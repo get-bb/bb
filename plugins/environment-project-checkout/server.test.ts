@@ -286,7 +286,12 @@ it.each([false, true])(
       pluginId: "environment-project-checkout",
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
-        return { status: "attached", path: CHECKOUT_PATH, branchName: "main" };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: "main",
+          baseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });
@@ -419,7 +424,12 @@ describe("checkout provider merge base", () => {
         experimental_callHostRpc: (call) => {
           if (call.method !== "attach")
             throw new Error("Unexpected host method");
-          return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+          return {
+            status: "attached",
+            path: CHECKOUT_PATH,
+            branchName: null,
+            baseBranch: null,
+          };
         },
         sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
       });
@@ -457,6 +467,51 @@ describe("checkout provider merge base", () => {
       }
     },
   );
+
+  it("records the ref the host made a new branch from", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "environment-project-checkout",
+      experimental_callHostRpc: (call) => {
+        if (call.method !== "attach") throw new Error("Unexpected host method");
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: "bb/thread-branch",
+          baseBranch: "origin/dev",
+        };
+      },
+      sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
+    });
+    try {
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      if (!provider) throw new Error("Missing provider");
+      const result = await provider.create({
+        project: PROJECT,
+        host: HOST,
+        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: false },
+        gitRemote: null,
+        inputs: { branch: { kind: "new", baseBranch: "dev" } },
+        thread: makeThreadResponse(),
+        suggestedBranchName: "bb/thread-branch",
+        attempt: 1,
+        pathKey: "merge-base",
+        experimental_claimPath: async () => true,
+        report: { step() {}, log() {} },
+        signal: new AbortController().signal,
+      });
+      expect(result).toEqual({
+        status: "created",
+        path: CHECKOUT_PATH,
+        ownsPath: false,
+        mergeBaseBranch: "origin/dev",
+      });
+    } finally {
+      await harness.lifecycle.dispose();
+    }
+  });
 });
 
 describe("restoring a destroyed checkout environment", () => {
@@ -471,7 +526,12 @@ describe("restoring a destroyed checkout environment", () => {
       experimental_callHostRpc: (call) => {
         if (call.method !== "attach") throw new Error("Unexpected host method");
         attachCalls.push(call.input);
-        return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+        return {
+          status: "attached",
+          path: CHECKOUT_PATH,
+          branchName: null,
+          baseBranch: null,
+        };
       },
       sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
     });

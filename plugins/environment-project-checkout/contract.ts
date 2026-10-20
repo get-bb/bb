@@ -79,6 +79,7 @@ export const checkoutHostContract = defineRpcContract({
           status: z.literal("attached"),
           path: z.string().min(1),
           branchName: z.string().min(1).nullable(),
+          baseBranch: z.string().min(1).nullable(),
         })
         .strict(),
       z

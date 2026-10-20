@@ -197,10 +197,13 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       if (result.status === "failed") {
         return { status: "failed", message: result.message };
       }
+      const recordedBase = result.baseBranch ?? mergeBaseBranch;
       return {
         status: "created",
         path: result.path,
-        ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
+        ...(recordedBase === undefined
+          ? {}
+          : { mergeBaseBranch: recordedBase }),
         ownsPath:
           result.path === context.projectCheckout.path &&
           context.projectCheckout.experimental_ownsPath === true,
