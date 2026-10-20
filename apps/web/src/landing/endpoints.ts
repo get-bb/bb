@@ -3,6 +3,7 @@ import {
   DOWNLOAD_FALLBACK_URL,
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
   CAMPAIGN_PARAM_NAMES,
+  CLICK_ID_PARAM_NAMES,
 } from "./site";
 import type { CtaPlacement, DesktopPlatform } from "./site";
 
@@ -73,12 +74,14 @@ export async function handleDownload(
   if (requestUrl.searchParams.get("instructions") === "1") {
     const params = new URLSearchParams();
     for (const name of [...CAMPAIGN_PARAM_NAMES, "placement"]) {
-      if (name === "gclid" && request.headers.get("Sec-GPC") === "1") {
-        continue;
-      }
       const value = requestUrl.searchParams.get(name);
       if (value) {
         params.set(name, value);
+      }
+    }
+    if (request.headers.get("Sec-GPC") === "1") {
+      for (const name of CLICK_ID_PARAM_NAMES) {
+        params.delete(name);
       }
     }
     const search = params.toString();
@@ -362,11 +365,15 @@ function buildDownloadEventProperties(
   const requestUrl = new URL(args.requestUrl);
   let referrer = args.request.headers.get("referer");
   if (globalPrivacyControl) {
-    requestUrl.searchParams.delete("gclid");
+    for (const name of CLICK_ID_PARAM_NAMES) {
+      requestUrl.searchParams.delete(name);
+    }
     if (referrer) {
       try {
         const referrerUrl = new URL(referrer);
-        referrerUrl.searchParams.delete("gclid");
+        for (const name of CLICK_ID_PARAM_NAMES) {
+          referrerUrl.searchParams.delete(name);
+        }
         referrer = referrerUrl.href;
       } catch {
         referrer = null;

@@ -332,7 +332,8 @@ describe("marketing download", () => {
           `https://getbb.app/download/linux?placement=nav&utm_campaign=x&gclid=abc&gbraid=gb&wbraid=wb${instructions ? "&instructions=1" : ""}`,
           {
             headers: {
-              referer: "https://getbb.app/?utm_source=google&gclid=ref",
+              referer:
+                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb",
               ...(gpc ? { "Sec-GPC": gpc } : {}),
             },
           },
@@ -344,7 +345,7 @@ describe("marketing download", () => {
       if (instructions) {
         expect(response.status).toBe(302);
         expect(response.headers.get("Location")).toBe(
-          `/install/linux?utm_campaign=x${gpc === "1" ? "" : "&gclid=abc"}&gbraid=gb&wbraid=wb&placement=nav`,
+          `/install/linux?utm_campaign=x${gpc === "1" ? "" : "&gclid=abc&gbraid=gb&wbraid=wb"}&placement=nav`,
         );
         expect(fetchMock).toHaveBeenCalledTimes(1);
       }
@@ -372,16 +373,20 @@ describe("marketing download", () => {
       expect(body.properties.download_target).toBe("linux");
       expect(body.properties.placement).toBe("nav");
       expect(body.properties.utm_campaign).toBe("x");
-      expect(body.properties.gclid).toBe(gpc === "1" ? undefined : "abc");
-      expect(body.properties.gbraid).toBe("gb");
-      expect(body.properties.wbraid).toBe("wb");
       expect(body.properties.utm_source).toBe("google");
-      expect(
-        new URL(body.properties.$current_url).searchParams.get("gclid"),
-      ).toBe(gpc === "1" ? null : "abc");
-      expect(
-        new URL(body.properties.$referrer ?? "").searchParams.get("gclid"),
-      ).toBe(gpc === "1" ? null : "ref");
+      for (const [name, value, referrerValue] of [
+        ["gclid", "abc", "ref"],
+        ["gbraid", "gb", "ref-gb"],
+        ["wbraid", "wb", "ref-wb"],
+      ] as const) {
+        expect(body.properties[name]).toBe(gpc === "1" ? undefined : value);
+        expect(
+          new URL(body.properties.$current_url).searchParams.get(name),
+        ).toBe(gpc === "1" ? null : value);
+        expect(
+          new URL(body.properties.$referrer ?? "").searchParams.get(name),
+        ).toBe(gpc === "1" ? null : referrerValue);
+      }
     },
   );
 });

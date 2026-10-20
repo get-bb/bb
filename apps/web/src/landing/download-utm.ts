@@ -1,4 +1,4 @@
-import { CAMPAIGN_PARAM_NAMES } from "./site";
+import { CAMPAIGN_PARAM_NAMES, CLICK_ID_PARAM_NAMES } from "./site";
 
 const SAVED_UTM_KEY = "bb:landing-utm";
 const DOWNLOAD_PATH = /^\/download\/(macos|windows|linux)$/;
@@ -49,8 +49,10 @@ export function carryUtmToDownloadLinks(): () => void {
     navigator.globalPrivacyControl === true;
   if (globalPrivacyControl) {
     const landingUrl = new URL(window.location.href);
-    if (landingUrl.searchParams.has("gclid")) {
-      landingUrl.searchParams.delete("gclid");
+    for (const name of CLICK_ID_PARAM_NAMES) {
+      landingUrl.searchParams.delete(name);
+    }
+    if (landingUrl.href !== window.location.href) {
       window.history.replaceState(window.history.state, "", landingUrl.href);
     }
   }
@@ -60,9 +62,11 @@ export function carryUtmToDownloadLinks(): () => void {
     const landingParams = new URLSearchParams(window.location.search);
     if (globalPrivacyControl) {
       const saved = readSavedUtm(storage);
-      saved.delete("gclid");
+      for (const name of CLICK_ID_PARAM_NAMES) {
+        saved.delete(name);
+        landingParams.delete(name);
+      }
       storage.setItem(SAVED_UTM_KEY, saved.toString());
-      landingParams.delete("gclid");
     }
     rememberLatestUtm(storage, landingParams.toString());
   } catch {
@@ -91,9 +95,11 @@ export function carryUtmToDownloadLinks(): () => void {
     }
     let linkSearch = link.search;
     if (globalPrivacyControl) {
-      saved.delete("gclid");
       const params = new URLSearchParams(linkSearch);
-      params.delete("gclid");
+      for (const name of CLICK_ID_PARAM_NAMES) {
+        saved.delete(name);
+        params.delete(name);
+      }
       const query = params.toString();
       linkSearch = query ? `?${query}` : "";
     }
