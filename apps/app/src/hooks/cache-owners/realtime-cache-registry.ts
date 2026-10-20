@@ -63,7 +63,6 @@ import {
   sidebarNavigationQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
-  uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -563,9 +562,6 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "environment-availability-changed": {
     dirty: [dirtyEnvironmentProviderQueries],
-  },
-  "ui-preferences-changed": {
-    dirty: [dirtyUiPreferencesQueries],
   },
   "server-move-changed": {
     dirty: [dirtyServerMoveStatusQueries],
@@ -1194,15 +1190,6 @@ function dirtyMachineEnvironmentQueries({
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
     queryKeys: [allMachineEnvironmentQueryKeyPrefix()],
-  });
-}
-
-function dirtyUiPreferencesQueries({
-  queryClient,
-}: RealtimeDirtyContext): void {
-  invalidateQueryKeysWithoutCancelingActiveFetches({
-    queryClient,
-    queryKeys: [uiPreferencesQueryKey()],
   });
 }
 

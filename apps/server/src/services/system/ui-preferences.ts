@@ -92,7 +92,6 @@ export function writeUiPreference<Key extends UiPreferenceKey>(
   if (result.outcome === "conflict") {
     return { outcome: "conflict", revision: result.revision };
   }
-  deps.hub.notifySystem(["ui-preferences-changed"]);
   return {
     outcome: "updated",
     entry: { revision: result.revision, value: args.value },
@@ -111,6 +110,5 @@ export function resetUiPreference<Key extends UiPreferenceKey>(
     key,
     valueJson: JSON.stringify(value),
   });
-  deps.hub.notifySystem(["ui-preferences-changed"]);
   return { revision, value };
 }

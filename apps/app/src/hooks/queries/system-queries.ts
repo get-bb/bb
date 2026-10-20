@@ -48,6 +48,8 @@ import {
   systemVersionQueryKey,
   uiPreferencesQueryKey,
 } from "./query-keys";
+import { publicApiRoutes } from "@bb/server-contract";
+import { routeTaggedRead } from "./route-tags";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
   SERVER_SESSION_QUERY_POLICY,
@@ -520,7 +522,11 @@ export function useSystemAiServices(options?: QueryOptions) {
 export function uiPreferencesQueryOptions() {
   return queryOptions({
     queryKey: uiPreferencesQueryKey(),
-    queryFn: ({ signal }) => sdk.system.uiPreferences.list({ signal }),
+    ...routeTaggedRead(
+      publicApiRoutes.system.uiPreferences,
+      { params: {}, input: undefined },
+      (signal) => sdk.system.uiPreferences.list({ signal }),
+    ),
     staleTime: 60_000,
   });
 }
