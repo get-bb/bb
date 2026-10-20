@@ -272,6 +272,7 @@ let runtimeRequestIdCounter = 0;
 let dynamicToolBridgePromise: Promise<AcpDynamicToolBridge> | null = null;
 
 const THREAD_STOP_CANCEL_TIMEOUT_MS = 4_000;
+const SHUTDOWN_CANCEL_TIMEOUT_MS = 1_500;
 const AGENT_TURN_QUIET_MS = 5_000;
 const SESSION_BUSY_QUIET_MS = 2_000;
 const SESSION_BUSY_MAX_WAITS = 300;
@@ -2528,7 +2529,10 @@ async function startAgentSession(
   }
 }
 
-async function stopSession(session: AcpThreadSession): Promise<void> {
+async function stopSession(
+  session: AcpThreadSession,
+  cancelTimeoutMs = THREAD_STOP_CANCEL_TIMEOUT_MS,
+): Promise<void> {
   if (session.stopping) {
     return;
   }
@@ -2547,7 +2551,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
       await Promise.race([
         session.turnSettled,
         new Promise<void>((resolveTimeout) =>
-          setTimeout(resolveTimeout, THREAD_STOP_CANCEL_TIMEOUT_MS),
+          setTimeout(resolveTimeout, cancelTimeoutMs),
         ),
       ]);
     }
@@ -3931,12 +3935,23 @@ function handleParsedMessage(parsed: unknown): void {
 export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 async function stopAllSessions(): Promise<void> {
+  const sessions = Array.from(sessionsByBbThreadId.values());
+  const sessionConnections = new Set(
+    sessions.map((session) => session.connection),
+  );
   const results = await Promise.allSettled([
-    ...Array.from(sessionsByBbThreadId.values(), (session) =>
-      releaseSession(session),
+    ...sessions.map((session) =>
+      stopSession(session, SHUTDOWN_CANCEL_TIMEOUT_MS),
     ),
-    ...Array.from(agentConnections, (connection) => connection.kill()),
+    ...Array.from(agentConnections)
+      .filter((connection) => !sessionConnections.has(connection))
+      .map((connection) => connection.kill()),
   ]);
+  results.push(
+    ...(await Promise.allSettled(
+      Array.from(agentConnections, (connection) => connection.kill()),
+    )),
+  );
   for (const result of results) {
     if (result.status === "rejected") {
       process.stderr.write(
