@@ -1,8 +1,11 @@
+export { experimental_PluginRpcCallError } from "./rpc-contract.js";
 import type { PluginSdkApp } from "./app-contract.js";
 
 export type * from "./app-contract.js";
 export type * from "./json-value.js";
 export type {
+  ExperimentalRpcKeyedMethod,
+  ExperimentalRpcKeyedValue,
   PluginRpcCallArgs,
   PluginRpcContract,
   PluginRpcError,

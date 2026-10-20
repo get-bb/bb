@@ -62,7 +62,10 @@ import {
   useSidebarThreadSplit,
 } from "./plugin-sidebar-split";
 import { useAppNavigationHost } from "./app-navigation-host";
-import { experimental_THREAD_ACTION_GROUPS } from "@get-bb/plugin-sdk";
+import {
+  experimental_PluginRpcCallError,
+  experimental_THREAD_ACTION_GROUPS,
+} from "@get-bb/plugin-sdk";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
@@ -128,6 +131,7 @@ export const pluginSdkAppImplementation = {
   experimental_useThreadActionRegistrations: useThreadActionRegistrationInfos,
   experimental_ThreadActionsMenu: ThreadActionsMenu,
   experimental_ThreadActionsContextMenu: ThreadActionsContextMenu,
+  experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,

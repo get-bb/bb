@@ -12,6 +12,7 @@ import {
 import {
   defineRpcContract,
   experimental_PluginRpcRefusal,
+  experimental_PluginRpcCallError,
 } from "../../rpc-contract.js";
 import { renderSlot } from "../app.js";
 
@@ -36,10 +37,12 @@ it("updates selected load state without rendering unchanged rows again", async (
     loaded: Object.keys(rows).length,
   });
   function Probe({ keys }: { keys: string[] }) {
-    const query = experimental_useRpcKeyedQuery<
-      number,
-      ReturnType<typeof select>
-    >({ method: "rows", keys, select });
+    const query = experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys,
+      select,
+    });
     return (
       <>
         <Rows values={query.data?.values ?? {}} />
@@ -104,15 +107,24 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
     });
     let server = 1;
     let offline = false;
+    let holdReads = false;
+    let releaseReads!: () => void;
+    const reads = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
+    const seen: number[] = [];
     function Reader({ name }: { name: string }) {
-      const detail = experimental_useRpcQuery<typeof contract, "detail">({
+      const detail = experimental_useRpcQuery({
+        contract,
         method: "detail",
         input: { id: "a" },
       });
-      const rows = experimental_useRpcKeyedQuery<number>({
+      const rows = experimental_useRpcKeyedQuery({
+        contract,
         method: "rows",
         keys: ["a"],
       });
+      if (name === "one" && detail.data !== undefined) seen.push(detail.data);
       return (
         <>
           <output>
@@ -123,7 +135,9 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       );
     }
     function Probe() {
-      const mutation = experimental_useRpcMutation<typeof contract, "save">({
+      const [acknowledged, setAcknowledged] = useState(false);
+      const mutation = experimental_useRpcMutation({
+        contract,
         method: "save",
         optimistic: (value, cache) => {
           cache.update("detail", { id: "a" }, () => value);
@@ -136,15 +150,23 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
           <Reader name="two" />
           <button
             onClick={() => {
-              void mutation.mutate(2).catch(() => {});
+              void mutation
+                .mutate(2)
+                .then(() => setAcknowledged(true))
+                .catch((error: unknown) => {
+                  expect(error).toBeInstanceOf(experimental_PluginRpcCallError);
+                });
             }}
           >
             Save
           </button>
+          <output>
+            {acknowledged ? "acknowledged" : "waiting"}:
+            {mutation.isPending ? "pending" : "idle"}:
+            {mutation.pendingInputs.length}
+          </output>
           {mutation.error && (
-            <p data-code={Reflect.get(mutation.error, "code")}>
-              {mutation.error.message}
-            </p>
+            <p data-code={mutation.error.code}>{mutation.error.message}</p>
           )}
         </>
       );
@@ -155,11 +177,13 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       {
         experimental_rpcContract: contract,
         rpc: {
-          detail: () => {
+          detail: async () => {
+            if (holdReads) await reads;
             if (offline) throw new Error("read offline");
             return server;
           },
-          rows: ({ keys }) => {
+          rows: async ({ keys }) => {
+            if (holdReads) await reads;
             if (offline) throw new Error("read offline");
             return Object.fromEntries(keys.map((key) => [key, server]));
           },
@@ -172,6 +196,7 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
                 message: "Changed elsewhere",
               });
             server = 3;
+            holdReads = outcome === "success";
             offline = outcome === "read-failure";
             return server;
           },
@@ -179,6 +204,7 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       },
     );
     await slot.findByText("one:1/1");
+    seen.length = 0;
     fireEvent.click(slot.getByText("Save"));
     expect(slot.getByText("one:2/2")).toBeTruthy();
     expect(slot.getByText("two:2/2")).toBeTruthy();
@@ -188,7 +214,14 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       release();
     });
     if (outcome === "success") {
+      await slot.findByText("acknowledged:idle:0");
+      expect(slot.getByText("one:2/2")).toBeTruthy();
+      expect(slot.getByText("two:2/2")).toBeTruthy();
+      await act(async () => {
+        releaseReads();
+      });
       await slot.findByText("one:3/3");
+      expect(seen.every((value) => value === 2 || value === 3)).toBe(true);
       expect(slot.getByText("two:3/3")).toBeTruthy();
     } else if (outcome === "write-failure" || outcome === "refusal") {
       await slot.findByText(
@@ -216,29 +249,46 @@ it(
   "exposes refusal codes and issues through plain, keyed and imperative reads",
   { timeout: 20_000 },
   async () => {
+    const contract = defineRpcContract({
+      detail: { input: z.null(), output: z.number() },
+      rows: {
+        input: z.object({ keys: z.array(z.string()) }),
+        output: z.record(z.string(), z.number()),
+      },
+    });
     function Probe() {
-      const plain = experimental_useRpcQuery({ method: "detail", input: null });
+      const plain = experimental_useRpcQuery({
+        contract,
+        method: "detail",
+        input: null,
+      });
       const keyed = experimental_useRpcKeyedQuery({
+        contract,
         method: "rows",
         keys: ["a"],
       });
       const rpc = useRpc();
-      const [error, setError] = useState<Error | null>(null);
+      const [error, setError] =
+        useState<experimental_PluginRpcCallError | null>(null);
       return (
         <>
           {[plain.error, keyed.error, error].map(
             (failure, index) =>
               failure && (
                 <output key={index}>
-                  {index}:{String(Reflect.get(failure, "code"))}:
-                  {failure.message}:
-                  {JSON.stringify(Reflect.get(failure, "issues"))}
+                  {index}:{failure.code}:{failure.message}:
+                  {failure.issues?.[0]?.message}:
+                  {failure.issues?.[0]?.path?.join(".")}
                 </output>
               ),
           )}
           <button
             onClick={() => {
-              void rpc.call("detail").catch(setError);
+              void rpc.call("detail").catch((failure: unknown) => {
+                expect(failure).toBeInstanceOf(experimental_PluginRpcCallError);
+                if (failure instanceof experimental_PluginRpcCallError)
+                  setError(failure);
+              });
             }}
           >
             Read
@@ -261,7 +311,7 @@ it(
     fireEvent.click(slot.getByText("Read"));
     for (const index of [0, 1, 2]) {
       await slot.findByText(
-        `${index}:not_found:Gone:[{"path":["id"],"message":"Missing"}]`,
+        `${index}:not_found:Gone:Missing:id`,
         {},
         { timeout: 10_000 },
       );

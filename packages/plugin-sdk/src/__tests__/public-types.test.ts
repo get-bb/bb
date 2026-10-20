@@ -155,6 +155,8 @@ const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
   "ExperimentalPluginRpcCaller",
   "ExperimentalPluginRpcHandlerContext",
   "ExperimentalPluginRpcHandlersWithContext",
+  "ExperimentalRpcKeyedMethod",
+  "ExperimentalRpcKeyedValue",
   "PluginRpcCallArgs",
   "PluginRpcContract",
   "PluginRpcError",
@@ -173,6 +175,7 @@ const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
 
 const EXPECTED_RPC_ROOT_VALUE_EXPORTS = [
   "defineRpcContract",
+  "experimental_PluginRpcCallError",
   "experimental_PluginRpcRefusal",
 ] as const;
 

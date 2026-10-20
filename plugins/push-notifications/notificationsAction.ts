@@ -7,7 +7,7 @@ import {
   type PluginThreadActionDataInput,
   type PluginThreadActionRegistration,
 } from "@get-bb/plugin-sdk/app";
-import { type pushNotificationsRpcContract } from "./contract.js";
+import { pushNotificationsRpcContract } from "./contract.js";
 import {
   NOTIFICATION_LEVEL_LABELS,
   notificationLevelSchema,
@@ -55,10 +55,8 @@ function selectNotificationRows(
 function useThreadNotificationsData({
   threadIds,
 }: PluginThreadActionDataInput): ThreadNotificationsData {
-  const { mutate: saveLevel } = experimental_useRpcMutation<
-    typeof pushNotificationsRpcContract,
-    "threadNotifications.set"
-  >({
+  const { mutate: saveLevel } = experimental_useRpcMutation({
+    contract: pushNotificationsRpcContract,
     method: "threadNotifications.set",
     optimistic: ({ threadId, level }, cache) => {
       cache.updateKey("threadNotifications.keyed", threadId, (current) => ({
@@ -68,10 +66,8 @@ function useThreadNotificationsData({
     },
   });
   const { values } = useSettings();
-  const query = experimental_useRpcKeyedQuery<
-    ThreadNotificationInputs,
-    ReturnType<typeof selectNotificationRows>
-  >({
+  const query = experimental_useRpcKeyedQuery({
+    contract: pushNotificationsRpcContract,
     method: "threadNotifications.keyed",
     keys: threadIds,
     select: selectNotificationRows,

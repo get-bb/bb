@@ -12,14 +12,19 @@ describe("bb plugin rpc call refusals", () => {
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
 
-  it.each([false, true])(
-    "prints the code and message and exits 1 (json=%s)",
-    async (json) => {
+  it.each([
+    [false, "forbidden"],
+    [true, "forbidden"],
+    [false, "future_refusal"],
+    [true, "future_refusal"],
+  ] as const)(
+    "prints the code and message and exits 1 (json=%s, code=%s)",
+    async (json, code) => {
       vi.mocked(fetch).mockResolvedValueOnce(
         Response.json(
           {
             ok: false,
-            error: { code: "forbidden", message: "Only connect may call" },
+            error: { code, message: "Only connect may call" },
           },
           { status: 403 },
         ),
@@ -38,15 +43,15 @@ describe("bb plugin rpc call refusals", () => {
         ),
       ).rejects.toThrow("process.exit:1");
       expect(console.error).toHaveBeenCalledWith(
-        "Error: forbidden: HTTP 403: Only connect may call",
+        `Error: ${code}: HTTP 403: Only connect may call`,
       );
       if (json) {
         const [payload] = collectLogPayloads(vi.mocked(console.log));
         expect(JSON.parse(payload ?? "")).toMatchObject({
           ok: false,
           error: {
-            code: "forbidden",
-            message: "forbidden: HTTP 403: Only connect may call",
+            code,
+            message: `${code}: HTTP 403: Only connect may call`,
           },
         });
       }

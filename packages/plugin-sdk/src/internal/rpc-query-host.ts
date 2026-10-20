@@ -1,8 +1,10 @@
+import type {
+  ExperimentalRpcKeyedMethod,
+  ExperimentalRpcKeyedValue,
+} from "../rpc-contract.js";
+import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import { useCallback, useEffect, useMemo } from "react";
-import {
-  useIsFetching,
-  type QueryClient,
-} from "@tanstack/react-query";
+import { useIsFetching, type QueryClient } from "@tanstack/react-query";
 import {
   invalidateTags,
   useTaggedQuery,
@@ -81,6 +83,27 @@ function optimisticCache<Contract extends PluginRpcContract>(
     },
   };
 }
+async function callRpcEnvelope(
+  host: RpcQueryHost,
+  pluginId: string,
+  method: string,
+  input: JsonValue,
+): Promise<Envelope> {
+  let raw: unknown;
+  try {
+    raw = await host.call(pluginId, method, input);
+  } catch (error) {
+    throw experimental_PluginRpcCallError.from(error);
+  }
+  const parsed = envelopeSchema.safeParse(raw);
+  if (!parsed.success)
+    throw new experimental_PluginRpcCallError({
+      code: "invalid_response",
+      message: `Invalid RPC response for ${method}`,
+    });
+  return parsed.data;
+}
+
 const tagsOf = (data: Envelope) => [
   ...data.tags,
   ...Object.values(data.keyTags).flat(),
@@ -118,17 +141,21 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         }),
         queryFn: () =>
           runTaggedRead(host.queryClient, queryKey, async () =>
-            envelopeSchema.parse(
-              await host.call(pluginId, options.method, input),
-            ),
+            callRpcEnvelope(host, pluginId, options.method, input),
           ),
       },
       host.queryClient,
     );
     return {
       data: query.data?.result,
-      error: query.error,
-      isLoading: query.isLoading,
+      error:
+        query.error === null
+          ? null
+          : experimental_PluginRpcCallError.from(
+              query.error,
+              "invalid_response",
+            ),
+      isLoading: (options.enabled ?? true) && query.isLoading,
       isFetching: query.isFetching,
       refetch: async () => {
         await query.refetch();
@@ -136,15 +163,23 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     } as ReturnType<PluginSdkApp["experimental_useRpcQuery"]>;
   };
   function experimental_useRpcKeyedQuery<
-    T = JsonValue,
-    Selection = Record<string, T>,
+    Contract extends PluginRpcContract,
+    Method extends ExperimentalRpcKeyedMethod<Contract>,
+    Selection = Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
   >(options: {
+    contract: Contract;
     pluginId?: string;
-    method: string;
+    method: Method;
     keys: readonly string[];
     enabled?: boolean;
-    select?(data: Record<string, T>): Selection;
-  }): ExperimentalRpcKeyedQueryState<T, Selection> {
+    select?(
+      data: Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
+    ): Selection;
+  }): ExperimentalRpcKeyedQueryState<
+    ExperimentalRpcKeyedValue<Contract[Method]>,
+    Selection
+  > {
+    type T = ExperimentalRpcKeyedValue<Contract[Method]>;
     const host = useHost();
     const pluginId = options.pluginId ?? host.pluginId;
     const enabled = options.enabled ?? true;
@@ -166,8 +201,11 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         queryKey: keyedQueryKey(pluginId, options.method),
         scope: pluginTagScope(pluginId),
         read: async (keys) => {
-          const response = envelopeSchema.parse(
-            await host.call(pluginId, options.method, { keys: [...keys] }),
+          const response = await callRpcEnvelope(
+            host,
+            pluginId,
+            options.method,
+            { keys: [...keys] },
           );
           return {
             ...response,
@@ -203,8 +241,17 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         ) as Record<string, T>;
         return {
           data: selectRows ? selectRows(data) : data,
-          error: query.error,
-          isLoading: enabled && keys.length > 0 && query.isLoading,
+          error:
+            query.error === null
+              ? null
+              : experimental_PluginRpcCallError.from(
+                  query.error,
+                  "invalid_response",
+                ),
+          isLoading:
+            enabled &&
+            keys.some((key) => !Object.hasOwn(rows, key)) &&
+            query.isFetching,
           isFetching: query.isFetching,
         };
       },
@@ -233,12 +280,11 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       (tags) =>
         invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
       async (input) => {
-        const response = envelopeSchema.parse(
-          await host.call(
-            pluginId,
-            options.method,
-            jsonValueSchema.parse(input),
-          ),
+        const response = await callRpcEnvelope(
+          host,
+          pluginId,
+          options.method,
+          jsonValueSchema.parse(input),
         );
         return {
           ...response,
@@ -257,13 +303,25 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     const { mutate } = mutation;
     return {
       ...mutation,
+      error:
+        mutation.error === null
+          ? null
+          : experimental_PluginRpcCallError.from(
+              mutation.error,
+              "invalid_input",
+            ),
       mutate: useCallback(
-        (...args: PluginRpcCallArgs<Contract[Method]>) =>
-          mutate(
-            (args[0] ?? null) as StandardSchemaV1InferInput<
-              Contract[Method]["input"]
-            >,
-          ),
+        async (...args: PluginRpcCallArgs<Contract[Method]>) => {
+          try {
+            return await mutate(
+              (args[0] ?? null) as StandardSchemaV1InferInput<
+                Contract[Method]["input"]
+              >,
+            );
+          } catch (error) {
+            throw experimental_PluginRpcCallError.from(error);
+          }
+        },
         [mutate],
       ),
     };

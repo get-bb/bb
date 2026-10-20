@@ -1,3 +1,4 @@
+import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import { invalidateTags, pluginTagScope } from "@bb/query-tags";
 import { QueryClient } from "@tanstack/react-query";
 import {
@@ -1430,6 +1431,7 @@ const testPluginSdkApp = {
   },
   experimental_ThreadActionsMenu: TestThreadActionsMenu,
   experimental_ThreadActionsContextMenu: TestThreadActionsContextMenu,
+  experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState {
     return useSlotEnv("experimental_useSidebarNavigation").sidebarNavigation;
@@ -2061,10 +2063,17 @@ export function renderSlot<
     string,
     (input: unknown) => unknown
   >;
-  const parseRpcValue = async (schema: StandardSchemaV1, value: unknown) => {
+  const parseRpcValue = async (
+    schema: StandardSchemaV1,
+    value: unknown,
+    code: "invalid_input" | "invalid_output",
+  ) => {
     const parsed = await schema["~standard"].validate(value);
     if (parsed.issues !== undefined)
-      throw new Error(parsed.issues.map((issue) => issue.message).join("; "));
+      throw new experimental_PluginRpcCallError({
+        code,
+        message: parsed.issues.map((issue) => issue.message).join("; "),
+      });
     return parsed.value;
   };
   const queryClient = new QueryClient();
@@ -2076,21 +2085,32 @@ export function renderSlot<
     rpcCalls.push({ method, input: normalizedInput });
     const handler = rpcHandlers[method];
     if (!handler) {
-      throw new Error(
-        `no rpc handler for "${method}" — add it to renderSlot options.rpc`,
-      );
+      throw new experimental_PluginRpcCallError({
+        code: "unknown_method",
+        message: `no rpc handler for "${method}" — add it to renderSlot options.rpc`,
+      });
     }
     const declaration = options.experimental_rpcContract?.[method];
     const parsedInput = declaration
-      ? await parseRpcValue(declaration.input, normalizedInput)
+      ? await parseRpcValue(declaration.input, normalizedInput, "invalid_input")
       : normalizedInput;
-    const result = await handler(parsedInput);
+    let result: unknown;
+    try {
+      result = await handler(parsedInput);
+    } catch (error) {
+      throw experimental_PluginRpcCallError.from(error, "handler_error");
+    }
     const parsedOutput = declaration
-      ? await parseRpcValue(declaration.output, result)
+      ? await parseRpcValue(declaration.output, result, "invalid_output")
       : result;
+    const envelope = rpcResponseTags(
+      declaration ?? {},
+      parsedInput,
+      parsedOutput,
+    );
     return {
       result: strictJsonRoundTrip(parsedOutput, `rpc "${method}" result`),
-      ...rpcResponseTags(declaration ?? {}, parsedInput, parsedOutput),
+      ...envelope,
     };
   };
   const rpcClient: PluginRpcClient = {

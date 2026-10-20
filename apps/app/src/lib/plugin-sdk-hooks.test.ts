@@ -1,3 +1,4 @@
+import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
   callPluginRpc,
@@ -93,6 +94,46 @@ describe("callPluginRpc", () => {
       ).rejects.toMatchObject({ ...error, status });
     },
   );
+
+  it.each([
+    ["future_refusal", "unknown_error", "future_refusal"],
+    [undefined, "handler_error", undefined],
+  ])(
+    "normalizes server code %s to a typed client failure",
+    async (serverCode, code, original) => {
+      const fetchImpl = vi.fn<FetchLike>(async () =>
+        jsonResponse(
+          { ok: false, error: { code: serverCode, message: "Unavailable" } },
+          false,
+          500,
+        ),
+      );
+      const error = await callPluginRpc(fetchImpl, "demo", "read").catch(
+        (failure: unknown) => failure,
+      );
+      expect(error).toBeInstanceOf(experimental_PluginRpcCallError);
+      expect(error).toMatchObject({
+        code,
+        serverCode: original,
+        message: "Unavailable",
+        status: 500,
+      });
+    },
+  );
+
+  it("returns a typed transport failure when fetch rejects", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const error = await callPluginRpc(fetchImpl, "demo", "read").catch(
+      (failure: unknown) => failure,
+    );
+    expect(error).toBeInstanceOf(experimental_PluginRpcCallError);
+    expect(error).toMatchObject({
+      code: "transport_error",
+      message: "Failed to fetch",
+    });
+  });
 
   it("surfaces structured wire failures with stable code and issues", async () => {
     const fetchImpl = vi.fn<FetchLike>(async () =>

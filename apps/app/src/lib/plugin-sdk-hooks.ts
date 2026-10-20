@@ -1,3 +1,4 @@
+import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
 import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-host";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
@@ -164,43 +165,55 @@ export async function callPluginRpc(
   input?: unknown,
   envelope = false,
 ): Promise<unknown> {
-  const serializedInput = serializePluginRpcInput(input ?? null);
-  const response = await fetchImpl(
-    `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: serializedInput,
-    },
-  );
-  const body = (await response.json().catch(() => null)) as {
-    ok?: unknown;
-    result?: unknown;
-    error?: unknown;
-  } | null;
-  if (!response.ok || body?.ok !== true) {
-    const structured =
-      typeof body?.error === "object" && body.error !== null
-        ? body.error
-        : null;
-    const message =
-      structured !== null &&
-      typeof Reflect.get(structured, "message") === "string"
-        ? String(Reflect.get(structured, "message"))
-        : typeof body?.error === "string"
-          ? body.error
-          : `rpc "${method}" failed (HTTP ${response.status})`;
-    const error = new Error(message);
-    Reflect.set(error, "status", response.status);
-    if (structured !== null) {
-      const code = Reflect.get(structured, "code");
-      const issues = Reflect.get(structured, "issues");
-      if (typeof code === "string") Reflect.set(error, "code", code);
-      if (Array.isArray(issues)) Reflect.set(error, "issues", issues);
+  try {
+    let serializedInput: string;
+    try {
+      serializedInput = serializePluginRpcInput(input ?? null);
+    } catch (error) {
+      throw experimental_PluginRpcCallError.from(error, "invalid_input");
     }
-    throw error;
+    const response = await fetchImpl(
+      `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: serializedInput,
+      },
+    );
+    const body = (await response.json().catch(() => null)) as {
+      ok?: unknown;
+      result?: unknown;
+      error?: unknown;
+    } | null;
+    if (!response.ok || body?.ok !== true) {
+      const structured =
+        typeof body?.error === "object" && body.error !== null
+          ? body.error
+          : null;
+      const message =
+        structured !== null &&
+        typeof Reflect.get(structured, "message") === "string"
+          ? String(Reflect.get(structured, "message"))
+          : typeof body?.error === "string"
+            ? body.error
+            : `rpc "${method}" failed (HTTP ${response.status})`;
+      const error = new Error(message);
+      Reflect.set(error, "status", response.status);
+      if (structured !== null) {
+        const code = Reflect.get(structured, "code");
+        const issues = Reflect.get(structured, "issues");
+        if (typeof code === "string") Reflect.set(error, "code", code);
+        if (Array.isArray(issues)) Reflect.set(error, "issues", issues);
+      }
+      throw experimental_PluginRpcCallError.from(
+        error,
+        response.ok ? "invalid_response" : "handler_error",
+      );
+    }
+    return envelope ? body : body.result;
+  } catch (error) {
+    throw experimental_PluginRpcCallError.from(error);
   }
-  return envelope ? body : body.result;
 }
 
 export async function fetchPluginSdkSettings(

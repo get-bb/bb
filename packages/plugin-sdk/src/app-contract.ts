@@ -1,4 +1,9 @@
 import type {
+  ExperimentalRpcKeyedMethod,
+  ExperimentalRpcKeyedValue,
+} from "./rpc-contract.js";
+import type { experimental_PluginRpcCallError } from "./rpc-contract.js";
+import type {
   ComponentPropsWithRef,
   ComponentPropsWithoutRef,
   ComponentType,
@@ -3940,11 +3945,22 @@ export interface BbNavigate {
 // plugin-breaking change.
 // ---------------------------------------------------------------------------
 
+/**
+ * BB live reads are fresh for two seconds, with no polling when freshness expires.
+ * Stale active reads refresh on app focus and reconnect. Invalidations refresh
+ * immediately. Network/abort failures retry twice at 250 ms; HTTP failures,
+ * including refusals, do not retry. Writes never retry automatically.
+ */
 export interface ExperimentalRpcQueryState<T> {
+  /** Latest successful value plus shared predictions; retained during refresh and refresh errors. Plain reads are undefined before first success; keyed reads expose loaded rows (initially an empty record) through select. */
   data: T | undefined;
-  error: Error | null;
+  /** Last completed read failure, or null. Success clears it; retrying a first load clears the old error while loading. Refresh errors preserve data. */
+  error: experimental_PluginRpcCallError | null;
+  /** An enabled read is fetching data it has never loaded. For keyed reads this includes missing requested rows; empty/disabled keyed reads are not loading. */
   isLoading: boolean;
+  /** A read attempt is active, including background refreshes. Keyed consumers share this activity for their method; offline-paused reads are not fetching. */
   isFetching: boolean;
+  /** Force a read regardless of freshness and wait for its attempt/retries. Keyed reads refresh the method's subscribed keys. Failures update error and retain data; this promise resolves rather than rejecting. */
   refetch(): Promise<void>;
 }
 
@@ -3957,6 +3973,7 @@ export interface ExperimentalRpcQueryOptions<
   Contract extends PluginRpcContract,
   Method extends keyof Contract & string,
 > {
+  contract: Contract;
   pluginId?: string;
   method: Method;
   input: StandardSchemaV1InferInput<Contract[Method]["input"]>;
@@ -3981,7 +3998,7 @@ export interface ExperimentalRpcOptimisticCache<
       current: PluginRpcResult<Contract[Method]>,
     ) => PluginRpcResult<Contract[Method]>,
   ): void;
-  updateKey<Method extends keyof Contract & string>(
+  updateKey<Method extends ExperimentalRpcKeyedMethod<Contract>>(
     method: Method,
     key: string,
     update: (
@@ -4001,6 +4018,7 @@ export interface ExperimentalRpcMutationOptions<
   Contract extends PluginRpcContract,
   Method extends keyof Contract & string,
 > {
+  contract: Contract;
   pluginId?: string;
   method: Method;
   /** Predict loaded reads synchronously; shared predictions survive accepted writes whose refresh fails. */
@@ -4012,18 +4030,19 @@ export interface ExperimentalRpcMutationOptions<
 
 /**
  * One mutation hook's state. `mutate` calls the RPC, invalidates the
- * response's `invalidated` tags on this client immediately, and resolves after
- * the active reads they matched have re-read. `error` holds the last failure
+ * response's `invalidated` tags on this client immediately, and resolves when
+ * the server acknowledges the write. Matched reads refresh in the background. `error` holds the last failure
  * until the next `mutate` or `reset`.
  */
 export interface ExperimentalRpcMutationState<
   Method extends PluginRpcMethodContract,
 > {
+  /** Resolves at write acknowledgement; rejects with experimental_PluginRpcCallError. Refreshes continue in the background without releasing predictions before confirmed reads. */
   mutate(...args: PluginRpcCallArgs<Method>): Promise<PluginRpcResult<Method>>;
   isPending: boolean;
-  /** Inputs of every pending call made by this hook, including matched read refreshes. Empty after settle; other hook instances are excluded. */
+  /** Inputs of every pending call made by this hook, until server acknowledgement. Refreshes are excluded; other hook instances are excluded. */
   pendingInputs: readonly StandardSchemaV1InferInput<Method["input"]>[];
-  error: Error | null;
+  error: experimental_PluginRpcCallError | null;
   reset(): void;
 }
 
@@ -4033,33 +4052,41 @@ export interface ExperimentalRpcMutationState<
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  experimental_PluginRpcCallError: typeof experimental_PluginRpcCallError;
   experimental_useRpcRefresh(): { refresh(): void; isRefreshing: boolean };
   /** Read tagged plugin data through BB's shared query cache and realtime lifecycle. */
   experimental_useRpcQuery<
-    Contract extends PluginRpcContract = PluginRpcContract,
-    Method extends keyof Contract & string = keyof Contract & string,
+    Contract extends PluginRpcContract,
+    Method extends keyof Contract & string,
   >(
     options: ExperimentalRpcQueryOptions<Contract, Method>,
   ): ExperimentalRpcQueryState<PluginRpcResult<Contract[Method]>>;
-  /** Call a mutating RPC through BB's query client; pending until the reads its declared `invalidates` tags matched have re-read. */
+  /** Call a mutating RPC through BB's query client; pending until the server acknowledges the write; matched reads refresh in the background. */
   experimental_useRpcMutation<
-    Contract extends PluginRpcContract = PluginRpcContract,
-    Method extends keyof Contract & string = keyof Contract & string,
+    Contract extends PluginRpcContract,
+    Method extends keyof Contract & string,
   >(
     options: ExperimentalRpcMutationOptions<Contract, Method>,
   ): ExperimentalRpcMutationState<Contract[Method]>;
   /** Cache each key independently and batch missing or invalidated keys in the same render. */
   experimental_useRpcKeyedQuery<
-    T = JsonValue,
-    Selection = Record<string, T>,
+    Contract extends PluginRpcContract,
+    Method extends ExperimentalRpcKeyedMethod<Contract>,
+    Selection = Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
   >(options: {
+    contract: Contract;
     pluginId?: string;
-    method: string;
+    method: Method;
     keys: readonly string[];
     enabled?: boolean;
-    /** Project rows for this view; unchanged JSON subobjects retain their identity. */
-    select?(data: Record<string, T>): Selection;
-  }): ExperimentalRpcKeyedQueryState<T, Selection>;
+    /** Pure projection; the selection type is inferred from its return value. */
+    select?(
+      data: Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
+    ): Selection;
+  }): ExperimentalRpcKeyedQueryState<
+    ExperimentalRpcKeyedValue<Contract[Method]>,
+    Selection
+  >;
 
   experimental_Icon: ComponentType<ExperimentalIconProps>;
   /**

@@ -1,3 +1,4 @@
+import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import { rpcInvalidationTags, rpcResponseTags } from "../internal/rpc-tags.js";
 import type { ContractTagDeclarations } from "@bb/domain";
 import {
@@ -625,10 +626,7 @@ interface FakeHostSignalSubscription {
 }
 
 function throwRpcError(error: PluginRpcError): never {
-  const thrown = new Error(error.message);
-  Reflect.set(thrown, "code", error.code);
-  if (error.issues !== undefined) Reflect.set(thrown, "issues", error.issues);
-  throw thrown;
+  throw new experimental_PluginRpcCallError(error);
 }
 
 interface FakePluginPersistentState {
