@@ -1007,6 +1007,9 @@ export function registerPluginRoutes(
             invalid_output: 500,
             non_json_result: 500,
             unknown_method: 404,
+            transport_error: 500,
+            invalid_response: 500,
+            unknown_error: 500,
           } as const
         )[outcome.error.code],
       );

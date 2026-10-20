@@ -422,3 +422,11 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalCreateHostEntryHarnessOptions`
 - `ExperimentalHostEntryHarness`
 - `ExperimentalHostHarnessSignal`
+
+## Live RPC client types
+
+- `ExperimentalRpcKeyedMethod`, `ExperimentalRpcKeyedValue`
+- `experimental_PluginRpcCallError`
+
+The keyed method and row types are inferred from the `contract` option.
+Read-state and error behavior is documented in [Frontend hooks and UI](frontend-hooks-and-ui.md).

@@ -305,3 +305,11 @@ Read the installed SDK declarations for the exact current signatures.
 - `StandardSchemaV1InferOutput`
 - `StandardSchemaV1Issue`
 - `StandardSchemaV1Result`
+
+## Live RPC client types
+
+- `ExperimentalRpcKeyedMethod`, `ExperimentalRpcKeyedValue`
+- `experimental_PluginRpcCallError`
+
+The keyed method and row types are inferred from the `contract` option.
+Read-state and error behavior is documented in [Frontend hooks and UI](frontend-hooks-and-ui.md).
