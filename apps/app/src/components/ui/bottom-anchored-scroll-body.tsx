@@ -73,6 +73,9 @@ const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
 const COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 250;
 const SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS = 8;
 const CONTENT_POSITION_HOLD_MS = 250;
+const NATIVE_PAGE_SCROLL_KEYS = new Set(["PageDown", "PageUp", " "]);
+const EDITABLE_KEY_TARGET_SELECTOR =
+  "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
 const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
 const TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR =
   '[data-timeline-row-list="top-level"]';
@@ -941,19 +944,32 @@ export function BottomAnchoredScrollBody({
     const scrollFooter = scrollFooterRef.current;
     if (!scrollArea || !scrollFooter) return;
 
-    const updateScrollPadding = () => {
-      scrollArea.style.scrollPaddingBottom = `${scrollFooter.getBoundingClientRect().height}px`;
+    let clearScrollPaddingFrame: number | null = null;
+    const clearScrollPadding = () => {
+      clearScrollPaddingFrame = null;
+      scrollArea.style.removeProperty("scroll-padding-bottom");
     };
-    updateScrollPadding();
-
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateScrollPadding);
-    observer?.observe(scrollFooter);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!NATIVE_PAGE_SCROLL_KEYS.has(event.key)) return;
+      const target = event.target;
+      if (!(target instanceof Node) || scrollFooter.contains(target)) return;
+      if (target !== document.body && !scrollArea.contains(target)) return;
+      if (
+        target instanceof Element &&
+        target.closest(EDITABLE_KEY_TARGET_SELECTOR)
+      ) {
+        return;
+      }
+      scrollArea.style.scrollPaddingBottom = `${scrollFooter.getBoundingClientRect().height}px`;
+      clearScrollPaddingFrame ??= requestAnimationFrame(clearScrollPadding);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
 
     return () => {
-      observer?.disconnect();
+      window.removeEventListener("keydown", handleKeyDown, true);
+      if (clearScrollPaddingFrame !== null) {
+        cancelAnimationFrame(clearScrollPaddingFrame);
+      }
       scrollArea.style.removeProperty("scroll-padding-bottom");
     };
   }, [hasFooter]);
