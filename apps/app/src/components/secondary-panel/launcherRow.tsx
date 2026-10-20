@@ -70,7 +70,7 @@ export function LauncherSectionHeader({
       className={cn(
         "flex items-baseline gap-2 px-2 pb-2",
         CHROME_SECTION_LABEL_CLASS,
-        sticky && "sticky top-0 z-10 bg-sidebar",
+        sticky && "sticky top-0 z-30 bg-sidebar",
         className,
       )}
     >
