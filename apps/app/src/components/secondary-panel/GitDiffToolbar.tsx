@@ -17,6 +17,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import {
   formatChangeSummary,
@@ -326,99 +327,136 @@ export function GitDiffToolbar({
             className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
             data-testid="git-diff-toolbar-actions"
           >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                "text-muted-foreground",
-              )}
-              onClick={() =>
-                onFileFilterChange(fileFilter === null ? "" : null)
-              }
-              aria-label={
-                fileFilter === null ? "Filter files" : "Close file filter"
-              }
-              aria-pressed={fileFilter !== null}
-            >
-              <Icon name="Filter" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                "text-muted-foreground",
-              )}
-              onClick={onToggleAllCollapsed}
-              disabled={isCollapseAllDisabled}
-              aria-label={
-                areAllFilesCollapsed ? "Expand all files" : "Collapse all files"
-              }
-            >
-              {areAllFilesCollapsed ? (
-                <Icon name="ChevronsDown" />
-              ) : (
-                <Icon name="ChevronsUp" />
-              )}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                "text-muted-foreground",
-              )}
-              onClick={() =>
-                onLineOverflowModeChange(
-                  getNextCodeOverflowMode(lineOverflowMode),
-                )
-              }
-              aria-label={
-                lineOverflowMode === "wrap"
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                    "text-muted-foreground",
+                  )}
+                  onClick={() =>
+                    onFileFilterChange(fileFilter === null ? "" : null)
+                  }
+                  aria-label={
+                    fileFilter === null ? "Filter files" : "Close file filter"
+                  }
+                  aria-pressed={fileFilter !== null}
+                >
+                  <Icon name="Filter" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {fileFilter === null ? "Filter files" : "Close file filter"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                    "text-muted-foreground",
+                  )}
+                  onClick={onToggleAllCollapsed}
+                  disabled={isCollapseAllDisabled}
+                  aria-label={
+                    areAllFilesCollapsed
+                      ? "Expand all files"
+                      : "Collapse all files"
+                  }
+                >
+                  {areAllFilesCollapsed ? (
+                    <Icon name="ChevronsDown" />
+                  ) : (
+                    <Icon name="ChevronsUp" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {areAllFilesCollapsed
+                  ? "Expand all files"
+                  : "Collapse all files"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                    "text-muted-foreground",
+                  )}
+                  onClick={() =>
+                    onLineOverflowModeChange(
+                      getNextCodeOverflowMode(lineOverflowMode),
+                    )
+                  }
+                  aria-label={
+                    lineOverflowMode === "wrap"
+                      ? "Disable diff line wrap"
+                      : "Wrap diff lines"
+                  }
+                  aria-pressed={lineOverflowMode === "wrap"}
+                >
+                  <Icon name="TextWrap" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {lineOverflowMode === "wrap"
                   ? "Disable diff line wrap"
-                  : "Wrap diff lines"
-              }
-              aria-pressed={lineOverflowMode === "wrap"}
-            >
-              <Icon name="TextWrap" />
-            </Button>
+                  : "Wrap diff lines"}
+              </TooltipContent>
+            </Tooltip>
             <div
               className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
               role="tablist"
               aria-label="Diff view mode"
             >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                  "text-muted-foreground",
-                )}
-                onClick={() => onDisplayModeChange("unified")}
-                aria-label="Stacked diff view"
-                aria-pressed={displayMode === "unified"}
-              >
-                <Icon name="Rows2" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                  "text-muted-foreground",
-                )}
-                onClick={() => onDisplayModeChange("split")}
-                aria-label="Split diff view"
-                aria-pressed={displayMode === "split"}
-              >
-                <Icon name="Columns2" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                      "text-muted-foreground",
+                    )}
+                    onClick={() => onDisplayModeChange("unified")}
+                    aria-label="Stacked diff view"
+                    aria-pressed={displayMode === "unified"}
+                  >
+                    <Icon name="Rows2" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Stacked diff view</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                      "text-muted-foreground",
+                    )}
+                    onClick={() => onDisplayModeChange("split")}
+                    aria-label="Split diff view"
+                    aria-pressed={displayMode === "split"}
+                  >
+                    <Icon name="Columns2" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Split diff view</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
