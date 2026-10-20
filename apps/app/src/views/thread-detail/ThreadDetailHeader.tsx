@@ -31,7 +31,6 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useSidebarRename } from "@/components/sidebar/SidebarInlineRename";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -291,34 +290,31 @@ export function ThreadDetailHeader({
           </Button>
         ) : null}
         {showRightPanelToggle ? (
-          <span className="inline-flex items-center gap-1.5">
-            <AppCommandShortcutHint shortcut={panelShortcut} />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                HEADER_ICON_BUTTON_CLASS,
-                CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-                isTopRow &&
-                  isSidebarFramed &&
-                  MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
-              )}
-              aria-label={
-                panelShortcut
-                  ? `${rightPanelLabel} (${panelShortcut.label})`
-                  : rightPanelLabel
-              }
-              aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
-              aria-expanded={isSecondaryPanelOpen}
-              onPointerEnter={preloadThreadSecondaryPanel}
-              onFocus={preloadThreadSecondaryPanel}
-              onPointerDown={preloadThreadSecondaryPanel}
-              onClick={onToggleSecondaryPanel}
-            >
-              <Icon name={rightPanelIconName} />
-            </Button>
-          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              HEADER_ICON_BUTTON_CLASS,
+              CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+              isTopRow &&
+                isSidebarFramed &&
+                MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+            )}
+            aria-label={
+              panelShortcut
+                ? `${rightPanelLabel} (${panelShortcut.label})`
+                : rightPanelLabel
+            }
+            aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
+            aria-expanded={isSecondaryPanelOpen}
+            onPointerEnter={preloadThreadSecondaryPanel}
+            onFocus={preloadThreadSecondaryPanel}
+            onPointerDown={preloadThreadSecondaryPanel}
+            onClick={onToggleSecondaryPanel}
+          >
+            <Icon name={rightPanelIconName} />
+          </Button>
         ) : null}
         {reservesWindowPanelToggle && !isWindowPanelOpen ? (
           <span

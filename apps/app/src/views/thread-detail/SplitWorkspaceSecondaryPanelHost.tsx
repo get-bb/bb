@@ -20,7 +20,6 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   useAppCommandHandler,
   useAppCommandShortcut,
@@ -216,10 +215,6 @@ export function SplitWorkspaceSecondaryPanelHost({
             isSidebarFramed && MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS,
           )}
         >
-          <AppCommandShortcutHint
-            shortcut={shortcut}
-            className="absolute right-0 top-full mt-1"
-          />
           <Button
             type="button"
             variant="ghost"

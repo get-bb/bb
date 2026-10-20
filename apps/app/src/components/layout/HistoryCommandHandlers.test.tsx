@@ -214,7 +214,9 @@ describe("HistoryCommandHandlers", () => {
       forwardShortcut.ariaKeyshortcuts,
     );
 
-    await waitFor(() => expect(back.getAttribute("aria-disabled") === "true").toBe(false));
+    await waitFor(() =>
+      expect(back.getAttribute("aria-disabled") === "true").toBe(false),
+    );
     fireEvent.keyDown(document.body, { key: "Tab" });
     fireEvent.focus(back);
 
@@ -225,20 +227,5 @@ describe("HistoryCommandHandlers", () => {
         backShortcut.label,
       );
     });
-  });
-
-  it("shows both shortcuts beside the arrows while the modifier is held", async () => {
-    const platform = vi
-      .spyOn(navigator, "platform", "get")
-      .mockReturnValue("MacIntel");
-    renderAt(A);
-    const hints = () =>
-      document.querySelectorAll("[data-sidebar-history-shortcut-hints] kbd");
-    expect(hints()).toHaveLength(0);
-    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
-    await waitFor(() => expect(hints()).toHaveLength(2), { timeout: 2000 });
-    fireEvent.keyUp(window, { key: "Meta" });
-    await waitFor(() => expect(hints()).toHaveLength(0));
-    platform.mockRestore();
   });
 });

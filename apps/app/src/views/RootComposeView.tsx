@@ -51,7 +51,6 @@ import {
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
@@ -246,7 +245,7 @@ export function RootComposeRightPanelToggle({
       type="button"
       variant="ghost"
       size="icon"
-      className={`${HEADER_ICON_BUTTON_CLASS} relative`}
+      className={HEADER_ICON_BUTTON_CLASS}
       aria-label={
         shortcut ? `${rightPanelLabel} (${shortcut.label})` : rightPanelLabel
       }
@@ -258,10 +257,6 @@ export function RootComposeRightPanelToggle({
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
-      <AppCommandShortcutHint
-        shortcut={shortcut}
-        className="absolute right-full mr-1"
-      />
     </Button>
   );
 }
