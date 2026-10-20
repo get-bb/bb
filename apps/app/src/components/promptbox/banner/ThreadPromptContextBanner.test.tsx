@@ -193,7 +193,7 @@ describe("ThreadPromptContextBanner", () => {
     ).toBe("true");
     expect(
       screen.getByText(
-        "This thread is unavailable while machine cleanup is pending. Retry cleanup in machine settings.",
+        "This thread is unavailable while machine cleanup is pending. Retry cleanup in machine settings, or remove the machine without cleanup if it is gone.",
       ),
     ).toBeDefined();
   });
