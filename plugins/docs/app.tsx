@@ -1169,10 +1169,10 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   if (!/\.html?$/i.test(document.path))
     return <InlineDocument document={document} openInTab={openPreview} />;
   return (
-    <div className="my-3 flex h-11 items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm transition-colors hover:bg-state-hover">
+    <div className="relative my-3 flex h-11 select-none items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm transition-colors hover:bg-state-hover">
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={openPreview}
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -1183,7 +1183,7 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
         </span>
       </button>
       <Button
-        className="size-8 shrink-0"
+        className="relative size-8 shrink-0"
         size="icon"
         variant="ghost"
         aria-label="Open in Docs"
