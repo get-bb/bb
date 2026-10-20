@@ -1115,6 +1115,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.hosts.experimental_reconcile",
           "PluginBbSdk.hosts.experimental_resume",
           "PluginBbSdk.hosts.experimental_retryCleanup",
+          "PluginBbSdk.hosts.experimental_forceRemove",
           "PluginMachines.getResource",
           "MachineExecutorRequest",
           "MachineExecutor",

@@ -575,6 +575,33 @@ export function registerMachineCommands(
       }),
     );
 
+  machine
+    .command("force-remove <id-or-name>")
+    .description(
+      "Finish removing a disconnected machine whose environment cleanup failed, skipping that cleanup",
+    )
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineMutationCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
+          target,
+        });
+        if (
+          !opts.yes &&
+          !(await confirmDestructiveAction(
+            `Remove machine ${hostId} without cleaning up its environments? Files left on its disk are not deleted.`,
+          ))
+        )
+          return;
+        const result = await sdk.hosts.experimental_forceRemove({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} removal forced`);
+      }),
+    );
+
   const providerCli = machine
     .command("provider-cli")
     .description("Inspect and install provider CLIs on a machine");

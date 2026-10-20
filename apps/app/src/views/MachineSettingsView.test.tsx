@@ -42,6 +42,7 @@ vi.mock("@/lib/sdk", () => ({
       providerCliStatus: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
+      experimental_forceRemove: vi.fn(),
       retryUpdate: vi.fn(),
       experimental_suspend: vi.fn(),
       update: vi.fn(),
@@ -323,6 +324,44 @@ describe("MachineSettingsView", () => {
     expect(sdk.threads.count).toHaveBeenCalledWith(
       expect.objectContaining({ hostId: HOST_ID }),
     );
+  });
+
+  it("offers removal without cleanup from the danger zone for a stranded machine", async () => {
+    const stranded = host({ status: "disconnected" });
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      {
+        ...stranded,
+        lifecycle: {
+          ...stranded.lifecycle,
+          phase: "removing",
+          message: "Host is not connected",
+          teardown: { status: "failed", attempt: 0 },
+        },
+      },
+    ]);
+    vi.mocked(sdk.hosts.experimental_forceRemove).mockResolvedValue({
+      ok: true,
+    });
+    stubSupportingFetches();
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove machine" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/The machine provider's removal still runs/),
+    ).toBeDefined();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Remove without cleanup" }),
+    );
+    await waitFor(() =>
+      expect(sdk.hosts.experimental_forceRemove).toHaveBeenCalledWith({
+        hostId: HOST_ID,
+      }),
+    );
+    expect(sdk.hosts.delete).not.toHaveBeenCalled();
   });
 
   it("shows client-local identity only when several machines need disambiguation", async () => {

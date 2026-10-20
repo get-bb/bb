@@ -942,6 +942,12 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<HostActionResponse>(),
     }),
+    forceRemove: defineRoute({
+      path: "/hosts/:id/force-remove",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostActionResponse>(),
+    }),
     delete: defineRoute({
       path: "/hosts/:id",
       method: "delete",

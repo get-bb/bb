@@ -41,6 +41,7 @@ vi.mock("@/lib/sdk", () => ({
       experimental_reconnect: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
+      experimental_forceRemove: vi.fn(),
       retryUpdate: vi.fn(),
       experimental_suspend: vi.fn(),
       update: vi.fn(),
@@ -668,6 +669,44 @@ describe("MachinesSettingsSection", () => {
         hostId: "host_remote",
       });
     });
+  });
+
+  it("removes a stranded machine without cleanup after confirmation", async () => {
+    const strandedHost = {
+      ...offlineHost,
+      lifecycle: {
+        ...offlineHost.lifecycle,
+        phase: "removing" as const,
+        message: "Host is not connected",
+        teardown: { status: "failed" as const, attempt: 0 },
+      },
+    };
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, strandedHost]);
+    vi.mocked(sdk.hosts.experimental_forceRemove).mockResolvedValue({
+      ok: true,
+    });
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await openHostMenu(strandedHost.name);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Remove machine/ }),
+    );
+    expect(
+      await screen.findByText(/files and worktrees left on its disk/),
+    ).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove without cleanup" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(sdk.hosts.experimental_forceRemove),
+      ).toHaveBeenCalledWith({ hostId: "host_remote" });
+    });
+    expect(vi.mocked(sdk.hosts.delete)).not.toHaveBeenCalled();
   });
 
   it("disables removal of the server machine", async () => {

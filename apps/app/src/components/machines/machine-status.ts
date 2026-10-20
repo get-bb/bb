@@ -52,3 +52,11 @@ export function machineStatusLabel({
 export function canReconnectMachine(host: Host): boolean {
   return host.status !== "connected" && host.lifecycle.phase === "active";
 }
+
+export function canForceRemoveMachine(host: Host): boolean {
+  return (
+    host.status !== "connected" &&
+    host.lifecycle.phase === "removing" &&
+    host.lifecycle.teardown?.status === "failed"
+  );
+}

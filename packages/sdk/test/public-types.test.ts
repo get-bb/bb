@@ -294,6 +294,7 @@ type ExpectedHostsKey =
   | "providerCliStatus"
   | "experimental_resume"
   | "experimental_retryCleanup"
+  | "experimental_forceRemove"
   | "retryUpdate"
   | "experimental_suspend"
   | "experimental_reconcile"

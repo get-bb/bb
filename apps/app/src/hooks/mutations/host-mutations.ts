@@ -107,6 +107,21 @@ export function useRetryHostCleanup() {
   );
 }
 
+export function useForceRemoveHost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: (hostId: string) =>
+      sdk.hosts.experimental_forceRemove({ hostId }),
+    onSuccess: () => {
+      invalidateHostListQueries({ queryClient });
+    },
+  });
+}
+
 export function useReconnectHost() {
   return useMutation({
     meta: {

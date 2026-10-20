@@ -2834,8 +2834,13 @@ later project-checkout/worktree reuse.
 
 `bb.sdk.hosts.experimental_create`, `experimental_getEnrollmentCommand`,
 `experimental_listProviders`, `experimental_reconnect`, `experimental_suspend`,
-`experimental_resume` and `experimental_retryCleanup` have no unprefixed
-aliases.
+`experimental_resume`, `experimental_retryCleanup` and `experimental_forceRemove`
+have no unprefixed aliases. `experimental_forceRemove({ hostId })` is the
+path core's machine removal dialog and `bb machine force-remove` use to finish
+a persistent machine's removal whose environment cleanup failed while the
+machine is disconnected; it skips on-machine environment cleanup, emits
+`experimental_environment.removed` for each environment, and still runs the
+provider's `remove`.
 `experimental_getEnrollmentCommand` serves the in-memory manual setup command
 and expiry only while that host is creating. Completion, removal, expiry and
 server restart drop the command, which never enters persisted progress or

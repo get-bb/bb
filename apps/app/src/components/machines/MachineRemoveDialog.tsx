@@ -7,7 +7,11 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { ConfirmDeleteDialog } from "@bb/shared-ui/confirm-delete-dialog";
-import { useRemoveHost } from "@/hooks/mutations/host-mutations";
+import {
+  useForceRemoveHost,
+  useRemoveHost,
+} from "@/hooks/mutations/host-mutations";
+import { canForceRemoveMachine } from "@/components/machines/machine-status";
 import { useMachineThreadPreview } from "@/hooks/queries/thread-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -70,14 +74,18 @@ export function MachineRemoveDialog({
   onOpenChange: (open: boolean) => void;
   onRemoved?: (host: Host) => void;
 }) {
-  const removeHost = useRemoveHost();
+  const plainRemove = useRemoveHost();
+  const forceRemove = useForceRemoveHost();
+  const skipCleanup = target !== null && canForceRemoveMachine(target);
+  const removeHost = skipCleanup ? forceRemove : plainRemove;
 
   return (
     <ConfirmDeleteDialog
       open={target !== null}
       onOpenChange={(open) => {
         if (!open && !removeHost.isPending) {
-          removeHost.reset();
+          plainRemove.reset();
+          forceRemove.reset();
           onOpenChange(false);
         }
       }}
@@ -87,8 +95,21 @@ export function MachineRemoveDialog({
           <DialogHeader>
             <DialogTitle>Remove {target.name}?</DialogTitle>
             <DialogDescription>
-              This revokes {target.name}'s access to this server.{" "}
-              {machineRemovalConsequences(target)}
+              {skipCleanup ? (
+                <>
+                  Cleanup failed and {target.name} is not connected. Removing it
+                  now skips environment cleanup on the machine: files and
+                  worktrees left on its disk are not deleted, and its
+                  environments become read-only history. The machine provider's
+                  removal still runs. Use this only if the machine is gone or
+                  will not come back.
+                </>
+              ) : (
+                <>
+                  This revokes {target.name}'s access to this server.{" "}
+                  {machineRemovalConsequences(target)}
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <MachineThreadPreviewList hostId={target.id} />
@@ -114,7 +135,7 @@ export function MachineRemoveDialog({
                 })
               }
             >
-              Remove machine
+              {skipCleanup ? "Remove without cleanup" : "Remove machine"}
             </Button>
           </DialogFooter>
         </>

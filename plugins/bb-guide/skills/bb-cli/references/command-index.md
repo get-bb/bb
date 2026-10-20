@@ -95,6 +95,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb machine resume`
 - `bb machine reconcile`
 - `bb machine retry-cleanup`
+- `bb machine force-remove`
 - `bb machine retry-update`
 - `bb machine provider-cli`
 - `bb machine provider-cli status`

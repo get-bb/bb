@@ -147,6 +147,7 @@ export interface HostsArea {
   providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
   experimental_resume(args: HostActionArgs): Promise<Host>;
   experimental_retryCleanup(args: HostActionArgs): Promise<HostActionResult>;
+  experimental_forceRemove(args: HostActionArgs): Promise<HostActionResult>;
   retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
   experimental_suspend(args: HostActionArgs): Promise<Host>;
   experimental_reconcile(args: HostActionArgs): Promise<Host>;
@@ -350,6 +351,13 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     async experimental_retryCleanup(input) {
       return transport.readJson(
         transport.api.v1.hosts[":id"]["retry-cleanup"].$post({
+          param: { id: input.hostId },
+        }),
+      );
+    },
+    async experimental_forceRemove(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["force-remove"].$post({
           param: { id: input.hostId },
         }),
       );

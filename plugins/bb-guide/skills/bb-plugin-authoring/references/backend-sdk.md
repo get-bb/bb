@@ -48,6 +48,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `retryUpdate` `experimental_listProviders` `experimental_create`
   `experimental_getEnrollmentCommand` `experimental_reconnect`
   `experimental_suspend` `experimental_resume` `experimental_retryCleanup`
+  `experimental_forceRemove`
   `experimental_reconcile` `experimental_deleteOldServerCopy`
   `experimental_discoverRepos`, and the
   deprecated `createJoinCode` (machine creation and suspension are in

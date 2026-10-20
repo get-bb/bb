@@ -48,6 +48,7 @@ import {
   type PluginMachineProviderRecord,
 } from "../plugins/plugin-machine-provider-registry.js";
 import {
+  forgetHostEnvironments,
   requestEnvironmentRemoval,
   sweepProviderEnvironment,
 } from "../environments/environment-engine.js";
@@ -1133,6 +1134,73 @@ export async function retryMachineCleanup(
     .all()) {
     deps.hub.notifyEnvironment(environment.id, ["metadata-changed"]);
   }
+  updateHost(deps.db, deps.hub, hostId, {
+    removeRetryAt: Date.now(),
+    teardownStatus: "running",
+    statusMessage: null,
+  });
+  deps.hub.notifyHost(hostId, ["host-disconnected"]);
+  await sweepProviderMachine(deps, hostId);
+}
+
+function assertForcedRemovalAllowed(deps: Deps, row: MachineHostRow): void {
+  if (
+    row.machineProviderId === null ||
+    row.phase !== "removing" ||
+    row.teardownStatus !== "failed"
+  ) {
+    throw new ApiError(
+      409,
+      "machine_cleanup_not_failed",
+      "Cleanup can only be skipped after machine teardown fails",
+    );
+  }
+  if (deps.hub.hasDaemonForHost(row.id)) {
+    throw new ApiError(
+      409,
+      "machine_connected",
+      "The machine is connected; retry cleanup instead of skipping it",
+    );
+  }
+  const blocking =
+    row.type === "persistent" &&
+    listEnvironments(deps.db, { hostId: row.id }).some(
+      (environment) =>
+        environment.status !== "destroyed" ||
+        environment.teardownStatus !== "removed",
+    );
+  if (!blocking) {
+    throw new ApiError(
+      409,
+      "machine_cleanup_not_blocked",
+      "Environment cleanup is not what failed; retry cleanup to rerun the provider removal",
+    );
+  }
+}
+
+export async function forceMachineRemoval(
+  deps: Deps,
+  hostId: string,
+): Promise<void> {
+  const row = getHost(deps.db, hostId);
+  if (row === null || row.destroyedAt !== null) {
+    throw new ApiError(404, "host_not_found", "Host not found");
+  }
+  assertForcedRemovalAllowed(deps, row);
+  await Promise.all([
+    perDbRegistry(machineSweepOperations, deps.db)
+      .get(hostId)
+      ?.done.catch(() => {}),
+    perDbRegistry(removeOperations, deps.db)
+      .get(hostId)
+      ?.done.catch(() => {}),
+  ]);
+  const current = getHost(deps.db, hostId);
+  if (current === null || current.destroyedAt !== null) {
+    throw new ApiError(404, "host_not_found", "Host not found");
+  }
+  assertForcedRemovalAllowed(deps, current);
+  await forgetHostEnvironments(deps, hostId);
   updateHost(deps.db, deps.hub, hostId, {
     removeRetryAt: Date.now(),
     teardownStatus: "running",
