@@ -49,7 +49,7 @@ export function ThreadListPlaceholder({
       <div
         role="status"
         data-thread-list-placeholder="missing"
-        className="flex flex-col gap-2 px-3 py-2 text-sm text-muted-foreground"
+        className="flex flex-col gap-2 px-4 py-2 text-sm text-muted-foreground"
       >
         <span>No thread list plugin is enabled.</span>
       </div>
@@ -71,7 +71,7 @@ export function ThreadListPlaceholder({
     <div
       role="alert"
       data-thread-list-placeholder={state.kind}
-      className="flex flex-col gap-2 px-3 py-2 text-sm text-muted-foreground"
+      className="flex flex-col gap-2 px-4 py-2 text-sm text-muted-foreground"
     >
       <span>{alert.message}</span>
       <Button
