@@ -98,8 +98,9 @@ running. A runtime record without a healthy server does not prevent startup.
 
 Server and host-daemon output goes directly to `logs/server-stdio.log` and
 `logs/host-daemon-stdio.log` under the data directory, including startup errors
-and console output. These files append across restarts; they are separate from
-the rotating application logs. The launcher prints status and log locations
+and console output. These files append across restarts; when one is over 10 MB
+as a service starts, it is renamed to `-stdio.1.log`, replacing the previous
+one. They are separate from the rotating application logs. The launcher prints status and log locations
 without forwarding service output to the terminal, so a stalled terminal cannot
 block service logging. To follow output with the default data directory:
 

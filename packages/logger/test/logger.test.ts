@@ -170,6 +170,47 @@ describe("createLogger", () => {
     expect(getComponentLogFiles(logDir, "server").length).toBeGreaterThan(1);
   });
 
+  it("prunes rotated files left by earlier processes without touching other logs", async () => {
+    const dataDir = createTempDir();
+    const logDir = path.join(dataDir, "logs");
+    fs.mkdirSync(logDir, { recursive: true });
+    for (let index = 1; index <= 8; index++) {
+      fs.writeFileSync(path.join(logDir, `server.${index}.log`), "");
+    }
+    fs.writeFileSync(path.join(logDir, "server-stdio.log"), "capture");
+    fs.writeFileSync(path.join(logDir, "host-daemon.1.log"), "");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BB_DATA_DIR", dataDir);
+
+    const { createLogger } = await importFreshLogger();
+    const logger = createLogger({ component: "server" });
+    const payload = "x".repeat(11 * 1024 * 1024);
+    logger.info({ payload }, "rotate");
+    logger.info({ payload }, "rotate again");
+
+    await waitFor(
+      () => getComponentLogFiles(logDir, "server").length === 5,
+      10_000,
+    );
+
+    const remaining = getComponentLogFiles(logDir, "server").map((entry) =>
+      Number(entry.match(/^server\.(\d+)\.log$/u)?.[1]),
+    );
+    const newest = remaining[4] ?? 0;
+    expect(newest).toBeGreaterThan(8);
+    expect(remaining).toEqual([
+      newest - 4,
+      newest - 3,
+      newest - 2,
+      newest - 1,
+      newest,
+    ]);
+    expect(fs.readFileSync(path.join(logDir, "server-stdio.log"), "utf8")).toBe(
+      "capture",
+    );
+    expect(fs.existsSync(path.join(logDir, "host-daemon.1.log"))).toBe(true);
+  });
+
   it("delivers log lines to both the file and the process stdout in worker mode", async () => {
     const dataDir = createTempDir();
     const logDir = path.join(dataDir, "logs");

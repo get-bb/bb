@@ -4,6 +4,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,6 +93,30 @@ describe("spawnLoggedProcess", () => {
     expect(readFileSync(join(logDir, "server-stdio.log"), "utf8")).toBe(
       "first startup\nsecond startup\n",
     );
+  });
+
+  it("moves an oversized capture aside at spawn, keeping one previous file", async () => {
+    const logDir = scratchDir();
+    const logPath = join(logDir, "host-daemon-stdio.log");
+    const previousPath = join(logDir, "host-daemon-stdio.1.log");
+    writeFileSync(previousPath, "older capture");
+    writeFileSync(logPath, "oversized capture");
+    truncateSync(logPath, 10 * 1024 * 1024 + 1);
+
+    const child = spawnLoggedProcess({
+      command: process.execPath,
+      args: ["-e", `console.error("fresh startup"); process.exit(1);`],
+      env: process.env,
+      logDir,
+      logName: "host-daemon",
+    });
+
+    expect(await waitForExit(child)).toBe(1);
+    expect(readFileSync(logPath, "utf8")).toBe("fresh startup\n");
+    expect(statSync(previousPath).size).toBe(10 * 1024 * 1024 + 1);
+    expect(
+      readFileSync(previousPath, "utf8").startsWith("oversized capture"),
+    ).toBe(true);
   });
 
   it("fails instead of falling back to terminal output when logs cannot be opened", () => {

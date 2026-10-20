@@ -45,7 +45,7 @@ export function createLogger(options: CreateLoggerOptions): Logger {
       options: {
         file: join(logDir, `${component}.log`),
         frequency: "daily",
-        limit: { count: 5 },
+        limit: { count: 5, removeOtherLogFiles: true },
         size: "10m",
       },
       level: loggerConfig.BB_LOG_LEVEL,
