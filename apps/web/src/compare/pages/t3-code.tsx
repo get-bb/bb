@@ -141,7 +141,7 @@ export const comparison: Comparison = {
               Both are free, MIT-licensed apps that run Claude Code, Codex, and
               other coding agents in Git worktrees on your own machines, with
               mobile and remote access.{" "}
-              <a href="https://github.com/pingdotgg/t3code/blob/d65249074b54d7e8a72cb9a9e7f8b37bbd0a89a6/docs/user/thread-sidebar.md">
+              <a href="https://github.com/pingdotgg/t3code/blob/d65249074b54d7e8a72cb9a9e7f8b37bbd0a89a6/apps/server/src/mcp/toolkits/orchestrator/tools.ts#L66-L68">
                 T3 Code agents can also delegate to child agents on other
                 providers
               </a>
