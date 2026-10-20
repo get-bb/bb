@@ -192,11 +192,14 @@ async function executeTaggedMutation<Result>(
 ): Promise<Result> {
   const { result, invalidated } = await call();
   prediction?.accept();
-  try {
-    if (invalidated.length > 0) await invalidate(invalidated);
-  } finally {
-    prediction?.settle();
-  }
+  const refresh = async () => {
+    try {
+      if (invalidated.length > 0) await invalidate(invalidated);
+    } finally {
+      prediction?.settle();
+    }
+  };
+  void refresh().catch(() => {});
   return result;
 }
 

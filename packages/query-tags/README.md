@@ -11,7 +11,8 @@ overlap. Reads without a response yet must settle before tag matching is known.
 Failed first loads can recover on the next invalidation.
 
 `runTaggedMutation` invalidates the successful call's `invalidated` tags and
-waits for active reads to settle. Refresh failures retain
+resolves at server acknowledgement. Active reads refresh in the background.
+Refresh failures retain
 the cached data and query error; they do not turn a successful write into a
 failed mutation. A later successful read clears the query error.
 
@@ -25,7 +26,8 @@ same prediction descriptors, applied synchronously when `mutate` is called.
 
 All readers see the prediction through the query cache. Server reads update an
 authoritative value beneath pending predictions. The prediction stays until the
-mutation's matched reads settle, then fresh server data replaces it. Write
+matched confirmed reads arrive, then fresh server data replaces it, independently
+of the acknowledged mutation's pending state. Write
 failure removes that mutation's prediction. If the write succeeds but the read
 fails, the accepted prediction stays with the read error until a successful
 refresh. Later predictions and confirmed values cannot be replaced by an older
@@ -34,4 +36,4 @@ until a subsequent fresh read. Keyed reads acknowledge only rows they fetched.
 
 `useTaggedMutation` accepts one typed input per call. Its `pendingInputs` contains
 all pending inputs for that hook instance, and `isPending` stays true until all
-writes and their matched rereads settle. Other hook instances are excluded.
+writes are acknowledged. Background refreshes are excluded. Other hook instances are excluded.

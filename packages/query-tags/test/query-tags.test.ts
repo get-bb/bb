@@ -109,11 +109,11 @@ describe("tagged reads and mutations", () => {
       first.resolve({ value: 1, tags: [overlap ? "item:a" : "item:b"] });
       if (overlap) {
         await vi.waitFor(() => expect(read.fn).toHaveBeenCalledTimes(2));
-        expect(settled).toBe(false);
+        expect(settled).toBe(true);
         second.resolve({ value: 2, tags: ["item:a"] });
       }
       await expect(mutation).resolves.toBe("saved");
-      expect(read.value()).toBe(overlap ? 2 : 1);
+      await vi.waitFor(() => expect(read.value()).toBe(overlap ? 2 : 1));
       expect(read.fn).toHaveBeenCalledTimes(overlap ? 2 : 1);
     },
   );
@@ -161,7 +161,9 @@ describe("tagged reads and mutations", () => {
       ),
     ).resolves.toBe("saved");
     expect(read.value()).toBe(1);
-    expect(read.observer.getCurrentResult().error?.message).toBe("offline");
+    await vi.waitFor(() =>
+      expect(read.observer.getCurrentResult().error?.message).toBe("offline"),
+    );
     await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
     expect(read.observer.getCurrentResult().error).toBeNull();
   });
@@ -517,10 +519,11 @@ describe("optimistic tagged mutations", () => {
     read.fn.mockImplementationOnce(() => fresh.promise);
     write.resolve(outcome());
     await vi.waitFor(() => expect(read.fn).toHaveBeenCalledTimes(3));
-    expect(read.value()).toBe(2);
-    fresh.resolve({ value: 4, tags: ["item:a"] });
     await expect(mutation).resolves.toBe("saved");
-    expect(read.value()).toBe(4);
+    expect(read.value()).toBe(2);
+    expect(second.getCurrentResult().data?.value).toBe(2);
+    fresh.resolve({ value: 4, tags: ["item:a"] });
+    await vi.waitFor(() => expect(read.value()).toBe(4));
     expect(second.getCurrentResult().data?.value).toBe(4);
     expect(seen.every((value) => value === 2 || value === 4)).toBe(true);
   });
@@ -624,8 +627,10 @@ describe("optimistic tagged mutations", () => {
       prediction(client, 2),
     );
     expect(read.value()).toBe(2);
-    expect(read.observer.getCurrentResult().error?.message).toBe(
-      "read offline",
+    await vi.waitFor(() =>
+      expect(read.observer.getCurrentResult().error?.message).toBe(
+        "read offline",
+      ),
     );
     read.fn.mockResolvedValueOnce({ value: 3, tags: ["item:a"] });
     await read.observer.refetch();
@@ -676,9 +681,13 @@ describe("optimistic tagged mutations", () => {
         await expect(mutations[index]).resolves.toBe(success[index]);
       };
       await finish(first);
-      expect(read.value()).toBe(first === 0 ? 2 : later ? 20 : 1);
+      await vi.waitFor(() =>
+        expect(read.value()).toBe(first === 0 ? 2 : later ? 20 : 1),
+      );
       await finish(1 - first);
-      expect(read.value()).toBe(later ? 20 : earlier ? 10 : 0);
+      await vi.waitFor(() =>
+        expect(read.value()).toBe(later ? 20 : earlier ? 10 : 0),
+      );
       value = 99;
       await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
       expect(read.value()).toBe(99);
@@ -783,7 +792,7 @@ it("re-reads when a write completes between a read resolving and its cache commi
   });
   await mutation;
   await refreshing;
-  expect(read.value()).toBe(3);
+  await vi.waitFor(() => expect(read.value()).toBe(3));
 });
 
 it("does not acknowledge a row read before the write from a later batch's start time", async () => {

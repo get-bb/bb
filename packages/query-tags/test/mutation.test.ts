@@ -30,7 +30,7 @@ function deferred<T>() {
 
 afterEach(cleanup);
 
-it("reports every pending input for its hook until writes and rereads settle", async () => {
+it("reports only writes awaiting acknowledgement in each hook", async () => {
   const client = new QueryClient();
   const writes = {
     a: deferred<TaggedMutationOutcome<string>>(),
@@ -74,18 +74,18 @@ it("reports every pending input for its hook until writes and rereads settle", a
   await act(async () => {
     writes.a.resolve({ result: "saved", invalidated: ["tasks"] });
     await reading.promise;
+    await a;
   });
-  expect(hooks.result.current.first.pendingInputs).toEqual([
-    { taskId: "a" },
-    { taskId: "b" },
-  ]);
+  await waitFor(() =>
+    expect(hooks.result.current.first.pendingInputs).toEqual([{ taskId: "b" }]),
+  );
   await act(async () => {
     writes.b.reject(new Error("Refused"));
     await b;
   });
   await waitFor(() => {
-    expect(hooks.result.current.first.pendingInputs).toEqual([{ taskId: "a" }]);
-    expect(hooks.result.current.first.isPending).toBe(true);
+    expect(hooks.result.current.first.pendingInputs).toEqual([]);
+    expect(hooks.result.current.first.isPending).toBe(false);
     expect(hooks.result.current.second.pendingInputs).toEqual([
       { taskId: "c" },
     ]);
@@ -109,7 +109,6 @@ it("reports every pending input for its hook until writes and rereads settle", a
   hooks.unmount();
   client.clear();
 });
-
 
 it.each(["core", "plugin"] as const)(
   "commits %s predictions with the input event without flushing ordinary query notifications",
@@ -153,10 +152,14 @@ it.each(["core", "plugin"] as const)(
           onClick: () => {
             if (surface === "plugin") void mutation.mutate(undefined);
             else
-              void runTaggedMutation(async () => {}, () => write, {
-                client,
-                optimistic: predict(),
-              });
+              void runTaggedMutation(
+                async () => {},
+                () => write,
+                {
+                  client,
+                  optimistic: predict(),
+                },
+              );
             client.setQueryData(["ordinary"], "scheduled");
           },
         },
