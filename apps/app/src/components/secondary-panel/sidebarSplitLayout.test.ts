@@ -25,6 +25,7 @@ import {
   resizeSidebarSplit,
   selectSidebarTab,
   serializeSidebarSplitState,
+  setSidebarFullScreenScope,
   setSidebarPaneMaximized,
   sidebarPaneNode,
   sidebarSplitStorageKey,
@@ -75,6 +76,7 @@ function persistedStateWithPaneCount(count: number): SidebarSplitState {
       focusedPaneId: "pane-0",
     },
     maximizedPaneId: null,
+    fullScreenScope: "pane",
   };
 }
 
@@ -157,6 +159,56 @@ describe("sidebar split layout", () => {
     expect(stale.layout).toEqual(split.layout);
     expect(stale.groups).toEqual(split.groups);
     expect(stale.maximizedPaneId).toBeNull();
+  });
+
+  it("persists a whole-panel full screen scope and defaults older states to one pane", () => {
+    const split = splitOff(
+      createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
+      "file-a",
+    );
+    expect(split.fullScreenScope).toBe("pane");
+    const panelScope = setSidebarFullScreenScope(split, "panel");
+    expect(panelScope.fullScreenScope).toBe("panel");
+    expect(setSidebarFullScreenScope(panelScope, "panel")).toBe(panelScope);
+    expect(
+      parseSidebarSplitState(
+        serializeSidebarSplitState(panelScope),
+        TABS,
+        SIDEBAR_FIXED_INFO_TAB_ID,
+      ),
+    ).toEqual(panelScope);
+
+    const withoutScope = parseSidebarSplitState(
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(panelScope).filter(
+            ([key]) => key !== "fullScreenScope",
+          ),
+        ),
+      ),
+      TABS,
+      SIDEBAR_FIXED_INFO_TAB_ID,
+    );
+    expect(withoutScope).toEqual(split);
+
+    const unknownScope = parseSidebarSplitState(
+      JSON.stringify({ ...panelScope, fullScreenScope: "window" }),
+      TABS,
+      SIDEBAR_FIXED_INFO_TAB_ID,
+    );
+    expect(countPanes(unknownScope.layout.root)).toBe(1);
+    expect(unknownScope.fullScreenScope).toBe("pane");
+  });
+
+  it("treats a whole-panel scope as a non-canonical layout worth persisting", () => {
+    const canonical = createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID);
+    expect(
+      isCanonicalSidebarSplitState(
+        setSidebarFullScreenScope(canonical, "panel"),
+        TABS,
+        SIDEBAR_FIXED_INFO_TAB_ID,
+      ),
+    ).toBe(false);
   });
 
   it("preserves state identity for no-op reconciliation, selection, and focus", () => {

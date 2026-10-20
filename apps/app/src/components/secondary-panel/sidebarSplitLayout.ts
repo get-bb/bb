@@ -46,11 +46,14 @@ export interface SidebarTabGroup {
   activeTabId: string;
 }
 
+export type SidebarFullScreenScope = "pane" | "panel";
+
 export interface SidebarSplitState {
   version: typeof SIDEBAR_SPLIT_LAYOUT_STORAGE_VERSION;
   groups: Record<string, SidebarTabGroup>;
   layout: SplitLayout;
   maximizedPaneId: string | null;
+  fullScreenScope: SidebarFullScreenScope;
 }
 
 export interface SidebarTabPlacement {
@@ -108,6 +111,7 @@ export function createSidebarSplitState(
       focusedPaneId: ids.paneId,
     },
     maximizedPaneId: null,
+    fullScreenScope: "pane",
   };
 }
 
@@ -153,6 +157,7 @@ function areSidebarSplitStatesEqual(
     first.version !== second.version ||
     first.layout.focusedPaneId !== second.layout.focusedPaneId ||
     first.maximizedPaneId !== second.maximizedPaneId ||
+    first.fullScreenScope !== second.fullScreenScope ||
     !areStringArraysEqual(firstGroupIds, secondGroupIds) ||
     !areLayoutNodesEqual(first.layout.root, second.layout.root)
   ) {
@@ -652,6 +657,15 @@ export function setSidebarPaneMaximized(
   };
 }
 
+export function setSidebarFullScreenScope(
+  state: SidebarSplitState,
+  fullScreenScope: SidebarFullScreenScope,
+): SidebarSplitState {
+  return state.fullScreenScope === fullScreenScope
+    ? state
+    : { ...state, fullScreenScope };
+}
+
 export function toggleSidebarPaneMaximize(
   state: SidebarSplitState,
   paneId: string,
@@ -850,6 +864,7 @@ const sidebarSplitStateSchema = z
       })
       .strict(),
     maximizedPaneId: z.string().min(1).nullable().optional(),
+    fullScreenScope: z.enum(["pane", "panel"]).optional(),
   })
   .strict()
   .superRefine((state, context) => {
@@ -937,6 +952,7 @@ const sidebarSplitStateSchema = z
       findPane(storedState.layout.root, storedState.maximizedPaneId) !== null
         ? storedState.maximizedPaneId
         : null,
+    fullScreenScope: storedState.fullScreenScope ?? "pane",
   }));
 
 export function sidebarSplitStorageKey(panelStateId: string): string {
