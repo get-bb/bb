@@ -67,6 +67,7 @@ import {
 import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
 import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
+import { useStartingTerminalIds } from "@/components/thread/terminal/terminal-starts";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
@@ -340,6 +341,7 @@ export function PluginPanelRightPanelHost({
       new Map((terminalSessions ?? []).map((session) => [session.id, session])),
     [terminalSessions],
   );
+  const startingTerminalIds = useStartingTerminalIds();
   const {
     activateTab,
     activeBrowserTab,
@@ -382,7 +384,8 @@ export function PluginPanelRightPanelHost({
       activeTerminalQuery.isLoading ||
       activeTerminalQuery.error !== null ||
       terminalSessions === undefined ||
-      terminalsById.has(activeTerminalTab.terminalId)
+      terminalsById.has(activeTerminalTab.terminalId) ||
+      startingTerminalIds.has(activeTerminalTab.terminalId)
     ) {
       return;
     }
@@ -392,6 +395,7 @@ export function PluginPanelRightPanelHost({
     activeTerminalQuery.isLoading,
     activeTerminalTab,
     closeTab,
+    startingTerminalIds,
     terminalSessions,
     terminalsById,
   ]);
@@ -783,6 +787,8 @@ export function PluginPanelRightPanelHost({
               isPanelOpen={isOpen}
               isPanelPersistedOpen={panelState.secondary.isOpen}
               onAutoFocusHandled={terminals.handleAutoFocusHandled}
+              onCloseStart={() => terminals.close(tab.terminalId)}
+              onRetryStart={() => terminals.retryStart(tab.terminalId)}
               target={tab.target}
               terminalId={tab.terminalId}
             />
@@ -812,7 +818,6 @@ export function PluginPanelRightPanelHost({
               startTerminalDisabled={!terminals.canStart}
               startTerminalTrailing={
                 <TerminalHostSelector
-                  disabled={terminals.isStarting}
                   hosts={terminalHosts}
                   isLoading={hostsQuery.isLoading}
                   onChange={setPreferredTerminalHostId}

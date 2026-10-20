@@ -8,7 +8,9 @@ interface ThreadTerminalPanelProps {
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
   onAutoFocusHandled?: () => void;
+  onCloseStart: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
+  onRetryStart: () => void;
   onSelectionAddToChat?: (text: string) => void;
   terminalId: string;
   target: TerminalCreateTarget;
@@ -19,7 +21,9 @@ export function ThreadTerminalPanel({
   isPanelOpen,
   isPanelPersistedOpen,
   onAutoFocusHandled,
+  onCloseStart,
   onOpenLink,
+  onRetryStart,
   onSelectionAddToChat,
   terminalId,
   target,
@@ -42,7 +46,9 @@ export function ThreadTerminalPanel({
           autoFocus={autoFocus}
           controller={terminalController}
           onAutoFocusHandled={onAutoFocusHandled}
+          onCloseStart={onCloseStart}
           onOpenLink={onOpenLink}
+          onRetryStart={onRetryStart}
           onSelectionAddToChat={onSelectionAddToChat}
         />
       </div>

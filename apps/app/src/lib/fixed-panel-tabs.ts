@@ -148,6 +148,30 @@ export function removeFixedRightTerminalTabInState(
   );
 }
 
+export function replaceFixedRightTerminalTabInState(
+  state: FixedPanelTabsState,
+  terminalId: string,
+  nextTerminalId: string,
+  target?: TerminalCreateTarget,
+): FixedPanelTabsState {
+  const replacedTabId = createTerminalFixedPanelTab({ terminalId }).id;
+  const nextTab = createTerminalFixedPanelTab({
+    terminalId: nextTerminalId,
+    target,
+  });
+  const tabs = state.secondary.tabs.some((tab) => tab.id === replacedTabId)
+    ? state.secondary.tabs.map((tab) =>
+        tab.id === replacedTabId ? nextTab : tab,
+      )
+    : upsertTerminalTab(state.secondary.tabs, nextTerminalId, target);
+  return setSecondaryPanelTabsInState({
+    state,
+    tabs,
+    activeTabId: nextTab.id,
+    isOpen: true,
+  });
+}
+
 function ensureSecondaryPanelTab(
   tabs: readonly FixedPanelTab[],
   panel: ThreadSecondaryPanel,

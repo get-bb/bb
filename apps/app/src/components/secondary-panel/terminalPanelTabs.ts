@@ -10,41 +10,49 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 
-interface BuildTerminalSyncedSecondaryFileTabsArgs {
+interface TerminalTabSources {
+  startingTerminalIds: ReadonlySet<string>;
+  terminalSessions: readonly TerminalSession[];
+}
+
+interface BuildTerminalSyncedSecondaryFileTabsArgs extends TerminalTabSources {
   orderedTabs: readonly SecondaryFileFixedPanelTab[];
-  terminalSessions: readonly TerminalSession[];
 }
 
-interface SyncTerminalTabsInFixedPanelStateArgs {
+interface SyncTerminalTabsInFixedPanelStateArgs extends TerminalTabSources {
   state: FixedPanelTabsState;
-  terminalSessions: readonly TerminalSession[];
 }
 
-interface SyncTerminalTabsWithSessionsArgs<T extends SecondaryFixedPanelTab> {
+interface SyncTerminalTabsWithSessionsArgs<
+  T extends SecondaryFixedPanelTab,
+> extends TerminalTabSources {
   tabs: readonly T[];
-  terminalSessions: readonly TerminalSession[];
 }
 
-interface PruneTerminalTabsForSessionsArgs {
+interface PruneTerminalTabsForSessionsArgs extends TerminalTabSources {
   tabs: readonly FixedPanelTab[];
-  terminalSessions: readonly TerminalSession[];
 }
 
-function getTerminalSessionTabIds(
-  terminalSessions: readonly TerminalSession[],
-): ReadonlySet<string> {
-  return new Set(
-    terminalSessions
-      .filter(isVisibleTerminalSession)
-      .map((session) => session.id),
-  );
+function getTerminalSessionTabIds({
+  startingTerminalIds,
+  terminalSessions,
+}: TerminalTabSources): ReadonlySet<string> {
+  const ids = new Set(startingTerminalIds);
+  for (const session of terminalSessions) {
+    if (isVisibleTerminalSession(session)) ids.add(session.id);
+  }
+  return ids;
 }
 
 export function pruneTerminalTabsForSessions({
+  startingTerminalIds,
   tabs,
   terminalSessions,
 }: PruneTerminalTabsForSessionsArgs): readonly FixedPanelTab[] {
-  const terminalSessionIds = getTerminalSessionTabIds(terminalSessions);
+  const terminalSessionIds = getTerminalSessionTabIds({
+    startingTerminalIds,
+    terminalSessions,
+  });
   const nextTabs = tabs.filter(
     (tab) => tab.kind !== "terminal" || terminalSessionIds.has(tab.terminalId),
   );
@@ -52,10 +60,12 @@ export function pruneTerminalTabsForSessions({
 }
 
 export function pruneTerminalTabsInFixedPanelState({
+  startingTerminalIds,
   state,
   terminalSessions,
 }: SyncTerminalTabsInFixedPanelStateArgs): FixedPanelTabsState {
   const tabs = pruneTerminalTabsForSessions({
+    startingTerminalIds,
     tabs: state.secondary.tabs,
     terminalSessions,
   });
@@ -71,13 +81,17 @@ export function pruneTerminalTabsInFixedPanelState({
 }
 
 function syncTerminalTabsWithSessions<T extends SecondaryFixedPanelTab>({
+  startingTerminalIds,
   tabs,
   terminalSessions,
 }: SyncTerminalTabsWithSessionsArgs<T>): {
   tabs: Array<T | TerminalFixedPanelTab>;
   changed: boolean;
 } {
-  const terminalSessionIds = getTerminalSessionTabIds(terminalSessions);
+  const terminalSessionIds = getTerminalSessionTabIds({
+    startingTerminalIds,
+    terminalSessions,
+  });
   const seenTerminalIds = new Set<string>();
   const syncedTabs: Array<T | TerminalFixedPanelTab> = [];
   let changed = false;
@@ -113,23 +127,28 @@ function syncTerminalTabsWithSessions<T extends SecondaryFixedPanelTab>({
 
 export function buildTerminalSyncedSecondaryFileTabs({
   orderedTabs,
+  startingTerminalIds,
   terminalSessions,
 }: BuildTerminalSyncedSecondaryFileTabsArgs): readonly SecondaryFileFixedPanelTab[] {
   return syncTerminalTabsWithSessions({
+    startingTerminalIds,
     tabs: orderedTabs,
     terminalSessions,
   }).tabs;
 }
 
 export function syncTerminalTabsInFixedPanelState({
+  startingTerminalIds,
   state,
   terminalSessions,
 }: SyncTerminalTabsInFixedPanelStateArgs): FixedPanelTabsState {
   state = pruneTerminalTabsInFixedPanelState({
+    startingTerminalIds,
     state,
     terminalSessions,
   });
   const { tabs, changed } = syncTerminalTabsWithSessions({
+    startingTerminalIds,
     tabs: state.secondary.tabs,
     terminalSessions,
   });

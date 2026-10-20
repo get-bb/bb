@@ -957,6 +957,97 @@ describe("public terminal routes", () => {
     });
   });
 
+  it("opens a terminal under the ID the client chose", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const terminalId = "term_23456789ab";
+
+    const responsePromise = fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        id: terminalId,
+        rows: 30,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
+    const openMessage = await waitForDaemonMessage(fixture.socket);
+    if (openMessage.type !== "terminal.open") {
+      throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+    }
+    expect(openMessage.terminalId).toBe(terminalId);
+
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.opened",
+        requestId: openMessage.requestId,
+        terminalId,
+        shell: "/bin/zsh",
+        title: "zsh",
+        initialCwd: "/tmp/terminal-workspace",
+        cols: 100,
+        rows: 30,
+      },
+    });
+
+    const response = await responsePromise;
+    expect(response.status).toBe(201);
+    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
+      { id: terminalId, status: "running" },
+    );
+  });
+
+  it("rejects a client-chosen terminal ID that already exists", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const existing = seedExitedTerminalSession(fixture, {
+      daemonSessionId: fixture.session.id,
+    });
+
+    const response = await fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        id: existing.id,
+        rows: 30,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "terminal_id_conflict",
+    });
+    expect(
+      getTerminalSession(fixture.harness.db, {
+        kind: "terminal",
+        terminalId: existing.id,
+      }),
+    ).toMatchObject({ status: "exited", title: "Terminal 1" });
+  });
+
+  it("rejects a client-chosen terminal ID outside the generated format", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+
+    const response = await fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        id: "thr_23456789ab",
+        rows: 30,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it("opens a command terminal with thread context for the daemon", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
@@ -2494,9 +2585,7 @@ describe("public terminal routes", () => {
           terminalId: stored.id,
           chunk: {
             seq,
-            dataBase64: Buffer.from(`line ${seq}\n`, "utf8").toString(
-              "base64",
-            ),
+            dataBase64: Buffer.from(`line ${seq}\n`, "utf8").toString("base64"),
           },
         },
       });

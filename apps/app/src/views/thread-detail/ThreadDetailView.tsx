@@ -245,6 +245,7 @@ import {
   buildTerminalSyncedSecondaryFileTabs,
   syncTerminalTabsInFixedPanelState,
 } from "@/components/secondary-panel/terminalPanelTabs";
+import { useStartingTerminalIds } from "@/components/thread/terminal/terminal-starts";
 import {
   buildOpenInEditorHandler,
   resolveEnvironmentOpenContext,
@@ -828,15 +829,17 @@ function ThreadDetailViewInternal(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
+  const startingTerminalIds = useStartingTerminalIds();
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
       loadedTerminalSessions === undefined
         ? orderedSecondaryFileTabs
         : buildTerminalSyncedSecondaryFileTabs({
             orderedTabs: orderedSecondaryFileTabs,
+            startingTerminalIds,
             terminalSessions: loadedTerminalSessions,
           }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs],
+    [loadedTerminalSessions, orderedSecondaryFileTabs, startingTerminalIds],
   );
   useEffect(() => {
     if (terminalsListQuery.data === undefined) {
@@ -844,11 +847,17 @@ function ThreadDetailViewInternal(
     }
     updateFixedPanelTabsState((state) =>
       syncTerminalTabsInFixedPanelState({
+        startingTerminalIds,
         state,
         terminalSessions,
       }),
     );
-  }, [terminalSessions, terminalsListQuery.data, updateFixedPanelTabsState]);
+  }, [
+    startingTerminalIds,
+    terminalSessions,
+    terminalsListQuery.data,
+    updateFixedPanelTabsState,
+  ]);
   const hostsQuery = useHosts({
     enabled:
       hasThreadDetailBootstrapSettled &&
@@ -2484,7 +2493,9 @@ function ThreadDetailViewInternal(
             isPanelOpen={isSecondaryPanelOpen}
             isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
             onAutoFocusHandled={terminals.handleAutoFocusHandled}
+            onCloseStart={() => terminals.close(tab.terminalId)}
             onOpenLink={handleOpenTimelineLink}
+            onRetryStart={() => terminals.retryStart(tab.terminalId)}
             onSelectionAddToChat={handleSelectionAddToChat}
             target={{ kind: "thread", threadId: thread.id }}
             terminalId={tab.terminalId}

@@ -209,6 +209,10 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
     ...actual,
     sdk: {
       ...actual.sdk,
+      terminals: {
+        ...actual.sdk.terminals,
+        create: createTerminal,
+      },
       threads: {
         ...actual.sdk.threads,
         tabs: threadTabsApi,
@@ -266,10 +270,6 @@ vi.mock("@/hooks/queries/thread-terminal-queries", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/hooks/queries/thread-terminal-queries")
   >()),
-  useCreateTerminal: () => ({
-    isPending: false,
-    mutateAsync: createTerminal,
-  }),
   useCloseTerminal: () => ({
     isPending: false,
     mutate: vi.fn(),
@@ -1452,6 +1452,7 @@ describe("PluginPanelRightPanelHost", () => {
   });
 
   it("starts a terminal on the machine selected in the New tab row", async () => {
+    createTerminal.mockReturnValue(new Promise(() => undefined));
     renderHost();
     fireEvent.click(
       await screen.findByRole("button", { name: "Show right panel" }),
@@ -1466,8 +1467,9 @@ describe("PluginPanelRightPanelHost", () => {
     await waitFor(() =>
       expect(createTerminal).toHaveBeenCalledWith({
         cols: 100,
+        id: expect.stringMatching(/^term_/u),
         rows: 30,
-        target: { kind: "host_path", hostId: "host-2", cwd: null },
+        scope: { kind: "host_path", hostId: "host-2", cwd: null },
       }),
     );
     expect(await screen.findByTestId("plugin-page-terminal")).toBeTruthy();

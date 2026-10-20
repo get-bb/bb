@@ -139,6 +139,7 @@ import {
   buildTerminalSyncedSecondaryFileTabs,
   syncTerminalTabsInFixedPanelState,
 } from "@/components/secondary-panel/terminalPanelTabs";
+import { useStartingTerminalIds } from "@/components/thread/terminal/terminal-starts";
 import {
   getActiveFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
@@ -872,15 +873,17 @@ function RootComposeSurface({
     openPluginPanel,
     projectId: isProjectless ? null : projectId,
   });
+  const startingTerminalIds = useStartingTerminalIds();
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
       loadedTerminalSessions === undefined
         ? orderedSecondaryFileTabs
         : buildTerminalSyncedSecondaryFileTabs({
             orderedTabs: orderedSecondaryFileTabs,
+            startingTerminalIds,
             terminalSessions: loadedTerminalSessions,
           }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs],
+    [loadedTerminalSessions, orderedSecondaryFileTabs, startingTerminalIds],
   );
   useEffect(() => {
     if (!terminalsListLoaded) {
@@ -888,11 +891,17 @@ function RootComposeSurface({
     }
     updateFixedPanelTabsState((state) =>
       syncTerminalTabsInFixedPanelState({
+        startingTerminalIds,
         state,
         terminalSessions,
       }),
     );
-  }, [terminalSessions, terminalsListLoaded, updateFixedPanelTabsState]);
+  }, [
+    startingTerminalIds,
+    terminalSessions,
+    terminalsListLoaded,
+    updateFixedPanelTabsState,
+  ]);
   const canCreateRootTerminal = canCreateRootComposeTerminal({
     connectedHostIds,
     environmentHostId: rootPanelEnvironment?.hostId,
@@ -1174,8 +1183,10 @@ function RootComposeSurface({
         onActivateTab={activateTab}
         onAutoFocusNewTabHandled={handleNewTabAutoFocusHandled}
         onAutoFocusTerminalHandled={terminals.handleAutoFocusHandled}
+        onCloseTerminal={terminals.close}
         onOpenBrowser={openBrowser}
         onOpenPanelLink={handleOpenPanelLink}
+        onRetryTerminalStart={terminals.retryStart}
         onSelectFileSearchResult={handleSelectFileSearchResult}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         onStartTerminal={terminals.start}
@@ -1216,7 +1227,9 @@ function RootComposeSurface({
       rootProjectHostId,
       shouldAutoFocusNewTab,
       terminals.autoFocusTerminalId,
+      terminals.close,
       terminals.handleAutoFocusHandled,
+      terminals.retryStart,
       terminals.start,
     ],
   );
