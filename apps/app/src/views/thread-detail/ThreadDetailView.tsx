@@ -1582,9 +1582,7 @@ function ThreadDetailViewInternal(
     },
   );
   const workspaceStatusError = workStatusQuery.error;
-  const workStatusResponse = workspaceStatusError
-    ? undefined
-    : workStatusQuery.data;
+  const workStatusResponse = workStatusQuery.data;
   const workspaceStatus =
     workStatusResponse?.outcome === "available"
       ? workStatusResponse.workspace
