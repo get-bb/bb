@@ -111,12 +111,7 @@ function applyFullScreen(
   state: SidebarSplitState,
   isFullScreen: boolean,
 ): SidebarSplitState {
-  if (!isFullScreen) {
-    return setSidebarFullScreenScope(
-      setSidebarPaneMaximized(state, null),
-      "pane",
-    );
-  }
+  if (!isFullScreen) return setSidebarPaneMaximized(state, null);
   return setSidebarPaneMaximized(
     state,
     state.fullScreenScope === "panel" ? null : state.layout.focusedPaneId,
@@ -334,11 +329,6 @@ export function SidebarSplitContainer({
     commitState((current) => applyFullScreen(current, isFullScreen));
   }, [commitState, isFullScreen]);
 
-  useEffect(() => {
-    if (isFullScreen || state.fullScreenScope === "pane") return;
-    commitState((current) => setSidebarFullScreenScope(current, "pane"));
-  }, [commitState, isFullScreen, state.fullScreenScope]);
-
   const selectTab = useCallback(
     (paneId: string, tabId: string) => {
       commitState((current) => selectSidebarTab(current, paneId, tabId));
@@ -473,11 +463,15 @@ export function SidebarSplitContainer({
     (paneId: string) => {
       const current = stateRef.current;
       if (isPanelFullScreen(current, isFullScreen)) {
+        commitState((latest) => setSidebarFullScreenScope(latest, "pane"));
         onToggleFullScreen();
         return;
       }
       const next = commitState((latest) =>
-        toggleSidebarPaneMaximize(latest, paneId),
+        setSidebarFullScreenScope(
+          toggleSidebarPaneMaximize(latest, paneId),
+          "pane",
+        ),
       );
       if (
         next !== current &&
@@ -491,6 +485,7 @@ export function SidebarSplitContainer({
 
   const toggleFullScreenAllPanes = useCallback(() => {
     if (isPanelFullScreen(stateRef.current, isFullScreen)) {
+      commitState((current) => setSidebarFullScreenScope(current, "pane"));
       onToggleFullScreen();
       return;
     }

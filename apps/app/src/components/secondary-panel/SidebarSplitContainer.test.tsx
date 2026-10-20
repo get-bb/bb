@@ -929,25 +929,58 @@ describe("SidebarSplitContainer", () => {
       ).not.toBeNull();
     });
 
-    it("drops the all-panes scope when the host keeps the conversation visible", () => {
+    function containerElement(
+      isFullScreen: boolean,
+      onToggleFullScreen: () => void = vi.fn(),
+    ) {
+      return (
+        <SidebarProvider>
+          <TooltipProvider>
+            <SidebarSplitContainer
+              activeTabId="tab-a"
+              isFullScreen={isFullScreen}
+              onActivateTab={vi.fn()}
+              onGlobalTabReorder={vi.fn()}
+              onToggleFullScreen={onToggleFullScreen}
+              panelStateId={PANEL_STATE_ID}
+              renderPane={(pane) => <FullScreenPane {...pane} />}
+              tabs={TABS}
+            />
+          </TooltipProvider>
+        </SidebarProvider>
+      );
+    }
+
+    it("keeps every pane visible when the panel closes and reopens in full screen", () => {
+      persistState(setSidebarFullScreenScope(createTwoPaneState(), "panel"));
+      const view = render(containerElement(true));
+      expectEveryPaneVisible();
+
+      view.rerender(containerElement(false));
+      view.rerender(containerElement(true));
+
+      expectEveryPaneVisible();
+    });
+
+    it("maximizes one pane even after a declined all-panes request", () => {
       persistState(createTwoPaneState());
-      renderFullScreenHarness(false, true);
+      const view = render(containerElement(false));
       const [firstPaneId] = listPaneIds();
       if (firstPaneId === undefined) throw new Error("Expected a split pane");
-
       fireEvent.click(
         screen.getByRole("button", { name: `All panes ${firstPaneId}` }),
       );
 
-      expect(screen.getByTestId("full-screen").textContent).toBe(
-        "conversation visible",
+      fireEvent.click(
+        screen.getByRole("button", { name: `Maximize ${firstPaneId}` }),
       );
-      const stored = window.localStorage.getItem(
-        sidebarSplitStorageKey(PANEL_STATE_ID),
-      );
-      expect(stored === null ? null : JSON.parse(stored)).not.toHaveProperty(
-        "fullScreenScope",
-      );
+      view.rerender(containerElement(true));
+
+      expect(
+        document.querySelector(
+          `[data-split-pane-id="${firstPaneId}"][data-maximized="true"]`,
+        ),
+      ).not.toBeNull();
     });
 
     it("reports the all-panes scope to a lone pane", () => {
