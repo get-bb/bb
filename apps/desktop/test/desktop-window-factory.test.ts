@@ -17,7 +17,7 @@ import {
 } from "../src/desktop-window-factory.js";
 import type { DesktopContextMenuWebContents } from "../src/desktop-context-menu.js";
 import { BB_DESKTOP_ZOOM_CHANGED_CHANNEL } from "../src/desktop-update-ipc.js";
-import { readPersistedWindowStateEntries } from "../src/window-state.js";
+import { readPersistedWindowStateFile } from "../src/window-state.js";
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -360,7 +360,7 @@ describe("desktop window factory", () => {
     await factory.createWindow({ initialUrl: null, stateKey: null });
     expect(createdWindows[1]?.getBounds()).toEqual(bounds);
     expect(
-      await readPersistedWindowStateEntries({ userDataPath }),
+      (await readPersistedWindowStateFile({ userDataPath })).windows,
     ).toHaveLength(1);
   });
 
@@ -377,7 +377,7 @@ describe("desktop window factory", () => {
     second.emit("resize");
     await expect
       .poll(async () =>
-        (await readPersistedWindowStateEntries({ userDataPath })).map(
+        (await readPersistedWindowStateFile({ userDataPath })).windows.map(
           (entry) => entry.bounds,
         ),
       )
@@ -385,7 +385,7 @@ describe("desktop window factory", () => {
     first.emitClosed();
     await factory.persistOpenWindows();
     expect(
-      (await readPersistedWindowStateEntries({ userDataPath })).map(
+      (await readPersistedWindowStateFile({ userDataPath })).windows.map(
         (entry) => entry.stateKey,
       ),
     ).toEqual(["window-fallback"]);
@@ -414,7 +414,7 @@ describe("desktop window factory", () => {
     },
   );
 
-  it("retains zoom through server navigation, close and a fresh factory", async () => {
+  it("shares one zoom across windows, new windows, navigation and restart", async () => {
     const { factory, createdWindows, userDataPath } =
       await createFactoryHarness();
     await factory.createWindow({
@@ -426,19 +426,28 @@ describe("desktop window factory", () => {
     await expect
       .poll(
         async () =>
-          (await readPersistedWindowStateEntries({ userDataPath }))[0]
-            ?.zoomFactor,
+          (await readPersistedWindowStateFile({ userDataPath })).zoomFactor,
       )
       .toBe(1.4);
+    await factory.createWindow({
+      initialUrl: "https://one.example",
+      stateKey: null,
+    });
+    factory.zoom(createdWindows[1]!.webContents.id, "in");
     await factory.loadUrl({ url: "https://two.example" });
-    expect(createdWindows[0]!.webContents.getZoomFactor()).toBe(1.4);
-    createdWindows[0]!.emitClosed();
+    expect(
+      createdWindows.map((window) => window.webContents.getZoomFactor()),
+    ).toEqual([1.5, 1.5]);
     await factory.persistOpenWindows();
     const restarted = await createFactoryHarness({ userDataPath });
     await restarted.factory.restoreSavedWindows({
       initialUrl: "https://one.example",
     });
-    expect(restarted.createdWindows[0]!.webContents.getZoomFactor()).toBe(1.4);
+    expect(
+      restarted.createdWindows.map((window) =>
+        window.webContents.getZoomFactor(),
+      ),
+    ).toEqual([1.5, 1.5]);
   });
 
   it("freezes saved geometry during quit teardown", async () => {
@@ -457,7 +466,7 @@ describe("desktop window factory", () => {
     window.emitClosed();
     await factory.persistOpenWindows();
     expect(
-      (await readPersistedWindowStateEntries({ userDataPath }))[0]?.bounds,
+      (await readPersistedWindowStateFile({ userDataPath })).windows[0]?.bounds,
     ).toEqual(bounds);
   });
 
@@ -536,33 +545,34 @@ describe("desktop window factory", () => {
 
     await factory.persistOpenWindows();
     await expect(
-      readPersistedWindowStateEntries({ userDataPath }),
-    ).resolves.toEqual([
-      {
-        bounds: {
-          height: 900,
-          width: 1280,
-          x: 80,
-          y: 80,
+      readPersistedWindowStateFile({ userDataPath }),
+    ).resolves.toEqual({
+      windows: [
+        {
+          bounds: {
+            height: 900,
+            width: 1280,
+            x: 80,
+            y: 80,
+          },
+          isFullScreen: false,
+          isMaximized: false,
+          stateKey: "main",
         },
-        isFullScreen: false,
-        isMaximized: false,
-        stateKey: "main",
-        zoomFactor: 1,
-      },
-      {
-        bounds: {
-          height: 900,
-          width: 1280,
-          x: 80,
-          y: 80,
+        {
+          bounds: {
+            height: 900,
+            width: 1280,
+            x: 80,
+            y: 80,
+          },
+          isFullScreen: false,
+          isMaximized: false,
+          stateKey: "window-second",
         },
-        isFullScreen: false,
-        isMaximized: false,
-        stateKey: "window-second",
-        zoomFactor: 1,
-      },
-    ]);
+      ],
+      zoomFactor: 1,
+    });
   });
 
   it("allocates distinct state keys for concurrent implicit windows", async () => {
@@ -589,7 +599,7 @@ describe("desktop window factory", () => {
     expect(createdWindows).toHaveLength(2);
 
     await factory.persistOpenWindows();
-    const persistedEntries = await readPersistedWindowStateEntries({
+    const { windows: persistedEntries } = await readPersistedWindowStateFile({
       userDataPath,
     });
     const stateKeys = persistedEntries.map((entry) => entry.stateKey);

@@ -29,11 +29,6 @@ const windowBoundsSchema = z.object({
 
 const persistedWindowStateSchema = z.object({
   bounds: windowBoundsSchema,
-  zoomFactor: z
-    .number()
-    .min(BB_DESKTOP_MIN_ZOOM_PERCENT / 100)
-    .max(BB_DESKTOP_MAX_ZOOM_PERCENT / 100)
-    .catch(1),
   isFullScreen: z.boolean(),
   isMaximized: z.boolean(),
 });
@@ -44,19 +39,24 @@ const persistedWindowStateEntrySchema = persistedWindowStateSchema.extend({
 
 const persistedWindowStateFileSchema = z.object({
   windows: z.array(persistedWindowStateEntrySchema),
+  zoomFactor: z
+    .number()
+    .min(BB_DESKTOP_MIN_ZOOM_PERCENT / 100)
+    .max(BB_DESKTOP_MAX_ZOOM_PERCENT / 100)
+    .catch(1),
 });
 
-interface ReadPersistedWindowStateArgs {
-  stateKey: WindowStateKey;
+const EMPTY_WINDOW_STATE_FILE: PersistedWindowStateFile = {
+  windows: [],
+  zoomFactor: 1,
+};
+
+interface ReadPersistedWindowStateFileArgs {
   userDataPath: string;
 }
 
-interface ReadPersistedWindowStateEntriesArgs {
-  userDataPath: string;
-}
-
-interface WritePersistedWindowStateEntriesArgs {
-  entries: PersistedWindowStateEntry[];
+interface WritePersistedWindowStateFileArgs {
+  file: PersistedWindowStateFile;
   userDataPath: string;
 }
 
@@ -72,7 +72,6 @@ interface HasVisibleAreaArgs {
 
 export interface StatefulBrowserWindow {
   getNormalBounds(): WindowBounds;
-  webContents: { getZoomFactor(): number };
   isDestroyed(): boolean;
   isFullScreen(): boolean;
   isMaximized(): boolean;
@@ -81,7 +80,7 @@ export interface StatefulBrowserWindow {
 interface RestoreBrowserWindowStateArgs {
   displayWorkAreas: DisplayWorkArea[] | null;
   stateKey: WindowStateKey;
-  userDataPath: string;
+  windows: PersistedWindowStateEntry[];
 }
 
 interface CreatePersistedWindowStateEntryArgs {
@@ -151,40 +150,19 @@ export function restoreWindowState(
   return args.persistedState;
 }
 
-export async function readPersistedWindowState(
-  args: ReadPersistedWindowStateArgs,
-): Promise<PersistedWindowState | null> {
-  const entries = await readPersistedWindowStateEntries({
-    userDataPath: args.userDataPath,
-  });
-  const entry = entries.find(
-    (candidate) => candidate.stateKey === args.stateKey,
-  );
-  if (entry === undefined) {
-    return null;
-  }
-  return {
-    bounds: entry.bounds,
-    zoomFactor: entry.zoomFactor,
-    isFullScreen: entry.isFullScreen,
-    isMaximized: entry.isMaximized,
-  };
-}
-
-export async function readPersistedWindowStateEntries(
-  args: ReadPersistedWindowStateEntriesArgs,
-): Promise<PersistedWindowStateEntry[]> {
+export async function readPersistedWindowStateFile(
+  args: ReadPersistedWindowStateFileArgs,
+): Promise<PersistedWindowStateFile> {
   try {
     const rawState = await readFile(windowStatePath(args.userDataPath), "utf8");
-    const parsed = parsePersistedWindowStateFile(rawState);
-    return parsed === null ? [] : parsed.windows;
+    return parsePersistedWindowStateFile(rawState) ?? EMPTY_WINDOW_STATE_FILE;
   } catch {
-    return [];
+    return EMPTY_WINDOW_STATE_FILE;
   }
 }
 
-export async function writePersistedWindowStateEntries(
-  args: WritePersistedWindowStateEntriesArgs,
+export async function writePersistedWindowStateFile(
+  args: WritePersistedWindowStateFileArgs,
 ): Promise<void> {
   await mkdir(args.userDataPath, { recursive: true });
   const path = windowStatePath(args.userDataPath);
@@ -192,7 +170,7 @@ export async function writePersistedWindowStateEntries(
   try {
     await writeFile(
       temporaryPath,
-      `${JSON.stringify({ windows: args.entries }, null, 2)}\n`,
+      `${JSON.stringify(args.file, null, 2)}\n`,
       "utf8",
     );
     await rename(temporaryPath, path);
@@ -217,15 +195,22 @@ function browserWindowBounds(
   };
 }
 
-export async function restoreBrowserWindowState(
+export function restoreBrowserWindowState(
   args: RestoreBrowserWindowStateArgs,
-): Promise<PersistedWindowState> {
+): PersistedWindowState {
+  const entry = args.windows.find(
+    (candidate) => candidate.stateKey === args.stateKey,
+  );
   return restoreWindowState({
     displayWorkAreas: args.displayWorkAreas ?? getDisplayWorkAreas(),
-    persistedState: await readPersistedWindowState({
-      stateKey: args.stateKey,
-      userDataPath: args.userDataPath,
-    }),
+    persistedState:
+      entry === undefined
+        ? null
+        : {
+            bounds: entry.bounds,
+            isFullScreen: entry.isFullScreen,
+            isMaximized: entry.isMaximized,
+          },
   });
 }
 
@@ -234,7 +219,6 @@ export function createPersistedWindowStateEntry(
 ): PersistedWindowStateEntry {
   return {
     bounds: browserWindowBounds(args.browserWindow),
-    zoomFactor: args.browserWindow.webContents.getZoomFactor(),
     isFullScreen: args.browserWindow.isFullScreen(),
     isMaximized: args.browserWindow.isMaximized(),
     stateKey: args.stateKey,

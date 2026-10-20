@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  readPersistedWindowStateEntries,
+  readPersistedWindowStateFile,
   restoreWindowState,
-  writePersistedWindowStateEntries,
+  writePersistedWindowStateFile,
 } from "../src/window-state.js";
 import {
   DEFAULT_WINDOW_STATE,
@@ -54,7 +54,6 @@ describe("window state helpers", () => {
         x: 100,
         y: 100,
       },
-      zoomFactor: 1,
       isFullScreen: false,
       isMaximized: true,
     };
@@ -75,7 +74,6 @@ describe("window state helpers", () => {
         x: 10_000,
         y: 10_000,
       },
-      zoomFactor: 1,
       isFullScreen: false,
       isMaximized: true,
     };
@@ -99,7 +97,6 @@ describe("window state helpers", () => {
             x: 1_435,
             y: 895,
           },
-          zoomFactor: 1,
           isFullScreen: false,
           isMaximized: false,
         },
@@ -114,12 +111,16 @@ describe("window state helpers", () => {
       await writeFile(
         join(tempDir.path, "window-state.json"),
         JSON.stringify({
-          windows: [{ ...DEFAULT_WINDOW_STATE, stateKey: "main", zoomFactor }],
+          windows: [{ ...DEFAULT_WINDOW_STATE, stateKey: "main" }],
+          zoomFactor,
         }),
       );
       expect(
-        await readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
-      ).toEqual([{ ...DEFAULT_WINDOW_STATE, stateKey: "main" }]);
+        await readPersistedWindowStateFile({ userDataPath: tempDir.path }),
+      ).toEqual({
+        windows: [{ ...DEFAULT_WINDOW_STATE, stateKey: "main" }],
+        zoomFactor: 1,
+      });
     },
   );
 
@@ -133,7 +134,6 @@ describe("window state helpers", () => {
           x: 40,
           y: 60,
         },
-        zoomFactor: 1,
         isFullScreen: false,
         isMaximized: true,
         stateKey: "main",
@@ -145,20 +145,20 @@ describe("window state helpers", () => {
           x: 240,
           y: 160,
         },
-        zoomFactor: 1,
         isFullScreen: false,
         isMaximized: false,
         stateKey: "window-2",
       },
     ];
 
-    await writePersistedWindowStateEntries({
-      entries: persistedStates,
+    const file = { windows: persistedStates, zoomFactor: 1.3 };
+    await writePersistedWindowStateFile({
+      file,
       userDataPath: tempDir.path,
     });
 
     await expect(
-      readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
-    ).resolves.toEqual(persistedStates);
+      readPersistedWindowStateFile({ userDataPath: tempDir.path }),
+    ).resolves.toEqual(file);
   });
 });

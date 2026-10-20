@@ -12,9 +12,9 @@ import {
 } from "./types.js";
 import {
   createPersistedWindowStateEntry,
-  writePersistedWindowStateEntries,
-  readPersistedWindowStateEntries,
+  readPersistedWindowStateFile,
   restoreBrowserWindowState,
+  writePersistedWindowStateFile,
   type StatefulBrowserWindow,
 } from "./window-state.js";
 import { resolveDesktopExternalUrl } from "./desktop-external-url.js";
@@ -247,7 +247,7 @@ export function createDesktopWindowFactory(
 ): DesktopWindowFactory {
   const activeWindows = new Map<WindowStateKey, DesktopBrowserWindow>();
   const pendingStateKeys = new Set<WindowStateKey>();
-  const zoomFactors = new Map<number, number>();
+  let zoomFactor: number | null = null;
   let pendingWrite = Promise.resolve();
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -264,18 +264,22 @@ export function createDesktopWindowFactory(
       );
   }
 
-  function writeEntries(entries: PersistedWindowStateEntry[]): Promise<void> {
-    pendingWrite = pendingWrite
-      .catch((error) =>
-        console.error("Could not save desktop window state", error),
-      )
-      .then(() =>
-        writePersistedWindowStateEntries({
-          entries,
-          userDataPath: args.userDataPath,
-        }),
-      );
+  function settledWrite(): Promise<void> {
+    return pendingWrite.catch(() => {});
+  }
+
+  function writeEntries(windows: PersistedWindowStateEntry[]): Promise<void> {
+    pendingWrite = settledWrite().then(() =>
+      writePersistedWindowStateFile({
+        file: { windows, zoomFactor: zoomFactor ?? 1 },
+        userDataPath: args.userDataPath,
+      }),
+    );
     return pendingWrite;
+  }
+
+  function applyZoomFactor(browserWindow: DesktopBrowserWindow): void {
+    browserWindow.webContents.setZoomFactor(zoomFactor ?? 1);
   }
 
   function scheduleSave(): void {
@@ -301,11 +305,15 @@ export function createDesktopWindowFactory(
     pendingStateKeys.add(stateKey);
 
     try {
-      await pendingWrite.catch(() => {});
-      const restoredState = await restoreBrowserWindowState({
+      await settledWrite();
+      const savedState = await readPersistedWindowStateFile({
+        userDataPath: args.userDataPath,
+      });
+      zoomFactor ??= savedState.zoomFactor;
+      const restoredState = restoreBrowserWindowState({
         displayWorkAreas: args.displayWorkAreas,
         stateKey,
-        userDataPath: args.userDataPath,
+        windows: savedState.windows,
       });
       const browserWindow = args.browserWindowCreator.create(
         createWindowOptions({
@@ -340,7 +348,6 @@ export function createDesktopWindowFactory(
       browserWindow.webContents.session.setSpellCheckerEnabled(true);
 
       activeWindows.set(stateKey, browserWindow);
-      const webContentsId = browserWindow.webContents.id;
 
       if (restoredState.isMaximized) {
         browserWindow.maximize();
@@ -387,14 +394,9 @@ export function createDesktopWindowFactory(
       });
       browserWindow.on("closed", () => {
         activeWindows.delete(stateKey);
-        zoomFactors.delete(webContentsId);
       });
-      zoomFactors.set(webContentsId, restoredState.zoomFactor);
-      browserWindow.webContents.setZoomFactor(restoredState.zoomFactor);
       browserWindow.webContents.on("dom-ready", () => {
-        browserWindow.webContents.setZoomFactor(
-          zoomFactors.get(webContentsId) ?? restoredState.zoomFactor,
-        );
+        applyZoomFactor(browserWindow);
       });
       browserWindow.webContents.setWindowOpenHandler((details) => {
         const url = resolveDesktopExternalUrl(details.url);
@@ -420,7 +422,7 @@ export function createDesktopWindowFactory(
   async function restoreSavedWindows(
     restoreArgs: RestoreDesktopWindowsArgs,
   ): Promise<DesktopBrowserWindow[]> {
-    const entries = await readPersistedWindowStateEntries({
+    const { windows: entries } = await readPersistedWindowStateFile({
       userDataPath: args.userDataPath,
     });
     if (entries.length === 0) {
@@ -478,7 +480,7 @@ export function createDesktopWindowFactory(
     clearSaveTimer();
     const entries = snapshotWindows();
     if (entries.length > 0) await writeEntries(entries);
-    else await pendingWrite;
+    else await settledWrite();
   }
 
   return {
@@ -491,16 +493,11 @@ export function createDesktopWindowFactory(
     openDevTools,
     persistOpenWindows,
     zoom(webContentsId, command) {
-      const window = [...activeWindows.values()].find(
-        (window) => window.webContents.id === webContentsId,
-      );
-      if (!window) return false;
-      const factor = nextZoomFactor(
-        window.webContents.getZoomFactor(),
-        command,
-      );
-      zoomFactors.set(webContentsId, factor);
-      window.webContents.setZoomFactor(factor);
+      const windows = [...activeWindows.values()];
+      if (!windows.some((window) => window.webContents.id === webContentsId))
+        return false;
+      zoomFactor = nextZoomFactor(zoomFactor ?? 1, command);
+      for (const window of windows) applyZoomFactor(window);
       void persistOpenWindows().catch((error) =>
         console.error("Could not save desktop window state", error),
       );
