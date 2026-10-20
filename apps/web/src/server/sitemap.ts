@@ -40,6 +40,7 @@ export function sitemapXml(
     { path: "/plugin-guide" },
     { path: "/privacy" },
     { path: "/brand" },
+    { path: "/reviewers" },
     ...contentPaths.map((path) => ({ path })),
     ...posts.map((post) => ({
       path: `/blog/${encodeURIComponent(post.slug)}`,
