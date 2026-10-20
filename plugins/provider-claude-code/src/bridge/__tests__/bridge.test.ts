@@ -23,13 +23,19 @@ import {
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
+const { forkSessionMock, queryMock, contextQueryMock } = vi.hoisted(() => ({
   forkSessionMock: vi.fn(),
   queryMock: vi.fn(),
+  contextQueryMock: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: queryMock,
+  query: (args: {
+    options?: { persistSession?: boolean; forkSession?: boolean };
+  }) =>
+    args.options?.persistSession === false && args.options.forkSession === true
+      ? contextQueryMock(args)
+      : queryMock(args),
   forkSession: forkSessionMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
@@ -84,6 +90,7 @@ interface CanUseToolPolicyCase {
 }
 
 interface ControlledClaudeQuery {
+  mcpServerStatus: ReturnType<typeof vi.fn>;
   getContextUsage: ReturnType<typeof vi.fn>;
   applyFlagSettings: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
@@ -100,6 +107,7 @@ interface ControlledClaudeQuery {
 
 interface ClaudeQueryCallOptions {
   allowDangerouslySkipPermissions?: boolean;
+  mcpServers?: BridgeSessionOptions["mcpServers"];
   canUseTool?: CanUseTool;
   env?: Record<string, string | undefined>;
   extraArgs?: Record<string, string | null>;
@@ -304,6 +312,9 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     finish() {
       pushResult({ value: undefined, done: true });
     },
+    mcpServerStatus: vi
+      .fn()
+      .mockResolvedValue([{ name: "bb-bridge", status: "connected" }]),
     getContextUsage: vi.fn().mockResolvedValue(null),
     initializationResult: vi.fn(),
     interrupt: vi.fn().mockResolvedValue(undefined),
@@ -670,6 +681,7 @@ async function forwardAskUserQuestion({
 describe("bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    contextQueryMock.mockImplementation(() => createControlledClaudeQuery());
     forkSessionMock.mockResolvedValue({ sessionId: "forked-session-1" });
     queryMock.mockReturnValue({
       initializationResult: vi.fn().mockResolvedValue({
@@ -725,15 +737,20 @@ describe("bridge", () => {
     async (capacity, delayed) => {
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
       const queries: ControlledClaudeQuery[] = [];
+      const contextReads = vi.fn().mockResolvedValue({
+        categories: [{ name: "Provider category", tokens: 450 }],
+        totalTokens: 450,
+        rawMaxTokens: capacity,
+        model: "claude-test",
+        isAutoCompactEnabled: false,
+      });
+      contextQueryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        query.getContextUsage = contextReads;
+        return query;
+      });
       queryMock.mockImplementation(() => {
         const query = createControlledClaudeQuery();
-        query.getContextUsage.mockResolvedValue({
-          categories: [{ name: "Provider category", tokens: 450 }],
-          totalTokens: 450,
-          rawMaxTokens: capacity,
-          model: "claude-test",
-          isAutoCompactEnabled: false,
-        });
         queries.push(query);
         return query;
       });
@@ -768,7 +785,7 @@ describe("bridge", () => {
         );
         await readNextPrompt(getLatestQueryCall());
         await bridge.waitForResponse(2);
-        if (delayed) queries[0].getContextUsage.mockReturnValueOnce(pending);
+        if (delayed) contextReads.mockReturnValueOnce(pending);
         queries[0].emit({
           type: "system",
           subtype: "init",
@@ -787,9 +804,7 @@ describe("bridge", () => {
           session_id: threadId,
         });
         if (delayed) {
-          await vi.waitFor(() =>
-            expect(queries[0].getContextUsage).toHaveBeenCalledTimes(1),
-          );
+          await vi.waitFor(() => expect(contextReads).toHaveBeenCalledTimes(1));
           queries[0].emit(
             createAssistantToolUseMessage({
               parentToolUseId: null,
@@ -863,7 +878,7 @@ describe("bridge", () => {
             },
           ]);
         });
-        expect(queries[0].getContextUsage).toHaveBeenCalledTimes(1);
+        expect(contextReads).toHaveBeenCalledTimes(1);
         queries[0].emit(
           createAssistantToolUseMessage({
             parentToolUseId: null,
@@ -886,10 +901,8 @@ describe("bridge", () => {
           expect(usage?.snapshot).toBeUndefined();
         });
         queries[0].emit(createSuccessfulResultMessage(threadId));
-        await vi.waitFor(() =>
-          expect(queries[0].getContextUsage).toHaveBeenCalledTimes(2),
-        );
-        queries[0].getContextUsage.mockResolvedValue(null);
+        await vi.waitFor(() => expect(contextReads).toHaveBeenCalledTimes(2));
+        contextReads.mockResolvedValue(null);
         queries[0].emit({
           type: "system",
           subtype: "compact_boundary",
@@ -913,7 +926,7 @@ describe("bridge", () => {
             modelContextWindow: null,
             estimated: true,
           });
-          expect(queries[0].getContextUsage).toHaveBeenCalledTimes(3);
+          expect(contextReads).toHaveBeenCalledTimes(3);
         });
       } finally {
         await stopBridgeThread({ bridge, queries, threadId });
@@ -921,6 +934,93 @@ describe("bridge", () => {
       }
     },
   );
+
+  it("keeps prompts on the live session while automatic context reporting is blocked", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const live = createControlledClaudeQuery();
+    const reports: ControlledClaudeQuery[] = [];
+    queryMock.mockReturnValue(live);
+    contextQueryMock.mockImplementation(() => {
+      const report = createControlledClaudeQuery();
+      report.getContextUsage.mockReturnValue(new Promise(() => {}));
+      reports.push(report);
+      return report;
+    });
+    const threadId = "thread-isolated-context";
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: canonicalOptions({}),
+        dynamicTools: [
+          {
+            name: "probe_tool",
+            description: "Probe tool",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+      });
+      await bridge.waitForResponse(1);
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          input: [{ type: "text", text: "first" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      live.emit(createSuccessfulResultMessage(threadId));
+      await bridge.flushWork();
+      expect(reports).toHaveLength(1);
+      expect(reports[0].getContextUsage).toHaveBeenCalledOnce();
+      const reportOptions = contextQueryMock.mock.calls[0][0].options;
+      expect(reportOptions).toMatchObject({
+        resume: threadId,
+        forkSession: true,
+        persistSession: false,
+        settings: { disableAllHooks: true },
+      });
+      expect(reportOptions.hooks).toBeUndefined();
+      expect(reportOptions.mcpServers["bb-bridge"].instance).not.toBe(
+        getLatestQueryOptions().mcpServers?.["bb-bridge"].instance,
+      );
+
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          input: [{ type: "text", text: "continue while report is blocked" }],
+        }),
+      );
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "continue while report is blocked",
+      );
+      await bridge.waitForResponse(3);
+      expect(live.getContextUsage).not.toHaveBeenCalled();
+      expect(live.close).not.toHaveBeenCalled();
+      expect(queryMock).toHaveBeenCalledOnce();
+
+      live.emit(createSuccessfulResultMessage(threadId));
+      await bridge.flushWork();
+      expect(reports[0].close).toHaveBeenCalledOnce();
+      expect(reports).toHaveLength(2);
+      expect(
+        assembleCapturedThreadEvents(bridge.messages, "claude-code").filter(
+          (event) => event.type === "turn/completed",
+        ),
+      ).toHaveLength(2);
+    } finally {
+      await stopBridgeThread({ bridge, queries: [live], threadId });
+      expect(
+        reports.every((report) => report.close.mock.calls.length === 1),
+      ).toBe(true);
+      bridge.restore();
+    }
+  });
 
   it("publishes the session's live slash commands as provider commands", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

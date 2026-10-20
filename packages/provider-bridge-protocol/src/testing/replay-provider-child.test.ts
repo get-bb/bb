@@ -85,3 +85,84 @@ it.each(["", "1"])(
   },
   15_000,
 );
+
+it("keeps Claude diagnostic forks from consuming a recorded conversation segment", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bb-replay-diagnostic-"));
+  for (const [direction, seq, message] of [
+    [
+      "bridge→provider",
+      1,
+      {
+        type: "control_request",
+        request_id: "recorded",
+        request: { subtype: "initialize" },
+      },
+    ],
+    [
+      "provider→bridge",
+      2,
+      {
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: "recorded",
+          response: { marker: "conversation" },
+        },
+      },
+    ],
+  ] as const) {
+    writeFileSync(
+      join(dir, `${direction}.ndjson`),
+      JSON.stringify({
+        ts: seq,
+        run: 1,
+        seq,
+        dir: direction,
+        line: JSON.stringify(message),
+      }) + "\n",
+    );
+  }
+  async function initialize(extraArgs: string[]): Promise<string> {
+    const child = spawn(
+      process.execPath,
+      [
+        fileURLToPath(new URL("./replay-provider-child.mjs", import.meta.url)),
+        "--recording",
+        dir,
+        "--dialect",
+        "claude-cli",
+        "--state",
+        dir,
+        ...extraArgs,
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const closed = once(child, "close");
+    let output = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      output += chunk;
+    });
+    try {
+      child.stdin.write(
+        JSON.stringify({
+          type: "control_request",
+          request_id: "live",
+          request: { subtype: "initialize" },
+        }) + "\n",
+      );
+      await expect.poll(() => output).toContain('"request_id":"live"');
+      return output;
+    } finally {
+      child.kill();
+      await closed;
+    }
+  }
+  try {
+    expect(
+      await initialize(["--fork-session", "--no-session-persistence"]),
+    ).not.toContain('"marker":"conversation"');
+    expect(await initialize([])).toContain('"marker":"conversation"');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

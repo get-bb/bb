@@ -45,3 +45,8 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 
 Inspect the thread and provider state after a change; do not restart unrelated
 threads or change settings merely to answer a question.
+
+Automatic context breakdowns run in a separate, non-persisted fork of the saved
+conversation. Reporting never sends prompts or control requests to the live
+Claude session. A timeout, replacement, or thread stop closes the reporter;
+the live conversation does not wait for reporting or restart because of it.

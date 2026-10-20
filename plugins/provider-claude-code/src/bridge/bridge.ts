@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { ClaudeContextUsageCollector } from "./context-usage.js";
+import { readIsolatedClaudeContextUsage } from "./context-usage-probe.js";
 
 import {
   type PendingInteractionGrantedPermissionProfile,
@@ -420,6 +421,7 @@ function resolvePendingSessionWork(
   threadSession: ThreadSession,
   message: string,
 ): void {
+  threadSession.contextUsageCollector.cancel();
   toolCallTracker.resolvePendingToolCalls(threadSession, message);
   resolvePendingInteractiveRequests(threadSession, message);
 }
@@ -1576,7 +1578,15 @@ function createOnSdkMessage(
       }
       if (providerThreadId) {
         void threadSession.contextUsageCollector.capture({
-          read: () => threadSession.session.getContextUsage(),
+          read: (signal) =>
+            readIsolatedClaudeContextUsage({
+              sessionOptions: threadSession.attachment.sessionOptions,
+              providerSessionId: providerThreadId,
+              dynamicTools:
+                threadSession.attachment.sessionConstructionConfig
+                  .dynamicTools ?? [],
+              signal,
+            }),
           providerSessionId: providerThreadId,
           isCurrent: () =>
             getCurrentThreadSession({
