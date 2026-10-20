@@ -949,7 +949,7 @@ function FilePreviewHeader({
                         }
                       >
                         <Icon name="TextWrap" aria-hidden />
-                        {getLineWrapToggleLabel(lineOverflowMode)}
+                        Line wrap
                       </DropdownMenuCheckboxItem>
                     </>
                   ) : null}
