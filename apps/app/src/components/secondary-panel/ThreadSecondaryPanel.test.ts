@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   getSecondaryPanelChromeStackClassName,
-  isSecondaryPanelLayoutTransition,
   resolveCollapsedPanelTrafficLightReserveClassName,
 } from "./ThreadSecondaryPanel";
 import {
@@ -9,14 +8,6 @@ import {
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
 } from "@/lib/bb-desktop";
-
-describe("secondary panel native browser bounds settling", () => {
-  it("recognizes the flex transitions that move the panel back to its restored position", () => {
-    expect(isSecondaryPanelLayoutTransition("flex-grow")).toBe(true);
-    expect(isSecondaryPanelLayoutTransition("flex-basis")).toBe(true);
-    expect(isSecondaryPanelLayoutTransition("opacity")).toBe(false);
-  });
-});
 
 describe("getSecondaryPanelChromeStackClassName", () => {
   it("reserves the combined navigation and active Diff toolbar height", () => {

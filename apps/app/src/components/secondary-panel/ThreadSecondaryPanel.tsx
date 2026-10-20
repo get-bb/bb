@@ -5,7 +5,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
-  type TransitionEvent,
   useCallback,
   useContext,
   useLayoutEffect,
@@ -108,7 +107,6 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import type { SplitSide } from "@/lib/split-layout";
 import { PaneArrangementButton } from "@/views/thread-detail/PaneMaximizeButton";
 import {
@@ -123,11 +121,6 @@ export type {
   SecondaryPanelRenderableTab,
 } from "./secondaryPanelTab";
 
-export function isSecondaryPanelLayoutTransition(
-  propertyName: string,
-): boolean {
-  return propertyName === "flex-grow" || propertyName === "flex-basis";
-}
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
@@ -372,19 +365,6 @@ function ThreadSecondaryPanelContent({
     hasPanelExpandedRef.current = false;
     onCollapse();
   }, [hostLayout?.isSuppressed, isOpen, onCollapse]);
-  const handlePanelTransitionEnd = useCallback(
-    (event: TransitionEvent<HTMLElement>) => {
-      if (
-        event.target !== event.currentTarget ||
-        !isSecondaryPanelLayoutTransition(event.propertyName)
-      ) {
-        return;
-      }
-
-      dispatchBrowserViewBoundsSync();
-    },
-    [],
-  );
   const isLayoutOpen =
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedTab =
@@ -1218,7 +1198,6 @@ function ThreadSecondaryPanelContent({
         maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
-        onTransitionEnd={handlePanelTransitionEnd}
         order={2}
         style={SECONDARY_RESIZABLE_PANEL_STYLE}
         className={cn(
