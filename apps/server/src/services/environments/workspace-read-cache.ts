@@ -7,7 +7,7 @@ import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ServerChangedMessage } from "../../ws/hub.js";
 
 const IGNORED_ENVIRONMENT_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set(
-  ["metadata-changed", "thread-storage-changed"],
+  ["metadata-changed", "thread-storage-changed", "diff-viewed-changed"],
 );
 
 interface EnvironmentReadCacheReadArgs<TValue> {

@@ -250,7 +250,11 @@ describe("WorkspaceReadCaches", () => {
       type: "changed",
       entity: "environment",
       id: "env-1",
-      changes: ["metadata-changed", "thread-storage-changed"],
+      changes: [
+        "metadata-changed",
+        "thread-storage-changed",
+        "diff-viewed-changed",
+      ],
     });
     expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
   });

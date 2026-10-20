@@ -274,12 +274,12 @@ export function GitDiffToolbar({
           />
         </div>
         <div
-          className="flex min-w-0 flex-1 basis-auto items-center gap-3"
+          className="flex min-w-0 flex-1 basis-auto flex-wrap items-center gap-x-3 gap-y-2"
           data-testid="git-diff-toolbar-details"
         >
           <span
             className={cn(
-              "min-w-0 shrink truncate pl-2.5 text-muted-foreground",
+              "min-w-0 max-w-full shrink-0 truncate pl-2.5 text-muted-foreground",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
             data-testid="git-diff-toolbar-summary"
