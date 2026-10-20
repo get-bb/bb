@@ -324,7 +324,7 @@ export function SidebarNavigationModelProvider({
       },
       goHome(options) {
         const current = latest.current;
-        if (options.openInSplit) {
+        if (options?.openInSplit) {
           window.open(
             homeRoutePathRef.current,
             "_blank",

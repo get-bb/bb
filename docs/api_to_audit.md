@@ -1359,7 +1359,8 @@ ids are dropped and omitted ids keep their relative order at the end),
 menus close, returning focus to the opener), `openDetails`, and
 `disablePlugin`. `activate(id, { openInSplit: true })` opens Plugins and Skills
 in a browser tab synchronously from the user gesture, and
-`goHome({ openInSplit: true })` does the same for Home; New thread and plugin
+`goHome({ openInSplit: true })` does the same for Home (`goHome()` without
+options navigates in place); New thread and plugin
 panels retain their existing split, compact-screen and pane-limit rules.
 Search remains a command. Native shells retain their window-open policy.
 Calls after the caller unmounts do nothing; outside the

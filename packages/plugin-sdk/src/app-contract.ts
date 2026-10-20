@@ -285,9 +285,9 @@ export interface ExperimentalSidebarNavigationActions {
    * user had open before visiting Settings, Plugins, Skills, or a plugin
    * panel. `openInSplit` opens that screen in a browser tab instead because
    * Home does not support splits, with the same user-gesture requirement as
-   * `activate`.
+   * `activate`. Omitting `options` navigates in place.
    */
-  goHome(options: ExperimentalSidebarNavigationActivationOptions): void;
+  goHome(options?: ExperimentalSidebarNavigationActivationOptions): void;
   /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
   setVisible(itemId: string, isVisible: boolean): void;
   /**

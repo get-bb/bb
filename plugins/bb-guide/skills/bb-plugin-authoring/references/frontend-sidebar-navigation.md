@@ -75,8 +75,8 @@ and order persist to `sidebar.visiblePluginPanels` and
 `sidebar.pluginPanelOrder`, so they carry over when the user switches
 providers. `openCustomize()` opens bb's editor in a popover beside your
 navigation once any open menu closes, and returns focus to the control that
-opened it. Actions called after your component unmounts
-do nothing.
+opened it. `goHome()` without options navigates in place. Actions called
+after your component unmounts do nothing.
 
 `experimental_useSidebarNavigationSplit(id, options?)` works like
 `experimental_useSidebarThreadSplit`: spread `splitProps` onto the item, gate

@@ -2164,7 +2164,7 @@ export function renderSlot<
       goHome(activationOptions) {
         sidebarNavigationCalls.push({
           method: "goHome",
-          openInSplit: activationOptions.openInSplit,
+          openInSplit: activationOptions?.openInSplit ?? false,
         });
       },
       setVisible(itemId, isVisible) {
