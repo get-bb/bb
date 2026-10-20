@@ -589,6 +589,9 @@ export function parseShellCommandIntents(
       intents = [];
       return false;
     }
+    if (classification.kind === "none" && intents.length === 0) {
+      return false;
+    }
     if (classification.kind === "intent" && intents.length === 0) {
       intents.push(classification.intent);
     }
