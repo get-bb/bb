@@ -20,6 +20,7 @@ export function summarizeDiffFileEntries(
 
 interface DiffFileCardUiState {
   collapsed: boolean;
+  viewedRevision: string | null;
 }
 
 interface DiffFileCardInitialStateArgs {
@@ -34,7 +35,7 @@ export function resolveDiffFileCardInitialState({
   const collapsed =
     fileCount > GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD ||
     entry.changeKind === "deleted";
-  return { collapsed };
+  return { collapsed, viewedRevision: null };
 }
 
 interface DiffFileCardStateKey {
@@ -108,10 +109,14 @@ export function useDiffFilesCollapseControls(
           if (current?.collapsed === collapsed) {
             continue;
           }
-          set(stateAtom, { ...(current ?? {}), collapsed });
+          set(stateAtom, {
+            ...(current ??
+              resolveDiffFileCardInitialState({ entry, fileCount })),
+            collapsed,
+          });
         }
       },
-      [diffIdentity, files],
+      [diffIdentity, files, fileCount],
     ),
   );
 

@@ -335,7 +335,8 @@ export const DiffFileCard = memo(function DiffFileCard({
             isStuck: isHeaderStuck,
             showStuckHeaderEdge: false,
           }),
-          "@container/diff-card-header -mt-px border-t border-border",
+          "-mt-px border-t border-border",
+          isViewed && "bg-muted/50",
         )}
       >
         <GitDiffCardHeader
@@ -365,16 +366,17 @@ export const DiffFileCard = memo(function DiffFileCard({
                   onToggle={toggleSvgDisplayMode}
                 />
               ) : null}
-              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+              <label className="ml-1 flex shrink-0 cursor-pointer items-center gap-1.5 border-l border-border pl-3 whitespace-nowrap text-xs leading-none text-muted-foreground has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
                 <Checkbox
                   checked={isViewed}
+                  className="data-[state=checked]:border-muted-foreground data-[state=checked]:bg-muted data-[state=checked]:text-foreground"
                   disabled={isViewedDisabled}
                   onCheckedChange={(checked) =>
                     onViewedChange(checked === true)
                   }
                   aria-label={`Viewed ${headerModel.label}`}
                 />
-                <span className="@max-sm/diff-card-header:sr-only">Viewed</span>
+                <span>Viewed</span>
               </label>
             </>
           }

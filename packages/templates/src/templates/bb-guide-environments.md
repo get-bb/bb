@@ -165,13 +165,17 @@ Making your repo work with bb:
   blob ids (<oldMode>:<oldBlob>:<newMode>:<newBlob>). Any content or mode
   edit, including whitespace, changes it; staging does not.
 
-  bb environment diff-viewed list <id>    List files marked Viewed (revision, path)
+  bb environment diff-viewed list <id>    List files marked Viewed
+    --path <path>                         Limit to these paths; repeat up to 500 times (revision, path)
   bb environment diff-viewed mark <id>    Mark a file Viewed
     --path <path>                         Changed path (required)
     --revision <revision>                 Defaults to the file's current revision
   bb environment diff-viewed unmark <id>  Clear Viewed for --path <path>
   bb environment diff-viewed clear <id>   Clear Viewed for every file in the target
     All diff-viewed commands take --target, --merge-base-branch, --sha, --json.
+
+  Viewed mutation commands acknowledge success (`{ "ok": true }` with --json);
+  use list to read records. Omitting --path from list returns the whole target.
 
   Viewed is stored per environment and diff target. A file shows as Viewed
   only while its current revision equals the stored one, so new edits

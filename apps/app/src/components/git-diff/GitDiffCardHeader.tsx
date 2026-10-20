@@ -193,7 +193,6 @@ export function GitDiffCardHeader({
         </span>
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-2">
-        {actionSlot}
         {statSlot ?? (
           <DiffStatsTally
             insertions={headerInsertions}
@@ -202,6 +201,7 @@ export function GitDiffCardHeader({
             className="text-xs"
           />
         )}
+        {actionSlot}
       </span>
     </div>
   );

@@ -377,16 +377,25 @@ export function useEnvironmentDiffFiles(
 
 export function useEnvironmentDiffViewed(
   environmentId: string,
-  options: { target?: WorkspaceDiffTarget; enabled: boolean },
+  options: {
+    target?: WorkspaceDiffTarget;
+    enabled: boolean;
+    paths: readonly string[];
+  },
 ) {
   const { target } = options;
+  const paths = [...new Set(options.paths)].sort();
   const enabled =
-    options.enabled && Boolean(environmentId) && target !== undefined;
+    options.enabled &&
+    Boolean(environmentId) &&
+    target !== undefined &&
+    paths.length > 0;
   return useQuery({
     queryKey: environmentDiffViewedQueryKey(
       environmentId,
       target?.type ?? null,
       environmentDiffTargetKey(target),
+      paths,
     ),
     queryFn: ({ signal }) =>
       sdk.environments.experimental_diffViewed({
@@ -399,6 +408,7 @@ export function useEnvironmentDiffViewed(
           }),
         ),
         signal,
+        paths,
       }),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,

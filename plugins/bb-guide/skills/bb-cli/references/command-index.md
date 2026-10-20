@@ -228,7 +228,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb environment diff-file`
 - `bb environment diff-patch`
 - `bb environment diff-viewed`
-- `bb environment diff-viewed list`
+- `bb environment diff-viewed list` (repeat `--path` for a bounded lookup)
 - `bb environment diff-viewed mark`
 - `bb environment diff-viewed unmark`
 - `bb environment diff-viewed clear`

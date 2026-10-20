@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { diffViewedFiles } from "../schema.js";
 
@@ -15,7 +15,9 @@ export interface DiffViewedFileRecord {
 export function listDiffViewedFiles(
   db: DbConnection,
   scope: DiffViewedFileScope,
+  paths: readonly string[] | null,
 ): DiffViewedFileRecord[] {
+  if (paths?.length === 0) return [];
   return db
     .select({
       path: diffViewedFiles.path,
@@ -26,6 +28,7 @@ export function listDiffViewedFiles(
       and(
         eq(diffViewedFiles.environmentId, scope.environmentId),
         eq(diffViewedFiles.targetKey, scope.targetKey),
+        paths === null ? undefined : inArray(diffViewedFiles.path, [...paths]),
       ),
     )
     .orderBy(diffViewedFiles.path)

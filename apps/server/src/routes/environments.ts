@@ -535,17 +535,27 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }
     const ignoreWhitespace = query.ignoreWhitespace === "true";
-    const result = await callHostRetryableOnlineRpc(deps, {
+    const result = await deps.workspaceReadCaches.diffFiles.read({
+      environmentId: target.environmentId,
       hostId: target.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "workspace.diffFiles",
-        environmentId: target.environmentId,
-        workspaceContext: target.workspaceContext,
+      key: JSON.stringify({
         target: toWorkspaceDiffTarget(query),
-        maxFiles: WORKSPACE_DIFF_MAX_FILES,
         ignoreWhitespace,
-      },
+        workspaceContext: target.workspaceContext,
+      }),
+      load: () =>
+        callHostRetryableOnlineRpc(deps, {
+          hostId: target.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "workspace.diffFiles",
+            environmentId: target.environmentId,
+            workspaceContext: target.workspaceContext,
+            target: toWorkspaceDiffTarget(query),
+            maxFiles: WORKSPACE_DIFF_MAX_FILES,
+            ignoreWhitespace,
+          },
+        }),
     });
     if (result.outcome === "unavailable") {
       return context.json({
@@ -620,7 +630,18 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       context.req.param("id"),
       toWorkspaceDiffTarget(query),
     );
-    return context.json({ files: listDiffViewedFiles(deps.db, scope) });
+    return context.json({ files: listDiffViewedFiles(deps.db, scope, null) });
+  });
+
+  post(routes.queryDiffViewed, (context, payload) => {
+    const scope = resolveDiffViewedScope(
+      deps,
+      context.req.param("id"),
+      toWorkspaceDiffTarget(payload),
+    );
+    return context.json({
+      files: listDiffViewedFiles(deps.db, scope, payload.paths),
+    });
   });
 
   put(routes.markDiffViewed, (context, payload) => {
@@ -635,7 +656,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       revision: payload.revision,
     });
     deps.hub.notifyEnvironment(scope.environmentId, ["diff-viewed-changed"]);
-    return context.json({ files: listDiffViewedFiles(deps.db, scope) });
+    return context.json({ ok: true as const });
   });
 
   del(routes.clearDiffViewed, (context, payload) => {
@@ -646,7 +667,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     );
     clearDiffViewedFiles(deps.db, { ...scope, path: payload.path ?? null });
     deps.hub.notifyEnvironment(scope.environmentId, ["diff-viewed-changed"]);
-    return context.json({ files: listDiffViewedFiles(deps.db, scope) });
+    return context.json({ ok: true as const });
   });
 
   get(routes.diffFile, async (context, query) => {

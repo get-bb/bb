@@ -1,5 +1,7 @@
+import { type DiffFileFilters, filterDiffFiles } from "./diff-file-filters";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
+import { useAtomCallback } from "jotai/utils";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DiffFileEntry, DiffPatchEntry } from "@bb/server-contract";
 import { useEnvironmentDiffViewed } from "@/hooks/queries/environment-queries";
@@ -22,7 +24,6 @@ import {
   resolveCardCollapsed,
   resolveDiffFileCardInitialState,
 } from "./diffFilesStore";
-import { filterDiffFilesByPath } from "./gitDiffPanelHelpers";
 
 const DIFF_FILES_OVERSCAN = 4;
 const DIFF_FILES_GAP_PX = 8;
@@ -33,6 +34,7 @@ interface DiffFilesPanelProps {
   diffIdentity: string;
   files: DiffFileEntry[];
   fileFilter: string;
+  filters: DiffFileFilters;
   initialPatches: DiffPatchEntry[];
   filesUpdatedAt: number;
   presentation: DiffPresentation;
@@ -54,6 +56,7 @@ export function DiffFilesPanel({
   diffIdentity,
   files,
   fileFilter,
+  filters,
   initialPatches,
   filesUpdatedAt,
   presentation,
@@ -80,6 +83,7 @@ export function DiffFilesPanel({
   const { data: viewedResponse } = useEnvironmentDiffViewed(environmentId, {
     target,
     enabled: isPanelOpen,
+    paths: files.map((file) => file.path),
   });
   const viewedRevisionByPath = useMemo(
     () =>
@@ -90,6 +94,48 @@ export function DiffFilesPanel({
       ),
     [viewedResponse],
   );
+  const syncViewedCards = useAtomCallback(
+    useCallback(
+      (get, set) => {
+        if (viewedResponse === undefined || isPlaceholderData) return;
+        for (const entry of files) {
+          const stateAtom = diffFileCardStateAtomFamily({
+            diffIdentity,
+            path: entry.path,
+          });
+          const current =
+            get(stateAtom) ??
+            resolveDiffFileCardInitialState({ entry, fileCount: files.length });
+          const viewedRevision =
+            viewedRevisionByPath.get(entry.path) === entry.revision
+              ? entry.revision
+              : null;
+          if (current.viewedRevision !== viewedRevision) {
+            set(stateAtom, {
+              collapsed:
+                viewedRevision !== null
+                  ? true
+                  : current.viewedRevision !== entry.revision
+                    ? false
+                    : current.collapsed,
+              viewedRevision,
+            });
+          }
+        }
+      },
+      [
+        diffIdentity,
+        files,
+        isPlaceholderData,
+        viewedResponse,
+        viewedRevisionByPath,
+      ],
+    ),
+  );
+  useEffect(() => {
+    syncViewedCards();
+  }, [syncViewedCards]);
+
   const isViewedDisabled =
     viewedResponse === undefined || isPlaceholderData === true;
   const { mutate: setDiffFileViewed } = useSetDiffFileViewed();
@@ -116,8 +162,8 @@ export function DiffFilesPanel({
   }, [files, prunePaths]);
 
   const visibleFiles = useMemo(
-    () => filterDiffFilesByPath(files, fileFilter),
-    [files, fileFilter],
+    () => filterDiffFiles(files, fileFilter, filters, viewedRevisionByPath),
+    [files, fileFilter, filters, viewedRevisionByPath],
   );
 
   const virtualizer = useVirtualizer({
@@ -193,7 +239,7 @@ export function DiffFilesPanel({
     return (
       <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
         <EmptyStatePanel className="rounded-lg">
-          No changed files match “{fileFilter.trim()}”.
+          No changed files match the current filters.
         </EmptyStatePanel>
       </div>
     );

@@ -2618,7 +2618,11 @@ threads.
 `{ files: { path, revision }[] }` for one environment and diff target.
 `PUT` with `{ target, path, revision }` marks a file Viewed at a revision, and
 `DELETE` with `{ target, path? }` clears one file or the whole target; both
-return the updated list and emit the `diff-viewed-changed` environment change.
+return `{ ok: true }` and emit the `diff-viewed-changed` environment change.
+`POST` accepts the diff query fields and `paths` (up to 500) for a bounded
+lookup; an empty list returns no records. The SDK selects this path when
+`experimental_diffViewed` receives `paths`. Core uses the loaded diff paths,
+independent of display filters, so marking Viewed cannot hide its own query.
 Records live in `diff_viewed_files`, keyed by environment, target
 (`uncommitted`, `commit:<sha>`, `branch_committed:<branch>`, `all:<branch>`)
 and path. Revisions come from the `revision` field that `diffFiles` now

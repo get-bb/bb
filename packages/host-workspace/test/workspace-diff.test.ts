@@ -1170,6 +1170,35 @@ describe("Workspace diff revisions", () => {
     return (await runGit(["rev-parse", spec], { cwd: repoPath })).stdout.trim();
   }
 
+  it("recomputes revisions after same-size replacements and Git clean-filter changes", async () => {
+    const repoPath = await initRepo(
+      await makeTempDir("bb-diff-revision-fresh-"),
+    );
+    await write(repoPath, "a.txt", "base\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "a.txt", "one!\n");
+    const workspace = new Workspace(repoPath);
+    const original = await revisionOf(workspace, "a.txt");
+    const stat = await fs.stat(path.join(repoPath, "a.txt"));
+    await write(repoPath, "replacement", "two!\n");
+    await fs.utimes(path.join(repoPath, "replacement"), stat.atime, stat.mtime);
+    await fs.rename(
+      path.join(repoPath, "replacement"),
+      path.join(repoPath, "a.txt"),
+    );
+    const replaced = await revisionOf(workspace, "a.txt");
+    expect(replaced).toBeDefined();
+    expect(replaced).not.toBe(original);
+    await runGit(["config", "filter.review.clean", "sed s/two/NEW/"], {
+      cwd: repoPath,
+    });
+    await write(repoPath, ".gitattributes", "*.txt filter=review\n");
+    const filtered = await revisionOf(workspace, "a.txt");
+    expect(filtered).not.toBe(replaced);
+    await runGit(["config", "filter.review.clean", "cat"], { cwd: repoPath });
+    expect(await revisionOf(workspace, "a.txt")).toBe(replaced);
+  });
+
   it("identifies worktree content by its git blob and ignores staging", async () => {
     const repoPath = await initRepo(await makeTempDir("bb-diff-rev-"));
     await write(repoPath, "a.txt", "one\n");

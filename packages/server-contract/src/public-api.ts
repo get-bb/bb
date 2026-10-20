@@ -127,6 +127,7 @@ import type {
   EnvironmentDiffQuery,
   EnvironmentDiffFilesQuery,
   EnvironmentDiffViewedClearRequest,
+  EnvironmentDiffViewedQueryRequest,
   EnvironmentDiffViewedMarkRequest,
   EnvironmentDiffViewedResponse,
   EnvironmentDiffResponse,
@@ -342,6 +343,7 @@ import {
   environmentDiffQuerySchema,
   environmentDiffFilesQuerySchema,
   environmentDiffViewedClearRequestSchema,
+  environmentDiffViewedQueryRequestSchema,
   environmentDiffViewedMarkRequestSchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
@@ -1218,13 +1220,21 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<EnvironmentDiffViewedResponse>(),
     }),
+    queryDiffViewed: defineRoute({
+      path: "/environments/:id/diff/viewed",
+      method: "post",
+      request: jsonRequest<PathId, EnvironmentDiffViewedQueryRequest>(
+        environmentDiffViewedQueryRequestSchema,
+      ),
+      response: jsonResponse<EnvironmentDiffViewedResponse>(),
+    }),
     markDiffViewed: defineRoute({
       path: "/environments/:id/diff/viewed",
       method: "put",
       request: jsonRequest<PathId, EnvironmentDiffViewedMarkRequest>(
         environmentDiffViewedMarkRequestSchema,
       ),
-      response: jsonResponse<EnvironmentDiffViewedResponse>(),
+      response: jsonResponse<{ ok: true }>(),
     }),
     clearDiffViewed: defineRoute({
       path: "/environments/:id/diff/viewed",
@@ -1232,7 +1242,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathId, EnvironmentDiffViewedClearRequest>(
         environmentDiffViewedClearRequestSchema,
       ),
-      response: jsonResponse<EnvironmentDiffViewedResponse>(),
+      response: jsonResponse<{ ok: true }>(),
     }),
     diffFile: defineRoute({
       path: "/environments/:id/diff/file",

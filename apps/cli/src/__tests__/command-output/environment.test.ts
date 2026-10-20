@@ -901,16 +901,37 @@ describe("bb environment command output", () => {
       initialPatches: [],
       truncated: false,
     }));
-    const put = vi.fn(async () => ({
+    const post = vi.fn(async () => ({
       files: [{ path: "src/a.ts", revision: "100644:aaa:100644:bbb" }],
     }));
-    const del = vi.fn(async () => ({ files: [] }));
+    const put = vi.fn(async () => ({ ok: true }));
+    const del = vi.fn(async () => ({ ok: true }));
     stubServerApi({
       "v1.environments.:id.diff.files.$get": get,
       "v1.environments.:id.diff.viewed.$put": put,
+      "v1.environments.:id.diff.viewed.$post": post,
       "v1.environments.:id.diff.viewed.$delete": del,
     });
 
+    await runCommand(
+      [
+        "environment",
+        "diff-viewed",
+        "list",
+        "env-viewed",
+        "--target",
+        "uncommitted",
+        "--path",
+        "src/a.ts",
+        "--path",
+        "src/b.ts",
+      ],
+      register,
+    );
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "env-viewed" },
+      json: { target: "uncommitted", paths: ["src/a.ts", "src/b.ts"] },
+    });
     await runCommand(
       [
         "environment",
@@ -952,7 +973,8 @@ describe("bb environment command output", () => {
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "100644:aaa:100644:bbb\tsrc/a.ts",
-      "No files marked Viewed.",
+      "Viewed state updated.",
+      "Viewed state updated.",
     ]);
   });
 

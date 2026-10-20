@@ -1301,6 +1301,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Do what the [bb CLI](cli) and the app can do",
           "Have the threads it creates attributed to the plugin",
           "Start plugin updates in the background and follow their progress or rollback",
+          "Read Viewed state for up to 500 loaded paths with experimental_diffViewed({ paths }); mark and clear return acknowledgements",
         ],
         apiSymbols: [
           "BbPluginApi",

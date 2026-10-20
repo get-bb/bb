@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { DEFAULT_DIFF_FILE_FILTERS } from "./git-diff/diff-file-filters";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -19,6 +20,9 @@ function renderToolbar(isStatsLoading: boolean) {
         isStatsLoading={isStatsLoading}
         totalFilesCount={0}
         isTruncated={false}
+        extensionCounts={[]}
+        onFiltersChange={() => undefined}
+        filters={DEFAULT_DIFF_FILE_FILTERS}
         fileFilter={null}
         onFileFilterChange={() => undefined}
         areAllFilesCollapsed={false}

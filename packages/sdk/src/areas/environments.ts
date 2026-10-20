@@ -189,14 +189,14 @@ export interface EnvironmentsArea {
     args: EnvironmentDiffPatchArgs,
   ): Promise<EnvironmentDiffPatchResult>;
   experimental_diffViewed(
-    args: EnvironmentDiffArgs,
+    args: EnvironmentDiffArgs & { paths?: string[] },
   ): Promise<EnvironmentDiffViewedResult>;
   experimental_markDiffViewed(
     args: EnvironmentDiffViewedMarkArgs,
-  ): Promise<EnvironmentDiffViewedResult>;
+  ): Promise<{ ok: true }>;
   experimental_clearDiffViewed(
     args: EnvironmentDiffViewedClearArgs,
-  ): Promise<EnvironmentDiffViewedResult>;
+  ): Promise<{ ok: true }>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
@@ -390,6 +390,17 @@ export function createEnvironmentsArea(
       );
     },
     async experimental_diffViewed(input) {
+      if (input.paths !== undefined) {
+        return transport.readJson(
+          transport.api.v1.environments[":id"].diff.viewed.$post(
+            {
+              param: { id: input.environmentId },
+              json: { ...environmentDiffQuery(input), paths: input.paths },
+            },
+            ...signalRequestArgs(input.signal),
+          ),
+        );
+      }
       return transport.readJson(
         transport.api.v1.environments[":id"].diff.viewed.$get(
           {

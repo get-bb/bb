@@ -814,17 +814,29 @@ export function registerEnvironmentCommands(
   addDiffTargetOptions(
     diffViewed.command("list <id>").description("List files marked Viewed"),
   )
+    .option(
+      "--path <path>",
+      "Limit to a changed path; repeat up to 500 times",
+      collectOption,
+      [],
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).environments.experimental_diffViewed(
-          buildEnvironmentDiffArgs(id, opts),
-        );
-        if (outputJson(opts, result)) return;
-        printDiffViewedFiles(result);
-      }),
+      action(
+        async (
+          id: string,
+          opts: EnvironmentDiffCommandOptions & { path: string[] },
+        ) => {
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).environments.experimental_diffViewed({
+            ...buildEnvironmentDiffArgs(id, opts),
+            ...(opts.path.length ? { paths: opts.path } : {}),
+          });
+          if (outputJson(opts, result)) return;
+          printDiffViewedFiles(result);
+        },
+      ),
     );
 
   addDiffTargetOptions(
@@ -854,7 +866,7 @@ export function registerEnvironmentCommands(
           revision,
         });
         if (outputJson(opts, result)) return;
-        printDiffViewedFiles(result);
+        console.log("Viewed state updated.");
       }),
     );
 
@@ -873,7 +885,7 @@ export function registerEnvironmentCommands(
           path: opts.path,
         });
         if (outputJson(opts, result)) return;
-        printDiffViewedFiles(result);
+        console.log("Viewed state updated.");
       }),
     );
 
@@ -892,7 +904,7 @@ export function registerEnvironmentCommands(
           target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
         });
         if (outputJson(opts, result)) return;
-        printDiffViewedFiles(result);
+        console.log("Viewed state updated.");
       }),
     );
 

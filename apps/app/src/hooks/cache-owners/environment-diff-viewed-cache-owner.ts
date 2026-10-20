@@ -29,8 +29,14 @@ export async function applyOptimisticDiffViewedChange(
 ): Promise<void> {
   const queryKey = diffViewedQueryKey(change);
   await cancelOptimisticQueries(queryClient, { queryKey });
-  queryClient.setQueryData<EnvironmentDiffViewedResponse>(
-    queryKey,
+  queryClient.setQueriesData<EnvironmentDiffViewedResponse>(
+    {
+      queryKey,
+      predicate: (query) => {
+        const paths = query.queryKey[4];
+        return Array.isArray(paths) && paths.includes(change.path);
+      },
+    },
     (previous) => {
       const files = (previous?.files ?? []).filter(
         (file) => file.path !== change.path,

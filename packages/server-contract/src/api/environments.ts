@@ -460,6 +460,14 @@ export type EnvironmentDiffViewedResponse = z.infer<
   typeof environmentDiffViewedResponseSchema
 >;
 
+export const environmentDiffViewedQueryRequestSchema =
+  environmentDiffQuerySchema.and(
+    z.object({ paths: z.array(z.string().min(1).max(4096)).max(500) }),
+  );
+export type EnvironmentDiffViewedQueryRequest = z.infer<
+  typeof environmentDiffViewedQueryRequestSchema
+>;
+
 export const environmentDiffViewedMarkRequestSchema = z
   .object({
     target: workspaceDiffTargetSchema,

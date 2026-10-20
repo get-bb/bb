@@ -1,3 +1,4 @@
+import type { DiffFileFilters } from "./git-diff/diff-file-filters";
 import { type ReactNode, useEffect, useMemo } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { DiffPresentation } from "@/components/code/code-rendering";
@@ -56,6 +57,7 @@ interface GitDiffTabContentProps {
   gitDiffPresentation: DiffPresentation;
   ignoreWhitespace: boolean;
   fileFilter: string;
+  filters: DiffFileFilters;
   onClearPendingGitDiffIntent?: () => void;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -181,6 +183,7 @@ export function GitDiffTabContent({
   gitDiffPresentation,
   ignoreWhitespace,
   fileFilter,
+  filters,
   onClearPendingGitDiffIntent,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -312,6 +315,7 @@ export function GitDiffTabContent({
         diffIdentity={diffIdentity}
         files={diffFilesResponse.files}
         fileFilter={fileFilter}
+        filters={filters}
         initialPatches={diffFilesResponse.initialPatches}
         filesUpdatedAt={diffFilesUpdatedAt}
         presentation={gitDiffPresentation}

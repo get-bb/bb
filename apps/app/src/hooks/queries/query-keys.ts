@@ -432,6 +432,7 @@ type EnvironmentDiffViewedQueryKey = readonly [
   string,
   string | null,
   string | null,
+  (readonly string[])?,
 ];
 type EnvironmentDiffViewedQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_DIFF_VIEWED_QUERY_KEY,
@@ -1109,13 +1110,15 @@ export function environmentDiffViewedQueryKey(
   environmentId: string,
   targetType: string | null,
   targetKey: string | null,
+  paths?: readonly string[],
 ): EnvironmentDiffViewedQueryKey {
-  return [
+  const prefix = [
     ENVIRONMENT_DIFF_VIEWED_QUERY_KEY,
     environmentId,
     targetType,
     targetKey,
-  ];
+  ] as const;
+  return paths === undefined ? prefix : [...prefix, paths];
 }
 
 export function environmentDiffViewedQueryKeyPrefix(

@@ -90,6 +90,9 @@ describe("public environments", () => {
       const responsePromise = harness.app.request(
         `/api/v1/environments/${environment.id}/diff/files?target=uncommitted`,
       );
+      const overlappingResponse = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/files?target=uncommitted`,
+      );
       const diffFilesCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -121,6 +124,7 @@ describe("public environments", () => {
 
       const response = await responsePromise;
       expect(response.status).toBe(200);
+      expect((await overlappingResponse).status).toBe(200);
       await expect(readJson(response)).resolves.toMatchObject({
         outcome: "available",
         truncated: true,
@@ -158,7 +162,11 @@ describe("public environments", () => {
       });
       const viewedUrl = (id: string) =>
         `/api/v1/environments/${id}/diff/viewed`;
-      const send = (id: string, method: "PUT" | "DELETE", body: unknown) =>
+      const send = (
+        id: string,
+        method: "PUT" | "DELETE" | "POST",
+        body: unknown,
+      ) =>
         harness.app.request(viewedUrl(id), {
           method,
           headers: { "content-type": "application/json" },
@@ -183,12 +191,39 @@ describe("public environments", () => {
         path: "a.ts",
         revision: "rev-2",
       });
-      await expect(readJson(remarked)).resolves.toEqual({
-        files: [
-          { path: "a.ts", revision: "rev-2" },
-          { path: "b.ts", revision: "rev-b" },
-        ],
-      });
+      await expect(readJson(remarked)).resolves.toEqual({ ok: true });
+      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
+        {
+          files: [
+            { path: "a.ts", revision: "rev-2" },
+            { path: "b.ts", revision: "rev-b" },
+          ],
+        },
+      );
+      await expect(
+        readJson(
+          await send(environment.id, "POST", {
+            target: "uncommitted",
+            paths: ["b.ts", "missing.ts", "b.ts"],
+          }),
+        ),
+      ).resolves.toEqual({ files: [{ path: "b.ts", revision: "rev-b" }] });
+      await expect(
+        readJson(
+          await send(environment.id, "POST", {
+            target: "uncommitted",
+            paths: [],
+          }),
+        ),
+      ).resolves.toEqual({ files: [] });
+      expect(
+        (
+          await send(environment.id, "POST", {
+            target: "uncommitted",
+            paths: Array.from({ length: 501 }, (_, i) => `${i}.ts`),
+          })
+        ).status,
+      ).toBe(400);
       await send(environment.id, "PUT", {
         target: { type: "commit", sha: "ABCDEF1" },
         path: "a.ts",
@@ -202,10 +237,14 @@ describe("public environments", () => {
         files: [],
       });
 
-      await send(environment.id, "DELETE", {
-        target: uncommitted,
-        path: "a.ts",
-      });
+      await expect(
+        readJson(
+          await send(environment.id, "DELETE", {
+            target: uncommitted,
+            path: "a.ts",
+          }),
+        ),
+      ).resolves.toEqual({ ok: true });
       await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
         { files: [{ path: "b.ts", revision: "rev-b" }] },
       );

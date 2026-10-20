@@ -1,3 +1,8 @@
+import {
+  DEFAULT_DIFF_FILE_FILTERS,
+  filterDiffFiles,
+  diffExtensionCounts,
+} from "./git-diff/diff-file-filters";
 import { usePluginDetailPanelProps } from "@/components/plugin/plugin-detail-navigation";
 import {
   type CSSProperties,
@@ -55,7 +60,10 @@ import type {
   SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
-import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
+import {
+  useEnvironmentDiffFiles,
+  useEnvironmentDiffViewed,
+} from "@/hooks/queries/environment-queries";
 import {
   useGitDiffIgnoreWhitespacePreference,
   useGitDiffLineOverflowModePreference,
@@ -67,10 +75,7 @@ import {
   summarizeDiffFileEntries,
   useDiffFilesCollapseControls,
 } from "./git-diff/diffFilesStore";
-import {
-  buildGitDiffIdentity,
-  filterDiffFilesByPath,
-} from "./git-diff/gitDiffPanelHelpers";
+import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import { useSecondaryPanelResize } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
@@ -450,9 +455,40 @@ function ThreadSecondaryPanelContent({
       }),
     [diffMergeBaseRef, environmentId, gitDiffTarget],
   );
+  const [gitDiffFilters, setGitDiffFilters] = useState(
+    DEFAULT_DIFF_FILE_FILTERS,
+  );
+  const { data: diffViewedResponse } = useEnvironmentDiffViewed(
+    environmentId ?? "",
+    {
+      target: gitDiffTarget,
+      enabled: isDiffPanelLive,
+      paths: diffFiles.map((file) => file.path),
+    },
+  );
+  const viewedRevisionByPath = useMemo(
+    () =>
+      new Map(
+        (diffViewedResponse?.files ?? []).map((file) => [
+          file.path,
+          file.revision,
+        ]),
+      ),
+    [diffViewedResponse],
+  );
+  const extensionCounts = useMemo(
+    () => diffExtensionCounts(diffFiles),
+    [diffFiles],
+  );
   const filteredDiffFiles = useMemo(
-    () => filterDiffFilesByPath(diffFiles, gitDiffFileFilter ?? ""),
-    [diffFiles, gitDiffFileFilter],
+    () =>
+      filterDiffFiles(
+        diffFiles,
+        gitDiffFileFilter ?? "",
+        gitDiffFilters,
+        viewedRevisionByPath,
+      ),
+    [diffFiles, gitDiffFileFilter, gitDiffFilters, viewedRevisionByPath],
   );
   const gitDiffStats = useMemo(
     () => summarizeDiffFileEntries(filteredDiffFiles),
@@ -933,6 +969,9 @@ function ThreadSecondaryPanelContent({
               totalFilesCount={diffFiles.length}
               isTruncated={isGitDiffTruncated}
               fileFilter={gitDiffFileFilter}
+              filters={gitDiffFilters}
+              onFiltersChange={setGitDiffFilters}
+              extensionCounts={extensionCounts}
               onFileFilterChange={setGitDiffFileFilter}
               areAllFilesCollapsed={areAllCollapsed}
               isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
@@ -1015,6 +1054,7 @@ function ThreadSecondaryPanelContent({
               gitDiffPresentation={gitDiffPresentation}
               ignoreWhitespace={gitDiffIgnoreWhitespace}
               fileFilter={gitDiffFileFilter ?? ""}
+              filters={gitDiffFilters}
               onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
               onOpenFileInEditor={onOpenFileInEditor}
               onOpenFilePreview={onOpenFilePreview}
