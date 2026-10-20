@@ -32,8 +32,11 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import {
   resolvePluginsWorkspaceHeaderMeta,
   resolveSkillsWorkspaceHeaderMeta,
+  resolveToolsSection,
+  type ToolsSectionId,
 } from "@/components/tools/tools-navigation";
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
+import { PageTitleHeader } from "./PageTitleHeader";
 import {
   PageTitleHookHost,
   usePageTitleValue,
@@ -341,6 +344,7 @@ function resolveRouteTitle(pathname: string): { title: string } | undefined {
 }
 
 interface AppHeaderProps {
+  resourceSection: ToolsSectionId | null;
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
   projectId?: string;
@@ -355,6 +359,7 @@ interface AppHeaderProps {
 }
 
 function AppHeader({
+  resourceSection,
   usesProjectChromeStyle,
   usesDesktopChrome,
   projectId,
@@ -375,7 +380,18 @@ function AppHeader({
 
   const hasCenterContent = Boolean(headerBreadcrumbs) || Boolean(headerTitle);
 
-  const center = headerBreadcrumbs ? (
+  const center = resourceSection ? (
+    <PageTitleHeader
+      icon={
+        <Icon
+          name={resourceSection === "plugins" ? "Plug02" : "Zap"}
+          className="text-muted-foreground"
+        />
+      }
+      title={resourceSection === "plugins" ? "Plugins" : "Skills"}
+      value={pageTitle}
+    />
+  ) : headerBreadcrumbs ? (
     <div className="min-w-0 flex-1">
       <AppBreadcrumbs
         breadcrumbs={headerBreadcrumbs}
@@ -819,6 +835,11 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                   >
                     {showHeader ? (
                       <AppHeader
+                        resourceSection={
+                          resourceWorkspaceHeaderMeta
+                            ? resolveToolsSection(location.pathname)
+                            : null
+                        }
                         usesDesktopChrome={usesDesktopChrome}
                         usesProjectChromeStyle={isRootView || isArchivedView}
                         projectId={projectId}

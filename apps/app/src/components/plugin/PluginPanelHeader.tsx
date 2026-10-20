@@ -1,10 +1,6 @@
 import { usePageTitleValue } from "@/components/layout/page-title";
-import { AppBreadcrumbs } from "@/components/layout/AppBreadcrumbs";
-import { Component, useState, type ReactNode } from "react";
-import {
-  getBbDesktopInfo,
-  shouldUseMacosDesktopChrome,
-} from "@/lib/bb-desktop";
+import { PageTitleHeader } from "@/components/layout/PageTitleHeader";
+import { Component, type ReactNode } from "react";
 import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { usePluginCss } from "@/lib/plugin-css";
@@ -40,30 +36,18 @@ export function PluginPanelHeaderCenter({
   chrome: Pick<PluginNavPanelChrome, "pluginId" | "icon" | "title">;
 }) {
   const pageTitle = usePageTitleValue();
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <PluginItemIcon
-        pluginId={chrome.pluginId}
-        icon={chrome.icon}
-        className="text-muted-foreground"
-      />
-      <p className="truncate text-sm font-semibold">{chrome.title}</p>
-      {pageTitle ? (
-        <>
-          <span className="text-muted-foreground">/</span>
-          {pageTitle.breadcrumbs ? (
-            <AppBreadcrumbs
-              breadcrumbs={pageTitle.breadcrumbs}
-              usesDesktopChrome={usesDesktopChrome}
-            />
-          ) : (
-            <p className="truncate text-sm font-semibold">{pageTitle.title}</p>
-          )}
-        </>
-      ) : null}
-    </div>
+    <PageTitleHeader
+      icon={
+        <PluginItemIcon
+          pluginId={chrome.pluginId}
+          icon={chrome.icon}
+          className="text-muted-foreground"
+        />
+      }
+      title={chrome.title}
+      value={pageTitle}
+    />
   );
 }
 

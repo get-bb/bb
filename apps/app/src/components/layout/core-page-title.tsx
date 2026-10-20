@@ -88,10 +88,13 @@ export function useCorePageTitle({
           entries: catalog.data.entries.filter((entry) => entry.compatible),
         }).find((shelf) => shelf.key === shelfKey)
       : null;
+  const trail = breadcrumbs.slice(1);
+  if (shelf && trail.length === 1) trail.push({ label: shelf.label });
+  const sectionLabel = breadcrumbs[0]?.label ?? "BB";
+  const leaf = trail.at(-1)?.label ?? sectionLabel;
   return {
-    breadcrumbs:
-      shelf && breadcrumbs.length === 2
-        ? [...breadcrumbs, { label: shelf.label }]
-        : breadcrumbs,
+    ...(trail.length === 1 ? { title: leaf } : { breadcrumbs: trail }),
+    windowTitle:
+      leaf === sectionLabel ? sectionLabel : `${leaf} · ${sectionLabel}`,
   };
 }
