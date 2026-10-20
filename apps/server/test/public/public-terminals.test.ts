@@ -252,7 +252,11 @@ function readDaemonOperationMessages(
     .map((message) =>
       hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
     )
-    .filter((message) => message.type !== "machine-environment.replace");
+    .filter(
+      (message) =>
+        message.type !== "machine-environment.replace" &&
+        message.type !== "provider-session-policy.replace",
+    );
 }
 
 async function waitForDaemonMessage(
