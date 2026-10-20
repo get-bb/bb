@@ -117,8 +117,16 @@ describe("v3 item projection", () => {
       "Ran node build.mjs; grep warning build.log",
     ],
     ["grep warning build.log | tail -n 5", "Searched for warning in build.log"],
+    [
+      "cd packages/app && grep warning build.log",
+      "Searched for warning in build.log",
+    ],
+    [
+      "cd packages/app && node build.mjs | grep warning",
+      "Ran cd packages/app && node build.mjs | grep warning",
+    ],
   ])(
-    "anchors compound command titles to the first segment: %s",
+    "anchors compound command titles to the first command after cd: %s",
     (command, expectedTitle) => {
       const event = createTimelineEventFactory({
         threadId: "thread-1",

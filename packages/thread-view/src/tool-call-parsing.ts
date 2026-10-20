@@ -333,6 +333,7 @@ const NO_FLAGS_WITH_VALUE: ReadonlySet<string> = new Set();
 type SegmentClassification =
   | { kind: "write" }
   | { kind: "intent"; intent: EventProjectionToolParsedIntent }
+  | { kind: "setup" }
   | { kind: "none" };
 
 interface RedirectScan {
@@ -488,6 +489,8 @@ function classifyShellSegment(
   if (segmentHasWriteShape(argTokens)) return { kind: "write" };
 
   switch (commandName) {
+    case "cd":
+      return { kind: "setup" };
     case "rg":
     case "grep": {
       const positionals = collectPositionals(
@@ -589,6 +592,7 @@ export function parseShellCommandIntents(
       intents = [];
       return false;
     }
+    if (classification.kind === "setup") return true;
     if (classification.kind === "none" && intents.length === 0) {
       return false;
     }
