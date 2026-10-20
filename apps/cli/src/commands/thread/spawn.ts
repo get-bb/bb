@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { Command } from "commander";
 import {
   jsonValueSchema,
@@ -57,6 +58,7 @@ interface ThreadSpawnCommandOptions {
   environmentInputs?: string;
   baseBranch?: string;
   parentThread?: string;
+  providerSessionLifetime?: string;
   provider?: string;
   model?: string;
   reasoningLevel?: string;
@@ -369,6 +371,10 @@ export function registerSpawnCommand(
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
     .option("--provider <id>", PROVIDER_HELP)
     .option(
+      "--provider-session-lifetime <lifetime>",
+      "Provider storage lifetime: persistent (default) or disposable (cannot resume after release; BB history remains)",
+    )
+    .option(
       "--model <model>",
       "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
     )
@@ -554,6 +560,12 @@ export function registerSpawnCommand(
               hostId,
               baseBranch: opts.baseBranch,
             });
+        const providerSessionLifetime =
+          opts.providerSessionLifetime === undefined
+            ? undefined
+            : z
+                .enum(["persistent", "disposable"])
+                .parse(opts.providerSessionLifetime);
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const sessionOptions = parseSpawnSessionOptions(opts.option ?? []);
@@ -602,6 +614,11 @@ export function registerSpawnCommand(
           thread = await sdk.threads.spawn({
             origin: "cli",
             projectId,
+            ...(providerSessionLifetime === undefined
+              ? {}
+              : {
+                  experimental_providerSessionLifetime: providerSessionLifetime,
+                }),
             ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input,

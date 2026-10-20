@@ -512,6 +512,7 @@ async function handleRequest(
       const result: InitializeResult = {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
+          disposableSessions: false,
           sessionRestore: true,
           threadArchive: false,
           threadRename: false,

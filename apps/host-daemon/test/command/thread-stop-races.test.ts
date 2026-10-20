@@ -211,6 +211,7 @@ function threadStartCommand(
   return {
     bridgeLaunch: args.bridgeLaunch ?? harness.launch,
     type: "thread.start",
+    providerSessionLifetime: "persistent",
     environmentId: ENVIRONMENT_ID,
     threadId: args.threadId,
     workspaceContext: {
@@ -263,6 +264,7 @@ function turnSubmitCommand(
       permissionEscalation: null,
     },
     resumeContext: {
+      providerSessionLifetime: "persistent",
       bridgeLaunch: harness.launch,
       workspaceContext: {
         workspacePath: harness.workspacePath,

@@ -66,6 +66,7 @@ bb.providers.register({
     fork: "checkpoint", // "none" | "tip" | "checkpoint"
     supportsNativeUserQuestion: true,
     supportsManualCompaction: true,
+    experimental_supportsDisposableSessions: false,
     supportsThreadArchive: true,
     supportsThreadRename: true,
     supportsServiceTier: false,

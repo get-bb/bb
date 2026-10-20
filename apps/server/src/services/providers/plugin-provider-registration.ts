@@ -175,6 +175,8 @@ export function buildPluginProviderRegistration(args: {
       ? { icon: { glyph: declaration.icon } }
       : {}),
     capabilities: {
+      experimental_supportsDisposableSessions:
+        capabilities.experimental_supportsDisposableSessions ?? false,
       supportsThreadArchive,
       supportsThreadRename,
       supportsServiceTier,

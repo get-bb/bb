@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `provider_session_lifetime` text DEFAULT 'persistent' NOT NULL;

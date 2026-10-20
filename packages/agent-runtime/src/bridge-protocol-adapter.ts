@@ -283,10 +283,19 @@ export function createBridgeProtocolAdapter(
             params: { roots: command.skillRoots },
           };
         case "thread/start":
+          if (
+            command.providerSessionLifetime === "disposable" &&
+            !handshake.disposableSessions
+          ) {
+            throw new Error(
+              `Provider "${options.id}" bridge does not support disposable provider sessions`,
+            );
+          }
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadStart,
             params: {
+              providerSessionLifetime: command.providerSessionLifetime,
               threadId: command.threadId,
               cwd: command.cwd,
               ...sessionConstructionParams(command),
@@ -297,6 +306,7 @@ export function createBridgeProtocolAdapter(
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadResume,
             params: {
+              providerSessionLifetime: command.providerSessionLifetime,
               threadId: command.threadId,
               cwd: command.cwd,
               providerThreadId: command.providerThreadId,

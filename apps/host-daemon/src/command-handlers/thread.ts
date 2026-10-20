@@ -191,6 +191,12 @@ async function resumeThreadRuntimeIfMissing(
   if (entry.runtime.hasThread(command.threadId)) {
     return;
   }
+  if (resumeContext.providerSessionLifetime === "disposable") {
+    throw new CommandDispatchError(
+      "session_not_restorable",
+      "Disposable provider session is unavailable; create a new worker",
+    );
+  }
   if (!resumeContext.providerThreadId) {
     throw new CommandDispatchError(
       "unknown_thread_runtime",
@@ -209,6 +215,7 @@ async function resumeThreadRuntimeIfMissing(
     projectId: resumeContext.projectId,
     providerThreadId: resumeContext.providerThreadId,
     providerId: resumeContext.providerId,
+    providerSessionLifetime: resumeContext.providerSessionLifetime,
     contributedEnv: resumeContext.contributedEnv,
     options: command.options,
     instructions: resumeContext.instructions,
@@ -242,6 +249,7 @@ export async function startThread(
       options,
     );
     const result = await entry.runtime.startThread({
+      providerSessionLifetime: command.providerSessionLifetime,
       bridgeLaunch,
       skillRoots: entry.skillRoots,
       environmentId: command.environmentId,
@@ -268,6 +276,12 @@ export async function prepareThreadRewind(
   command: CommandOf<"thread.rewind.prepare">,
   options: CommandDispatchOptions,
 ): Promise<HostDaemonCommandResult<"thread.rewind.prepare">> {
+  if (command.providerSessionLifetime === "disposable") {
+    throw new CommandDispatchError(
+      "session_not_restorable",
+      "Disposable provider sessions cannot rewind history",
+    );
+  }
   await requireSupportedProviderCliForThreadStart({ command, options });
   const { bridgeLaunch, entry } = await resolveThreadStartRuntime(
     command,

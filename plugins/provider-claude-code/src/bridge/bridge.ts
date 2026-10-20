@@ -2179,6 +2179,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       const result: InitializeResult = {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
+          disposableSessions: false,
           sessionRestore: true,
           threadArchive: false,
           threadRename: false,

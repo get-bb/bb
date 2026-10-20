@@ -298,6 +298,7 @@
     "badge": "optional"
   },
   "capabilities": {
+    "disposableSessions": "default",
     "sessionRestore": "default",
     "threadArchive": "default",
     "threadRename": "default",

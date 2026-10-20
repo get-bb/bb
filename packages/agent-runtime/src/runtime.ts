@@ -201,6 +201,7 @@ const PREPARED_THREAD_REWIND_TTL_MS = 5 * 60_000;
 const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
 
 interface ThreadRuntimeConfig {
+  providerSessionLifetime: "persistent" | "disposable";
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
@@ -992,6 +993,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
+    const disposableThreadId = [...proc.identity.threadIds].find(
+      (threadId) =>
+        threadRuntimeConfigs.get(threadId)?.providerSessionLifetime ===
+        "disposable",
+    );
+    if (disposableThreadId !== undefined) {
+      options.onStderr?.(
+        `Deferring bridge restart while nonrestorable thread "${disposableThreadId}" is hosted.`,
+        args.threadId,
+      );
+      return;
+    }
     const hostedThreadIds = [...proc.identity.threadIds].filter(
       (threadId) => threadId !== args.threadId,
     );
@@ -1079,6 +1092,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         : {}),
       providerThreadId: args.providerThreadId,
       providerId: currentConfig.providerId,
+      providerSessionLifetime: currentConfig.providerSessionLifetime,
       contributedEnv: currentConfig.contributedEnv,
       options: args.options,
       ...(resumeInstructions !== undefined
@@ -1512,6 +1526,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async startThread({
+      providerSessionLifetime,
       environmentId,
       threadId,
       projectId,
@@ -1530,6 +1545,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return runThreadOperation({
         threadId,
         work: async () => {
+          if (providerSessionLifetime === "disposable" && fork !== undefined)
+            throw new Error("Disposable provider sessions cannot be forked");
           const processKey = resolveProviderProcessKey({
             bridgeLaunch,
             providerId,
@@ -1562,6 +1579,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
+            providerSessionLifetime,
             bridgeLaunch,
             skillRoots: sessionSkillRoots,
             contributedEnv,
@@ -1600,6 +1618,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               }
             : {
                 type: "thread/start",
+                providerSessionLifetime,
                 threadId,
                 cwd: options.workspacePath,
                 options: providerExecutionContext,
@@ -1684,6 +1703,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       dynamicTools,
       instructionMode = "append",
     }) {
+      if (
+        threadRuntimeConfigs.get(threadId)?.providerSessionLifetime ===
+        "disposable"
+      )
+        throw new Error("Disposable provider sessions cannot rewind history");
       const existing = stagedThreadRewinds.get(leaseId);
       if (existing !== undefined) {
         return existing.state === "preparing"
@@ -1841,6 +1865,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async resumeThread({
+      providerSessionLifetime,
       environmentId,
       threadId,
       projectId,
@@ -1854,6 +1879,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       dynamicTools,
       instructionMode = "append",
     }) {
+      if (providerSessionLifetime === "disposable")
+        throw new Error(
+          "Disposable provider session is unavailable; create a new worker",
+        );
       return runThreadOperation({
         threadId,
         work: async () => {
@@ -1901,6 +1930,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
+            providerSessionLifetime,
             bridgeLaunch,
             skillRoots: sessionSkillRoots,
             contributedEnv,
@@ -1922,6 +1952,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
           const adapterCommand: AdapterCommand = {
             type: "thread/resume",
+            providerSessionLifetime,
             threadId,
             cwd: options.workspacePath,
             providerThreadId:

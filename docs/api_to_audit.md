@@ -14,6 +14,26 @@ question.
 [provider-bridge-protocol.md](provider-bridge-protocol.md). An entry without
 a "Docs:" line has no owning doc, so it keeps the essential contract itself.
 
+## Disposable provider sessions
+
+`ThreadSpawnArgs.experimental_providerSessionLifetime` selects `persistent` or
+`disposable` at creation. The default is `persistent`. Disposable workers retain
+BB timeline history but cannot restore their provider session after release or
+process loss. Consumers must retain results before stopping a worker.
+`Thread.experimental_providerSessionLifetime` reports the selection on public
+thread responses. Omission represents a legacy response.
+
+`PluginProviderCapabilities.experimental_supportsDisposableSessions` declares
+support. Omission means false. Core thread creation and the SDK use the same
+request path. Unsupported providers reject before creating a BB thread. The
+bridge must also advertise `disposableSessions` before receiving the opt-in.
+
+Docs: Plugin Guide, disposable-provider-sessions.
+
+Before stabilization, verify result retention, failed worker retries, process
+loss, shared bridge recovery, and persistent UUID resume across supported
+providers. Audit fork and storage-operation restrictions and minimum SDK support.
+
 ## Composer popups
 
 `ComposerCustomization.experimental_popups` registers `{ id, label, component }`

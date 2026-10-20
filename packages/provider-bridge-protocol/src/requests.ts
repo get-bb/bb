@@ -31,6 +31,9 @@ export const BRIDGE_REQUEST_METHODS = {
 } as const;
 
 const sessionConstructionFields = {
+  providerSessionLifetime: z
+    .enum(["persistent", "disposable"])
+    .default("persistent"),
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   options: bridgeExecutionOptionsSchema,

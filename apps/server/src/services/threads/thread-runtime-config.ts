@@ -2,7 +2,7 @@ import {
   resolveHostEnvironment,
   mergeHostAndProviderEnvironment,
 } from "../hosts/host-environment.js";
-import { getEnvironment, getHost, getProject } from "@bb/db";
+import { getEnvironment, getHost, getProject, getThread } from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -61,6 +61,7 @@ interface ResolvePermissionEscalationArgs {
 }
 
 export interface ResolvedThreadRuntimeCommandConfig {
+  providerSessionLifetime: "persistent" | "disposable";
   contributedEnv: HostDaemonContributedEnvEntry[];
   dynamicTools: DynamicTool[];
   injectedSkillSources: HostDaemonInjectedSkillSource[];
@@ -278,8 +279,12 @@ export async function resolveThreadRuntimeCommandConfig(
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
+  const storedThread = getThread(deps.db, args.thread.id);
+  if (storedThread === null)
+    throw new ApiError(404, "thread_not_found", "Thread not found");
   markTurnTraceSpan("runtimeConfig.built");
   return {
+    providerSessionLifetime: storedThread.providerSessionLifetime,
     contributedEnv,
     dynamicTools,
     injectedSkillSources,

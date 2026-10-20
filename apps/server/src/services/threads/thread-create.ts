@@ -362,7 +362,7 @@ function requireLiveSourceThread(
     projectId: string;
     sourceThreadId: string;
   },
-): Thread {
+) {
   const sourceThread = getThread(deps.db, args.sourceThreadId);
   if (sourceThread === null) {
     throw new ApiError(400, "invalid_request", "sourceThreadId not found");
@@ -710,7 +710,20 @@ export async function createThreadFromRequest(
   ) {
     throw new ApiError(400, "invalid_request", "unknown environment provider");
   }
+  const providerSessionLifetime =
+    requestInput.experimental_providerSessionLifetime ?? "persistent";
+  if (
+    sourceThread?.providerSessionLifetime === "disposable" ||
+    (providerSessionLifetime === "disposable" && originKind !== null)
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Disposable provider sessions cannot be forked",
+    );
+  }
   const request: ThreadCreateServiceRequest = {
+    providerSessionLifetime,
     ...requestRest,
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
@@ -788,6 +801,18 @@ export async function createThreadFromRequest(
     catalogExecutionDefaults.providerId !== request.providerId
   ) {
     request.providerId = catalogExecutionDefaults.providerId;
+  }
+  if (
+    providerSessionLifetime === "disposable" &&
+    deps.providerRegistry.get(request.providerId)?.info.capabilities
+      .experimental_supportsDisposableSessions !== true
+  ) {
+    throw new ApiError(
+      400,
+      "disposable_sessions_unsupported",
+      `Provider ${request.providerId} does not support disposable provider sessions`,
+      false,
+    );
   }
   const resolvedExecutionDefaults = await resolveSessionOptionExecutionDefaults(
     deps,

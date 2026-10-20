@@ -66,6 +66,21 @@ function mustCreateThreadSection(
 }
 
 describe("threads", () => {
+  it("keeps provider lifetime immutable through ordinary updates and BB archival", () => {
+    const { db, project } = setup();
+    try {
+      const persistent = createThread(db, noopNotifier, { projectId: project.id, providerId: "codex" });
+      const disposable = createThread(db, noopNotifier, { projectId: project.id, providerId: "codex", providerSessionLifetime: "disposable" });
+      expect(getThread(db, persistent.id)?.providerSessionLifetime).toBe("persistent");
+      updateThread(db, noopNotifier, disposable.id, { title: "Retained worker" });
+      archiveThread(db, noopNotifier, disposable.id);
+      unarchiveThread(db, noopNotifier, disposable.id);
+      expect(getThread(db, disposable.id)).toMatchObject({ providerSessionLifetime: "disposable", title: "Retained worker", deletedAt: null });
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("creates pinned threads in order and retains their section after unpinning", () => {
     const { db, project } = setup();
     const section = mustCreateThreadSection(db, "Managers");

@@ -462,6 +462,7 @@ const codexThreadStatusChangedParamsSchema = z
   .passthrough();
 
 interface CodexBridgeSession {
+  providerSessionLifetime: "persistent" | "disposable";
   bbThreadId: string;
   codexThreadId: string | null;
   serial: number;
@@ -677,7 +678,7 @@ function announceSessionIdentity(
   sendNotification(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
     threadId: session.bbThreadId,
     providerThreadId: codexThreadId,
-    sessionRestorable: true,
+    sessionRestorable: session.providerSessionLifetime === "persistent",
   });
   const buffered = session.pendingPreIdentityDeltas;
   session.pendingPreIdentityDeltas = [];
@@ -1169,6 +1170,7 @@ type CodexSessionConstructionRequest =
     };
 
 interface ConstructThreadSessionArgs {
+  providerSessionLifetime: "persistent" | "disposable";
   threadId: string;
   cwd: string;
   options: BridgeExecutionOptions;
@@ -1185,6 +1187,26 @@ interface ConstructedCodexSession {
 async function constructThreadSession(
   args: ConstructThreadSessionArgs,
 ): Promise<ConstructedCodexSession> {
+  if (
+    args.providerSessionLifetime === "disposable" &&
+    args.request.kind !== "start"
+  ) {
+    throw new Error(
+      "Disposable provider sessions cannot be restored or forked; create a new worker",
+    );
+  }
+  if (args.request.kind === "fork") {
+    const sourceProviderThreadId = args.request.sourceProviderThreadId;
+    if (
+      [...sessionsByBbThreadId.values()].some(
+        (session) =>
+          session.codexThreadId === sourceProviderThreadId &&
+          session.providerSessionLifetime === "disposable",
+      )
+    ) {
+      throw new Error("Disposable provider sessions cannot be forked");
+    }
+  }
   const existing = sessionsByBbThreadId.get(args.threadId);
   const decoded = decodeCodexOptions(args.options);
   sessionSerialCounter += 1;
@@ -1202,6 +1224,7 @@ async function constructThreadSession(
   );
   const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
+    providerSessionLifetime: args.providerSessionLifetime,
     bbThreadId: args.threadId,
     codexThreadId:
       args.request.kind === "resume" ? args.request.providerThreadId : null,
@@ -1323,7 +1346,7 @@ async function constructThreadSession(
         method = "thread/start";
         const startParams: BbThreadStartParams = {
           ...sharedConstructionParams,
-          ephemeral: false,
+          ephemeral: args.providerSessionLifetime === "disposable",
           experimentalRawEvents: true,
           ...(decoded.daybreak === null
             ? {}
@@ -1415,6 +1438,7 @@ class CodexSessionReleasedError extends Error {
 
 function registerResumableSession(session: CodexBridgeSession): void {
   if (
+    session.providerSessionLifetime === "disposable" ||
     session.codexThreadId === null ||
     sessionsByBbThreadId.has(session.bbThreadId)
   ) {
@@ -1422,6 +1446,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
   }
   sessionSerialCounter += 1;
   sessionsByBbThreadId.set(session.bbThreadId, {
+    providerSessionLifetime: session.providerSessionLifetime,
     bbThreadId: session.bbThreadId,
     codexThreadId: session.codexThreadId,
     serial: sessionSerialCounter,
@@ -1455,6 +1480,11 @@ async function rebuildThreadSession(
   options: BridgeExecutionOptions,
   reason: string,
 ): Promise<CodexBridgeSession> {
+  if (session.providerSessionLifetime === "disposable") {
+    throw new Error(
+      "Disposable provider sessions cannot be rebuilt; create a new worker",
+    );
+  }
   const codexThreadId = session.codexThreadId;
   if (codexThreadId === null) {
     throw new Error(
@@ -1464,6 +1494,7 @@ async function rebuildThreadSession(
   let replacement: ConstructedCodexSession;
   try {
     replacement = await constructThreadSession({
+      providerSessionLifetime: session.providerSessionLifetime,
       threadId: session.bbThreadId,
       cwd: session.construction.cwd,
       options,
@@ -1619,6 +1650,7 @@ function handleInitialize(id: string | number): void {
   const result: InitializeResult = {
     protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     capabilities: {
+      disposableSessions: true,
       sessionRestore: true,
       threadArchive: true,
       threadRename: true,
@@ -1706,6 +1738,7 @@ async function handleThreadConstruction(
 ): Promise<void> {
   try {
     const constructed = await constructThreadSession({
+      providerSessionLifetime: params.providerSessionLifetime,
       threadId: params.threadId,
       cwd: params.cwd,
       options: params.options,
@@ -1717,7 +1750,8 @@ async function handleThreadConstruction(
     });
     sendResult(id, {
       providerThreadId: constructed.codexThreadId,
-      sessionRestorable: true,
+      sessionRestorable:
+        constructed.session.providerSessionLifetime === "persistent",
     });
   } catch (error) {
     sendConstructionError(id, error, request.kind === "resume");

@@ -1102,6 +1102,51 @@ describe("runtime recovery hints", () => {
     expect(resumedThreadIds(record).sort()).toEqual(["t-bg-a", "t-bg-b"]);
   });
 
+  it("defers an elective shared bridge restart while a nonrestorable session is hosted", async () => {
+    const { events, processLog, record, runtime, stderr } =
+      createRecoveryRuntime({ sessionRestorable: false });
+    await startThread(runtime, "t-ephemeral-a");
+    await runtime.startThread({
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: PROVIDER_ID,
+      threadId: "t-ephemeral-b",
+      providerSessionLifetime: "disposable",
+      options: fullRuntimeOptions,
+    });
+    await runtime.runTurn({
+      clientRequestId: "creq_tmpwrk6666",
+      input: [promptTextInput({ text: "recover:restartRecommended" })],
+      options: fullRuntimeOptions,
+      threadId: "t-ephemeral-a",
+    });
+    await waitForThreadTurnCompleted({ events, threadId: "t-ephemeral-a" });
+    await waitForRuntimeState({
+      label: "shared restart was deferred for nonrestorable work",
+      predicate: () => stderr.some((line) => line.includes("nonrestorable")),
+      timeoutMs: 1_000,
+    });
+    expect(countSpawns(processLog)).toBe(1);
+    expect(resumedThreadIds(record)).toEqual([]);
+    expect(runtime.hasThread("t-ephemeral-b")).toBe(true);
+    await runtime.stopThread({ threadId: "t-ephemeral-b" });
+    await runtime.runTurn({
+      clientRequestId: "creq_tmpwrk7777",
+      input: [promptTextInput({ text: "after worker release" })],
+      options: fullRuntimeOptions,
+      threadId: "t-ephemeral-a",
+    });
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: PROVIDER_ID,
+      runtime,
+      text: "after worker release",
+      threadId: "t-ephemeral-a",
+    });
+    expect(countSpawns(processLog)).toBe(2);
+    expect(resumedThreadIds(record)).toEqual(["t-ephemeral-a"]);
+  });
+
   it("drops an unsolicited hint that names a thread the emitting process does not host", async () => {
     const { events, hints, processLog, record, runtime, stderr } =
       createRecoveryRuntime();

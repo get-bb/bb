@@ -51,6 +51,72 @@ function nextClientRequestId(): ClientTurnRequestId {
 }
 
 describe("thread command dispatch", () => {
+  it.each(["persistent", "disposable"] as const)(
+    "handles a missing %s runtime without replacing provider identity",
+    async (providerSessionLifetime) => {
+      const harness = createHarness();
+      await harness.manager.ensureEnvironment({
+        environmentId: "env-1",
+        workspacePath: "/tmp/env-1",
+      });
+      const command: Extract<HostDaemonCommand, { type: "turn.submit" }> = {
+        type: "turn.submit",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        environmentId: "env-1",
+        threadId: "worker-cold",
+        requestId: nextClientRequestId(),
+        input: [textPromptInput("continue")],
+        target: { mode: "start" },
+        options: {
+          model: "test",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          providerOptions: {},
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          providerSessionLifetime,
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          workspaceContext: { workspacePath: "/tmp/env-1" },
+          projectId: "project-1",
+          providerId: "fake",
+          providerThreadId: "existing-uuid",
+          instructions: "Summarize",
+          dynamicTools: [],
+          contributedEnv: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+      };
+      if (providerSessionLifetime === "disposable") {
+        await expect(
+          dispatchCommand(command, harness.dispatchOptions()),
+        ).rejects.toMatchObject({ code: "session_not_restorable" });
+        expect(harness.runtimeState.resumedThreadId).toBeUndefined();
+        expect(harness.runtimeState.startedThreadId).toBeUndefined();
+        harness.threadControls.setProviderSession("worker-cold", {
+          providerId: "fake",
+          providerThreadId: "existing-uuid",
+        });
+        await dispatchCommand(
+          { ...command, requestId: nextClientRequestId() },
+          harness.dispatchOptions(),
+        );
+        expect(harness.runtimeState.ranTurnText).toBe("continue");
+        expect(harness.runtimeState.resumedThreadId).toBeUndefined();
+      } else {
+        await dispatchCommand(command, harness.dispatchOptions());
+        expect(harness.runtimeState.resumedProviderThreadId).toBe(
+          "existing-uuid",
+        );
+        expect(harness.runtimeState.ranTurnText).toBe("continue");
+      }
+    },
+  );
+
   it("evicts stale runtime and rejects thread.start when the loaded runtime path differs from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-loaded" });
     await harness.manager.ensureEnvironment({
@@ -61,6 +127,7 @@ describe("thread command dispatch", () => {
     const command: Extract<HostDaemonCommand, { type: "thread.start" }> = {
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
+      providerSessionLifetime: "persistent",
       environmentId: "env-loaded",
       threadId: "thread-stale-start",
       workspaceContext: {
@@ -138,6 +205,7 @@ describe("thread command dispatch", () => {
           },
           target: { mode: "start" },
           resumeContext: {
+            providerSessionLifetime: "persistent",
             bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
             workspaceContext: {
               workspacePath: "/tmp/env-stale",
@@ -178,6 +246,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-attachments",
         threadId: "thread-attachments",
         workspaceContext: {
@@ -313,6 +382,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-submit-attachments",
@@ -372,6 +442,7 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-bridge-start",
         threadId: "thread-bridge-start",
         workspaceContext: {
@@ -562,6 +633,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           workspaceContext: {
             workspacePath: "/tmp/env-bridge-resume",
           },
@@ -678,6 +750,7 @@ describe("thread command dispatch", () => {
             permissionEscalation: null,
           },
           resumeContext: {
+            providerSessionLifetime: "persistent",
             bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
             workspaceContext: {
               workspacePath: "/tmp/env-reaped-during-staging",
@@ -715,6 +788,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-no-stage-attachments",
         threadId: "thread-no-stage-attachments",
         workspaceContext: {
@@ -779,6 +853,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-restage-attachments",
         threadId: "thread-restage-attachments",
         workspaceContext: {
@@ -849,6 +924,7 @@ describe("thread command dispatch", () => {
         {
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
+          providerSessionLifetime: "persistent",
           environmentId: "env-reuse-attachments",
           threadId: "thread-reuse-attachments",
           workspaceContext: {
@@ -902,6 +978,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-grouped-stage-attachments",
         threadId: "thread-grouped-stage-attachments",
         workspaceContext: {
@@ -985,6 +1062,7 @@ describe("thread command dispatch", () => {
         {
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
+          providerSessionLifetime: "persistent",
           environmentId: "env-failed-stage-attachments",
           threadId: "thread-failed-stage-attachments",
           workspaceContext: {
@@ -1054,6 +1132,7 @@ describe("thread command dispatch", () => {
         {
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
+          providerSessionLifetime: "persistent",
           environmentId: "env-oversized-stage-attachments",
           threadId: "thread-oversized-stage-attachments",
           workspaceContext: {
@@ -1122,6 +1201,7 @@ describe("thread command dispatch", () => {
         {
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
+          providerSessionLifetime: "persistent",
           environmentId: "env-runtime-failed-start-attachments",
           threadId: "thread-runtime-failed-start-attachments",
           workspaceContext: {
@@ -1198,6 +1278,7 @@ describe("thread command dispatch", () => {
             permissionEscalation: null,
           },
           resumeContext: {
+            providerSessionLifetime: "persistent",
             bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
             workspaceContext: {
               workspacePath: "/tmp/env-runtime-failed-turn-attachments",
@@ -1238,6 +1319,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -1341,6 +1423,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-1",
         threadId: "thread-stop",
         workspaceContext: {
@@ -1415,6 +1498,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-1",
         threadId: "thread-delete",
         workspaceContext: { workspacePath: "/tmp/env-1" },
@@ -1511,6 +1595,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-resume-after-archive",
         threadId: "thread-resume-after-archive",
         workspaceContext: {
@@ -1576,6 +1661,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-resume-after-archive",
@@ -1667,6 +1753,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -1703,6 +1790,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -1762,6 +1850,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -1801,6 +1890,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -1856,6 +1946,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -1923,6 +2014,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -1999,6 +2091,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -2058,6 +2151,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -2112,6 +2206,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
@@ -2162,6 +2257,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: resumeLaunch,
           workspaceContext: {
             workspacePath: "/tmp/env-lazy",
@@ -2260,6 +2356,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          providerSessionLifetime: "persistent",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-exit",
@@ -2303,6 +2400,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: startLaunch,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-parent",
         threadId: "thread-parent",
         workspaceContext: {
@@ -2365,6 +2463,7 @@ describe("thread command dispatch", () => {
       {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
+        providerSessionLifetime: "persistent",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -2407,6 +2506,7 @@ describe("thread command dispatch", () => {
         {
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
+          providerSessionLifetime: "persistent",
           environmentId: "env-1",
           threadId: "thread-1",
           workspaceContext: {

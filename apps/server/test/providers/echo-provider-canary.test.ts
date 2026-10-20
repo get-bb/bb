@@ -317,6 +317,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
       envPassthrough: command.bridgeLaunch.envPassthrough,
     };
     await runtimeInstance.startThread({
+      providerSessionLifetime: "persistent",
       bridgeLaunch,
       environmentId: environment.id,
       threadId: thread.id,
@@ -660,6 +661,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
     });
     runtime = runtimeInstance;
     await runtimeInstance.startThread({
+      providerSessionLifetime: "persistent",
       bridgeLaunch: {
         pluginId: command.bridgeLaunch.pluginId,
         dataDir: bridgeDataDir,

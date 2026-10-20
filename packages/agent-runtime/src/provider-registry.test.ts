@@ -178,6 +178,7 @@ describe("provider registry", () => {
 
     const startPlan = provider.buildCommandPlan({
       type: "thread/start",
+      providerSessionLifetime: "persistent",
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
@@ -237,6 +238,7 @@ describe("provider registry", () => {
     });
     const plan = provider.buildCommandPlan({
       type: "thread/start",
+      providerSessionLifetime: "persistent",
       threadId: "thread-1",
       cwd: "/workspace",
       options: {

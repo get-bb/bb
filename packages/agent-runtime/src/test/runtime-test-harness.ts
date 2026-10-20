@@ -143,7 +143,11 @@ type LaunchBearingMethod =
   | "providerInstallationRun";
 
 type WithDefaultBridgeLaunch<TMethod extends (args: never) => unknown> = (
-  args: Omit<Parameters<TMethod>[0], "bridgeLaunch"> & {
+  args: Omit<
+    Parameters<TMethod>[0],
+    "bridgeLaunch" | "providerSessionLifetime"
+  > & {
+    providerSessionLifetime?: "persistent" | "disposable";
     bridgeLaunch?: AgentRuntimeBridgeLaunch;
   },
 ) => ReturnType<TMethod>;
@@ -164,10 +168,20 @@ export function withBridgeLaunch(
   return {
     ...runtime,
     ensureProvider: (args) => runtime.ensureProvider({ bridgeLaunch, ...args }),
-    startThread: (args) => runtime.startThread({ bridgeLaunch, ...args }),
+    startThread: (args) =>
+      runtime.startThread({
+        providerSessionLifetime: "persistent",
+        bridgeLaunch,
+        ...args,
+      }),
     prepareThreadRewind: (args) =>
       runtime.prepareThreadRewind({ bridgeLaunch, ...args }),
-    resumeThread: (args) => runtime.resumeThread({ bridgeLaunch, ...args }),
+    resumeThread: (args) =>
+      runtime.resumeThread({
+        providerSessionLifetime: "persistent",
+        bridgeLaunch,
+        ...args,
+      }),
     archiveThread: (args) => runtime.archiveThread({ bridgeLaunch, ...args }),
     unarchiveThread: (args) =>
       runtime.unarchiveThread({ bridgeLaunch, ...args }),

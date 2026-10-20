@@ -603,6 +603,11 @@ export const threads = sqliteTable(
       onDelete: "set null",
     }),
     providerId: text("provider_id").notNull(),
+    providerSessionLifetime: text("provider_session_lifetime", {
+      enum: ["persistent", "disposable"],
+    })
+      .notNull()
+      .default("persistent"),
     modelOverride: text("model_override"),
     reasoningLevelOverride: text(
       "reasoning_level_override",

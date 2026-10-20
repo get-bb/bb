@@ -145,12 +145,19 @@ function hasOpenDaemonSessionForHost(
   return session?.hostId === hostId && session.status === "active";
 }
 
-function toPublicThread(thread: Thread): Thread {
+function toPublicThread(
+  thread: Thread & { providerSessionLifetime?: "persistent" | "disposable" },
+): Thread {
   return {
     id: thread.id,
     projectId: thread.projectId,
     environmentId: thread.environmentId,
     providerId: thread.providerId,
+    ...(thread.providerSessionLifetime === undefined
+      ? {}
+      : {
+          experimental_providerSessionLifetime: thread.providerSessionLifetime,
+        }),
     title: thread.title,
     titleFallback: thread.titleFallback,
     sectionId: thread.sectionId,

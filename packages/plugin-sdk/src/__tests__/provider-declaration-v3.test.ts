@@ -26,6 +26,23 @@ function declaration(
 }
 
 describe("provider declaration target-state fields", () => {
+  it("defaults disposable support to false and accepts an explicit experimental opt-in", () => {
+    const provider = declaration();
+    expect(
+      validatePluginProviderDeclaration(provider).capabilities
+        .experimental_supportsDisposableSessions,
+    ).toBe(false);
+    expect(
+      validatePluginProviderDeclaration({
+        ...provider,
+        capabilities: {
+          ...provider.capabilities,
+          experimental_supportsDisposableSessions: true,
+        },
+      }).capabilities.experimental_supportsDisposableSessions,
+    ).toBe(true);
+  });
+
   it("carries strings, option descriptors and extension kinds through validation", () => {
     const goalSchema = z.object({ objective: z.string() });
     const normalized = validatePluginProviderDeclaration(

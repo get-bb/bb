@@ -18,6 +18,13 @@ function requireForkSourceThread(
   if (!sourceThread || sourceThread.deletedAt !== null) {
     throw new ApiError(404, "thread_not_found", "Source thread not found");
   }
+  if (sourceThread.providerSessionLifetime === "disposable") {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Disposable provider sessions cannot be forked",
+    );
+  }
   if (sourceThread.archivedAt !== null) {
     throw new ApiError(
       400,

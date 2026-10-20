@@ -1,4 +1,9 @@
-import { environments, hasStoredSpawnAgentToolCall, threads } from "@bb/db";
+import {
+  environments,
+  getThread,
+  hasStoredSpawnAgentToolCall,
+  threads,
+} from "@bb/db";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   PromptInput,
@@ -280,6 +285,7 @@ export async function buildThreadStartCommand(
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
   return {
     type: "thread.start",
+    providerSessionLifetime: runtimeContext.providerSessionLifetime,
     environmentId: args.environment.id,
     threadId: args.thread.id,
     workspaceContext: workspaceContextFromPath({
@@ -334,6 +340,7 @@ function buildPreparedTurnSubmitCommandPayload(
     }),
     target: args.target,
     resumeContext: {
+      providerSessionLifetime: args.runtimeContext.providerSessionLifetime,
       workspaceContext: workspaceContextFromPath({
         path: args.runtimeContext.workspacePath,
       }),
@@ -429,7 +436,11 @@ export function dispatchThreadRenameCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadRenameCommandArgs,
 ): void {
-  if (!providerSupportsThreadRename(deps.providerRegistry, args.providerId)) {
+  if (
+    getThread(deps.db, args.threadId)?.providerSessionLifetime ===
+      "disposable" ||
+    !providerSupportsThreadRename(deps.providerRegistry, args.providerId)
+  ) {
     return;
   }
 
@@ -460,7 +471,12 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     .from(threads)
     .where(eq(threads.id, args.threadId))
     .get();
-  if (!thread || thread.archivedAt === null || thread.deletedAt !== null) {
+  if (
+    !thread ||
+    thread.providerSessionLifetime === "disposable" ||
+    thread.archivedAt === null ||
+    thread.deletedAt !== null
+  ) {
     return false;
   }
 
@@ -538,6 +554,10 @@ export function dispatchThreadUnarchiveCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadUnarchiveCommandArgs,
 ): boolean {
+  if (
+    getThread(deps.db, args.thread.id)?.providerSessionLifetime === "disposable"
+  )
+    return false;
   if (
     !providerSupportsThreadArchiveForwarding(
       deps.providerRegistry,

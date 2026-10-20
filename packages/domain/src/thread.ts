@@ -395,7 +395,17 @@ export const threadQueuedMessageSchema = z.object({
 });
 export type ThreadQueuedMessage = z.infer<typeof threadQueuedMessageSchema>;
 
+export const providerSessionLifetimeSchema = z.enum([
+  "persistent",
+  "disposable",
+]);
+export type ProviderSessionLifetime = z.infer<
+  typeof providerSessionLifetimeSchema
+>;
+
 export const threadSchema = z.object({
+  experimental_providerSessionLifetime:
+    providerSessionLifetimeSchema.optional(),
   id: z.string(),
   projectId: z.string(),
   environmentId: z.string().nullable(),

@@ -59,6 +59,11 @@ Spawning:
                                    accepts an empty object and is otherwise required;
                                    refused when the provider declares no inputs
     --machine <id-or-name>         Run on a machine (--host is an alias)
+    --provider-session-lifetime <lifetime>
+                                   persistent (default) or disposable. Disposable workers
+                                   retain BB history but cannot resume after release or
+                                   process loss. Save results before stopping. Providers
+                                   that do not support disposable sessions reject creation.
     --service-tier <tier>          Service tier id the provider lists for the model, such as
                                    default or fast (see `bb provider models`)
     --option <option=value>        Choose a value for an option the provider's model lists, applied

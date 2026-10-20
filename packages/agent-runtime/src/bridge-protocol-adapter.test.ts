@@ -101,6 +101,28 @@ describe("handshake version gate", () => {
 });
 
 describe("handshake gating", () => {
+  it("rejects disposable starts until the bridge advertises support", () => {
+    const adapter = makeAdapter();
+    const command = {
+      type: "thread/start" as const,
+      providerSessionLifetime: "disposable" as const,
+      threadId: "temporary-worker",
+      cwd: "/workspace",
+      options: fullModeOptions,
+      instructionMode: "append" as const,
+    };
+    completeHandshake(adapter, {});
+    expect(() => adapter.buildCommandPlan(command)).toThrow(
+      "does not support disposable",
+    );
+    completeHandshake(adapter, { disposableSessions: true });
+    expect(adapter.buildCommandPlan(command)).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: { providerSessionLifetime: "disposable" },
+    });
+  });
+
   it("never sends capability-gated methods a bridge did not advertise", () => {
     const adapter = makeAdapter();
     const before = adapter.buildCommandPlan({

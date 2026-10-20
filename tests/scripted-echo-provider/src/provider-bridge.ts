@@ -898,6 +898,7 @@ const handlers: Record<string, RequestHandler> = {
     io.sendResult(id, {
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       capabilities: {
+        disposableSessions: true,
         sessionRestore: true,
         threadArchive: true,
         threadRename: true,

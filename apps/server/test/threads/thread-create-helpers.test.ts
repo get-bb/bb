@@ -115,6 +115,7 @@ describe("createThreadRecord", () => {
           {
             environmentId: null,
             request: {
+              providerSessionLifetime: "persistent",
               ...mode,
               environment: { type: "reuse", environmentId: "env_unused" },
               sectionId: section.section.id,
@@ -176,6 +177,7 @@ describe("createThreadRecord", () => {
         createThreadRecord(deps, {
           environmentId: environment.id,
           request: {
+            providerSessionLifetime: "persistent",
             environment: {
               environmentId: environment.id,
               type: "reuse",

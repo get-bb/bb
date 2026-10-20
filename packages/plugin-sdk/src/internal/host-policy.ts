@@ -1423,7 +1423,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: new Set(["experimental_supportsDisposableSessions"]),
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1466,7 +1466,17 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
   }
+  if (
+    capabilities.experimental_supportsDisposableSessions !== undefined &&
+    typeof capabilities.experimental_supportsDisposableSessions !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsDisposableSessions must be a boolean`,
+    );
+  }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
+    experimental_supportsDisposableSessions:
+      capabilities.experimental_supportsDisposableSessions ?? false,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,

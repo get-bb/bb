@@ -1161,6 +1161,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "disposable-provider-sessions",
+        title: "Disposable provider sessions",
+        summary:
+          "Create temporary workers without provider conversation storage.",
+        bullets: [
+          "Pass experimental_providerSessionLifetime: disposable to threads.spawn; persistent remains the default",
+          "Retain the result before stopping the worker; BB timeline history remains available",
+          "Disposable sessions cannot resume after release or process loss and cannot be forked",
+          "Unsupported providers reject creation; provider declarations and bridge handshakes both advertise support",
+        ],
+        apiSymbols: [
+          "ThreadSpawnArgs.experimental_providerSessionLifetime",
+          "PluginProviderCapabilities.experimental_supportsDisposableSessions",
+        ],
+        firstParty: ["Codex provider"],
+        experimental: true,
+      },
+      {
         id: "host-workers",
         tagline: "Run code on enrolled machines",
         title: "Host workers",

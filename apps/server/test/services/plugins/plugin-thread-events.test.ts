@@ -291,6 +291,7 @@ describe("plugin thread lifecycle events", () => {
     try {
       const { environment, project } = seedThreadFixture(harness);
       const request: ThreadCreateServiceRequest = {
+        providerSessionLifetime: "persistent",
         environment: { type: "reuse", environmentId: environment.id },
         input: [],
         origin: null,
@@ -338,6 +339,7 @@ describe("plugin thread lifecycle events", () => {
           {
             environmentId: environment.id,
             request: {
+              providerSessionLifetime: "persistent",
               environment: { type: "reuse", environmentId: environment.id },
               input: [],
               origin: "plugin",

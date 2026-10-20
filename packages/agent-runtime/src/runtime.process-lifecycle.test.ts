@@ -914,6 +914,7 @@ describe("createAgentRuntime process lifecycle", () => {
       record.read().filter((r) => r.method === "initialize").length;
     try {
       await runtime.startThread({
+        providerSessionLifetime: "persistent",
         bridgeLaunch,
         environmentId: "env-1",
         threadId: "t1",
@@ -922,6 +923,7 @@ describe("createAgentRuntime process lifecycle", () => {
         options: fullRuntimeOptions,
       });
       await runtime.startThread({
+        providerSessionLifetime: "persistent",
         bridgeLaunch,
         environmentId: "env-1",
         threadId: "t2",
@@ -939,6 +941,7 @@ describe("createAgentRuntime process lifecycle", () => {
         },
       };
       await runtime.startThread({
+        providerSessionLifetime: "persistent",
         bridgeLaunch: updatedDeclaration,
         environmentId: "env-1",
         threadId: "t3",

@@ -8,12 +8,14 @@ export interface ThreadMessageEditPolicyDeps {
 type MessageEditCandidateThread = Pick<
   Thread,
   "archivedAt" | "deletedAt" | "providerId"
->;
+> & { providerSessionLifetime?: "persistent" | "disposable" };
 
 export function resolveThreadMessageEditRefusal(
   deps: ThreadMessageEditPolicyDeps,
   thread: MessageEditCandidateThread,
 ): string | null {
+  if (thread.providerSessionLifetime === "disposable")
+    return "Disposable provider sessions cannot rewind history";
   if (!deps.providerRegistry.supportsSessionRewind(thread.providerId)) {
     return `Editing messages is not supported for ${thread.providerId}`;
   }

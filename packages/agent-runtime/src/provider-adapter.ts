@@ -56,6 +56,7 @@ export type AdapterCommand =
     }
   | {
       type: "thread/start";
+      providerSessionLifetime: "persistent" | "disposable";
       threadId: string;
       cwd: string;
       options: ProviderExecutionContext;
@@ -64,6 +65,7 @@ export type AdapterCommand =
     }
   | {
       type: "thread/resume";
+      providerSessionLifetime: "persistent" | "disposable";
       threadId: string;
       cwd: string;
       providerThreadId: string;

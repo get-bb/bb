@@ -203,6 +203,7 @@ export function seedThread(
   args: {
     projectId: string;
     environmentId?: string | null;
+    providerSessionLifetime?: "persistent" | "disposable";
     providerId?: string;
     status?: ThreadStatus;
     title?: string | null;
@@ -220,6 +221,7 @@ export function seedThread(
     projectId: args.projectId,
     environmentId: args.environmentId ?? null,
     providerId: args.providerId ?? "codex",
+    providerSessionLifetime: args.providerSessionLifetime,
     status: args.status ?? "idle",
     title: args.title ?? "Test Thread",
     titleFallback: args.titleFallback ?? "Test Thread",

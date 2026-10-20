@@ -118,6 +118,7 @@ function createTurnSubmitCommand(
       permissionEscalation: null,
     },
     resumeContext: {
+      providerSessionLifetime: "persistent",
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       workspaceContext: {
         workspacePath,
@@ -139,6 +140,7 @@ function createThreadStartCommand(): ThreadStartCommand {
   return {
     bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
     type: "thread.start",
+    providerSessionLifetime: "persistent",
     environmentId: "env-router",
     threadId: "thread-router-start",
     workspaceContext: {

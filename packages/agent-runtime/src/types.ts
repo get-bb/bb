@@ -12,6 +12,7 @@ import type {
   ProviderRecoveryKind,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
+  ProviderSessionLifetime,
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
@@ -122,6 +123,7 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
+  providerSessionLifetime: ProviderSessionLifetime;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -171,6 +173,7 @@ interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
+  providerSessionLifetime: ProviderSessionLifetime;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;

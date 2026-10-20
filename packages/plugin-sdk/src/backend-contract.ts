@@ -1286,6 +1286,8 @@ export type PluginProviderComposerAction = "plan" | "goal";
  * starting the bridge first.
  */
 export interface PluginProviderCapabilities {
+  /** Supports create-time disposable provider sessions that cannot be restored. */
+  experimental_supportsDisposableSessions?: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;

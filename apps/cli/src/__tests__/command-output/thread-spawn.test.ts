@@ -27,6 +27,57 @@ describe("bb thread spawn command output", () => {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
 
+  it("passes disposable provider lifetime through the public SDK request", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "temporary-worker",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "summarize",
+        "--provider-session-lifetime",
+        "disposable",
+      ],
+      register,
+    );
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        experimental_providerSessionLifetime: "disposable",
+      }),
+    });
+  });
+
+  it("rejects invalid provider lifetime before sending a creation request", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "summarize",
+          "--provider-session-lifetime",
+          "temporary",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
     const post = vi.fn(async ({ json }: { json: unknown }) => {
       createThreadRequestSchema.parse(json);

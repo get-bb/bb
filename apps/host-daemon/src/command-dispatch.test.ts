@@ -219,6 +219,7 @@ function createTurnSubmitCommand(
       permissionEscalation: null,
     },
     resumeContext: {
+      providerSessionLifetime: "persistent",
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       workspaceContext: {
         workspacePath: WORKSPACE_PATH,
@@ -307,6 +308,7 @@ function createInstallationGatedThreadStart(
       },
     },
     type: "thread.start",
+    providerSessionLifetime: "persistent",
     environmentId,
     threadId,
     workspaceContext: {
@@ -795,6 +797,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        providerSessionLifetime: "persistent",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: WORKSPACE_PATH,
@@ -872,6 +875,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        providerSessionLifetime: "persistent",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/bb-command-dispatch-new",
@@ -1264,6 +1268,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        providerSessionLifetime: "persistent",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/bb-goal-new",
@@ -1345,6 +1350,7 @@ describe("dispatchCommand", () => {
         },
       },
       type: "thread.start",
+      providerSessionLifetime: "persistent",
       environmentId: "env-1",
       threadId: "thread-1",
       workspaceContext: {
@@ -1424,6 +1430,7 @@ describe("dispatchCommand", () => {
     const command: CommandOf<"thread.start"> = {
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
+      providerSessionLifetime: "persistent",
       environmentId: "env-1",
       threadId: "thread-1",
       workspaceContext: {
@@ -1490,6 +1497,7 @@ describe("dispatchCommand", () => {
         },
       },
       type: "thread.rewind.prepare",
+      providerSessionLifetime: "persistent",
       environmentId: "env-1",
       threadId: "thread-1",
       workspaceContext: {
@@ -1706,6 +1714,7 @@ describe("dispatchCommand", () => {
     const rewind: CommandOf<"thread.rewind.prepare"> = {
       bridgeLaunch: start.bridgeLaunch,
       type: "thread.rewind.prepare",
+      providerSessionLifetime: "persistent",
       environmentId: start.environmentId,
       threadId: start.threadId,
       workspaceContext: start.workspaceContext,
@@ -2275,6 +2284,7 @@ describe("dispatchCommand", () => {
     const command: CommandOf<"thread.start"> = {
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
+      providerSessionLifetime: "persistent",
       environmentId: "env-1",
       threadId: "thread-1",
       workspaceContext: {
@@ -2368,6 +2378,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        providerSessionLifetime: "persistent",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: WORKSPACE_PATH,

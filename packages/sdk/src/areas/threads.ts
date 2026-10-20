@@ -237,6 +237,8 @@ export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
   "input" | "origin" | "originKind" | "startedOnBehalfOf"
 > {
+  /** Immutable provider storage lifetime. Disposable workers cannot resume after release; retain their result before stopping. BB history remains available. Unsupported providers reject the request. */
+  experimental_providerSessionLifetime?: CreateThreadRequest["experimental_providerSessionLifetime"];
   origin?: CreateThreadRequest["origin"];
   originKind?: CreateThreadRequest["originKind"];
   startedOnBehalfOf?: CreateThreadRequest["startedOnBehalfOf"];

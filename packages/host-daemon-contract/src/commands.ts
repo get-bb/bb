@@ -213,6 +213,7 @@ export type HostDaemonContributedEnvEntry = z.infer<
 
 const hostDaemonThreadRuntimeContextSchema = z
   .object({
+    providerSessionLifetime: z.enum(["persistent", "disposable"]),
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),

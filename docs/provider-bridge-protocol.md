@@ -334,6 +334,22 @@ with `cwd: null`. The host daemon probes from a dedicated empty
 receives an absolute working directory, so global provider commands are available
 before a personal workspace exists. Selected projects use their workspace path.
 
+### Provider session lifetime
+
+Construction requests carry `providerSessionLifetime`, either `persistent` or
+`disposable`. Legacy requests omit it and retain persistent behavior. A bridge
+must advertise `disposableSessions: true` before the runtime sends a disposable
+start. The provider declaration must also opt in through
+`experimental_supportsDisposableSessions`.
+
+A disposable start must avoid native conversation storage and report
+`sessionRestorable: false` in its result and identity notification. BB retains
+its timeline independently. Cold resume, fork, and reconstruction fail without
+creating another native session. Live turns keep the original provider UUID.
+BB skips native archive, unarchive, and rename for these sessions. Release stops
+the session after the consumer retains its result. Elective shared bridge
+restarts wait while any disposable session remains hosted.
+
 ### Recovery hints
 
 A hint says what went wrong in the provider's own terms and what the runtime

@@ -258,6 +258,7 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     await runtime.startThread({
+      providerSessionLifetime: "persistent",
       bridgeLaunch: launchA,
       environmentId: "env-1",
       threadId: "t1",
@@ -266,6 +267,7 @@ describe("createAgentRuntime multi-thread routing", () => {
       options: fullRuntimeOptions,
     });
     await runtime.startThread({
+      providerSessionLifetime: "persistent",
       bridgeLaunch: launchB,
       environmentId: "env-1",
       threadId: "t2",

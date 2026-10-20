@@ -3723,6 +3723,7 @@ async function handleRequest(
         ok: true,
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
+          disposableSessions: false,
           sessionRestore: false,
           threadArchive: false,
           threadRename: false,
