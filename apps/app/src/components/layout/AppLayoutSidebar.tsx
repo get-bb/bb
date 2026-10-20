@@ -1,21 +1,16 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import {
   sidebarNavigationPlacement,
   useResolvedSidebarNavigation,
 } from "@/components/sidebar/sidebarNavigationProvider";
-import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useMobileRecentsThreadReveal } from "@/views/useMobileRecentsThreadReveal";
-
-export type AppLayoutSidebarMode = "app" | "settings" | "plugins" | "skills";
+import type { RouteSidebar } from "./routeSidebar";
 
 interface AppLayoutSidebarProps {
-  mode: AppLayoutSidebarMode;
-  pluginSidebar?: { panel: PluginNavPanelSlot; subPath: string };
+  routeSidebar: RouteSidebar | null;
+  isSettingsActive: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   settingsRoutePath: string;
@@ -23,8 +18,8 @@ interface AppLayoutSidebarProps {
 }
 
 export function AppLayoutSidebar({
-  mode,
-  pluginSidebar,
+  routeSidebar,
+  isSettingsActive,
   onResizeMouseDown,
   isResizing,
   settingsRoutePath,
@@ -33,86 +28,40 @@ export function AppLayoutSidebar({
   useMobileRecentsThreadReveal();
   const navigation = useResolvedSidebarNavigation();
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
-  const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
+  const holdCurrentSidebar = isCompactViewport && isMobileSidebarClosing;
   const [lastVisible, setLastVisible] = useState({
-    mode,
+    routeSidebar,
     backToAppRoutePath,
-    pluginSidebar,
   });
-  const [crashedSidebars, setCrashedSidebars] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
   if (
-    !holdCurrentMode &&
-    (lastVisible.mode !== mode ||
-      lastVisible.backToAppRoutePath !== backToAppRoutePath ||
-      lastVisible.pluginSidebar !== pluginSidebar)
+    !holdCurrentSidebar &&
+    (lastVisible.routeSidebar?.id !== routeSidebar?.id ||
+      lastVisible.backToAppRoutePath !== backToAppRoutePath)
   ) {
-    setLastVisible({ mode, backToAppRoutePath, pluginSidebar });
+    setLastVisible({ routeSidebar, backToAppRoutePath });
   }
-  const rendered = holdCurrentMode
+  const rendered = holdCurrentSidebar
     ? lastVisible
-    : { mode, backToAppRoutePath, pluginSidebar };
+    : { routeSidebar, backToAppRoutePath };
   const backTo =
     sidebarNavigationPlacement(navigation) === "list"
       ? rendered.backToAppRoutePath
       : null;
 
-  const target = rendered.mode === "app" ? rendered.pluginSidebar : undefined;
-  const panel = target?.panel;
-  const SidebarComponent = panel?.experimental_sidebar;
-  const sidebarKey =
-    panel && target
-      ? `${panel.pluginId}/${panel.id}/${panel.generation}/${target.subPath}`
-      : null;
-  const showPluginSidebar =
-    SidebarComponent !== undefined &&
-    sidebarKey !== null &&
-    !crashedSidebars.has(sidebarKey);
-
   return (
     <AppSidebar
       onResizeMouseDown={onResizeMouseDown}
       isResizing={isResizing}
-      isBodyHidden={rendered.mode !== "app" || showPluginSidebar}
+      isBodyHidden={rendered.routeSidebar !== null}
       navigation={navigation}
       settingsRoutePath={settingsRoutePath}
-      isSettingsActive={mode === "settings"}
+      isSettingsActive={isSettingsActive}
       alternateBody={
-        rendered.mode === "settings" ? (
-          <SettingsSidebar
-            backTo={backTo}
-            onResizeMouseDown={onResizeMouseDown}
-            isResizing={isResizing}
-          />
-        ) : rendered.mode === "plugins" || rendered.mode === "skills" ? (
-          <ResourceSidebar
-            key={rendered.mode}
-            workspace={rendered.mode}
-            backTo={backTo}
-            onResizeMouseDown={onResizeMouseDown}
-            isResizing={isResizing}
-          />
-        ) : showPluginSidebar && panel && target && SidebarComponent ? (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-            <PluginSlotMount
-              key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-              pluginId={panel.pluginId}
-              slotKind="navPanelSidebar"
-              slotId={panel.id}
-              crashResetKey={sidebarKey ?? undefined}
-              crashFallback={null}
-              onCrash={() => {
-                if (sidebarKey !== null)
-                  setCrashedSidebars((current) =>
-                    new Set(current).add(sidebarKey),
-                  );
-              }}
-            >
-              <SidebarComponent subPath={target.subPath} />
-            </PluginSlotMount>
-          </div>
-        ) : null
+        rendered.routeSidebar?.render({
+          backTo,
+          isResizing,
+          onResizeMouseDown,
+        }) ?? null
       }
     />
   );

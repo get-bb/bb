@@ -47,6 +47,9 @@ interface RouteNavigation {
 }
 
 const RouteNavigationContext = createContext<RouteNavigation | null>(null);
+export const RouteNavigationCallbackContext = createContext<
+  (() => void) | null
+>(null);
 const PluginDetailRouteNavigationContext = createContext<
   ((pluginId: string) => boolean) | null
 >(null);
@@ -200,6 +203,7 @@ export function useRouteAnchorDelegate(): (
   event: ReactMouseEvent<HTMLElement>,
 ) => void {
   const navigation = useContext(RouteNavigationContext);
+  const onNavigate = useContext(RouteNavigationCallbackContext);
   const openPluginDetail = useContext(PluginDetailRouteNavigationContext);
   return useCallback(
     (event) => {
@@ -238,9 +242,10 @@ export function useRouteAnchorDelegate(): (
         return;
       }
       event.preventDefault();
+      onNavigate?.();
       navigation.navigate(route.path);
     },
-    [navigation, openPluginDetail],
+    [navigation, onNavigate, openPluginDetail],
   );
 }
 
@@ -252,6 +257,7 @@ export function RouteAnchor({
   ...anchorProps
 }: RouteAnchorProps) {
   const navigation = useContext(RouteNavigationContext);
+  const onNavigate = useContext(RouteNavigationCallbackContext);
   const route = useMemo(() => {
     const origin = currentOrigin();
     return origin === null || href === undefined
@@ -271,10 +277,11 @@ export function RouteAnchor({
       }
       if (action === "navigate") {
         event.preventDefault();
+        onNavigate?.();
         navigation.navigate(route.path);
       }
     },
-    [navigation, onClick, route],
+    [navigation, onClick, onNavigate, route],
   );
 
   return (

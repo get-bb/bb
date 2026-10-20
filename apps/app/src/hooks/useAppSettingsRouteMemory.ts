@@ -10,7 +10,7 @@ import {
 interface AppSettingsRouteMemory {
   appRoutePath: string;
   settingsRoutePath: string;
-  toolsBackRoutePath: string;
+  sectionBackRoutePath: string;
 }
 
 function getLocationRoutePath(location: {
@@ -31,7 +31,7 @@ function isSettingsRoutePath(pathname: string): boolean {
 export interface AppSettingsRoute {
   routePath: string;
   isSettingsRoute: boolean;
-  isToolsRoute: boolean;
+  isSectionRoute: boolean;
 }
 
 export interface AppSettingsRouteMemoryState {
@@ -40,15 +40,21 @@ export interface AppSettingsRouteMemoryState {
   lastSettingsRoutePath: string;
 }
 
-export function classifyAppSettingsRoute(location: {
-  pathname: string;
-  search: string;
-  hash: string;
-}): AppSettingsRoute {
+export function classifyAppSettingsRoute(
+  location: {
+    pathname: string;
+    search: string;
+    hash: string;
+  },
+  routeOwnsSidebar: boolean,
+): AppSettingsRoute {
+  const isSettingsRoute = isSettingsRoutePath(location.pathname);
   return {
     routePath: getLocationRoutePath(location),
-    isSettingsRoute: isSettingsRoutePath(location.pathname),
-    isToolsRoute: isToolsRoutePath(location.pathname),
+    isSettingsRoute,
+    isSectionRoute:
+      !isSettingsRoute &&
+      (routeOwnsSidebar || isToolsRoutePath(location.pathname)),
   };
 }
 
@@ -60,7 +66,7 @@ export function createAppSettingsRouteMemory(
       ? getRootComposeRoutePath()
       : route.routePath,
     lastCoreAppRoutePath:
-      route.isSettingsRoute || route.isToolsRoute
+      route.isSettingsRoute || route.isSectionRoute
         ? getRootComposeRoutePath()
         : route.routePath,
     lastSettingsRoutePath: route.isSettingsRoute
@@ -76,7 +82,7 @@ export function advanceAppSettingsRouteMemory(
   if (route.isSettingsRoute) {
     return { ...state, lastSettingsRoutePath: route.routePath };
   }
-  if (route.isToolsRoute) {
+  if (route.isSectionRoute) {
     return { ...state, lastAppRoutePath: route.routePath };
   }
   return {
@@ -97,24 +103,28 @@ export function resolveAppSettingsRouteMemory(
     settingsRoutePath: route.isSettingsRoute
       ? route.routePath
       : state.lastSettingsRoutePath,
-    toolsBackRoutePath: route.isToolsRoute
-      ? state.lastCoreAppRoutePath
-      : route.routePath,
+    sectionBackRoutePath: !route.isSectionRoute
+      ? route.routePath
+      : state.lastCoreAppRoutePath === route.routePath
+        ? getRootComposeRoutePath()
+        : state.lastCoreAppRoutePath,
   };
 }
 
-export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
-  const route = classifyAppSettingsRoute(useLocation());
+export function useAppSettingsRouteMemory(
+  routeOwnsSidebar: boolean,
+): AppSettingsRouteMemory {
+  const route = classifyAppSettingsRoute(useLocation(), routeOwnsSidebar);
   const memoryRef = useRef(createAppSettingsRouteMemory(route));
-  const { routePath, isSettingsRoute, isToolsRoute } = route;
+  const { routePath, isSettingsRoute, isSectionRoute } = route;
 
   useEffect(() => {
     memoryRef.current = advanceAppSettingsRouteMemory(memoryRef.current, {
       routePath,
       isSettingsRoute,
-      isToolsRoute,
+      isSectionRoute,
     });
-  }, [routePath, isSettingsRoute, isToolsRoute]);
+  }, [routePath, isSettingsRoute, isSectionRoute]);
 
   return resolveAppSettingsRouteMemory(memoryRef.current, route);
 }

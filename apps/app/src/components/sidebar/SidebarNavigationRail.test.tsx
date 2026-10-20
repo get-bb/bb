@@ -29,6 +29,7 @@ import {
   useCloseMobileSidebar,
 } from "@/components/ui/sidebar";
 import { AppLayoutSidebar } from "@/components/layout/AppLayoutSidebar";
+import { resolveRouteSidebar } from "@/components/layout/routeSidebar";
 import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
@@ -173,7 +174,8 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
       {useLayout ? (
         <>
           <AppLayoutSidebar
-            mode={isSettings ? "settings" : "app"}
+            routeSidebar={resolveRouteSidebar(location.pathname, null)}
+            isSettingsActive={isSettings}
             onResizeMouseDown={() => {}}
             isResizing={false}
             settingsRoutePath={SETTINGS_ROUTE_PATH}

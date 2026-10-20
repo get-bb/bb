@@ -76,6 +76,7 @@ import {
   AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
+import { RouteNavigationCallbackContext } from "@/components/ui/app-route-anchor";
 import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -338,6 +339,7 @@ export function useBbContext(): BbContext {
 
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
+  const onNavigate = useContext(RouteNavigationCallbackContext);
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
@@ -348,6 +350,7 @@ export function useBbNavigate(): BbNavigate {
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const toThread = useCallback<BbNavigate["toThread"]>(
     (threadId, options) => {
+      onNavigate?.();
       const open = (projectId: string) => {
         store.set(getThreadConversationCollapsedAtom(threadId), false);
         if (options?.split) {
@@ -372,13 +375,14 @@ export function useBbNavigate(): BbNavigate {
         .then((thread) => open(thread.projectId))
         .catch(() => navigate(`/threads/${threadId}`));
     },
-    [isCompact, navigate, queryClient, store],
+    [isCompact, navigate, onNavigate, queryClient, store],
   );
   const toProject = useCallback(
     (projectId: string) => {
+      onNavigate?.();
       void navigate(getProjectComposeRoutePath(projectId));
     },
-    [navigate],
+    [navigate, onNavigate],
   );
   const toPluginPanel = useCallback(
     (path: string, options?: { subPath?: string; replace?: boolean }) => {
@@ -387,9 +391,10 @@ export function useBbNavigate(): BbNavigate {
         path,
         ...(options?.subPath !== undefined ? { subPath: options.subPath } : {}),
       });
+      onNavigate?.();
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
-    [navigate, pluginId],
+    [navigate, onNavigate, pluginId],
   );
   const toCompose = useCallback<BbNavigate["toCompose"]>(
     (options) => {
@@ -400,6 +405,7 @@ export function useBbNavigate(): BbNavigate {
         setRootComposeProjectId(options.projectId);
       }
       const hostId = options?.hostId?.trim() ?? "";
+      onNavigate?.();
       void navigate(getRootComposeRoutePath(), {
         ...(replacesAutomationEditRoute ? { replace: true } : {}),
         state: {
@@ -418,7 +424,13 @@ export function useBbNavigate(): BbNavigate {
         },
       });
     },
-    [location.pathname, navigate, pluginId, setRootComposeProjectId],
+    [
+      location.pathname,
+      navigate,
+      onNavigate,
+      pluginId,
+      setRootComposeProjectId,
+    ],
   );
   const openThreadPanel = useCallback<BbNavigate["openThreadPanel"]>(
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,

@@ -94,9 +94,7 @@ import {
   getSettingsProjectRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
-  isPluginsRoutePath,
   isProjectlessProjectId,
-  isSkillsRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -106,6 +104,7 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
+import { resolveRouteSidebar } from "./routeSidebar";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
 import { useSidebarNavigationPlacement } from "@/components/sidebar/sidebarNavigationProvider";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
@@ -470,8 +469,37 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
-  const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
-    useAppSettingsRouteMemory();
+  const navPanelChrome = usePluginNavPanelChrome();
+  const isGlobalSettingsView =
+    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
+  const pluginPanelMatch = matchPath(
+    PLUGIN_PANEL_ROUTE_PATH,
+    location.pathname,
+  );
+  const pluginPanelEntry = pluginPanelMatch
+    ? navPanelChrome.find(
+        (candidate) =>
+          candidate.chrome.pluginId === pluginPanelMatch.params.pluginId &&
+          candidate.chrome.path === pluginPanelMatch.params.panelPath,
+      )
+    : undefined;
+  const pluginPanel = pluginPanelEntry?.panel ?? undefined;
+  const pluginPanelChrome = pluginPanelEntry?.chrome;
+  const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
+  const routeSidebar = resolveRouteSidebar(
+    location.pathname,
+    pluginPanel === undefined
+      ? null
+      : { panel: pluginPanel, subPath: pluginPanelSubPath },
+  );
+  const { appRoutePath, settingsRoutePath, sectionBackRoutePath } =
+    useAppSettingsRouteMemory(routeSidebar !== null);
+  const backToAppRoutePath =
+    routeSidebar === null
+      ? null
+      : isGlobalSettingsView
+        ? appRoutePath
+        : sectionBackRoutePath;
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -522,37 +550,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;
-  const navPanelChrome = usePluginNavPanelChrome();
-  const isGlobalSettingsView =
-    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
-  const isPluginsWorkspace = isPluginsRoutePath(location.pathname);
-  const isSkillsWorkspace = isSkillsRoutePath(location.pathname);
-  const backToAppRoutePath = isGlobalSettingsView
-    ? appRoutePath
-    : isPluginsWorkspace || isSkillsWorkspace
-      ? toolsBackRoutePath
-      : null;
-  const pluginPanelMatch = matchPath(
-    PLUGIN_PANEL_ROUTE_PATH,
-    location.pathname,
-  );
-  const pluginPanelEntry = pluginPanelMatch
-    ? navPanelChrome.find(
-        (candidate) =>
-          candidate.chrome.pluginId === pluginPanelMatch.params.pluginId &&
-          candidate.chrome.path === pluginPanelMatch.params.panelPath,
-      )
-    : undefined;
-  const pluginPanel = pluginPanelEntry?.panel ?? undefined;
-  const pluginPanelChrome = pluginPanelEntry?.chrome;
-  const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
-  const pluginSidebar = useMemo(
-    () =>
-      pluginPanel?.experimental_sidebar === undefined
-        ? undefined
-        : { panel: pluginPanel, subPath: pluginPanelSubPath },
-    [pluginPanel, pluginPanelSubPath],
-  );
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -825,16 +822,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 ) : null}
                 <HistoryCommandHandlers />
                 <AppLayoutSidebar
-                  pluginSidebar={pluginSidebar}
-                  mode={
-                    isGlobalSettingsView
-                      ? "settings"
-                      : isPluginsWorkspace
-                        ? "plugins"
-                        : isSkillsWorkspace
-                          ? "skills"
-                          : "app"
-                  }
+                  routeSidebar={routeSidebar}
+                  isSettingsActive={isGlobalSettingsView}
                   onResizeMouseDown={handleResizeMouseDown}
                   isResizing={isSidebarResizing}
                   settingsRoutePath={settingsRoutePath}
