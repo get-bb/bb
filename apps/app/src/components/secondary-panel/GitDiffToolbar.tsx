@@ -362,28 +362,33 @@ export function GitDiffToolbar({
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                      "text-muted-foreground",
-                    )}
-                    onClick={onToggleAllCollapsed}
-                    disabled={isCollapseAllDisabled}
-                    aria-label={
-                      areAllFilesCollapsed
-                        ? "Expand all files"
-                        : "Collapse all files"
-                    }
+                  <span
+                    className="inline-flex shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    tabIndex={isCollapseAllDisabled ? 0 : undefined}
                   >
-                    {areAllFilesCollapsed ? (
-                      <Icon name="ChevronsDown" />
-                    ) : (
-                      <Icon name="ChevronsUp" />
-                    )}
-                  </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                        "text-muted-foreground",
+                      )}
+                      onClick={onToggleAllCollapsed}
+                      disabled={isCollapseAllDisabled}
+                      aria-label={
+                        areAllFilesCollapsed
+                          ? "Expand all files"
+                          : "Collapse all files"
+                      }
+                    >
+                      {areAllFilesCollapsed ? (
+                        <Icon name="ChevronsDown" />
+                      ) : (
+                        <Icon name="ChevronsUp" />
+                      )}
+                    </Button>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   {areAllFilesCollapsed

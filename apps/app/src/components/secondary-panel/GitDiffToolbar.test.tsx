@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import type { ComponentProps } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 
 afterEach(cleanup);
 
-function renderToolbar(isStatsLoading: boolean) {
+function renderToolbar(
+  isStatsLoading: boolean,
+  overrides: Partial<ComponentProps<typeof GitDiffToolbar>> = {},
+) {
   return render(
     <TooltipProvider>
       <GitDiffToolbar
@@ -28,6 +32,7 @@ function renderToolbar(isStatsLoading: boolean) {
         onDisplayModeChange={() => undefined}
         lineOverflowMode="scroll"
         onLineOverflowModeChange={() => undefined}
+        {...overrides}
       />
     </TooltipProvider>,
   );
@@ -46,3 +51,27 @@ it("reports no changes once an empty file list has loaded", () => {
   expect(screen.getByText("No changes")).toBeTruthy();
   expect(screen.queryByRole("status", { name: "Loading changes" })).toBeNull();
 });
+
+it.each([
+  { areAllFilesCollapsed: false, label: "Collapse all files" },
+  { areAllFilesCollapsed: true, label: "Expand all files" },
+])(
+  "shows $label on hover while disabled without activating it",
+  async ({ areAllFilesCollapsed, label }) => {
+    const onToggleAllCollapsed = vi.fn();
+    renderToolbar(false, { areAllFilesCollapsed, onToggleAllCollapsed });
+    const button = screen.getByRole("button", { name: label });
+    const trigger = button.parentElement!;
+
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" });
+
+    expect((await screen.findByRole("tooltip")).textContent).toBe(label);
+    fireEvent.click(trigger);
+    fireEvent.click(button);
+    expect(onToggleAllCollapsed).not.toHaveBeenCalled();
+
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+  },
+);
