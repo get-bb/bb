@@ -214,7 +214,7 @@ const LATEST_RELEASE_URL = `/changelog#${LATEST_RELEASE.version.replaceAll(".", 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "bb: the agentic IDE that builds itself" },
+      { title: "bb: agentic IDE · The IDE that builds itself" },
       { name: "description", content: SITE_DESCRIPTION },
       ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
     ],
