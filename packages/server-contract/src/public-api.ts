@@ -432,6 +432,8 @@ type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
 
+export const UI_PREFERENCES_TAG = "ui-preferences";
+
 export const publicApiRoutes = {
   promptHistory: {
     list: defineRoute({
@@ -1969,6 +1971,7 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<UiPreferencesResponse>(),
+      tags: () => [UI_PREFERENCES_TAG],
     }),
     updateUiPreference: defineRoute({
       path: "/preferences/ui/:key",
@@ -1981,6 +1984,7 @@ export const publicApiRoutes = {
         jsonResponse<ApiError>({ status: 404 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
+      invalidates: () => [UI_PREFERENCES_TAG],
     }),
     resetUiPreference: defineRoute({
       path: "/preferences/ui/:key",
@@ -1990,6 +1994,7 @@ export const publicApiRoutes = {
         jsonResponse<UiPreferenceResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
       ],
+      invalidates: () => [UI_PREFERENCES_TAG],
     }),
     themes: defineRoute({
       path: "/settings/themes",
