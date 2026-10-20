@@ -698,7 +698,7 @@ describe("MachinesSettingsSection", () => {
       await screen.findByText(/files and worktrees left on its disk/),
     ).toBeTruthy();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Remove without cleanup" }),
+      await screen.findByRole("button", { name: "Remove anyway" }),
     );
 
     await waitFor(() => {

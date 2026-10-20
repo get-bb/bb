@@ -354,7 +354,7 @@ describe("MachineSettingsView", () => {
       within(dialog).getByText(/The machine provider's removal still runs/),
     ).toBeDefined();
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Remove without cleanup" }),
+      within(dialog).getByRole("button", { name: "Remove anyway" }),
     );
     await waitFor(() =>
       expect(sdk.hosts.experimental_forceRemove).toHaveBeenCalledWith({

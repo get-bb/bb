@@ -135,7 +135,7 @@ export function MachineRemoveDialog({
                 })
               }
             >
-              {skipCleanup ? "Remove without cleanup" : "Remove machine"}
+              {skipCleanup ? "Remove anyway" : "Remove machine"}
             </Button>
           </DialogFooter>
         </>
