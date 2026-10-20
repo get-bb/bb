@@ -3947,9 +3947,13 @@ export interface BbNavigate {
 
 /**
  * BB live reads are fresh for two seconds, with no polling when freshness expires.
- * Stale active reads refresh on app focus and reconnect. Invalidations refresh
- * immediately. Network/abort failures retry twice at 250 ms; HTTP failures,
- * including refusals, do not retry. Writes never retry automatically.
+ * Focus does not refetch while BB's realtime connection is healthy. While
+ * disconnected, focus/browser-online events recheck stale active reads; BB
+ * reconnect invalidates all plugin reads regardless of freshness. Page hiding
+ * cancels active attempts; resuming restarts those cancelled reads.
+ * Invalidations refresh immediately. Network/abort failures retry twice at
+ * 250 ms; HTTP failures, including refusals, do not retry. Writes never retry
+ * automatically.
  */
 export interface ExperimentalRpcQueryState<T> {
   /** Latest successful value plus shared predictions; retained during refresh and refresh errors. Plain reads are undefined before first success; keyed reads expose loaded rows (initially an empty record) through select. */

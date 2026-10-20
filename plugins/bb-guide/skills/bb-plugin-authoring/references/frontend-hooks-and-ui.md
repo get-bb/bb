@@ -342,10 +342,12 @@ failure, cleared on success; retrying a first load clears its old error while
 loading. `refetch` forces an attempt, waits through retries, and records any
 failure in `error` without rejecting or discarding existing data.
 
-Reads stay fresh for two seconds without polling. Stale active reads refresh
-on app focus and reconnect; invalidations refresh immediately. Network/abort
-failures retry twice at 250 ms; HTTP failures do not retry. Writes never retry
-automatically. `mutate`, `isPending`, and `pendingInputs` finish at write
+Reads stay fresh for two seconds without polling. Focus does not refetch while
+BB's realtime connection is healthy. While disconnected, focus/browser-online
+events recheck stale active reads; BB reconnect invalidates all plugin reads
+regardless of freshness. Page hiding cancels active attempts and resume restarts
+those cancelled reads. Invalidations refresh immediately. Network/abort failures
+retry twice at 250 ms; HTTP failures do not retry. Writes never retry automatically. `mutate`, `isPending`, and `pendingInputs` finish at write
 acknowledgement, while confirmed reads replace shared predictions later.
 
 Live hook errors and rejected mutations use `experimental_PluginRpcCallError`.
