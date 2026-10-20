@@ -400,8 +400,8 @@ export function GitDiffToolbar({
                   }
                   aria-label={
                     lineOverflowMode === "wrap"
-                      ? "Disable diff line wrap"
-                      : "Wrap diff lines"
+                      ? "Turn off line wrap"
+                      : "Turn on line wrap"
                   }
                   aria-pressed={lineOverflowMode === "wrap"}
                 >
@@ -410,8 +410,8 @@ export function GitDiffToolbar({
               </TooltipTrigger>
               <TooltipContent>
                 {lineOverflowMode === "wrap"
-                  ? "Disable diff line wrap"
-                  : "Wrap diff lines"}
+                  ? "Turn off line wrap"
+                  : "Turn on line wrap"}
               </TooltipContent>
             </Tooltip>
             <div
@@ -430,13 +430,13 @@ export function GitDiffToolbar({
                       "text-muted-foreground",
                     )}
                     onClick={() => onDisplayModeChange("unified")}
-                    aria-label="Stacked diff view"
+                    aria-label="Unified diff view"
                     aria-pressed={displayMode === "unified"}
                   >
                     <Icon name="Rows2" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Stacked diff view</TooltipContent>
+                <TooltipContent>Unified diff view</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>

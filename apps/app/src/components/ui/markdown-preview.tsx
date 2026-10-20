@@ -822,7 +822,7 @@ function MarkdownCodeBlock({
           <button
             type="button"
             aria-pressed={softWrap}
-            aria-label={softWrap ? "Disable line wrap" : "Wrap long lines"}
+            aria-label={softWrap ? "Turn off line wrap" : "Turn on line wrap"}
             onClick={() => {
               setSoftWrap((value) => !value);
             }}
