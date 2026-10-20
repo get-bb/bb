@@ -29,6 +29,7 @@ async function runLoggerInSubprocess(args: {
   dataDir: string;
   component: string;
   message: string;
+  stdoutFd?: number;
   timestampMs: number;
   timezone: string;
 }): Promise<SubprocessLoggerResult> {
@@ -61,18 +62,18 @@ async function runLoggerInSubprocess(args: {
       ["--conditions=source", "--import", "tsx", "-e", script],
       {
         env: childEnv,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", args.stdoutFd ?? "pipe", "pipe"],
       },
     );
 
     let stdout = "";
     let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
       stdout += chunk;
     });
-    child.stderr.on("data", (chunk: string) => {
+    child.stderr?.on("data", (chunk: string) => {
       stderr += chunk;
     });
     child.once("error", reject);
@@ -237,6 +238,33 @@ describe("createLogger", () => {
       msg: message,
       time: timestampMs,
     });
+  });
+
+  it("keeps log lines out of stdout when stdout is a plain file", async () => {
+    const dataDir = createTempDir();
+    const logDir = path.join(dataDir, "logs");
+    const stdoutPath = path.join(dataDir, "server-stdio.log");
+    const message = `stdout-file-${Date.now()}`;
+    const stdoutFd = fs.openSync(stdoutPath, "a");
+
+    try {
+      const result = await runLoggerInSubprocess({
+        component: "behavior-check",
+        dataDir,
+        message,
+        stdoutFd,
+        timestampMs: Date.parse("2026-08-08T02:53:23.000Z"),
+        timezone: "UTC",
+      });
+      expect(result.exitCode).toBe(0);
+    } finally {
+      fs.closeSync(stdoutFd);
+    }
+
+    expect(fs.readFileSync(stdoutPath, "utf8")).toBe("");
+    expect(readComponentLogLines(logDir, "behavior-check")).toMatchObject([
+      { msg: message },
+    ]);
   });
 
   it("uses an explicit data directory when provided", async () => {

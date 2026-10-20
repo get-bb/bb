@@ -109,10 +109,11 @@ remove `--auto-update` from the launchd plist or systemd user unit and reload
 that service; foreground `bb-app host-daemon` runs leave it off unless you pass
 `--auto-update`.
 
-Service stdout and stderr are appended to `logs/server-stdio.log` and
-`logs/host-daemon-stdio.log` under the selected data directory, including
-startup errors. A file over 10 MB is renamed to `-stdio.1.log` when its service
-starts. Follow them with `tail -F`.
+Application logs rotate in `logs/server.N.log` and `logs/host-daemon.N.log`
+under the selected data directory. Startup errors, crashes, and other output
+that bypasses the logger are appended to `logs/server-stdio.log` and
+`logs/host-daemon-stdio.log`; a file over 10 MB is renamed to `-stdio.1.log`
+when its service starts. Follow them with `tail -F`.
 
 Updates commands
 

@@ -2837,7 +2837,7 @@ Exits with code 3 without starting when the server on this data directory moved 
   });
   assertBbAppArtifacts(runtime.context);
 
-  log(" ", dim(`logs: ${runtime.context.logDir}/server-stdio.log`));
+  log(" ", dim(`logs: ${runtime.context.logDir}/`));
   const childProcess = spawnLoggedProcess({
     command: process.execPath,
     args: [runtime.context.serverEntry],

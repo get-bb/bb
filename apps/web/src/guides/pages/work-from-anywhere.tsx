@@ -224,9 +224,11 @@ export const guide: Guide = {
             <strong>View → Server &amp; Daemon Logs</strong>.
           </li>
           <li>
-            Otherwise, open <code>logs/server-stdio.log</code> and{" "}
-            <code>logs/host-daemon-stdio.log</code> in bb's data folder,{" "}
-            <code>~/.bb</code>.
+            Otherwise, open the newest <code>logs/server.N.log</code> and{" "}
+            <code>logs/host-daemon.N.log</code> in bb's data folder,{" "}
+            <code>~/.bb</code>. Startup errors and crashes are in{" "}
+            <code>logs/server-stdio.log</code> and{" "}
+            <code>logs/host-daemon-stdio.log</code>.
           </li>
           <li>
             On a machine you added, look in{" "}

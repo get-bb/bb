@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { fstatSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
 import type { Logger } from "pino";
@@ -19,6 +19,14 @@ function sanitizeComponentName(component: string): string {
   }
 
   return trimmed.replace(/[^a-zA-Z0-9._-]+/gu, "-");
+}
+
+function stdoutIsPlainFile(): boolean {
+  try {
+    return fstatSync(1).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export function createLogger(options: CreateLoggerOptions): Logger {
@@ -52,7 +60,7 @@ export function createLogger(options: CreateLoggerOptions): Logger {
     },
   ];
 
-  if (!process.env.VITEST) {
+  if (!process.env.VITEST && !stdoutIsPlainFile()) {
     targets.push({
       target: "pino-pretty",
       options: {

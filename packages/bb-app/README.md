@@ -96,16 +96,18 @@ healthy server answers on the configured local address, startup exits with
 status `1` without starting either child process. The existing instance keeps
 running. A runtime record without a healthy server does not prevent startup.
 
-Server and host-daemon output goes directly to `logs/server-stdio.log` and
-`logs/host-daemon-stdio.log` under the data directory, including startup errors
-and console output. These files append across restarts; when one is over 10 MB
-as a service starts, it is renamed to `-stdio.1.log`, replacing the previous
-one. They are separate from the rotating application logs. The launcher prints status and log locations
-without forwarding service output to the terminal, so a stalled terminal cannot
-block service logging. To follow output with the default data directory:
+Application logs rotate in `logs/server.N.log` and `logs/host-daemon.N.log`
+under the data directory, keeping the five newest files per service. Output that
+bypasses the logger, such as startup errors and crashes, goes directly to
+`logs/server-stdio.log` and `logs/host-daemon-stdio.log`. These files append
+across restarts; when one is over 10 MB as a service starts, it is renamed to
+`-stdio.1.log`, replacing the previous one. The launcher prints status and log
+locations without forwarding service output to the terminal, so a stalled
+terminal cannot block service logging. To follow everything with the default
+data directory:
 
 ```bash
-tail -F ~/.bb/logs/server-stdio.log ~/.bb/logs/host-daemon-stdio.log
+tail -F ~/.bb/logs/*.log
 ```
 
 Launcher status output is plain when stdout is redirected, including in CI.
