@@ -132,6 +132,18 @@ export function createDesktopBrowserBroker(args: {
   function revoke(lease: ControlLease): void {
     leases.delete(lease.metadata.leaseId);
     clearTimeout(lease.timer);
+    for (const tab of tabsFor(lease.instance, lease.threadId)) {
+      if (lease.tabs.get(tab.tabId) === tab.generation)
+        args.manager.setTabLeased(
+          {
+            hostWebContentsId: lease.instance.webContentsId,
+            threadId: lease.threadId,
+            tabId: tab.tabId,
+            generation: tab.generation,
+          },
+          false,
+        );
+    }
     void lease.bridge?.close().catch(() => undefined);
     publish(lease.instance, lease.threadId);
   }
@@ -471,6 +483,17 @@ export function createDesktopBrowserBroker(args: {
             if (lease) revoke(lease);
           }, command.expiresAt - Date.now());
           timer.unref();
+          for (const [tabId, generation] of tabs) {
+            args.manager.setTabLeased(
+              {
+                hostWebContentsId: instance.webContentsId,
+                threadId: command.threadId,
+                tabId,
+                generation,
+              },
+              true,
+            );
+          }
           leases.set(command.leaseId, {
             instance,
             threadId: command.threadId,

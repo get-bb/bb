@@ -622,61 +622,50 @@ policy at the server boundary.
 
 ## The ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp`)
 
-**Kept experimental (2026-08-22).** Four members remain, each with an open
+**Kept experimental (2026-08-22).** Five members remain, each with an open
 question below. The kit grows with a consumer, not ahead of one.
 
 `experimental_acpProviderBridge` is the generic Agent Client Protocol bridge a
-plugin re-exports. It launches the agent named by
-`providerOptions.acpLaunchSpec` with a dialect (`generic`, `cursor`, `grok`)
-from bridge options. `experimental_probeAcpAgent` asks an installed agent for
-its `agentCapabilities`, and `experimental_acpAgentProbeSchema` validates the
-answer across a host RPC boundary. `experimental_acpLaunchSpecSchema` /
-`AcpLaunchSpec` is the launch spec the bridge parses.
+plugin re-exports, backed by `packages/provider-bridge-acp` (the official
+`@agentclientprotocol/sdk` transport, turns for agent-started work, slash
+commands and session options as bb thread state, elicitation forms as
+question cards, sign-in guidance from advertised auth methods). It launches
+the agent named by `providerOptions.acpLaunchSpec` with the dialect named by
+`acpDialect` in bridge options. `experimental_probeAcpAgent` asks an installed
+agent for its `agentCapabilities`, and `experimental_acpAgentProbeSchema`
+validates the answer across a host RPC boundary.
+`experimental_acpLaunchSpecSchema` / `AcpLaunchSpec` is the launch spec the
+bridge parses.
 
-Docs: `providers.md` (ACP agents). No doc covers the probe or launch-spec
-contracts.
+`experimental_registerAcpDialect` adds a dialect. A plugin calls it at module
+load in its `bb.host` artifact with an `AcpDialect` and names the id as
+`acpDialect` in its registration. Empty and built-in ids (`acp`, `cursor`,
+`grok`, `omp`, `opencode`) throw, re-registering an id replaces it, and an
+unregistered id resolves to the generic dialect. bb's own dialects resolve
+through the same registry (`resolveAcpDialect`).
+
+`@get-bb/plugin-sdk/provider-bridge/acp-next`, the subpath the kit was
+previewed under (2026-10-09), re-exports this kit unchanged and is
+deprecated. Each subpath is bundled with its own dialect registry, so a
+plugin must import every member from one of them. Remove it at the next
+major.
+
+Docs: `providers.md` (ACP agents), `provider-bridge-api-index.md`. No doc
+covers the probe or launch-spec contracts.
 
 **Audit before stabilizing.** Decide what `probeAcpAgent` owes a caller.
 Today it spawns the agent with a 10 s timeout, advertises the bridge's own
 client capabilities, and answers `-32601` to anything the agent asks. Settle
 whether the timeout, the client capabilities and the refusal are the caller's
 to choose. Decide whether `AcpDialect` is the right shape for a third-party
-agent before a dialect registry becomes public again. It has four optional
-hooks (`toolIdentity`, `classifyToolCall`, `handleClientRequest`,
-`maintenance`) and no versioning, so a fifth is a silent capability change for
-every dialect. Decide whether a dialect should be named by value in the
-provider registration instead of by id. Settle whether the bridge should be a
-factory rather than a module singleton before a host artifact needs two
-configured differently. For `acpLaunchSpecSchema`, the shape is stored in the
-ACP plugin's `customAgents` setting and in registrations' bridge options. A
-change therefore migrates stored agents; decide what a plugin is owed when the
-spec grows a field.
-
-## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
-
-**Experimental preview (2026-10-09).** Published beside the original kit so
-the two can be compared. The built-in "ACP providers (new adapter)" plugin
-(`plugins/provider-acp-next`, off by default and mutually exclusive with the
-original ACP plugin) re-exports its `experimental_acpProviderBridge`.
-
-The same members as the original kit, backed by
-`packages/provider-bridge-acp-next` (the official `@agentclientprotocol/sdk`
-transport, turns for agent-started work, slash commands and session options
-as bb thread state, elicitation forms as question cards, sign-in guidance
-from advertised auth methods), plus `experimental_registerAcpDialect`. A
-plugin calls it at module load in its `bb.host` artifact with an `AcpDialect`
-and names the id as `acpDialect` in its registration. Empty and built-in ids
-(`acp`, `cursor`, `grok`, `omp`, `opencode`) throw, re-registering an id
-replaces it, and an unregistered id resolves to the generic dialect. bb's own
-dialects resolve through the same registry (`resolveAcpDialect`).
-
-Docs: `providers.md`, `provider-bridge-api-index.md`.
-
-**Audit before stabilizing.** Decide when this kit replaces the original;
-the subpath is then removed and its members move to `provider-bridge/acp`.
-The original kit's open questions apply unchanged (what `probeAcpAgent` owes
-a caller, hook versioning for `AcpDialect`, naming a dialect by value, a
-bridge factory instead of a module-level registry).
+agent: its hooks are optional and unversioned, so a new one is a silent
+capability change for every dialect. Decide whether a dialect should be named
+by value in the provider registration instead of by id. Settle whether the
+bridge and its dialect registry should be a factory rather than a module
+singleton before a host artifact needs two configured differently. For
+`acpLaunchSpecSchema`, the shape is stored in the ACP plugin's `customAgents`
+setting and in registrations' bridge options. A change therefore migrates
+stored agents; decide what a plugin is owed when the spec grows a field.
 
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 

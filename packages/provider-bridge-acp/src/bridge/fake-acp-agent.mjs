@@ -27,6 +27,11 @@
  * - FAKE_ACP_INITIAL_FAST    → set the initial Fast mode value
  * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
  *                            → advertise unmapped thought_level values
+ * - FAKE_ACP_SESSION_OPTIONS=1
+ *                            → advertise an "approach" select and a "web"
+ *                              boolean; "web" answers its setter with null
+ * - FAKE_ACP_SESSION_OPTION_REJECTED_VALUE
+ *                            → fail the "approach" setter for this value
  * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
  *                            → accept reasoning_effort config updates without
  *                              advertising a thought_level config option
@@ -46,6 +51,10 @@
  *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
  *                              session creation requires authenticate first
+ * - FAKE_ACP_TERMINAL_AUTH_ARGS
+ *                            → also advertise a terminal auth method with
+ *                              these space-separated args, only to a client
+ *                              that enabled terminal authentication
  * - FAKE_ACP_AUTH_OPTIONAL=1 → advertise the auth methods but never require
  *                              authenticate (a signed-in agent, as Cursor is)
  * - FAKE_ACP_SESSION_NEW_ERROR
@@ -74,6 +83,28 @@
  *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
+ * - FAKE_ACP_RESUME_SESSION=1
+ *                            → advertise and serve session/resume
+ * - FAKE_ACP_SESSION_BUSY_PROMPTS=<n>
+ *                            → reject the first n prompts as session_busy
+ *                              (omp's typed -32003 rejection)
+ * - FAKE_ACP_DELETE_SESSION=1
+ *                            → advertise and serve session/delete
+ * - FAKE_ACP_MODEL_LIST_CWD_LOG
+ *                            → write the `--list-models` working directory
+ * - FAKE_ACP_SESSION_DELETE_LOG
+ *                            → append the id passed to `session delete <id>`
+ *
+ * Prompt texts that script agent-initiated work after the turn has ended:
+ * - "then-unprompted-stream"     → message chunks and a finished tool call
+ * - "then-unprompted-permission" → a permission request, then its outcome
+ * - "then-unprompted-open-tool"  → a tool call that stays in progress
+ * - "hang-with-open-command"     → start a command, then hang until cancelled
+ *                                  without ever closing it (Cursor's shape)
+ * - "stop-reason:<reason>"       → end the turn with that stop reason
+ * - "advertise-commands"         → advertise two slash commands, twice
+ * - "ask-form"                   → ask a two-field form question
+ * - "ask-form-too-large"         → ask a form with more fields than bb shows
  */
 
 import { spawn } from "node:child_process";
@@ -83,6 +114,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
 const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
+const deleteSession = process.env.FAKE_ACP_DELETE_SESSION === "1";
 const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
@@ -94,6 +126,11 @@ const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
+const sessionOptionsConfig = process.env.FAKE_ACP_SESSION_OPTIONS === "1";
+const sessionOptionRejectedValue =
+  process.env.FAKE_ACP_SESSION_OPTION_REJECTED_VALUE;
+let selectedApproach = "build";
+let webSearchEnabled = false;
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const setConfigModelErrorValue =
   process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE;
@@ -108,6 +145,7 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .map((method) => method.trim())
   .filter(Boolean);
 const authOptional = process.env.FAKE_ACP_AUTH_OPTIONAL === "1";
+const terminalAuthArgs = process.env.FAKE_ACP_TERMINAL_AUTH_ARGS;
 const sessionNewError = process.env.FAKE_ACP_SESSION_NEW_ERROR;
 const exitOnSessionNew = process.env.FAKE_ACP_EXIT_ON_SESSION_NEW;
 const sessionNewDelayMs = Number(
@@ -116,15 +154,33 @@ const sessionNewDelayMs = Number(
 const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
+const resumeSession = process.env.FAKE_ACP_RESUME_SESSION === "1";
+let sessionBusyPromptsLeft = Number(
+  process.env.FAKE_ACP_SESSION_BUSY_PROMPTS ?? "0",
+);
+const UNPROMPTED_DELAY_MS = 150;
 // `--list-models` is the agent's own model-list mode: the bridge derives its
 // list command from the launch spec's agent binary plus `modelCli.listArgs`,
 // so a list command can only ever be this binary.
 if (process.argv.includes("--list-models")) {
+  if (process.env.FAKE_ACP_MODEL_LIST_CWD_LOG) {
+    writeFileSync(process.env.FAKE_ACP_MODEL_LIST_CWD_LOG, process.cwd());
+  }
   if (process.env.FAKE_ACP_MODEL_LIST_STDERR) {
     process.stderr.write(`${process.env.FAKE_ACP_MODEL_LIST_STDERR}\n`);
     process.exit(1);
   }
   process.stdout.write(`${process.env.FAKE_ACP_MODEL_LINES ?? ""}\n`);
+  process.exit(0);
+}
+
+if (process.argv.slice(-3, -1).join(" ") === "session delete") {
+  if (process.env.FAKE_ACP_SESSION_DELETE_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_SESSION_DELETE_LOG,
+      `${process.argv.at(-1)}\n`,
+    );
+  }
   process.exit(0);
 }
 
@@ -304,9 +360,35 @@ function cursorConfigOptions() {
   return options;
 }
 
+function sessionOptionConfigOptions() {
+  return [
+    {
+      id: "approach",
+      name: "Approach",
+      description: "How the agent works on a task",
+      category: "mode",
+      type: "select",
+      currentValue: selectedApproach,
+      options: [
+        { value: "build", name: "Build" },
+        { value: "plan", name: "Plan", description: "Read only" },
+      ],
+    },
+    {
+      id: "web",
+      name: "Web search",
+      type: "boolean",
+      currentValue: webSearchEnabled,
+    },
+  ];
+}
+
 function configOptions() {
   if (cursorParameterizedModels) {
     return cursorConfigOptions();
+  }
+  if (sessionOptionsConfig) {
+    return sessionOptionConfigOptions();
   }
   if (!modelConfig) {
     return undefined;
@@ -458,6 +540,21 @@ async function handlePrompt(message) {
     );
   }
 
+  if (sessionBusyPromptsLeft > 0) {
+    sessionBusyPromptsLeft -= 1;
+    activePromptId = null;
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: {
+        code: -32003,
+        message: "Agent is already processing. Use steer or wait.",
+        data: { reason: "session_busy" },
+      },
+    });
+    return;
+  }
+
   if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
     activePromptId = null;
     send({
@@ -577,6 +674,113 @@ async function handlePrompt(message) {
     } catch {
       notifyUpdate(messageChunk("write:denied"));
     }
+  } else if (text.includes("then-unprompted-stream")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate(messageChunk("unprompted one"));
+      notifyUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "unprompted-tool",
+        title: "Background job",
+        kind: "other",
+        status: "in_progress",
+      });
+      notifyUpdate({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "unprompted-tool",
+        status: "completed",
+      });
+      notifyUpdate(messageChunk(" unprompted two"));
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-unprompted-permission")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      void requestClient("session/request_permission", {
+        sessionId: activeSessionId,
+        toolCall: {
+          toolCallId: "unprompted-permission-tool",
+          title: "Deploy the build",
+          kind: "execute",
+        },
+        options: [
+          { optionId: "allow", name: "Allow", kind: "allow_once" },
+          { optionId: "reject", name: "Reject", kind: "reject_once" },
+        ],
+      }).then(
+        (result) => {
+          const outcome = result?.outcome;
+          notifyUpdate(
+            messageChunk(
+              `permission:${outcome?.outcome === "selected" ? outcome.optionId : (outcome?.outcome ?? "none")}`,
+            ),
+          );
+        },
+        () => notifyUpdate(messageChunk("permission:error")),
+      );
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("advertise-commands")) {
+    const availableCommands = [
+      { name: "review", description: "Review the current diff" },
+      { name: "web", description: "Search the web", input: { hint: "query" } },
+    ];
+    notifyUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands,
+    });
+    notifyUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands,
+    });
+    notifyUpdate(messageChunk("commands advertised"));
+  } else if (text.includes("ask-form")) {
+    const properties = text.includes("ask-form-too-large")
+      ? Object.fromEntries(
+          ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
+        )
+      : {
+          strategy: {
+            type: "string",
+            title: "Strategy",
+            enum: ["conservative", "balanced"],
+          },
+          dryRun: { type: "boolean", title: "Dry run" },
+        };
+    const result = await requestClient("elicitation/create", {
+      sessionId: activeSessionId,
+      mode: "form",
+      message: "How should I proceed?",
+      requestedSchema: { type: "object", properties },
+    }).catch((error) => ({ error: String(error) }));
+    if (requestLog) {
+      appendFileSync(
+        requestLog,
+        `${JSON.stringify({ elicitationResult: result })}\n`,
+      );
+    }
+    notifyUpdate(messageChunk(`elicitation:${JSON.stringify(result)}`));
+  } else if (text.includes("then-unprompted-open-tool")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "unprompted-open-tool",
+        title: "Long build",
+        kind: "other",
+        status: "in_progress",
+      });
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("end-silently")) {
+    notifyUpdate({ sessionUpdate: "usage_update", used: 100, size: 1000 });
+  } else if (text.includes("hang-with-open-command")) {
+    notifyUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "open-command",
+      title: "`sleep 40`",
+      kind: "execute",
+      status: "in_progress",
+      rawInput: { command: "sleep 40" },
+    });
+    return;
   } else if (text.includes("hang")) {
     // Stay pending until the client sends session/cancel.
     return;
@@ -585,6 +789,10 @@ async function handlePrompt(message) {
   } else if (text.includes("slow")) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
+  } else if (text.includes("echo-permission-env")) {
+    notifyUpdate(
+      messageChunk(`permission:${process.env.OPENCODE_PERMISSION ?? "unset"}`),
+    );
   } else if (text.includes("echo-question-env")) {
     notifyUpdate(
       messageChunk(
@@ -631,10 +839,11 @@ async function handlePrompt(message) {
 
   if (activePromptId === message.id) {
     activePromptId = null;
+    const scriptedStopReason = /stop-reason:([a-z_]+)/.exec(text)?.[1];
     const stopReason =
       text === "/compact"
         ? (process.env.FAKE_ACP_COMPACT_STOP_REASON ?? "end_turn")
-        : "end_turn";
+        : (scriptedStopReason ?? "end_turn");
     send({
       jsonrpc: "2.0",
       id: message.id,
@@ -673,10 +882,33 @@ async function handleMessage(message) {
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
-            ...(forkSession ? { sessionCapabilities: { fork: {} } } : {}),
+            ...(forkSession || resumeSession || deleteSession
+              ? {
+                  sessionCapabilities: {
+                    ...(forkSession ? { fork: {} } : {}),
+                    ...(resumeSession ? { resume: {} } : {}),
+                    ...(deleteSession ? { delete: {} } : {}),
+                  },
+                }
+              : {}),
           },
           ...(authMethods.length > 0
-            ? { authMethods: authMethods.map((id) => ({ id })) }
+            ? {
+                authMethods: [
+                  ...authMethods.map((id) => ({ id, name: `Sign in (${id})` })),
+                  ...(terminalAuthArgs !== undefined &&
+                  message.params?.clientCapabilities?.auth?.terminal === true
+                    ? [
+                        {
+                          id: "terminal.login",
+                          name: "Terminal login",
+                          type: "terminal",
+                          args: terminalAuthArgs.split(" "),
+                        },
+                      ]
+                    : []),
+                ],
+              }
             : {}),
         },
       });
@@ -727,6 +959,29 @@ async function handleMessage(message) {
         sessionId: activeSessionId,
         ...configState(),
       });
+      if (process.env.FAKE_ACP_STARTUP_BANNER !== undefined) {
+        notifyUpdate(
+          {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: process.env.FAKE_ACP_STARTUP_BANNER,
+            },
+          },
+          activeSessionId,
+        );
+      }
+      return;
+    case "session/delete":
+      if (deleteSession) {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "Unknown method session/delete" },
+        });
+      }
       return;
     case "session/load":
       if (!requireAuthenticated(message)) {
@@ -757,6 +1012,22 @@ async function handleMessage(message) {
           error: { code: -32601, message: "session/load is not supported" },
         });
       }
+      return;
+    case "session/resume":
+      if (!requireAuthenticated(message)) {
+        return;
+      }
+      if (!resumeSession) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "session/resume is not supported" },
+        });
+        return;
+      }
+      captureMcpServers(message);
+      activeSessionId = message.params?.sessionId;
+      send({ jsonrpc: "2.0", id: message.id, result: configState() });
       return;
     case "session/fork":
       if (!requireAuthenticated(message)) {
@@ -884,6 +1155,24 @@ async function handleMessage(message) {
         }
         selectedFast = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (configId === "approach" && sessionOptionsConfig) {
+        if (value === sessionOptionRejectedValue) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: `approach unavailable: ${value}` },
+          });
+          return;
+        }
+        selectedApproach = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (configId === "web" && sessionOptionsConfig) {
+        webSearchEnabled = value === true;
+        send({ jsonrpc: "2.0", id: message.id, result: null });
         return;
       }
       if (configId === "reasoning_effort" && acceptNativeReasoning) {

@@ -8,9 +8,9 @@ describe("splitPluginDisplayName", () => {
     ["Account Pooler [Experimental]", "Account Pooler", experimental],
     ["Modal Sandbox [experimental]  ", "Modal Sandbox", experimental],
     [
-      "ACP providers [New adapter]",
-      "ACP providers",
-      { label: "New adapter", tone: "neutral" },
+      "Memory [Early access]",
+      "Memory",
+      { label: "Early access", tone: "neutral" },
     ],
     ["Lab[ Beta ]", "Lab", { label: "Beta", tone: "neutral" }],
     ["Storage & retention", "Storage & retention", null],

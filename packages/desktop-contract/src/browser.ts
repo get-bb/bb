@@ -169,6 +169,16 @@ export type BbDesktopBrowserTabRef = z.infer<
   typeof bbDesktopBrowserTabRefSchema
 >;
 
+export const bbDesktopBrowserSetThreadDiscardedRequestSchema = z
+  .object({
+    threadId: z.string().min(1),
+    discarded: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserSetThreadDiscardedRequest = z.infer<
+  typeof bbDesktopBrowserSetThreadDiscardedRequestSchema
+>;
+
 export const bbDesktopBrowserStateSchema = z
   .object({
     tabId: z.string().min(1),
@@ -349,6 +359,8 @@ export interface BbDesktopBrowserApi {
   ): BbDesktopBrowserUnsubscribe;
   attach(request: BbDesktopBrowserAttachRequest): void;
   detach(tabId: string): void;
+  setThreadDiscarded?(request: BbDesktopBrowserSetThreadDiscardedRequest): void;
+  listThreadIdsWithTabs?(): Promise<string[]>;
   navigate(request: BbDesktopBrowserNavigateRequest): void;
   goBack(tabId: string): void;
   goForward(tabId: string): void;

@@ -155,6 +155,7 @@ export {
   listUnnormalizedPluginRegistrations,
   markInstalledPluginRemoved,
   normalizeInstalledPluginRegistration,
+  restoreRemovedInstalledPlugin,
   setInstalledPluginDirectProvenance,
   setInstalledPluginEnabled,
   setInstalledPluginUpdateState,
@@ -201,6 +202,7 @@ export {
 } from "./plugin-marketplaces.js";
 export {
   deleteAllPluginSettings,
+  deleteAllPluginKvValues,
   deletePluginKvValue,
   getPluginKvValue,
   getPluginSettingsValues,

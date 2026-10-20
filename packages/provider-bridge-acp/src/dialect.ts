@@ -42,6 +42,7 @@ export interface AcpDialect {
   ): AcpClassifiedToolCall | undefined;
   commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
   normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
+  readonly clientRequestMethods?: readonly string[];
   handleClientRequest?(
     method: string,
     params: unknown,
@@ -271,6 +272,7 @@ function cursorHandleClientRequest(
 export const CURSOR_ACP_DIALECT: AcpDialect = {
   id: "cursor",
   classifyToolCall: cursorClassifyToolCall,
+  clientRequestMethods: [CURSOR_TASK_METHOD],
   handleClientRequest: cursorHandleClientRequest,
   maintenance: CURSOR_ACP_MAINTENANCE,
 };
@@ -447,12 +449,29 @@ export const OPENCODE_ACP_DIALECT: AcpDialect = {
   normalizeCommandEvent: normalizeOpenCodeCommandEvent,
 };
 
-const DIALECTS_BY_ID: ReadonlyMap<string, AcpDialect> = new Map([
-  [CURSOR_ACP_DIALECT.id, CURSOR_ACP_DIALECT],
-  [GROK_ACP_DIALECT.id, GROK_ACP_DIALECT],
-  [OMP_ACP_DIALECT.id, OMP_ACP_DIALECT],
-  [OPENCODE_ACP_DIALECT.id, OPENCODE_ACP_DIALECT],
-]);
+const BUILT_IN_DIALECTS: readonly AcpDialect[] = [
+  GENERIC_ACP_DIALECT,
+  CURSOR_ACP_DIALECT,
+  GROK_ACP_DIALECT,
+  OMP_ACP_DIALECT,
+  OPENCODE_ACP_DIALECT,
+];
+
+const DIALECTS_BY_ID = new Map<string, AcpDialect>(
+  BUILT_IN_DIALECTS.map((dialect) => [dialect.id, dialect]),
+);
+
+export function registerAcpDialect(dialect: AcpDialect): void {
+  if (dialect.id.trim() === "") {
+    throw new Error("An ACP dialect needs a non-empty id.");
+  }
+  if (BUILT_IN_DIALECTS.some((builtIn) => builtIn.id === dialect.id)) {
+    throw new Error(
+      `ACP dialect id "${dialect.id}" is reserved by a built-in dialect.`,
+    );
+  }
+  DIALECTS_BY_ID.set(dialect.id, dialect);
+}
 
 const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
   "cursor-agent": CURSOR_ACP_DIALECT.id,

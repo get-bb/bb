@@ -661,6 +661,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-sdk/package.json",
         "$TURBO_ROOT$/packages/plugin-sdk/src/**",
+        "$TURBO_ROOT$/packages/provider-bridge-acp/package.json",
+        "$TURBO_ROOT$/packages/provider-bridge-acp/src/**",
         "$TURBO_ROOT$/plugins/provider-acp/package.json",
         "$TURBO_ROOT$/plugins/provider-acp/src/**",
         "$TURBO_ROOT$/plugins/provider-acp/tsconfig.json",
@@ -1318,24 +1320,13 @@
       ]
     },
     "bb-plugin-provider-acp#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
-    },
-    "bb-plugin-provider-acp#test": {
-      "env": ["VITEST_MAX_WORKERS"],
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build",
-        "topo"
-      ]
-    },
-    "bb-plugin-bb--provider-acp-next#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
-    "bb-plugin-bb--provider-acp-next#test": {
+    "bb-plugin-provider-acp#test": {
       "env": ["VITEST_MAX_WORKERS"],
       "dependsOn": [
         "//#ensure-native-modules",

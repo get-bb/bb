@@ -147,9 +147,10 @@ describe("desktop browser broker window cleanup", () => {
       const tab = nativeTab("thread-tab", THREAD_ID);
       const manager: Pick<
         DesktopBrowserViewManager,
-        "listTabs" | "subscribeAutomationTabs"
+        "listTabs" | "subscribeAutomationTabs" | "setTabLeased"
       > = {
         listTabs: () => [tab],
+        setTabLeased: vi.fn(),
         subscribeAutomationTabs: () => () => undefined,
       };
       const broker = createDesktopBrowserBroker({
