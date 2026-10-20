@@ -5273,57 +5273,105 @@ describe("acp bridge: live session state", () => {
     });
   });
 
-  it("rewrites a leading bb skill command the agent did not advertise, so the agent does not swallow it as an unknown command", async () => {
-    const promptLog = join(workspaceDir, "prompts.log");
-    const { providerThreadId } = await startThread({
-      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
-    });
-    const skillTurn = (name: string) => [
-      {
+  it("spells out bb skill commands the agent did not advertise, wherever they appear, so the agent does not swallow them as unknown commands", async () => {
+    expect(
+      (
+        await waitForResponse(
+          sendRequest("skills/configure", {
+            roots: [
+              {
+                id: "root_bb",
+                path: "/staged/acp-skills",
+                skills: [
+                  { name: "example-skill", description: "Example." },
+                  { name: "deploy", description: "Ship the app." },
+                  { name: "review", description: "bb review." },
+                ],
+              },
+            ],
+          }),
+        )
+      ).error,
+    ).toBeUndefined();
+    try {
+      const promptLog = join(workspaceDir, "prompts.log");
+      const { providerThreadId } = await startThread({
+        envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+      });
+      const command = (name: string, start: number) => ({
+        start,
+        end: start + name.length + 1,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name,
+          source: "skill",
+          origin: "user",
+          label: name,
+          argumentHint: null,
+        },
+      });
+      const run = async (input: unknown[]) => {
+        const completedBefore = threadEventsOfType("turn/completed").length;
+        await waitForResponse(
+          sendTurnRequest("turn/start", providerThreadId, { input }),
+        );
+        await waitFor(
+          () =>
+            threadEventsOfType("turn/completed").length > completedBefore
+              ? true
+              : undefined,
+          "turn completion",
+        );
+      };
+      const text = (value: string, mentions: unknown[]) => ({
         type: "text",
-        text: `/${name} summarize the repo`,
-        mentions: [
-          {
-            start: 0,
-            end: name.length + 1,
-            resource: {
-              kind: "command",
-              trigger: "/",
-              name,
-              source: "skill",
-              origin: "user",
-              label: name,
-              argumentHint: null,
-            },
-          },
-        ],
-      },
-    ];
-    const run = async (input: unknown[]) => {
-      const completedBefore = threadEventsOfType("turn/completed").length;
-      await waitForResponse(
-        sendTurnRequest("turn/start", providerThreadId, { input }),
-      );
-      await waitFor(
-        () =>
-          threadEventsOfType("turn/completed").length > completedBefore
-            ? true
-            : undefined,
-        "turn completion",
-      );
-    };
+        text: value,
+        mentions,
+      });
 
-    await run(skillTurn("example-skill"));
-    await run([{ type: "text", text: "advertise-commands", mentions: [] }]);
-    await run(skillTurn("example-skill"));
-    await run(skillTurn("review"));
+      await run([
+        text("/example-skill summarize the repo", [
+          command("example-skill", 0),
+        ]),
+      ]);
+      await run([
+        text("first /deploy, then /example-skill", [
+          command("deploy", 6),
+          command("example-skill", 20),
+        ]),
+      ]);
+      await run([
+        text("/native-only go", [command("native-only", 0)]),
+        text("and /deploy", [command("deploy", 4)]),
+      ]);
+      await run([text("/deploy", [{ ...command("deploy", 0), end: 5 }])]);
+      await run([text("advertise-commands", [])]);
+      await run([
+        text("/review this and /deploy", [
+          command("review", 0),
+          command("deploy", 17),
+        ]),
+      ]);
 
-    expect(loggedPrompts(promptLog)).toEqual([
-      "/example-skill summarize the repo",
-      "advertise-commands",
-      'Use the bb skill "example-skill": summarize the repo',
-      "/review summarize the repo",
-    ]);
+      expect(
+        loggedPrompts(promptLog).map((prompt) =>
+          prompt.replace(
+            /^<system_instructions>[\s\S]*?<\/system_instructions>\n/u,
+            "",
+          ),
+        ),
+      ).toEqual([
+        'Use the bb skill "example-skill": summarize the repo',
+        'first Use the bb skill "deploy", then Use the bb skill "example-skill"',
+        '/native-only go\nand Use the bb skill "deploy"',
+        "/deploy",
+        "advertise-commands",
+        '/review this and Use the bb skill "deploy"',
+      ]);
+    } finally {
+      await waitForResponse(sendRequest("skills/configure", { roots: [] }));
+    }
   });
 
   it("publishes nothing for an agent with no commands or options", async () => {

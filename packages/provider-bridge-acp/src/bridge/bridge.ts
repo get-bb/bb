@@ -1712,30 +1712,54 @@ async function selectAcpNativeServiceTier(args: {
   recordAcpConfigValue(args.session, configState, fastOption.id, value);
 }
 
-function textWithoutUnknownLeadingSkillCommand(
+function textWithBbSkillCommandsSpelledOut(
   session: AcpThreadSession,
   item: Extract<PromptInput, { type: "text" }>,
 ): string {
-  const advertised = session.model.snapshot().commands;
-  if (advertised.length === 0) {
+  const bbSkillNames = new Set(
+    (configuredSkillRoots ?? []).flatMap((root) =>
+      root.skills.map((skill) => skill.name),
+    ),
+  );
+  if (bbSkillNames.size === 0) {
     return item.text;
   }
-  const firstCharacter = item.text.search(/\S/u);
-  const leading = item.mentions.find(
-    (mention) =>
-      mention.start === firstCharacter &&
+  const advertised = new Set(
+    session.model.snapshot().commands.map((command) => command.name),
+  );
+  const mentions = item.mentions
+    .flatMap((mention) =>
       mention.resource.kind === "command" &&
       mention.resource.source === "skill" &&
-      mention.resource.trigger === "/",
-  );
-  if (!leading || leading.resource.kind !== "command") {
-    return item.text;
+      mention.resource.trigger === "/" &&
+      bbSkillNames.has(mention.resource.name) &&
+      !advertised.has(mention.resource.name) &&
+      item.text.slice(mention.start, mention.end) ===
+        `/${mention.resource.name}`
+        ? [
+            {
+              start: mention.start,
+              end: mention.end,
+              name: mention.resource.name,
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) => b.start - a.start);
+  const firstCharacter = item.text.search(/\S/u);
+  let text = item.text;
+  let nextStart = text.length;
+  for (const mention of mentions) {
+    if (mention.end > nextStart) {
+      continue;
+    }
+    const leadsText =
+      mention.start === firstCharacter &&
+      text.slice(mention.end).trim().length > 0;
+    text = `${text.slice(0, mention.start)}Use the bb skill "${mention.name}"${leadsText ? ":" : ""}${text.slice(mention.end)}`;
+    nextStart = mention.start;
   }
-  const name = leading.resource.name;
-  if (advertised.some((command) => command.name === name)) {
-    return item.text;
-  }
-  return `${item.text.slice(0, leading.start)}Use the bb skill "${name}":${item.text.slice(leading.end)}`;
+  return text;
 }
 
 function buildPromptContentBlocks(
@@ -1753,15 +1777,12 @@ function buildPromptContentBlocks(
     });
   }
 
-  for (const [index, item] of input.entries()) {
+  for (const item of input) {
     switch (item.type) {
       case "text":
         blocks.push({
           type: "text",
-          text:
-            index === 0
-              ? textWithoutUnknownLeadingSkillCommand(session, item)
-              : item.text,
+          text: textWithBbSkillCommandsSpelledOut(session, item),
         });
         break;
       case "image":
