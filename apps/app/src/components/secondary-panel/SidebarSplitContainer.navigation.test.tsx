@@ -186,9 +186,15 @@ describe("panel full screen with all panes command", () => {
             { id: "a", label: "A", restoresPlacementAfterRemoval: true },
             { id: "b", label: "B", restoresPlacementAfterRemoval: true },
           ]}
-          renderPane={({ group, isMaximized, onToggleMaximize }) => (
+          renderPane={({
+            group,
+            isFullScreenAllPanes,
+            isMaximized,
+            onToggleMaximize,
+          }) => (
             <button type="button" onClick={onToggleMaximize}>
-              {isMaximized ? "Exit" : "Maximize"} {group.activeTabId}
+              {isMaximized || isFullScreenAllPanes ? "Exit" : "Maximize"}{" "}
+              {group.activeTabId}
             </button>
           )}
         />

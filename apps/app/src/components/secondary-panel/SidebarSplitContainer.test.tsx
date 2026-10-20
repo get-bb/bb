@@ -767,6 +767,7 @@ describe("SidebarSplitContainer", () => {
 
   describe("full screen with all panes", () => {
     function FullScreenPane({
+      isFullScreenAllPanes,
       isMaximized,
       onMoveActiveTabToSide,
       onToggleFullScreenAllPanes,
@@ -774,6 +775,7 @@ describe("SidebarSplitContainer", () => {
       paneId,
     }: Pick<
       SidebarSplitPaneRenderArgs,
+      | "isFullScreenAllPanes"
       | "isMaximized"
       | "onMoveActiveTabToSide"
       | "onToggleFullScreenAllPanes"
@@ -783,7 +785,9 @@ describe("SidebarSplitContainer", () => {
       return (
         <div>
           <button type="button" onClick={onToggleMaximize}>
-            {isMaximized ? `Exit ${paneId}` : `Maximize ${paneId}`}
+            {isMaximized || isFullScreenAllPanes
+              ? `Exit ${paneId}`
+              : `Maximize ${paneId}`}
           </button>
           {onToggleFullScreenAllPanes ? (
             <button type="button" onClick={onToggleFullScreenAllPanes}>

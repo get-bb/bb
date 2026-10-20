@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AppCommandProvider,
@@ -39,13 +40,20 @@ import {
 const fullScreenShortcut = vi.hoisted(() => ({
   current: null as AppShortcutPresentation | null,
 }));
+const fullScreenAllPanesShortcut = vi.hoisted(() => ({
+  current: null as AppShortcutPresentation | null,
+}));
 
 vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/components/commands/AppCommandProvider")
   >()),
   useAppCommandShortcut: (command: string) =>
-    command === "panel.fullScreen.toggle" ? fullScreenShortcut.current : null,
+    command === "panel.fullScreen.toggle"
+      ? fullScreenShortcut.current
+      : command === "panel.fullScreenAllPanes.toggle"
+        ? fullScreenAllPanesShortcut.current
+        : null,
 }));
 
 afterEach(() => {
@@ -53,6 +61,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
   fullScreenShortcut.current = null;
+  fullScreenAllPanesShortcut.current = null;
 });
 
 const noop = () => {};
@@ -1079,6 +1088,113 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(
       document.querySelector('[data-split-pane-id][data-maximized="true"]'),
     ).toBeNull();
+  });
+});
+
+describe("ThreadSecondaryPanel full screen with all panes", () => {
+  function FullScreenAllPanesHarness() {
+    const [isConversationCollapsed, setIsConversationCollapsed] =
+      useState(false);
+    return (
+      <>
+        <output data-testid="conversation-state">
+          {isConversationCollapsed ? "collapsed" : "visible"}
+        </output>
+        <PanelGroup direction="horizontal">
+          <ThreadSecondaryPanel
+            activeTab={diffFixedTab}
+            canUseGitUi
+            fixedTabs={infoAndDiffFixedTabs}
+            tabs={[]}
+            isConversationCollapsed={isConversationCollapsed}
+            isOpen
+            metadataContent={<div>Thread metadata</div>}
+            onClose={noop}
+            onCollapse={noop}
+            onTabReorder={noop}
+            onOpenNewTab={noop}
+            onPanelFocus={noop}
+            onToggleConversationCollapse={() =>
+              setIsConversationCollapsed((collapsed) => !collapsed)
+            }
+            renderAsDrawer={false}
+            showFullScreenShortcut
+            splitPanelStateId="full-screen-all-panes"
+          />
+        </PanelGroup>
+      </>
+    );
+  }
+
+  it("collapses the conversation with both panes visible and exits from either pane", async () => {
+    const shortcut = { label: "⌘⇧K", ariaKeyshortcuts: "Meta+Shift+K" };
+    fullScreenAllPanesShortcut.current = shortcut;
+    const initial = createSidebarSplitState(
+      [infoFixedTab.id, diffFixedTab.id],
+      diffFixedTab.id,
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey("full-screen-all-panes"),
+      serializeSidebarSplitState(
+        moveSidebarTab(
+          initial,
+          initial.layout.focusedPaneId,
+          diffFixedTab.id,
+          { paneId: initial.layout.focusedPaneId, zone: "right" },
+          { groupId: "group-diff" },
+        ),
+      ),
+    );
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <SidebarProvider>
+          <TooltipProvider>
+            <FullScreenAllPanesHarness />
+          </TooltipProvider>
+        </SidebarProvider>
+      </Wrapper>,
+    );
+
+    const [paneControl] = screen.getAllByRole("button", {
+      name: "Maximize pane",
+    });
+    if (paneControl === undefined) throw new Error("Expected a pane control");
+    fireEvent.focus(paneControl);
+    await screen.findByRole("menu", { name: "Pane arrangement" });
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Full Screen all panes⌘⇧K" }),
+    );
+
+    expect(screen.getByTestId("conversation-state").textContent).toBe(
+      "collapsed",
+    );
+    const panes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-split-pane-id]"),
+    );
+    expect(panes).toHaveLength(2);
+    for (const pane of panes) {
+      expect(pane.dataset.maximized).toBeUndefined();
+      expect(pane.getAttribute("aria-hidden")).toBeNull();
+    }
+    const exitControls = screen.getAllByRole("button", {
+      name: `Exit Full Screen (${shortcut.label})`,
+    });
+    expect(exitControls).toHaveLength(2);
+    for (const control of exitControls) {
+      expect(control.getAttribute("aria-pressed")).toBe("true");
+      expect(control.querySelector('[data-icon="Minimize2"]')).not.toBeNull();
+    }
+
+    const lastExitControl = exitControls[1];
+    if (lastExitControl === undefined) throw new Error("Expected two panes");
+    fireEvent.click(lastExitControl);
+    expect(screen.getByTestId("conversation-state").textContent).toBe(
+      "visible",
+    );
+    expect(
+      screen.getAllByRole("button", { name: "Maximize pane" }),
+    ).toHaveLength(2);
   });
 });
 

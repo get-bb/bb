@@ -16,6 +16,7 @@ import { focusWithKeyboard } from "@/test/keyboard-focus";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import {
+  PaneArrangementButton,
   PaneMaximizeButton,
   resolvePaneArrangementLabel,
 } from "./PaneMaximizeButton";
@@ -290,4 +291,68 @@ describe("resolvePaneArrangementLabel", () => {
       );
     },
   );
+});
+
+describe("PaneArrangementButton full screen with all panes", () => {
+  const allPanesShortcut = {
+    ariaKeyshortcuts: "Meta+Shift+K",
+    label: "⌘⇧K",
+  };
+
+  it("offers full screen for every pane below the one-pane action", () => {
+    vi.useFakeTimers();
+    const onToggleFullScreen = vi.fn();
+    const onToggleFullScreenAllPanes = vi.fn();
+    render(
+      <TooltipProvider delayDuration={0}>
+        <PaneArrangementButton
+          isFullScreen={false}
+          onMoveToSide={noop}
+          onToggleFullScreen={onToggleFullScreen}
+          onToggleFullScreenAllPanes={onToggleFullScreenAllPanes}
+          fullScreenAllPanesShortcut={allPanesShortcut}
+        />
+      </TooltipProvider>,
+    );
+
+    fireEvent.pointerEnter(
+      screen.getByRole("button", { name: "Maximize pane" }),
+    );
+    act(() => vi.advanceTimersByTime(400));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Maximize pane", "Full Screen all panes⌘⇧K", "", "", "", ""]);
+    const allPanes = screen.getByRole("menuitem", {
+      name: /Full Screen all panes/,
+    });
+    expect(allPanes.querySelector("[data-icon-root]")).not.toBeNull();
+
+    fireEvent.click(allPanes);
+    expect(onToggleFullScreenAllPanes).toHaveBeenCalledOnce();
+    expect(onToggleFullScreen).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
+  });
+
+  it("exits full screen with all panes using its own label and shortcut", () => {
+    const onToggleFullScreen = vi.fn();
+    render(
+      <TooltipProvider delayDuration={0}>
+        <PaneArrangementButton
+          isFullScreen
+          isFullScreenAllPanes
+          onToggleFullScreen={onToggleFullScreen}
+          shortcut={{ ariaKeyshortcuts: "Meta+Shift+E", label: "⌘⇧E" }}
+          fullScreenAllPanesShortcut={allPanesShortcut}
+        />
+      </TooltipProvider>,
+    );
+
+    const button = screen.getByRole("button", {
+      name: "Exit Full Screen (⌘⇧K)",
+    });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+K");
+    fireEvent.click(button);
+    expect(onToggleFullScreen).toHaveBeenCalledOnce();
+  });
 });
