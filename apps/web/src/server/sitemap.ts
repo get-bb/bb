@@ -32,12 +32,15 @@ export function sitemapXml(
   posts: readonly Post[],
   contentPaths: readonly string[],
   marketplace: PublicMarketplaceData,
+  docs: readonly { path: string; updated: string }[],
 ): string {
   const pages: SitemapPage[] = [
     { path: "/" },
     { path: "/blog" },
     { path: "/changelog" },
     { path: "/plugin-guide" },
+    { path: "/docs" },
+    ...docs.map(({ path, updated }) => ({ path, lastmod: updated })),
     { path: "/privacy" },
     { path: "/brand" },
     { path: "/reviewers" },

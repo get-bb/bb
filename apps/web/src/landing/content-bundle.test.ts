@@ -9,6 +9,8 @@ const STATIC_IMPORT =
 const EAGER_GLOB =
   /import\.meta\.glob(?:<[^(]*>)?\(\s*"([^"]+)"\s*,\s*\{[^}]*\beager:\s*true/gu;
 const PAGE_CONTENT = [
+  /\/docs\/content\/[^/]+\.md$/u,
+  /\/docs\/docs\.ts$/u,
   /\/(?:guides|compare|landing)\/pages\/[^/]+\.tsx$/u,
   /\/guides\/guides\.ts$/u,
   /\/compare\/comparisons\.ts$/u,

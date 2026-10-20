@@ -1,0 +1,347 @@
+.docs-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  align-items: start;
+  gap: 52px;
+  padding: 48px 0 80px;
+}
+
+.docs-sidebar {
+  position: sticky;
+  top: 28px;
+  max-height: calc(100dvh - 56px);
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+.docs-compact-contents {
+  display: none;
+}
+
+.docs-index-link {
+  display: inline-block;
+  margin-bottom: 24px;
+  font-weight: 650;
+  color: var(--heading);
+}
+
+.docs-nav-group + .docs-nav-group,
+.docs-page-contents {
+  margin-top: 28px;
+}
+
+.docs-nav-label {
+  margin-bottom: 10px;
+  font-size: var(--text-label-small);
+  font-weight: 600;
+  color: var(--subtle);
+}
+
+.docs-sidebar ul,
+.docs-compact-contents ul,
+.docs-article-list {
+  list-style: none;
+}
+
+.docs-sidebar li + li,
+.docs-compact-contents li + li {
+  margin-top: 3px;
+}
+
+.docs-sidebar li a,
+.docs-compact-contents li a {
+  display: block;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+.docs-sidebar li a:hover,
+.docs-compact-contents li a:hover,
+.docs-sidebar a[aria-current="page"],
+.docs-compact-contents a[aria-current="page"] {
+  background: var(--state-hover);
+  color: var(--heading);
+}
+
+.docs-sidebar a[aria-current="page"],
+.docs-compact-contents a[aria-current="page"] {
+  font-weight: 600;
+}
+
+.docs-subheading {
+  padding-left: 12px;
+}
+
+.docs-content {
+  min-width: 0;
+  max-width: 680px;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.docs-title {
+  margin-bottom: 32px;
+}
+
+.docs-title h1 {
+  color: var(--heading);
+  font-size: clamp(30px, 4.2vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.docs-title p {
+  margin-top: 16px;
+  font-size: 17px;
+  color: var(--dim);
+}
+
+.docs-topic + .docs-topic {
+  margin-top: 48px;
+}
+
+.docs-topic h2,
+.docs-body h2 {
+  color: var(--heading-sub);
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.docs-article-list li {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.docs-article-list h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.docs-article-list p {
+  margin-top: 6px;
+  color: var(--dim);
+}
+
+.docs-article-list a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.docs-body {
+  color: var(--dim);
+  line-height: 1.75;
+}
+
+.docs-body > :first-child {
+  margin-top: 0;
+}
+
+.docs-body p,
+.docs-body ul,
+.docs-body ol,
+.docs-body pre,
+.docs-table-scroll {
+  margin-top: 18px;
+}
+
+.docs-body h2 {
+  margin-top: 40px;
+}
+
+.docs-body h3 {
+  margin-top: 28px;
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 650;
+  color: var(--heading-sub);
+}
+
+.docs-body :is(h2, h3) {
+  scroll-margin-top: 28px;
+}
+
+.docs-body a {
+  color: var(--ink-strong);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+}
+
+.docs-body a:hover {
+  text-decoration-color: currentColor;
+}
+
+.docs-body a.docs-heading-link {
+  display: inline-block;
+  margin-left: 0.4em;
+  color: var(--subtle);
+  font-size: 0.8em;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.docs-body a.docs-heading-link:hover {
+  text-decoration: underline;
+}
+
+.docs-body strong {
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.docs-body ul,
+.docs-body ol {
+  padding-left: 24px;
+}
+
+.docs-body li + li {
+  margin-top: 8px;
+}
+
+.docs-body li :is(ul, ol) {
+  margin-top: 8px;
+}
+
+.docs-body code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+  color: var(--ink-strong);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.docs-body pre {
+  overflow-x: auto;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.docs-body pre code {
+  padding: 0;
+  background: none;
+}
+
+.docs-agent-prompt {
+  margin-top: 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--ink-strong);
+}
+
+.docs-agent-prompt > :first-child,
+.docs-note > :first-child {
+  margin-top: 0;
+}
+
+.docs-note {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.docs-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
+.docs-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.docs-body th,
+.docs-body td {
+  padding: 12px 14px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.docs-body th:first-child,
+.docs-body td:first-child {
+  min-width: 7rem;
+}
+
+.docs-body th {
+  color: var(--heading-sub);
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.docs-body tr + tr td,
+.docs-body tbody tr:first-child td {
+  border-top: 1px solid var(--border-soft);
+}
+
+.docs-skip {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  transform: translateY(-160%);
+}
+
+.docs-skip:focus {
+  transform: translateY(0);
+}
+
+.docs-page :is(a, summary, [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .docs-layout {
+    display: block;
+    padding: 12px 0 48px;
+  }
+
+  .docs-sidebar {
+    display: none;
+  }
+
+  .docs-compact-contents {
+    display: block;
+    margin-bottom: 32px;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 14px;
+  }
+
+  .docs-compact-contents summary {
+    padding: 14px 0;
+    color: var(--heading-sub);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .docs-compact-links {
+    padding: 8px 0 20px;
+  }
+
+  .docs-content {
+    max-width: none;
+  }
+}

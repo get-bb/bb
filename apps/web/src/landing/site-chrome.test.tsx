@@ -14,7 +14,7 @@ describe("site navigation", () => {
     const guideLinks = guideMenu().flatMap((item) =>
       "links" in item ? item.links : [item],
     );
-    expect(links).toHaveLength(7 + guideLinks.length);
+    expect(links).toHaveLength(8 + guideLinks.length);
     expect(html).toMatch(
       /<details class="nav-menu"><summary class="nav-current">Plugins/,
     );
@@ -67,5 +67,33 @@ describe("site navigation", () => {
       'href="/compare/superset-alternative" aria-current="page">bb vs Superset',
     );
     expect(footer).not.toContain('href="/plugin-guide" aria-current="page"');
+  });
+});
+
+describe("docs discovery", () => {
+  it.each([
+    "/",
+    "/compare/cursor-alternative",
+    "/claude-code-parallel-agents",
+    "/claude-code-and-codex",
+  ])("keeps frozen ad navigation unchanged on %s", (path) => {
+    expect(renderToStaticMarkup(<SiteNav path={path} />)).not.toContain(
+      'href="/docs"',
+    );
+    expect(renderToStaticMarkup(<SiteFooter current={path} />)).not.toContain(
+      'href="/docs"',
+    );
+  });
+
+  it("links docs from other pages and marks the docs section current", () => {
+    expect(renderToStaticMarkup(<SiteNav current="plugins" />)).toContain(
+      'href="/docs"',
+    );
+    expect(
+      renderToStaticMarkup(<SiteFooter current="/marketplace" />),
+    ).toContain('href="/docs"');
+    expect(
+      renderToStaticMarkup(<SiteNav current="docs" path="/docs/plugins" />),
+    ).toContain('aria-current="page">Docs');
   });
 });

@@ -55,7 +55,7 @@ export function LandingTemplate({ page }: { page: LandingPage }) {
 
   return (
     <div className="wrap cmp-page">
-      <SiteNav />
+      <SiteNav path={landingPagePath(page)} />
 
       <PageHero
         top={null}

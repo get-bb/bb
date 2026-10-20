@@ -27,7 +27,20 @@ import {
 } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 
-type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
+type SiteNavPage =
+  | "blog"
+  | "changelog"
+  | "plugins"
+  | "plugin-guide"
+  | "guides"
+  | "docs";
+
+const FROZEN_AD_PATHS = new Set([
+  "/",
+  "/compare/cursor-alternative",
+  "/claude-code-parallel-agents",
+  "/claude-code-and-codex",
+]);
 
 function NavMenu({
   label,
@@ -204,6 +217,15 @@ export function SiteNav({
         <span className="bb-mark logo-mark" />
       </a>
       <div className="nav-links">
+        {!FROZEN_AD_PATHS.has(path ?? "") ? (
+          <a
+            href="/docs"
+            className={current === "docs" ? "nav-current" : undefined}
+            aria-current={current === "docs" ? "page" : undefined}
+          >
+            Docs
+          </a>
+        ) : null}
         <PluginsMenu current={current} />
         <GuidesMenu current={current} path={path} />
         <a
@@ -274,12 +296,7 @@ function FooterLinks({
 
 export function SiteFooter({ current }: { current?: string }) {
   const platform = useDesktopPlatform();
-  const preserveWaveOneFooter = [
-    "/",
-    "/compare/cursor-alternative",
-    "/claude-code-parallel-agents",
-    "/claude-code-and-codex",
-  ].includes(current ?? "");
+  const preserveWaveOneFooter = FROZEN_AD_PATHS.has(current ?? "");
   const comparisons = compareLinks().filter(
     (link) =>
       !preserveWaveOneFooter ||
@@ -303,6 +320,16 @@ export function SiteFooter({ current }: { current?: string }) {
         </p>
       </div>
       <FooterColumn title="Product">
+        {!preserveWaveOneFooter ? (
+          <li>
+            <a
+              href="/docs"
+              aria-current={current === "/docs" ? "page" : undefined}
+            >
+              Docs
+            </a>
+          </li>
+        ) : null}
         <li>
           <DownloadLink placement="footer" platform={platform}>
             Download

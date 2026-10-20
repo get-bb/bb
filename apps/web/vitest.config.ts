@@ -1,4 +1,5 @@
 import path from "node:path";
+import { docsContent } from "./scripts/docs-content.js";
 import {
   defineWorkspaceTestConfig,
   sharedWorkerProjects,
@@ -7,6 +8,8 @@ import {
 const srcDir = path.resolve(__dirname, "./src");
 
 export default defineWorkspaceTestConfig({
+  root: __dirname,
+  plugins: [docsContent()],
   define: { __SITE_ORIGIN__: JSON.stringify("https://web.test") },
   resolve: { alias: { "@": srcDir } },
   test: {

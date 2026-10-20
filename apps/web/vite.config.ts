@@ -11,6 +11,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { unstable_readConfig } from "wrangler";
 import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
+import { docsContent } from "./scripts/docs-content.js";
 
 export default defineConfig(({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
@@ -46,6 +47,7 @@ export default defineConfig(({ command }) => {
       allowedHosts: [".localhost", ".ts.net"],
     },
     plugins: [
+      docsContent(),
       cloudflare(cloudflareConfig),
       tailwindcss(),
       tanstackStart({

@@ -1184,7 +1184,7 @@ function LandingPage() {
 
   return (
     <div className="wrap">
-      <SiteNav />
+      <SiteNav path="/" />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>

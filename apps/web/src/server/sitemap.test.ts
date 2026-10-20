@@ -11,11 +11,17 @@ const post = parsePost(
 
 describe("sitemapXml", () => {
   it("lists public pages, posts, plugins, and unique authors with update dates", () => {
-    const xml = sitemapXml("https://getbb.app", [post], ["/compare/a-b"], {
-      status: "available",
-      manifest: MARKETPLACE_V2_FIXTURE,
-      stats: null,
-    });
+    const xml = sitemapXml(
+      "https://getbb.app",
+      [post],
+      ["/compare/a-b"],
+      {
+        status: "available",
+        manifest: MARKETPLACE_V2_FIXTURE,
+        stats: null,
+      },
+      [{ path: "/docs/new-page", updated: "2026-10-21" }],
+    );
 
     expect(xml).toContain(
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
@@ -25,6 +31,8 @@ describe("sitemapXml", () => {
       "/blog",
       "/changelog",
       "/plugin-guide",
+      "/docs",
+      "/docs/new-page",
       "/privacy",
       "/brand",
       "/compare/a-b",
@@ -40,6 +48,9 @@ describe("sitemapXml", () => {
       expect(xml).toContain(`<loc>https://getbb.app${path}</loc>`);
     }
     expect(xml).toContain("<lastmod>2026-08-20</lastmod>");
+    expect(xml).toContain(
+      "<loc>https://getbb.app/docs/new-page</loc><lastmod>2026-10-21</lastmod>",
+    );
     expect(xml).toContain("<lastmod>2026-08-24T16:45:00+02:00</lastmod>");
     expect(
       xml.match(
@@ -52,9 +63,15 @@ describe("sitemapXml", () => {
   });
 
   it("omits unavailable marketplace pages", () => {
-    const xml = sitemapXml("https://getbb.app", [post], [], {
-      status: "unavailable",
-    });
+    const xml = sitemapXml(
+      "https://getbb.app",
+      [post],
+      [],
+      {
+        status: "unavailable",
+      },
+      [],
+    );
 
     expect(xml).toContain("<loc>https://getbb.app/blog/an-agentic-ide</loc>");
     expect(xml).not.toContain("/marketplace");

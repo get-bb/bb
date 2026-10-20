@@ -412,7 +412,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
 
   return (
     <div className="wrap cmp-page">
-      <SiteNav />
+      <SiteNav path={`/compare/${comparison.slug}`} />
 
       <PageHero
         top={
