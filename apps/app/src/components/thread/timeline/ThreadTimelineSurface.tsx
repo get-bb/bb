@@ -264,18 +264,22 @@ export function ThreadTimelineSurface({
             className="mt-4 text-destructive"
           />
         ) : null}
-        <HeightTransition visible={showCatchUpIndicator}>
-          {showCatchUpIndicator ? <DelayedCatchUpIndicator /> : null}
-        </HeightTransition>
-        <HeightTransition visible={isOngoingIndicatorVisible}>
-          <TimelineWorkingIndicator
-            key={ongoingIndicatorKey}
-            details={activeThinkingDetails}
-            reasoningId={activeThinking?.id}
-            isThinking={showActiveThinking}
-            label={ongoingIndicatorLabel}
-          />
-        </HeightTransition>
+        {isThreadTimelinePending ? null : (
+          <>
+            <HeightTransition visible={showCatchUpIndicator}>
+              {showCatchUpIndicator ? <DelayedCatchUpIndicator /> : null}
+            </HeightTransition>
+            <HeightTransition visible={isOngoingIndicatorVisible}>
+              <TimelineWorkingIndicator
+                key={ongoingIndicatorKey}
+                details={activeThinkingDetails}
+                reasoningId={activeThinking?.id}
+                isThinking={showActiveThinking}
+                label={ongoingIndicatorLabel}
+              />
+            </HeightTransition>
+          </>
+        )}
       </ConversationTimeline>
     </TimelineReasoningExpansionProvider>
   );
