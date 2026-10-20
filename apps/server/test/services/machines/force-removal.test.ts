@@ -233,12 +233,12 @@ it("refuses to skip cleanup while the machine is connected", async () =>
     expect(machineRemove).not.toHaveBeenCalled();
   }));
 
-it("exposes forced removal through the public API", async () =>
+it("exposes forced removal as a forced machine delete", async () =>
   withTestHarness(async (harness) => {
     const { target, machineRemove } = seedMachineWithWorkspace(harness);
     const early = await harness.app.request(
-      `${API}/hosts/${target.host.id}/force-remove`,
-      { method: "POST" },
+      `${API}/hosts/${target.host.id}?force=true`,
+      { method: "DELETE" },
     );
     expect(early.status).toBe(409);
     expect(await readJson(early)).toMatchObject({
@@ -246,16 +246,16 @@ it("exposes forced removal through the public API", async () =>
     });
     await strandRemoval(harness, target.host.id, target.session.id);
     const response = await harness.app.request(
-      `${API}/hosts/${target.host.id}/force-remove`,
-      { method: "POST" },
+      `${API}/hosts/${target.host.id}?force=true`,
+      { method: "DELETE" },
     );
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({ ok: true });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledOnce();
     const missing = await harness.app.request(
-      `${API}/hosts/${target.host.id}/force-remove`,
-      { method: "POST" },
+      `${API}/hosts/${target.host.id}?force=true`,
+      { method: "DELETE" },
     );
     expect(missing.status).toBe(404);
   }));

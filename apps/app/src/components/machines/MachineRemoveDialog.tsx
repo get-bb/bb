@@ -7,10 +7,7 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { ConfirmDeleteDialog } from "@bb/shared-ui/confirm-delete-dialog";
-import {
-  useForceRemoveHost,
-  useRemoveHost,
-} from "@/hooks/mutations/host-mutations";
+import { useRemoveHost } from "@/hooks/mutations/host-mutations";
 import { canForceRemoveMachine } from "@/components/machines/machine-status";
 import { useMachineThreadPreview } from "@/hooks/queries/thread-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -74,18 +71,15 @@ export function MachineRemoveDialog({
   onOpenChange: (open: boolean) => void;
   onRemoved?: (host: Host) => void;
 }) {
-  const plainRemove = useRemoveHost();
-  const forceRemove = useForceRemoveHost();
-  const skipCleanup = target !== null && canForceRemoveMachine(target);
-  const removeHost = skipCleanup ? forceRemove : plainRemove;
+  const removeHost = useRemoveHost();
+  const force = target !== null && canForceRemoveMachine(target);
 
   return (
     <ConfirmDeleteDialog
       open={target !== null}
       onOpenChange={(open) => {
         if (!open && !removeHost.isPending) {
-          plainRemove.reset();
-          forceRemove.reset();
+          removeHost.reset();
           onOpenChange(false);
         }
       }}
@@ -95,7 +89,7 @@ export function MachineRemoveDialog({
           <DialogHeader>
             <DialogTitle>Remove {target.name}?</DialogTitle>
             <DialogDescription>
-              {skipCleanup ? (
+              {force ? (
                 <>
                   Cleanup failed and {target.name} is not connected. Removing it
                   now skips environment cleanup on the machine: files and
@@ -127,15 +121,18 @@ export function MachineRemoveDialog({
               variant="destructive"
               disabled={removeHost.isPending}
               onClick={() =>
-                removeHost.mutate(target.id, {
-                  onSuccess: () => {
-                    onOpenChange(false);
-                    onRemoved?.(target);
+                removeHost.mutate(
+                  { hostId: target.id, force },
+                  {
+                    onSuccess: () => {
+                      onOpenChange(false);
+                      onRemoved?.(target);
+                    },
                   },
-                })
+                )
               }
             >
-              {skipCleanup ? "Remove anyway" : "Remove machine"}
+              {force ? "Remove anyway" : "Remove machine"}
             </Button>
           </DialogFooter>
         </>

@@ -164,3 +164,8 @@ export const hostListQuerySchema = z.object({
   type: hostTypeSchema.optional(),
 });
 export type HostListQuery = z.input<typeof hostListQuerySchema>;
+
+export const hostDeleteQuerySchema = z.object({
+  force: z.enum(["true", "false"]).optional(),
+});
+export type HostDeleteQuery = z.input<typeof hostDeleteQuerySchema>;

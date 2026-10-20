@@ -36,7 +36,7 @@ interface MachineMutationCommandOptions extends MachineListCommandOptions {
 }
 
 interface MachineRemoveCommandOptions extends MachineMutationCommandOptions {
-  skipCleanup?: boolean;
+  force?: boolean;
 }
 
 interface MachineProviderInstallOptions extends MachineListCommandOptions {
@@ -457,7 +457,7 @@ export function registerMachineCommands(
     .command("remove <id-or-name>")
     .description("Revoke and remove an execution machine")
     .option(
-      "--skip-cleanup",
+      "--force",
       "Finish removing a disconnected machine whose environment cleanup failed, leaving its files on disk",
     )
     .option("--yes", "Skip the confirmation prompt")
@@ -472,15 +472,16 @@ export function registerMachineCommands(
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(
-            opts.skipCleanup
+            opts.force
               ? `Remove machine ${hostId} without cleaning up its environments? Files left on its disk are not deleted.`
               : `Remove machine ${hostId}?`,
           ))
         )
           return;
-        const result = opts.skipCleanup
-          ? await sdk.hosts.experimental_forceRemove({ hostId })
-          : await sdk.hosts.delete({ hostId });
+        const result = await sdk.hosts.delete({
+          hostId,
+          force: opts.force,
+        });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} removed`);
       }),

@@ -41,7 +41,6 @@ vi.mock("@/lib/sdk", () => ({
       experimental_reconnect: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
-      experimental_forceRemove: vi.fn(),
       retryUpdate: vi.fn(),
       experimental_suspend: vi.fn(),
       update: vi.fn(),
@@ -667,6 +666,7 @@ describe("MachinesSettingsSection", () => {
     await waitFor(() => {
       expect(vi.mocked(sdk.hosts.delete)).toHaveBeenCalledWith({
         hostId: "host_remote",
+        force: false,
       });
     });
   });
@@ -683,9 +683,7 @@ describe("MachinesSettingsSection", () => {
     };
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, strandedHost]);
-    vi.mocked(sdk.hosts.experimental_forceRemove).mockResolvedValue({
-      ok: true,
-    });
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
     stubSidebarBootstrapFetch();
 
     renderSection();
@@ -702,11 +700,11 @@ describe("MachinesSettingsSection", () => {
     );
 
     await waitFor(() => {
-      expect(
-        vi.mocked(sdk.hosts.experimental_forceRemove),
-      ).toHaveBeenCalledWith({ hostId: "host_remote" });
+      expect(vi.mocked(sdk.hosts.delete)).toHaveBeenCalledWith({
+        hostId: "host_remote",
+        force: true,
+      });
     });
-    expect(vi.mocked(sdk.hosts.delete)).not.toHaveBeenCalled();
   });
 
   it("disables removal of the server machine", async () => {

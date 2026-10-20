@@ -160,7 +160,7 @@ explicitly.
 suspend/resume operations. They return the updated public Host (HTTP 202)
 once the tracked operation starts; read its lifecycle state for completion.
 `bb.sdk.hosts.experimental_retryCleanup({ hostId })` retries failed provider
-teardown. `bb.sdk.hosts.experimental_forceRemove({ hostId })` finishes a
+teardown. `bb.sdk.hosts.delete({ hostId, force: true })` finishes a
 removal of a persistent machine whose environment cleanup failed while it is
 disconnected: it marks the machine's environments destroyed without on-machine
 cleanup (emitting `experimental_environment.removed` for each), then runs the

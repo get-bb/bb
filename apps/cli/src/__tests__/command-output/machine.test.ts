@@ -225,7 +225,10 @@ describe("bb machine command output", () => {
       );
 
       if (command === "remove") {
-        expect(remove).toHaveBeenCalledWith({ param: { id: pending.id } });
+        expect(remove).toHaveBeenCalledWith({
+          param: { id: pending.id },
+          query: {},
+        });
       } else {
         expect(
           JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
@@ -379,28 +382,31 @@ describe("bb machine command output", () => {
 
     await runCommand(["machine", "remove", "laptop", "--yes"], register);
 
-    expect(remove).toHaveBeenCalledWith({ param: { id: "host-remote" } });
+    expect(remove).toHaveBeenCalledWith({
+      param: { id: "host-remote" },
+      query: {},
+    });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Machine host-remote removed",
     ]);
   });
 
-  it("bb machine remove --skip-cleanup skips cleanup for a stranded machine", async () => {
-    const forceRemove = vi.fn(async () => ({ ok: true as const }));
+  it("bb machine remove --force skips cleanup for a stranded machine", async () => {
     const remove = vi.fn(async () => undefined);
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
-      "v1.hosts.:id.force-remove.$post": forceRemove,
       "v1.hosts.:id.$delete": remove,
     });
 
     await runCommand(
-      ["machine", "remove", "laptop", "--skip-cleanup", "--yes"],
+      ["machine", "remove", "laptop", "--force", "--yes"],
       register,
     );
 
-    expect(forceRemove).toHaveBeenCalledWith({ param: { id: "host-remote" } });
-    expect(remove).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith({
+      param: { id: "host-remote" },
+      query: { force: "true" },
+    });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Machine host-remote removed",
     ]);

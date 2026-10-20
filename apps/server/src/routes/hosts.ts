@@ -292,15 +292,13 @@ export function registerHostRoutes(
     return context.json({ ok: true as const });
   });
 
-  post(routes.forceRemove, async (context) => {
-    assertHostManagementAllowed(context);
-    await forceMachineRemoval(deps, context.req.param("id"));
-    return context.json({ ok: true as const });
-  });
-
-  del(routes.delete, async (context) => {
+  del(routes.delete, async (context, query) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
+    if (query.force === "true") {
+      await forceMachineRemoval(deps, hostId);
+      return context.json({ ok: true as const });
+    }
     const host = requireMutableHost(deps, hostId);
     if (resolvePrimaryHostId(deps) === hostId) {
       throw new ApiError(

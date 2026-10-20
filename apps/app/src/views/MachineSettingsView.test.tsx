@@ -42,7 +42,6 @@ vi.mock("@/lib/sdk", () => ({
       providerCliStatus: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
-      experimental_forceRemove: vi.fn(),
       retryUpdate: vi.fn(),
       experimental_suspend: vi.fn(),
       update: vi.fn(),
@@ -340,9 +339,7 @@ describe("MachineSettingsView", () => {
         },
       },
     ]);
-    vi.mocked(sdk.hosts.experimental_forceRemove).mockResolvedValue({
-      ok: true,
-    });
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
     stubSupportingFetches();
     renderView();
 
@@ -357,11 +354,11 @@ describe("MachineSettingsView", () => {
       within(dialog).getByRole("button", { name: "Remove anyway" }),
     );
     await waitFor(() =>
-      expect(sdk.hosts.experimental_forceRemove).toHaveBeenCalledWith({
+      expect(sdk.hosts.delete).toHaveBeenCalledWith({
         hostId: HOST_ID,
+        force: true,
       }),
     );
-    expect(sdk.hosts.delete).not.toHaveBeenCalled();
   });
 
   it("shows client-local identity only when several machines need disambiguation", async () => {

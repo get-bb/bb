@@ -47,7 +47,7 @@ does not prove reachability.
   bb machine resume <id-or-name>          Resume a machine (already active is a no-op)
   bb machine retry-cleanup <id-or-name>   Retry failed teardown now
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
-    --skip-cleanup                        Finish removing a disconnected machine whose
+    --force                               Finish removing a disconnected machine whose
                                           environment cleanup failed; the provider's
                                           removal still runs
   bb machine provider-cli status <machine>
@@ -92,7 +92,7 @@ explicit request, not a timer: for a machine core records as suspended, it runs
 the provider's save-and-stop operation, and the CLI polls until completion.
 Active machines and lifecycle operations already in progress are left alone.
 Retry cleanup is accepted only for a retiring machine whose provider teardown
-failed. `bb machine remove --skip-cleanup` / `hosts.experimental_forceRemove`
+failed. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
 finishes removing a persistent machine that is disconnected and whose
 environment cleanup failed, for example because the computer no longer exists:
 it marks the machine's environments destroyed without running their teardown on

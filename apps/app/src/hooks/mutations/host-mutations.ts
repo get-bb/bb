@@ -34,8 +34,14 @@ export function useRemoveHost() {
     meta: {
       showErrorToast: false,
     },
-    mutationFn: async (hostId: string) => {
-      await sdk.hosts.delete({ hostId });
+    mutationFn: async ({
+      hostId,
+      force,
+    }: {
+      hostId: string;
+      force: boolean;
+    }) => {
+      await sdk.hosts.delete({ hostId, force });
     },
     onSuccess: () => {
       invalidateHostListQueries({ queryClient });
@@ -105,21 +111,6 @@ export function useRetryHostCleanup() {
   return useHostLifecycleMutation((hostId) =>
     sdk.hosts.experimental_retryCleanup({ hostId }),
   );
-}
-
-export function useForceRemoveHost() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      showErrorToast: false,
-    },
-    mutationFn: (hostId: string) =>
-      sdk.hosts.experimental_forceRemove({ hostId }),
-    onSuccess: () => {
-      invalidateHostListQueries({ queryClient });
-    },
-  });
 }
 
 export function useReconnectHost() {
