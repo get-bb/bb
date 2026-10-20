@@ -67,7 +67,7 @@ import {
 import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
 import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
-import { useStartingTerminalIds } from "@/components/thread/terminal/terminal-starts";
+import { usePendingTerminalIds } from "@/components/thread/terminal/pending-terminals";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
@@ -341,7 +341,7 @@ export function PluginPanelRightPanelHost({
       new Map((terminalSessions ?? []).map((session) => [session.id, session])),
     [terminalSessions],
   );
-  const startingTerminalIds = useStartingTerminalIds();
+  const pendingTerminalIds = usePendingTerminalIds();
   const {
     activateTab,
     activeBrowserTab,
@@ -385,7 +385,7 @@ export function PluginPanelRightPanelHost({
       activeTerminalQuery.error !== null ||
       terminalSessions === undefined ||
       terminalsById.has(activeTerminalTab.terminalId) ||
-      startingTerminalIds.has(activeTerminalTab.terminalId)
+      pendingTerminalIds.starting.has(activeTerminalTab.terminalId)
     ) {
       return;
     }
@@ -395,7 +395,7 @@ export function PluginPanelRightPanelHost({
     activeTerminalQuery.isLoading,
     activeTerminalTab,
     closeTab,
-    startingTerminalIds,
+    pendingTerminalIds,
     terminalSessions,
     terminalsById,
   ]);

@@ -15,7 +15,7 @@ import {
 } from "@/hooks/cache-owners/terminal-cache-owner";
 import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
-import { useTerminalStart, type TerminalStart } from "./terminal-starts";
+import { useTerminalStart, type TerminalStart } from "./pending-terminals";
 
 export const DEFAULT_TERMINAL_COLS = 100;
 export const DEFAULT_TERMINAL_ROWS = 30;

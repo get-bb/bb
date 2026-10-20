@@ -19,7 +19,7 @@ import {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import { isRootComposeTerminalSession } from "@/views/RootComposeView";
-import { useTerminalStart } from "@/components/thread/terminal/terminal-starts";
+import { useTerminalStart } from "@/components/thread/terminal/pending-terminals";
 import { usePanelTerminals } from "./usePanelTerminals";
 
 const commandHandlers = vi.hoisted(
@@ -370,79 +370,44 @@ describe.each(SURFACES)("panel terminals on the $name", (surface) => {
     expect(activeTerminalId(result.current.state)).toBe(requestedTerminalId(0));
   });
 
-  it("removes each tab only after its overlapping close succeeds", async () => {
-    let finishFirstClose!: (session: TerminalSession) => void;
-    let finishSecondClose!: (session: TerminalSession) => void;
-    const firstClose = new Promise<TerminalSession>((resolve) => {
-      finishFirstClose = resolve;
-    });
-    const secondClose = new Promise<TerminalSession>((resolve) => {
-      finishSecondClose = resolve;
-    });
-    vi.mocked(sdk.terminals.close)
-      .mockReturnValueOnce(firstClose)
-      .mockReturnValueOnce(secondClose);
+  it("removes a closing terminal's tab at once, before the server confirms", async () => {
+    const close = deferred<TerminalSession>();
+    vi.mocked(sdk.terminals.close).mockReturnValue(close.promise);
     const { result } = renderSurface(surface);
     act(() => {
       result.current.terminals.open(surface.own);
       result.current.terminals.open(surface.sibling);
     });
 
-    act(() => {
-      result.current.terminals.close(surface.own.id);
-      result.current.terminals.close(surface.sibling.id);
-    });
+    act(() => result.current.terminals.close(surface.own.id));
 
-    await waitFor(() => expect(sdk.terminals.close).toHaveBeenCalledTimes(2));
-    expect(terminalTabIds(result.current.state)).toEqual([
-      surface.own.id,
-      surface.sibling.id,
-    ]);
-
-    await act(async () => {
-      finishFirstClose({ ...surface.own, status: "exited" });
-      await firstClose;
-    });
-    await waitFor(() => {
-      expect(terminalTabIds(result.current.state)).toEqual([
-        surface.sibling.id,
-      ]);
-    });
+    expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
+    await waitFor(() =>
+      expect(sdk.terminals.close).toHaveBeenCalledWith({
+        mode: "force",
+        terminalId: surface.own.id,
+      }),
+    );
 
     await act(async () => {
-      finishSecondClose({ ...surface.sibling, status: "exited" });
-      await secondClose;
+      close.resolve({ ...surface.own, status: "exited" });
+      await close.promise;
     });
-
-    await waitFor(() => {
-      expect(terminalTabIds(result.current.state)).toEqual([]);
-    });
-    expect(sdk.terminals.close).toHaveBeenCalledWith({
-      mode: "force",
-      terminalId: surface.own.id,
-    });
+    expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
   });
 
-  it("removes the tab of a terminal that no longer exists and keeps it when closing fails", async () => {
+  it("puts the tab back in its place when closing fails, and keeps it closed when the terminal is already gone", async () => {
     vi.mocked(sdk.terminals.close).mockImplementation(({ terminalId }) =>
       Promise.reject(
         terminalId === surface.own.id
-          ? new BbHttpError({
+          ? hostUnavailableError()
+          : new BbHttpError({
               status: 404,
               code: "terminal_not_found",
               message: "Terminal session not found",
               body: {
                 code: "terminal_not_found",
                 message: "Terminal session not found",
-              },
-            })
-          : new BbHttpError({
-              status: 503,
-              code: "host_unavailable",
-              message: "Host is not connected",
-              body: {
-                code: "host_unavailable",
-                message: "Host is not connected",
               },
             }),
       ),
@@ -453,20 +418,37 @@ describe.each(SURFACES)("panel terminals on the $name", (surface) => {
       result.current.terminals.open(surface.sibling);
     });
 
-    act(() => {
-      result.current.terminals.close(surface.own.id);
-    });
-    await waitFor(() => {
-      expect(terminalTabIds(result.current.state)).toEqual([
-        surface.sibling.id,
-      ]);
-    });
+    act(() => result.current.terminals.close(surface.own.id));
+    expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
 
-    await act(async () => {
-      result.current.terminals.close(surface.sibling.id);
-    });
+    await waitFor(() =>
+      expect(terminalTabIds(result.current.state)).toEqual([
+        surface.own.id,
+        surface.sibling.id,
+      ]),
+    );
+    expect(activeTerminalId(result.current.state)).toBe(surface.sibling.id);
+
+    act(() => result.current.terminals.close(surface.sibling.id));
     await waitFor(() => expect(sdk.terminals.close).toHaveBeenCalledTimes(2));
     await act(async () => undefined);
-    expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
+    expect(terminalTabIds(result.current.state)).toEqual([surface.own.id]);
+  });
+
+  it("reopens the panel when closing its last tab fails", async () => {
+    vi.mocked(sdk.terminals.close).mockRejectedValue(hostUnavailableError());
+    const { result } = renderSurface(surface);
+    act(() => {
+      result.current.terminals.open(surface.own);
+    });
+
+    act(() => result.current.terminals.close(surface.own.id));
+    expect(result.current.state.secondary.isOpen).toBe(false);
+
+    await waitFor(() =>
+      expect(terminalTabIds(result.current.state)).toEqual([surface.own.id]),
+    );
+    expect(result.current.state.secondary.isOpen).toBe(true);
+    expect(activeTerminalId(result.current.state)).toBe(surface.own.id);
   });
 });

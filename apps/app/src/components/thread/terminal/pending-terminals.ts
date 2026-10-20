@@ -21,15 +21,25 @@ export interface TerminalStart {
   request: TerminalStartRequest;
 }
 
-export interface TerminalStarts {
+export interface PendingTerminalIds {
+  closing: ReadonlySet<string>;
+  starting: ReadonlySet<string>;
+}
+
+export interface PendingTerminals {
+  close: (terminalId: string, restoreTab: () => void) => void;
   discard: (terminalId: string) => TerminalStart | null;
   start: (request: TerminalStartRequest) => string;
 }
 
-const terminalStartsAtom = atom<ReadonlyMap<string, TerminalStart>>(new Map());
-const startingTerminalIdsAtom = atom<ReadonlySet<string>>(
-  (get) => new Set(get(terminalStartsAtom).keys()),
+const pendingTerminalsAtom = atom<ReadonlyMap<string, TerminalStart>>(
+  new Map(),
 );
+const closingTerminalIdsAtom = atom<ReadonlySet<string>>(new Set<string>());
+const pendingTerminalIdsAtom = atom<PendingTerminalIds>((get) => ({
+  closing: get(closingTerminalIdsAtom),
+  starting: new Set(get(pendingTerminalsAtom).keys()),
+}));
 
 const createTerminalIdSuffix = customAlphabet(
   GENERATED_ID_ALPHABET,
@@ -45,28 +55,28 @@ async function findCreatedTerminal(
   return session !== null && isVisibleTerminalSession(session) ? session : null;
 }
 
-export function useStartingTerminalIds(): ReadonlySet<string> {
-  return useAtomValue(startingTerminalIdsAtom);
+export function usePendingTerminalIds(): PendingTerminalIds {
+  return useAtomValue(pendingTerminalIdsAtom);
 }
 
 export function useTerminalStart(terminalId: string): TerminalStart | null {
-  return useAtomValue(terminalStartsAtom).get(terminalId) ?? null;
+  return useAtomValue(pendingTerminalsAtom).get(terminalId) ?? null;
 }
 
-export function useTerminalStarts(): TerminalStarts {
+export function usePendingTerminals(): PendingTerminals {
   const queryClient = useQueryClient();
   const store = useStore();
   const { mutateAsync: closeTerminal } = useCloseTerminal();
 
   const setStart = useCallback(
     (terminalId: string, start: TerminalStart | null) => {
-      const next = new Map(store.get(terminalStartsAtom));
+      const next = new Map(store.get(pendingTerminalsAtom));
       if (start === null) {
         next.delete(terminalId);
       } else {
         next.set(terminalId, start);
       }
-      store.set(terminalStartsAtom, next);
+      store.set(pendingTerminalsAtom, next);
     },
     [store],
   );
@@ -76,7 +86,7 @@ export function useTerminalStarts(): TerminalStarts {
       terminalId: string,
       { target, ...request }: TerminalStartRequest,
     ) => {
-      const isWanted = () => store.get(terminalStartsAtom).has(terminalId);
+      const isWanted = () => store.get(pendingTerminalsAtom).has(terminalId);
       let session: TerminalSession;
       try {
         session = await sdk.terminals.create({
@@ -122,14 +132,41 @@ export function useTerminalStarts(): TerminalStarts {
     [run, setStart],
   );
 
+  const setClosing = useCallback(
+    (terminalId: string, closing: boolean) => {
+      const next = new Set(store.get(closingTerminalIdsAtom));
+      if (closing) {
+        next.add(terminalId);
+      } else {
+        next.delete(terminalId);
+      }
+      store.set(closingTerminalIdsAtom, next);
+    },
+    [store],
+  );
+
+  const close = useCallback(
+    (terminalId: string, restoreTab: () => void) => {
+      setClosing(terminalId, true);
+      void closeTerminal({ mode: "force", terminalId }).then(
+        () => setClosing(terminalId, false),
+        () => {
+          restoreTab();
+          setClosing(terminalId, false);
+        },
+      );
+    },
+    [closeTerminal, setClosing],
+  );
+
   const discard = useCallback(
     (terminalId: string) => {
-      const current = store.get(terminalStartsAtom).get(terminalId) ?? null;
+      const current = store.get(pendingTerminalsAtom).get(terminalId) ?? null;
       if (current !== null) setStart(terminalId, null);
       return current;
     },
     [setStart, store],
   );
 
-  return { discard, start };
+  return { close, discard, start };
 }
