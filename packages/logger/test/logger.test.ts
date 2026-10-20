@@ -171,12 +171,25 @@ describe("createLogger", () => {
     expect(getComponentLogFiles(logDir, "server").length).toBeGreaterThan(1);
   });
 
-  it("prunes rotated files left by earlier processes without touching other logs", async () => {
+  it("keeps the most recently written rotated files from earlier processes regardless of their numbers", async () => {
     const dataDir = createTempDir();
     const logDir = path.join(dataDir, "logs");
     fs.mkdirSync(logDir, { recursive: true });
-    for (let index = 1; index <= 8; index++) {
-      fs.writeFileSync(path.join(logDir, `server.${index}.log`), "");
+    const hoursAgoByFile = {
+      "server.1.log": 1,
+      "server.104.log": 2,
+      "server.2.log": 3,
+      "server.3.log": 4,
+      "server.103.log": 5,
+      "server.100.log": 6,
+      "server.101.log": 7,
+      "server.102.log": 8,
+    };
+    for (const [entry, hoursAgo] of Object.entries(hoursAgoByFile)) {
+      const filePath = path.join(logDir, entry);
+      fs.writeFileSync(filePath, "");
+      const mtime = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+      fs.utimesSync(filePath, mtime, mtime);
     }
     fs.writeFileSync(path.join(logDir, "server-stdio.log"), "capture");
     fs.writeFileSync(path.join(logDir, "host-daemon.1.log"), "");
@@ -184,27 +197,14 @@ describe("createLogger", () => {
     vi.stubEnv("BB_DATA_DIR", dataDir);
 
     const { createLogger } = await importFreshLogger();
-    const logger = createLogger({ component: "server" });
-    const payload = "x".repeat(11 * 1024 * 1024);
-    logger.info({ payload }, "rotate");
-    logger.info({ payload }, "rotate again");
+    createLogger({ component: "server" });
 
-    await waitFor(
-      () => getComponentLogFiles(logDir, "server").length === 5,
-      10_000,
-    );
-
-    const remaining = getComponentLogFiles(logDir, "server").map((entry) =>
-      Number(entry.match(/^server\.(\d+)\.log$/u)?.[1]),
-    );
-    const newest = remaining[4] ?? 0;
-    expect(newest).toBeGreaterThan(8);
-    expect(remaining).toEqual([
-      newest - 4,
-      newest - 3,
-      newest - 2,
-      newest - 1,
-      newest,
+    expect(getComponentLogFiles(logDir, "server")).toEqual([
+      "server.1.log",
+      "server.2.log",
+      "server.3.log",
+      "server.103.log",
+      "server.104.log",
     ]);
     expect(fs.readFileSync(path.join(logDir, "server-stdio.log"), "utf8")).toBe(
       "capture",
