@@ -203,7 +203,8 @@ Control on Windows/Linux. The complete default table is in docs/configuration.md
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
 `pane.focus.left|right|up|down`, `pane.maximize.toggle`, and the initially
-unbound `panel.fullScreen.toggle`. `hints` (default true) shows or hides the
+unbound `panel.fullScreen.toggle` (focused right-panel pane) and
+`panel.fullScreenAllPanes.toggle` (whole right panel, every split pane kept). `hints` (default true) shows or hides the
 delayed shortcut badges shown while holding the modifier key; shortcuts work
 either way.
 

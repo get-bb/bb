@@ -159,6 +159,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Expand the right panel over the conversation, or restore the conversation.",
       ),
       command(
+        "panel.fullScreenAllPanes.toggle",
+        "Toggle panel full screen with all panes",
+        "Expand the whole right panel, keeping every split pane visible, over the conversation, or restore the conversation.",
+      ),
+      command(
         "pane.focus.left",
         "Focus chat pane left",
         "Focus the chat pane to the left of the current pane.",

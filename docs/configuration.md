@@ -378,8 +378,11 @@ pane's New tab button), `panel.previousNewTabItem` / `panel.nextNewTabItem`
 to `Command+Control+ArrowUp/Down` (on a New tab page), and
 `pane.focus.left|right|up|down` to `Command+Control+Shift+Arrow…` (spatial
 chat-pane focus). These start unassigned on Windows/Linux to preserve native
-Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
-`panel.fullScreen.toggle` start unassigned.
+Control-arrow editing. `pane.focus.previous` / `pane.focus.next`,
+`panel.fullScreen.toggle`, and `panel.fullScreenAllPanes.toggle` start
+unassigned. `panel.fullScreen.toggle` expands the focused right-panel pane over
+the conversation; `panel.fullScreenAllPanes.toggle` expands the whole right
+panel and keeps every split pane visible.
 
 | Area      | Command                                      | Default                     | Availability             |
 | --------- | -------------------------------------------- | --------------------------- | ------------------------ |

@@ -2688,6 +2688,15 @@
       }
     },
     {
+      "command": "panel.fullScreenAllPanes.toggle",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
       "command": "file.quickOpen",
       "desktopOnly": false,
       "shortcut": {

@@ -232,6 +232,7 @@ describe("app keybindings", () => {
         "thread.rename",
         "thread.archive",
         "panel.fullScreen.toggle",
+        "panel.fullScreenAllPanes.toggle",
       ] as const) {
         expect(
           config.defaultKeybindings.find(

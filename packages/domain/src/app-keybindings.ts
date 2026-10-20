@@ -75,6 +75,7 @@ export const APP_COMMAND_IDS = [
   "panel.close",
   "panel.toggle",
   "panel.fullScreen.toggle",
+  "panel.fullScreenAllPanes.toggle",
   "file.quickOpen",
   "diff.toggle",
   "terminal.open",
