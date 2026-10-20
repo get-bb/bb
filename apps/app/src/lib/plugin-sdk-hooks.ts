@@ -695,18 +695,34 @@ export function useComposer(): PluginComposerApi {
   );
   const routeDraft = usePromptDraftController(routeScope);
   const draftSource = useComposerDraftSource(composerHost, routeDraft);
-  const draftSnapshot = useCallback(
-    () => (tracksDraft.current ? draftSource.getCurrent() : null),
+  const subscribeToReadDraft = useCallback(
+    (onChange: () => void) =>
+      draftSource.subscribe(() => {
+        if (tracksDraft.current) onChange();
+      }),
     [draftSource],
   );
-  useSyncExternalStore(draftSource.subscribe, draftSnapshot, draftSnapshot);
+  useSyncExternalStore(
+    subscribeToReadDraft,
+    draftSource.getCurrent,
+    draftSource.getCurrent,
+  );
+  const subscribeSelection = composerHost?.subscribeSelection;
+  const subscribeToReadSelection = useCallback(
+    (onChange: () => void) =>
+      subscribeSelection === undefined
+        ? subscribeToNoComposerSelection()
+        : subscribeSelection(() => {
+            if (tracksSelection.current) onChange();
+          }),
+    [subscribeSelection],
+  );
   const selectionSnapshot = useCallback(
-    () =>
-      tracksSelection.current ? (composerHost?.getSelection?.() ?? null) : null,
+    () => composerHost?.getSelection?.() ?? null,
     [composerHost],
   );
   useSyncExternalStore(
-    composerHost?.subscribeSelection ?? subscribeToNoComposerSelection,
+    subscribeToReadSelection,
     selectionSnapshot,
     getNoComposerSelection,
   );

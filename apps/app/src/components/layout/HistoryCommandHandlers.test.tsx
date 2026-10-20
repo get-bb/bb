@@ -10,7 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import {
-  MemoryRouter,
+  BrowserRouter,
   useLocation,
   useNavigate,
   type NavigateFunction,
@@ -98,12 +98,13 @@ function Harness() {
 }
 
 function renderAt(pathname: string) {
+  window.history.replaceState(null, "", pathname);
   render(
-    <MemoryRouter initialEntries={[pathname]}>
+    <BrowserRouter>
       <AppCommandProvider>
         <Harness />
       </AppCommandProvider>
-    </MemoryRouter>,
+    </BrowserRouter>,
   );
 }
 
@@ -144,6 +145,7 @@ describe("HistoryCommandHandlers", () => {
     harness.runner = null;
     harness.navigate = null;
     resetAppRouteHistoryForTest();
+    window.history.replaceState(null, "", "/");
   });
 
   it("moves through the sidebar's route history and closes the mobile sidebar", async () => {

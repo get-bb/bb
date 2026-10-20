@@ -7,7 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { startTransition, useState, type ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -133,7 +133,9 @@ function SidebarModeHarness() {
   const closeMobileSidebar = useCloseMobileSidebar();
   const navigate = (nextMode: AppLayoutSidebarMode) => {
     closeMobileSidebar();
-    setMode(nextMode);
+    startTransition(() => {
+      setMode(nextMode);
+    });
   };
 
   return (

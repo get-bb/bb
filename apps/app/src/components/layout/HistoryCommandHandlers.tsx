@@ -10,8 +10,7 @@ export function HistoryCommandHandlers() {
   useAppCommandHandler(
     "history.back",
     () => {
-      goBack();
-      closeOnMobile();
+      goBack(closeOnMobile);
       return true;
     },
     0,
@@ -21,8 +20,7 @@ export function HistoryCommandHandlers() {
   useAppCommandHandler(
     "history.forward",
     () => {
-      goForward();
-      closeOnMobile();
+      goForward(closeOnMobile);
       return true;
     },
     0,

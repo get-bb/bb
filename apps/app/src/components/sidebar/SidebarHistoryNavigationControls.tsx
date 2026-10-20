@@ -84,16 +84,14 @@ export function SidebarHistoryNavigationControls({
     if (!canGoBack) {
       return;
     }
-    goBack();
-    onNavigate?.();
+    goBack(onNavigate);
   }, [canGoBack, goBack, onNavigate]);
 
   const handleForward = useCallback(() => {
     if (!canGoForward) {
       return;
     }
-    goForward();
-    onNavigate?.();
+    goForward(onNavigate);
   }, [canGoForward, goForward, onNavigate]);
 
   return (
