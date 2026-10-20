@@ -2159,6 +2159,11 @@ function TimelineRowsList({
             getScrollElement={getWindowingScrollElement}
             itemKeys={itemKeys}
             measurements={measurements}
+            positionKeeper={
+              detailScrollRoot?.positionKeeper ??
+              bottomAnchor?.positionKeeper ??
+              null
+            }
             pinnedToEnd={
               isTopLevelList &&
               detailScrollRoot === null &&

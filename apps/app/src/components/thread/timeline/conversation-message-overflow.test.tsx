@@ -17,6 +17,7 @@ import {
   ConversationMessageOverflowToggle,
   useOverflowMeasurement,
 } from "./conversation-message-overflow";
+import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 afterEach(() => {
   cleanup();
@@ -128,7 +129,7 @@ describe("ConversationMessageOverflowToggle", () => {
       scrollToBottom: vi.fn(),
       scrollElementIntoView: vi.fn(),
       scrollElementIntoViewClampedToMaxScroll: vi.fn(),
-      captureScrollAnchor: vi.fn(),
+      positionKeeper: createInertScrollPositionKeeper(),
       holdContentPosition,
     };
     render(

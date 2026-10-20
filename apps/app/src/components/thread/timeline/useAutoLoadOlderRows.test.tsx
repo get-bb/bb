@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body.js";
 import type { BottomAnchorContextValue } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
+import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 interface ObserverHandle {
   emit: (isIntersecting: boolean) => void;
@@ -52,7 +53,7 @@ function createBottomAnchor(
     scrollToBottom: vi.fn(),
     scrollElementIntoView: vi.fn(),
     scrollElementIntoViewClampedToMaxScroll: vi.fn(),
-    captureScrollAnchor: vi.fn(),
+    positionKeeper: createInertScrollPositionKeeper(),
     holdContentPosition: vi.fn(),
   };
 }
@@ -124,7 +125,6 @@ describe("useAutoLoadOlderRows", () => {
     emitIntersection(true);
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
-    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
   });
 
   it("stays manual with no bottom anchor to keep the reading position", () => {
@@ -175,7 +175,6 @@ describe("useAutoLoadOlderRows", () => {
 
     emitIntersection(true);
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
-    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       rerender({ isLoading: true });
@@ -186,7 +185,6 @@ describe("useAutoLoadOlderRows", () => {
     });
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
-    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
   });
 
   it("stops auto-loading after a failure instead of retrying in a loop", async () => {
