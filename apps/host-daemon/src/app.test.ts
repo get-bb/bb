@@ -132,6 +132,7 @@ function createFetchRecorder(
       return Response.json(
         {
           sessionId,
+          idleProviderSessionTimeoutMinutes: 30,
           machineEnvironment: {
             revision: 0,
             entries: args.machineEnvironment ?? [],
@@ -691,7 +692,7 @@ describe("createHostDaemonApp", () => {
     }
   });
 
-  it("runs the idle provider session reaper on a non-overlapping interval", async () => {
+  it("uses the latest idle timeout without overlapping sweeps", async () => {
     const logger = createLogger();
     const firstReap =
       createDeferredPromise<RuntimeManagerReapIdleProviderSessionsResult>();
@@ -753,14 +754,18 @@ describe("createHostDaemonApp", () => {
     expect(timer.unref).toHaveBeenCalledTimes(1);
 
     triggerTick();
+    expect(reapIdleProviderSessions).not.toHaveBeenCalled();
+    reaper.setTimeoutMinutes(5);
+    triggerTick();
     await settleReaperPromiseChain();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(1, {
-      idleForMs: 1_800_000,
+      idleForMs: 300_000,
       nowMs: 1_000,
     });
 
     nowMs = 2_000;
+    reaper.setTimeoutMinutes(60);
     triggerTick();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
 
@@ -795,7 +800,7 @@ describe("createHostDaemonApp", () => {
     await settleReaperPromiseChain();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(2, {
-      idleForMs: 1_800_000,
+      idleForMs: 3_600_000,
       nowMs: 2_000,
     });
     expect(logger.warn).toHaveBeenCalledWith(
@@ -805,10 +810,18 @@ describe("createHostDaemonApp", () => {
       "Idle provider session reaper failed",
     );
 
+    reaper.setTimeoutMinutes(0);
+    triggerTick();
+    await settleReaperPromiseChain();
+    expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(3, {
+      idleForMs: 0,
+      nowMs: 2_000,
+    });
+
     reaper.stop();
     expect(timer.clear).toHaveBeenCalledTimes(1);
     triggerTick();
-    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(3);
   });
 
   it("reconnects through the server connection when event posting sees an inactive session", async () => {

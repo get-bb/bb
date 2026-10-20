@@ -23,9 +23,10 @@
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "^5.7.0"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   }
 }

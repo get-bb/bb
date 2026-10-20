@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Endpoint } from "../src/endpoint.js";
 import {
   defineRoute,
   jsonResponse,
+  jsonRequest,
+  noRequest,
+  textResponse,
   optionalQueryRequest,
   typedRoutes,
   type ApiSchemaFromRouteDescriptors,
@@ -88,5 +91,71 @@ describe("typedRoutes", () => {
     const missingQuery = await app.request("/search", { method: "GET" });
     expect(missingQuery.status).toBe(400);
     expect(await missingQuery.json()).toEqual({ message: "Required" });
+  });
+});
+
+describe("contract invalidations", () => {
+  it("publishes tags from parsed input and successful JSON output without changing the body", async () => {
+    const route = defineRoute({
+      path: "/items/:id",
+      method: "put",
+      request: jsonRequest(z.object({ value: z.coerce.number() })),
+      response: [
+        jsonResponse<{ value: number }>(),
+        jsonResponse<{ error: string }>({ status: 409 }),
+      ],
+      invalidates: ({ params, input }, output) => [
+        `item:${params.id}:${input.value}:${output.value}`,
+      ],
+    });
+    const publish = vi.fn();
+    const app = createApp();
+    const { put } = typedRoutes<ApiSchemaFromRouteDescriptors<typeof route>>(
+      app,
+      { invalidateTags: publish },
+    );
+    put(route, (context, input) =>
+      input.value < 0
+        ? context.json({ error: "conflict" }, 409)
+        : context.json({ value: input.value + 1 }),
+    );
+    for (const [value, status] of [
+      ["4", 200],
+      ["-1", 409],
+      ["invalid", 400],
+    ] as const) {
+      const response = await app.request("/items/a", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      expect(response.status).toBe(status);
+      if (status === 200) {
+        expect(await response.json()).toEqual({ value: 5 });
+      }
+    }
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["item:a:4:5"]);
+  });
+
+  it("requires a publisher for declared writes and skips non-JSON responses", async () => {
+    const route = defineRoute({
+      path: "/write",
+      method: "post",
+      request: noRequest(),
+      response: textResponse<string>(),
+      invalidates: () => ["item"],
+    });
+    const app = createApp();
+    type Schema = ApiSchemaFromRouteDescriptors<typeof route>;
+    expect(() =>
+      typedRoutes<Schema>(app).post(route, (c) => c.text("ok")),
+    ).toThrow("no invalidateTags option");
+    const publish = vi.fn();
+    typedRoutes<Schema>(app, { invalidateTags: publish }).post(route, (c) =>
+      c.text("ok"),
+    );
+    const response = await app.request("/write", { method: "POST" });
+    expect(await response.text()).toBe("ok");
+    expect(publish).not.toHaveBeenCalled();
   });
 });

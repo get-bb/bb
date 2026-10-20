@@ -828,7 +828,7 @@ export default {
       console.error("bb connect: request failed", {
         method: request.method,
         path: new URL(request.url).pathname,
-        error,
+        error: String(error),
       });
       return gateErrorResponse(request);
     }

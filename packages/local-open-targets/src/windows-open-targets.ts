@@ -70,7 +70,7 @@ export function buildWindowsFileManagerOpenInvocation(
 ): ExecFileInvocation {
   return buildPowerShellInvocation(
     args,
-    args.existingPath.path,
+    path.win32.normalize(args.existingPath.path),
     args.existingPath.type === "file"
       ? `Start-Process -FilePath explorer.exe -ArgumentList ('/select,"' + ${OPEN_PATH} + '"')`
       : `Invoke-Item -LiteralPath ${OPEN_PATH}`,

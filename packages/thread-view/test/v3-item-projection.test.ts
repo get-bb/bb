@@ -104,6 +104,67 @@ const SUBAGENT_PRESENTATION: ThreadEventItemPresentation = {
 
 describe("v3 item projection", () => {
   it.each([
+    [
+      "node build.mjs 2>&1 | grep -v warning | tail -n 5",
+      "Ran node build.mjs 2>&1 | grep -v warning | tail -n 5",
+    ],
+    [
+      "node build.mjs && grep warning build.log",
+      "Ran node build.mjs && grep warning build.log",
+    ],
+    [
+      "node build.mjs; grep warning build.log",
+      "Ran node build.mjs; grep warning build.log",
+    ],
+    ["grep warning build.log | tail -n 5", "Searched for warning in build.log"],
+    [
+      "cd packages/app && grep warning build.log",
+      "Searched for warning in build.log",
+    ],
+    [
+      "cd packages/app && node build.mjs | grep warning",
+      "Ran cd packages/app && node build.mjs | grep warning",
+    ],
+  ])(
+    "anchors compound command titles to the first command after cd: %s",
+    (command, expectedTitle) => {
+      const event = createTimelineEventFactory({
+        threadId: "thread-1",
+        turnId: "turn-1",
+      });
+      const rendered = renderTimelineFixture({
+        completedTurnDisplay: "flat",
+        events: [
+          event.turnStarted({ createdAt: 0 }),
+          event.commandStarted({
+            itemId: "command-1",
+            command,
+            createdAt: 1_000,
+          }),
+          event.commandCompleted({
+            itemId: "command-1",
+            command,
+            exitCode: 0,
+            createdAt: 2_000,
+          }),
+          event.assistantCompleted({
+            itemId: "answer",
+            text: "Done.",
+            createdAt: 3_000,
+          }),
+          event.turnCompleted({ createdAt: 4_000 }),
+        ],
+        projectionOptions: { turnMessageDetail: "full" },
+      });
+      const [viewRow] = buildTimelineViewRows([
+        workRow(rendered.rows, "command", "command-1"),
+      ]);
+      expect(viewRow && plainTitle(viewRow)).toBe(expectedTitle);
+      expect(rendered.text).toContain(expectedTitle);
+    },
+  );
+
+  it.each([
     { decision: "allow_once", interleaved: false },
     { decision: "allow_for_session", interleaved: true },
   ] as const)(

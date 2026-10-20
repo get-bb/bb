@@ -33,7 +33,7 @@ export function ExpandableText({
   }, [children, expanded]);
 
   return (
-    <span className={cn("pointer-events-auto block min-w-0", className)}>
+    <span className={cn("block min-w-0", className)}>
       <span
         ref={textRef}
         id={id}
@@ -49,7 +49,7 @@ export function ExpandableText({
           type="button"
           aria-expanded={expanded}
           aria-controls={id}
-          className="mt-1 cursor-pointer rounded-sm text-xs font-medium underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="pointer-events-auto mt-1 cursor-pointer rounded-sm text-xs font-medium underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           onClick={(event) => {
             event.stopPropagation();
             setExpanded((value) => !value);

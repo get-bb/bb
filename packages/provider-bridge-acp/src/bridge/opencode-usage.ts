@@ -32,6 +32,9 @@ const storedOAuthSchema = z.object({
   }),
 });
 
+const OPENCODE_2_CREDENTIAL_IMPORT_MIGRATION =
+  "20260805200742_import_legacy_credentials";
+
 function isOfficialConsole(url: string): boolean {
   const issuer = new URL(url);
   return (
@@ -102,7 +105,7 @@ function readStoredCredential(database: DatabaseSync) {
     .get();
   if (!table) return null;
   const query = database.prepare(
-    "SELECT value FROM credential WHERE integration_id = ? AND active = 1 ORDER BY time_created DESC, id DESC LIMIT 1",
+    "SELECT value FROM credential WHERE integration_id = ? ORDER BY active DESC, time_created DESC, id DESC LIMIT 1",
   );
   for (const provider of ["opencode-go", "opencode"]) {
     const row = query.get(provider);
@@ -129,6 +132,20 @@ function readStoredCredential(database: DatabaseSync) {
     };
   }
   return null;
+}
+
+function isOpenCode2Database(database: DatabaseSync): boolean {
+  const table = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'migration'",
+    )
+    .get();
+  if (!table) return false;
+  return (
+    database
+      .prepare("SELECT id FROM migration WHERE id = ?")
+      .get(OPENCODE_2_CREDENTIAL_IMPORT_MIGRATION) !== undefined
+  );
 }
 
 async function readLegacyApiKey(
@@ -176,25 +193,27 @@ export async function readOpenCodeGoUsage(
   });
   let apiKey: string | null;
   let account: ReturnType<typeof readAccount> = null;
+  let openCode2 = false;
   try {
     apiKey = env.OPENCODE_API_KEY?.trim() || null;
     if (apiKey === null) {
       const database = await openDatabase(env);
       if (database) {
         try {
-          account = readAccount(database);
-          if (account) {
-            apiKey = account.access_token;
-          } else {
+          openCode2 = isOpenCode2Database(database);
+          if (openCode2) {
             const stored = readStoredCredential(database);
             apiKey = stored?.apiKey ?? null;
             account = stored?.account ?? null;
+          } else {
+            account = readAccount(database);
+            apiKey = account?.access_token ?? null;
           }
         } finally {
           database.close();
         }
       }
-      apiKey ??= await readLegacyApiKey(env);
+      if (!openCode2) apiKey ??= await readLegacyApiKey(env);
     }
   } catch {
     return failure("OpenCode credentials could not be read.");

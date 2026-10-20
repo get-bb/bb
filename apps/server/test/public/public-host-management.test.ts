@@ -449,6 +449,10 @@ describe("public host management", () => {
           method: "POST",
           headers: { "x-bb-gate-auth": "machine" },
         }),
+        harness.app.request(`${API}/hosts/${host.id}?force=true`, {
+          method: "DELETE",
+          headers: { "x-bb-gate-auth": "machine" },
+        }),
         harness.app.request(`${API}/hosts/${host.id}/permission-ceiling`, {
           method: "PATCH",
           headers: {

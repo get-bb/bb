@@ -10,7 +10,7 @@
     "build:android:local": "bash scripts/build-android-local.sh",
     "build:android:dev": "bash scripts/build-android-dev.sh",
     "prebuild": "expo prebuild",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "lint": "oxlint app src scripts plugins metro.config.js app.config.js",
     "test": "vitest run --config vitest.config.ts",
     "theme:generate": "node --conditions=source --import tsx scripts/generate-native-theme.ts",
@@ -81,6 +81,7 @@
     "postcss": "^8.5.26",
     "sf-symbols-typescript": "^2.2.0",
     "tailwindcss": "^4.3.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"
   }

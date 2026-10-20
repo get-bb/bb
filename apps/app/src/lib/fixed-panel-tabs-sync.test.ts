@@ -527,6 +527,7 @@ describe("terminal activation history", () => {
         act(() =>
           result.current.update((state) =>
             syncTerminalTabsInFixedPanelState({
+              pendingTerminalIds: { closing: new Set(), starting: new Set() },
               state,
               terminalSessions: [],
             }),

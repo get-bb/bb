@@ -3,7 +3,10 @@ import { useAtomValue } from "jotai";
 import { z } from "zod";
 import type { ExperimentalSidebarNavigationPlacement } from "@get-bb/plugin-sdk";
 import { createLastKnownCache } from "@/lib/last-known-cache";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
+import {
+  usePluginFrontendLoadFailed,
+  usePluginFrontendsSettled,
+} from "@/lib/plugin-frontend-boot-state";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   findAutomaticReplacement,
@@ -23,6 +26,7 @@ export type ResolvedSidebarNavigation =
       fallback: ExperimentalSidebarNavigationSlot | null;
     }
   | { kind: "loading"; placement: ExperimentalSidebarNavigationPlacement }
+  | { kind: "failed" }
   | { kind: "missing" };
 
 const lastResolvedSchema = z.object({
@@ -51,12 +55,14 @@ export function resolveSidebarNavigation({
   slots,
   builtinPluginIds,
   settled,
+  loadFailed,
   lastResolved,
 }: {
   preference: string;
   slots: readonly ExperimentalSidebarNavigationSlot[];
   builtinPluginIds: ReadonlySet<string>;
   settled: boolean;
+  loadFailed: boolean;
   lastResolved: LastResolvedSidebarNavigation | null;
 }): ResolvedSidebarNavigation {
   const isAutomatic = preference === AUTOMATIC_REPLACEMENT_PROVIDER;
@@ -83,7 +89,7 @@ export function resolveSidebarNavigation({
   if (!settled) {
     return { kind: "loading", placement: lastResolved?.placement ?? "rail" };
   }
-  return { kind: "missing" };
+  return loadFailed ? { kind: "failed" } : { kind: "missing" };
 }
 
 export function sidebarNavigationPlacement(
@@ -94,6 +100,7 @@ export function sidebarNavigationPlacement(
       return resolved.slot.placement;
     case "loading":
       return resolved.placement;
+    case "failed":
     case "missing":
       return "list";
   }
@@ -126,6 +133,7 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
   const { experimentalSidebarNavigations } = usePluginSlots();
   const preference = useAtomValue(sidebarNavigationProviderAtom);
   const settled = usePluginFrontendsSettled();
+  const loadFailed = usePluginFrontendLoadFailed();
   const [lastResolved] = useState(() =>
     lastResolvedCache.read(LAST_RESOLVED_KEY),
   );
@@ -135,6 +143,7 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
     slots: experimentalSidebarNavigations,
     builtinPluginIds,
     settled,
+    loadFailed,
     lastResolved,
   });
   const resolvedKey =

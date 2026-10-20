@@ -7,9 +7,11 @@ import {
   type RefObject,
 } from "react";
 import type { ExperimentalSidebarNavigationPlacement } from "@get-bb/plugin-sdk";
+import { Button } from "@bb/shared-ui/button";
 import { Popover, PopoverAnchor } from "@bb/shared-ui/popover";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { appToast } from "@/components/ui/app-toast";
+import { schedulePluginFrontendReconcile } from "@/lib/plugin-frontend-lazy";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import type { ExperimentalSidebarNavigationSlot } from "@/lib/plugin-slots";
 import { SidebarNavigationCustomizePopoverContent } from "./SidebarNavigationCustomize";
@@ -134,6 +136,26 @@ export function SidebarNavigationProviderMount({
         className="px-4 py-2 text-sm text-muted-foreground"
       >
         No navigation plugin is enabled.
+      </div>
+    );
+  }
+  if (resolved.kind === "failed") {
+    return (
+      <div
+        role="alert"
+        data-sidebar-navigation-placeholder="failed"
+        className="flex flex-col gap-2 px-4 py-2 text-sm text-muted-foreground"
+      >
+        <span>Navigation couldn't load.</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={schedulePluginFrontendReconcile}
+        >
+          Retry
+        </Button>
       </div>
     );
   }

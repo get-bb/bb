@@ -157,7 +157,7 @@ describe("local host daemon access atoms", () => {
         await store.get(localHostDaemonAccessStateAtom);
         expect(mocks.fetchSdkSystemConfig).not.toHaveBeenCalled();
         mocks.fetchSdkSystemConfig.mockImplementation(
-          ({ signal } = {}) =>
+          ({ signal }: { signal?: AbortSignal } = {}) =>
             new Promise((resolve) => {
               requests.push({ resolve });
               signal?.addEventListener(

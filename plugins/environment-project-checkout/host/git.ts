@@ -1,4 +1,8 @@
-import { detectGitRepo, runGit } from "bb-environment-provider-host/git";
+import {
+  detectGitRepo,
+  hasRef,
+  runGit,
+} from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { GitCheckoutRef, WorkspaceGitOperation } from "../contract.js";
@@ -50,15 +54,17 @@ export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
   };
 }
 
-export async function listLocalBranches(cwd: string): Promise<string[]> {
-  const result = await runGit(
-    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
-    { cwd },
-  );
-  return result.stdout
-    .split("\n")
-    .map((branch) => branch.trim())
-    .filter(Boolean);
+export async function locateBranch(
+  cwd: string,
+  name: string,
+): Promise<"local" | "origin" | "missing"> {
+  if (await hasRef(cwd, `refs/heads/${name}`)) {
+    return "local";
+  }
+  if (await hasRef(cwd, `refs/remotes/origin/${name}`)) {
+    return "origin";
+  }
+  return "missing";
 }
 
 const CONFLICT_PORCELAIN_STATUSES = new Set([

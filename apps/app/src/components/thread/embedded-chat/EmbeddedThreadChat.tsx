@@ -375,6 +375,7 @@ function EmbeddedThreadChatWithComposer({
     inlinePendingUploads,
   } = useComposerAttachmentUploads({
     projectId,
+    draftStorageKey: promptDraft.storageKey,
     addDraftAttachment: promptDraft.addAttachment,
     inlineEditSessionId: queuedMessageDraftSession?.editSessionId ?? null,
     inlineSessionRef: inlineDraftSessionRef,

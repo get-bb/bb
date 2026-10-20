@@ -21,6 +21,7 @@ interface PluginCardProps {
   title: string;
   description: ReactNode;
   descriptionLines?: 2 | 3 | "expandable";
+  disabled?: boolean;
   leading: ReactNode;
   byline: ReactNode;
   footerAction: ReactNode;
@@ -28,7 +29,11 @@ interface PluginCardProps {
   onOpen: (trigger: HTMLButtonElement) => void;
 }
 
-export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) {
+export function PluginCard({
+  byline,
+  footerAction,
+  ...props
+}: PluginCardProps) {
   return (
     <ResourceBrowseCard
       {...props}

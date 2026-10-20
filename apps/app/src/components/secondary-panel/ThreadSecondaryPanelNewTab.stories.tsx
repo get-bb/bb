@@ -486,7 +486,6 @@ function NewTabPanelStory({
           startTerminalTrailing={
             terminalHosts === undefined ? undefined : (
               <TerminalHostSelector
-                disabled={false}
                 hosts={terminalHosts}
                 isLoading={false}
                 onChange={setPreferredTerminalHostId}

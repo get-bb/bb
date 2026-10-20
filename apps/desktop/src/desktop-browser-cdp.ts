@@ -1,15 +1,15 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
+import { jsonObjectSchema } from "@bb/domain";
 import { z } from "zod";
 
-const objectSchema = z.record(z.string(), z.json());
-type CdpObject = z.infer<typeof objectSchema>;
+type CdpObject = z.infer<typeof jsonObjectSchema>;
 const commandSchema = z
   .object({
     id: z.number().int().nonnegative(),
     method: z.string().min(1).max(256),
-    params: objectSchema.default({}),
+    params: jsonObjectSchema.default({}),
     sessionId: z.string().min(1).max(256).optional(),
   })
   .strict();

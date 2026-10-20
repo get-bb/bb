@@ -8,6 +8,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { ConfirmDeleteDialog } from "@bb/shared-ui/confirm-delete-dialog";
 import { useRemoveHost } from "@/hooks/mutations/host-mutations";
+import { canForceRemoveMachine } from "@/components/machines/machine-status";
 import { useMachineThreadPreview } from "@/hooks/queries/thread-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -71,6 +72,7 @@ export function MachineRemoveDialog({
   onRemoved?: (host: Host) => void;
 }) {
   const removeHost = useRemoveHost();
+  const force = target !== null && canForceRemoveMachine(target);
 
   return (
     <ConfirmDeleteDialog
@@ -87,8 +89,21 @@ export function MachineRemoveDialog({
           <DialogHeader>
             <DialogTitle>Remove {target.name}?</DialogTitle>
             <DialogDescription>
-              This revokes {target.name}'s access to this server.{" "}
-              {machineRemovalConsequences(target)}
+              {force ? (
+                <>
+                  Cleanup failed and {target.name} is not connected. Removing it
+                  now skips environment cleanup on the machine: files and
+                  worktrees left on its disk are not deleted, and its
+                  environments become read-only history. The machine provider's
+                  removal still runs. Use this only if the machine is gone or
+                  will not come back.
+                </>
+              ) : (
+                <>
+                  This revokes {target.name}'s access to this server.{" "}
+                  {machineRemovalConsequences(target)}
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <MachineThreadPreviewList hostId={target.id} />
@@ -106,15 +121,18 @@ export function MachineRemoveDialog({
               variant="destructive"
               disabled={removeHost.isPending}
               onClick={() =>
-                removeHost.mutate(target.id, {
-                  onSuccess: () => {
-                    onOpenChange(false);
-                    onRemoved?.(target);
+                removeHost.mutate(
+                  { hostId: target.id, force },
+                  {
+                    onSuccess: () => {
+                      onOpenChange(false);
+                      onRemoved?.(target);
+                    },
                   },
-                })
+                )
               }
             >
-              Remove machine
+              {force ? "Remove anyway" : "Remove machine"}
             </Button>
           </DialogFooter>
         </>

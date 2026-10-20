@@ -14,10 +14,12 @@ import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import {
   defaultRangeExtractor,
   elementScroll,
+  observeElementOffset,
   useVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
 import { AutoHeightSnapContext } from "@/components/ui/height-transition";
+import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 import { isIOSWebKit } from "@/lib/ios-webkit";
 
 export const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
@@ -39,6 +41,7 @@ export function recordTimelineMeasurement(
 
 export interface TimelineWindowingScrollRoot {
   getScrollElement: () => HTMLElement | null;
+  positionKeeper: ScrollPositionKeeper;
 }
 
 export const TimelineWindowingScrollRootContext =
@@ -63,6 +66,7 @@ export interface TimelineWindowedItemsProps {
   getScrollElement: (() => HTMLElement | null) | null;
   itemKeys: readonly string[];
   measurements: Map<string, number>;
+  positionKeeper: ScrollPositionKeeper | null;
   renderItem: (
     index: number,
     state: TimelineWindowedItemRenderState,
@@ -105,6 +109,7 @@ export function TimelineWindowedItems({
   getScrollElement,
   itemKeys,
   measurements,
+  positionKeeper,
   renderItem,
   pinnedToEnd,
 }: TimelineWindowedItemsProps) {
@@ -207,10 +212,30 @@ export function TimelineWindowedItems({
         container.style.height = `${instance.getTotalSize()}px`;
       }
       snapAutoHeight?.();
+      if (positionKeeper?.isActive() === true) return;
       elementScroll(offset, options, instance);
     },
-    [snapAutoHeight],
+    [positionKeeper, snapAutoHeight],
   );
+  const observeOffset = useCallback<typeof observeElementOffset<HTMLElement>>(
+    (instance, callback) => {
+      const unobserve = observeElementOffset(instance, callback);
+      const unsubscribe = positionKeeper?.subscribeScrollWrites(() => {
+        const scrollElement = instance.scrollElement;
+        if (scrollElement !== null) {
+          callback(scrollElement.scrollTop, instance.isScrolling);
+        }
+      });
+      return () => {
+        unobserve?.();
+        unsubscribe?.();
+      };
+    },
+    [positionKeeper],
+  );
+  const reconcileScrollPosition = useCallback(() => {
+    positionKeeper?.reconcile();
+  }, [positionKeeper]);
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count: itemKeys.length,
@@ -224,6 +249,8 @@ export function TimelineWindowedItems({
     initialOffset,
     initialRect,
     measureElement,
+    observeElementOffset: observeOffset,
+    onChange: reconcileScrollPosition,
     overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
     scrollMargin,
@@ -241,13 +268,38 @@ export function TimelineWindowedItems({
       _delta,
       instance,
     ) => {
+      if (positionKeeper?.isActive() === true) return false;
       if (pinnedToEnd) return item.index < instance.options.count - 1;
       const scrollTop = resolvedGetScrollElement()?.scrollTop ?? 0;
       if (item.start >= scrollTop) return false;
       if (!instance.itemSizeCache.has(item.key)) return true;
       return item.end <= scrollTop;
     };
-  }, [pinnedToEnd, resolvedGetScrollElement, virtualizer]);
+  }, [pinnedToEnd, positionKeeper, resolvedGetScrollElement, virtualizer]);
+
+  const rowOffsetStateRef = useRef({ indexByKey, windowingEnabled });
+  rowOffsetStateRef.current = { indexByKey, windowingEnabled };
+  useLayoutEffect(() => {
+    if (positionKeeper === null) return;
+    return positionKeeper.registerRowOffsetSource((rowId) => {
+      const { indexByKey: keys, windowingEnabled: windowed } =
+        rowOffsetStateRef.current;
+      const index = keys.get(rowId);
+      const container = containerElementRef.current;
+      const scrollElement = virtualizer.scrollElement;
+      if (!windowed || index === undefined || container === null) return null;
+      if (scrollElement === null || !container.isConnected) return null;
+      const item = virtualizer.measurementsCache[index];
+      if (item === undefined) return null;
+      const containerOffset =
+        container.getBoundingClientRect().top -
+        scrollElement.getBoundingClientRect().top +
+        scrollElement.scrollTop;
+      return containerOffset + item.start - virtualizer.options.scrollMargin;
+    });
+  }, [positionKeeper, virtualizer]);
+
+  useLayoutEffect(reconcileScrollPosition);
 
   const updateScrollGeometry = useCallback(() => {
     if (!configured) return;

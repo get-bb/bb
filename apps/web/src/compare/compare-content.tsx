@@ -58,7 +58,7 @@ export const BB_ROWS = {
   },
   marketplace: {
     feature: "Plugin marketplace",
-    bb: cell("yes", "300+ community plugins, or share your own with your team"),
+    bb: cell("yes", "400+ community plugins, or share your own with your team"),
   },
   github: {
     feature: "GitHub integration",

@@ -73,7 +73,15 @@ describe("desktop chrome geometry", () => {
 
     expect(properties.get("--bb-macos-traffic-light-center-y")).toBe("28px");
     expect(properties.get("--bb-window-title-bar-height")).toBe("56px");
-    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe("92px");
+    expect(properties.get("--bb-macos-traffic-light-reserve")).toBe(
+      "calc(12px + 80px / var(--bb-zoom, 1))",
+    );
+    expect(properties.get("--bb-window-title-bar-controls-end")).toBe(
+      "calc(var(--bb-macos-traffic-light-reserve) + 89px)",
+    );
+    expect(properties.get("--bb-macos-collapsed-top-left-reserve")).toBe(
+      "calc(var(--bb-macos-traffic-light-reserve) + 20px)",
+    );
     expect(
       decodeURIComponent(properties.get("--bb-window-card-mask") ?? ""),
     ).toContain(
@@ -88,7 +96,7 @@ describe("desktop chrome geometry", () => {
       `${2 * (MACOS_TRAFFIC_LIGHT_TOP_INSET_PX + 7)}px`,
     );
     expect(properties.get("--bb-macos-traffic-light-reserve")).toBe(
-      `${MACOS_TRAFFIC_LIGHT_INSET_PX + 72}px`,
+      `calc(12px + ${MACOS_TRAFFIC_LIGHT_INSET_PX + 60}px / var(--bb-zoom, 1))`,
     );
   });
 

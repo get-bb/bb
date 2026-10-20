@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   FETCH_BODY_MAX_BYTES,
   type AccountFetchResult,
+  jsonValueSchema,
   type RedeemErrorCode,
 } from "./contract.js";
 
@@ -161,7 +162,7 @@ async function readTextCapped(response: Response): Promise<string> {
 function parseJsonOrNull(text: string): JsonValue {
   if (text.trim().length === 0) return null;
   try {
-    return z.json().parse(JSON.parse(text));
+    return jsonValueSchema.parse(JSON.parse(text));
   } catch {
     return null;
   }

@@ -317,6 +317,9 @@ function fileChangeVerb(
   return "update";
 }
 
+const DEV_NULL_OLD_TEXT = /^-{2,3} \/dev\/null$/u;
+const NEW_FILE_HEADER = /^\+{2,3} b\/[^\n]*(?:\n|$)/u;
+
 function buildAcpFileChanges(
   event: AcpToolCallUpdateEvent,
   operation: Extract<AcpToolCallOperation, { kind: "file_change" }>,
@@ -327,19 +330,36 @@ function buildAcpFileChanges(
     if (entry.type !== "diff") {
       continue;
     }
-    const oldText = entry.oldText ?? undefined;
+    const createsFile =
+      entry.oldText === null ||
+      entry.oldText === undefined ||
+      DEV_NULL_OLD_TEXT.test(entry.oldText);
     changes.push({
       path: resolveAcpToolCallPath(entry.path, options),
-      kind: oldText === undefined ? "add" : "update",
-      ...(oldText === undefined ? {} : { oldText }),
-      newText: entry.newText,
+      kind: createsFile ? "add" : "update",
+      ...(createsFile ? {} : { oldText: entry.oldText ?? undefined }),
+      newText: createsFile
+        ? entry.newText.replace(NEW_FILE_HEADER, "")
+        : entry.newText,
     });
   }
   if (changes.length > 0) {
     return changes;
   }
   const [path] = operation.paths;
-  return path === undefined ? [] : [{ path, kind: operation.changeKind }];
+  if (path === undefined) {
+    return [];
+  }
+  return [
+    {
+      path,
+      kind:
+        operation.changeKind === "update" &&
+        options?.existedBefore?.get(path) === false
+          ? "add"
+          : operation.changeKind,
+    },
+  ];
 }
 
 function fileChangeItem(

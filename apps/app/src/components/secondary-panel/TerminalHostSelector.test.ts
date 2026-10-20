@@ -21,7 +21,6 @@ const laptop = makeHost({
 function renderSelector(hosts: readonly Host[]) {
   return renderToStaticMarkup(
     createElement(TerminalHostSelector, {
-      disabled: false,
       hosts,
       isLoading: false,
       onChange: () => {},

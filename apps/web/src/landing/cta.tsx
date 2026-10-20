@@ -53,14 +53,29 @@ const AppleSolidIcon: IconSvgElement = [
   ],
 ];
 
+const WindowsSolidIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M3 3H11V11H3ZM13 3H21V11H13ZM3 13H11V21H3ZM13 13H21V21H13Z",
+      fill: "currentColor",
+      key: "0",
+    },
+  ],
+];
+
 function DesktopDownloadIcon({ platform }: { platform: DesktopPlatform }) {
   if (platform === "linux") {
     return <LinuxIcon className="btn-ic" />;
   }
   if (platform === "windows") {
-    return null;
+    return (
+      <HugeiconsIcon icon={WindowsSolidIcon} className="btn-ic" aria-hidden />
+    );
   }
-  return <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" />;
+  return (
+    <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" aria-hidden />
+  );
 }
 
 export function DesktopDownloadButton({

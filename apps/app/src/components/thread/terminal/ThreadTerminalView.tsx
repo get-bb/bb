@@ -46,6 +46,10 @@ import {
 } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
+import {
+  importTerminalModules,
+  importTerminalWebglAddon,
+} from "./terminal-modules";
 import { TerminalWebSocketTransport } from "@bb/client-core";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
 import { TerminalMobileControls } from "./TerminalMobileControls";
@@ -985,14 +989,9 @@ export function ThreadTerminalView({
     async function mountTerminal(
       containerElement: HTMLDivElement,
     ): Promise<void> {
-      const requiredModulesPromise = Promise.all([
-        import("@xterm/xterm"),
-        import("@xterm/addon-fit"),
-        import("@xterm/addon-web-links"),
-        import("@xterm/addon-unicode11"),
-      ]);
+      const requiredModulesPromise = importTerminalModules();
       const webglAddonModulePromise = loadOptionalTerminalWebglAddon(
-        () => import("@xterm/addon-webgl"),
+        importTerminalWebglAddon,
       );
       const [
         { Terminal },

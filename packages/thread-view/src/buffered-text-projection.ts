@@ -45,10 +45,7 @@ interface ProjectBufferedTextEventArgs<
 
 type ResolveBufferedTextMessageKeyArgs<
   TMessage extends BufferedTextEventProjectionMessage,
-> = Omit<
-  ProjectBufferedTextEventArgs<TMessage>,
-  "createMessage" | "mode" | "text"
->;
+> = Omit<ProjectBufferedTextEventArgs<TMessage>, "createMessage" | "text">;
 
 type UpsertBufferedTextMessageArgs<
   TMessage extends BufferedTextEventProjectionMessage,
@@ -72,14 +69,17 @@ function resolveBufferedTextMessageKey<
   }
 
   const messageKey = createBufferedTextInstanceKey(args.identity);
-  if (args.state.closedTurnIds.has(args.identity.turnId)) {
+  const turnClosed = args.state.closedTurnIds.has(args.identity.turnId);
+  if (turnClosed && args.mode !== "final") {
     return null;
   }
   if (args.refs.finalizedKeys.has(messageKey)) {
     return null;
   }
 
-  args.state.openTurnIds.add(args.identity.turnId);
+  if (!turnClosed) {
+    args.state.openTurnIds.add(args.identity.turnId);
+  }
   return messageKey;
 }
 

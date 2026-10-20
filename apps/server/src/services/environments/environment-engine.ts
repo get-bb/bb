@@ -19,7 +19,7 @@ import {
   runEnvironmentHook,
   ENVIRONMENT_HOOK_TIMEOUT_MS,
 } from "./environment-hooks.js";
-import { eq, and, isNull, or, sql } from "drizzle-orm";
+import { eq, and, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   releaseFinishedEnvironmentPreparationOwners,
@@ -41,6 +41,7 @@ import {
   type DbNotifier,
   type DbQueryConnection,
   threads,
+  markHostEnvironmentsDestroyed,
 } from "@bb/db";
 import {
   canonicalizeHostPath,
@@ -149,7 +150,7 @@ const createResultSchema = z.discriminatedUnion("status", [
     status: z.literal("created"),
     path: z.string().min(1),
     ownsPath: z.boolean().default(false),
-    mergeBaseBranch: z.string().min(1).optional(),
+    mergeBaseBranch: z.string().min(1).nullable().optional(),
     resource: resourceSchema.optional(),
   }),
   z.object({
@@ -509,6 +510,8 @@ async function runCreate(
           if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
             row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
             row.resource = produced.resource ?? null;
+          } else if (produced.mergeBaseBranch !== undefined) {
+            row.mergeBaseBranch = produced.mergeBaseBranch;
           }
         },
       );
@@ -739,11 +742,7 @@ async function runRemove(
         throw new Error("The environment provider became unavailable.");
       const result = removeResultSchema.parse(invocation.value);
       if (result.status === "failed") {
-        writeEnvironment(deps, environmentId, {
-          teardownStatus: "failed",
-          teardownMessage: result.message,
-          retireAt: Date.now() + REMOVE_RETRY_MS,
-        });
+        writeEnvironmentTeardownFailure(deps, environmentId, result.message);
         return;
       }
       deps.db.transaction(() => {
@@ -767,13 +766,37 @@ async function runRemove(
         providerOwnedPath: row.providerOwnsPath,
       });
     } catch (error) {
-      writeEnvironment(deps, environmentId, {
-        teardownStatus: "failed",
-        teardownMessage: errorMessage(error),
-        retireAt: Date.now() + REMOVE_RETRY_MS,
-      });
+      writeEnvironmentTeardownFailure(deps, environmentId, errorMessage(error));
     }
   });
+}
+
+function writeEnvironmentTeardownFailure(
+  deps: Pick<Deps, "db" | "hub">,
+  environmentId: string,
+  message: string,
+): void {
+  const written = deps.db
+    .update(environments)
+    .set({
+      teardownStatus: "failed",
+      teardownMessage: message,
+      retireAt: Date.now() + REMOVE_RETRY_MS,
+      updatedAt: Date.now(),
+    })
+    .where(
+      and(
+        eq(environments.id, environmentId),
+        or(
+          isNull(environments.teardownStatus),
+          ne(environments.teardownStatus, "removed"),
+        ),
+      ),
+    )
+    .returning({ id: environments.id })
+    .all();
+  if (written.length > 0)
+    deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
 }
 
 async function removeEnvironment(
@@ -1916,6 +1939,42 @@ export async function advanceEnvironmentProvisioning(
     run: () =>
       runEnvironmentProvisionCommand(deps, { environment: row, request }),
   });
+}
+
+export async function forgetHostEnvironments(
+  deps: Deps,
+  hostId: string,
+): Promise<void> {
+  const map = perDbRegistry(environmentOperations, deps.db);
+  const listRows = () =>
+    deps.db
+      .select({
+        id: environments.id,
+        path: environments.path,
+        providerOwnsPath: environments.providerOwnsPath,
+        status: environments.status,
+        teardownStatus: environments.teardownStatus,
+      })
+      .from(environments)
+      .where(eq(environments.hostId, hostId))
+      .all();
+  await Promise.all(
+    listRows().map((row) => map.get(row.id)?.done.catch(() => {})),
+  );
+  const pending = listRows().filter(
+    (row) => row.status !== "destroyed" || row.teardownStatus !== "removed",
+  );
+  markHostEnvironmentsDestroyed(deps.db, deps.hub, hostId);
+  const removedAt = Date.now();
+  for (const row of pending) {
+    emitPluginEnvironmentRemoved({
+      environmentId: row.id,
+      removedAt,
+      hostId,
+      path: row.path,
+      providerOwnedPath: row.providerOwnsPath,
+    });
+  }
 }
 
 export async function sweepProviderEnvironment(

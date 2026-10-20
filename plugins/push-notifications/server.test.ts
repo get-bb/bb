@@ -524,6 +524,59 @@ describe("push sender", () => {
     }
   });
 
+  it("skips directives, tables, and raw JSON in the preview", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const previews = {
+        Directive: [
+          '::page{id="2d98aecf" version="e4d24dd2" display="inline"}',
+          "",
+          "Pick one icon and press Ship.",
+        ],
+        Table: [
+          "## Result",
+          "",
+          "| Step | Before | After |",
+          "|---|---|---|",
+          "| Template | Unset | Set |",
+          "The deployment did not change.",
+        ],
+        Json: [
+          "{",
+          '  "ok": true,',
+          '  "enrolled": 9',
+          "}",
+          "",
+          "All nine people are enrolled.",
+        ],
+        "Directive only": ['::page{id="2d98aecf" version="e4d24dd2"}'],
+      };
+      for (const [title, lines] of Object.entries(previews)) {
+        await host.harness.behavior.emitThreadEvent("thread.idle", {
+          thread: host.setThread({ title }),
+          lastAssistantText: lines.join("\n"),
+        });
+      }
+
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(4));
+      const bodies = Object.fromEntries(
+        host.expo.requests.map((request) => [
+          request[0]?.title,
+          request[0]?.body,
+        ]),
+      );
+      expect(bodies).toEqual({
+        Directive: "Pick one icon and press Ship.",
+        Table: "The deployment did not change.",
+        Json: "All nine people are enrolled.",
+        "Directive only": "Finished and waiting for you",
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("includes the configured public server URL", async () => {
     const host = await setup({ appUrl: "https://bb.example.test" });
     try {

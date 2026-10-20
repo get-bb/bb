@@ -33,6 +33,7 @@ import { appQueryClient } from "./app-query-client";
 import {
   setServerPluginsStarting,
   setPluginFrontendReconcilePending,
+  setPluginFrontendLoadFailed,
 } from "./plugin-frontend-boot-state";
 import type {
   PluginContentScriptDisposer,
@@ -133,20 +134,7 @@ interface PluginFrontendLoaderDeps {
   warn: (message: string) => void;
 }
 
-export async function loadPluginFrontends(
-  candidates: readonly PluginFrontendCandidate[],
-  deps: PluginFrontendLoaderDeps,
-): Promise<Map<string, PluginFrontendRecord>> {
-  const records = new Map<string, PluginFrontendRecord>();
-  await Promise.all(
-    candidates.map(async (candidate) => {
-      records.set(candidate.pluginId, await loadOneBundle(candidate, deps));
-    }),
-  );
-  return records;
-}
-
-async function loadOneBundle(
+export async function loadPluginFrontend(
   { pluginId, bundle }: PluginFrontendCandidate,
   deps: PluginFrontendLoaderDeps,
 ): Promise<PluginFrontendRecord> {
@@ -370,6 +358,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
+  importRetryDelaysMs: readonly number[];
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
   retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
@@ -679,29 +668,32 @@ async function reconcileCandidates(
       }
       deps.resetCrashedSlots(pluginId);
       const previousAttempt = state.failedImportAttempts.get(pluginId);
-      const retryCount =
+      let retryCount =
         previous?.status === "failed" &&
         previousAttempt?.hash === candidate.bundle.hash
           ? previousAttempt.count + 1
           : 0;
-      const importUrl =
-        retryCount === 0
-          ? candidate.bundle.jsUrl
-          : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount);
-      const loaded = await loadPluginFrontends(
-        [
+      const importAttempt = () =>
+        loadPluginFrontend(
           {
             ...candidate,
-            bundle: { ...candidate.bundle, jsUrl: importUrl },
+            bundle: {
+              ...candidate.bundle,
+              jsUrl:
+                retryCount === 0
+                  ? candidate.bundle.jsUrl
+                  : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount),
+            },
           },
-        ],
-        {
-          importModule: deps.importModule,
-          warn: deps.warn,
-        },
-      );
-      const record = loaded.get(pluginId);
-      if (record === undefined) return;
+          { importModule: deps.importModule, warn: deps.warn },
+        );
+      let record = await importAttempt();
+      for (const delayMs of deps.importRetryDelaysMs) {
+        if (record.status !== "failed" || state.tornDown) break;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        retryCount += 1;
+        record = await importAttempt();
+      }
       if (record.status === "failed") {
         state.failedImportAttempts.set(pluginId, {
           hash: candidate.bundle.hash,
@@ -919,14 +911,19 @@ const browserDiagnosticsListeners = new Set<() => void>();
 
 function publishBrowserDiagnostics(): void {
   browserDiagnosticsSnapshot = new Map(state.diagnostics);
+  setPluginFrontendLoadFailed(
+    [...state.records.values()].some((record) => record.status !== "loaded"),
+  );
   for (const listener of browserDiagnosticsListeners) listener();
 }
 
 const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
+const PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS = [500, 2_000];
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
   importModule: (url) => import(/* @vite-ignore */ url),
+  importRetryDelaysMs: PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS,
   applyCss: applyPluginCss,
   retainCss: retainPluginCss,
   routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),

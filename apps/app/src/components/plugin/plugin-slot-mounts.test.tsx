@@ -7,7 +7,13 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   act,
   cleanup,
@@ -427,6 +433,64 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("quiet-update"));
     expect(draft.getCurrent().text).toBe("abcde!");
     expect(screen.getByTestId("reading-text").textContent).toBe("abcde!");
+  });
+
+  it("mounts a plugin that reads the text during a navigation without re-rendering the rest of the page", () => {
+    const pageRenders = vi.fn();
+    function ReadingProbe() {
+      const composer = useComposer();
+      return <div data-testid="navigated-text">{composer.text}</div>;
+    }
+    function PageContent() {
+      pageRenders();
+      return null;
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [
+          {
+            id: "probe",
+            actions: [{ id: "reading", component: ReadingProbe }],
+          },
+        ],
+      }),
+    );
+    const staticView: ComposerView = {
+      scope: { kind: "thread", threadId: "thr_navigated" },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    getPromptDraftAccessor({
+      kind: "thread",
+      projectId: PERSONAL_PROJECT_ID,
+      threadId: "thr_navigated",
+    }).setDraft({ text: "saved draft", mentions: [], attachments: [] });
+    function Page({ isOpen }: { isOpen: boolean }) {
+      return (
+        <MemoryRouter initialEntries={["/threads/thr_navigated"]}>
+          {isOpen ? (
+            <>
+              <PageContent />
+              <ComposerActionsSlot view={staticView} />
+            </>
+          ) : null}
+        </MemoryRouter>
+      );
+    }
+    const { rerender } = render(<Page isOpen={false} />);
+
+    act(() => {
+      startTransition(() => {
+        rerender(<Page isOpen />);
+      });
+    });
+
+    expect(screen.getByTestId("navigated-text").textContent).toBe(
+      "saved draft",
+    );
+    expect(pageRenders).toHaveBeenCalledTimes(1);
   });
 
   it("keeps following the draft once a plugin starts reading it after mount", () => {

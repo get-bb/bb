@@ -6,6 +6,7 @@ import {
 } from "./server-move.js";
 import {
   discoveredWorkspacePropertiesSchema,
+  idleProviderSessionTimeoutMinutesSchema,
   ENVIRONMENT_CHANGE_KINDS,
   jsonValueSchema,
   pendingInteractionCreateSchema,
@@ -164,6 +165,7 @@ export const hostDaemonSessionOpenResponseSchema = z
   .object({
     sessionId: z.string().min(1),
     machineEnvironment: machineEnvironmentSchema,
+    idleProviderSessionTimeoutMinutes: idleProviderSessionTimeoutMinutesSchema,
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
     watchSet: hostDaemonWatchSetSchema.default({
@@ -628,6 +630,13 @@ const hostDaemonTerminalAckMessageSchema = z
   .strict();
 
 export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("provider-session-policy.replace"),
+      idleProviderSessionTimeoutMinutes:
+        idleProviderSessionTimeoutMinutesSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("machine-environment.replace"),

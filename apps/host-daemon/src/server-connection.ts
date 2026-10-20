@@ -353,6 +353,9 @@ export class ServerConnection {
       this.session = session;
       this.machineEnvironmentRevision = session.machineEnvironment.revision;
       this.options.onMachineEnvironment?.(session.machineEnvironment);
+      this.options.onIdleProviderSessionTimeout?.(
+        session.idleProviderSessionTimeoutMinutes,
+      );
       return session;
     } catch (error) {
       if (
@@ -647,6 +650,13 @@ export class ServerConnection {
           "Failed to switch this daemon to the moved bb server",
         );
       });
+      return;
+    }
+
+    if (message.data.type === "provider-session-policy.replace") {
+      this.options.onIdleProviderSessionTimeout?.(
+        message.data.idleProviderSessionTimeoutMinutes,
+      );
       return;
     }
 

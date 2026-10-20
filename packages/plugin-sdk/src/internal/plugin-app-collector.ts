@@ -923,9 +923,12 @@ export function collectPluginAppRegistrations(
           );
         }
         const extensions = rawExtensions.map((extension) => {
-          if (typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension)) {
+          if (
+            typeof extension !== "string" ||
+            !/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(extension)
+          ) {
             throw new Error(
-              `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
+              `${kind}: extensions must be lowercase alphanumerics with single underscores or hyphens between segments, without the dot, got ${JSON.stringify(extension)}`,
             );
           }
           return extension;

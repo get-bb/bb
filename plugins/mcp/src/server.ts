@@ -3,6 +3,7 @@ import {
   cliCommand,
   defineCli,
   type BbPluginApi,
+  type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { mcpAccessProblem } from "./access.js";
@@ -21,6 +22,17 @@ const JSON_OPTION = {
   description: "Emit machine-readable JSON",
 } as const;
 
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 const accountStatusSchema = z.object({
   state: z.string(),
   account: z.object({ serverUrl: z.string() }).nullable(),
@@ -28,7 +40,7 @@ const accountStatusSchema = z.object({
 
 const accountFetchResultSchema = z.object({
   status: z.number().int(),
-  body: z.json().nullable(),
+  body: jsonValueSchema.nullable(),
 });
 
 const grantSchema = z.object({
@@ -110,7 +122,7 @@ export default async function mcpPlugin(bb: BbPluginApi): Promise<void> {
     request: {
       method: "GET" | "POST";
       path: string;
-      body: z.core.util.JSONType;
+      body: JsonValue;
     },
     schema: z.ZodType<T>,
   ): Promise<T> {

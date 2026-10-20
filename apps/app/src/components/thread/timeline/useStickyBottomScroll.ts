@@ -2,12 +2,17 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   type PointerEventHandler,
   type RefObject,
   type TouchEventHandler,
   type UIEventHandler,
   type WheelEventHandler,
 } from "react";
+import {
+  ScrollPositionKeeper,
+  getDirectTimelineRows,
+} from "@/components/ui/scroll-position-keeper";
 
 interface StickyBottomScrollBinding<TElement extends HTMLElement> {
   contentRef: RefObject<HTMLDivElement | null>;
@@ -16,6 +21,7 @@ interface StickyBottomScrollBinding<TElement extends HTMLElement> {
   onTouchMove: TouchEventHandler<TElement>;
   onTouchStart: TouchEventHandler<TElement>;
   onWheel: WheelEventHandler<TElement>;
+  positionKeeper: ScrollPositionKeeper;
   ref: RefObject<TElement | null>;
 }
 
@@ -27,6 +33,12 @@ interface UseStickyBottomScrollArgs {
 const STICKY_BOTTOM_THRESHOLD_PX = 4;
 const USER_SCROLL_INTENT_MS = 350;
 const SMOOTH_SCROLL_MIN_GAP_MS = 250;
+const ROW_LIST_SELECTOR = "[data-timeline-row-list]";
+
+function getTopLevelRows(scrollElement: HTMLElement): ArrayLike<HTMLElement> {
+  const list = scrollElement.querySelector(ROW_LIST_SELECTOR);
+  return list === null ? [] : getDirectTimelineRows(list);
+}
 
 function getMaxScrollOffset(element: HTMLElement): number {
   return Math.max(0, element.scrollHeight - element.clientHeight);
@@ -57,6 +69,14 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   const isFirstScrollRef = useRef(true);
   const wasStreamingRef = useRef(streaming);
   const maxScrollOffsetRef = useRef(0);
+  const [positionKeeper] = useState(
+    () =>
+      new ScrollPositionKeeper({
+        getScrollElement: () => scrollRef.current,
+        getTopLevelRows,
+        isActive: () => !shouldStickToBottomRef.current,
+      }),
+  );
 
   const refreshMaxScrollOffset = useCallback((element: TElement): number => {
     const nextOffset = getMaxScrollOffset(element);
@@ -71,7 +91,9 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     if (typeof ResizeObserver === "undefined") return;
 
     const observer = new ResizeObserver(() => {
+      positionKeeper.reconcile();
       refreshMaxScrollOffset(element);
+      positionKeeper.capture();
     });
     observer.observe(element);
     const content = contentRef.current;
@@ -79,7 +101,7 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
       observer.observe(content);
     }
     return () => observer.disconnect();
-  }, [refreshMaxScrollOffset]);
+  }, [positionKeeper, refreshMaxScrollOffset]);
 
   useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
@@ -113,11 +135,8 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     pointerScrollIntentRef.current = false;
   }, []);
 
-  const onScroll = useCallback<UIEventHandler<TElement>>((event) => {
-    if (
-      maxScrollOffsetRef.current - event.currentTarget.scrollTop <=
-      STICKY_BOTTOM_THRESHOLD_PX
-    ) {
+  const syncStickToBottom = useCallback((scrollTop: number) => {
+    if (maxScrollOffsetRef.current - scrollTop <= STICKY_BOTTOM_THRESHOLD_PX) {
       shouldStickToBottomRef.current = true;
       return;
     }
@@ -129,6 +148,15 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
       shouldStickToBottomRef.current = false;
     }
   }, []);
+
+  const onScroll = useCallback<UIEventHandler<TElement>>(
+    (event) => {
+      positionKeeper.reconcile();
+      syncStickToBottom(event.currentTarget.scrollTop);
+      positionKeeper.capture();
+    },
+    [positionKeeper, syncStickToBottom],
+  );
 
   useEffect(() => {
     if (!streaming) {
@@ -149,6 +177,7 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     onTouchMove: markUserScrollIntent,
     onTouchStart: markUserScrollIntent,
     onWheel: markUserScrollIntent,
+    positionKeeper,
     ref: scrollRef,
   };
 }

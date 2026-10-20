@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { Host } from "@bb/domain";
 import type { ProjectWithThreadsResponse } from "@bb/server-contract";
@@ -10,6 +10,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   ResourceOverflowMenu,
   ResourceRowDetailChevron,
+  targetsResourceAction,
 } from "@bb/shared-ui/resource-list";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import {
@@ -133,6 +134,7 @@ function SortableProjectRow({
     disabled: dragDisabled,
     label: project.name,
   });
+  const navigate = useNavigate();
   const detailPath = getSettingsProjectRoutePath(project.id);
   const remoteLabel =
     project.gitRemoteUrl === null
@@ -154,7 +156,11 @@ function SortableProjectRow({
       {handle}
       <div
         data-project-row
-        className="group -mx-2 flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+        className="group -mx-2 flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+        onClick={(event) => {
+          if (targetsResourceAction(event)) return;
+          navigate(detailPath);
+        }}
       >
         <Link
           to={detailPath}

@@ -40,7 +40,7 @@
   ],
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsrs --noEmit -p tsconfig.json",
     "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
     "build:monaco": "node scripts/stage-assets.mjs",
     "prepare:bundled": "bb-plugin-build prepare-bundled"
@@ -67,8 +67,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sonner": "^1.7.4",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   }
 }

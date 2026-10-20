@@ -47,6 +47,7 @@ import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
 } from "@/test/fixtures/projects";
+import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 class ResizeObserverMock implements ResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
@@ -329,7 +330,7 @@ beforeEach(() => {
     scrollToBottom: vi.fn(),
     scrollElementIntoView,
     scrollElementIntoViewClampedToMaxScroll: vi.fn(),
-    captureScrollAnchor: vi.fn(),
+    positionKeeper: createInertScrollPositionKeeper(),
     holdContentPosition: vi.fn(),
   } as unknown as ReturnType<typeof useBottomAnchoredScroll>);
 

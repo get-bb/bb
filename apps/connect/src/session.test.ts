@@ -22,6 +22,7 @@ import {
 
 import {
   invalidateSessionCookie,
+  LOOKUP_JOIN_TIMEOUT_MS,
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
   markMachineSeen,
   resolveLabel,
@@ -639,6 +640,103 @@ async function seedSignedSession(
 }
 
 describe("gate lookup caches", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function seedLabel(label: string): void {
+    seedUser(`acct-${label}`);
+    seedServer({
+      id: `srv-${label}`,
+      userId: `acct-${label}`,
+      name: "default",
+      subdomain: label,
+    });
+  }
+
+  it("runs one D1 lookup for a burst of concurrent requests", async () => {
+    seedLabel("burst-label");
+    const counted = countingDb(db);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const gated = gatedDb(counted.db, gate);
+
+    const burst = Array.from({ length: 20 }, () =>
+      resolveLabel("burst-label", gated),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+
+    const resolved = await Promise.all(burst);
+    expect(counted.counts.select).toBe(1);
+    expect(resolved.every((r) => r?.userId === "acct-burst-label")).toBe(true);
+  });
+
+  it("shares a failed lookup with the requests waiting on it", async () => {
+    seedLabel("burst-failure");
+    let selects = 0;
+    const pending: ((error: Error) => void)[] = [];
+    const failing = new Proxy(db, {
+      get(t, prop) {
+        if (prop === "select") {
+          selects += 1;
+          const failure = new Promise<never>((_resolve, reject) => {
+            pending.push(reject);
+          });
+          const query: object = new Proxy(() => {}, {
+            get: (_query, key) =>
+              key === "then"
+                ? undefined
+                : key === "get"
+                  ? () => failure
+                  : () => query,
+          });
+          return () => query;
+        }
+        const value = Reflect.get(t, prop);
+        return typeof value === "function" ? value.bind(t) : value;
+      },
+    });
+
+    const burst = Array.from({ length: 5 }, () =>
+      resolveLabel("burst-failure", failing).then(
+        () => "resolved",
+        (error: Error) => error.message,
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const reject of pending) {
+      reject(new Error("D1_ERROR: D1 DB is overloaded."));
+    }
+
+    expect(await Promise.all(burst)).toEqual(
+      Array.from({ length: 5 }, () => "D1_ERROR: D1 DB is overloaded."),
+    );
+    expect(selects).toBe(1);
+  });
+
+  it("replaces a lookup that never settles with a single new one", async () => {
+    seedLabel("abandoned-label");
+    vi.useFakeTimers();
+    void resolveLabel("abandoned-label", stalledDb(db));
+    const counted = countingDb(db);
+    const waiters = Array.from({ length: 10 }, () =>
+      resolveLabel("abandoned-label", counted.db),
+    );
+
+    await vi.advanceTimersByTimeAsync(LOOKUP_JOIN_TIMEOUT_MS - 50);
+    expect(counted.counts.select).toBe(0);
+    await vi.advanceTimersByTimeAsync(50);
+
+    const resolved = await Promise.all(waiters);
+    expect(resolved.every((r) => r?.userId === "acct-abandoned-label")).toBe(
+      true,
+    );
+    expect(counted.counts.select).toBe(1);
+  });
+
   it("answers a label whose earlier lookup never settled", async () => {
     seedUser("acct-stalled-label");
     seedServer({
@@ -648,9 +746,12 @@ describe("gate lookup caches", () => {
       subdomain: "stalled-label",
     });
 
+    vi.useFakeTimers();
     void resolveLabel("stalled-label", stalledDb(db));
+    const later = resolveLabel("stalled-label", db);
+    await vi.advanceTimersByTimeAsync(LOOKUP_JOIN_TIMEOUT_MS);
 
-    await expect(resolveLabel("stalled-label", db)).resolves.toMatchObject({
+    await expect(later).resolves.toMatchObject({
       kind: "server",
       userId: "acct-stalled-label",
     });
@@ -660,11 +761,14 @@ describe("gate lookup caches", () => {
     const secret = "stalled-secret";
     const cookieValue = await seedSignedSession("acct-stalled-cookie", secret);
 
+    vi.useFakeTimers();
     void verifySessionCookieDetails(cookieValue, secret, stalledDb(db));
+    const later = verifySessionCookieDetails(cookieValue, secret, db);
+    await vi.advanceTimersByTimeAsync(LOOKUP_JOIN_TIMEOUT_MS);
 
-    await expect(
-      verifySessionCookieDetails(cookieValue, secret, db),
-    ).resolves.toMatchObject({ userId: "acct-stalled-cookie" });
+    await expect(later).resolves.toMatchObject({
+      userId: "acct-stalled-cookie",
+    });
   });
 
   it("serves later session verifications from the cache", async () => {

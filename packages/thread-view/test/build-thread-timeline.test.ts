@@ -979,8 +979,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
   it("shows a shell command as run when shell command summaries are off", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const command =
-      "until gh pr checks 5487 | grep -qv pending; do sleep 30; done";
+    const command = "grep -qv pending";
     const events = fromRows([
       event.turnStarted({ turnId: "turn-1" }),
       event.commandStarted({ itemId: "poll", command }),
@@ -1024,7 +1023,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
     const unsummarized = commandRow(false);
     expect(unsummarized.activityIntents).toEqual([]);
-    expect(unsummarized.title).toMatch(/^Ran until gh pr checks 5487/);
+    expect(unsummarized.title).toBe(`Ran ${command}`);
   });
 
   it("hides a delivered tool result whose tool row is suppressed and shows one whose tool row is not", () => {

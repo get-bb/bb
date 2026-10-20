@@ -34,8 +34,14 @@ export function useRemoveHost() {
     meta: {
       showErrorToast: false,
     },
-    mutationFn: async (hostId: string) => {
-      await sdk.hosts.delete({ hostId });
+    mutationFn: async ({
+      hostId,
+      force,
+    }: {
+      hostId: string;
+      force: boolean;
+    }) => {
+      await sdk.hosts.delete({ hostId, force });
     },
     onSuccess: () => {
       invalidateHostListQueries({ queryClient });

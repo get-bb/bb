@@ -1,11 +1,22 @@
 import { z } from "zod";
 import {
+  GENERATED_ID_ALPHABET,
+  GENERATED_ID_SUFFIX_LENGTH,
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
   terminalSessionCloseReasonSchema,
   terminalSessionStatusSchema,
 } from "@bb/domain";
+
+export const terminalSessionIdSchema = z
+  .string()
+  .regex(
+    new RegExp(
+      `^term_[${GENERATED_ID_ALPHABET}]{${GENERATED_ID_SUFFIX_LENGTH}}$`,
+      "u",
+    ),
+  );
 
 export const terminalSessionSchema = z.object({
   id: z.string().min(1),
@@ -86,6 +97,7 @@ export type TerminalCreateTarget = z.infer<typeof terminalCreateTargetSchema>;
 export const createTerminalRequestSchema = z
   .object({
     cols: terminalColsSchema,
+    id: terminalSessionIdSchema.optional(),
     rows: terminalRowsSchema,
     start: z
       .discriminatedUnion("mode", [

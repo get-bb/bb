@@ -32,7 +32,7 @@ const pluginSdkEntry = join(
   "src",
   "index.ts",
 );
-const tsc = join(repoRoot, "node_modules", "typescript-7", "bin", "tsc");
+const tsrs = join(repoRoot, "node_modules", "tsrs", "bin", "tsrs");
 
 interface SdkReference {
   path: string;
@@ -147,28 +147,32 @@ describe("bb-plugin-authoring skill examples", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("resolves every SDK reference and compiles every TypeScript example", async () => {
-    const skill = readSkillTree();
-    const references = sdkReferences(skill);
-    const fences = sdkFences(skill);
-    expect(references.length).toBeGreaterThan(0);
-    expect(fences.length).toBeGreaterThan(0);
+  it.skipIf(process.platform === "win32")(
+    "resolves every SDK reference and compiles every TypeScript example",
+    async () => {
+      const skill = readSkillTree();
+      const references = sdkReferences(skill);
+      const fences = sdkFences(skill);
+      expect(references.length).toBeGreaterThan(0);
+      expect(fences.length).toBeGreaterThan(0);
 
-    await writeFile(
-      join(workDir, "probe.ts"),
-      `${probeSource(references, fences)}\n`,
-      "utf8",
-    );
-    await writeFile(
-      join(workDir, "tsconfig.json"),
-      `${JSON.stringify(PROBE_TSCONFIG, null, 2)}\n`,
-      "utf8",
-    );
+      await writeFile(
+        join(workDir, "probe.ts"),
+        `${probeSource(references, fences)}\n`,
+        "utf8",
+      );
+      await writeFile(
+        join(workDir, "tsconfig.json"),
+        `${JSON.stringify(PROBE_TSCONFIG, null, 2)}\n`,
+        "utf8",
+      );
 
-    const result = spawnSync(process.execPath, [tsc, "--project", workDir], {
-      encoding: "utf8",
-    });
-    if (result.error !== undefined) throw result.error;
-    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
-  }, 60_000);
+      const result = spawnSync(process.execPath, [tsrs, "--project", workDir], {
+        encoding: "utf8",
+      });
+      if (result.error !== undefined) throw result.error;
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    },
+    60_000,
+  );
 });

@@ -245,6 +245,7 @@ import {
   buildTerminalSyncedSecondaryFileTabs,
   syncTerminalTabsInFixedPanelState,
 } from "@/components/secondary-panel/terminalPanelTabs";
+import { usePendingTerminalIds } from "@/components/thread/terminal/pending-terminals";
 import {
   buildOpenInEditorHandler,
   resolveEnvironmentOpenContext,
@@ -828,15 +829,17 @@ function ThreadDetailViewInternal(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
+  const pendingTerminalIds = usePendingTerminalIds();
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
       loadedTerminalSessions === undefined
         ? orderedSecondaryFileTabs
         : buildTerminalSyncedSecondaryFileTabs({
             orderedTabs: orderedSecondaryFileTabs,
+            pendingTerminalIds,
             terminalSessions: loadedTerminalSessions,
           }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs],
+    [loadedTerminalSessions, orderedSecondaryFileTabs, pendingTerminalIds],
   );
   useEffect(() => {
     if (terminalsListQuery.data === undefined) {
@@ -844,11 +847,17 @@ function ThreadDetailViewInternal(
     }
     updateFixedPanelTabsState((state) =>
       syncTerminalTabsInFixedPanelState({
+        pendingTerminalIds,
         state,
         terminalSessions,
       }),
     );
-  }, [terminalSessions, terminalsListQuery.data, updateFixedPanelTabsState]);
+  }, [
+    pendingTerminalIds,
+    terminalSessions,
+    terminalsListQuery.data,
+    updateFixedPanelTabsState,
+  ]);
   const hostsQuery = useHosts({
     enabled:
       hasThreadDetailBootstrapSettled &&
@@ -1582,9 +1591,7 @@ function ThreadDetailViewInternal(
     },
   );
   const workspaceStatusError = workStatusQuery.error;
-  const workStatusResponse = workspaceStatusError
-    ? undefined
-    : workStatusQuery.data;
+  const workStatusResponse = workStatusQuery.data;
   const workspaceStatus =
     workStatusResponse?.outcome === "available"
       ? workStatusResponse.workspace
@@ -2484,7 +2491,9 @@ function ThreadDetailViewInternal(
             isPanelOpen={isSecondaryPanelOpen}
             isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
             onAutoFocusHandled={terminals.handleAutoFocusHandled}
+            onCloseStart={() => terminals.close(tab.terminalId)}
             onOpenLink={handleOpenTimelineLink}
+            onRetryStart={() => terminals.retryStart(tab.terminalId)}
             onSelectionAddToChat={handleSelectionAddToChat}
             target={{ kind: "thread", threadId: thread.id }}
             terminalId={tab.terminalId}

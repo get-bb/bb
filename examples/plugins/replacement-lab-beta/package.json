@@ -16,12 +16,13 @@
     "app": "./app.tsx"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

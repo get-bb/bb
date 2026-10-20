@@ -60,6 +60,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
     const deps: PluginFrontendReconcileDeps = {
       fetchCandidates: () => fetchFrontendCandidates(queryClient),
       importModule: async () => ({ default: definePluginApp(() => {}) }),
+      importRetryDelaysMs: [],
       applyCss: () => {},
       retainCss: () => () => {},
       resetCrashedSlots: () => {},

@@ -876,6 +876,66 @@ describe("codex subagent activity correlation", () => {
     ]);
   });
 
+  it.each(["before", "after"] as const)(
+    "keeps a resumed child nested when follow-up activity arrives %s its turn start",
+    (activityOrder) => {
+      const harness = createHarness();
+      const childThreadId = "agent-thread-1";
+      harness.translate(childTurnStarted("parent-turn"));
+      harness.translate(
+        subAgentActivity({ id: "subagent-call-1", kind: "started" }),
+      );
+      harness.translate(childTurnStarted("child-turn-1", childThreadId));
+      harness.translate(childTurnCompleted("child-turn-1", childThreadId));
+      harness.translate(
+        rawCollaborationCall({ callId: "resume-call", name: "followup_task" }),
+      );
+
+      const activity = subAgentActivity({
+        id: "resume-call",
+        kind: "interacted",
+      });
+      if (activityOrder === "before") {
+        harness.translate(activity);
+      }
+      const started = harness.translate(
+        childTurnStarted("child-turn-2", childThreadId),
+      );
+      const activityEvents =
+        activityOrder === "after" ? harness.translate(activity) : [];
+      const completed = harness.translate(
+        childTurnCompleted("child-turn-2", childThreadId),
+      );
+
+      expect(started).toContainEqual(
+        expect.objectContaining({
+          type: "turn/started",
+          scope: turnScope(harness.turnId("child-turn-2")),
+          parentToolCallId: expect.any(String),
+        }),
+      );
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope(harness.turnId("child-turn-2")),
+        }),
+        expect.objectContaining({
+          type: "item/completed",
+          item: expect.objectContaining({
+            type: "delegation",
+            id: harness.itemId("resume-call"),
+            status: "completed",
+          }),
+        }),
+      ]);
+      expect(
+        [...started, ...activityEvents, ...completed].filter(
+          (event) => event.type === "turn/started" && !event.parentToolCallId,
+        ),
+      ).toEqual([]);
+    },
+  );
+
   it("links an unknown resumed subagent from the raw followup intent after translator restart", () => {
     const harness = createHarness();
 

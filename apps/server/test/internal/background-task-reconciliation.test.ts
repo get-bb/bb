@@ -422,6 +422,10 @@ describe("background-task lifecycle reconciliation triggers", () => {
         ),
       ).toEqual([
         {
+          type: "provider-session-policy.replace",
+          idleProviderSessionTimeoutMinutes: 30,
+        },
+        {
           type: "machine-environment.replace",
           environment: { revision: expect.any(Number), entries: [] },
         },
@@ -463,6 +467,10 @@ describe("background-task lifecycle reconciliation triggers", () => {
           hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
         ),
       ).toEqual([
+        {
+          type: "provider-session-policy.replace",
+          idleProviderSessionTimeoutMinutes: 30,
+        },
         {
           type: "machine-environment.replace",
           environment: { revision: expect.any(Number), entries: [] },

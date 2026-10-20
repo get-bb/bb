@@ -5,8 +5,76 @@ import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 describe("general settings", () => {
+  it("persists idle timeout changes, pushes them to daemons and preserves them for older clients", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const socket = createMockHubSocket();
+      harness.hub.registerDaemon(session.id, host.id, socket);
+      const put = (settings: unknown) =>
+        harness.app.request("/api/v1/settings/general", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(settings),
+        });
+      for (const minutes of [5, 60, 0]) {
+        const response = await put({
+          ...defaultAppSettings,
+          idleProviderSessionTimeoutMinutes: minutes,
+        });
+        expect(response.status).toBe(200);
+        expect(
+          getAppSettings(harness.db).idleProviderSessionTimeoutMinutes,
+        ).toBe(minutes);
+        expect(
+          socket.messages.map((message) => JSON.parse(message)),
+        ).toContainEqual({
+          type: "provider-session-policy.replace",
+          idleProviderSessionTimeoutMinutes: minutes,
+        });
+        const config = systemConfigResponseSchema.parse(
+          await readJson(await harness.app.request("/api/v1/system/config")),
+        );
+        expect(config.generalSettings.idleProviderSessionTimeoutMinutes).toBe(
+          minutes,
+        );
+      }
+      const legacySettings = { ...defaultAppSettings };
+      const { idleProviderSessionTimeoutMinutes, ...legacyPayload } =
+        legacySettings;
+      expect(idleProviderSessionTimeoutMinutes).toBe(30);
+      expect((await put(legacyPayload)).status).toBe(200);
+      expect(getAppSettings(harness.db).idleProviderSessionTimeoutMinutes).toBe(
+        0,
+      );
+
+      const reconnected = createMockHubSocket();
+      harness.hub.registerDaemon(session.id, host.id, reconnected);
+      expect(
+        reconnected.messages.map((message) => JSON.parse(message)),
+      ).toContainEqual({
+        type: "provider-session-policy.replace",
+        idleProviderSessionTimeoutMinutes: 0,
+      });
+
+      for (const invalid of [-1, 17, null, "never"]) {
+        expect(
+          (
+            await put({
+              ...defaultAppSettings,
+              idleProviderSessionTimeoutMinutes: invalid,
+            })
+          ).status,
+        ).toBe(400);
+      }
+      expect(getAppSettings(harness.db).idleProviderSessionTimeoutMinutes).toBe(
+        0,
+      );
+    });
+  });
+
   it("reports only the server's local host in /system/config", async () => {
     await withTestHarness(async (harness) => {
       seedHostSession(harness.deps, { name: "remote" });

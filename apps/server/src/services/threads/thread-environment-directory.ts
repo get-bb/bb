@@ -27,6 +27,9 @@ import { suppliedWorkspacePathRefusal } from "./workspace-path-claims.js";
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME =
   "update_environment_directory";
 
+export const ENVIRONMENT_DIRECTORY_UPDATE_OPERATION =
+  "environment_directory_update";
+
 const UPDATE_ENVIRONMENT_DIRECTORY_TIMEOUT_MS = 5 * 60 * 1000;
 
 const updateEnvironmentDirectoryInputSchema = z
@@ -38,7 +41,7 @@ const updateEnvironmentDirectoryInputSchema = z
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL: DynamicTool = {
   name: UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
   description:
-    "Move this bb thread to a different working directory for subsequent turns. Use this when the user asks to switch to a new checkout, worktree, or local directory. The path must be an absolute existing directory on the current host. The tool reuses this project's existing bb environment for that host/path, otherwise it creates an unmanaged environment after validating the path. Another project may hold its own environment for the same directory; that is allowed, except for a bb-managed worktree owned by another project, which this tool refuses. After a successful switch, stop the current turn because the running provider cwd will not change until the next turn.",
+    "Move this bb thread to a different working directory for subsequent turns. Use this when the user asks to switch to a new checkout, worktree, or local directory. The path must be an absolute existing directory on the current host. The tool reuses this project's existing bb environment for that host/path, otherwise it creates an unmanaged environment after validating the path. Another project may hold its own environment for the same directory; that is allowed, except for a bb-managed worktree owned by another project, which this tool refuses. After a successful switch, end the current turn because the running provider cwd will not change until the next turn; bb then starts the next turn in the new directory automatically so you can continue the task there.",
   inputSchema: {
     type: "object",
     properties: {
@@ -109,7 +112,7 @@ function validateDirectoryPath(path: string): string | null {
   return null;
 }
 
-function threadWritableFailure(thread: Thread): string | null {
+export function threadWritableFailure(thread: Thread): string | null {
   if (thread.deletedAt !== null) {
     return "Cannot update the environment directory for a deleted thread.";
   }
@@ -140,7 +143,7 @@ function resolveReadyEnvironment(
 }
 
 function successMessage(path: string): string {
-  return `Environment directory updated to ${path}. This applies to future turns; stop work in this turn so the next turn can run from the updated directory.`;
+  return `Environment directory updated to ${path}. This applies to future turns; end this turn now and bb will start the next turn in the updated directory so you can continue the task there.`;
 }
 
 function attachReadyEnvironment(
@@ -185,7 +188,7 @@ function attachReadyEnvironment(
         type: "system/operation",
         scope: turnScope(args.turnId),
         data: {
-          operation: "environment_directory_update",
+          operation: ENVIRONMENT_DIRECTORY_UPDATE_OPERATION,
           operationId: createEventId(),
           status: "completed",
           message: `Updated environment directory to ${args.targetEnvironment.path}`,

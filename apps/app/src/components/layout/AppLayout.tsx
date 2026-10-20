@@ -12,6 +12,7 @@ import {
 } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
+import { useRedirectRetiredPluginPaths } from "@/lib/retired-plugin-redirect";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-route-label";
 import {
@@ -26,7 +27,6 @@ import {
   ThreadTitleMentionResourcesProvider,
   useSidebarThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
@@ -74,7 +74,6 @@ import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_TITLE_BAR_CONTROL_AXIS_CLASS,
   MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
@@ -275,13 +274,7 @@ function SidebarTriggerOverlay({
           )}
         >
           <SidebarHistoryNavigationControls className="gap-0" />
-          <div className="relative flex items-center">
-            <SidebarTrigger {...triggerProps} />
-            <AppCommandShortcutHint
-              shortcut={shortcut}
-              className="absolute left-full ml-1"
-            />
-          </div>
+          <SidebarTrigger {...triggerProps} />
         </div>
       </div>
     );
@@ -308,13 +301,6 @@ function SidebarTriggerOverlay({
           className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
           {...triggerProps}
         />
-        <AppCommandShortcutHint
-          shortcut={shortcut}
-          className={cn(
-            "absolute left-full ml-1",
-            MACOS_CHROME_CONTROL_AXIS_CLASS,
-          )}
-        />
       </div>
     );
   }
@@ -335,10 +321,6 @@ function SidebarTriggerOverlay({
       )}
     >
       <SidebarTrigger {...triggerProps} />
-      <AppCommandShortcutHint
-        shortcut={shortcut}
-        className="absolute left-full ml-1"
-      />
     </div>
   );
 }
@@ -455,6 +437,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
+  useRedirectRetiredPluginPaths();
   const { projectId, threadId, isThreadView, isArchivedView, isRootView } =
     useRouteState();
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(

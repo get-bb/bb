@@ -13,7 +13,6 @@ interface ResolveTerminalHostArgs {
 }
 
 interface TerminalHostSelectorProps {
-  disabled: boolean;
   hosts: readonly Host[];
   isLoading: boolean;
   onChange: (hostId: string) => void;
@@ -48,7 +47,6 @@ export function resolveTerminalHost({
 }
 
 export function TerminalHostSelector({
-  disabled,
   hosts,
   isLoading,
   onChange,
@@ -108,7 +106,6 @@ export function TerminalHostSelector({
       value={selectedHost.id}
       options={options}
       onChange={onChange}
-      disabled={disabled}
       muted
       className={CONTROL_CLASS_NAME}
       contentClassName="max-w-72"

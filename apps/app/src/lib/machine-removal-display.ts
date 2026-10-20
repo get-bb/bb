@@ -15,5 +15,5 @@ export const machineRemovalDescriptions: Record<MachineRemovalStatus, string> =
     removing:
       "This thread is unavailable while its machine is being removed. Its history will be preserved.",
     "cleanup-failed":
-      "This thread is unavailable while machine cleanup is pending. Retry cleanup in machine settings.",
+      "This thread is unavailable while machine cleanup is pending. Retry cleanup in machine settings, or remove the machine without cleanup if it is gone.",
   };

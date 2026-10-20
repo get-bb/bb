@@ -47,3 +47,6 @@ export function resolveConversationCollapseControl({
 }
 
 export const RIGHT_PANEL_TOGGLE_ICON_NAME = "PanelRight";
+
+export const RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS =
+  "absolute right-0 top-full z-10 mt-1";

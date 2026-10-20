@@ -508,7 +508,16 @@ const SidebarProvider = React.forwardRef<
         return;
       }
 
-      setIsMobileSidebarClosing(true);
+      React.startTransition(() => {
+        setIsMobileSidebarClosing(true);
+      });
+    }, []);
+
+    React.useLayoutEffect(() => {
+      if (!isMobileSidebarClosing || mobileSettleTimeoutRef.current !== null) {
+        return;
+      }
+
       applySidebarMobileDragStyles({ progress: 0, settling: true });
       mobileSettleTimeoutRef.current = window.setTimeout(() => {
         mobileSettleTimeoutRef.current = null;
@@ -520,7 +529,7 @@ const SidebarProvider = React.forwardRef<
         });
         clearSidebarMobileDragAttributes();
       }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    }, []);
+    }, [isMobileSidebarClosing]);
 
     const openMobileSidebar = React.useCallback(() => {
       if (openMobileRef.current || mobileSettleTimeoutRef.current !== null) {

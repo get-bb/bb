@@ -16,6 +16,51 @@ describe("bb settings commands", () => {
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
 
+  it.each(["5", "0"])(
+    "sets the idle timeout to %s through general settings",
+    async (value) => {
+      const put = vi.fn(async ({ json }) => json);
+      stubServerApi({
+        "v1.system.config.$get": vi.fn(async () => ({
+          generalSettings: defaultAppSettings,
+        })),
+        "v1.settings.general.$put": put,
+      });
+      await runCommand(
+        ["settings", "general", "idleProviderSessionTimeoutMinutes", value],
+        register,
+      );
+      expect(put).toHaveBeenCalledWith({
+        json: {
+          ...defaultAppSettings,
+          idleProviderSessionTimeoutMinutes: JSON.parse(value),
+        },
+      });
+    },
+  );
+
+  it("rejects an idle timeout outside the allowed values without writing settings", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+      })),
+      "v1.settings.general.$put": put,
+    });
+    await expect(
+      runCommand(
+        ["settings", "general", "idleProviderSessionTimeoutMinutes", "17"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Invalid value '17' for 'idleProviderSessionTimeoutMinutes': Invalid option: expected one of 0|5|10|30|60.",
+      ),
+    );
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it("clears the setup guide completion time and keeps every other setting", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({

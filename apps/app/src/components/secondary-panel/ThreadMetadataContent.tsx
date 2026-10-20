@@ -746,6 +746,11 @@ export function GitStatusRow({
   if (workspaceStatus) {
     const mergeBase = workspaceStatus.mergeBase;
     if (!mergeBase?.mergeBaseBranch) return null;
+    const refreshFailure = workspaceStatusError
+      ? `Couldn't refresh: ${getGitStatusDisplay(undefined, {
+          error: workspaceStatusError,
+        }).summary.replace(/\.$/, "")}. Showing the last known status.`
+      : null;
     return (
       <DetailRow
         label={
@@ -753,12 +758,32 @@ export function GitStatusRow({
         }
         valueClassName="min-w-0"
       >
-        <span className="block min-w-0 truncate text-foreground">
-          {formatBranchComparison({
-            aheadCount: mergeBase.aheadCount,
-            behindCount: mergeBase.behindCount,
-            baseBranch: mergeBase.mergeBaseBranch,
-          })}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="block min-w-0 truncate text-foreground">
+            {formatBranchComparison({
+              aheadCount: mergeBase.aheadCount,
+              behindCount: mergeBase.behindCount,
+              baseBranch: mergeBase.mergeBaseBranch,
+            })}
+          </span>
+          {refreshFailure ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="img"
+                  aria-label={refreshFailure}
+                  className="flex shrink-0 items-center"
+                >
+                  <Icon
+                    name="AlertTriangle"
+                    className="size-3 text-warning"
+                    aria-hidden
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{refreshFailure}</TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
       </DetailRow>
     );

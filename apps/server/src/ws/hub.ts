@@ -58,7 +58,7 @@ export type ServerChangedMessage =
       ChangedMessage,
       { entity: "thread" | "project" | "environment" | "host" }
     > & { id: string })
-  | Extract<ChangedMessage, { entity: "system" }>;
+  | Extract<ChangedMessage, { entity: "system" | "tags" }>;
 
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
 
@@ -131,6 +131,8 @@ function subscriptionKeysForMessage(message: ServerChangedMessage): string[] {
         subscriptionKey({ kind: "host-list" }),
         subscriptionKey({ kind: "host-detail", hostId: message.id }),
       ];
+    case "tags":
+      return [];
     case "system":
       return [subscriptionKey({ kind: "system" })];
   }
@@ -294,6 +296,24 @@ export class NotificationHub implements DbNotifier {
     string,
     PendingThreadListEventsAppended
   >();
+
+  private readonly pendingTags = new Set<string>();
+
+  notifyTags(tags: readonly string[]): void {
+    if (tags.length === 0) return;
+    const scheduled = this.pendingTags.size > 0;
+    for (const tag of tags) this.pendingTags.add(tag);
+    if (scheduled) return;
+    queueMicrotask(() => {
+      const message: ServerChangedMessage = {
+        type: "changed",
+        entity: "tags",
+        tags: [...this.pendingTags],
+      };
+      this.pendingTags.clear();
+      this.notifyClients(message);
+    });
+  }
 
   registerClient(socket: HubSocket): void {
     if (!this.clientKeysBySocket.has(socket)) {
@@ -1213,7 +1233,9 @@ export class NotificationHub implements DbNotifier {
   }
 
   private notifyClients(message: ServerChangedMessage): void {
-    const sockets = new Set<HubSocket>();
+    const sockets = new Set<HubSocket>(
+      message.entity === "tags" ? this.clientKeysBySocket.keys() : [],
+    );
     for (const key of subscriptionKeysForMessage(message)) {
       const specificSockets = this.clientSocketsByKey.get(key);
       if (!specificSockets) {

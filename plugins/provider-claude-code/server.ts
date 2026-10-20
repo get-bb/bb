@@ -39,6 +39,13 @@ export default function plugin(bb: BbPluginApi) {
         "Start Claude Code with the Claude in Chrome browser tools. Needs the Chrome extension and a claude.ai login on the host.",
       default: false,
     },
+    artifactsEnabled: {
+      type: "boolean",
+      label: "Claude Artifacts",
+      description:
+        "Give Claude Code its Artifact tools to read, publish, and edit claude.ai artifacts. Claude may publish private pages to claude.ai without asking. Needs a claude.ai login on the host. Applies on the next turn.",
+      default: false,
+    },
     sandboxEnabled: {
       type: "boolean",
       label: "Claude Code sandbox",
@@ -107,6 +114,7 @@ export default function plugin(bb: BbPluginApi) {
         workflowsEnabled: context.settings.workflowsDisabled !== true,
         chromeEnabled: context.settings.chromeEnabled === true,
         disable1MContext: context.settings.disable1MContext === true,
+        artifactsEnabled: context.settings.artifactsEnabled === true,
         sandboxEnabled: context.settings.sandboxEnabled !== false,
         ...(context.promptMode === "plan"
           ? { claudeCodePermissionMode: "plan" }

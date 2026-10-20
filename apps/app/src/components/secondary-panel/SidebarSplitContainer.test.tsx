@@ -275,6 +275,23 @@ describe("SidebarSplitContainer", () => {
     ).not.toBeNull();
   });
 
+  it("re-activates the active tab when it is selected again", () => {
+    const activate = vi.fn();
+
+    renderContainer({
+      activeTabId: "tab-a",
+      onActivateTab: activate,
+      renderPane: ({ group, onSelectTab }) => (
+        <button type="button" onClick={() => onSelectTab(group.activeTabId)}>
+          Select {group.activeTabId}
+        </button>
+      ),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Select tab-a" }));
+
+    expect(activate).toHaveBeenCalledExactlyOnceWith("tab-a");
+  });
+
   it("assigns focus and outer controls to the appropriate panes", () => {
     const split = createTwoPaneState();
     const focusedPaneId =

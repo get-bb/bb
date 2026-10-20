@@ -48,6 +48,7 @@ export type HostDaemonServerTerminalMessage = Exclude<
   | { type: "session-close" }
   | { type: "heartbeat-ack" }
   | { type: "machine-environment.replace" }
+  | { type: "provider-session-policy.replace" }
   | HostDaemonOnlineRpcRequestMessage
   | HostDaemonOnlineRpcCancelMessage
   | HostDaemonWatchSetReplaceMessage
@@ -105,6 +106,7 @@ export interface ServerConnectionOptions {
   onSessionOpened?: (
     session: HostDaemonSessionOpenResponse,
   ) => void | Promise<void>;
+  onIdleProviderSessionTimeout?: (minutes: number) => void;
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;

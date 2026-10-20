@@ -13,12 +13,11 @@ import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
 } from "@/components/thread/terminal/useThreadTerminalController";
+import { usePendingTerminals } from "@/components/thread/terminal/pending-terminals";
 import { applyTerminalSessionUpsert } from "@/hooks/cache-owners/terminal-cache-owner";
 import {
-  useCloseTerminal,
-  useCreateTerminal,
-} from "@/hooks/queries/thread-terminal-queries";
-import {
+  replaceFixedRightTerminalTabInState,
+  restoreFixedRightTerminalTabInState,
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
   useUpdateFixedPanelTabsState,
@@ -41,8 +40,8 @@ export interface PanelTerminals {
   canStart: boolean;
   close: (terminalId: string) => void;
   handleAutoFocusHandled: () => void;
-  isStarting: boolean;
   open: (session: TerminalSession) => boolean;
+  retryStart: (terminalId: string) => void;
   select: (terminalId: string, target?: TerminalCreateTarget) => void;
   start: () => void;
 }
@@ -73,8 +72,7 @@ export function usePanelTerminals({
     null,
   );
   const queryClient = useQueryClient();
-  const createTerminal = useCreateTerminal();
-  const { mutateAsync: closeTerminal } = useCloseTerminal();
+  const pendingTerminals = usePendingTerminals();
   const updatePanelState = useUpdateFixedPanelTabsState(
     panelStateId,
     syncThreadId,
@@ -113,24 +111,25 @@ export function usePanelTerminals({
     [acceptsSession, queryClient, select, tabsCarryTarget],
   );
 
-  const isStarting = createTerminal.isPending;
-  const canStart = createTarget !== null && !isStarting;
+  const canStart = createTarget !== null;
   const start = useCallback(() => {
-    if (createTarget === null || createTerminal.isPending) return;
-    void createTerminal
-      .mutateAsync({
-        cols: DEFAULT_TERMINAL_COLS,
-        rows: DEFAULT_TERMINAL_ROWS,
-        target: createTarget,
-      })
-      .then((session) => {
-        updatePanelState((state) =>
-          closeSecondaryPanelTabInState(state, createNewTabFixedPanelTab().id),
-        );
-        select(session.id, tabsCarryTarget ? createTarget : undefined);
-      })
-      .catch(() => undefined);
-  }, [createTarget, createTerminal, select, tabsCarryTarget, updatePanelState]);
+    if (createTarget === null) return;
+    const terminalId = pendingTerminals.start({
+      cols: DEFAULT_TERMINAL_COLS,
+      rows: DEFAULT_TERMINAL_ROWS,
+      target: createTarget,
+    });
+    updatePanelState((state) =>
+      closeSecondaryPanelTabInState(state, createNewTabFixedPanelTab().id),
+    );
+    select(terminalId, tabsCarryTarget ? createTarget : undefined);
+  }, [
+    createTarget,
+    select,
+    tabsCarryTarget,
+    pendingTerminals,
+    updatePanelState,
+  ]);
 
   useAppCommandHandler("terminal.open", () => {
     if (!isFocused || !canStart) return false;
@@ -140,11 +139,40 @@ export function usePanelTerminals({
 
   const close = useCallback(
     (terminalId: string) => {
-      void closeTerminal({ mode: "force", terminalId })
-        .then(() => removeTerminalTab(terminalId))
-        .catch(() => undefined);
+      if (pendingTerminals.discard(terminalId) !== null) {
+        removeTerminalTab(terminalId);
+        return;
+      }
+      const removed = removeTerminalTab(terminalId);
+      pendingTerminals.close(terminalId, () => {
+        if (removed === null) return;
+        let reopensPanel = false;
+        updatePanelState((state) => {
+          reopensPanel = state.secondary.tabs.length === 0;
+          return restoreFixedRightTerminalTabInState(state, removed);
+        });
+        if (reopensPanel) reveal();
+      });
     },
-    [closeTerminal, removeTerminalTab],
+    [pendingTerminals, removeTerminalTab, reveal, updatePanelState],
+  );
+
+  const retryStart = useCallback(
+    (terminalId: string) => {
+      const failed = pendingTerminals.discard(terminalId);
+      if (failed === null) return;
+      const nextTerminalId = pendingTerminals.start(failed.request);
+      updatePanelState((state) =>
+        replaceFixedRightTerminalTabInState(
+          state,
+          terminalId,
+          nextTerminalId,
+          tabsCarryTarget ? failed.request.target : undefined,
+        ),
+      );
+      setAutoFocusTerminalId(nextTerminalId);
+    },
+    [tabsCarryTarget, pendingTerminals, updatePanelState],
   );
 
   const handleAutoFocusHandled = useCallback(
@@ -157,8 +185,8 @@ export function usePanelTerminals({
     canStart,
     close,
     handleAutoFocusHandled,
-    isStarting,
     open,
+    retryStart,
     select,
     start,
   };

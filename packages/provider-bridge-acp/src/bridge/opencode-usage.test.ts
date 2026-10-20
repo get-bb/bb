@@ -90,7 +90,13 @@ async function writeAccount(
 }
 
 async function writeCredentials(
-  rows: { integration: string; value: string; active: number | null }[],
+  rows: {
+    integration: string;
+    value: string;
+    active: number | null;
+    timeCreated?: number;
+  }[],
+  { openCode2 = true }: { openCode2?: boolean } = {},
 ) {
   await fs.mkdir(path.join(directory, "opencode"), { recursive: true });
   const database = new DatabaseSync(
@@ -98,9 +104,14 @@ async function writeCredentials(
   );
   try {
     database.exec(
-      "CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT NOT NULL, value TEXT NOT NULL, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL)",
+      "CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT NOT NULL, value TEXT NOT NULL, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL); CREATE TABLE migration (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)",
     );
+    if (openCode2)
+      database
+        .prepare("INSERT INTO migration VALUES (?, ?)")
+        .run("20260805200742_import_legacy_credentials", 0);
     for (const [index, row] of rows.entries()) {
+      const timeCreated = row.timeCreated ?? index;
       database
         .prepare(
           "INSERT INTO credential (id, integration_id, label, value, active, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -111,8 +122,8 @@ async function writeCredentials(
           "default",
           row.value,
           row.active,
-          index,
-          index,
+          timeCreated,
+          timeCreated,
         );
     }
   } finally {
@@ -282,35 +293,114 @@ describe("OpenCode Go usage", () => {
     expect(JSON.stringify(result)).not.toContain("refresh-secret");
   });
 
-  it.each([0, null])(
-    "ignores inactive v2 keys (%s) and retains legacy fallback",
-    async (active) => {
-      await writeCredentials([
+  it("uses an OpenCode 2 key without an active flag before the auth file", async () => {
+    await writeCredentials([
+      {
+        integration: "opencode-go",
+        value: JSON.stringify({ type: "key", key: "unflagged-key" }),
+        active: null,
+      },
+    ]);
+    await writeAuth({ "opencode-go": { type: "api", key: "legacy-key" } });
+    expect(await readOpenCodeGoUsage(env)).toMatchObject({
+      usage: { status: "ok" },
+    });
+    expect(fetchUsage).toHaveBeenCalledExactlyOnceWith(
+      "https://opencode.ai/zen/go/v1/usage",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer unflagged-key",
+        }),
+      }),
+    );
+  });
+
+  it("selects the most recently created v2 key when no key is flagged active", async () => {
+    await writeCredentials([
+      {
+        integration: "opencode-go",
+        value: JSON.stringify({ type: "key", key: "newer-key" }),
+        active: null,
+        timeCreated: 2,
+      },
+      {
+        integration: "opencode-go",
+        value: JSON.stringify({ type: "key", key: "older-key" }),
+        active: null,
+        timeCreated: 1,
+      },
+    ]);
+    await readOpenCodeGoUsage(env);
+    expect(fetchUsage).toHaveBeenCalledExactlyOnceWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer newer-key",
+        }),
+      }),
+    );
+  });
+
+  it("uses OpenCode 2's remaining key rather than the stale auth file after a Go logout", async () => {
+    await writeCredentials([
+      {
+        integration: "opencode",
+        value: JSON.stringify({ type: "key", key: "zen-key" }),
+        active: null,
+      },
+    ]);
+    await writeAuth({
+      "opencode-go": { type: "api", key: "logged-out-go-key" },
+      opencode: { type: "api", key: "zen-key" },
+    });
+    await readOpenCodeGoUsage(env);
+    expect(fetchUsage).toHaveBeenCalledExactlyOnceWith(
+      "https://opencode.ai/zen/go/v1/usage",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer zen-key",
+        }),
+      }),
+    );
+  });
+
+  it("ignores the auth file and OPENCODE_AUTH_CONTENT for OpenCode 2 databases", async () => {
+    await writeCredentials([]);
+    await writeAuth({ "opencode-go": { type: "api", key: "file-key" } });
+    env.OPENCODE_AUTH_CONTENT = JSON.stringify({
+      "opencode-go": { type: "api", key: "content-key" },
+    });
+    expect(await readOpenCodeGoUsage(env)).toEqual({
+      supported: true,
+      usage: { status: "unauthenticated" },
+    });
+    expect(fetchUsage).not.toHaveBeenCalled();
+  });
+
+  it("uses the auth file and ignores credential rows for OpenCode 1 databases", async () => {
+    await writeCredentials(
+      [
         {
           integration: "opencode-go",
-          value: JSON.stringify({ type: "key", key: "inactive-key" }),
-          active,
+          value: JSON.stringify({ type: "key", key: "unused-v1-row-key" }),
+          active: null,
         },
-      ]);
-      expect(await readOpenCodeGoUsage(env)).toEqual({
-        supported: true,
-        usage: { status: "unauthenticated" },
-      });
-      expect(fetchUsage).not.toHaveBeenCalled();
-      await writeAuth({ "opencode-go": { type: "api", key: "legacy-key" } });
-      expect(await readOpenCodeGoUsage(env)).toMatchObject({
-        usage: { status: "ok" },
-      });
-      expect(fetchUsage).toHaveBeenCalledExactlyOnceWith(
-        "https://opencode.ai/zen/go/v1/usage",
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: "Bearer legacy-key",
-          }),
+      ],
+      { openCode2: false },
+    );
+    await writeAuth({ "opencode-go": { type: "api", key: "legacy-key" } });
+    expect(await readOpenCodeGoUsage(env)).toMatchObject({
+      usage: { status: "ok" },
+    });
+    expect(fetchUsage).toHaveBeenCalledExactlyOnceWith(
+      "https://opencode.ai/zen/go/v1/usage",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer legacy-key",
         }),
-      );
-    },
-  );
+      }),
+    );
+  });
 
   it("rejects malformed v2 JSON without exposing secrets or using an inactive key", async () => {
     await writeCredentials([
@@ -333,15 +423,18 @@ describe("OpenCode Go usage", () => {
     expect(fetchUsage).not.toHaveBeenCalled();
   });
 
-  it("reads the active Console account before legacy credentials and scopes usage to its organization", async () => {
+  it("reads the active OpenCode 1 Console account before the auth file and scopes usage to its organization", async () => {
     await writeAccount();
-    await writeCredentials([
-      {
-        integration: "opencode-go",
-        value: JSON.stringify({ type: "key", key: "stored-key" }),
-        active: 1,
-      },
-    ]);
+    await writeCredentials(
+      [
+        {
+          integration: "opencode-go",
+          value: JSON.stringify({ type: "key", key: "stored-key" }),
+          active: 1,
+        },
+      ],
+      { openCode2: false },
+    );
     await writeAuth({ "opencode-go": { type: "api", key: "old-key" } });
     const databasePath = path.join(directory, "opencode", "opencode.db");
     const before = await fs.readFile(databasePath);
@@ -372,6 +465,28 @@ describe("OpenCode Go usage", () => {
     );
     expect(await fs.readFile(databasePath)).toEqual(before);
     expect(JSON.stringify(result)).not.toContain("console-token");
+  });
+
+  it("ignores an OpenCode 1 Console account for OpenCode 2 databases", async () => {
+    await writeAccount();
+    await writeCredentials([
+      {
+        integration: "opencode-go",
+        value: JSON.stringify({ type: "key", key: "stored-key" }),
+        active: 1,
+      },
+    ]);
+    expect(await readOpenCodeGoUsage(env)).toMatchObject({
+      usage: { status: "ok", accountEmail: null, accountKey: null },
+    });
+    expect(fetchUsage).toHaveBeenCalledExactlyOnceWith(
+      "https://opencode.ai/zen/go/v1/usage",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer stored-key",
+        }),
+      }),
+    );
   });
 
   it("honors an explicit API key over an active Console account", async () => {

@@ -72,6 +72,7 @@ describe("checkout host entry", () => {
       status: "attached",
       path: repo,
       branchName: "main",
+      mergeBaseBranch: null,
     });
     expect(progressText(harness)).not.toContain("Using");
     await harness.experimental_dispose();
@@ -87,7 +88,11 @@ describe("checkout host entry", () => {
       path: repo,
       branch: { kind: "existing", name: "release" },
     });
-    expect(existing.status).toBe("attached");
+    expect(existing).toMatchObject({
+      status: "attached",
+      branchName: "release",
+      mergeBaseBranch: null,
+    });
     expect((await git(repo, "rev-parse", "--abbrev-ref", "HEAD")).trim()).toBe(
       "release",
     );
@@ -98,11 +103,63 @@ describe("checkout host entry", () => {
       path: repo,
       branch: { kind: "new", name: "bb/feature-thr_1", baseBranch: "main" },
     });
-    expect(created.status).toBe("attached");
+    expect(created).toMatchObject({
+      status: "attached",
+      branchName: "bb/feature-thr_1",
+      mergeBaseBranch: "main",
+    });
     expect((await git(repo, "rev-parse", "--abbrev-ref", "HEAD")).trim()).toBe(
       "bb/feature-thr_1",
     );
     expect(progressText(harness)).toContain("Created branch bb/feature-thr_1");
+    await harness.experimental_dispose();
+  });
+
+  it("takes a branch a fresh clone holds only as origin's from there", async () => {
+    const { repo, dataDir } = await createRepository();
+    await git(repo, "switch", "--create", "dev");
+    await git(repo, "commit", "--allow-empty", "-m", "on dev only");
+    await git(repo, "switch", "--create", "release", "main");
+    await git(repo, "switch", "main");
+    const clone = join(repo, "..", "clone");
+    await git(repo, "clone", "--quiet", repo, clone);
+    await git(clone, "config", "checkout.guess", "false");
+    expect((await git(clone, "branch", "--list")).trim()).toBe("* main");
+    const harness = createHarness(dataDir);
+
+    const created = await harness.experimental_call("attach", {
+      operationId: "new-from-origin",
+      path: clone,
+      branch: { kind: "new", name: "bb/feature-thr_2", baseBranch: "dev" },
+    });
+    expect(created).toMatchObject({
+      status: "attached",
+      branchName: "bb/feature-thr_2",
+      mergeBaseBranch: "origin/dev",
+    });
+    await expect(git(clone, "rev-parse", "--verify", "dev")).rejects.toThrow();
+    expect((await git(clone, "rev-parse", "HEAD")).trim()).toBe(
+      (await git(clone, "rev-parse", "origin/dev")).trim(),
+    );
+    await expect(
+      git(clone, "rev-parse", "--abbrev-ref", "bb/feature-thr_2@{upstream}"),
+    ).rejects.toThrow();
+
+    const existing = await harness.experimental_call("attach", {
+      operationId: "existing-from-origin",
+      path: clone,
+      branch: { kind: "existing", name: "release" },
+    });
+    expect(existing).toMatchObject({
+      status: "attached",
+      branchName: "release",
+      mergeBaseBranch: null,
+    });
+    expect(
+      (
+        await git(clone, "rev-parse", "--abbrev-ref", "release@{upstream}")
+      ).trim(),
+    ).toBe("origin/release");
     await harness.experimental_dispose();
   });
 

@@ -166,6 +166,10 @@ function browserViewBoundsFromElement(
   });
 }
 
+function isPanelLayoutTransition(propertyName: string): boolean {
+  return propertyName === "flex-grow" || propertyName === "flex-basis";
+}
+
 function browserViewBoundsEqual(args: BrowserViewBoundsEqualArgs): boolean {
   return (
     args.a.x === args.b.x &&
@@ -646,11 +650,27 @@ export function BrowserTabContent({
       return;
     }
 
+    const syncAfterPanelLayoutTransition = (event: TransitionEvent) => {
+      if (isPanelLayoutTransition(event.propertyName)) {
+        syncBoundsIfChanged();
+      }
+    };
+
     window.addEventListener(
       BROWSER_VIEW_BOUNDS_SYNC_EVENT,
       syncBoundsIfChanged,
     );
     window.addEventListener("resize", syncBoundsIfChanged);
+    document.addEventListener(
+      "transitionend",
+      syncAfterPanelLayoutTransition,
+      true,
+    );
+    document.addEventListener(
+      "transitioncancel",
+      syncAfterPanelLayoutTransition,
+      true,
+    );
 
     return () => {
       window.removeEventListener(
@@ -658,6 +678,16 @@ export function BrowserTabContent({
         syncBoundsIfChanged,
       );
       window.removeEventListener("resize", syncBoundsIfChanged);
+      document.removeEventListener(
+        "transitionend",
+        syncAfterPanelLayoutTransition,
+        true,
+      );
+      document.removeEventListener(
+        "transitioncancel",
+        syncAfterPanelLayoutTransition,
+        true,
+      );
     };
   }, [desktopBrowser, syncBoundsIfChanged]);
 

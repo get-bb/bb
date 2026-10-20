@@ -58,7 +58,6 @@ export function useAutoLoadOlderRows({
     if (!onLoadOlderRows) {
       return;
     }
-    bottomAnchor?.captureScrollAnchor();
     void (async () => {
       try {
         await onLoadOlderRows();
@@ -66,7 +65,7 @@ export function useAutoLoadOlderRows({
         setAutoLoadFailed(true);
       }
     })();
-  }, [bottomAnchor, onLoadOlderRows]);
+  }, [onLoadOlderRows]);
 
   const loadOlderRows = useCallback(() => {
     setAutoLoadFailed(false);
