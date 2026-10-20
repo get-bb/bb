@@ -1,3 +1,4 @@
+import { CORE_TAG_SCOPE, invalidateTags } from "@bb/query-tags";
 import type { QueryClient } from "@tanstack/react-query";
 import { assertNever } from "@bb/core-ui";
 import {
@@ -459,7 +460,12 @@ export function createRealtimeCacheEffects({
     }
   };
 
+  const deferredTags = new Set<string>();
   const flushDeferredChanges = (): void => {
+    if (deferredTags.size > 0) {
+      void invalidateTags(queryClient, CORE_TAG_SCOPE, [...deferredTags]);
+      deferredTags.clear();
+    }
     if (hasDeferredNonThreadChanges(deferredNonThreadChanges)) {
       const { environmentKindsById, hostKinds, projectKindsById, systemKinds } =
         deferredNonThreadChanges;
@@ -570,6 +576,11 @@ export function createRealtimeCacheEffects({
             break;
           }
           applyProjectChanges(message.id, message.changes);
+          break;
+        case "tags":
+          if (documentVisible)
+            void invalidateTags(queryClient, CORE_TAG_SCOPE, message.tags);
+          else addAll(deferredTags, message.tags);
           break;
         case "system":
           if (!documentVisible) {
