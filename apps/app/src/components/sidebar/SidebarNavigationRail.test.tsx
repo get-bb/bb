@@ -338,6 +338,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   resetAllCrashedPluginSlotsForTest();
   vi.useRealTimers();
   resetPluginFrontendBootStateForTest();
@@ -487,6 +488,24 @@ describe("Rail", () => {
     expect(pathname()).toBe(THREAD_PATH);
     expect(currentRailLabels()).toEqual(["Home"]);
   });
+
+  it.each([{ metaKey: true }, { ctrlKey: true }])(
+    "opens Home's last thread in a browser tab with %j",
+    (modifier) => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      renderRail(THREAD_PATH);
+
+      fireEvent.click(railButton("Settings"));
+      fireEvent.click(railButton("Home"), modifier);
+
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        THREAD_PATH,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
+    },
+  );
 
   it("returns Home to the last thread after settings navigation closes the compact sidebar", () => {
     vi.useFakeTimers();

@@ -134,7 +134,9 @@ export function Rail() {
           <RailButton
             label="Home"
             active={isHomeActive}
-            onClick={() => actions.goHome()}
+            onClick={(event) =>
+              actions.goHome({ openInSplit: event.metaKey || event.ctrlKey })
+            }
           >
             <Icon name="Home" aria-hidden="true" />
           </RailButton>

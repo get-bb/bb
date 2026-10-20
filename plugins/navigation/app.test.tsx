@@ -161,11 +161,15 @@ describe("Rail", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }), {
+      ctrlKey: true,
+    });
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
       { method: "activate", itemId: DOCS.id, openInSplit: true },
       { method: "activate", itemId: PLUGINS.id, openInSplit: false },
-      { method: "goHome" },
+      { method: "goHome", openInSplit: false },
+      { method: "goHome", openInSplit: true },
     ]);
   });
 

@@ -1352,12 +1352,14 @@ the removed `experimental_Accessory` item field show no counts until they read
 `badge`. Item ids are the keys stored in
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, and items keep
 their identity while unchanged. `actions` covers
-`activate(id, { openInSplit })`, `goHome()`, `setVisible`, `setOrder` (unknown
+`activate(id, { openInSplit })`, `goHome({ openInSplit })`, `setVisible`,
+`setOrder` (unknown
 ids are dropped and omitted ids keep their relative order at the end),
 `openCustomize()` (bb's editor in a popover beside the navigation, after open
 menus close, returning focus to the opener), `openDetails`, and
 `disablePlugin`. `activate(id, { openInSplit: true })` opens Plugins and Skills
-in a browser tab synchronously from the user gesture; New thread and plugin
+in a browser tab synchronously from the user gesture, and
+`goHome({ openInSplit: true })` does the same for Home; New thread and plugin
 panels retain their existing split, compact-screen and pane-limit rules.
 Search remains a command. Native shells retain their window-open policy.
 Calls after the caller unmounts do nothing; outside the
@@ -1375,8 +1377,9 @@ Appearance → Navigation picker reads the same registrations.
 
 1. **Semantic items.** Confirm the action and icon variants cover current
    navigation without exposing routes or host elements.
-2. **Home.** Confirm `isHomeActive` and `goHome()` are the right Home contract
-   for rail providers, including after Settings closes the compact drawer.
+2. **Home.** Confirm `isHomeActive` and `goHome({ openInSplit })` are the
+   right Home contract for rail providers, including after Settings closes the
+   compact drawer.
 3. **Order semantics.** Confirm `setOrder`'s partial-order rule works for
    drag-and-drop providers.
 4. **Accessibility.** Validate labels, badges in accessible names,

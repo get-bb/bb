@@ -322,8 +322,16 @@ export function SidebarNavigationModelProvider({
           }
         }
       },
-      goHome() {
+      goHome(options) {
         const current = latest.current;
+        if (options.openInSplit) {
+          window.open(
+            homeRoutePathRef.current,
+            "_blank",
+            "noopener,noreferrer",
+          );
+          return;
+        }
         if (current.isHomeActive) return;
         void current.navigate(homeRoutePathRef.current);
       },

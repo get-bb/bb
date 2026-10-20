@@ -15,7 +15,7 @@ before your bundle loads:
 
 - `rail` — a fixed-width column on the sidebar's left edge that stays when
   the sidebar collapses. bb draws Settings at the bottom of the column; draw
-  Home with `actions.goHome()` and `isHomeActive`.
+  Home with `actions.goHome({ openInSplit })` and `isHomeActive`.
 - `list` (the default) — the area above the thread list. bb adds Settings to
   the footer and a Back to app row to the Settings, Plugins, and Skills
   lists, and a collapse hides the whole sidebar. Draw a divider below your
@@ -68,13 +68,14 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
 }
 ```
 
-`actions` runs host behavior: `activate(id, { openInSplit })`, `goHome()`,
-`setVisible(id, isVisible)`, `setOrder(ids)`, `openCustomize()`,
-`openDetails(id)`, and `disablePlugin(id)`. Visibility and order persist to
-`sidebar.visiblePluginPanels` and `sidebar.pluginPanelOrder`, so they carry
-over when the user switches providers. `openCustomize()` opens bb's editor in
-a popover beside your navigation once any open menu closes, and returns focus
-to the control that opened it. Actions called after your component unmounts
+`actions` runs host behavior: `activate(id, { openInSplit })`,
+`goHome({ openInSplit })`, `setVisible(id, isVisible)`, `setOrder(ids)`,
+`openCustomize()`, `openDetails(id)`, and `disablePlugin(id)`. Visibility
+and order persist to `sidebar.visiblePluginPanels` and
+`sidebar.pluginPanelOrder`, so they carry over when the user switches
+providers. `openCustomize()` opens bb's editor in a popover beside your
+navigation once any open menu closes, and returns focus to the control that
+opened it. Actions called after your component unmounts
 do nothing.
 
 `experimental_useSidebarNavigationSplit(id, options?)` works like

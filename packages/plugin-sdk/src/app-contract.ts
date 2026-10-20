@@ -283,9 +283,11 @@ export interface ExperimentalSidebarNavigationActions {
   /**
    * Return to the thread list and the last thread or new thread screen the
    * user had open before visiting Settings, Plugins, Skills, or a plugin
-   * panel.
+   * panel. `openInSplit` opens that screen in a browser tab instead because
+   * Home does not support splits, with the same user-gesture requirement as
+   * `activate`.
    */
-  goHome(): void;
+  goHome(options: ExperimentalSidebarNavigationActivationOptions): void;
   /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
   setVisible(itemId: string, isVisible: boolean): void;
   /**
@@ -2061,8 +2063,8 @@ export interface PluginThreadListRegistration {
  *
  * - `rail`: a fixed-width column on the sidebar's left edge that stays when
  *   the sidebar collapses. bb draws Settings at the bottom of the column;
- *   draw Home with `actions.goHome()`. On macOS, wide windows frame the
- *   sidebar and page below a title bar.
+ *   draw Home with `actions.goHome({ openInSplit })`. On macOS, wide windows
+ *   frame the sidebar and page below a title bar.
  * - `list` (the default): the area above the thread list. Settings is a
  *   footer action, the Settings, Plugins, and Skills lists start with a Back
  *   to app row, and collapsing hides the whole sidebar.

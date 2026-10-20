@@ -2245,7 +2245,7 @@ function NavigationProbe({ id }: { id: string }) {
         actions.setVisible(item.id, false);
         actions.setOrder([item.id]);
         actions.openCustomize();
-        actions.goHome();
+        actions.goHome({ openInSplit: true });
       }}
     >
       <SidebarNavigationIcon icon={item.icon} />
@@ -2300,7 +2300,7 @@ describe("sidebar navigation test runtime", () => {
       { method: "setVisible", itemId: "garden/docs", isVisible: false },
       { method: "setOrder", itemIds: ["garden/docs"] },
       { method: "openCustomize" },
-      { method: "goHome" },
+      { method: "goHome", openInSplit: true },
     ]);
   });
 

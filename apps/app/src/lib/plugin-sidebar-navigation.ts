@@ -37,8 +37,8 @@ function guardActions(
     activate: (itemId, options) => {
       if (isMounted()) actions.activate(itemId, options);
     },
-    goHome: () => {
-      if (isMounted()) actions.goHome();
+    goHome: (options) => {
+      if (isMounted()) actions.goHome(options);
     },
     setVisible: (itemId, isVisible) => {
       if (isMounted()) actions.setVisible(itemId, isVisible);

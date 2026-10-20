@@ -2161,8 +2161,11 @@ export function renderSlot<
           openInSplit: activationOptions.openInSplit,
         });
       },
-      goHome() {
-        sidebarNavigationCalls.push({ method: "goHome" });
+      goHome(activationOptions) {
+        sidebarNavigationCalls.push({
+          method: "goHome",
+          openInSplit: activationOptions.openInSplit,
+        });
       },
       setVisible(itemId, isVisible) {
         sidebarNavigationCalls.push({
