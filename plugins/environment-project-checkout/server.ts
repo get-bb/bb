@@ -196,6 +196,9 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       return {
         status: "created",
         path: result.path,
+        ...(branch?.kind === "new"
+          ? { mergeBaseBranch: branch.baseBranch }
+          : {}),
         ownsPath:
           result.path === context.projectCheckout.path &&
           context.projectCheckout.experimental_ownsPath === true,
