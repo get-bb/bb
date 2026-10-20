@@ -35,6 +35,10 @@ interface MachineMutationCommandOptions extends MachineListCommandOptions {
   yes?: boolean;
 }
 
+interface MachineRemoveCommandOptions extends MachineMutationCommandOptions {
+  skipCleanup?: boolean;
+}
+
 interface MachineProviderInstallOptions extends MachineListCommandOptions {
   action?: "install" | "update";
 }
@@ -452,10 +456,14 @@ export function registerMachineCommands(
   machine
     .command("remove <id-or-name>")
     .description("Revoke and remove an execution machine")
+    .option(
+      "--skip-cleanup",
+      "Finish removing a disconnected machine whose environment cleanup failed, leaving its files on disk",
+    )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (target: string, opts: MachineMutationCommandOptions) => {
+      action(async (target: string, opts: MachineRemoveCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const hostId = await resolveMachineHostId({
           serverUrl: getUrl(),
@@ -463,10 +471,16 @@ export function registerMachineCommands(
         });
         if (
           !opts.yes &&
-          !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
+          !(await confirmDestructiveAction(
+            opts.skipCleanup
+              ? `Remove machine ${hostId} without cleaning up its environments? Files left on its disk are not deleted.`
+              : `Remove machine ${hostId}?`,
+          ))
         )
           return;
-        const result = await sdk.hosts.delete({ hostId });
+        const result = opts.skipCleanup
+          ? await sdk.hosts.experimental_forceRemove({ hostId })
+          : await sdk.hosts.delete({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} removed`);
       }),
@@ -572,33 +586,6 @@ export function registerMachineCommands(
         const result = await sdk.hosts.experimental_retryCleanup({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} cleanup retried`);
-      }),
-    );
-
-  machine
-    .command("force-remove <id-or-name>")
-    .description(
-      "Finish removing a disconnected machine whose environment cleanup failed, skipping that cleanup",
-    )
-    .option("--yes", "Skip the confirmation prompt")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineMutationCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        if (
-          !opts.yes &&
-          !(await confirmDestructiveAction(
-            `Remove machine ${hostId} without cleaning up its environments? Files left on its disk are not deleted.`,
-          ))
-        )
-          return;
-        const result = await sdk.hosts.experimental_forceRemove({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} removal forced`);
       }),
     );
 

@@ -385,7 +385,7 @@ describe("bb machine command output", () => {
     ]);
   });
 
-  it("bb machine force-remove skips cleanup for a stranded machine", async () => {
+  it("bb machine remove --skip-cleanup skips cleanup for a stranded machine", async () => {
     const forceRemove = vi.fn(async () => ({ ok: true as const }));
     const remove = vi.fn(async () => undefined);
     stubServerApi({
@@ -394,12 +394,15 @@ describe("bb machine command output", () => {
       "v1.hosts.:id.$delete": remove,
     });
 
-    await runCommand(["machine", "force-remove", "laptop", "--yes"], register);
+    await runCommand(
+      ["machine", "remove", "laptop", "--skip-cleanup", "--yes"],
+      register,
+    );
 
     expect(forceRemove).toHaveBeenCalledWith({ param: { id: "host-remote" } });
     expect(remove).not.toHaveBeenCalled();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Machine host-remote removal forced",
+      "Machine host-remote removed",
     ]);
   });
 });

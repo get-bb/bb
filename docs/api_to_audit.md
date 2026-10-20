@@ -2836,7 +2836,7 @@ later project-checkout/worktree reuse.
 `experimental_listProviders`, `experimental_reconnect`, `experimental_suspend`,
 `experimental_resume`, `experimental_retryCleanup` and `experimental_forceRemove`
 have no unprefixed aliases. `experimental_forceRemove({ hostId })` is the
-path core's machine removal dialog and `bb machine force-remove` use to finish
+path core's machine removal dialog and `bb machine remove --skip-cleanup` use to finish
 a persistent machine's removal whose environment cleanup failed while the
 machine is disconnected; it skips on-machine environment cleanup, emits
 `experimental_environment.removed` for each environment, and still runs the
