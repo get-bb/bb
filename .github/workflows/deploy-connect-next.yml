@@ -70,6 +70,7 @@ jobs:
           --dockerfile apps/connect-next/Dockerfile
           --ignorefile apps/connect-next/Dockerfile.dockerignore
           --remote-only
+          --ha=false
 
       - name: Check the gate answers
         run: |

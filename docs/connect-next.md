@@ -379,8 +379,10 @@ Fly certificates for `*.next.getbb.app` and `tunnel.next.getbb.app`, and the `_a
 
 Deploy: run the `Deploy Connect Next` workflow by hand (`workflow_dispatch`); it typechecks, runs the
 tests, and calls `flyctl deploy --config apps/connect-next/fly.toml --dockerfile apps/connect-next/Dockerfile
---ignorefile apps/connect-next/Dockerfile.dockerignore` from the repository root with the repository
-secret `FLY_API_TOKEN`. The image bundles the gate with esbuild and installs `frps` 0.71.0 checked
+--ignorefile apps/connect-next/Dockerfile.dockerignore --remote-only --ha=false` from the repository root
+with the repository secret `FLY_API_TOKEN`, a deploy token for this app only (`fly tokens create deploy
+-a bb-connect-next`). It is also the first deploy: once the app, its secrets and certificates exist, the
+workflow creates the first machine, and `--ha=false` keeps Fly from adding a standby. The image bundles the gate with esbuild and installs `frps` 0.71.0 checked
 against its SHA-256. A deploy replaces machines one at a time (Fly's rolling strategy); clients on a
 replaced machine redial on their own and may land in another region, which the others learn by
 announcement.
@@ -637,8 +639,8 @@ Operator steps (from the repository root, `--config apps/connect-next/fly.toml` 
    and `peer_hello_failed` absent.
 
 `flyctl deploy` replaces existing machines in place (it does not create more), so later deploys keep
-this layout. If the app is ever recreated, deploy with `--ha=false` and scale per region as above
-rather than letting Fly add a standby machine.
+this layout. If the app is ever recreated, run the workflow (it passes `--ha=false`) and scale per
+region as above.
 
 Failure modes:
 
