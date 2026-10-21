@@ -137,6 +137,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginFixedTabRegistration`
 - `PluginFixedTabDeclaration`
 - `PluginNavPanelRegistration`
+- `ExperimentalPageTitle`
+- `ExperimentalPageBreadcrumb`
 - `ExperimentalBadge`
 - `ExperimentalBadgeTone`
 - `PluginPanelActionOpenOptions`

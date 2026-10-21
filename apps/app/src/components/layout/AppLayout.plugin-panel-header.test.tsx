@@ -4,7 +4,7 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderReact,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -17,6 +17,12 @@ import {
   COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
   setCompactSecondaryPanelPresentation,
 } from "@/components/ui/secondary-panel-shelf-visibility";
+
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+
+function render(ui: ReactNode) {
+  return renderReact(ui, { wrapper: createQueryClientTestHarness().wrapper });
+}
 
 const viewportState = vi.hoisted(
   (): {

@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render as renderReact,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
+
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+
+function render(ui: ReactNode) {
+  return renderReact(ui, { wrapper: createQueryClientTestHarness().wrapper });
+}
 
 const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
 

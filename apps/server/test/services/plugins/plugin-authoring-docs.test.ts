@@ -250,7 +250,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -482,6 +484,7 @@ const NAV_PANEL_REGISTRATION_FIELDS = [
   "component",
   "fixedTabs",
   "experimental_useBadge",
+  "experimental_usePageTitle",
   "headerContent",
   "experimental_sidebar",
 ] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
