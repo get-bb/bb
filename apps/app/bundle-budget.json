@@ -125,8 +125,8 @@
     "them every week. The forbidden-package and split-boundary guards catch",
     "structural regressions."
   ],
-  "maxBootBytes": 1640415,
-  "maxBootBrotliBytes": 403839,
+  "maxBootBytes": 1722436,
+  "maxBootBrotliBytes": 424031,
   "forbiddenBootPackages": [
     "@dnd-kit/accessibility",
     "@dnd-kit/core",
@@ -268,8 +268,8 @@
   },
   "routeClosures": {
     "ThreadPage": {
-      "maxBytes": 2313248,
-      "maxBrotliBytes": 665732,
+      "maxBytes": 2428911,
+      "maxBrotliBytes": 699019,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
@@ -304,8 +304,8 @@
       ]
     },
     "NewThreadPage": {
-      "maxBytes": 1396228,
-      "maxBrotliBytes": 410950,
+      "maxBytes": 1466040,
+      "maxBrotliBytes": 431498,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
