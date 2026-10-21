@@ -18,6 +18,12 @@ export const managedRunInputSchema = z
     runId: z.string().min(1),
   })
   .strict();
+export const managedAttachInputSchema = managedRunInputSchema
+  .extend({
+    threadId: z.string().min(1),
+  })
+  .strict();
+export type ManagedAttachInput = z.output<typeof managedAttachInputSchema>;
 export const managedCheckpointInputSchema = managedRunInputSchema
   .extend({
     threadId: z.string().min(1),

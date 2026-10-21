@@ -7,7 +7,7 @@ responsible for work ownership, review and release gates.
 
 Include `{{runId}}` in the prompt where the controller needs the native run identity.
 BB substitutes the actual ID before dispatch. The coordinator's title includes the
-scheduled local date. Children should use this coordinator as their direct parent.
+local start date. Children should use this coordinator as their direct parent.
 
 The coordinator reads and checkpoints through these commands:
 
@@ -43,11 +43,15 @@ and script automations retain their existing completion behavior.
 An uncertain continuation acknowledgement is recorded before any retry. It blocks
 instead of sending the same message again. Open the linked parent, inspect its state,
 and continue the original controller there; its next valid checkpoint reconciles the
-saved intent. An uncertain initial coordinator launch retains its run and requires
-inspection before attachment or further action. Never delete a live run to reclaim it.
+saved intent. An uncertain initial coordinator launch retains its run. Inspect existing
+threads, then use `bb automation attach-coordinator <runId> --project <projectId>
+--thread <threadId>` to reconcile the original launch. This accepts only an unbound
+unfinished run and a live thread carrying the exact run identity in the Automations
+plugin metadata. It never spawns a replacement. Resume after attachment, or continue
+the controller in that parent. Never delete a live run to reclaim it.
 
 SDK callers use `bb.sdk.plugins.callRpc` for `automations_run_status` and
-`automations_checkpoint`; inputs match the CLI fields using camelCase, with the
+`automations_checkpoint` and `automations_attach`; inputs match the CLI fields using camelCase, with the
 coordinator's `threadId`. `automations_get`, `automations_pause` and
 `automations_resume` retain their existing project-scoped contracts. Execution changes
 and deletion are refused while a managed run owns the automation.

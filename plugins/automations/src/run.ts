@@ -136,6 +136,9 @@ export async function executeAgentRun(
       await bb.sdk.threads.spawn({
         projectId: args.automation.projectId,
         environment: args.execution.environment,
+        ...(args.execution.workflow === "managed"
+          ? { pluginMetadata: { managedRunId: args.run.id } }
+          : {}),
         prompt: renderAutomationDueMessage({
           automationId: args.automation.id,
           prompt:
@@ -146,7 +149,7 @@ export async function executeAgentRun(
         }),
         title:
           args.execution.workflow === "managed"
-            ? `${args.automation.name} — ${new Intl.DateTimeFormat("en-CA", { timeZone: JSON.parse(args.automation.triggerConfig).timezone ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(args.run.scheduledFor)}`
+            ? `${args.automation.name} — ${new Intl.DateTimeFormat("en-CA", { timeZone: JSON.parse(args.automation.triggerConfig).timezone ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(args.run.startedAt)}`
             : args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,

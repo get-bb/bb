@@ -5,6 +5,8 @@ import {
   getAutomation,
   getAutomationRun,
   getRunningAutomationRun,
+  setAutomationRunThread,
+  markAutomationThread,
   listRunningAutomationRuns,
   parseAutomationExecution,
   toAutomationRunResponse,
@@ -14,6 +16,7 @@ import {
 import {
   managedWorkflowSchema,
   type ManagedCheckpointInput,
+  type ManagedAttachInput,
   type ManagedWorkflow,
 } from "./managed-types.js";
 import { publishAutomationChange } from "./realtime.js";
@@ -126,6 +129,57 @@ export function managedRun(
   )
     throw new Error("Automation run not found in this project");
   return toAutomationRunResponse(run);
+}
+export async function attachManagedCoordinator(
+  bb: ManagedApi & {
+    sdk: { threads: Pick<BbPluginApi["sdk"]["threads"], "getPluginMetadata"> };
+  },
+  db: Db,
+  input: ManagedAttachInput,
+) {
+  const run = getAutomationRun(db, input.runId);
+  if (
+    !run ||
+    getAutomation(db, run.automationId)?.projectId !== input.projectId ||
+    !workflow(run) ||
+    run.finishedAt !== null ||
+    run.threadId !== null
+  )
+    throw new Error(
+      "Only an unfinished managed run with an unacknowledged coordinator can be attached",
+    );
+  const thread = threadSchema.parse(
+    await bb.sdk.threads.get({ threadId: input.threadId }),
+  );
+  const metadata = z
+    .object({ managedRunId: z.string() })
+    .passthrough()
+    .parse(
+      await bb.sdk.threads.getPluginMetadata({ threadId: input.threadId }),
+    );
+  if (
+    thread.projectId !== input.projectId ||
+    thread.deletedAt !== null ||
+    thread.archivedAt !== null ||
+    metadata.managedRunId !== run.id
+  )
+    throw new Error(
+      "Coordinator metadata and project must match this exact managed run",
+    );
+  const fresh = getAutomationRun(db, input.runId);
+  if (!fresh || fresh.finishedAt !== null || fresh.threadId !== null)
+    throw new Error("Coordinator ownership changed during reconciliation");
+  db.transaction(() => {
+    setAutomationRunThread(db, { runId: run.id, threadId: thread.id });
+    markAutomationThread(db, {
+      automationId: run.automationId,
+      runId: run.id,
+      threadId: thread.id,
+      now: Date.now(),
+    });
+  })();
+  changed(bb, db, run);
+  return managedRun(db, input);
 }
 export async function checkpointManagedRun(
   bb: ManagedApi,

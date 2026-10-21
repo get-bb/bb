@@ -220,6 +220,7 @@ function createAutomationServiceBb() {
       },
       threads: {
         interactions: { list: async () => [] },
+        getPluginMetadata: async () => ({}),
         get: async () => {
           throw new Error("not expected");
         },
@@ -1281,6 +1282,7 @@ describe("automation service", () => {
         },
         threads: {
           interactions: { list: async () => [] },
+          getPluginMetadata: async () => ({}),
           get: async () => {
             throw new Error("not expected");
           },

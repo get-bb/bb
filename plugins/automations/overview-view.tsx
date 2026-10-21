@@ -129,7 +129,9 @@ function AutomationRowLeading({
           "text-destructive",
           COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
         )}
-        aria-label="Failed"
+        aria-label={
+          automation.lastRunStatus === "blocked" ? "Blocked" : "Failed"
+        }
       />
     );
   }

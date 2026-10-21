@@ -1,5 +1,6 @@
 import {
   managedRunInputSchema,
+  managedAttachInputSchema,
   managedCheckpointInputSchema,
 } from "./managed-types.js";
 import {
@@ -23,6 +24,10 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { AutomationService } from "./service.js";
 
 export const automationRpcContract = defineRpcContract({
+  automations_attach: {
+    input: managedAttachInputSchema,
+    output: automationRunResponseSchema,
+  },
   automations_run_status: {
     input: managedRunInputSchema,
     output: automationRunResponseSchema,
@@ -75,6 +80,9 @@ export const automationRpcContract = defineRpcContract({
 
 export function createRpcHandlers(service: AutomationService) {
   return {
+    automations_attach(input: z.output<typeof managedAttachInputSchema>) {
+      return service.attach(input);
+    },
     automations_run_status(input: z.output<typeof managedRunInputSchema>) {
       return service.runStatus(input);
     },

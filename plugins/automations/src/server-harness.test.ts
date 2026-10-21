@@ -32,6 +32,7 @@ const SECTION_ID = "sec_reviews";
 const rpcMethods = [
   "automations_run_status",
   "automations_checkpoint",
+  "automations_attach",
   "automations_overview",
   "automations_list",
   "automations_get",

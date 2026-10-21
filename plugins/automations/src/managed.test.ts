@@ -16,6 +16,7 @@ import {
 } from "./run.js";
 import {
   checkpointManagedRun,
+  attachManagedCoordinator,
   controlManagedRun,
   createManagedSupervisor,
   initializeManagedRun,
@@ -124,6 +125,34 @@ function fixture() {
 }
 
 describe("managed daily run lifecycle", () => {
+  it("attaches a lost initial acknowledgement only with exact run metadata and never replaces an owner", async () => {
+    const f = fixture();
+    f.db
+      .prepare("UPDATE automation_runs SET thread_id = NULL WHERE id = ?")
+      .run(f.run.id);
+    let managedRunId = "unrelated-run";
+    const bb = {
+      ...f.bb,
+      sdk: {
+        threads: {
+          ...f.bb.sdk.threads,
+          getPluginMetadata: async () => ({ managedRunId }),
+        },
+      },
+    };
+    const input = { projectId: "project", runId: f.run.id, threadId: "parent" };
+    await expect(attachManagedCoordinator(bb, f.db, input)).rejects.toThrow(
+      "exact managed run",
+    );
+    expect(getAutomationRun(f.db, f.run.id)!.threadId).toBeNull();
+    managedRunId = f.run.id;
+    await attachManagedCoordinator(bb, f.db, input);
+    expect(getAutomationRun(f.db, f.run.id)!.threadId).toBe("parent");
+    await expect(attachManagedCoordinator(bb, f.db, input)).rejects.toThrow(
+      "unacknowledged",
+    );
+    expect(f.sends()).toBe(0);
+  });
   it("keeps a parent's idle turn open until its child settles, then resumes that parent once", async () => {
     const f = fixture();
     await f.checkpoint("running", "child");

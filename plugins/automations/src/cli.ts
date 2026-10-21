@@ -1,4 +1,7 @@
-import { managedCheckpointInputSchema } from "./managed-types.js";
+import {
+  managedCheckpointInputSchema,
+  managedAttachInputSchema,
+} from "./managed-types.js";
 import { isAbsolute, resolve } from "node:path";
 import {
   PluginCliError,
@@ -1077,6 +1080,34 @@ export function registerAutomationCli(args: {
         run: (input) => ({ exitCode: 0, stdout: input.help }),
       }),
       commands: {
+        "attach-coordinator": cliCommand({
+          summary:
+            "Reconcile a lost initial launch acknowledgement using exact thread metadata",
+          positionals: [
+            { name: "runId", required: true, description: "Automation run id" },
+          ],
+          options: {
+            project: PROJECT_OPTION,
+            json: JSON_OPTION,
+            thread: {
+              type: "string",
+              description: "Existing coordinator thread id",
+            },
+          },
+          run: (input, ctx) =>
+            attempt(async () => ({
+              exitCode: 0,
+              stdout: jsonOutput(
+                await service.attach(
+                  managedAttachInputSchema.parse({
+                    projectId: requireProjectId(input.options.project, ctx),
+                    runId: input.positionals.runId,
+                    threadId: input.options.thread,
+                  }),
+                ),
+              ),
+            })),
+        }),
         "run-show": cliCommand({
           summary:
             "Inspect one automation run and its durable workflow checkpoint",

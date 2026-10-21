@@ -1,9 +1,13 @@
 import {
   checkpointManagedRun,
+  attachManagedCoordinator,
   controlManagedRun,
   managedRun,
 } from "./managed.js";
-import type { ManagedCheckpointInput } from "./managed-types.js";
+import type {
+  ManagedCheckpointInput,
+  ManagedAttachInput,
+} from "./managed-types.js";
 import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -80,7 +84,10 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
-    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn"> & {
+    threads: Pick<
+      BbPluginApi["sdk"]["threads"],
+      "get" | "send" | "spawn" | "getPluginMetadata"
+    > & {
       interactions: Pick<BbPluginApi["sdk"]["threads"]["interactions"], "list">;
     };
   };
@@ -89,6 +96,7 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 export interface AutomationService {
   runStatus(input: { projectId: string; runId: string }): AutomationRunResponse;
   checkpoint(input: ManagedCheckpointInput): Promise<AutomationRunResponse>;
+  attach(input: ManagedAttachInput): Promise<AutomationRunResponse>;
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: { projectId: string }): AutomationReadResult[];
   get(input: {
@@ -578,6 +586,9 @@ export function createAutomationService(args: {
   const { bb, db, pluginDataDir, serverUrl } = args;
 
   return {
+    attach(input) {
+      return attachManagedCoordinator(bb, db, input);
+    },
     runStatus(input) {
       return managedRun(db, input);
     },
