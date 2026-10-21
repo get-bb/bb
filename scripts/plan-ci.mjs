@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 const { values } = parseArgs({
   options: {
     full: { type: "boolean", default: false },
+    "first-run-only": { type: "boolean", default: false },
     base: { type: "string" },
     affected: { type: "string" },
   },
@@ -26,6 +27,7 @@ const full = {
   foundation: true,
   packaging: true,
   providers: true,
+  firstRunAgents: false,
   forks: true,
   buildFilters: "",
   staticFilters: "",
@@ -59,6 +61,23 @@ function matchesFilter(name, filter) {
 }
 
 function select() {
+  if (values["first-run-only"]) {
+    return {
+      ...full,
+      firstRunAgents: true,
+      tests: { include: [] },
+      "windows-tests": { include: [] },
+      foundation: false,
+      packaging: false,
+      providers: false,
+      forks: false,
+      buildNeeded: false,
+      staticNeeded: false,
+      appBuild: false,
+      sdkBuild: false,
+      reason: "First-run agents dispatch",
+    };
+  }
   if (values.full) return full;
   if (!values.base || !values.affected)
     throw new Error("Missing change evidence");
@@ -84,6 +103,7 @@ function select() {
       foundation: false,
       packaging: false,
       providers: false,
+      firstRunAgents: false,
       forks: false,
       buildNeeded: false,
       staticNeeded: false,
@@ -169,6 +189,9 @@ function select() {
         tasks.some((task) => task.package === name),
       ),
     packaging,
+    firstRunAgents: paths.some((path) =>
+      /^(?:plugins\/provider-(?:claude-code|codex|pi)\/|packages\/(?:provider-bridge-protocol|bb-app)\/|apps\/host-daemon\/src\/(?:provider-installation|runtime-shell-env)|apps\/app\/src\/components\/onboarding\/)/u.test(path),
+    ),
     providers: paths.some((path) =>
       /^(?:plugins\/provider-|packages\/(?:agent-runtime|provider-bridge-))/u.test(
         path,

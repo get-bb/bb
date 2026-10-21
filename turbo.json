@@ -849,6 +849,31 @@
       "cache": false,
       "outputs": []
     },
+    "smoke:first-run": {
+      "dependsOn": ["build", "//#ensure-native-modules"],
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": [
+        "FIRST_RUN_RESULTS",
+        "GITHUB_ACTIONS",
+        "GITHUB_STEP_SUMMARY",
+        "GITHUB_SHA",
+        "GITHUB_RUN_ID",
+        "RUNNER_OS",
+        "RUNNER_TEMP",
+        "OS",
+        "SystemRoot",
+        "SYSTEMROOT",
+        "ComSpec",
+        "COMSPEC",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "USERPROFILE",
+        "PATHEXT"
+      ]
+    },
     "smoke:boot": {
       "dependsOn": ["build", "//#ensure-native-modules"],
       "cache": false,

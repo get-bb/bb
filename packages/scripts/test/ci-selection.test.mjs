@@ -220,9 +220,25 @@ it("falls back to full coverage for unknown paths", () => {
   const plan = fixture().plan("new-tooling/settings.json");
   expect(plan.packaging).toBe(true);
   expect(plan.providers).toBe(true);
+  expect(plan.firstRunAgents).toBe(false);
   expect(
     plan["windows-tests"].include.some((entry) => entry.shard === "server-3"),
   ).toBe(true);
+}, 30_000);
+
+it("selects only the first-run job for a first-run dispatch, and never in full CI", () => {
+  const plan = (flag) =>
+    JSON.parse(
+      execFileSync(process.execPath, [join(root, "scripts/plan-ci.mjs"), flag], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 30_000,
+      }),
+    );
+  const firstRunOnly = plan("--first-run-only");
+  expect(firstRunOnly.firstRunAgents).toBe(true);
+  expect(firstRunOnly.packaging).toBe(false);
+  expect(plan("--full").firstRunAgents).toBe(false);
 }, 30_000);
 
 it("skips the matrix for CI documentation", () => {

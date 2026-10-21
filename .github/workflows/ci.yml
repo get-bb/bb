@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      first_run_agents:
+        description: Run only the Windows and macOS first-run agent matrix
+        type: boolean
+        default: false
 
 env:
   PRIMARY_NODE_VERSION: "22.x"
@@ -42,6 +47,7 @@ jobs:
         env:
           BASE_SHA: ${{ steps.comparison.outputs.base }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FIRST_RUN_ONLY: ${{ inputs.first_run_agents || false }}
         run: |
           selection=$(node scripts/plan-ci.mjs --full)
           if [[ -n "$PR_HEAD_SHA" && -n "$BASE_SHA" ]]; then
@@ -50,6 +56,9 @@ jobs:
             else
               echo "::warning::Change detection failed; running full CI."
             fi
+          fi
+          if [[ "$FIRST_RUN_ONLY" == "true" ]]; then
+            selection=$(node scripts/plan-ci.mjs --first-run-only)
           fi
           echo "selection=$selection" >> "$GITHUB_OUTPUT"
           echo "$selection" >> "$GITHUB_STEP_SUMMARY"
@@ -827,7 +836,7 @@ jobs:
 
   node-compat-smoke:
     name: Node Compatibility Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.event_name != 'pull_request' && !inputs.first_run_agents }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -882,3 +891,85 @@ jobs:
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb ${{ runner.os == 'macOS' && '256' || '1024' }} --keep-run-summaries .turbo/runs
+
+  first-run-agents:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).firstRunAgents }}
+    name: First run agents (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            runner: blacksmith-4vcpu-windows-2025
+          - platform: macOS
+            runner: blacksmith-6vcpu-macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          package-manager-cache: false
+      - name: Setup pnpm
+        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache-prefix: first-run-agents
+          turbo-cache-max-size-mb: "256"
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+      - name: Install dependencies
+        timeout-minutes: 8
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Build and exercise first run
+        env:
+          FIRST_RUN_RESULTS: ${{ github.workspace }}/first-run-results
+        run: pnpm exec turbo run smoke:first-run --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only --concurrency=4
+      - name: Upload reliability evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: first-run-${{ matrix.platform }}
+          path: first-run-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Bound saved Turbo cache
+        if: always()
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
+
+  first-run-summary:
+    needs: first-run-agents
+    if: ${{ always() && needs.first-run-agents.result != 'skipped' }}
+    name: First run reliability matrix
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          pattern: first-run-*
+          path: first-run-results
+          merge-multiple: true
+      - run: node scripts/first-run-summary.mjs first-run-results
