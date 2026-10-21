@@ -1,6 +1,10 @@
 export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   status:
     "{project: {id, name} | null, thread: {id, status, title, parentThreadId, environment: {hostId, display} | null} | null, childThreads: [{id, status, title}] | null, pendingTodos, pluginsNeedingAttention: [{id, status}], dataDir}",
+  "resume status":
+    "{lapsed, lastActivityAt: number | null, target: {threadId, projectId} | null, threads: [{threadId, projectId, title, status, reason}], suggestionAnalyticsId: string | null}",
+  "resume open":
+    "{lapsed, lastActivityAt: number | null, target: {threadId, projectId} | null, threads: [{threadId, projectId, title, status, reason}], suggestionAnalyticsId: string | null}",
   "thread list":
     "[{id, projectId, environmentId, providerId, title, status, parentThreadId, sectionId, visibility, archivedAt, pinnedAt, createdAt, updatedAt, activity}]    (bare array; title can be null)",
   "thread show":

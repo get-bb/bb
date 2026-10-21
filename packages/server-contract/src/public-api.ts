@@ -1,3 +1,4 @@
+import type { SystemLapsedResumeResponse } from "./api/lapsed-resume.js";
 import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
@@ -1933,6 +1934,18 @@ export const publicApiRoutes = {
         machineEnvironmentReplaceSchema,
       ),
       response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    lapsedResume: defineRoute({
+      path: "/system/lapsed-resume",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemLapsedResumeResponse>(),
+    }),
+    openLapsedResume: defineRoute({
+      path: "/system/lapsed-resume/open",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<SystemLapsedResumeResponse>(),
     }),
     attention: defineRoute({
       path: "/system/attention",

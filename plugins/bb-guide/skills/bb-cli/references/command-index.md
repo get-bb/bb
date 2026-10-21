@@ -6,6 +6,12 @@ This index lists every command path that the core CLI registers, including alias
 
 - `bb status`
 
+## resume
+
+- `bb resume`
+- `bb resume status`
+- `bb resume open`
+
 ## settings
 
 - `bb settings`

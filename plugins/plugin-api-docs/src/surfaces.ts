@@ -1333,14 +1333,16 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Use bb's own API from plugin server code. With this, a plugin can:",
         bullets: [
-          "Create threads, send messages, and manage projects and machines",
-          "Have the threads it creates attributed to the plugin",
+          "Create threads attributed to the plugin, send messages, and manage projects and machines",
           "Start plugin updates in the background and follow their progress or rollback",
           "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
+          "Read the last unfinished thread after 14 days away, or claim its one-time return",
         ],
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
+          "PluginBbSdk.system.experimental_lapsedResume",
+          "PluginBbSdk.system.experimental_openLapsedResume",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",

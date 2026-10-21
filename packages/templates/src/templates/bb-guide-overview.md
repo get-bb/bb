@@ -60,7 +60,7 @@ behavior.
 Run `bb guide <chapter>` for command details:
 
   threads              Spawning, handing off, forking, and editing threads
-  thread-inspection    Listing, inspecting, waiting on, and opening threads
+  thread-inspection    Listing, inspecting, waiting on, opening, and resuming threads
   thread-messaging     Messages, interactions, and queued messages
   thread-lifecycle     Stopping, clearing, retrying, archiving, and deleting
   environments         Environment lifecycle hooks, operations, commits, and merges

@@ -23,6 +23,7 @@ import type {
   SystemAppUpdateStatus,
   SystemCliCommandStatus,
   SystemAttentionResponse,
+  SystemLapsedResumeResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
   SystemMobileAppReleasesResponse,
@@ -51,6 +52,10 @@ import {
 } from "./common.js";
 
 export interface SystemAttentionArgs {
+  signal?: AbortSignal;
+}
+
+export interface SystemLapsedResumeArgs {
   signal?: AbortSignal;
 }
 
@@ -97,6 +102,7 @@ export interface SystemVoiceTranscriptionArgs {
 }
 
 export type SystemAttentionResult = SystemAttentionResponse;
+export type SystemLapsedResumeResult = SystemLapsedResumeResponse;
 export type SystemConfigResult = SystemConfigResponse;
 export type SystemAiServicesResult = SystemAiServicesResponse;
 export type SystemSetAiServiceSelectionArgs = SetAiServiceSelectionRequest;
@@ -170,6 +176,12 @@ export interface SystemArea {
   ): Promise<MachineEnvironmentList>;
   aiServices(args?: SystemAiServicesArgs): Promise<SystemAiServicesResult>;
   attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
+  experimental_lapsedResume(
+    args?: SystemLapsedResumeArgs,
+  ): Promise<SystemLapsedResumeResult>;
+  experimental_openLapsedResume(
+    args?: SystemLapsedResumeArgs,
+  ): Promise<SystemLapsedResumeResult>;
   config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
   executionOptions(
     args?: SystemExecutionOptionsArgs,
@@ -297,6 +309,22 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async attention(input) {
       return transport.readJson(
         transport.api.v1.system.attention.$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async experimental_lapsedResume(input) {
+      return transport.readJson(
+        transport.api.v1.system["lapsed-resume"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async experimental_openLapsedResume(input) {
+      return transport.readJson(
+        transport.api.v1.system["lapsed-resume"].open.$post(
           {},
           ...signalRequestArgs(input?.signal),
         ),

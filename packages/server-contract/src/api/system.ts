@@ -216,7 +216,39 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+export const LAPSED_RESUME_SUGGESTION = {
+  surface: "next_step",
+  kind: "resume_thread",
+  trigger: "event",
+} as const;
+
+const lapsedResumeTelemetryPropertiesSchema = z.object({
+  surface: z.literal(LAPSED_RESUME_SUGGESTION.surface),
+  kind: z.literal(LAPSED_RESUME_SUGGESTION.kind),
+  suggestion_analytics_id: z.uuid(),
+});
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("suggestion_shown"),
+      properties: lapsedResumeTelemetryPropertiesSchema
+        .extend({
+          trigger: z.literal(LAPSED_RESUME_SUGGESTION.trigger),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("suggestion_dismissed"),
+      properties: lapsedResumeTelemetryPropertiesSchema
+        .extend({
+          dismiss: z.literal("not_now"),
+        })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       name: z.literal("onboarding_agent_state"),

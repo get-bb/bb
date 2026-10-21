@@ -1,3 +1,5 @@
+export * from "./lapsed-resume.js";
+
 export {
   createProject,
   ensurePersonalProject,

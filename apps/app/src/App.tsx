@@ -1,3 +1,4 @@
+import { LapsedResumeProvider } from "./components/lapsed-resume/LapsedResumeProvider";
 import { PluginUpdateJobsHost } from "./components/plugin/PluginUpdateJobsHost";
 import { LazyThreadDetailView } from "./views/thread-detail/LazyThreadDetailView";
 import { LazyRootComposeView } from "./views/LazyRootComposeView";
@@ -491,7 +492,9 @@ export function App() {
                   path="*"
                   element={
                     <OnboardingGate>
-                      <AppRoutes />
+                      <LapsedResumeProvider>
+                        <AppRoutes />
+                      </LapsedResumeProvider>
                     </OnboardingGate>
                   }
                 />

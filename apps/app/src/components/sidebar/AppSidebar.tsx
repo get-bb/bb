@@ -21,6 +21,7 @@ import {
   useIsSidebarFramed,
 } from "@/components/ui/sidebar.js";
 import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
+import { LapsedResumeList } from "@/components/lapsed-resume/LapsedResumeList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
@@ -335,6 +336,7 @@ export function AppSidebar({
       />
       {placement === "list" ? navigationRegion("shrink-0") : null}
       <SidebarContent>
+        <LapsedResumeList onNavigate={closeOnMobile} />
         <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
           <PluginThreadList
             replacement={threadListReplacement}

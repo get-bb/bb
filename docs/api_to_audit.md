@@ -3100,10 +3100,12 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide and new-thread-submit events; anything else is a 400. Core
-callers, all through `recordTelemetryEvent` in
+setup-guide, new-thread-submit, and lapsed-resume suggestion events; anything
+else is a 400. Core callers include `recordTelemetryEvent` in
 `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
-(`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
+(`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes, plus
+the desktop/web lapse exposure and sidebar dismissal helpers in
+`apps/app/src/components/lapsed-resume/lapsed-resume-telemetry.ts`.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -3255,3 +3257,21 @@ current result as `RenderedSlotInspectionState.experimental_pageTitle`;
 audit test-host lifecycle parity before stabilization.
 Before stabilization, audit focus changes, same-plugin splits, loading,
 back/forward navigation, crash/reload recovery, links and overflow.
+
+## `PluginBbSdk.system.experimental_lapsedResume` and `experimental_openLapsedResume`
+
+`experimental_lapsedResume()` reads the server-owned lapsed state, last
+activity timestamp, last unfinished thread target, and the waiting or finished
+threads for the sidebar without consuming the return. `experimental_openLapsedResume()`
+atomically claims that return for one app open. The server requires at least
+14 days without stored thread or message activity on this install. A missing
+activity timestamp, target, or suggestion analytics ID is `null`.
+Both methods accept an optional abort signal. Claiming does not navigate a
+window; the calling app navigates using the returned target.
+
+Core callers: app-open return routing and its sidebar list, plus `bb resume
+status` (read only) and `bb resume open` (claim). They share these SDK methods
+and the `/api/v1/system/lapsed-resume` and `/open` routes.
+
+Stabilize after exercising concurrent opens, navigation away, process restarts,
+empty or archived thread histories, and desktop, web, and mobile routing parity.

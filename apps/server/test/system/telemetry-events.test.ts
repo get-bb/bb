@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { LAPSED_RESUME_SUGGESTION } from "@bb/server-contract";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -12,6 +13,53 @@ function post(harness: TestAppHarness, body: unknown) {
 }
 
 describe("client telemetry events", () => {
+  it("accepts anonymous lapse exposure and dismissal while rejecting identifying fields", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const suggestionId = "872fd7b3-03e9-4d72-86ee-7907fcf07429";
+      const shown = {
+        name: "suggestion_shown",
+        properties: {
+          ...LAPSED_RESUME_SUGGESTION,
+          suggestion_analytics_id: suggestionId,
+        },
+      };
+      const dismissed = {
+        name: "suggestion_dismissed",
+        properties: {
+          surface: LAPSED_RESUME_SUGGESTION.surface,
+          kind: LAPSED_RESUME_SUGGESTION.kind,
+          suggestion_analytics_id: suggestionId,
+          dismiss: "not_now",
+        },
+      };
+      for (const event of [shown, dismissed]) {
+        capture.mockClear();
+        expect((await post(harness, event)).status).toBe(200);
+        expect(capture).toHaveBeenCalledExactlyOnceWith(event);
+        for (const extra of [
+          { threadId: "thr_private" },
+          { title: "Private work" },
+          { kind: "unapproved_kind" },
+          { surface: "sidebar" },
+          { suggestion_analytics_id: "account@example.com" },
+        ]) {
+          capture.mockClear();
+          expect(
+            (
+              await post(harness, {
+                ...event,
+                properties: { ...event.properties, ...extra },
+              })
+            ).status,
+          ).toBe(400);
+          expect(capture).not.toHaveBeenCalled();
+        }
+      }
+    });
+  });
+
   it("forwards an accepted onboarding event to telemetry unchanged", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();

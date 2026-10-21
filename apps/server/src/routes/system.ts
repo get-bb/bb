@@ -95,6 +95,10 @@ import {
 import { environmentProviderMachineAvailability } from "../services/environments/provider-machine-availability.js";
 import { machineProviderAcceptsEmptyInputs } from "../services/machines/provider-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
+import {
+  getSystemLapsedResume,
+  openSystemLapsedResume,
+} from "../services/system/lapsed-resume.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
   "project-checkout",
@@ -156,6 +160,16 @@ export function registerSystemRoutes(
   const routes = publicApiRoutes.system;
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
+
+  get(routes.lapsedResume, (context) => {
+    context.header("cache-control", "no-store");
+    return context.json(getSystemLapsedResume(deps.db));
+  });
+
+  post(routes.openLapsedResume, (context) => {
+    context.header("cache-control", "no-store");
+    return context.json(openSystemLapsedResume(deps.db));
+  });
 
   const mobileAppReleases = createMobileAppReleaseService();
   get(routes.mobileAppReleases, async (context) => {

@@ -11,6 +11,7 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "project",
   "prompt-history",
   "provider",
+  "resume",
   "server",
   "settings",
   "skill",

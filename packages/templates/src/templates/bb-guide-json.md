@@ -38,6 +38,12 @@ the most-parsed commands ends with the same shape.
   bb status --json
     {project: {id, name} | null, thread: {id, status, title, parentThreadId, environment: {hostId, display} | null} | null, childThreads: [{id, status, title}] | null, pendingTodos, pluginsNeedingAttention: [{id, status}], dataDir}
 
+  bb resume status --json
+    {lapsed, lastActivityAt: number | null, target: {threadId, projectId} | null, threads: [{threadId, projectId, title, status, reason}], suggestionAnalyticsId: string | null}
+
+  bb resume open --json
+    {lapsed, lastActivityAt: number | null, target: {threadId, projectId} | null, threads: [{threadId, projectId, title, status, reason}], suggestionAnalyticsId: string | null}
+
   bb thread list --json
     [{id, projectId, environmentId, providerId, title, status, parentThreadId, sectionId, visibility, archivedAt, pinnedAt, createdAt, updatedAt, activity}]    (bare array; title can be null)
 

@@ -142,6 +142,19 @@ Opening threads and files in the app:
   thread-storage files for the current thread. Use this for Markdown or HTML
   artifacts you create for the user so they open in the BB IDE.
 
+Returning after time away:
+
+  bb resume status [--json]               Read the lapsed state and last unfinished thread
+  bb resume open [--json]                 Claim this lapse once and print the target
+
+  `status` is read-only. The server checks for at least 14 days without thread
+  or message activity on this install and selects the latest unfinished thread.
+  The result includes `lapsed`, `lastActivityAt`, `target`, and the waiting or
+  finished threads for the sidebar. A missing target is `null`.
+  `open` consumes the same one-time claim used when the app opens; it does not
+  navigate any connected window. Use `status` for inspection. Once claimed,
+  another app open will not redirect for that lapse.
+
 Persisted panel tabs:
 
   bb thread tabs show <thread-id>
