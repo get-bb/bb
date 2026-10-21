@@ -407,13 +407,7 @@ export interface PluginService {
     input: unknown,
     caller: ExperimentalPluginRpcCaller,
   ): Promise<
-    | {
-        ok: true;
-        result: JsonValue;
-        tags: string[];
-        keyTags: Record<string, string[]>;
-        invalidated: string[];
-      }
+    | { ok: true; result: JsonValue }
     | { ok: false; error: PluginRpcError }
   >;
   httpToken(
@@ -2168,14 +2162,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           parsedOutput,
           throwRpcBoundaryError,
         );
-        const envelope = rpcResponseTags(
+        const { invalidated } = rpcResponseTags(
           handler.declarations,
           parsedInput,
           parsedOutput,
         );
-        if (envelope.invalidated.length > 0)
-          deps.hub.notifyPluginChanged(id, envelope.invalidated);
-        return { ok: true as const, result: resultValue, ...envelope };
+        if (invalidated.length > 0)
+          deps.hub.notifyPluginChanged(id, invalidated);
+        return { ok: true as const, result: resultValue };
       });
       if (outcome.ok) return outcome.value;
       if (outcome.cause instanceof PluginRpcBoundaryError) {

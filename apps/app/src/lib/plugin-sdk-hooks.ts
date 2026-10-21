@@ -163,7 +163,6 @@ export async function callPluginRpc(
   pluginId: string,
   method: string,
   input?: unknown,
-  envelope = false,
 ): Promise<unknown> {
   try {
     let serializedInput: string;
@@ -210,7 +209,7 @@ export async function callPluginRpc(
         response.ok ? "invalid_response" : "handler_error",
       );
     }
-    return envelope ? body : body.result;
+    return body.result;
   } catch (error) {
     throw experimental_PluginRpcCallError.from(error);
   }
@@ -989,7 +988,7 @@ export const {
         id: string,
         method: string,
         input: import("@bb/domain").JsonValue,
-      ) => callPluginRpc(fetch, id, method, input, true),
+      ) => callPluginRpc(fetch, id, method, input),
       subscribe: (id: string) => {
         const target = { kind: "plugin", pluginId: id } as const;
         wsManager.subscribe(target);

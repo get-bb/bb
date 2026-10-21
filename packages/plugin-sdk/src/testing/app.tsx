@@ -5,7 +5,6 @@ import {
   createRpcQueryHooks,
   type RpcQueryHost,
 } from "../internal/rpc-query-host.js";
-import { rpcResponseTags } from "../internal/rpc-tags.js";
 import * as React from "react";
 import {
   createContext,
@@ -2109,18 +2108,10 @@ export function renderSlot<
     const parsedOutput = declaration
       ? await parseRpcValue(declaration.output, result, "invalid_output")
       : result;
-    const envelope = rpcResponseTags(
-      declaration ?? {},
-      parsedInput,
-      parsedOutput,
-    );
-    return {
-      result: strictJsonRoundTrip(parsedOutput, `rpc "${method}" result`),
-      ...envelope,
-    };
+    return strictJsonRoundTrip(parsedOutput, `rpc "${method}" result`);
   };
   const rpcClient: PluginRpcClient = {
-    call: async (method, input) => (await callRpc(method, input)).result,
+    call: (method, input) => callRpc(method, input),
   };
 
   const realtimeHandlers = new Map<string, Set<(payload: unknown) => void>>();

@@ -562,9 +562,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await oldRpc.json()).toEqual({
       ok: true,
       result: { echoed: { kept: true } },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
     const candidateRoute = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/candidate`,
@@ -586,9 +583,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await ok.json()).toEqual({
       ok: true,
       result: { echoed: { x: 1 } },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
 
     const boom = await rpc(harness, "boom", {});
@@ -732,9 +726,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: "published",
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
 
     for (const socket of [systemSocket, threadSocket]) {
@@ -808,9 +799,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: { gen: firstGen + 1 },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
   });
 });

@@ -1014,6 +1014,6 @@ export function registerPluginRoutes(
         )[outcome.error.code],
       );
     }
-    return context.json(outcome);
+    return context.json({ ok: true, result: outcome.result });
   });
 }

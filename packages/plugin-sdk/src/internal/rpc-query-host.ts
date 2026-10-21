@@ -18,6 +18,7 @@ import {
   useQuerySelection,
 } from "@bb/query-tags";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import { rpcResponseTags } from "./rpc-tags.js";
 import { z } from "zod";
 import type {
   ExperimentalRpcKeyedQueryState,
@@ -32,13 +33,12 @@ export interface RpcQueryHost {
   call(pluginId: string, method: string, input: JsonValue): Promise<unknown>;
   subscribe(pluginId: string): () => void;
 }
-const envelopeSchema = z.object({
-  result: jsonValueSchema,
-  tags: z.array(z.string()).default([]),
-  keyTags: z.record(z.string(), z.array(z.string())).default({}),
-  invalidated: z.array(z.string()).default([]),
-});
-type Envelope = z.infer<typeof envelopeSchema>;
+interface RpcResponse {
+  result: JsonValue;
+  tags: string[];
+  keyTags: Record<string, string[]>;
+  invalidated: string[];
+}
 import type {
   PluginRpcContract,
   PluginRpcCallArgs,
@@ -83,28 +83,44 @@ function optimisticCache<Contract extends PluginRpcContract>(
     },
   };
 }
-async function callRpcEnvelope(
+async function callRpc(
   host: RpcQueryHost,
   pluginId: string,
+  contract: PluginRpcContract,
   method: string,
   input: JsonValue,
-): Promise<Envelope> {
+): Promise<RpcResponse> {
   let raw: unknown;
   try {
     raw = await host.call(pluginId, method, input);
   } catch (error) {
     throw experimental_PluginRpcCallError.from(error);
   }
-  const parsed = envelopeSchema.safeParse(raw);
-  if (!parsed.success)
+  const result = jsonValueSchema.safeParse(raw);
+  if (!result.success)
     throw new experimental_PluginRpcCallError({
       code: "invalid_response",
       message: `Invalid RPC response for ${method}`,
     });
-  return parsed.data;
+  const methodContract = contract[method];
+  if (methodContract === undefined)
+    throw new experimental_PluginRpcCallError({
+      code: "unknown_method",
+      message: `rpc method "${method}" isn't in the contract`,
+    });
+  const parsedInput = await methodContract.input["~standard"].validate(input);
+  if (parsedInput.issues !== undefined)
+    throw new experimental_PluginRpcCallError({
+      code: "invalid_input",
+      message: `rpc input validation failed for ${method}`,
+    });
+  return {
+    result: result.data,
+    ...rpcResponseTags(methodContract, parsedInput.value, result.data),
+  };
 }
 
-const tagsOf = (data: Envelope) => [
+const tagsOf = (data: RpcResponse) => [
   ...data.tags,
   ...Object.values(data.keyTags).flat(),
 ];
@@ -141,7 +157,13 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         }),
         queryFn: () =>
           runTaggedRead(host.queryClient, queryKey, async () =>
-            callRpcEnvelope(host, pluginId, options.method, input),
+            callRpc(
+              host,
+              pluginId,
+              options.contract,
+              options.method,
+              input,
+            ),
           ),
       },
       host.queryClient,
@@ -201,9 +223,10 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
         queryKey: keyedQueryKey(pluginId, options.method),
         scope: pluginTagScope(pluginId),
         read: async (keys) => {
-          const response = await callRpcEnvelope(
+          const response = await callRpc(
             host,
             pluginId,
+            options.contract,
             options.method,
             { keys: [...keys] },
           );
@@ -280,9 +303,10 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       (tags) =>
         invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
       async (input) => {
-        const response = await callRpcEnvelope(
+        const response = await callRpc(
           host,
           pluginId,
+          options.contract,
           options.method,
           jsonValueSchema.parse(input),
         );

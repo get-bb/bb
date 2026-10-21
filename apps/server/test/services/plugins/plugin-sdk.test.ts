@@ -1126,9 +1126,6 @@ describe("plugin bb.sdk against a running server", () => {
       expect(await cli.json()).toEqual({
         ok: true,
         result: { kind: "client" },
-        tags: [],
-        keyTags: {},
-        invalidated: [],
       });
 
       const callsBeforeSpoof = whoami.mock.calls.length;
