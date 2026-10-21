@@ -342,26 +342,6 @@ jobs:
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
 
-  browser-layout:
-    name: Browser layout regression
-    needs: plan
-    if: ${{ fromJSON(needs.plan.outputs.selection).appBuild }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-workspace
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
-          cache-prefix: browser-layout
-      - name: Install Chromium
-        run: pnpm --filter @bb/app exec playwright install --with-deps chromium
-      - name: Check rendered sidebar actions
-        run: pnpm exec turbo run test:browser --filter=@bb/app
-
   static-checks:
     name: Lint and typecheck (ubuntu-latest, Node 22.x)
     needs: plan

@@ -1084,7 +1084,7 @@ describe("ThreadRow", () => {
   });
 
   it.each([true, false])(
-    "toggles parent disclosure (collapsed: %s)",
+    "reserves quick-action space after parent disclosure (collapsed: %s)",
     (isCollapsed) => {
       const onToggleCollapsed = vi.fn();
       renderThreadRow({
@@ -1106,6 +1106,24 @@ describe("ThreadRow", () => {
       const toggle = screen.getByRole("button", {
         name: /(?:Expand|Collapse) Nested discussion/,
       });
+      const link = screen.getByRole("link", {
+        name: "Open Nested discussion with enough text to fill the sidebar width",
+      });
+      expect(
+        link.parentElement?.classList.contains(
+          "pr-(--bb-sidebar-hover-actions-inset)",
+        ),
+      ).toBe(true);
+      const row = link.closest("[data-sidebar-rename-row]");
+      expect(
+        Array.from(row?.querySelectorAll("button") ?? [], (button) =>
+          button.getAttribute("aria-label"),
+        ),
+      ).toEqual([
+        toggle.getAttribute("aria-label"),
+        "Archive",
+        "Thread actions",
+      ]);
       fireEvent.click(toggle);
       expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
     },
