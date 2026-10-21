@@ -77,7 +77,7 @@ export const guide: Guide = {
               <a href={CLAUDE_COMMANDS}>
                 <code>/usage</code> in Claude Code
               </a>
-              ; limit messages show reset times.
+              . Limit messages show reset times.
               <br />
               Pro and Max: five-hour and weekly limits, shared with Claude.{" "}
               <a href={CLAUDE_LIMITS}>Plan details</a>.
