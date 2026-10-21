@@ -115,6 +115,40 @@ describe("telemetry service", () => {
     });
   });
 
+  it("blocks custom provider identifiers at the turn outcome sender", async () => {
+    const telemetry = await createTelemetryService({
+      apiKey: "phc_test",
+      appInstall: null,
+      appSurface: "web",
+      appVersion: "1.2.3",
+      dataDir,
+      telemetryEnabled: true,
+      enabled: true,
+      workTelemetry: true,
+      logger: createTestLogger(),
+    });
+    for (const provider of ["acp-private-team-agent", "codex", "other"]) {
+      telemetry.capture({
+        name: "turn_finished",
+        properties: {
+          thread_analytics_id: "a".repeat(32),
+          parent_link: "root",
+          request_link: "unavailable",
+          attempt_kind: "unknown",
+          initiator: "system",
+          outcome: "succeeded",
+          error_category: "none",
+          install_turn_number: 1,
+          provider,
+        },
+      });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain(
+      "acp-private-team-agent",
+    );
+  });
+
   it("tags events with how bb was installed without sending any commits", async () => {
     const commit = "a".repeat(40);
     const installs = [
