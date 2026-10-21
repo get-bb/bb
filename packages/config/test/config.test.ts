@@ -320,6 +320,7 @@ describe("consumer-specific config", () => {
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       initiatorTelemetry: true,
+      agentInstallTelemetry: true,
       timelineWindowEventBudget: 1_500,
     });
   });
@@ -429,6 +430,15 @@ describe("consumer-specific config", () => {
     });
 
     expect(serverConfig.featureFlags.initiatorTelemetry).toBe(false);
+  });
+  it("parses the agent install telemetry feature flag from env", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_FF_AGENT_INSTALL_TELEMETRY: "false",
+      }),
+    });
+
+    expect(serverConfig.featureFlags.agentInstallTelemetry).toBe(false);
   });
 
   it("parses the timeline window event budget from env", () => {

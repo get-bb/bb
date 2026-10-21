@@ -323,6 +323,12 @@ export const BB_FF_INITIATOR_TELEMETRY_ENV = defineEnvVar<boolean>({
   name: "BB_FF_INITIATOR_TELEMETRY",
   parse: parseBooleanEnvValue,
 });
+export const BB_FF_AGENT_INSTALL_TELEMETRY_ENV = defineEnvVar<boolean>({
+  description:
+    "Send the anonymous agent_install_started and agent_install_finished telemetry events (provider, install_method, outcome) when Setup installs a built-in agent. On by default; set to false to stop sending them.",
+  name: "BB_FF_AGENT_INSTALL_TELEMETRY",
+  parse: parseBooleanEnvValue,
+});
 
 export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
   description:
@@ -432,5 +438,7 @@ export const DEFAULT_BB_CONNECT_GATE_KEYS_URL =
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_INITIATOR_TELEMETRY =
   defaultFeatureFlags.initiatorTelemetry;
+export const DEFAULT_BB_FF_AGENT_INSTALL_TELEMETRY =
+  defaultFeatureFlags.agentInstallTelemetry;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;

@@ -42,6 +42,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   featureFlags: {
     placeholder: false,
     initiatorTelemetry: true,
+    agentInstallTelemetry: true,
     timelineWindowEventBudget: 1_500,
   },
   hostDaemonPort: null,

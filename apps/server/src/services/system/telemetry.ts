@@ -49,6 +49,21 @@ export type TelemetryEvent =
         source_kind: "builtin" | "git" | "npm" | "path";
       };
     }
+  | {
+      name: "agent_install_started";
+      properties: {
+        provider: string;
+        install_method: "native" | "bundled_npm" | "npm";
+      };
+    }
+  | {
+      name: "agent_install_finished";
+      properties: {
+        provider: string;
+        install_method: "native" | "bundled_npm" | "npm";
+        outcome: "succeeded" | "failed";
+      };
+    }
   | RecordTelemetryEventRequest;
 
 export interface TelemetryService {

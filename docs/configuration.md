@@ -294,6 +294,13 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
+bb also sends (on by default; `BB_FF_AGENT_INSTALL_TELEMETRY=false` turns them off)
+`agent_install_started` and `agent_install_finished` when Setup installs a
+built-in agent. Both carry `provider` (its provider id, such as `claude-code`,
+`codex`, or `pi`; agents from other plugins are not reported) and
+`install_method` (`native`, `bundled_npm`, or `npm`); `agent_install_finished`
+also carries `outcome` (`succeeded` or `failed`).
+
 ## AI services
 
 Thread titles (and the branch names built from them), commit messages, and
