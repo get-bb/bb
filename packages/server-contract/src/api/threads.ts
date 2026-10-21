@@ -56,7 +56,40 @@ import {
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
-
+import {
+  DEFAULT_TURN_RETRY_REASON,
+  THREAD_MENTION_RESOLVE_MAX_IDS,
+  PLUGIN_THREAD_METADATA_LIST_MAX_IDS,
+  THREAD_ANCESTORS_LIST_MAX_IDS,
+  THREAD_DESCENDANTS_LIST_MAX_IDS,
+  THREAD_LIST_MAX_IDS,
+  parseThreadListThreadIds,
+  THREAD_MESSAGE_CONTEXT_LIMIT,
+} from "./thread-client-constants.js";
+import {
+  panelFileSourceSchema,
+  threadOpenSplitSchema,
+  threadPaneActionSchema,
+} from "./thread-signals.js";
+export {
+  panelFileSourceSchema,
+  threadOpenSplitSchema,
+  threadOpenSignalLenientSchema,
+  threadPaneActionSchema,
+  threadPaneActionSignalLenientSchema,
+  threadTimelineSignalLenientSchema,
+} from "./thread-signals.js";
+export {
+  DEFAULT_TURN_RETRY_REASON,
+  THREAD_MENTION_RESOLVE_MAX_IDS,
+  PLUGIN_THREAD_METADATA_LIST_MAX_IDS,
+  THREAD_ANCESTORS_LIST_MAX_IDS,
+  THREAD_DESCENDANTS_LIST_MAX_IDS,
+  THREAD_LIST_MAX_IDS,
+  parseThreadListThreadIds,
+  THREAD_COUNT_ROOT_PARENT,
+  THREAD_MESSAGE_CONTEXT_LIMIT,
+} from "./thread-client-constants.js";
 export const sendMessageModeSchema = z.enum([
   "queue-if-active",
   "steer-if-active",
@@ -333,7 +366,6 @@ export type EditMessageResponse = z.infer<typeof editMessageResponseSchema>;
  * boundary so the queued row, its card and `bb thread queue list` all read the
  * same word whether the retry came from a plugin, the CLI or the app.
  */
-export const DEFAULT_TURN_RETRY_REASON = "Retry";
 
 export const retryTurnRequestSchema = z
   .object({
@@ -447,8 +479,6 @@ export type SendQueuedMessageResponse = z.infer<
 
 export const threadListResponseSchema = z.array(threadListEntrySchema);
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
-
-export const THREAD_MENTION_RESOLVE_MAX_IDS = 32;
 
 export const resolveThreadMentionsRequestSchema = z
   .object({
@@ -564,7 +594,6 @@ export const threadPluginMetadataQuerySchema = z
 export type ThreadPluginMetadataQuery = z.infer<
   typeof threadPluginMetadataQuerySchema
 >;
-export const PLUGIN_THREAD_METADATA_LIST_MAX_IDS = 200;
 
 export const pluginThreadMetadataListRequestSchema = z
   .object({
@@ -590,7 +619,6 @@ export const pluginThreadMetadataListResponseSchema = z
 export type PluginThreadMetadataListResponse = z.infer<
   typeof pluginThreadMetadataListResponseSchema
 >;
-export const THREAD_ANCESTORS_LIST_MAX_IDS = 200;
 
 export const threadAncestorsListRequestSchema = z
   .object({
@@ -615,7 +643,6 @@ export const threadAncestorsListResponseSchema = z
 export type ThreadAncestorsListResponse = z.infer<
   typeof threadAncestorsListResponseSchema
 >;
-export const THREAD_DESCENDANTS_LIST_MAX_IDS = 200;
 
 export const threadDescendantsListRequestSchema = z
   .object({
@@ -774,16 +801,8 @@ export type ReorderPinnedThreadRequest = z.infer<
   typeof reorderPinnedThreadRequestSchema
 >;
 
-export const panelFileSourceSchema = z.enum(["workspace", "thread-storage"]);
 export type PanelFileSource = z.infer<typeof panelFileSourceSchema>;
 
-export const threadOpenSplitSchema = z.enum([
-  "right",
-  "down",
-  "left",
-  "top",
-  "replace",
-]);
 export type ThreadOpenSplit = z.infer<typeof threadOpenSplitSchema>;
 
 export const threadOpenFileSchema = z
@@ -795,12 +814,6 @@ export const threadOpenFileSchema = z
   .strict();
 export type ThreadOpenFile = z.infer<typeof threadOpenFileSchema>;
 
-const threadOpenFileLenientSchema = z.object({
-  source: panelFileSourceSchema,
-  path: z.string().min(1),
-  lineNumber: z.number().int().positive().nullable(),
-});
-
 export const threadOpenSignalSchema = z
   .object({
     type: z.literal("thread-open"),
@@ -811,14 +824,6 @@ export const threadOpenSignalSchema = z
   })
   .strict();
 export type ThreadOpenSignal = z.infer<typeof threadOpenSignalSchema>;
-
-export const threadOpenSignalLenientSchema = z.object({
-  type: z.literal("thread-open"),
-  projectId: z.string(),
-  threadId: z.string(),
-  split: threadOpenSplitSchema,
-  file: threadOpenFileLenientSchema.nullable(),
-});
 
 export const threadOpenRequestSchema = z
   .object({
@@ -833,13 +838,6 @@ export const threadOpenResponseSchema = z.object({
 });
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
 
-export const threadPaneActionSchema = z.enum([
-  "maximize",
-  "restore",
-  "toggle",
-  "spotlight",
-  "clear-spotlight",
-]);
 export type ThreadPaneAction = z.infer<typeof threadPaneActionSchema>;
 
 export const threadPaneActionRequestSchema = z
@@ -861,13 +859,6 @@ export type ThreadPaneActionSignal = z.infer<
   typeof threadPaneActionSignalSchema
 >;
 
-export const threadPaneActionSignalLenientSchema = z.object({
-  type: z.literal("thread-pane-action"),
-  projectId: z.string(),
-  threadId: z.string(),
-  action: threadPaneActionSchema,
-});
-
 export const threadPaneActionResponseSchema = z.object({
   delivered: z.number().int().nonnegative(),
 });
@@ -883,15 +874,10 @@ export type ThreadArchiveAllResponse = z.infer<
   typeof threadArchiveAllResponseSchema
 >;
 
-export const THREAD_LIST_MAX_IDS = 200;
-
 /**
  * Reads the `threadIds` list filter. The empty string is the empty set, so a
  * caller with no IDs gets no threads instead of every thread.
  */
-export function parseThreadListThreadIds(value: string): string[] {
-  return value === "" ? [] : value.split(",");
-}
 
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
@@ -943,7 +929,6 @@ export type ThreadCountGroupBy = z.infer<typeof threadCountGroupBySchema>;
  * empty string would have been ambiguous with an omitted parameter, and a
  * thread id can never be `"none"` (ids are prefixed `thr_`).
  */
-export const THREAD_COUNT_ROOT_PARENT = "none";
 
 export const threadCountQuerySchema = z.object({
   status: threadStatusSchema.optional(),
@@ -1105,8 +1090,6 @@ export const threadEventWaitQuerySchema = z.object({
 });
 export type ThreadEventWaitQuery = z.infer<typeof threadEventWaitQuerySchema>;
 
-export const THREAD_MESSAGE_CONTEXT_LIMIT = 20;
-
 const threadMessageContextCountSchema = z
   .string()
   .regex(/^\d+$/)
@@ -1234,15 +1217,6 @@ export const threadTimelineSignalSchema = z
   })
   .strict();
 export type ThreadTimelineSignal = z.infer<typeof threadTimelineSignalSchema>;
-
-export const threadTimelineSignalLenientSchema = z.object({
-  type: z.literal("thread-timeline"),
-  target: threadTimelineSubscriptionTargetSchema,
-  afterSequence: z.number().int().nonnegative().nullable(),
-  timeline: z.custom<ThreadTimelineResponse>(
-    (value) => typeof value === "object" && value !== null,
-  ),
-});
 
 export const threadConversationOutlineAttachmentSummarySchema = z
   .object({

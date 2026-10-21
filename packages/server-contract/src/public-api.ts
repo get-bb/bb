@@ -1,4 +1,10 @@
 import {
+  environmentPullRequestRoute,
+  uiPreferencesRoute,
+  updateUiPreferenceRoute,
+  resetUiPreferenceRoute,
+} from "./client-route-descriptors.js";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -132,7 +138,6 @@ import type {
   EnvironmentDiffViewedResponse,
   EnvironmentDiffResponse,
   EnvironmentPathsQuery,
-  EnvironmentPullRequestResponse,
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
   HostDirectoryListing,
@@ -307,13 +312,6 @@ import type {
   UpdateThreadTabsRequest,
 } from "./api/thread-tabs.js";
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
-import type {
-  PathUiPreferenceKey,
-  UiPreferenceResponse,
-  UiPreferencesResponse,
-  UpdateUiPreferenceRequest,
-} from "./api/ui-preferences.js";
-import { updateUiPreferenceRequestSchema } from "./api/ui-preferences.js";
 import {
   closeTerminalRequestSchema,
   copyProjectAttachmentsRequestSchema,
@@ -442,12 +440,6 @@ type PathThreadMessage = { param: { id: string; seq: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
-
-export const UI_PREFERENCES_TAG = "ui-preferences";
-
-export function environmentPullRequestTag(environmentId: string): string {
-  return `environment-pull-request:${environmentId}`;
-}
 
 export const publicApiRoutes = {
   promptHistory: {
@@ -1192,13 +1184,7 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<EnvironmentStatusResponse>(),
     }),
-    pullRequest: defineRoute({
-      path: "/environments/:id/pull-request",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<EnvironmentPullRequestResponse>(),
-      tags: ({ params }) => [environmentPullRequestTag(params.id)],
-    }),
+    pullRequest: environmentPullRequestRoute,
     diff: defineRoute({
       path: "/environments/:id/diff",
       method: "get",
@@ -2016,36 +2002,9 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<AppTheme>(),
     }),
-    uiPreferences: defineRoute({
-      path: "/preferences/ui",
-      method: "get",
-      request: noRequest(),
-      response: jsonResponse<UiPreferencesResponse>(),
-      tags: () => [UI_PREFERENCES_TAG],
-    }),
-    updateUiPreference: defineRoute({
-      path: "/preferences/ui/:key",
-      method: "put",
-      request: jsonRequest<PathUiPreferenceKey, UpdateUiPreferenceRequest>(
-        updateUiPreferenceRequestSchema,
-      ),
-      response: [
-        jsonResponse<UiPreferenceResponse>(),
-        jsonResponse<ApiError>({ status: 404 }),
-        jsonResponse<ApiError>({ status: 409 }),
-      ],
-      invalidates: () => [UI_PREFERENCES_TAG],
-    }),
-    resetUiPreference: defineRoute({
-      path: "/preferences/ui/:key",
-      method: "delete",
-      request: noRequest<PathUiPreferenceKey>(),
-      response: [
-        jsonResponse<UiPreferenceResponse>(),
-        jsonResponse<ApiError>({ status: 404 }),
-      ],
-      invalidates: () => [UI_PREFERENCES_TAG],
-    }),
+    uiPreferences: uiPreferencesRoute,
+    updateUiPreference: updateUiPreferenceRoute,
+    resetUiPreference: resetUiPreferenceRoute,
     themes: defineRoute({
       path: "/settings/themes",
       method: "get",

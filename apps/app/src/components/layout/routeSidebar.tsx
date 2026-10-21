@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { matchPath } from "react-router-dom";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
+import { LazySettingsSidebar } from "@/components/settings/LazySettingsSidebar";
 import { SectionSidebar } from "@/components/sidebar/SectionSidebar";
 import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
@@ -29,7 +29,7 @@ export interface RouteSidebarPluginPanel {
 
 const SETTINGS_ROUTE_SIDEBAR: RouteSidebar = {
   id: "settings",
-  render: (props) => <SettingsSidebar {...props} />,
+  render: (props) => <LazySettingsSidebar {...props} />,
 };
 
 const PLUGINS_ROUTE_SIDEBAR: RouteSidebar = {

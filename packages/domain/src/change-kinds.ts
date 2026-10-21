@@ -2,8 +2,8 @@ import { z } from "zod";
 import {
   threadEventTypeSchema,
   threadEventTypeValues,
-  type ThreadEventType,
-} from "./provider-event.js";
+} from "./thread-event-types.js";
+import type { ThreadEventType } from "./provider-event.js";
 import {
   threadActivityStateSchema,
   threadRuntimeStateSchema,

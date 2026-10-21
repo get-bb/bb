@@ -140,6 +140,8 @@
     "@shikijs/engine-oniguruma",
     "@shikijs/langs",
     "@shikijs/vscode-textmate",
+    "@tanstack/react-virtual",
+    "@tanstack/virtual-core",
     "@tiptap/core",
     "@tiptap/pm",
     "@tiptap/react",
@@ -159,6 +161,10 @@
     "sonner"
   ],
   "splitBoundaries": {
+    "src/components/settings/SettingsSidebar.tsx": ["boot"],
+    "src/components/dialogs/RemotePathBrowser.tsx": ["boot"],
+    "src/lib/plugin-sdk-hooks.ts": ["boot"],
+    "src/lib/plugin-sidebar-hooks.ts": ["boot"],
     "src/components/promptbox/MicrophonePreferences.tsx": [
       "boot",
       "ThreadPage",

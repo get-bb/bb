@@ -1,5 +1,4 @@
 import {
-  parseThreadEventRow,
   type PromptInput,
   type PendingInteraction,
   type PendingInteractionResolution,
@@ -1010,6 +1009,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       if (statusCode === 204) {
         return null;
       }
+      const { parseThreadEventRow } = await import("./thread-event-parser.js");
       return parseThreadEventRow(await response.json());
     },
   };
