@@ -116,18 +116,20 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     importRetryDelaysMs: [] as readonly number[],
     applyCss: vi.fn(),
+    prefetchCss: vi.fn(),
+    prefetchModule: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
-    routePluginId: () => null,
+    priorityPluginIds: () => [],
     mountTimeoutMs: undefined as number | undefined,
   };
 }
@@ -247,13 +249,15 @@ describe("reconcilePluginFrontends", () => {
       importModule: async () => pluginModule("hello"),
       importRetryDelaysMs: [],
       applyCss: vi.fn(),
+      prefetchCss: vi.fn(),
+      prefetchModule: vi.fn(),
       retainCss: vi.fn(() => vi.fn()),
       resetCrashedSlots: vi.fn(),
       setRegistrations: setPluginSlotRegistrations,
       removeRegistrations: removePluginSlotRegistrations,
       beginSlotBatch: () => () => {},
       warn: vi.fn(),
-      routePluginId: () => null,
+      priorityPluginIds: () => [],
     };
 
     await reconcilePluginFrontends(state, deps);

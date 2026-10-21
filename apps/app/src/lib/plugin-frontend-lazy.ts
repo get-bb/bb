@@ -1,3 +1,4 @@
+import { requestToaster } from "@/components/ui/app-toast-runtime";
 import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
@@ -27,6 +28,7 @@ let bootRequested = false;
 export async function bootPluginFrontends(): Promise<void> {
   bootRequested = true;
   markPluginFrontendBootStarted();
+  requestToaster();
   try {
     const pluginFrontend = await loadPluginFrontend();
     await pluginFrontend.bootPluginFrontends();

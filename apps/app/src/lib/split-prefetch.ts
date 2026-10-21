@@ -49,6 +49,7 @@ const preloadQueue = new Set<() => Promise<void>>();
 let preloadingStarted = false;
 let drainScheduled = false;
 let pendingCriticalLoads = 0;
+let preloadHolds = 0;
 const settledWaiters: Array<() => void> = [];
 
 function resolveSettledWaitersAfterRender() {
@@ -78,9 +79,20 @@ export function whenCriticalLoadsSettled(): Promise<void> {
   return settled;
 }
 
+export function holdSplitPreloads(): () => void {
+  preloadHolds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    preloadHolds -= 1;
+    if (preloadHolds === 0 && preloadingStarted) scheduleDrain();
+  };
+}
+
 function drainPreloadQueue() {
   drainScheduled = false;
-  if (pendingCriticalLoads > 0) return;
+  if (pendingCriticalLoads > 0 || preloadHolds > 0) return;
   const warmers = [...preloadQueue];
   preloadQueue.clear();
   for (const warm of warmers) void warm();
