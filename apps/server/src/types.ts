@@ -34,6 +34,7 @@ export interface ServerRuntimeConfig {
   isDevelopment: boolean;
   performanceDiagnosticsAvailable: boolean;
   marketplaceUrl: string;
+  connectGateKeysUrl: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
   appUrl?: string;

@@ -1713,6 +1713,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           artifact: hostArtifactCandidate,
         });
       },
+      openTunnelIngress: (audience) => {
+        if (!deps.openTunnelIngress) {
+          throw new Error("tunnel ingress is unavailable in this plugin host");
+        }
+        return deps.openTunnelIngress(audience);
+      },
       registerAiService: (declaration) =>
         deps.aiServices.register({
           ...declaration,

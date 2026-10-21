@@ -140,6 +140,8 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventHandler",
   "PluginThreadEventName",
   "PluginThreadEventPayloads",
+  "InternalDoNotUsePluginTunnelIngress",
+  "InternalDoNotUsePluginTunnelIngressOptions",
   "PluginTurnFailedEvent",
   "PluginUi",
   "PluginServerAccess",
