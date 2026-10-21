@@ -47,6 +47,37 @@ function makeEntry(target: Element, blockSize: number): ResizeObserverEntry {
 }
 
 describe("observeSharedResize", () => {
+  it("commits only the latest size outside observer delivery", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    let frame: FrameRequestCallback | undefined;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frame = callback;
+      return 1;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const target = document.createElement("div");
+    const heights: number[] = [];
+    const unobserve = observeSharedResize(target, {
+      read: (entry) => entry?.borderBoxSize[0]?.blockSize,
+      write: (height) => {
+        if (height !== undefined) heights.push(height);
+      },
+    });
+
+    try {
+      const observer = lastObserver();
+      observer.callback([makeEntry(target, 10)], observer);
+      observer.callback([makeEntry(target, 20)], observer);
+
+      expect(heights).toEqual([]);
+      expect(frame).toBeDefined();
+      frame?.(0);
+      expect(heights).toEqual([20]);
+    } finally {
+      unobserve();
+    }
+  });
+
   it("runs every registration's read before any write within a batch", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     const order: string[] = [];
