@@ -3,7 +3,7 @@ Open your bb from a phone or another computer. Once this bb is signed in to your
 ## What you get
 
 - Remote access to the full bb app through a tunnel. Your bb makes an outbound connection, so you do not open ports or change your router.
-- Port shares. Publish a local HTTP server, such as a dev server, at a share URL. The link opens from any device with your session.
+- Port shares. Publish a local HTTP server, such as a dev server, at a share URL. The link opens from any device with your session. With bb connect next on, shares from this bb's machine also get a `.next` URL.
 - Pairing for the bb mobile app with a QR code or a one-time code.
 - A bb connect section in Settings, with the connection state and the remote URL.
 

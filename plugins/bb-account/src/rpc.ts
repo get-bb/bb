@@ -14,7 +14,7 @@ import {
   accountPrivateRpcContract,
   accountRpcContract,
 } from "./contract.js";
-import { isConnectPlugin } from "./fetch-path.js";
+import { canReadServerCredential, isConnectPlugin } from "./fetch-path.js";
 import { HostedRequestError, RedeemError } from "./hosted.js";
 import type { LinkLogins } from "./login.js";
 
@@ -86,10 +86,10 @@ export function registerAccountRpc(args: {
       return account.adoptConnectCredential(input);
     },
     [CONNECT_CREDENTIAL_METHOD]: (_input, context) => {
-      if (!isConnectPlugin(context.experimental_caller)) {
+      if (!canReadServerCredential(context.experimental_caller)) {
         throw new experimental_PluginRpcRefusal({
           code: "forbidden",
-          message: "only the connect plugin can read the server credential",
+          message: "only the connect plugins can read the server credential",
         });
       }
       return { credential: account.connectCredential() };

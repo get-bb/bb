@@ -1,5 +1,5 @@
 import type { ExperimentalPluginRpcCaller } from "@get-bb/plugin-sdk";
-import { CONNECT_PLUGIN_ID } from "./contract.js";
+import { CONNECT_NEXT_PLUGIN_ID, CONNECT_PLUGIN_ID } from "./contract.js";
 
 const ALLOWED_PATH = /^\/api\/[A-Za-z0-9._~\-/]*$/u;
 const AI_PREFIX = "/api/ai/";
@@ -18,6 +18,15 @@ export class FetchPathError extends Error {
 
 export function isConnectPlugin(caller: ExperimentalPluginRpcCaller): boolean {
   return caller.kind === "plugin" && caller.pluginId === CONNECT_PLUGIN_ID;
+}
+
+export function canReadServerCredential(
+  caller: ExperimentalPluginRpcCaller,
+): boolean {
+  return (
+    isConnectPlugin(caller) ||
+    (caller.kind === "plugin" && caller.pluginId === CONNECT_NEXT_PLUGIN_ID)
+  );
 }
 
 export function assertAllowedFetchPath(

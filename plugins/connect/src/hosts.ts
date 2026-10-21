@@ -42,11 +42,16 @@ export class ShareHostResolver {
     return this.byId(await this.serverHostId(), true);
   }
 
-  async serverHostId(): Promise<string> {
+  async primaryHostId(): Promise<string | null> {
     const config = serverHostConfigSchema.parse(
       await this.getSdk().system.config(),
     );
-    if (config.primaryHostId !== null) return config.primaryHostId;
+    return config.primaryHostId;
+  }
+
+  async serverHostId(): Promise<string> {
+    const primaryHostId = await this.primaryHostId();
+    if (primaryHostId !== null) return primaryHostId;
     throw new Error(
       "this bb has no server machine yet — connect a machine before sharing ports",
     );

@@ -20,6 +20,15 @@ import {
   type GatePublicKey,
   type GateSigningKey,
 } from "@bb/tunnel-contract/next";
+import { serverTunnelIngress } from "bb-plugin-bb--connect-next/src/ingress.js";
+import {
+  VHOST_DOMAIN,
+  installTestFrp,
+  startFrps,
+  startGateHooks,
+  waitFor,
+} from "@bb/frp-client/testing";
+import { NextTunnel } from "bb-plugin-bb--connect-next/src/tunnel.js";
 import { tunnelIngressHeaders } from "../../src/services/connect-next/tunnel-ingress.js";
 import type { BbPluginApi } from "../../src/services/plugins/plugin-api.js";
 import { seedHost } from "../helpers/seed.js";
@@ -756,4 +765,117 @@ describe("bb connect next tunnel ingress", () => {
     expect(await canConnect(port)).toBe(false);
     expect(await canBind(port)).toBe(true);
   });
+
+  it("carries gate-signed requests through real frps and the connect-next plugin's frpc", async () => {
+    const binaries = await installTestFrp(join(workDir, "bin"));
+    const hooks = await startGateHooks(() => "bbcred_ingress");
+    const frps = await startFrps(binaries.frps, workDir, hooks.port);
+    const logs: string[] = [];
+    const record = (message: string) => {
+      logs.push(message);
+    };
+    const tunnel = new NextTunnel({
+      frpDir: join(workDir, "frp"),
+      serverOverride: {
+        protocol: "websocket",
+        host: "127.0.0.1",
+        port: frps.bindPort,
+      },
+      enabled: true,
+      resolveBinary: async () => binaries.frpc,
+      readCredential: async () => ({
+        serverId: "srv_ingress",
+        credential: "bbcred_ingress",
+      }),
+      openIngress: serverTunnelIngress(requireApi(server).server),
+      trustedCertificates: async () => [],
+      log: { debug: record, info: record, warn: record, error: record },
+    });
+    try {
+      await tunnel.start();
+      await tunnel.setIdentity({
+        serverId: "srv_ingress",
+        label: "sawyer",
+        baseUrl: "https://getbb.app",
+      });
+      await waitFor(
+        () => tunnel.status().state,
+        (state) => state === "connected",
+        60_000,
+      );
+      const vhost = `http://127.0.0.1:${frps.vhostPort}`;
+      const host = `sawyer.${VHOST_DOMAIN}`;
+      const path = `${ECHO_PATH}?a=1&b=%2Fx`;
+      const token = await assertion({ method: "GET", path });
+
+      const signed = await send(vhost, {
+        method: "GET",
+        path,
+        headers: {
+          host,
+          [GATE_ASSERTION_HEADER]: token,
+          "x-bb-gate-auth": "machine",
+        },
+      });
+      expect(signed.status).toBe(200);
+      const loopbackOrigin = `http://127.0.0.1:${server.config.serverPort}`;
+      expect(json(signed)).toEqual({
+        headers: {
+          host: new URL(loopbackOrigin).host,
+          "x-bb-gate-auth": "session",
+        },
+        url: `${loopbackOrigin}${path}`,
+      });
+
+      const unsigned = await send(vhost, {
+        method: "GET",
+        path,
+        headers: { host, "x-bb-gate-auth": "session" },
+      });
+      expect(unsigned.status).toBe(401);
+      expect(json(unsigned)).toMatchObject({ reason: "missing" });
+
+      const replayed = await send(vhost, {
+        method: "GET",
+        path: `${ECHO_PATH}?a=2`,
+        headers: { host, [GATE_ASSERTION_HEADER]: token },
+      });
+      expect(replayed.status).toBe(401);
+      expect(json(replayed)).toMatchObject({ reason: "wrong_path" });
+
+      const install = await send(vhost, {
+        method: "GET",
+        path: "/install/version",
+        headers: {
+          host,
+          [GATE_ASSERTION_HEADER]: await assertion({
+            method: "GET",
+            path: "/install/version",
+            kind: "public",
+            subject: "",
+          }),
+        },
+      });
+      expect(install.status).toBe(200);
+
+      const socket = await openSocket(vhost, SOCKET_PATH, {
+        host,
+        origin: `https://${host}`,
+        [GATE_ASSERTION_HEADER]: await assertion({
+          method: "GET",
+          path: SOCKET_PATH,
+        }),
+      });
+      if (!("socket" in socket)) throw new Error("expected plugin socket");
+      expect(JSON.parse(await socket.firstMessage)).toMatchObject({
+        "x-bb-gate-auth": "session",
+      });
+      await closeSocket(socket.socket);
+      expect(logs.join("\n")).not.toContain("bbcred_ingress");
+    } finally {
+      await tunnel.stop();
+      await frps.stop();
+      await hooks.close();
+    }
+  }, 120_000);
 });

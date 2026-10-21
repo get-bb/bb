@@ -14,6 +14,7 @@ import {
   deriveConnectBaseUrl,
   type ConnectCredential,
 } from "@bb/connect-client";
+import { nextSharePublicUrl } from "./next-address.js";
 import type { ShareListing } from "./types.js";
 
 export const SHARES_KV_KEY = "shares";
@@ -98,6 +99,7 @@ interface ShareRegistryOptions {
   getIdentity: () => ShareIdentity | null;
   log: Pick<PluginLogger, "warn">;
   onChange?: () => void;
+  nextOrigin?: () => Promise<string | null>;
 }
 
 function shareKey(hostId: string, port: number): string {
@@ -223,8 +225,11 @@ export class ShareRegistry {
 
   async list(hostId?: string): Promise<ShareListing[]> {
     await this.load();
+    const nextOrigin = await this.readNextOrigin();
     const listings = await Promise.all(
-      [...this.shares.values()].map((share) => this.resolveListing(share)),
+      [...this.shares.values()].map((share) =>
+        this.resolveListing(share, nextOrigin),
+      ),
     );
     listings.sort(compareListings);
     this.lastListings = listings;
@@ -235,6 +240,19 @@ export class ShareRegistry {
 
   snapshot(): ShareListing[] {
     return this.lastListings;
+  }
+
+  async serverPorts(): Promise<number[]> {
+    await this.load();
+    const serverHostId = await this.options.hostResolver.primaryHostId();
+    if (serverHostId !== null) this.serverHostId = serverHostId;
+    const ports = new Set<number>();
+    for (const share of this.shares.values()) {
+      if (share.hostId === null || share.hostId === serverHostId) {
+        ports.add(share.port);
+      }
+    }
+    return [...ports].sort((a, b) => a - b);
   }
 
   async add(port: number, host: ShareHost): Promise<ShareListing> {
@@ -254,13 +272,14 @@ export class ShareRegistry {
       );
     }
     if (host.isServer) this.serverHostId = host.id;
+    const nextOrigin = await this.readNextOrigin();
     const existing = [...this.shares.values()].find(
       (share) =>
         share.port === validated &&
         (share.hostId === host.id || (share.hostId === null && host.isServer)),
     );
     if (existing) {
-      const listing = await this.resolveListing(existing, host);
+      const listing = await this.resolveListing(existing, nextOrigin, host);
       this.updateSnapshot(listing, existing.hostId === null);
       return listing;
     }
@@ -287,6 +306,7 @@ export class ShareRegistry {
       port: validated,
       createdAt: share.createdAt,
       url,
+      ...this.nextUrlFor(host, validated, nextOrigin),
     };
     this.updateSnapshot(listing, false);
     this.options.onChange?.();
@@ -456,8 +476,23 @@ export class ShareRegistry {
     this.lastListings = next;
   }
 
+  private async readNextOrigin(): Promise<string | null> {
+    return (await this.options.nextOrigin?.()) ?? null;
+  }
+
+  private nextUrlFor(
+    host: ShareHost,
+    port: number,
+    nextOrigin: string | null,
+  ): Pick<ShareListing, "nextUrl"> {
+    return host.isServer && nextOrigin !== null
+      ? { nextUrl: nextSharePublicUrl(nextOrigin, port) }
+      : {};
+  }
+
   private async resolveListing(
     share: RestoredShare,
+    nextOrigin: string | null,
     knownHost?: ShareHost,
   ): Promise<ShareListing> {
     let host = knownHost;
@@ -470,6 +505,7 @@ export class ShareRegistry {
         port: share.port,
         createdAt: share.createdAt,
         url: await this.urlFor(host, share.port),
+        ...this.nextUrlFor(host, share.port, nextOrigin),
       };
     } catch (error) {
       return this.unavailableListing(share, error, host);

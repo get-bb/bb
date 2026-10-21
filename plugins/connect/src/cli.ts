@@ -21,7 +21,7 @@ import { MachineCodeError } from "./machine-code.js";
 import type { RemoteAccessSwitch } from "./rpc.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
-import type { ConnectStatus } from "./types.js";
+import type { ConnectStatus, ShareListing } from "./types.js";
 
 const DESCRIPTION = [
   "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app.",
@@ -64,6 +64,16 @@ const PAIR_ERROR_TEXT: Record<string, string> = {
     "another sign-in or a sign-out replaced this one — run `bb account status` to see which account this bb uses",
 };
 
+function shareLine(share: ShareListing): string {
+  const address =
+    share.url === ""
+      ? `unavailable: ${share.unavailableReason ?? "unknown reason"}`
+      : share.nextUrl === undefined
+        ? share.url
+        : `${share.url}  ${share.nextUrl}`;
+  return `${share.hostName} (${share.hostId})  ${share.port}  ${address}`;
+}
+
 function formatStatus(status: ConnectStatus): string {
   if (!status.paired) {
     return "Not signed in to a bb account\nRun `bb account status` to see why, or `bb account login` to sign in; remote access starts once the account is ready.";
@@ -78,9 +88,7 @@ function formatStatus(status: ConnectStatus): string {
   if (status.shares.length > 0) {
     lines.push("  shares:");
     for (const share of status.shares) {
-      lines.push(
-        `    ${share.hostName} (${share.hostId})  ${share.port}  ${share.url || `unavailable: ${share.unavailableReason ?? "unknown reason"}`}`,
-      );
+      lines.push(`    ${shareLine(share)}`);
     }
   }
   return lines.join("\n");
@@ -311,7 +319,13 @@ export function registerConnectCli(args: {
               if (input.options.json) {
                 return { exitCode: 0, stdout: asJson(listing) };
               }
-              return { exitCode: 0, stdout: `${listing.url}\n` };
+              return {
+                exitCode: 0,
+                stdout:
+                  listing.nextUrl === undefined
+                    ? `${listing.url}\n`
+                    : `${listing.url}\n${listing.nextUrl}\n`,
+              };
             }),
         }),
         unexpose: cliCommand({
@@ -390,10 +404,7 @@ export function registerConnectCli(args: {
               if (shares.length === 0) {
                 return { exitCode: 0, stdout: "No shared ports\n" };
               }
-              const lines = shares.map(
-                (share) =>
-                  `${share.hostName} (${share.hostId})  ${share.port}  ${share.url || `unavailable: ${share.unavailableReason ?? "unknown reason"}`}`,
-              );
+              const lines = shares.map(shareLine);
               return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
             }),
         }),
