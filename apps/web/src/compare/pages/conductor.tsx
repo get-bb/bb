@@ -160,19 +160,6 @@ export const comparison: Comparison = {
       title: "Switching from Conductor",
       items: [
         {
-          question: "When is Conductor a better fit?",
-          answer: (
-            <p>
-              Conductor is a better fit if you want a hosted workspace where
-              teammates can prompt agents together in real time.{" "}
-              <a href="https://www.conductor.build/docs/cloud/faq">
-                Conductor’s cloud documentation
-              </a>
-              .
-            </p>
-          ),
-        },
-        {
           question: "What’s the difference between bb and Conductor?",
           answer: (
             <p>
