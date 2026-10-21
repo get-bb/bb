@@ -12,10 +12,6 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  COMPOSER_STARTERS,
-  ComposerStarterRowsUI,
-} from "@/components/promptbox/ComposerStarterRows";
 import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -159,39 +155,6 @@ function DefaultRow() {
         project={baseProject}
         execution={execution}
       />
-    </PromptStage>
-  );
-}
-
-function StarterRowsRow() {
-  const { value, mentionRanges, onChange } = useControlledValue("");
-  const execution = useInteractiveExecutionControls(baseExecution);
-  return (
-    <PromptStage>
-      <NewThreadPromptBoxUI
-        mentionMenuPlacement="bottom"
-        id="story-new-thread-starter-rows"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
-        onSubmit={noop}
-        isSubmitting={false}
-        disabled={false}
-        history={baseHistory}
-        typeahead={makeTypeahead()}
-        attachments={makeAttachments()}
-        promptActions={promptActions}
-        modeConfig={baseModeConfig}
-        project={baseProject}
-        execution={execution}
-      />
-      {value === "" ? (
-        <ComposerStarterRowsUI
-          className="mt-3"
-          starters={COMPOSER_STARTERS}
-          onSelect={(starter) => onChange(starter.prompt, [])}
-        />
-      ) : null}
     </PromptStage>
   );
 }
@@ -661,12 +624,6 @@ export function Overview() {
           hint="interactive provider, model, reasoning, and fast mode"
         >
           <DefaultRow />
-        </StoryRow>
-        <StoryRow
-          label="starter rows"
-          hint="empty composer, no threads yet; a row fills the draft without sending"
-        >
-          <StarterRowsRow />
         </StoryRow>
         <StoryRow label="submitting" hint="create-thread mutation in flight">
           <SubmittingRow />
