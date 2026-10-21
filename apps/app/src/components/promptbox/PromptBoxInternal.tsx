@@ -41,7 +41,6 @@ import {
   composerMentionGroupsFromOrdered,
   groupCommandSuggestions,
   orderCommandSuggestions,
-  promptMentionResourceFromComposerMention,
   promptTextMentionFromComposerMention,
   type ComposerMentionShape as ComposerMention,
   type OrderedMentionSuggestions,
@@ -195,7 +194,10 @@ import {
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu } from "./mentions/MentionMenu";
 import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
-import { readPromptMentionClipboard } from "./mentions/prompt-mention-pill";
+import {
+  composerMentionResource,
+  readPromptMentionClipboard,
+} from "./mentions/prompt-mention-pill";
 import {
   readMessageClipboardHtml,
   readMessageClipboardImage,
@@ -744,6 +746,28 @@ export function arePromptEditorValuesEqual(
   return true;
 }
 
+const composerMentionsByPromptMentions = new WeakMap<
+  readonly PromptTextMention[],
+  readonly ComposerMention[]
+>();
+
+function promptMentionsFromComposer(
+  mentions: readonly ComposerMention[],
+): PromptTextMention[] {
+  const promptMentions = mentions.map(promptTextMentionFromComposerMention);
+  composerMentionsByPromptMentions.set(promptMentions, mentions);
+  return promptMentions;
+}
+
+function composerMentionsFromPrompt(
+  mentions: readonly PromptTextMention[],
+): readonly ComposerMention[] {
+  return (
+    composerMentionsByPromptMentions.get(mentions) ??
+    mentions.map(composerMentionFromPromptTextMention)
+  );
+}
+
 function normalizePastedPlainText(text: string): string {
   return text.replace(/\r\n?/gu, "\n");
 }
@@ -1270,12 +1294,12 @@ export function PromptBoxInternal({
   focusEndKey,
 }: PromptBoxInternalProps) {
   const mentionRanges = useMemo(
-    () => promptMentionRanges.map(composerMentionFromPromptTextMention),
+    () => composerMentionsFromPrompt(promptMentionRanges),
     [promptMentionRanges],
   );
   const onChange = useCallback(
     (text: string, mentions: readonly ComposerMention[]) =>
-      onPromptChange(text, mentions.map(promptTextMentionFromComposerMention)),
+      onPromptChange(text, promptMentionsFromComposer(mentions)),
     [onPromptChange],
   );
   const focusComposerShortcut = useAppCommandShortcut("composer.focus");
@@ -1335,11 +1359,7 @@ export function PromptBoxInternal({
   const openAttachment = useAttachmentOpener();
   const resolveEditorMentionLink: ComposerMentionLinkResolver = (mention) => {
     if (mention.kind !== "attachment") {
-      return (
-        mentionResolveLink?.(
-          promptMentionResourceFromComposerMention(mention),
-        ) ?? null
-      );
+      return mentionResolveLink?.(composerMentionResource(mention)) ?? null;
     }
     const attachment = attachments.find((item) => item.path === mention.path);
     const projectId = attachment?.sourceProjectId ?? attachmentProjectId;

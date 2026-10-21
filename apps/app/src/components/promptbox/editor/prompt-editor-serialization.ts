@@ -49,11 +49,20 @@ const promptEditorMentionAttrsSchema = z.object({
   serializedText: z.string().min(1),
 });
 
+const parsedMentionAttrs = new WeakMap<
+  ProseMirrorNode["attrs"],
+  PromptEditorMentionAttrs | null
+>();
+
 export function parsePromptEditorMentionAttrs(
   attrs: ProseMirrorNode["attrs"],
 ): PromptEditorMentionAttrs | null {
+  const cached = parsedMentionAttrs.get(attrs);
+  if (cached !== undefined) return cached;
   const result = promptEditorMentionAttrsSchema.safeParse(attrs);
-  return result.success ? result.data : null;
+  const parsed = result.success ? result.data : null;
+  parsedMentionAttrs.set(attrs, parsed);
+  return parsed;
 }
 
 function splitTextContent(text: string): JSONContent[] {

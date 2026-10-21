@@ -44,7 +44,8 @@ export function PromptMentionPillNodeView({
   }
 
   const mention =
-    attrs.mention.kind === "thread"
+    attrs.mention.kind === "thread" &&
+    attrs.mention.label !== threadDisplayLabel
       ? { ...attrs.mention, label: threadDisplayLabel }
       : attrs.mention;
   const activate = resolveLink?.(mention) ?? null;

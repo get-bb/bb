@@ -1,3 +1,4 @@
+import type { PromptMentionResource } from "@bb/domain";
 import {
   composerMentionTargetFromResource,
   promptMentionResourceFromComposerMention,
@@ -19,10 +20,25 @@ export interface PromptMentionPresentation {
   text: string;
 }
 
+const resourcesByMention = new WeakMap<
+  ComposerMentionTargetShape,
+  PromptMentionResource
+>();
+
+export function composerMentionResource(
+  mention: ComposerMentionTargetShape,
+): PromptMentionResource {
+  const cached = resourcesByMention.get(mention);
+  if (cached !== undefined) return cached;
+  const resource = promptMentionResourceFromComposerMention(mention);
+  resourcesByMention.set(mention, resource);
+  return resource;
+}
+
 export function describePromptMention(
   mention: ComposerMentionTargetShape,
 ): PromptMentionPresentation {
-  const resource = promptMentionResourceFromComposerMention(mention);
+  const resource = composerMentionResource(mention);
   return {
     className: PROMPT_MENTION_PILL_CLASS,
     title: promptMentionTooltipLabel(resource),
@@ -35,7 +51,7 @@ export function promptMentionClipboardAttributes(
   text: string,
 ) {
   return promptMentionClipboardDataAttributes({
-    resource: promptMentionResourceFromComposerMention(mention),
+    resource: composerMentionResource(mention),
     serializedText: text,
   });
 }
