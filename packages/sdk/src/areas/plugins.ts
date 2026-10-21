@@ -39,6 +39,8 @@ import {
   pluginSourceDetailSchema,
   pluginTokenRequestSchema,
   pluginTokenResponseSchema,
+  pluginTrackingRangeRequestSchema,
+  pluginTrackingRangeResultSchema,
   pluginUpdateCheckRequestSchema,
   pluginUpdateCheckResponseSchema,
   type InstalledPlugin,
@@ -61,9 +63,11 @@ import {
   type PluginSourceDetail,
   type PluginSourceSelection,
   type PluginTokenResponse,
+  type PluginTrackingRangeResult,
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { BbHttpError } from "../response.js";
 import type { CreateSdkAreaArgs } from "./common.js";
 
 /**
@@ -114,6 +118,10 @@ export type PluginMutationResponse = z.infer<
 
 export interface PluginIdArgs {
   pluginId: string;
+}
+
+export interface PluginApplyUpdateArgs extends PluginIdArgs {
+  expectedVersion?: string;
 }
 
 export interface PluginInstallArgs {
@@ -226,6 +234,12 @@ export interface PluginPruneCacheArgs {
   signal?: AbortSignal;
 }
 
+export interface PluginSetTrackingRangeArgs extends PluginIdArgs {
+  range: string;
+  dryRun?: boolean;
+  signal?: AbortSignal;
+}
+
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
@@ -237,6 +251,7 @@ export type PluginRemoveResult = PluginRemoveResponse;
 export type PluginSafeModeResult = PluginSafeModeResponse;
 export type PluginSetSafeModeResult = PluginSafeModeUpdateResponse;
 export type PluginPruneCacheResult = PluginCachePruneResponse;
+export type PluginSetTrackingRangeResult = PluginTrackingRangeResult;
 export type PluginTokenResult = PluginTokenResponse;
 export type PluginUpdateSettingsResult = PluginSettingsResponse;
 export type PluginGetSourceResult = PluginSourceDetail;
@@ -300,8 +315,13 @@ export interface PluginsArea {
   experimental_pruneCache(
     args?: PluginPruneCacheArgs,
   ): Promise<PluginPruneCacheResult>;
-  applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
-  experimental_startUpdate(args: PluginIdArgs): Promise<PluginUpdateJob>;
+  experimental_setTrackingRange(
+    args: PluginSetTrackingRangeArgs,
+  ): Promise<PluginSetTrackingRangeResult>;
+  applyUpdate(args: PluginApplyUpdateArgs): Promise<PluginApplyUpdateResult>;
+  experimental_startUpdate(
+    args: PluginApplyUpdateArgs,
+  ): Promise<PluginUpdateJob>;
   experimental_updateJobs: PluginUpdateJobsArea;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
@@ -336,6 +356,30 @@ function pluginSourceSelection(
   }
   if (args.plugin !== undefined) return { kind: "entry", name: args.plugin };
   return undefined;
+}
+
+export class PluginUpdateExpectedVersionUnsupportedError extends Error {
+  readonly expectedVersion: string;
+  readonly pluginId: string;
+
+  constructor(args: { expectedVersion: string; pluginId: string }) {
+    super(
+      `Update not started; this BB server predates reviewed-release updates and cannot honor expectedVersion "${args.expectedVersion}". Upgrade the BB server, or retry without expectedVersion`,
+    );
+    this.name = "PluginUpdateExpectedVersionUnsupportedError";
+    this.expectedVersion = args.expectedVersion;
+    this.pluginId = args.pluginId;
+  }
+}
+
+function rejectedUpdateRequestFields(error: unknown): boolean {
+  return (
+    error instanceof BbHttpError &&
+    error.status === 400 &&
+    z
+      .object({ error: z.literal("expected an empty JSON object") })
+      .safeParse(error.body).success
+  );
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
@@ -391,19 +435,37 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
   };
 
-  function requestUpdate(input: PluginIdArgs) {
-    return requestParsed(
-      pluginPath(input.pluginId, "/update"),
-      z.union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema]),
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          prefer: "respond-async",
-        },
-        body: JSON.stringify(pluginApplyUpdateRequestSchema.parse({})),
-      },
+  async function requestUpdate(input: PluginApplyUpdateArgs) {
+    const body = pluginApplyUpdateRequestSchema.parse(
+      input.expectedVersion === undefined
+        ? {}
+        : { expectedVersion: input.expectedVersion },
     );
+    try {
+      return await requestParsed(
+        pluginPath(input.pluginId, "/update"),
+        z.union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema]),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            prefer: "respond-async",
+          },
+          body: JSON.stringify(body),
+        },
+      );
+    } catch (error) {
+      if (
+        input.expectedVersion !== undefined &&
+        rejectedUpdateRequestFields(error)
+      ) {
+        throw new PluginUpdateExpectedVersionUnsupportedError({
+          expectedVersion: input.expectedVersion,
+          pluginId: input.pluginId,
+        });
+      }
+      throw error;
+    }
   }
 
   const installJobs: PluginInstallJobsArea = {
@@ -655,6 +717,18 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return requestParsed(
         "/api/v1/plugins/cache/prune",
         pluginCachePruneResponseSchema,
+        { ...jsonInit("POST", body), signal: input.signal },
+      );
+    },
+    async experimental_setTrackingRange(input) {
+      const body = pluginTrackingRangeRequestSchema.parse(
+        input.dryRun === undefined
+          ? { range: input.range }
+          : { range: input.range, dryRun: input.dryRun },
+      );
+      return requestParsed(
+        pluginPath(input.pluginId, "/tracking-range"),
+        pluginTrackingRangeResultSchema,
         { ...jsonInit("POST", body), signal: input.signal },
       );
     },

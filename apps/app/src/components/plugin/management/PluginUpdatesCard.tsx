@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { PluginOutsideRangeRelease } from "@bb/server-contract";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -9,7 +10,11 @@ import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { DetailsDisclosure, displayPluginVersion } from "./plugin-ui";
+import {
+  DetailsDisclosure,
+  displayPluginVersion,
+  pluginReleaseLabel,
+} from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
@@ -45,7 +50,8 @@ export function PluginDetailReleaseControl({
   const failure = plugin.updateState.lastFailure;
   const retry = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: () => startPluginUpdate(plugin.id),
+    mutationFn: (expectedVersion: string) =>
+      startPluginUpdate({ pluginId: plugin.id, expectedVersion }),
     onSuccess: (job) => {
       applyPluginUpdateJob({ queryClient, job });
     },
@@ -59,6 +65,10 @@ export function PluginDetailReleaseControl({
 
   if (!pluginHasUpdateSurfaces(plugin)) return null;
   if (availableVersion === null) return null;
+  const availableLabel = pluginReleaseLabel(
+    availableVersion,
+    plugin.updateState.availableDisplay,
+  );
 
   if (failure !== null) {
     return (
@@ -69,8 +79,8 @@ export function PluginDetailReleaseControl({
         className="h-6 px-2 text-xs"
         disabled={retry.isPending}
         aria-busy={retry.isPending}
-        aria-label={`Retry update to ${displayPluginVersion(availableVersion)}`}
-        onClick={() => retry.mutate()}
+        aria-label={`Retry update to ${availableLabel}`}
+        onClick={() => retry.mutate(availableVersion)}
       >
         {retry.isPending ? (
           <Icon name="Spinner" className="size-3.5 animate-spin" aria-hidden />
@@ -89,7 +99,7 @@ export function PluginDetailReleaseControl({
         variant="outline"
         size="sm"
         className="h-6 px-2 text-xs"
-        aria-label={`Update ${plugin.name ?? plugin.id} to ${displayPluginVersion(availableVersion)}`}
+        aria-label={`Update ${plugin.name ?? plugin.id} to ${availableLabel}`}
         onClick={() => setDetailsOpen(true)}
       >
         <Icon name={UPDATE_ACTION_ICON} className="size-3.5" aria-hidden />
@@ -109,11 +119,57 @@ export function PluginDetailReleaseStatus({
 }: {
   plugin: PluginListItem;
 }) {
+  if (!pluginHasUpdateSurfaces(plugin)) return null;
+  const outsideRange =
+    plugin.updateState.availableVersion === null
+      ? plugin.updateState.outsideRange
+      : null;
+  if (outsideRange === null) {
+    return <PluginDetailPrimaryReleaseStatus plugin={plugin} />;
+  }
+  return (
+    <div className="space-y-2">
+      <PluginDetailPrimaryReleaseStatus plugin={plugin} />
+      <PluginOutsideRangeStatus release={outsideRange} />
+    </div>
+  );
+}
+
+function PluginOutsideRangeStatus({
+  release,
+}: {
+  release: PluginOutsideRangeRelease;
+}) {
+  return (
+    <div
+      role="status"
+      aria-label="Newer release outside range"
+      className="flex min-w-0 items-start gap-2.5"
+    >
+      <Icon
+        name="Info"
+        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+      <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+        <span className="font-mono text-foreground">{release.version}</span> is
+        outside the installed range{" "}
+        <span className="font-mono">{release.range}</span>
+        {release.breaking ? " and may include breaking changes" : ""}.
+        Compatibility not checked.
+      </p>
+    </div>
+  );
+}
+
+function PluginDetailPrimaryReleaseStatus({
+  plugin,
+}: {
+  plugin: PluginListItem;
+}) {
   const failure = plugin.updateState.lastFailure;
   const blockedVersion = pluginCompatibilityBlockedVersion(plugin);
   const blockedReasons = plugin.updateState.blockedReasons;
-
-  if (!pluginHasUpdateSurfaces(plugin)) return null;
 
   if (failure !== null) {
     return (
@@ -159,11 +215,45 @@ export function PluginDetailReleaseStatus({
 
   if (plugin.updateState.availableVersion !== null) {
     return (
-      <div role="status" className="flex min-w-0 items-baseline gap-2">
+      <div
+        role="status"
+        className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1"
+      >
         <span className="font-mono text-xs text-foreground">
-          {displayPluginVersion(plugin.updateState.availableVersion)}
+          {pluginReleaseLabel(
+            plugin.updateState.availableVersion,
+            plugin.updateState.availableDisplay,
+          )}
         </span>
         <span className="text-xs text-muted-foreground">Available</span>
+        {plugin.updateState.availableBreaking ? (
+          <span className="text-xs text-warning-text">
+            May include breaking changes
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (
+    blockedVersion === null &&
+    plugin.updateState.outcome === "current" &&
+    plugin.updateState.detail !== null
+  ) {
+    return (
+      <div
+        role="status"
+        aria-label="Update check note"
+        className="flex min-w-0 items-start gap-2.5"
+      >
+        <Icon
+          name="Info"
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+          {plugin.updateState.detail}
+        </p>
       </div>
     );
   }

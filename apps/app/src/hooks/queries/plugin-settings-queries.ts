@@ -1,6 +1,7 @@
 import type {
   InstalledPlugin,
   PluginCachePruneResponse,
+  PluginOutsideRangeRelease,
   PluginSafeModeUpdateResponse,
   PluginSettingDescriptor,
   PluginSettingsResponse,
@@ -28,6 +29,9 @@ export interface PluginUpdateState {
   outcome: InstalledPlugin["updateState"]["outcome"] | null;
   detail: string | null;
   availableVersion: string | null;
+  availableDisplay: string | null;
+  availableBreaking: boolean;
+  outsideRange: PluginOutsideRangeRelease | null;
   blockedVersion: string | null;
   blockedReasons: string[];
   lastCheckAt: number | null;
@@ -85,6 +89,9 @@ export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   outcome: null,
   detail: null,
   availableVersion: null,
+  availableDisplay: null,
+  availableBreaking: false,
+  outsideRange: null,
   blockedVersion: null,
   blockedReasons: [],
   lastCheckAt: null,
@@ -126,6 +133,9 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
       outcome: state.outcome ?? null,
       detail: state.detail ?? null,
       availableVersion: state.availableVersion ?? null,
+      availableDisplay: state.availableDisplay ?? null,
+      availableBreaking: state.availableBreaking === true,
+      outsideRange: state.outsideRange ?? null,
       blockedVersion: state.blockedVersion ?? null,
       blockedReasons: state.blockedReasons ?? [],
       lastCheckAt: toEpochMs(state.lastCheckAt),

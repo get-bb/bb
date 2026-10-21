@@ -79,6 +79,19 @@ export function PluginRowSignalView({
     );
   }
 
+  if (signal.kind === "outside-range") {
+    return (
+      <span
+        className="whitespace-nowrap text-xs text-subtle-foreground"
+        title={`${signal.version} is outside the installed range ${signal.range}${
+          signal.breaking ? " and may include breaking changes" : ""
+        }. Compatibility not checked.`}
+      >
+        {signal.version} outside range
+      </span>
+    );
+  }
+
   const statusDescription =
     signal.detail === null ? signal.label : `${signal.label}: ${signal.detail}`;
 

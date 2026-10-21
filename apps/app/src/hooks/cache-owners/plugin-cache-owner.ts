@@ -15,6 +15,7 @@ import {
   pluginMarketplacesQueryKey,
   pluginSafeModeQueryKey,
   pluginSettingsViewQueryKey,
+  pluginSourceQueryKey,
 } from "../queries/query-keys";
 
 export function applyPluginSettingsView(args: {
@@ -130,4 +131,16 @@ export function applyPluginUpdateJob(args: {
         : [...jobs, args.job];
     },
   );
+}
+
+export async function applyPluginTrackingRange(args: {
+  queryClient: QueryClient;
+  pluginId: string;
+}): Promise<void> {
+  await Promise.all([
+    invalidatePluginList(args),
+    args.queryClient.invalidateQueries({
+      queryKey: pluginSourceQueryKey(args.pluginId),
+    }),
+  ]);
 }

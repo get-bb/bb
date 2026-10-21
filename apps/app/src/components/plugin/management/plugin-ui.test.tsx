@@ -8,6 +8,7 @@ import {
   CatalogEntryIconChip,
   pluginCatalogCategoryIconName,
   pluginInstallCountPresentation,
+  pluginReleaseLabel,
 } from "./plugin-ui";
 
 afterEach(cleanup);
@@ -119,4 +120,18 @@ it("labels built-in, new, and counted plugins", () => {
     label({ installedByDefault: false, installs: 1 })?.accessibleLabel,
   ).toBe("1 install");
   expect(label({ installedByDefault: false, installs: null })).toBeUndefined();
+});
+
+it("labels a release by its tag, a tracked branch by name and commit, and npm by version", () => {
+  const commit = "a985e1d5523398e9c7459d35679142cc4339771e";
+  const git = (ref: string) =>
+    `https://github.com/acme/bb-plugins.git@${ref} (${commit.slice(0, 12)})`;
+
+  expect(pluginReleaseLabel(commit, git("v1.2.0"))).toBe("v1.2.0");
+  expect(pluginReleaseLabel(commit, git("notes/v1.2.0-beta.1"))).toBe(
+    "notes/v1.2.0-beta.1",
+  );
+  expect(pluginReleaseLabel(commit, git("main"))).toBe("main (a985e1d)");
+  expect(pluginReleaseLabel(commit, null)).toBe("a985e1d");
+  expect(pluginReleaseLabel("1.7.0", "@acme/linear@1.7.0")).toBe("1.7.0");
 });

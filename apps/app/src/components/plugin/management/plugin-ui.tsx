@@ -20,6 +20,19 @@ export function displayPluginVersion(version: string): string {
   return /^[0-9a-f]{12,}$/iu.test(version) ? version.slice(0, 7) : version;
 }
 
+export function pluginReleaseLabel(
+  version: string,
+  display: string | null,
+): string {
+  const git =
+    display === null ? null : /@([^@\s]+) \(([0-9a-f]{12})\)$/u.exec(display);
+  if (git === null) return displayPluginVersion(version);
+  const [, ref = "", commit = ""] = git;
+  return /v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/u.test(ref)
+    ? ref
+    : `${ref} (${commit.slice(0, 7)})`;
+}
+
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;

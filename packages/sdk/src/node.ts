@@ -96,6 +96,7 @@ export {
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
 export {
   pluginMutationResponseSchema,
+  PluginUpdateExpectedVersionUnsupportedError,
   type PluginMutationResponse,
 } from "./areas/plugins.js";
 export { createBuiltinPlanCommandTextInput } from "./core.js";

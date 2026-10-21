@@ -90,6 +90,7 @@ export function InstalledPluginRow({
   const signal = pluginRowSignal(plugin);
   const statusSignal = signal?.kind === "status" ? signal : null;
   const updateSignal = signal?.kind === "update" ? signal : null;
+  const outsideRangeSignal = signal?.kind === "outside-range" ? signal : null;
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const notRunning = pluginNeedsAttention({
     enabled: enabled === true,
@@ -163,6 +164,15 @@ export function InstalledPluginRow({
                 />
               </span>
             ) : undefined}
+            {outsideRangeSignal !== null ? (
+              <span data-testid={`plugin-outside-range-${plugin.id}`}>
+                <PluginRowSignalView
+                  signal={outsideRangeSignal}
+                  onUpdateClick={onUpdateClick}
+                  onStatusClick={openDetail}
+                />
+              </span>
+            ) : null}
             {notRunning ? (
               <span
                 data-testid={`plugin-not-running-${plugin.id}`}
