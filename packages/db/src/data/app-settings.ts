@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import {
   aiServiceSelectionSchema,
   AI_TASKS,
@@ -25,6 +25,7 @@ const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
+const INSTALL_TURN_NUMBER_KEY = "installTurnNumber";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -239,4 +240,20 @@ export function forgetPluginProviders(
       .where(eq(appSettingsValues.key, pluginProviderCatalogKey(pluginId)))
       .run();
   });
+}
+
+export function claimInstallTurnNumber(db: DbQueryConnection, now: number): number {
+  const row = db
+    .insert(appSettingsValues)
+    .values({ key: INSTALL_TURN_NUMBER_KEY, value: "1", updatedAt: now })
+    .onConflictDoUpdate({
+      target: appSettingsValues.key,
+      set: {
+        value: sql`CAST(CAST(${appSettingsValues.value} AS INTEGER) + 1 AS TEXT)`,
+        updatedAt: now,
+      },
+    })
+    .returning({ value: appSettingsValues.value })
+    .get();
+  return Number(row!.value);
 }

@@ -276,7 +276,7 @@ lists what `bb project discover` and
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
 The server sends `app_started`, `telemetry_disabled`, `thread_created`,
-`user_message_sent`, and `plugin_installed`. The app reports setup-guide and
+`user_message_sent`, `turn_finished`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
@@ -293,6 +293,14 @@ plugin), `plugin` (any other plugin), or `system` (bb's own retries and follow-u
 runs into an existing thread report `automation`. `bb thread spawn` run inside a thread
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
+
+`turn_finished` sends only `outcome` (`succeeded`, `failed`, or `stopped`),
+`error_category` (`none`, `auth`, `billing`, `rate_limit`, `limit_reached`,
+`provider_unavailable`, `start_failed`, `process_exited`, `host_lost`, or `other`),
+`provider` (a shipped built-in provider ID, otherwise `other`), and
+`install_turn_number`, in addition to the standard event properties. The stored
+per-install number increments atomically on each enabled finish. It pauses while
+telemetry is off and resumes at the next number when enabled again.
 
 ## AI services
 

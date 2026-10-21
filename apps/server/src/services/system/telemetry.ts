@@ -20,7 +20,29 @@ export type TelemetryInitiator =
   | "plugin"
   | "system";
 
+export type TurnFinishedOutcome = "succeeded" | "failed" | "stopped";
+export type TurnErrorCategory =
+  | "none"
+  | "auth"
+  | "billing"
+  | "rate_limit"
+  | "limit_reached"
+  | "provider_unavailable"
+  | "start_failed"
+  | "process_exited"
+  | "host_lost"
+  | "other";
+
 export type TelemetryEvent =
+  | {
+      name: "turn_finished";
+      properties: {
+        outcome: TurnFinishedOutcome;
+        error_category: TurnErrorCategory;
+        provider: string;
+        install_turn_number: number;
+      };
+    }
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
   | {
@@ -54,6 +76,7 @@ export type TelemetryEvent =
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
   setEnabled(enabled: boolean): void;
+  isEnabled(): boolean;
 }
 
 interface CreateTelemetryServiceArgs {
@@ -68,6 +91,7 @@ interface CreateTelemetryServiceArgs {
 }
 
 const noopTelemetryService: TelemetryService = {
+  isEnabled: () => false,
   capture: () => {},
   setEnabled: () => {},
 };
@@ -149,6 +173,7 @@ export async function createTelemetryService(
     platform: process.platform,
   };
   return {
+    isEnabled: () => telemetryEnabled,
     setEnabled(enabled: boolean): void {
       telemetryEnabled = enabled;
     },

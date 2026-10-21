@@ -82,6 +82,7 @@ import {
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
+import { setTurnTelemetryDeps } from "./services/system/turn-telemetry.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
@@ -821,6 +822,7 @@ export function createApp(
       threadId,
     });
   });
+  setTurnTelemetryDeps(deps);
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
