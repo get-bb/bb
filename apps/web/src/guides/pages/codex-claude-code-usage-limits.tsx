@@ -120,7 +120,8 @@ export const guide: Guide = {
           <p>
             Provider usage is built into bb and on by default for new
             installations; existing choices are kept. You can also check it from
-            the sidebar’s Provider usage card.
+            the sidebar’s Provider usage card. The screenshot shows example
+            values in a local demo.
           </p>
         </>
       ),
