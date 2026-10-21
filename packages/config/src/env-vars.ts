@@ -310,6 +310,13 @@ export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_FF_COMPOSER_STARTER_ROWS_ENV = defineEnvVar<boolean>({
+  description:
+    "Show starter prompt rows under the empty new-thread composer until the first thread exists. Off by default.",
+  name: "BB_FF_COMPOSER_STARTER_ROWS",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
   description:
     "Max events one thread-timeline window may span. Raise far above the default to restore unbounded windows.",
@@ -414,5 +421,7 @@ export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_MARKETPLACE_URL =
   "https://getbb.app/marketplace/v2/marketplace.json";
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
+export const DEFAULT_BB_FF_COMPOSER_STARTER_ROWS =
+  defaultFeatureFlags.composerStarterRows;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;
