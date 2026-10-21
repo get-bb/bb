@@ -5,7 +5,10 @@ import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
-import type { RecordTelemetryEventRequest } from "@bb/server-contract";
+import type {
+  FeatureUsedProperties,
+  RecordTelemetryEventRequest,
+} from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
@@ -21,6 +24,7 @@ export type TelemetryInitiator =
   | "system";
 
 export type TelemetryEvent =
+  | { name: "feature_used"; properties: FeatureUsedProperties }
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
   | {
@@ -64,6 +68,7 @@ interface CreateTelemetryServiceArgs {
   dataDir: string;
   enabled: boolean;
   telemetryEnabled: boolean;
+  workTelemetry?: boolean;
   logger: ServerLogger;
 }
 
@@ -154,6 +159,13 @@ export async function createTelemetryService(
     },
     capture(event: TelemetryEvent): void {
       if (!telemetryEnabled) return;
+      if (
+        ["feature_used", "automation_created", "split_view_opened"].includes(
+          event.name,
+        ) &&
+        !args.workTelemetry
+      )
+        return;
       const appSurface =
         telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
       const eventProperties = "properties" in event ? event.properties : {};
