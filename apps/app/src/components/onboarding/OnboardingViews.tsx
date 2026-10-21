@@ -21,6 +21,8 @@ import {
 import {
   ONBOARDING_STEPS,
   type AgentSetupState,
+  type FreeAgentOffer,
+  type FreeSignUp,
   type OnboardingStepId,
   type SignInGuide,
 } from "./onboarding-model";
@@ -210,6 +212,7 @@ export interface OnboardingAgent {
   name: string;
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
+  freeSignUp?: FreeSignUp;
   expanded?: ReactNode;
 }
 
@@ -362,15 +365,75 @@ function AgentRow({
   );
 }
 
+interface FreeAgentCardProps {
+  offer: Exclude<FreeAgentOffer, { status: "hidden" }>;
+  onSetUp: () => void;
+  onCreateAccount: () => void;
+}
+
+export function FreeAgentCard({
+  offer,
+  onSetUp,
+  onCreateAccount,
+}: FreeAgentCardProps) {
+  const installing = offer.status === "installing";
+  const { name, freeSignUp } = offer.agent;
+  return (
+    <section
+      aria-labelledby="free-agent-card-heading"
+      className="flex flex-col gap-3 rounded-lg border border-border px-3 py-3 @min-[36rem]/onboarding:flex-row @min-[36rem]/onboarding:items-center"
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <h3 id="free-agent-card-heading" className="text-sm font-medium">
+          No agent yet? Start free with {name}
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          {`${name} is included with ${freeSignUp.accountName} plans, including Free. bb installs it and opens ${freeSignUp.accountName} sign-in for you.`}
+        </p>
+        <button
+          type="button"
+          aria-label={`Create a free ${freeSignUp.accountName} account (opens ${new URL(freeSignUp.url).hostname})`}
+          onClick={onCreateAccount}
+          className="flex w-fit items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {`No ${freeSignUp.accountName} account? Create one for free`}
+          <Icon name="ArrowUpRight" aria-hidden className="size-3" />
+        </button>
+      </div>
+      <Button
+        size="sm"
+        className="shrink-0 self-start @min-[36rem]/onboarding:self-center"
+        disabled={installing}
+        onClick={onSetUp}
+      >
+        {installing ? (
+          <Icon name="Spinner" aria-hidden className="animate-spin" />
+        ) : null}
+        {installing
+          ? `Installing ${name}…`
+          : offer.action === "retry"
+            ? "Try again"
+            : `Set up ${name}`}
+      </Button>
+    </section>
+  );
+}
+
 interface AgentStepProps extends AgentRowHandlers {
   machineName: string | null;
   agents: readonly OnboardingAgent[] | null;
+  freeAgentOffer: FreeAgentOffer;
+  onSetUpFreeAgent: () => void;
+  onCreateFreeAccount: () => void;
   onRecheck: () => void;
 }
 
 export function AgentStep({
   machineName,
   agents,
+  freeAgentOffer,
+  onSetUpFreeAgent,
+  onCreateFreeAccount,
   onRecheck,
   ...rowHandlers
 }: AgentStepProps) {
@@ -398,6 +461,13 @@ export function AgentStep({
           </button>
         )}
       </div>
+      {freeAgentOffer.status === "hidden" ? null : (
+        <FreeAgentCard
+          offer={freeAgentOffer}
+          onSetUp={onSetUpFreeAgent}
+          onCreateAccount={onCreateFreeAccount}
+        />
+      )}
       {agents === null ? (
         <ul className="divide-y divide-border-hairline rounded-lg border border-border">
           {[0, 1, 2].map((index) => (

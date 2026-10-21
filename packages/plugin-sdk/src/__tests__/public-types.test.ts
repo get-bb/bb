@@ -115,6 +115,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "ExperimentalPluginProviderEnvHealthContext",
   "PluginProviderExtensionKindDeclaration",
   "PluginProviderFallbackModel",
+  "PluginProviderFreeSignUp",
   "PluginProviderMaintenance",
   "PluginProviderModelCatalogScope",
   "PluginProviderNativeRootEntry",

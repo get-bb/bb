@@ -221,6 +221,7 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalPluginProviderEnvHealth`
 - `PluginProviderExtensionKindDeclaration`
 - `PluginProviderFallbackModel`
+- `PluginProviderFreeSignUp`
 - `PluginProviderIconRegistration`
 - `PluginProviderMaintenance`
 - `PluginProviderModelCatalogScope`

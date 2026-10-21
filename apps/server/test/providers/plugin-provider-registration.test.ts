@@ -136,11 +136,19 @@ describe("buildPluginProviderRegistration", () => {
             state: { "~standard": standardSchema() },
           },
         },
+        experimental_freeSignUp: {
+          accountName: "Acme",
+          url: "https://acme.test/",
+        },
       }),
       readSettings: NO_SETTINGS,
     });
 
     expect(registration.info.family).toBe("remote");
+    expect(registration.info.freeSignUp).toStrictEqual({
+      accountName: "Acme",
+      url: "https://acme.test/",
+    });
     expect(registration.info.strings).toStrictEqual({
       signInHint: "Run `my-agent login`.",
       expiredHint: "Session expired.",

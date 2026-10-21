@@ -57,6 +57,7 @@ import {
   getBbDesktopInfo,
   shouldReserveMacosTrafficLights,
 } from "@/lib/bb-desktop";
+import { randomUuid } from "@/lib/random-uuid";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { sdk } from "@/lib/sdk";
@@ -84,6 +85,8 @@ import {
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
+  resolveFreeAgentOffer,
+  resolvePendingFreeAgentSignIn,
   resolveSignInCommand,
   shortRemoteName,
   type OnboardingStepId,
@@ -436,6 +439,9 @@ function AgentStepContainer({
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
+            ...(info?.freeSignUp === undefined
+              ? {}
+              : { freeSignUp: info.freeSignUp }),
             state: resolveAgentSetupState({
               health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
@@ -477,6 +483,94 @@ function AgentStepContainer({
           };
         });
 
+  const freeAgentOffer = resolveFreeAgentOffer(agents);
+  const [freeAgentChosen, setFreeAgentChosen] = useState(false);
+  const [freeAgentSignInPendingId, setFreeAgentSignInPendingId] = useState<
+    string | null
+  >(null);
+  const pendingFreeAgentSignIn = resolvePendingFreeAgentSignIn({
+    pendingAgentId: freeAgentSignInPendingId,
+    agents,
+    activeSignInAgentId: signIn?.providerId ?? null,
+  });
+  const [freeAgentSuggestionId] = useState(randomUuid);
+  const freeAgentOffered = freeAgentOffer.status === "available";
+  const freeAgentOfferRecordedRef = useRef(false);
+  useEffect(() => {
+    if (!freeAgentOffered || freeAgentOfferRecordedRef.current) return;
+    freeAgentOfferRecordedRef.current = true;
+    recordTelemetryEvent({
+      name: "suggestion_shown",
+      properties: {
+        surface: "setup_card",
+        kind: "free_agent",
+        trigger: "first_run",
+        suggestion_analytics_id: freeAgentSuggestionId,
+      },
+    });
+  }, [freeAgentOffered, freeAgentSuggestionId]);
+
+  const startSignInRef = useRef(startSignIn);
+  useEffect(() => {
+    startSignInRef.current = startSignIn;
+  });
+  useEffect(() => {
+    if (freeAgentSignInPendingId === null) return;
+    if (pendingFreeAgentSignIn === "wait") return;
+    setFreeAgentSignInPendingId(null);
+    if (pendingFreeAgentSignIn === "start") {
+      void startSignInRef.current(freeAgentSignInPendingId);
+    }
+  }, [freeAgentSignInPendingId, pendingFreeAgentSignIn]);
+
+  const setUpFreeAgent = () => {
+    if (freeAgentOffer.status !== "available") return;
+    const agentId = freeAgentOffer.agent.id;
+    recordTelemetryEvent({
+      name: "suggestion_accepted",
+      properties: {
+        surface: "setup_card",
+        kind: "free_agent",
+        suggestion_analytics_id: freeAgentSuggestionId,
+      },
+    });
+    setFreeAgentChosen(true);
+    if (freeAgentOffer.action === "signIn") {
+      void startSignIn(agentId);
+      return;
+    }
+    setFreeAgentSignInPendingId(agentId);
+    startInstall(agentId);
+  };
+
+  const createFreeAccount = () => {
+    if (freeAgentOffer.status === "hidden") return;
+    recordTelemetryEvent({
+      name: "suggestion_accepted",
+      properties: {
+        surface: "setup_card",
+        kind: "free_agent_signup",
+        suggestion_analytics_id: freeAgentSuggestionId,
+      },
+    });
+    openUrlInExternalBrowser(freeAgentOffer.agent.freeSignUp.url);
+  };
+
+  const skipAgentStep = () => {
+    if (freeAgentOffered && !freeAgentChosen) {
+      recordTelemetryEvent({
+        name: "suggestion_dismissed",
+        properties: {
+          surface: "setup_card",
+          kind: "free_agent",
+          suggestion_analytics_id: freeAgentSuggestionId,
+          dismiss: "not_now",
+        },
+      });
+    }
+    onContinue();
+  };
+
   const agentReady = hasReadyAgent(states);
   const agentBlocked = agents === null ? statesQuery.isError : !agentReady;
   return (
@@ -492,11 +586,14 @@ function AgentStepContainer({
       primaryDisabled={!agentReady}
       secondaryLabel={agentBlocked ? "Skip for now" : undefined}
       onPrimary={onContinue}
-      onSecondary={onContinue}
+      onSecondary={skipAgentStep}
     >
       <AgentStep
         machineName={hostName}
         agents={agents}
+        freeAgentOffer={freeAgentOffer}
+        onSetUpFreeAgent={setUpFreeAgent}
+        onCreateFreeAccount={createFreeAccount}
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={startInstall}
         onViewInstallLog={viewInstallLog}

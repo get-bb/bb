@@ -216,6 +216,14 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const setupCardSuggestionTelemetryPropertiesSchema = z
+  .object({
+    surface: z.literal("setup_card"),
+    kind: z.enum(["free_agent", "free_agent_signup"]),
+    suggestion_analytics_id: z.string().uuid(),
+  })
+  .strict();
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
@@ -243,6 +251,28 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
             "cancelled",
           ]),
         })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("suggestion_shown"),
+      properties: setupCardSuggestionTelemetryPropertiesSchema
+        .extend({ trigger: z.literal("first_run") })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("suggestion_accepted"),
+      properties: setupCardSuggestionTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("suggestion_dismissed"),
+      properties: setupCardSuggestionTelemetryPropertiesSchema
+        .extend({ dismiss: z.literal("not_now") })
         .strict(),
     })
     .strict(),

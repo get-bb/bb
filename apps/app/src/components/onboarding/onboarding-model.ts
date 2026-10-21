@@ -51,6 +51,89 @@ export type AgentSetupState =
   | { status: "installFailed"; message: string; canInstall: boolean }
   | { status: "unknown"; message: string | null };
 
+export interface FreeSignUp {
+  accountName: string;
+  url: string;
+}
+
+export interface FreeAgent {
+  id: string;
+  name: string;
+  freeSignUp: FreeSignUp;
+}
+
+export type FreeAgentOffer =
+  | { status: "hidden" }
+  | {
+      status: "available";
+      agent: FreeAgent;
+      action: "install" | "retry" | "signIn";
+    }
+  | { status: "installing"; agent: FreeAgent };
+
+export function resolveFreeAgentOffer(
+  agents:
+    | readonly {
+        id: string;
+        name: string;
+        state: AgentSetupState;
+        freeSignUp?: FreeSignUp;
+      }[]
+    | null,
+): FreeAgentOffer {
+  if (agents === null) return { status: "hidden" };
+  if (agents.some((agent) => agent.state.status === "ready")) {
+    return { status: "hidden" };
+  }
+  const candidate = agents.find((agent) => agent.freeSignUp !== undefined);
+  if (candidate?.freeSignUp === undefined) return { status: "hidden" };
+  const agent: FreeAgent = {
+    id: candidate.id,
+    name: candidate.name,
+    freeSignUp: candidate.freeSignUp,
+  };
+  const { state } = candidate;
+  switch (state.status) {
+    case "install":
+    case "update":
+      return state.canInstall
+        ? { status: "available", agent, action: "install" }
+        : { status: "hidden" };
+    case "installFailed":
+      return state.canInstall
+        ? { status: "available", agent, action: "retry" }
+        : { status: "hidden" };
+    case "signIn":
+      return state.canSignIn
+        ? { status: "available", agent, action: "signIn" }
+        : { status: "hidden" };
+    case "installing":
+      return { status: "installing", agent };
+    default:
+      return { status: "hidden" };
+  }
+}
+
+export function resolvePendingFreeAgentSignIn({
+  pendingAgentId,
+  agents,
+  activeSignInAgentId,
+}: {
+  pendingAgentId: string | null;
+  agents: readonly { id: string; state: AgentSetupState }[] | null;
+  activeSignInAgentId: string | null;
+}): "wait" | "start" | "clear" {
+  if (pendingAgentId === null || agents === null) return "wait";
+  if (agents.some((agent) => agent.state.status === "ready")) return "clear";
+  if (activeSignInAgentId !== null && activeSignInAgentId !== pendingAgentId) {
+    return "clear";
+  }
+  const state = agents.find((agent) => agent.id === pendingAgentId)?.state;
+  if (state?.status === "signIn") return state.canSignIn ? "start" : "clear";
+  if (state?.status === "installFailed") return "clear";
+  return "wait";
+}
+
 interface ResolveAgentSetupStateArgs {
   health: SystemProviderState;
   cliStatus: ProviderCliStatus | undefined;

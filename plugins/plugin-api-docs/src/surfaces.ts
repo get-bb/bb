@@ -585,6 +585,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Bring any CLI agent into bb, with its own models and icon",
           "Run every thread started with it through a bridge the plugin ships",
           "Report context usage, service tiers, and install status",
+          "Offer a free account in setup to people with no ready agent",
         ],
         apiSymbols: [
           "contextSnapshotSchema",

@@ -716,6 +716,26 @@ Docs: `providers.md`, [provider-plugin-api.md](provider-plugin-api.md) §1.
 whether the server should detect the method on the host entry; and settle
 the cache TTL and the invalidation set against a real multi-host setup.
 
+## `PluginProviderDeclaration.experimental_freeSignUp`
+
+`{ accountName, url }`: a free account that unlocks the provider's agent.
+When no agent is ready, setup's agent step offers the first provider that
+declares one. Its button installs the agent if needed and then opens the
+agent's sign-in; its link opens `url` (`https:` only). The server projects
+the field onto `ProviderInfo.freeSignUp`.
+
+Core caller: setup's agent step (`resolveFreeAgentOffer` in
+`apps/app/src/components/onboarding/onboarding-model.ts`) reads only this
+field, so core names no provider. The Codex provider declares ChatGPT.
+
+Docs: [provider-plugin-api.md](provider-plugin-api.md) §1.
+
+**Audit before stabilizing.** Decide how setup chooses when several providers
+declare a free sign-up (today: catalog order). Decide whether "free plan
+includes the agent" needs a machine-checkable claim, such as a usage limit or
+a plan label, before setup copy can promise more. Confirm the shape with a
+second provider.
+
 ## `experimental_nativeRootsHostContract` (`@get-bb/plugin-sdk/host`)
 
 The one-method host RPC contract (`resolveNativeRoots`). Input is

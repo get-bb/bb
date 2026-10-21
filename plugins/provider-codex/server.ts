@@ -39,6 +39,10 @@ export default function plugin(bb: BbPluginApi) {
     },
     models: { scope: "host" },
     ...CODEX_NATIVE_ROOTS_DECLARATION,
+    experimental_freeSignUp: {
+      accountName: "ChatGPT",
+      url: "https://chatgpt.com/",
+    },
     maintenance: { health: true, usage: true, installation: true },
     capabilities: {
       supportsServiceTier: true,

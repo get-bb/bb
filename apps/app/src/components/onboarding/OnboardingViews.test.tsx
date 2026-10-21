@@ -2,7 +2,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentStep, type OnboardingAgent } from "./OnboardingViews";
-import type { AgentSetupState } from "./onboarding-model";
+import {
+  resolveFreeAgentOffer,
+  type AgentSetupState,
+} from "./onboarding-model";
 
 function agent(id: string, state: AgentSetupState): OnboardingAgent {
   return { id, name: id, provider: { id, logoUrl: null }, state };
@@ -15,9 +18,18 @@ function renderAgents(agents: OnboardingAgent[]) {
     onViewInstallLog: vi.fn(),
     onCancelSignIn: vi.fn(),
     onGetNodejs: vi.fn(),
+    onSetUpFreeAgent: vi.fn(),
+    onCreateFreeAccount: vi.fn(),
     onRecheck: vi.fn(),
   };
-  render(<AgentStep machineName="bee" agents={agents} {...handlers} />);
+  render(
+    <AgentStep
+      machineName="bee"
+      agents={agents}
+      freeAgentOffer={resolveFreeAgentOffer(agents)}
+      {...handlers}
+    />,
+  );
   return handlers;
 }
 
@@ -66,5 +78,35 @@ describe("AgentStep", () => {
     );
 
     expect(handlers.onGetNodejs).toHaveBeenCalledOnce();
+  });
+
+  it("offers the agent with a free sign-up when no agent is ready, and hides it once one is", () => {
+    const freeAgent: OnboardingAgent = {
+      ...agent("free-agent", { status: "install", canInstall: true }),
+      name: "Free Agent",
+      freeSignUp: { accountName: "Acme", url: "https://acme.test/" },
+    };
+    const handlers = renderAgents([
+      agent("other-agent", { status: "install", canInstall: true }),
+      freeAgent,
+    ]);
+
+    expect(screen.getByText("No agent yet? Start free with Free Agent")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Set up Free Agent" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Create a free Acme account (opens acme.test)",
+      }),
+    );
+
+    expect(handlers.onSetUpFreeAgent).toHaveBeenCalledOnce();
+    expect(handlers.onCreateFreeAccount).toHaveBeenCalledOnce();
+
+    cleanup();
+    renderAgents([
+      agent("other-agent", { status: "ready", detail: null }),
+      freeAgent,
+    ]);
+    expect(screen.queryByRole("button", { name: "Set up Free Agent" })).toBeNull();
   });
 });

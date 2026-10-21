@@ -11,8 +11,11 @@ import {
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
+  resolveFreeAgentOffer,
+  resolvePendingFreeAgentSignIn,
   resolveSignInCommand,
   shortRemoteName,
+  type AgentSetupState,
 } from "./onboarding-model";
 
 function health(
@@ -239,6 +242,78 @@ describe("resolveAgentSetupState", () => {
         ...idle,
       }),
     ).toEqual({ status: "unknown", message: "Machine is paused." });
+  });
+});
+
+describe("resolveFreeAgentOffer", () => {
+  const freeSignUp = { accountName: "Acme", url: "https://acme.test/" };
+  const free = (state: AgentSetupState) => ({
+    id: "free-agent",
+    name: "Free Agent",
+    state,
+    freeSignUp,
+  });
+  const other = (state: AgentSetupState) => ({
+    id: "other-agent",
+    name: "Other Agent",
+    state,
+  });
+  const agent = { id: "free-agent", name: "Free Agent", freeSignUp };
+
+  it.each<[string, AgentSetupState, ReturnType<typeof resolveFreeAgentOffer>]>([
+    ["it is missing", { status: "install", canInstall: true }, { status: "available", agent, action: "install" }],
+    ["it is too old", { status: "update", detail: null, canInstall: true }, { status: "available", agent, action: "install" }],
+    ["its install failed", { status: "installFailed", message: "x", canInstall: true }, { status: "available", agent, action: "retry" }],
+    ["it is installed but signed out", { status: "signIn", reason: "signedOut", canSignIn: true }, { status: "available", agent, action: "signIn" }],
+    ["it is installing", { status: "installing" }, { status: "installing", agent }],
+    ["it can't be installed here", { status: "install", canInstall: false }, { status: "hidden" }],
+    ["it has no sign-in command", { status: "signIn", reason: "signedOut", canSignIn: false }, { status: "hidden" }],
+    ["it is mid sign-in", { status: "signingIn" }, { status: "hidden" }],
+    ["it is still being checked", { status: "checking" }, { status: "hidden" }],
+  ])("offers the free agent when no agent is ready and %s", (_label, state, expected) => {
+    expect(
+      resolveFreeAgentOffer([
+        other({ status: "install", canInstall: true }),
+        free(state),
+      ]),
+    ).toEqual(expected);
+  });
+
+  it("hides once any agent is ready, or when no agent declares a free sign-up", () => {
+    expect(
+      resolveFreeAgentOffer([
+        other({ status: "ready", detail: null }),
+        free({ status: "install", canInstall: true }),
+      ]),
+    ).toEqual({ status: "hidden" });
+    expect(
+      resolveFreeAgentOffer([other({ status: "install", canInstall: true })]),
+    ).toEqual({ status: "hidden" });
+    expect(resolveFreeAgentOffer(null)).toEqual({ status: "hidden" });
+  });
+});
+
+describe("resolvePendingFreeAgentSignIn", () => {
+  const free = (state: AgentSetupState) => ({ id: "free-agent", state });
+  const other = (state: AgentSetupState) => ({ id: "other-agent", state });
+  const signedOut: AgentSetupState = {
+    status: "signIn",
+    reason: "signedOut",
+    canSignIn: true,
+  };
+
+  it.each<[string, Parameters<typeof resolvePendingFreeAgentSignIn>[0], ReturnType<typeof resolvePendingFreeAgentSignIn>]>([
+    ["nothing is pending", { pendingAgentId: null, agents: [free(signedOut)], activeSignInAgentId: null }, "wait"],
+    ["the install is still running", { pendingAgentId: "free-agent", agents: [free({ status: "installing" })], activeSignInAgentId: null }, "wait"],
+    ["health hasn't caught up with a finished install", { pendingAgentId: "free-agent", agents: [free({ status: "install", canInstall: true })], activeSignInAgentId: null }, "wait"],
+    ["the installed agent needs sign-in", { pendingAgentId: "free-agent", agents: [free(signedOut)], activeSignInAgentId: null }, "start"],
+    ["the agent has no sign-in command", { pendingAgentId: "free-agent", agents: [free({ status: "signIn", reason: "signedOut", canSignIn: false })], activeSignInAgentId: null }, "clear"],
+    ["the install failed", { pendingAgentId: "free-agent", agents: [free({ status: "installFailed", message: "x", canInstall: true })], activeSignInAgentId: null }, "clear"],
+    ["the agent is already ready", { pendingAgentId: "free-agent", agents: [free({ status: "ready", detail: null })], activeSignInAgentId: null }, "clear"],
+    ["another agent became ready", { pendingAgentId: "free-agent", agents: [other({ status: "ready", detail: null }), free(signedOut)], activeSignInAgentId: null }, "clear"],
+    ["another agent is mid sign-in", { pendingAgentId: "free-agent", agents: [other({ status: "signingIn" }), free(signedOut)], activeSignInAgentId: "other-agent" }, "clear"],
+  ])("%s", (_label, args, expected) => {
+    expect(resolvePendingFreeAgentSignIn(args)).toBe(expected);
   });
 });
 

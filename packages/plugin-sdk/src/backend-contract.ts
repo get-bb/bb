@@ -1344,6 +1344,19 @@ export interface PluginProviderStrings {
 }
 
 /**
+ * A free account that unlocks this provider's agent. Setup offers the first
+ * provider that declares one to people with no ready agent: one button
+ * installs the agent and opens its sign-in, and a link opens `url` for
+ * people without an account.
+ */
+export interface PluginProviderFreeSignUp {
+  /** The account people sign in with ("ChatGPT"). */
+  accountName: string;
+  /** Where to create a free account. Must be `https:`. */
+  url: string;
+}
+
+/**
  * One selectable option for a picker — a service tier or a reasoning level.
  * `id` is the wire value the bridge receives; `label` is what the picker
  * shows. Declared lists are the cold-cache fallback; `model/list` is precise
@@ -1618,6 +1631,12 @@ export interface PluginProviderDeclaration {
    * project-scoped entries, which a global declaration cannot carry.
    */
   experimental_resolvesNativeRoots?: boolean;
+  /**
+   * A free account that unlocks this agent (see
+   * {@link PluginProviderFreeSignUp}). Declare it only when the account's
+   * free plan includes the agent.
+   */
+  experimental_freeSignUp?: PluginProviderFreeSignUp;
   /**
    * Derive this provider's opaque per-command options. Called synchronously
    * by the server for every session and turn command on a thread of this

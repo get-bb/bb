@@ -55,6 +55,7 @@ import type {
   PluginProviderOptionDescriptor,
   PluginProviderPermissionMode,
   PluginProviderReasoningLevel,
+  PluginProviderFreeSignUp,
   PluginProviderStrings,
   PluginSettingDescriptor,
   PluginSettingDescriptors,
@@ -759,6 +760,36 @@ function validateProviderStrings(
   });
 }
 
+function validateProviderFreeSignUp(
+  providerId: string,
+  value: unknown,
+): PluginProviderFreeSignUp {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `provider "${providerId}" experimental_freeSignUp must be { accountName, url }`,
+    );
+  }
+  const record: Record<string, unknown> = Object.fromEntries(
+    Object.entries(value),
+  );
+  const accountName = requireNonBlankString({
+    providerId,
+    field: "experimental_freeSignUp.accountName",
+    value: record.accountName,
+  });
+  const url = requireNonBlankString({
+    providerId,
+    field: "experimental_freeSignUp.url",
+    value: record.url,
+  });
+  if (!URL.canParse(url) || new URL(url).protocol !== "https:") {
+    throw new Error(
+      `provider "${providerId}" experimental_freeSignUp.url must be an https: URL`,
+    );
+  }
+  return Object.freeze({ accountName, url });
+}
+
 function validateProviderOptionDescriptors(args: {
   providerId: string;
   field: string;
@@ -1305,6 +1336,7 @@ const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
     "experimental_nativeSkillRoots",
     "experimental_nativeCommandRoots",
     "experimental_resolvesNativeRoots",
+    "experimental_freeSignUp",
   ]);
 
 const RENAMED_PROVIDER_FIELDS_SDK_VERSION = "0.4.16";
@@ -1583,6 +1615,10 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" experimental_resolvesNativeRoots must be a boolean`,
     );
   }
+  const freeSignUp =
+    declaration.experimental_freeSignUp === undefined
+      ? undefined
+      : validateProviderFreeSignUp(id, declaration.experimental_freeSignUp);
   const deriveProviderOptions = declaration.deriveProviderOptions;
   if (
     deriveProviderOptions !== undefined &&
@@ -1625,6 +1661,9 @@ export function validatePluginProviderDeclaration(
       ? {}
       : { experimental_nativeCommandRoots: nativeCommandRoots }),
     experimental_resolvesNativeRoots: resolvesNativeRoots ?? false,
+    ...(freeSignUp === undefined
+      ? {}
+      : { experimental_freeSignUp: freeSignUp }),
     ...(deriveProviderOptions === undefined
       ? {}
       : { deriveProviderOptions: deriveProviderOptions }),

@@ -138,6 +138,9 @@ export const providerInfoSchema = z.object({
   serviceTiers: z.array(providerOptionDescriptorSchema).optional(),
   reasoningLevels: z.array(providerOptionDescriptorSchema).optional(),
   extensionKinds: providerExtensionKindsSchema.optional(),
+  freeSignUp: z
+    .object({ accountName: z.string().min(1), url: z.string().min(1) })
+    .optional(),
 });
 export type ProviderInfo = z.infer<typeof providerInfoSchema>;
 

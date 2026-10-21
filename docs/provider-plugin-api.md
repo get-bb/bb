@@ -176,6 +176,11 @@ Still experimental on the declaration (see api_to_audit.md):
   within the workspace for a plain root and within the repository root for a
   root that walks ancestors or that the plugin resolved. Declared roots are
   relative to the host home (`user`) or the workspace (`project`) only.
+- `experimental_freeSignUp` — `{ accountName, url }`, a free account that
+  unlocks the agent. When no agent is ready, setup offers the first provider
+  that declares one: a button installs the agent and opens its sign-in, and a
+  link opens `url` (which must be `https:`) to create the account. Declare it
+  only when the account's free plan includes the agent.
 - `experimental_resolvesNativeRoots` — the plugin's `bb.host` entry answers
   `resolveNativeRoots({ providerId, cwd })` with the roots only that host
   and workspace know: a moved config directory, installed vendor plugins,

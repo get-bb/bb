@@ -207,6 +207,9 @@ export function buildPluginProviderRegistration(args: {
     reasoningLevels: projectReasoningLevels(declaration),
     ...(serviceTiers === undefined ? {} : { serviceTiers }),
     ...(extensionKinds === undefined ? {} : { extensionKinds }),
+    ...(declaration.experimental_freeSignUp === undefined
+      ? {}
+      : { freeSignUp: { ...declaration.experimental_freeSignUp } }),
   };
 
   const serverCapabilities: ProviderServerCapabilities = {

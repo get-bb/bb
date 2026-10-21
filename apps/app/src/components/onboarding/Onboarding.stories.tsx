@@ -14,7 +14,11 @@ import {
   type OnboardingConnectState,
   type OnboardingRepo,
 } from "./OnboardingViews";
-import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
+import {
+  resolveFreeAgentOffer,
+  type AgentSetupState,
+  type OnboardingStepId,
+} from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
@@ -34,9 +38,19 @@ const MOBILE_LINKS = {
 type AgentId = "claude-code" | "codex" | "pi";
 type AgentStates = Record<AgentId, AgentSetupState>;
 
-const AGENT_BASE: readonly { id: AgentId; name: string; logoUrl: string }[] = [
+const CHATGPT_FREE_SIGN_UP = {
+  accountName: "ChatGPT",
+  url: "https://chatgpt.com/",
+};
+
+const AGENT_BASE: readonly {
+  id: AgentId;
+  name: string;
+  logoUrl: string;
+  freeSignUp?: typeof CHATGPT_FREE_SIGN_UP;
+}[] = [
   { id: "claude-code", name: "Claude Code", logoUrl: claudeLogoUrl },
-  { id: "codex", name: "Codex", logoUrl: codexLogoUrl },
+  { id: "codex", name: "Codex", logoUrl: codexLogoUrl, freeSignUp: CHATGPT_FREE_SIGN_UP },
   { id: "pi", name: "Pi", logoUrl: piLogoUrl },
 ];
 
@@ -131,6 +145,7 @@ function buildAgents(
     name: agent.name,
     provider: { id: agent.id, logoUrl: agent.logoUrl },
     state: states[agent.id],
+    ...(agent.freeSignUp === undefined ? {} : { freeSignUp: agent.freeSignUp }),
     expanded:
       states[agent.id].status === "signingIn" ? (
         <StorySignInGuide
@@ -315,6 +330,7 @@ function AgentFrame({
 }) {
   const ready = anyReady(states);
   const blocked = !loading && !ready;
+  const agents = loading ? null : buildAgents(states, signInVariant);
   return (
     <OnboardingLayout
       step="agent"
@@ -334,7 +350,10 @@ function AgentFrame({
     >
       <AgentStep
         machineName={machineName}
-        agents={loading ? null : buildAgents(states, signInVariant)}
+        agents={agents}
+        freeAgentOffer={resolveFreeAgentOffer(agents)}
+        onSetUpFreeAgent={noop}
+        onCreateFreeAccount={noop}
         onSignIn={onSignIn}
         onInstall={onInstall}
         onViewInstallLog={onViewInstallLog}

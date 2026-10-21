@@ -280,6 +280,42 @@ describe("provider declaration target-state fields", () => {
     ).toThrow(/experimental_resolvesNativeRoots must be a boolean/u);
   });
 
+  it("accepts a free sign-up and refuses a malformed one", () => {
+    const normalized = validatePluginProviderDeclaration(
+      declaration({
+        experimental_freeSignUp: {
+          accountName: "Acme",
+          url: "https://acme.test/",
+        },
+      }),
+    );
+    expect(normalized.experimental_freeSignUp).toEqual({
+      accountName: "Acme",
+      url: "https://acme.test/",
+    });
+    expect(
+      validatePluginProviderDeclaration(declaration({}))
+        .experimental_freeSignUp,
+    ).toBeUndefined();
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({
+          experimental_freeSignUp: {
+            accountName: "Acme",
+            url: "http://acme.test/",
+          },
+        }),
+      ),
+    ).toThrow(/experimental_freeSignUp.url must be an https: URL/u);
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({
+          experimental_freeSignUp: { accountName: " ", url: "https://a.test" },
+        }),
+      ),
+    ).toThrow(/experimental_freeSignUp.accountName/u);
+  });
+
   it("refuses the removed host-absolute side", () => {
     expect(() =>
       validatePluginProviderDeclaration(
