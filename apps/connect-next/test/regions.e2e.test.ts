@@ -6,7 +6,7 @@ import {
   type TunnelDirectory,
 } from "../src/directory.js";
 import { silentLog } from "../src/log.js";
-import { replayState } from "../src/regions.js";
+import { PEER_LOOKUP_TIMEOUT_MS, replayState } from "../src/regions.js";
 import { startConnectNext, type ConnectNext } from "../src/service.js";
 import { ENTRY_HEADER, startBlackHole, startFlyProxy } from "./fly.js";
 import { frpBinaries, type FrpBinaries } from "./frp-binaries.js";
@@ -464,7 +464,7 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
     const elapsed = Date.now() - started;
     expect(answer.status).toBe(503);
     expect(answer.text).toContain("offline");
-    expect(elapsed).toBeLessThan(1_500);
+    expect(elapsed).toBeLessThan(PEER_LOOKUP_TIMEOUT_MS + 1_000);
     expect(fly.chains.at(-1)).toEqual(["m-a"]);
   });
 
