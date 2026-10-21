@@ -54,6 +54,7 @@ import {
   pluginUpdateCheckEntrySchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
+  type PluginApplyUpdateRequest,
   type PluginCapabilitySummary,
   type PluginCachePruneResponse,
   type PluginSafeModeUpdateResponse,
@@ -296,7 +297,10 @@ export interface PluginService {
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceDetail | undefined>;
-  applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
+  applyUpdate(
+    id: string,
+    request?: PluginApplyUpdateRequest,
+  ): Promise<PluginApplyUpdateOutcome>;
   remove(id: string): Promise<boolean>;
   pruneCache(args: { dryRun: boolean }): Promise<PluginCachePruneResponse>;
   setEnabled(
@@ -972,12 +976,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         : undefined;
     return {
       ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
-      ...(persisted?.outcome === "unavailable"
+      ...(persisted?.outcome === "unavailable" ||
+      (persisted?.outcome === "current" && persisted.detail !== undefined)
         ? { detail: persisted.detail }
         : {}),
       ...(row.availableCompatibleVersion === null
         ? {}
         : { availableVersion: row.availableCompatibleVersion }),
+      ...(persisted?.candidate === undefined
+        ? {}
+        : { availableDisplay: persisted.candidate.display }),
+      ...(persisted?.candidateBreaking === undefined
+        ? {}
+        : { availableBreaking: persisted.candidateBreaking }),
+      ...(persisted?.outsideRange === undefined
+        ? {}
+        : { outsideRange: persisted.outsideRange }),
       ...(row.newestIncompatibleVersion === null
         ? {}
         : { blockedVersion: row.newestIncompatibleVersion }),

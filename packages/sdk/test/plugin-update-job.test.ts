@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBbSdk } from "../src/core.js";
+import { PluginUpdateExpectedVersionUnsupportedError } from "../src/areas/plugins.js";
 import { createHttpTransport } from "../src/transport-http.js";
 
 const base = { id: "update-1", pluginId: "notes", displayName: "Notes" };
@@ -33,6 +34,20 @@ function server(final: object) {
     }),
   });
   return { sdk, requests };
+}
+
+function rejectingServer(error: string) {
+  return createBbSdk({
+    transport: createHttpTransport({
+      baseUrl: "http://bb.test",
+      runtime: "node",
+      fetch: async () =>
+        new Response(JSON.stringify({ error }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+    }),
+  });
 }
 
 describe("background plugin updates", () => {
@@ -76,6 +91,54 @@ describe("background plugin updates", () => {
       sdk.plugins.experimental_startUpdate({ pluginId: "notes" }),
     ).resolves.toMatchObject({ state: "running", phase: "checking" });
     expect(requests).toHaveLength(1);
+  });
+
+  it("sends the reviewed version so the server can refuse a different release", async () => {
+    const { sdk, requests } = server({ state: "completed", result });
+    await sdk.plugins.applyUpdate({
+      pluginId: "notes",
+      expectedVersion: "1.1.0",
+    });
+    await sdk.plugins.experimental_startUpdate({
+      pluginId: "notes",
+      expectedVersion: "1.1.0",
+    });
+    await sdk.plugins.experimental_startUpdate({ pluginId: "notes" });
+    const bodies = await Promise.all(
+      requests
+        .filter((request) => request.method === "POST")
+        .map((request) => request.json()),
+    );
+    expect(bodies).toEqual([
+      { expectedVersion: "1.1.0" },
+      { expectedVersion: "1.1.0" },
+      {},
+    ]);
+  });
+
+  it.each(["applyUpdate", "experimental_startUpdate"] as const)(
+    "explains that a server predating reviewed-release updates cannot honor %s's expectedVersion",
+    async (method) => {
+      const sdk = rejectingServer("expected an empty JSON object");
+      const error: unknown = await sdk.plugins[method]({
+        pluginId: "notes",
+        expectedVersion: "1.1.0",
+      }).catch((rejection: unknown) => rejection);
+      expect(error).toBeInstanceOf(PluginUpdateExpectedVersionUnsupportedError);
+      expect(error).toMatchObject({
+        pluginId: "notes",
+        expectedVersion: "1.1.0",
+        message:
+          'Update not started; this BB server predates reviewed-release updates and cannot honor expectedVersion "1.1.0". Upgrade the BB server, or retry without expectedVersion',
+      });
+    },
+  );
+
+  it("keeps other rejected update requests as the server reported them", async () => {
+    const sdk = rejectingServer('expected { "expectedVersion"?: string }');
+    await expect(
+      sdk.plugins.applyUpdate({ pluginId: "notes", expectedVersion: "1.1.0" }),
+    ).rejects.toThrow('HTTP 400: expected { "expectedVersion"?: string }');
   });
 
   it("reports a failed job instead of a successful update", async () => {
