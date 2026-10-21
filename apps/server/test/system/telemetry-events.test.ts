@@ -42,6 +42,23 @@ describe("client telemetry events", () => {
           properties: { entry: "first_run", outcome: "failed" },
         },
         {
+          name: "suggestion_shown",
+          properties: {
+            surface: "starter_row",
+            kind: "make_bb_yours",
+            trigger: "first_run",
+            suggestion_analytics_id: "4f0c8f5e-6b1a-4c55-9a39-2f1f1d0b8a11",
+          },
+        },
+        {
+          name: "suggestion_accepted",
+          properties: {
+            surface: "starter_row",
+            kind: "fix_todo",
+            suggestion_analytics_id: "4f0c8f5e-6b1a-4c55-9a39-2f1f1d0b8a11",
+          },
+        },
+        {
           name: "new_thread_submit",
           properties: { outcome: "failed" },
         },

@@ -1,17 +1,19 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import {
   usePromptDraftInputEmpty,
   type PromptDraftController,
 } from "@/hooks/usePromptDraftStorage";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { randomUuid } from "@/lib/random-uuid";
 
 export interface ComposerStarter {
-  id: string;
+  id: "make_bb_yours" | "explain_codebase" | "fix_todo";
   label: string;
   prompt: string;
   needsProject: boolean;
@@ -21,21 +23,21 @@ export const COMPOSER_STARTER_ROWS_HEADING = "Try asking";
 
 export const COMPOSER_STARTERS: readonly ComposerStarter[] = [
   {
-    id: "make-bb-yours",
+    id: "make_bb_yours",
     label: "Make bb yours",
     prompt:
       "Help me make bb my own. Ask what I'd like to change, like how it looks or a panel or tool I'm missing, then build it as a theme or plugin and install it.",
     needsProject: false,
   },
   {
-    id: "explain-codebase",
+    id: "explain_codebase",
     label: "Explain this codebase",
     prompt:
       "Give me a short tour of this codebase: what it does, how it's organized, and where to start.",
     needsProject: true,
   },
   {
-    id: "fix-todo",
+    id: "fix_todo",
     label: "Fix a small TODO",
     prompt:
       "Find one TODO or FIXME in this project that's safe to fix, fix it, and explain the change.",
@@ -118,17 +120,57 @@ export function ComposerStarterRows({
     () => createCoreComposerActions({ ...promptDraft, focus }),
     [focus, promptDraft],
   );
+  const [suggestionIds] = useState(
+    () =>
+      new Map(
+        COMPOSER_STARTERS.map((starter) => [starter.id, randomUuid()]),
+      ),
+  );
   const handleSelect = useCallback(
     (starter: ComposerStarter) => {
+      const suggestionId = suggestionIds.get(starter.id);
+      if (suggestionId !== undefined) {
+        recordTelemetryEvent({
+          name: "suggestion_accepted",
+          properties: {
+            surface: "starter_row",
+            kind: starter.id,
+            suggestion_analytics_id: suggestionId,
+          },
+        });
+      }
       composerActions.replace({ text: starter.prompt, mentions: [] });
       composerActions.focus();
     },
-    [composerActions],
+    [composerActions, suggestionIds],
   );
   const starters = isProjectless
     ? COMPOSER_STARTERS.filter((starter) => !starter.needsProject)
     : COMPOSER_STARTERS;
-  if (isSubmitting || !inputEmpty || !hasNoThreads) {
+  const visible = !isSubmitting && inputEmpty && hasNoThreads;
+  const shownRef = useRef(new Set<ComposerStarter["id"]>());
+  useEffect(() => {
+    if (!visible) return;
+    const shownStarters = isProjectless
+      ? COMPOSER_STARTERS.filter((starter) => !starter.needsProject)
+      : COMPOSER_STARTERS;
+    for (const starter of shownStarters) {
+      if (shownRef.current.has(starter.id)) continue;
+      const suggestionId = suggestionIds.get(starter.id);
+      if (suggestionId === undefined) continue;
+      shownRef.current.add(starter.id);
+      recordTelemetryEvent({
+        name: "suggestion_shown",
+        properties: {
+          surface: "starter_row",
+          kind: starter.id,
+          trigger: "first_run",
+          suggestion_analytics_id: suggestionId,
+        },
+      });
+    }
+  }, [isProjectless, suggestionIds, visible]);
+  if (!visible) {
     return null;
   }
   return (
