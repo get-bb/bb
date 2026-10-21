@@ -534,6 +534,9 @@ export function createPluginApi(options: {
     ports: readonly number[],
   ) => readonly number[];
   declareSharedPorts: PluginHosts["declareSharedPorts"];
+  setNextTunnels: PluginHosts["internal_DO_NOT_USE_setNextTunnels"];
+  nextTunnelStatuses: PluginHosts["internal_DO_NOT_USE_nextTunnelStatuses"];
+  onNextTunnelStatusChange: PluginHosts["internal_DO_NOT_USE_onNextTunnelStatusChange"];
   replaceDeclaredSharedPorts: (
     declarations: readonly {
       hostId: string;
@@ -580,6 +583,9 @@ export function createPluginApi(options: {
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
     declareSharedPorts,
+    setNextTunnels,
+    nextTunnelStatuses,
+    onNextTunnelStatusChange,
     replaceDeclaredSharedPorts,
     callPluginHost,
     registerProvider,
@@ -1168,6 +1174,23 @@ export function createPluginApi(options: {
           validateSharedPortDeclaration(hostId, ports),
         );
       }
+    },
+    internal_DO_NOT_USE_setNextTunnels(config) {
+      assertLive();
+      setNextTunnels(config);
+    },
+    internal_DO_NOT_USE_nextTunnelStatuses() {
+      assertLive();
+      return nextTunnelStatuses();
+    },
+    internal_DO_NOT_USE_onNextTunnelStatusChange(listener) {
+      assertLive();
+      if (typeof listener !== "function") {
+        throw new Error("next tunnel status subscription requires a listener");
+      }
+      const unsubscribe = onNextTunnelStatusChange(listener);
+      disposeHooks.push(unsubscribe);
+      return unsubscribe;
     },
   };
   const events: PluginEvents = {

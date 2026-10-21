@@ -29,8 +29,17 @@ Port shares: every port shared from the bb server's machine with
 (owner session only, like the bb connect share). `bb connect expose` prints
 that URL on a second line, and `bb connect-next status` lists each share as
 `share <port>  <url>  <state>` (`--json`: `shares[]` with `port`, `url`,
-`state` `pending` | `active` | `refused`, and `error`). Shares from other
-enrolled machines are not on the next address yet.
+`state` `pending` | `active` | `refused`, and `error`).
+
+Shares from other enrolled machines (`bb connect expose <port> --host
+<machine>`) answer at `https://<machine-label>--<port>.next.<account domain>`
+while connect next is on; the machine's own daemon runs the tunnel while the
+machine shares a port. `bb connect-next status` prints a
+`machine <name> (<host id>)  <label>  <state>` line per machine with its
+`share` lines (`--json`: `machines[]` with `hostId`, `hostName`, `label`,
+`state` `idle` | `connecting` | `connected` | `refused` | `offline` | `error`,
+`lastError`, and `shares[]`). A machine missing from the list shares nothing
+or runs a bb too old for connect next machine tunnels.
 
 The plugin itself is disabled by default: `bb plugin enable bb--connect-next`
 first if `bb connect-next` is not found.

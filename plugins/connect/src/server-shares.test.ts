@@ -5,13 +5,17 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { createConnectPlugin } from "./plugin.js";
 import plugin from "./server.js";
-import { nextSharePublicUrl } from "./next-address.js";
+import {
+  nextMachineSharePublicUrl,
+  nextSharePublicUrl,
+} from "./next-address.js";
 import { ShareChanges } from "./server-shares.js";
 import { FakeAccount, type FakeRpcArgs } from "./testing/fake-account.js";
 import type { ConnectStatus, ShareListing } from "./types.js";
 
 const SERVER_HOST_ID = "host-server";
 const REMOTE_HOST_ID = "host-air";
+const NEXT_ENROLLED_HOST_ID = "host-box";
 const CONNECT_NEXT = { kind: "plugin", pluginId: "bb--connect-next" } as const;
 
 interface Loaded {
@@ -61,11 +65,13 @@ async function load(): Promise<Loaded> {
           [
             { id: SERVER_HOST_ID, name: "Server" },
             { id: REMOTE_HOST_ID, name: "Air" },
+            { id: NEXT_ENROLLED_HOST_ID, name: "Box" },
           ] as never,
       },
     },
     sharedPortTunnelIdentities: {
       [REMOTE_HOST_ID]: { label: "sawyer-air", baseDomain: "getbb.app" },
+      [NEXT_ENROLLED_HOST_ID]: { label: "box", baseDomain: "next.getbb.app" },
     },
   });
   await createConnectPlugin({
@@ -171,7 +177,7 @@ describe("connect.internal_DO_NOT_USE.serverShares", () => {
 });
 
 describe("share URLs on the next address", () => {
-  it("adds the next URL for server-machine shares while connect next is on", async () => {
+  it("adds the next URL for every share while connect next is on", async () => {
     const current = await load();
     const { harness } = current.host;
 
@@ -201,7 +207,7 @@ describe("share URLs on the next address", () => {
       ).stdout,
     ) as ShareListing;
     expect(remote.url).toBe("https://sawyer-air--4000.getbb.app");
-    expect(remote.nextUrl).toBeUndefined();
+    expect(remote.nextUrl).toBe("https://sawyer-air--4000.next.getbb.app");
 
     const listed = await harness.runCli(["shares"]);
     expect(listed.stdout).toContain(
@@ -211,6 +217,10 @@ describe("share URLs on the next address", () => {
     expect(rpcListed.find((share) => share.port === 5173)).toMatchObject({
       url: "https://sawyer--5173.getbb.app",
       nextUrl: "https://sawyer--5173.next.getbb.app",
+    });
+    expect(rpcListed.find((share) => share.port === 4000)).toMatchObject({
+      url: "https://sawyer-air--4000.getbb.app",
+      nextUrl: "https://sawyer-air--4000.next.getbb.app",
     });
 
     current.next.status = {
@@ -222,7 +232,63 @@ describe("share URLs on the next address", () => {
   });
 });
 
+describe("shares of a machine enrolled through the next address", () => {
+  it("lists its next URL once, as the share's url", async () => {
+    const current = await load();
+    const { harness } = current.host;
+    current.next.status = {
+      enabled: true,
+      url: "https://sawyer.next.getbb.app",
+    };
+    const listing = JSON.parse(
+      (
+        await harness.runCli([
+          "expose",
+          "5392",
+          "--host",
+          NEXT_ENROLLED_HOST_ID,
+          "--json",
+        ])
+      ).stdout,
+    ) as ShareListing;
+    expect(listing.url).toBe("https://box--5392.next.getbb.app");
+    expect(listing).not.toHaveProperty("nextUrl");
+
+    expect(
+      await harness.runCli(["expose", "5392", "--host", NEXT_ENROLLED_HOST_ID]),
+    ).toMatchObject({
+      exitCode: 0,
+      stdout: "https://box--5392.next.getbb.app\n",
+    });
+    const listed = await harness.runCli([
+      "shares",
+      "--host",
+      NEXT_ENROLLED_HOST_ID,
+    ]);
+    expect(
+      listed.stdout.split("https://box--5392.next.getbb.app").length - 1,
+    ).toBe(1);
+    const rpcListed = (await harness.callRpc("listShares")) as ShareListing[];
+    const share = rpcListed.find((entry) => entry.port === 5392);
+    expect(share?.url).toBe("https://box--5392.next.getbb.app");
+    expect(share).not.toHaveProperty("nextUrl");
+  });
+});
+
 describe("nextSharePublicUrl", () => {
+  it("puts a machine's label and port on the next origin's domain", () => {
+    expect(
+      nextMachineSharePublicUrl("https://sawyer.next.getbb.app", "air", 4000),
+    ).toBe("https://air--4000.next.getbb.app");
+    expect(
+      nextMachineSharePublicUrl(
+        "http://cne2e.next.bb.localhost:40123",
+        "box",
+        3000,
+      ),
+    ).toBe("http://box--3000.next.bb.localhost:40123");
+  });
+
   it("puts the port after the label of the next origin", () => {
     expect(nextSharePublicUrl("https://sawyer.next.getbb.app", 5173)).toBe(
       "https://sawyer--5173.next.getbb.app",

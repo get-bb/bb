@@ -15,6 +15,7 @@ const LABEL = /^[a-z0-9][a-z0-9-]{0,62}$/u;
 const SHARE_PORT = /^[1-9]\d{0,4}$/u;
 const MAX_HOOK_BODY_BYTES = 64 * 1024;
 const ROUTE_SETTLE_MS = 150;
+export const REMOVAL_SETTLE_MS = 500;
 export const HOOK_RESOLVE_DEADLINE_MS = 7_000;
 
 type HookAnswer =
@@ -110,6 +111,7 @@ export interface FrpHookOptions {
   directory: TunnelDirectory;
   log: Log;
   onLogin?: (clientAddress: string, label: string) => void;
+  clientConnected?: (label: string) => boolean;
 }
 
 export function createFrpHooks(options: FrpHookOptions) {
@@ -214,6 +216,14 @@ export function createFrpHooks(options: FrpHookOptions) {
           label: proxy.label,
           subdomain: proxy.subdomain,
         });
+        const clientConnected = options.clientConnected;
+        if (clientConnected !== undefined) {
+          setTimeout(() => {
+            if (clientConnected(proxy.label)) {
+              directory.removed(proxy.subdomain);
+            }
+          }, REMOVAL_SETTLE_MS).unref();
+        }
       }
       return ACCEPT;
     }

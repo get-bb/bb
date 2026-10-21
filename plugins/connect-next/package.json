@@ -6,7 +6,7 @@
   "description": "Beta: also reach this bb at https://<label>.next.<your bb account's domain> through bb's Fly gate, next to bb connect.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.66"
+    "bbPluginSdk": ">=0.6.67"
   },
   "bb": {
     "name": "bb connect next (beta)",

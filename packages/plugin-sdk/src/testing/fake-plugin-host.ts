@@ -81,6 +81,8 @@ import type {
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
+  InternalDoNotUsePluginHostNextTunnelStatus,
+  InternalDoNotUsePluginNextTunnelConfig,
   PluginInteractionRequest,
   PluginInteractionResult,
   PluginKvStorage,
@@ -359,6 +361,15 @@ export interface FakePluginInspectionState {
     hostId: string;
     ports: number[];
   }>;
+  /** The last `bb.hosts.internal_DO_NOT_USE_setNextTunnels` config, or null. */
+  readonly internal_DO_NOT_USE_nextTunnelConfig: InternalDoNotUsePluginNextTunnelConfig | null;
+  /**
+   * Replace what `bb.hosts.internal_DO_NOT_USE_nextTunnelStatuses` returns and call
+   * every `internal_DO_NOT_USE_onNextTunnelStatusChange` listener.
+   */
+  internal_DO_NOT_USE_setNextTunnelStatuses(
+    statuses: readonly InternalDoNotUsePluginHostNextTunnelStatus[],
+  ): void;
   /** Calls made through bb.hosts.experimental_client, after input validation. */
   readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
@@ -1275,6 +1286,9 @@ function createFakePluginHostInternal(
 
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
+  let nextTunnelConfig: InternalDoNotUsePluginNextTunnelConfig | null = null;
+  let nextTunnelStatuses: InternalDoNotUsePluginHostNextTunnelStatus[] = [];
+  const nextTunnelListeners = new Set<() => void>();
   const hostRpcCalls: ExperimentalFakeHostRpcCall[] = [];
   const hostWorkerExitSubscriptions: FakeHostWorkerExitSubscription[] = [];
   const hostSignalSubscriptions: FakeHostSignalSubscription[] = [];
@@ -1419,9 +1433,29 @@ function createFakePluginHostInternal(
         sharedPortDeclarations[existingIndex] = replacement;
       }
     },
+    internal_DO_NOT_USE_setNextTunnels(config) {
+      assertLive();
+      nextTunnelConfig =
+        config === null
+          ? null
+          : { domain: config.domain, server: { ...config.server } };
+    },
+    internal_DO_NOT_USE_nextTunnelStatuses() {
+      assertLive();
+      return structuredClone(nextTunnelStatuses);
+    },
+    internal_DO_NOT_USE_onNextTunnelStatusChange(listener) {
+      assertLive();
+      nextTunnelListeners.add(listener);
+      return () => {
+        nextTunnelListeners.delete(listener);
+      };
+    },
   };
   disposeHooks.push(() => {
     sharedPortDeclarations.length = 0;
+    nextTunnelConfig = null;
+    nextTunnelListeners.clear();
   });
 
   const events: PluginEvents = {
@@ -1663,6 +1697,13 @@ function createFakePluginHostInternal(
     },
     internal_DO_NOT_USE_tunnelIngresses: tunnelIngresses,
     sharedPortDeclarations,
+    get internal_DO_NOT_USE_nextTunnelConfig() {
+      return nextTunnelConfig;
+    },
+    internal_DO_NOT_USE_setNextTunnelStatuses(statuses) {
+      nextTunnelStatuses = structuredClone([...statuses]);
+      for (const listener of [...nextTunnelListeners]) listener();
+    },
     experimental_hostRpcCalls: hostRpcCalls,
     sdk: sdkHarness,
     registrations: {

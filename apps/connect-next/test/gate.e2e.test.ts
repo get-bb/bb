@@ -115,6 +115,8 @@ const fixture: AccountFixture = {
 
 const owner = { cookie: `${SESSION}=sess-owner` };
 
+const machineLabelCalls: Array<{ credential: string; body: string }> = [];
+
 describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
   let binaries: FrpBinaries;
   let account: Awaited<ReturnType<typeof startAccountApi>>;
@@ -197,6 +199,16 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
       {
         directory: createLocalDirectory({ graceMs: GRACE_MS }),
         deadlines: { headMs: HEAD_MS, transcriptionHeadMs: HEAD_MS * 3 },
+        machineLabels: {
+          async assign(credential, body) {
+            machineLabelCalls.push({ credential, body: body.toString() });
+            return {
+              status: 200,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ label: "laptop" }),
+            };
+          },
+        },
       },
     );
     edge = await startEdge(gate.webPort);
@@ -207,6 +219,60 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     await Promise.all(clients.map((client) => client.kill()));
     await gate?.stop();
     await Promise.all([edge?.close(), origin?.close(), account?.close()]);
+  });
+
+  describe("machine label assignment", () => {
+    it("relays a machine's label request on a server address to the account API", async () => {
+      const assigned = await visit(
+        gate.webPort,
+        BEE,
+        "/api/connect/machine-label",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-connect-machine": "cred-machine",
+          },
+          body: JSON.stringify({ desiredName: "Laptop" }),
+        },
+      );
+      expect(assigned.status).toBe(200);
+      expect(JSON.parse(assigned.text)).toEqual({ label: "laptop" });
+      expect(machineLabelCalls.at(-1)).toEqual({
+        credential: "cred-machine",
+        body: JSON.stringify({ desiredName: "Laptop" }),
+      });
+
+      const bare = await visit(
+        gate.webPort,
+        BEE,
+        "/api/connect/machine-label",
+        {
+          method: "POST",
+          body: "{}",
+        },
+      );
+      expect(bare.status).toBe(401);
+      const wrongMethod = await visit(
+        gate.webPort,
+        BEE,
+        "/api/connect/machine-label",
+        { headers: { "x-bb-connect-machine": "cred-machine" } },
+      );
+      expect(wrongMethod.status).toBe(405);
+      const tooLarge = await visit(
+        gate.webPort,
+        BEE,
+        "/api/connect/machine-label",
+        {
+          method: "POST",
+          headers: { "x-bb-connect-machine": "cred-machine" },
+          body: "x".repeat(5000),
+        },
+      );
+      expect(tooLarge.status).toBe(413);
+      expect(machineLabelCalls).toHaveLength(1);
+    });
   });
 
   describe("frp admission", () => {
@@ -886,7 +952,7 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     it("waits for a dropped tunnel to come back, then gives up after the grace", async () => {
       await bee.kill();
       await waitFor(
-        () => gate.directory.locate("bee").kind === "offline",
+        () => !gate.directory.onlineLabels().includes("bee"),
         10_000,
         "bee to drop",
       );

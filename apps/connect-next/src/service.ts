@@ -5,6 +5,10 @@ import type { AddressInfo } from "node:net";
 import { importGateSigningKey } from "@bb/tunnel-contract/next";
 import { createAccountApi, type AccountApi } from "./account-api.js";
 import { AssetCache } from "./asset-cache.js";
+import {
+  createMachineLabelProxy,
+  type MachineLabelProxy,
+} from "./machine-label.js";
 import type { ConnectNextConfig } from "./config.js";
 import { createLocalDirectory, type TunnelDirectory } from "./directory.js";
 import {
@@ -37,6 +41,7 @@ const DRAIN_MS = 3_000;
 
 export interface ConnectNextOverrides {
   accounts?: AccountApi;
+  machineLabels?: MachineLabelProxy;
   directory?: TunnelDirectory;
   deadlines?: GateDeadlines;
   resolvePeers?: ResolvePeers;
@@ -122,6 +127,7 @@ export async function startConnectNext(
     log,
     onLogin: (clientAddress, label) =>
       frpConnections.loggedIn(clientAddress, label),
+    clientConnected: (label) => frpConnections.count(label) > 0,
   });
   const hooksPort = await listen(hooks.server, config.ports.hooks, LOOPBACK);
   const frps = await startFrps({
@@ -155,6 +161,9 @@ export async function startConnectNext(
     routing: regions?.routing ?? null,
     frpConnections,
     accounts,
+    machineLabels:
+      overrides.machineLabels ??
+      createMachineLabelProxy({ accountApiUrl: config.accountApiUrl }),
     directory,
     signingKey,
     cache: new AssetCache({

@@ -933,6 +933,45 @@ Decide whether `target` (share ports) belongs here or stays refused. Confirm
 the audience should stay free-form or become a typed server id, and whether a
 plugin may open audiences for servers other than its own.
 
+## `bb.hosts.internal_DO_NOT_USE_setNextTunnels`, `internal_DO_NOT_USE_nextTunnelStatuses`, `internal_DO_NOT_USE_onNextTunnelStatusChange`
+
+Internal to bb's own connect plugins (`connect`, `bb--connect-next`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_setNextTunnels(config | null)` turns bb connect next machine
+tunnels on (an `InternalDoNotUsePluginNextTunnelConfig`,
+`{ domain, server: { protocol, host, port } }`) or off. The server keeps one
+config owned by the calling plugin (another plugin's non-null call throws
+while it is set; a null call from a non-owner is a no-op), clears it when the
+owner is disabled or uninstalled, and sends it as `connect-next.replace` (and
+`connectNext` in the session-open response) to every connected daemon that
+holds a bb connect machine credential and opened its session with protocol
+247 or newer. A protocol-246 daemon is still accepted and only gets its
+Cloudflare shares. Each daemon runs frpc with one proxy per port declared
+through `declareSharedPorts` at `<label>--<port>.<domain>` while it shares at
+least one port, and refuses a config whose domain is not its trusted
+enrollment's base domain or `next.<base domain>`, or whose tunnel host is not
+`tunnel.<domain>`, or that is not `wss` for an https enrollment, so a plugin
+cannot send the machine credential elsewhere.
+`internal_DO_NOT_USE_nextTunnelStatuses()` returns each connected daemon's last
+`connect-next.status` report as `InternalDoNotUsePluginHostNextTunnelStatus`
+(dropped when its session ends), and
+`internal_DO_NOT_USE_onNextTunnelStatusChange(listener)` calls `listener` on any
+change and returns an unsubscribe function that disposal also runs.
+
+Core callers: none. Product policy (on or off, which domain) belongs to the
+`connect-next` plugin, which calls all three; core's Cloudflare machine tunnel
+needs no config because the daemon derives its gate from its enrollment.
+
+Docs: `backend-foundation.md`; the wire and daemon behavior are in
+[connect-next.md](connect-next.md) (Machine tunnels).
+
+**Audit before stabilizing.** Decide whether the config should be per host
+instead of global, whether the status should be pushed through `bb.realtime`
+instead of a listener, and whether the compatibility window for protocol 246
+can close (then `HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS` goes back to the
+current version only). Decide whether the Cloudflare machine tunnel should
+move onto the same frpc runner once next replaces it.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto

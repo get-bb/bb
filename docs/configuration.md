@@ -1082,8 +1082,12 @@ The builtin connect-next plugin is disabled by default. Enabled
 (`bb plugin enable bb--connect-next`) and switched on, it also makes this server
 reachable at `https://<label>.next.getbb.app` through the Fly gate, next to
 its connect address. The domain follows the bb account: `next.<host of the
-account's base URL>` (`next.vibecodethis.site` on staging). See the
-`connect-next` skill and [`connect-next.md`](connect-next.md).
+account's base URL>` (`next.vibecodethis.site` on staging). While it is on,
+every enrolled machine's daemon also serves the ports shared from it with
+`bb connect expose <port> --host <machine>` at
+`https://<machine-label>--<port>.next.getbb.app`, downloading `frpc` into
+`<daemon data dir>/connect-next/frp/`. See the `connect-next` skill and
+[`connect-next.md`](connect-next.md).
 
 | Connect next setting | Default | Effect                                                                      |
 | -------------------- | ------- | --------------------------------------------------------------------------- |
@@ -1091,7 +1095,7 @@ account's base URL>` (`next.vibecodethis.site` on staging). See the
 
 | Variable                 | Effect                                                                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_CONNECT_FRPC`        | Path of an `frpc` binary to run instead of the frp 0.71.0 release the plugin downloads and verifies.                              |
+| `BB_CONNECT_FRPC`        | Path of an `frpc` binary to run instead of the frp 0.71.0 release the plugin (or a host daemon) downloads and verifies.           |
 | `BB_CONNECT_NEXT_SERVER` | `ws://host:port` or `wss://host:port` of the frp server to dial instead of `wss://tunnel.<next domain>` derived from the account. |
 
 ### Modal machines

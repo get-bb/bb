@@ -165,7 +165,7 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
         "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely." +
         (nextOrigin === null
           ? ""
-          : ` This bb is also reachable through bb connect next at ${nextOrigin}, so for ports on the bb server's machine the command prints a second URL, ${nextSharePublicUrl(nextOrigin, "<port>")}; give the user both, or the one matching the address they use.`)
+          : ` This bb is also reachable through bb connect next at ${nextOrigin}, so the command prints a second URL on the next address (${nextSharePublicUrl(nextOrigin, "<port>")} for ports on the bb server's machine, <machine-label>--<port> on the same domain for other machines); give the user both, or the one matching the address they use.`)
       );
     });
 

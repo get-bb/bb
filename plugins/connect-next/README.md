@@ -62,3 +62,17 @@ the gate's assertion reaches the dev server and is ignored. Changes are
 applied by hot reload, so the main proxy and its connections stay up. The
 status lists each share with its URL and proxy state (`pending`, `active`,
 `refused` with the gate's reason); a refused share does not stop the tunnel.
+
+## Machines
+
+While the plugin's tunnel is wanted (on, signed in, service running),
+`src/tunnel.ts` calls `bb.hosts.internal_DO_NOT_USE_setNextTunnels({ domain, server })`
+with the same next domain and tunnel server it dials itself
+(`BB_CONNECT_NEXT_SERVER` included), and `null` otherwise. The server sends it
+to every enrolled machine's daemon; each runs its own `frpc` for the ports
+shared from it (see Machine tunnels in
+[`docs/connect-next.md`](../../docs/connect-next.md)). The plugin reads the
+daemons' reports with `bb.hosts.internal_DO_NOT_USE_nextTunnelStatuses()`, republishes
+its status on `bb.hosts.internal_DO_NOT_USE_onNextTunnelStatusChange`, and lists every
+machine that is not idle, shares a port or reports an error under `machines`
+in `status`, the CLI and the settings section.

@@ -20,6 +20,16 @@ export function nextSharePublicUrl(
   return `${url.protocol}//${label}--${port}${url.host.slice(dot)}`;
 }
 
+export function nextMachineSharePublicUrl(
+  nextOrigin: string,
+  machineLabel: string,
+  port: number | string,
+): string {
+  const url = new URL(nextOrigin);
+  const dot = url.host.indexOf(".");
+  return `${url.protocol}//${machineLabel}--${port}${url.host.slice(dot)}`;
+}
+
 export class NextAddress {
   private origin: string | null = null;
   private checkedAt = 0;

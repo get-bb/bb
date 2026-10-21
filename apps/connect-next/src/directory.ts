@@ -19,6 +19,7 @@ export type LabelPresence = "connected" | "disconnected";
 export interface TunnelDirectory {
   connected(proxy: TunnelProxy): void;
   disconnected(proxy: TunnelProxy): void;
+  removed(subdomain: string): void;
   locate(subdomain: string): TunnelLocation;
   lookup(subdomain: string, options: LookupOptions): Promise<TunnelLocation>;
   awaitReturn(subdomain: string, signal: AbortSignal): Promise<TunnelLocation>;
@@ -50,8 +51,14 @@ export function createLocalDirectory(
   const waiters = new Map<string, Set<() => void>>();
   const listeners: ((label: string, state: LabelPresence) => void)[] = [];
 
+  const subdomainsByLabel = new Map<string, Set<string>>();
+
   function online(subdomain: string): boolean {
     return (clients.get(subdomain)?.size ?? 0) > 0;
+  }
+
+  function held(label: string): boolean {
+    return (subdomainsByLabel.get(label)?.size ?? 0) > 0;
   }
 
   function wake(subdomain: string): void {
@@ -64,15 +71,17 @@ export function createLocalDirectory(
 
   return {
     connected(proxy) {
-      const wasOnline = online(proxy.subdomain);
+      const wasHeld = held(proxy.label);
       const set = clients.get(proxy.subdomain) ?? new Set<string>();
       set.add(proxy.clientId);
       clients.set(proxy.subdomain, set);
+      const subdomains =
+        subdomainsByLabel.get(proxy.label) ?? new Set<string>();
+      subdomains.add(proxy.subdomain);
+      subdomainsByLabel.set(proxy.label, subdomains);
       lostAt.delete(proxy.subdomain);
       wake(proxy.subdomain);
-      if (!wasOnline && proxy.subdomain === proxy.label) {
-        announce(proxy.label, "connected");
-      }
+      if (!wasHeld) announce(proxy.label, "connected");
     },
     disconnected(proxy) {
       const set = clients.get(proxy.subdomain);
@@ -80,9 +89,17 @@ export function createLocalDirectory(
       if (set.size > 0) return;
       clients.delete(proxy.subdomain);
       lostAt.set(proxy.subdomain, now());
-      if (proxy.subdomain === proxy.label) {
+      const subdomains = subdomainsByLabel.get(proxy.label);
+      subdomains?.delete(proxy.subdomain);
+      if (subdomains !== undefined && subdomains.size === 0) {
+        subdomainsByLabel.delete(proxy.label);
         announce(proxy.label, "disconnected");
       }
+    },
+    removed(subdomain) {
+      if (online(subdomain) || !lostAt.has(subdomain)) return;
+      lostAt.delete(subdomain);
+      wake(subdomain);
     },
     locate(subdomain) {
       return online(subdomain) ? { kind: "here" } : { kind: "offline" };
@@ -93,7 +110,7 @@ export function createLocalDirectory(
     async awaitReturn(subdomain, signal) {
       if (online(subdomain)) return { kind: "here" };
       const label = labelOf(subdomain);
-      if (subdomain !== label && online(label)) {
+      if (subdomain !== label && held(label)) {
         lostAt.delete(subdomain);
         return { kind: "offline" };
       }
@@ -120,9 +137,7 @@ export function createLocalDirectory(
       return online(subdomain) ? { kind: "here" } : { kind: "offline" };
     },
     onlineLabels() {
-      return [...clients.keys()].filter(
-        (subdomain) => !subdomain.includes("--"),
-      );
+      return [...subdomainsByLabel.keys()];
     },
     onLabelPresence(listener) {
       listeners.push(listener);

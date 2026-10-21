@@ -94,6 +94,10 @@ to the client RPCs and answered only when the caller is that plugin:
 Connect asks `bb--connect-next`'s `status` RPC (2 s timeout; a disabled
 plugin counts as off) whenever it builds a share listing. While that status is
 `enabled` with a `url`, server-machine listings carry
-`nextUrl = <scheme>://<label>--<port>.<next domain>`; `bb connect expose`
+`nextUrl = <scheme>://<label>--<port>.<next domain>` and other machines'
+listings `nextUrl = <scheme>://<machine-label>--<port>.<next domain>` (the
+machine label from `bb.hosts.ensureSharedPortTunnel`); `bb connect expose`
 prints it on a second line, `bb connect shares` and `bb connect status` after
-the first URL, and the remote-access agent instructions mention it.
+the first URL, and the remote-access agent instructions mention it. A machine
+enrolled through the next address already has `url` on the next domain, so its
+listing has no `nextUrl` and the address is printed once.

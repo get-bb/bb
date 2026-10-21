@@ -1692,6 +1692,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ports,
         });
       },
+      setNextTunnels: (config) => {
+        if (!deps.sharedPorts) {
+          throw new Error("host shared-port control plane is unavailable");
+        }
+        deps.sharedPorts.setNextTunnelConfig(row.id, config);
+      },
+      nextTunnelStatuses: () =>
+        (deps.sharedPorts?.listNextTunnelStatuses() ?? []).map((entry) => ({
+          hostId: entry.hostId,
+          hostName: entry.hostName,
+          ...entry.status,
+        })),
+      onNextTunnelStatusChange: (listener) =>
+        deps.sharedPorts?.onNextTunnelStatusChange(listener) ?? (() => {}),
       replaceDeclaredSharedPorts: (declarations) => {
         if (declarations.length > 0 && !deps.sharedPorts) {
           throw new Error("host shared-port control plane is unavailable");

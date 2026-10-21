@@ -1,4 +1,8 @@
-import type { PluginLogger } from "@get-bb/plugin-sdk";
+import type {
+  InternalDoNotUsePluginHostNextTunnelStatus,
+  InternalDoNotUsePluginNextTunnelConfig,
+  PluginLogger,
+} from "@get-bb/plugin-sdk";
 import {
   FrpcSupervisor,
   loopbackTarget,
@@ -15,6 +19,7 @@ import { nextSiteForAccount } from "./next-site.js";
 import { shareProxyName, shareSubdomain } from "./shares.js";
 import type { OpenTunnelIngress, TunnelIngress } from "./ingress.js";
 import type {
+  ConnectNextMachine,
   ConnectNextShare,
   ConnectNextState,
   ConnectNextStatus,
@@ -35,6 +40,10 @@ export interface NextTunnelOptions {
   log: PluginLogger;
   onStatusChange?(status: ConnectNextStatus): void;
   timing?: Partial<NextTunnelTiming>;
+  setMachineTunnels?(
+    config: InternalDoNotUsePluginNextTunnelConfig | null,
+  ): void;
+  machineStatuses?(): InternalDoNotUsePluginHostNextTunnelStatus[];
 }
 
 interface Session {
@@ -79,6 +88,7 @@ export class NextTunnel {
   private lastPublished = "";
   private idleSince = Date.now();
   private sharePorts: number[] = [];
+  private machineConfig = "null";
   private work: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: NextTunnelOptions) {
@@ -125,6 +135,10 @@ export class NextTunnel {
     return this.work;
   }
 
+  machinesChanged(): void {
+    this.publish();
+  }
+
   childPid(): number | null {
     return this.session?.supervisor.childPid() ?? null;
   }
@@ -164,7 +178,60 @@ export class NextTunnel {
       nextRetryAt: supervised?.nextRetryAt ?? null,
       since: supervised?.since ?? this.idleSince,
       shares: this.sharesFrom(supervised),
+      machines: this.machinesFor(state),
     };
+  }
+
+  private machinesFor(state: ConnectNextState): ConnectNextMachine[] {
+    const identity = this.identity;
+    if (state === "off" || identity === null) return [];
+    const site = nextSiteForAccount(identity.baseUrl);
+    return (this.options.machineStatuses?.() ?? [])
+      .filter(
+        (machine) =>
+          machine.state !== "idle" ||
+          machine.shares.length > 0 ||
+          machine.lastError !== null,
+      )
+      .map((machine) => ({
+        hostId: machine.hostId,
+        hostName: machine.hostName,
+        label: machine.label,
+        state: machine.state,
+        lastError: machine.lastError,
+        nextRetryAt: machine.nextRetryAt,
+        since: machine.since,
+        shares: machine.shares.map((share) => ({
+          port: share.port,
+          url:
+            machine.label === null
+              ? ""
+              : site.origin(shareSubdomain(machine.label, share.port)),
+          state: share.state,
+          error: share.error,
+        })),
+      }));
+  }
+
+  private syncMachineTunnels(): void {
+    const identity = this.identity;
+    const config: InternalDoNotUsePluginNextTunnelConfig | null =
+      this.running && this.enabled && identity !== null
+        ? {
+            domain: nextSiteForAccount(identity.baseUrl).domain,
+            server: this.serverFor(identity),
+          }
+        : null;
+    const key = JSON.stringify(config);
+    if (key === this.machineConfig) return;
+    try {
+      this.options.setMachineTunnels?.(config);
+      this.machineConfig = key;
+    } catch (error) {
+      this.options.log.warn(
+        `could not ${config === null ? "stop" : "start"} machine tunnels on connect next: ${errorText(error)}`,
+      );
+    }
   }
 
   private sharesFrom(
@@ -189,6 +256,7 @@ export class NextTunnel {
       if (generation !== this.generation) return;
       await this.teardown();
       if (generation !== this.generation) return;
+      this.syncMachineTunnels();
       const identity = this.identity;
       if (!this.running || !this.enabled || identity === null) {
         this.publish();

@@ -14,7 +14,10 @@ import {
   deriveConnectBaseUrl,
   type ConnectCredential,
 } from "@bb/connect-client";
-import { nextSharePublicUrl } from "./next-address.js";
+import {
+  nextMachineSharePublicUrl,
+  nextSharePublicUrl,
+} from "./next-address.js";
 import type { ShareListing } from "./types.js";
 
 export const SHARES_KV_KEY = "shares";
@@ -284,7 +287,7 @@ export class ShareRegistry {
       return listing;
     }
 
-    const url = await this.urlFor(host, validated);
+    const { url, machineLabel } = await this.urlFor(host, validated);
     const key = shareKey(host.id, validated);
     const share: RestoredShare = {
       hostId: host.id,
@@ -306,7 +309,7 @@ export class ShareRegistry {
       port: validated,
       createdAt: share.createdAt,
       url,
-      ...this.nextUrlFor(host, validated, nextOrigin),
+      ...this.nextUrlFor(host, validated, url, nextOrigin, machineLabel),
     };
     this.updateSnapshot(listing, false);
     this.options.onChange?.();
@@ -483,11 +486,16 @@ export class ShareRegistry {
   private nextUrlFor(
     host: ShareHost,
     port: number,
+    url: string,
     nextOrigin: string | null,
+    machineLabel: string | null,
   ): Pick<ShareListing, "nextUrl"> {
-    return host.isServer && nextOrigin !== null
-      ? { nextUrl: nextSharePublicUrl(nextOrigin, port) }
-      : {};
+    if (nextOrigin === null) return {};
+    if (!host.isServer && machineLabel === null) return {};
+    const nextUrl = host.isServer
+      ? nextSharePublicUrl(nextOrigin, port)
+      : nextMachineSharePublicUrl(nextOrigin, machineLabel ?? "", port);
+    return nextUrl === url ? {} : { nextUrl };
   }
 
   private async resolveListing(
@@ -499,13 +507,14 @@ export class ShareRegistry {
     try {
       host ??= await this.resolveHost(share);
       if (host.isServer) this.serverHostId = host.id;
+      const { url, machineLabel } = await this.urlFor(host, share.port);
       return {
         hostId: host.id,
         hostName: host.name,
         port: share.port,
         createdAt: share.createdAt,
-        url: await this.urlFor(host, share.port),
-        ...this.nextUrlFor(host, share.port, nextOrigin),
+        url,
+        ...this.nextUrlFor(host, share.port, url, nextOrigin, machineLabel),
       };
     } catch (error) {
       return this.unavailableListing(share, error, host);
@@ -550,11 +559,19 @@ export class ShareRegistry {
       : `Share URL unavailable: ${errorMessage(error)}`;
   }
 
-  private async urlFor(host: ShareHost, port: number): Promise<string> {
-    if (host.isServer) return this.serverUrl(port);
+  private async urlFor(
+    host: ShareHost,
+    port: number,
+  ): Promise<{ url: string; machineLabel: string | null }> {
+    if (host.isServer) {
+      return { url: this.serverUrl(port), machineLabel: null };
+    }
     try {
       const identity = await this.options.hosts.ensureSharedPortTunnel(host.id);
-      return machineSharePublicUrl(identity, port);
+      return {
+        url: machineSharePublicUrl(identity, port),
+        machineLabel: identity.label,
+      };
     } catch (error) {
       const prefix = `Cannot share port ${port} from host "${host.name}" (${host.id})`;
       const code = sharedPortErrorCode(error);

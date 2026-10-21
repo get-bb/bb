@@ -42,6 +42,10 @@ import {
   type PeerRouting,
 } from "./regions.js";
 import { text, type Reply } from "./reply.js";
+import {
+  MAX_MACHINE_LABEL_BODY_BYTES,
+  type MachineLabelProxy,
+} from "./machine-label.js";
 import { trackServerFrames } from "./ws-frames.js";
 import type { SessionRefresher } from "./session-refresh.js";
 import {
@@ -80,6 +84,7 @@ export interface GateOptions {
   vhost: { host: string; port: number };
   frpBind: { host: string; port: number };
   log: Log;
+  machineLabels?: MachineLabelProxy;
   deadlines?: GateDeadlines;
   now?: () => number;
 }
@@ -733,6 +738,40 @@ export function createGate(options: GateOptions) {
     );
   }
 
+  async function assignMachineLabel(
+    request: http.IncomingMessage,
+    credential: string,
+  ): Promise<Reply> {
+    const proxy = options.machineLabels;
+    if (proxy === undefined) {
+      request.resume();
+      return text("bb connect: not found\n", 404);
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of request) {
+      size += (chunk as Buffer).length;
+      if (size > MAX_MACHINE_LABEL_BODY_BYTES) {
+        request.resume();
+        return text("bb connect: request too large\n", 413);
+      }
+      chunks.push(chunk as Buffer);
+    }
+    try {
+      const answer = await proxy.assign(credential, Buffer.concat(chunks));
+      log("info", "machine_label", { status: answer.status });
+      return answer;
+    } catch (error) {
+      log("warn", "machine_label_failed", {
+        error: error instanceof Error ? error.name : "error",
+      });
+      return text(
+        "bb connect: the account service could not be reached\n",
+        502,
+      );
+    }
+  }
+
   async function serve(
     request: http.IncomingMessage,
     response: http.ServerResponse,
@@ -778,6 +817,11 @@ export function createGate(options: GateOptions) {
         if (decision.kind === "reply") {
           request.resume();
           return preparedReply(decision.reply);
+        }
+        if (decision.kind === "machine-label") {
+          return preparedReply(
+            await assignMachineLabel(request, decision.credential),
+          );
         }
         exchange.auth = decision.forward.auth;
         return prepareForward(request, decision.forward, exchange);
@@ -893,6 +937,9 @@ export function createGate(options: GateOptions) {
           accounts,
         );
         if (decision.kind === "reply") return decision;
+        if (decision.kind === "machine-label") {
+          return { kind: "reply", reply: text("bb connect: not found\n", 404) };
+        }
         const { forward } = decision;
         scoped.auth = forward.auth;
         const routed = await route(request, forward, scoped, true);

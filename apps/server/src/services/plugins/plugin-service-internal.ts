@@ -70,6 +70,9 @@ export interface PluginServiceDeps {
     | "validateSharedPortDeclaration"
     | "replaceDeclarationsForOwner"
     | "clearDeclarationsForOwner"
+    | "setNextTunnelConfig"
+    | "listNextTunnelStatuses"
+    | "onNextTunnelStatusChange"
   >;
   ensureSharedPortTunnel?: (
     hostId: string,

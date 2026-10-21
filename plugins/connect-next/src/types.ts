@@ -25,6 +25,28 @@ export const connectNextShareSchema = z
 
 export type ConnectNextShare = z.infer<typeof connectNextShareSchema>;
 
+export const connectNextMachineSchema = z
+  .object({
+    hostId: z.string(),
+    hostName: z.string(),
+    label: z.string().nullable(),
+    state: z.enum([
+      "idle",
+      "connecting",
+      "connected",
+      "refused",
+      "offline",
+      "error",
+    ]),
+    lastError: z.string().nullable(),
+    nextRetryAt: z.number().nullable(),
+    since: z.number(),
+    shares: z.array(connectNextShareSchema),
+  })
+  .strict();
+
+export type ConnectNextMachine = z.infer<typeof connectNextMachineSchema>;
+
 export const connectNextStatusSchema = z
   .object({
     enabled: z.boolean(),
@@ -36,6 +58,7 @@ export const connectNextStatusSchema = z
     nextRetryAt: z.number().nullable(),
     since: z.number(),
     shares: z.array(connectNextShareSchema),
+    machines: z.array(connectNextMachineSchema),
   })
   .strict();
 

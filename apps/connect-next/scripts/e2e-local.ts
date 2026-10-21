@@ -23,6 +23,7 @@ import {
   signGateAssertion,
 } from "@bb/tunnel-contract/next";
 import { ENTRY_HEADER, startFlyProxy } from "../test/fly.js";
+import { LIVE_TEST_PROVIDER_ID } from "@bb/test-helpers";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -85,6 +86,7 @@ const SERVER_PORT = ports.serverPort;
 const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const NEXT_DOMAIN = "next.bb.localhost";
 const SERVER_HOST_ID = "host-e2e-server";
+const OLD_DAEMON_REPO = process.env.BB_E2E_OLD_DAEMON_REPO;
 
 const children = new Set<ChildProcess>();
 const results: Array<{ name: string; ok: boolean; detail: string }> = [];
@@ -121,12 +123,13 @@ function start(
   command: string,
   args: string[],
   env: NodeJS.ProcessEnv,
+  cwd: string = REPO_ROOT,
 ): ChildProcess {
   const out = createWriteStream(path.join(LOG_DIR, `${name}.log`), {
     flags: "a",
   });
   const child = spawn(command, args, {
-    cwd: REPO_ROOT,
+    cwd,
     env,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -814,8 +817,9 @@ async function openShareWs(
   sharePort: number,
   cookie: string,
   origin: string,
+  label: string = LABEL,
 ): Promise<{ opened: boolean; status: number | null; reply: string | null }> {
-  const host = `${LABEL}--${sharePort}.${NEXT_DOMAIN}:${visitPort}`;
+  const host = `${label}--${sharePort}.${NEXT_DOMAIN}:${visitPort}`;
   const socket = new WebSocket(`ws://127.0.0.1:${visitPort}/`, "vite-hmr", {
     headers: { host, origin, cookie, ...entryHeaders },
   });
@@ -1130,6 +1134,700 @@ async function checkShares(
     bbCli(["connect", "unexpose", String(dev.port)]);
   } finally {
     await dev.close();
+  }
+}
+
+function seedMachine(ownerId: string, machineId: string): string {
+  const credential = `bbcm_e2e_${randomBytes(16).toString("hex")}`;
+  const hash = createHash("sha256").update(credential).digest("hex");
+  d1(
+    `INSERT INTO machine (id, user_id, name, credential_hash, created_at) VALUES (${sqlText(machineId)}, ${sqlText(ownerId)}, ${sqlText(machineId)}, ${sqlText(hash)}, ${Date.now()})`,
+  );
+  return credential;
+}
+
+function bbDb<T>(query: (db: DatabaseSync) => T): T {
+  const db = new DatabaseSync(path.join(BB_DATA, "bb.db"), { readOnly: true });
+  try {
+    return query(db);
+  } finally {
+    db.close();
+  }
+}
+
+interface MachineDaemon {
+  name: string;
+  hostId: string;
+  dataDir: string;
+  child: ChildProcess;
+}
+
+async function startMachineDaemon(args: {
+  name: string;
+  repo: string;
+  serverUrl: string;
+  credential: string;
+}): Promise<MachineDaemon> {
+  const response = await fetch(`${SERVER_URL}/api/v1/hosts/join-codes`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const issued = (await response.json()) as {
+    joinCode: string;
+    hostId: string;
+  };
+  if (response.status !== 201) {
+    throw new Error(`join code: ${response.status} ${JSON.stringify(issued)}`);
+  }
+  const dataDir = path.join(WORK_DIR, args.name);
+  await mkdir(dataDir, { recursive: true });
+  const child = start(
+    args.name,
+    process.execPath,
+    ["--conditions=source", "--import", "tsx", "apps/host-daemon/src/index.ts"],
+    cleanEnv({
+      NODE_ENV: "development",
+      BB_DATA_DIR: dataDir,
+      BB_SERVER_URL: args.serverUrl,
+      BB_HOST_DAEMON_PORT: String(await freePort()),
+      BB_HOST_ID: issued.hostId,
+      BB_HOST_ENROLL_KEY: issued.joinCode,
+      BB_CONNECT_MACHINE_CREDENTIAL: args.credential,
+      BB_CONNECT_FRPC: path.join(FRP_DIR, "frpc"),
+      BB_TELEMETRY: "false",
+      BB_LOG_LEVEL: "debug",
+    }),
+    args.repo,
+  );
+  return { name: args.name, hostId: issued.hostId, dataDir, child };
+}
+
+async function hostConnected(hostId: string): Promise<boolean> {
+  return waitFor(
+    `host ${hostId} to connect`,
+    async () => {
+      const response = await fetch(`${SERVER_URL}/api/v1/hosts/${hostId}`);
+      if (!response.ok) return null;
+      const body = (await response.json()) as { status?: string };
+      return body.status === "connected" ? true : null;
+    },
+    180_000,
+  ).catch(() => false);
+}
+
+function latestSessionProtocol(hostId: string): number | null {
+  return bbDb((db) => {
+    const row = db
+      .prepare(
+        "SELECT protocol_version FROM host_daemon_sessions WHERE host_id = ? ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(hostId) as { protocol_version: number } | undefined;
+    return row?.protocol_version ?? null;
+  });
+}
+
+function hostConnectMachineId(hostId: string): string | null {
+  return bbDb((db) => {
+    const row = db
+      .prepare("SELECT connect_machine_id FROM hosts WHERE id = ?")
+      .get(hostId) as { connect_machine_id: string | null } | undefined;
+    return row?.connect_machine_id ?? null;
+  });
+}
+
+function machineFrpcRunning(dataDir: string): boolean {
+  const config = path.join(dataDir, "connect-next", "frp", "frpc.json");
+  const result = spawnSync("pgrep", ["-f", config], { encoding: "utf8" });
+  return result.status === 0 && result.stdout.trim() !== "";
+}
+
+interface MachineStatus {
+  hostId: string;
+  label: string | null;
+  state: string;
+  lastError: string | null;
+  shares: Array<{ port: number; url: string; state: string }>;
+}
+
+async function machineStatus(hostId: string): Promise<MachineStatus | null> {
+  const status = await connectNextStatus();
+  const machines = (status?.machines ?? []) as MachineStatus[];
+  return machines.find((machine) => machine.hostId === hostId) ?? null;
+}
+
+async function runThreadOnMachine(hostId: string): Promise<void> {
+  const projects = bbCli(["project", "list", "--include-personal", "--json"]);
+  const listed = JSON.parse(projects.stdout || "[]") as Array<{
+    id: string;
+    kind?: string;
+    isPersonal?: boolean;
+    name?: string;
+  }>;
+  const personal =
+    listed.find((project) => project.kind === "personal") ??
+    listed.find((project) => project.isPersonal === true) ??
+    listed[0];
+  if (personal === undefined) {
+    check("remote join: a thread runs on the machine", false, "no project");
+    return;
+  }
+  const spawned = bbCli([
+    "thread",
+    "spawn",
+    "--project",
+    personal.id,
+    "--machine",
+    hostId,
+    "--new-environment",
+    "personal",
+    "--provider",
+    LIVE_TEST_PROVIDER_ID,
+    "--prompt",
+    "Reply with the single word ok and nothing else. Do not run any tools.",
+    "--json",
+  ]);
+  const thread = JSON.parse(spawned.stdout || "{}") as {
+    id?: string;
+    environmentId?: string;
+  };
+  if (thread.id === undefined) {
+    check(
+      "remote join: a thread runs on the machine",
+      false,
+      cliDetail(spawned),
+    );
+    return;
+  }
+  const waited = bbCli([
+    "thread",
+    "wait",
+    thread.id,
+    "--event",
+    "turn/completed",
+    "--timeout",
+    "240s",
+    "--json",
+  ]);
+  const shown = bbCli(["thread", "show", thread.id, "--json"]);
+  const environmentHost = bbDb((db) => {
+    const row = db
+      .prepare(
+        "SELECT e.host_id AS host_id FROM threads t JOIN environments e ON e.id = t.environment_id WHERE t.id = ?",
+      )
+      .get(thread.id ?? "") as { host_id: string } | undefined;
+    return row?.host_id ?? null;
+  });
+  check(
+    "remote join: a thread runs a turn on the machine joined through the next address",
+    waited.status === 0 && environmentHost === hostId,
+    `thread ${thread.id} on ${environmentHost ?? "?"}: ${cliDetail(waited)} ${shown.stdout.slice(0, 120).replace(/\n/gu, " ")}`,
+  );
+}
+
+async function checkMachines(
+  visitPort: number,
+  gatePort: number,
+  ownerId: string,
+  ownerCookie: string,
+  otherCookie: string,
+): Promise<void> {
+  const credential = seedMachine(ownerId, "machine-e2e-next");
+  const daemon = await startMachineDaemon({
+    name: "machine-next",
+    repo: REPO_ROOT,
+    serverUrl: `http://${LABEL}.${NEXT_DOMAIN}:${gatePort}`,
+    credential,
+  });
+  const connected = await hostConnected(daemon.hostId);
+  check(
+    "remote join: a machine enrolls with a join code and connects through the next address",
+    connected,
+    `host ${daemon.hostId}`,
+  );
+  if (!connected) return;
+  check(
+    "remote join: the server records the machine's bb connect identity from the gate's assertion",
+    hostConnectMachineId(daemon.hostId) === "machine-e2e-next",
+    String(hostConnectMachineId(daemon.hostId)),
+  );
+  await runThreadOnMachine(daemon.hostId);
+
+  const dev = await startDevServer();
+  try {
+    const exposed = bbCli([
+      "connect",
+      "expose",
+      String(dev.port),
+      "--host",
+      daemon.hostId,
+      "--json",
+    ]);
+    const listing = JSON.parse(exposed.stdout || "{}") as {
+      url?: string;
+      nextUrl?: string;
+    };
+    const active = await waitFor(
+      "the machine's share proxy",
+      async () => {
+        const machine = await machineStatus(daemon.hostId);
+        const share = machine?.shares.find((entry) => entry.port === dev.port);
+        return machine?.state === "connected" && share?.state === "active"
+          ? machine
+          : null;
+      },
+      60_000,
+    ).catch(() => null);
+    const label = active?.label ?? "";
+    const machineForwards = await waitFor(
+      "the gate's machine_label log",
+      async () => {
+        const count = await gateLogCount("machine_label");
+        return count > 0 ? count : null;
+      },
+      10_000,
+    ).catch(() => 0);
+    check(
+      "remote join: the machine's label request is relayed by the gate to the account API",
+      machineForwards > 0 && label !== "",
+      `${machineForwards} relayed, label ${label || "none"}`,
+    );
+    const nextShareUrl = `http://${label}--${dev.port}.next.${new URL(APP_URL).host}`;
+    check(
+      "machines: bb connect expose --host lists the next URL of the machine's share",
+      exposed.status === 0 && listing.nextUrl === nextShareUrl,
+      `${listing.url ?? cliDetail(exposed)} | ${listing.nextUrl ?? "no nextUrl"}`,
+    );
+    check(
+      "machines: bb connect-next status lists the machine's tunnel and share as active",
+      active !== null &&
+        active.shares.some((share) => share.url === nextShareUrl),
+      JSON.stringify(active),
+    );
+    const text = bbCli(["connect-next", "status"]);
+    check(
+      "machines: bb connect-next status prints the machine and its share",
+      text.stdout.includes(`machine `) && text.stdout.includes(nextShareUrl),
+      text.stdout.trim().split("\n").slice(-3).join(" | "),
+    );
+    const frpcConfig = JSON.parse(
+      await readFile(
+        path.join(daemon.dataDir, "connect-next", "frp", "frpc.json"),
+        "utf8",
+      ),
+    ) as {
+      user: string;
+      metadatas: Record<string, string>;
+      proxies: Array<{ subdomain: string; hostHeaderRewrite?: string }>;
+    };
+    check(
+      "machines: the daemon's frpc logs in as the machine label with its machine credential and one proxy per share",
+      frpcConfig.user === label &&
+        frpcConfig.metadatas.credential === credential &&
+        frpcConfig.proxies.length === 1 &&
+        frpcConfig.proxies[0]?.subdomain === `${label}--${dev.port}` &&
+        frpcConfig.proxies[0]?.hostHeaderRewrite === `127.0.0.1:${dev.port}`,
+      `user ${frpcConfig.user}, proxies ${JSON.stringify(frpcConfig.proxies.map((proxy) => proxy.subdomain))}`,
+    );
+    const daemonLog = await readFile(
+      path.join(LOG_DIR, "machine-next.log"),
+      "utf8",
+    );
+    check(
+      "machines: the daemon never logs its machine credential",
+      !daemonLog.includes(credential),
+    );
+
+    const shareHost = `${label}--${dev.port}.${NEXT_DOMAIN}:${visitPort}`;
+    const publicOrigin = `http://${shareHost}`;
+    const shareVisit = (
+      pathAndQuery: string,
+      options: Parameters<typeof visit>[2] = {},
+    ) => visit(visitPort, pathAndQuery, { ...options, host: shareHost });
+    const page = await waitFor(
+      "the machine share through the gate",
+      async () => {
+        const answer = await shareVisit("/", {
+          cookie: ownerCookie,
+          headers: { accept: "text/html" },
+        });
+        return answer.status === 200 ? answer : null;
+      },
+      20_000,
+    ).catch(() => null);
+    const pageSeen = dev.seen.filter((entry) => entry.kind === "http").at(-1);
+    check(
+      "machines: the owner loads the machine's dev server at <machine-label>--<port>.next",
+      page !== null && page.body.includes("e2e dev server"),
+      `${page?.status ?? "no answer"}`,
+    );
+    check(
+      "machines: the machine's dev server sees Host 127.0.0.1:<port> and the gate assertion",
+      pageSeen?.host === `127.0.0.1:${dev.port}` && pageSeen.assertion === true,
+      JSON.stringify(pageSeen),
+    );
+    const posted = await shareVisit("/api/save", {
+      method: "POST",
+      cookie: ownerCookie,
+      headers: { origin: publicOrigin, "content-type": "text/plain" },
+      body: "x",
+    });
+    const postSeen = dev.seen
+      .filter((entry) => entry.url === "/api/save")
+      .at(-1);
+    check(
+      "machines: the share's own Origin reaches the machine's dev server as its loopback origin",
+      posted.status === 200 &&
+        postSeen?.origin === `http://127.0.0.1:${dev.port}`,
+      `${posted.status}, Origin ${postSeen?.origin ?? "?"}`,
+    );
+    const other = await shareVisit("/", { cookie: otherCookie });
+    check(
+      "machines: another user gets 403 on the machine share",
+      other.status === 403,
+      `${other.status}`,
+    );
+    const hmr = await openShareWs(
+      visitPort,
+      dev.port,
+      ownerCookie,
+      publicOrigin,
+      label,
+    );
+    check(
+      "machines: the HMR WebSocket works through the machine share",
+      hmr.opened && hmr.reply === "hmr:ping",
+      `${hmr.status} ${hmr.reply ?? ""}`,
+    );
+    const foreignWs = await openShareWs(
+      visitPort,
+      dev.port,
+      ownerCookie,
+      "http://evil.test",
+      label,
+    );
+    check(
+      "machines: a foreign-origin WebSocket to the machine share is refused",
+      foreignWs.status === 403,
+      `${foreignWs.status}`,
+    );
+
+    const mainStatuses: number[] = [];
+    let watching = true;
+    const watcher = (async () => {
+      while (watching) {
+        const answer = await visit(visitPort, "/api/v1/projects", {
+          cookie: ownerCookie,
+        }).catch(() => null);
+        mainStatuses.push(answer?.status ?? 0);
+        await sleep(200);
+      }
+    })();
+    const unexposedAt = Date.now();
+    const unexpose = bbCli([
+      "connect",
+      "unexpose",
+      String(dev.port),
+      "--host",
+      daemon.hostId,
+    ]);
+    const closed = await waitFor(
+      "the machine share to go offline",
+      async () => {
+        const answer = await shareVisit("/", { cookie: ownerCookie });
+        return answer.status === 503 ? Date.now() - unexposedAt : null;
+      },
+      30_000,
+    ).catch(() => null);
+    await sleep(1_000);
+    watching = false;
+    await watcher;
+    check(
+      "machines: unexpose takes the machine share offline (503) within seconds",
+      unexpose.status === 0 && closed !== null && closed <= 10_000,
+      `503 after ${closed === null ? "never" : `${(closed / 1000).toFixed(1)} s`}`,
+    );
+    check(
+      "machines: the server address kept answering while the machine share was removed",
+      mainStatuses.length > 3 && mainStatuses.every((status) => status === 200),
+      `${mainStatuses.length} visits: ${JSON.stringify(countBy(mainStatuses))}`,
+    );
+    const stoppedAfterUnexpose = await waitFor(
+      "the machine's frpc to stop with no shares",
+      async () => (machineFrpcRunning(daemon.dataDir) ? null : true),
+      20_000,
+    ).catch(() => false);
+    check(
+      "machines: the machine's frpc stops when it shares no port",
+      stoppedAfterUnexpose,
+    );
+
+    bbCli(["connect", "expose", String(dev.port), "--host", daemon.hostId]);
+    const back = await waitFor(
+      "the machine share to come back",
+      async () => {
+        const answer = await shareVisit("/", { cookie: ownerCookie });
+        return answer.status === 200 ? true : null;
+      },
+      60_000,
+    ).catch(() => false);
+    check("machines: exposing again brings the machine share back", back);
+    const runningBeforeOff = machineFrpcRunning(daemon.dataDir);
+    const offAt = Date.now();
+    const off = bbCli(["connect-next", "off"]);
+    const stopped = await waitFor(
+      "the next-joined machine's frpc to stop",
+      async () =>
+        machineFrpcRunning(daemon.dataDir) ? null : Date.now() - offAt,
+      60_000,
+    ).catch(() => null);
+    const offAnswer = await shareVisit("/", { cookie: ownerCookie });
+    check(
+      "machines: bb connect-next off stops a next-joined machine's frpc once it has had no server session for 30 s",
+      off.status === 0 &&
+        runningBeforeOff &&
+        stopped !== null &&
+        offAnswer.status === 503,
+      `frpc before ${runningBeforeOff}, stopped after ${stopped === null ? "never" : `${(stopped / 1000).toFixed(1)} s`}, share ${offAnswer.status}`,
+    );
+    bbCli(["connect-next", "on"]);
+    await waitForState("connected");
+    const restored = await waitFor(
+      "the machine share after next is back on",
+      async () => {
+        const answer = await shareVisit("/", { cookie: ownerCookie });
+        return answer.status === 200 ? true : null;
+      },
+      120_000,
+    ).catch(() => false);
+    check(
+      "machines: turning connect-next on again reconnects the machine and restores its share",
+      restored,
+    );
+    bbCli(["connect", "unexpose", String(dev.port), "--host", daemon.hostId]);
+  } finally {
+    await dev.close();
+  }
+  await stop(daemon.child);
+}
+
+async function ensureCloudflareConnect(): Promise<boolean> {
+  const connectOn = bbCli(["connect", "on"]);
+  const connectUp = await waitFor(
+    "bb connect",
+    async () => {
+      const result = bbCli(["connect", "status", "--json"]);
+      if (result.status !== 0) return null;
+      const status = JSON.parse(result.stdout) as { state?: string };
+      return status.state === "connected" ? true : null;
+    },
+    90_000,
+  ).catch(() => false);
+  check(
+    "cloudflare: the server's bb connect tunnel is up on local Cloud",
+    connectUp,
+    cliDetail(connectOn),
+  );
+  return connectUp;
+}
+
+async function checkCloudflareMachine(
+  ownerId: string,
+  ownerCookie: string,
+  visitPort: number,
+): Promise<void> {
+  const cloudHost = new URL(APP_URL).host;
+  const credential = seedMachine(ownerId, "machine-e2e-cf");
+  const daemon = await startMachineDaemon({
+    name: "machine-cf",
+    repo: REPO_ROOT,
+    serverUrl: `http://${LABEL}.${cloudHost}`,
+    credential,
+  });
+  const connected = await hostConnected(daemon.hostId);
+  check(
+    "cloudflare machine: a current daemon joins through the bb connect address",
+    connected && hostConnectMachineId(daemon.hostId) === "machine-e2e-cf",
+    `connected ${connected}, machine ${String(hostConnectMachineId(daemon.hostId))}`,
+  );
+  if (!connected) {
+    await stop(daemon.child);
+    return;
+  }
+  const dev = await startDevServer();
+  try {
+    const exposed = bbCli([
+      "connect",
+      "expose",
+      String(dev.port),
+      "--host",
+      daemon.hostId,
+      "--json",
+    ]);
+    const listing = JSON.parse(exposed.stdout || "{}") as {
+      url?: string;
+      nextUrl?: string;
+    };
+    const cfHost = listing.url === undefined ? "" : new URL(listing.url).host;
+    const cfVisit = () =>
+      visit(ports.cloudPort, "/", {
+        cookie: ownerCookie,
+        host: cfHost,
+        headers: { accept: "text/html" },
+      });
+    const cfAnswer = await waitFor(
+      "the Cloudflare machine share",
+      async () => {
+        const reply = await cfVisit();
+        return reply.status === 200 ? reply : null;
+      },
+      60_000,
+    ).catch(() => null);
+    const active = await waitFor(
+      "the Cloudflare machine's next share",
+      async () => {
+        const machine = await machineStatus(daemon.hostId);
+        return machine?.shares.some((share) => share.state === "active")
+          ? machine
+          : null;
+      },
+      60_000,
+    ).catch(() => null);
+    const label = active?.label ?? "";
+    const nextHost = `${label}--${dev.port}.${NEXT_DOMAIN}:${visitPort}`;
+    const nextAnswer = await visit(visitPort, "/", {
+      cookie: ownerCookie,
+      host: nextHost,
+      headers: { accept: "text/html" },
+    });
+    check(
+      "cloudflare machine: its share answers on both the bb connect and the next address",
+      cfAnswer !== null &&
+        nextAnswer.status === 200 &&
+        nextAnswer.body.includes("e2e dev server") &&
+        listing.nextUrl === `http://${label}--${dev.port}.next.${cloudHost}`,
+      `${listing.url ?? "?"} -> ${cfAnswer?.status ?? "no 200"}; ${nextHost} -> ${nextAnswer.status}; nextUrl ${listing.nextUrl ?? "none"}`,
+    );
+    const machinePresence = await waitFor(
+      "the machine's next presence in D1",
+      async () => {
+        const [row] = d1(
+          "SELECT next_tunnel_gate FROM machine WHERE id = 'machine-e2e-cf'",
+        );
+        return typeof row?.next_tunnel_gate === "string" ? row : null;
+      },
+      30_000,
+    ).catch(() => null);
+    check(
+      "cloudflare machine: the gate reports the machine label's next presence to the account API",
+      machinePresence !== null,
+      JSON.stringify(machinePresence),
+    );
+    const runningBeforeOff = machineFrpcRunning(daemon.dataDir);
+    const offAt = Date.now();
+    const off = bbCli(["connect-next", "off"]);
+    const stopped = await waitFor(
+      "the Cloudflare machine's frpc to stop",
+      async () =>
+        machineFrpcRunning(daemon.dataDir) ? null : Date.now() - offAt,
+      20_000,
+    ).catch(() => null);
+    const cfStill = await cfVisit();
+    check(
+      "cloudflare machine: bb connect-next off stops its frpc at once and leaves its bb connect share up",
+      off.status === 0 &&
+        runningBeforeOff &&
+        stopped !== null &&
+        stopped < 10_000 &&
+        cfStill.status === 200,
+      `frpc before ${runningBeforeOff}, stopped after ${stopped === null ? "never" : `${(stopped / 1000).toFixed(1)} s`}, bb connect share ${cfStill.status}`,
+    );
+    bbCli(["connect-next", "on"]);
+    await waitForState("connected");
+    const back = await waitFor(
+      "the Cloudflare machine's frpc again",
+      async () => (machineFrpcRunning(daemon.dataDir) ? true : null),
+      30_000,
+    ).catch(() => false);
+    check("cloudflare machine: bb connect-next on starts its frpc again", back);
+    bbCli(["connect", "unexpose", String(dev.port), "--host", daemon.hostId]);
+  } finally {
+    await dev.close();
+    await stop(daemon.child);
+  }
+}
+
+async function checkOldDaemon(
+  ownerId: string,
+  ownerCookie: string,
+): Promise<void> {
+  const what = "the old-protocol daemon check (BB_E2E_OLD_DAEMON_REPO)";
+  if (OLD_DAEMON_REPO === undefined || OLD_DAEMON_REPO === "") {
+    log(`BB_E2E_OLD_DAEMON_REPO unset; skipping ${what}`);
+    skipped.push(what);
+    return;
+  }
+  const cloudHost = new URL(APP_URL).host;
+  const credential = seedMachine(ownerId, "machine-e2e-old");
+  const daemon = await startMachineDaemon({
+    name: "machine-old",
+    repo: OLD_DAEMON_REPO,
+    serverUrl: `http://${LABEL}.${cloudHost}`,
+    credential,
+  });
+  const connected = await hostConnected(daemon.hostId);
+  const protocol = latestSessionProtocol(daemon.hostId);
+  check(
+    "old daemon: a protocol-246 daemon still opens a session",
+    connected && protocol === 246,
+    `connected ${connected}, protocol ${protocol}`,
+  );
+  if (!connected) {
+    await stop(daemon.child);
+    return;
+  }
+  const dev = await startDevServer();
+  try {
+    const exposed = bbCli([
+      "connect",
+      "expose",
+      String(dev.port),
+      "--host",
+      daemon.hostId,
+      "--json",
+    ]);
+    const listing = JSON.parse(exposed.stdout || "{}") as { url?: string };
+    const url = listing.url ?? "";
+    const host = url === "" ? "" : new URL(url).host;
+    const answer = await waitFor(
+      "the old daemon's Cloudflare share",
+      async () => {
+        const reply = await visit(ports.cloudPort, "/", {
+          cookie: ownerCookie,
+          host,
+          headers: { accept: "text/html" },
+        });
+        return reply.status === 200 ? reply : null;
+      },
+      60_000,
+    ).catch(() => null);
+    check(
+      "old daemon: its share still answers through the Cloudflare gate",
+      host.endsWith(cloudHost) &&
+        answer !== null &&
+        answer.body.includes("e2e dev server"),
+      `${url} -> ${answer?.status ?? "no 200"}`,
+    );
+    const status = await machineStatus(daemon.hostId);
+    check(
+      "old daemon: it gets no next tunnel and reports none",
+      status === null && !machineFrpcRunning(daemon.dataDir),
+      JSON.stringify(status),
+    );
+    bbCli(["connect", "unexpose", String(dev.port), "--host", daemon.hostId]);
+  } finally {
+    await dev.close();
+    await stop(daemon.child);
   }
 }
 
@@ -1631,6 +2329,15 @@ async function main(): Promise<void> {
     cleanEnv({}),
   );
   if (build.status !== 0) throw new Error(`gate build failed: ${build.stderr}`);
+  for (const repo of [REPO_ROOT, OLD_DAEMON_REPO ?? ""].filter(Boolean)) {
+    log(`building the bb CLI the host daemon injects (${repo})`);
+    const cli = spawnSync(
+      "pnpm",
+      ["exec", "turbo", "run", "build", "--filter=@bb/cli"],
+      { cwd: repo, env: cleanEnv({}), encoding: "utf8" },
+    );
+    if (cli.status !== 0) throw new Error(`cli build failed: ${cli.stderr}`);
+  }
 
   const pair = await generateGateKeyPair(`e2e-${Date.now()}`);
   const publicKeys = JSON.stringify({ keys: [pair.publicKey] });
@@ -1679,6 +2386,7 @@ async function main(): Promise<void> {
   check(
     "account API refuses a wrong GATE_SECRET",
     unauthorizedApi.status === 404,
+    `${unauthorizedApi.status} ${(await unauthorizedApi.text()).slice(0, 80)}`,
   );
 
   log("signing up two users through bb-web");
@@ -1954,6 +2662,11 @@ async function main(): Promise<void> {
   }
 
   await checkShares(visitPort, ownerCookie, otherCookie);
+  await checkMachines(visitPort, gate.port, ownerId, ownerCookie, otherCookie);
+  if (await ensureCloudflareConnect()) {
+    await checkCloudflareMachine(ownerId, ownerCookie, visitPort);
+    await checkOldDaemon(ownerId, ownerCookie);
+  }
   await checkSessionRefresh(visitPort);
   await checkDesktopSession(visitPort, ownerId);
   await checkMcpOAuth(visitPort, ownerCookie).catch((error: unknown) =>

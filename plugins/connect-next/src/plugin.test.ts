@@ -58,6 +58,92 @@ async function status(host: FakePluginHost): Promise<ConnectNextStatus> {
 }
 
 describe("connect-next plugin wiring", () => {
+  it("turns machine tunnels on with the account's next domain and lists each machine", async () => {
+    const { host, account } = await load(
+      { enabled: true },
+      { BB_CONNECT_NEXT_SERVER: "ws://tunnel.next.bb.localhost:41000" },
+    );
+    expect(host.harness.internal_DO_NOT_USE_nextTunnelConfig).toBeNull();
+    account.signIn({
+      serverId: "srv_1",
+      label: "sawyer",
+      credential: "c",
+      baseUrl: "http://bb.localhost:5000",
+    });
+    await waitFor(
+      () => host.harness.internal_DO_NOT_USE_nextTunnelConfig,
+      (config) => config !== null,
+    );
+    expect(host.harness.internal_DO_NOT_USE_nextTunnelConfig).toEqual({
+      domain: "next.bb.localhost:5000",
+      server: {
+        protocol: "websocket",
+        host: "tunnel.next.bb.localhost",
+        port: 41000,
+      },
+    });
+
+    host.harness.internal_DO_NOT_USE_setNextTunnelStatuses([
+      {
+        hostId: "host-air",
+        hostName: "Sawyer Air",
+        label: "sawyer-air",
+        state: "connected",
+        lastError: null,
+        nextRetryAt: null,
+        since: 1,
+        shares: [{ port: 3000, state: "active", error: null }],
+      },
+      {
+        hostId: "host-idle",
+        hostName: "Idle box",
+        label: null,
+        state: "idle",
+        lastError: null,
+        nextRetryAt: null,
+        since: 1,
+        shares: [],
+      },
+    ]);
+    const listed = await status(host);
+    expect(listed.machines).toEqual([
+      {
+        hostId: "host-air",
+        hostName: "Sawyer Air",
+        label: "sawyer-air",
+        state: "connected",
+        lastError: null,
+        nextRetryAt: null,
+        since: 1,
+        shares: [
+          {
+            port: 3000,
+            url: "http://sawyer-air--3000.next.bb.localhost:5000",
+            state: "active",
+            error: null,
+          },
+        ],
+      },
+    ]);
+    expect(
+      host.harness.realtimeSignals.some(
+        (signal) =>
+          (signal.payload as ConnectNextStatus).machines?.length === 1,
+      ),
+    ).toBe(true);
+    const text = await host.harness.runCli(["status"]);
+    expect(text.stdout).toContain(
+      "machine Sawyer Air (host-air)  sawyer-air  connected",
+    );
+    expect(text.stdout).toContain(
+      "share 3000  http://sawyer-air--3000.next.bb.localhost:5000  active",
+    );
+
+    await host.harness.runCli(["off"]);
+    expect(host.harness.internal_DO_NOT_USE_nextTunnelConfig).toBeNull();
+    expect((await status(host)).machines).toEqual([]);
+  });
+
   it("is off by default and only reports the address once signed in", async () => {
     const { host, account } = await load();
     expect(await status(host)).toMatchObject({

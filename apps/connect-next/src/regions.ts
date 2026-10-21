@@ -582,6 +582,7 @@ export function createRegions(options: RegionsOptions): Regions {
   const directory: TunnelDirectory = {
     connected: (proxy) => local.connected(proxy),
     disconnected: (proxy) => local.disconnected(proxy),
+    removed: (subdomain) => local.removed(subdomain),
     locate,
     async lookup(subdomain, lookup) {
       const label = labelOf(subdomain);

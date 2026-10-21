@@ -658,6 +658,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tunnel-contract
     devDependencies:
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../../packages/test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
@@ -834,6 +837,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bb/frp-client':
+        specifier: workspace:*
+        version: link:../../packages/frp-client
       '@bb/fuzzy-match':
         specifier: workspace:*
         version: link:../../packages/fuzzy-match

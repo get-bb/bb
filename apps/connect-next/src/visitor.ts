@@ -67,7 +67,10 @@ export interface Forward {
 
 export type Decision =
   | { kind: "reply"; reply: Reply }
-  | { kind: "forward"; forward: Forward };
+  | { kind: "forward"; forward: Forward }
+  | { kind: "machine-label"; credential: string };
+
+export const MACHINE_LABEL_PATH = "/api/connect/machine-label";
 
 const MAX_RESOLVE_STRING = 8 * 1024;
 const RESOLVABLE_LABEL = /^[a-z0-9][a-z0-9-]{0,62}$/u;
@@ -176,6 +179,16 @@ export async function decideVisit(
   }
   if (RESERVED_HANDLES.has(label)) {
     return reply(redirect(`${policy.accountAppUrl}${pathname}${search}`, 301));
+  }
+  if (target === null && pathname === MACHINE_LABEL_PATH && !visit.websocket) {
+    const credential = single(headers[MACHINE_CREDENTIAL_HEADER]) ?? "";
+    if (credential === "" || credential.length > MAX_RESOLVE_STRING) {
+      return reply(text("bb connect: machine not authorized\n", 401));
+    }
+    if (method !== "POST") {
+      return reply(text("bb connect: method not allowed\n", 405));
+    }
+    return { kind: "machine-label", credential };
   }
   if (pathname.startsWith("/__")) {
     return reply(text("bb connect: not found\n", 404));

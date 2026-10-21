@@ -15,6 +15,7 @@
     "@bb/tunnel-contract": "workspace:*"
   },
   "devDependencies": {
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",

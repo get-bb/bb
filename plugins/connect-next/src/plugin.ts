@@ -69,9 +69,15 @@ export function createConnectNextPlugin(
       onStatusChange: (status) => {
         bb.realtime.publish(CONNECT_NEXT_REALTIME_CHANNEL, status);
       },
+      setMachineTunnels: (config) =>
+        bb.hosts.internal_DO_NOT_USE_setNextTunnels(config),
+      machineStatuses: () => bb.hosts.internal_DO_NOT_USE_nextTunnelStatuses(),
       ...(options.timing === undefined ? {} : { timing: options.timing }),
     });
     options.onTunnel?.(tunnel);
+    bb.hosts.internal_DO_NOT_USE_onNextTunnelStatusChange(() => {
+      tunnel.machinesChanged();
+    });
 
     settings.onChange((next) => {
       void tunnel.setEnabled(next.enabled);

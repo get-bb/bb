@@ -21,12 +21,26 @@ const DESCRIPTION = [
   "`bb connect-next off` closes the connect next tunnel and leaves bb connect alone.",
   "Ports shared from the bb server's machine with `bb connect expose <port>` also answer at",
   "https://<label>--<port>.next.<account domain> (owner only); `bb connect-next status` lists them.",
+  "Ports shared from other enrolled machines with `bb connect expose <port> --host <machine>` answer at",
+  "https://<machine-label>--<port>.next.<account domain>; each machine's daemon runs its own tunnel.",
 ].join("\n");
 
 const JSON_OPTION = {
   type: "boolean",
   description: "Emit machine-readable JSON",
 } as const;
+
+const MACHINE_STATE_TEXT: Record<
+  ConnectNextStatus["machines"][number]["state"],
+  string
+> = {
+  idle: "idle",
+  connecting: "connecting",
+  connected: "connected",
+  refused: "credential refused",
+  offline: "offline",
+  error: "error",
+};
 
 const STATE_TEXT: Record<ConnectNextStatus["state"], string> = {
   off: "off",
@@ -59,6 +73,19 @@ export function formatStatus(status: ConnectNextStatus): string {
     lines.push(
       `  share ${share.port}  ${share.url}  ${share.state}${share.error === null ? "" : ` (${share.error})`}`,
     );
+  }
+  for (const machine of status.machines) {
+    lines.push(
+      `machine ${machine.hostName} (${machine.hostId})  ${machine.label ?? "no label yet"}  ${MACHINE_STATE_TEXT[machine.state]}`,
+    );
+    if (machine.lastError !== null && machine.state !== "connected") {
+      lines.push(`  last error: ${machine.lastError}`);
+    }
+    for (const share of machine.shares) {
+      lines.push(
+        `  share ${share.port}  ${share.url}  ${share.state}${share.error === null ? "" : ` (${share.error})`}`,
+      );
+    }
   }
   return lines.join("\n");
 }

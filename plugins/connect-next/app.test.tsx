@@ -24,6 +24,7 @@ function status(overrides: Partial<ConnectNextStatus> = {}): ConnectNextStatus {
     nextRetryAt: null,
     since: 1_700_000_000_000,
     shares: [],
+    machines: [],
     ...overrides,
   };
 }
@@ -92,6 +93,62 @@ describe("connect next settings section", () => {
     expect(
       slot.getByRole("link", { name: "https://sawyer.next.getbb.app" }),
     ).toBeTruthy();
+  });
+
+  it("lists each machine's next tunnel and its shares", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        rpc: {
+          status: () =>
+            status({
+              enabled: true,
+              state: "connected",
+              machines: [
+                {
+                  hostId: "host-laptop",
+                  hostName: "laptop",
+                  label: "laptop",
+                  state: "connected",
+                  lastError: null,
+                  nextRetryAt: null,
+                  since: 1_700_000_000_000,
+                  shares: [
+                    {
+                      port: 3000,
+                      url: "https://laptop--3000.next.getbb.app",
+                      state: "active",
+                      error: null,
+                    },
+                  ],
+                },
+                {
+                  hostId: "host-box",
+                  hostName: "box",
+                  label: "box",
+                  state: "refused",
+                  lastError: "bb connect refused this server credential",
+                  nextRetryAt: null,
+                  since: 1_700_000_000_000,
+                  shares: [],
+                },
+              ],
+            }),
+        },
+      },
+    );
+    await slot.findByText("laptop");
+    expect(
+      slot.getByRole("link", { name: "https://laptop--3000.next.getbb.app" }),
+    ).toBeTruthy();
+    slot.getByRole("list", {
+      name: "Shared ports from laptop on the next address",
+    });
+    slot.getByText("box");
+    slot.getByText("Credential refused");
+    slot.getByText("bb connect refused this server credential");
   });
 
   it("names no fixed domain and shows the address derived from the account", async () => {

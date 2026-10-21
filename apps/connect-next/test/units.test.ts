@@ -1,3 +1,4 @@
+import { createMachineLabelProxy } from "../src/machine-label.js";
 import { describe, expect, it } from "vitest";
 import {
   GATE_PRESENCE_BATCH_MAX,
@@ -478,7 +479,7 @@ describe("frp hooks", () => {
 });
 
 describe("tunnel directory", () => {
-  it("announces label presence only for the main proxy", () => {
+  it("holds a label while any of its proxies is online", () => {
     const directory = createLocalDirectory();
     const events: string[] = [];
     directory.onLabelPresence((label, state) =>
@@ -489,13 +490,41 @@ describe("tunnel directory", () => {
       subdomain: "bee--3000",
       clientId: "a",
     });
+    expect(events).toEqual(["bee:connected"]);
+    expect(directory.onlineLabels()).toEqual(["bee"]);
     directory.connected({ label: "bee", subdomain: "bee", clientId: "b" });
     directory.connected({ label: "bee", subdomain: "bee", clientId: "c" });
     directory.disconnected({ label: "bee", subdomain: "bee", clientId: "b" });
     expect(directory.locate("bee").kind).toBe("here");
     directory.disconnected({ label: "bee", subdomain: "bee", clientId: "c" });
+    expect(events).toEqual(["bee:connected"]);
+    directory.disconnected({
+      label: "bee",
+      subdomain: "bee--3000",
+      clientId: "a",
+    });
     expect(events).toEqual(["bee:connected", "bee:disconnected"]);
     expect(directory.onlineLabels()).toEqual([]);
+  });
+
+  it("stops waiting for a machine share its still-connected client removed", async () => {
+    const directory = createLocalDirectory({ graceMs: 60_000 });
+    const signal = new AbortController().signal;
+    const share = { label: "air", subdomain: "air--3000", clientId: "a" };
+    directory.connected(share);
+    directory.disconnected(share);
+    const waiting = directory.awaitReturn("air--3000", signal);
+    directory.removed("air--3000");
+    expect(await waiting).toEqual({ kind: "offline" });
+    expect(await directory.awaitReturn("air--3000", signal)).toEqual({
+      kind: "offline",
+    });
+    directory.connected(share);
+    directory.connected({ ...share, subdomain: "air--4000" });
+    directory.disconnected(share);
+    expect(await directory.awaitReturn("air--3000", signal)).toEqual({
+      kind: "offline",
+    });
   });
 
   it("waits only within the grace after a drop", async () => {
@@ -871,5 +900,40 @@ describe("helpers", () => {
         GATE_SIGNING_KEY: "{}",
       }),
     ).toThrow("GATE_SIGNING_KEY");
+  });
+});
+
+describe("machine label proxy", () => {
+  it("posts the body with the machine credential and passes the answer through", async () => {
+    const seen: Array<{
+      url: string;
+      credential: string | null;
+      body: string;
+    }> = [];
+    const proxy = createMachineLabelProxy({
+      accountApiUrl: "https://connect.getbb.app",
+      fetch: async (input, init) => {
+        seen.push({
+          url: String(input),
+          credential: new Headers(init?.headers).get("x-bb-connect-machine"),
+          body: new TextDecoder().decode(init?.body as Uint8Array),
+        });
+        return Response.json({ label: "laptop" }, { status: 200 });
+      },
+    });
+    const answer = await proxy.assign(
+      "cred-machine",
+      Buffer.from('{"desiredName":"Laptop"}'),
+    );
+    expect(seen).toEqual([
+      {
+        url: "https://connect.getbb.app/api/connect/machine-label",
+        credential: "cred-machine",
+        body: '{"desiredName":"Laptop"}',
+      },
+    ]);
+    expect(answer.status).toBe(200);
+    expect(answer.headers["cache-control"]).toBe("no-store");
+    expect(JSON.parse(answer.body.toString())).toEqual({ label: "laptop" });
   });
 });

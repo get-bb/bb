@@ -59,6 +59,65 @@ function StatusDot({ tone }: { tone: Tone }) {
   );
 }
 
+const MACHINE_STATE_COPY: Record<
+  ConnectNextStatus["machines"][number]["state"],
+  { label: string; tone: Tone }
+> = {
+  idle: { label: "Idle", tone: "muted" },
+  connecting: { label: "Connecting…", tone: "warn" },
+  connected: { label: "Connected", tone: "ok" },
+  refused: { label: "Credential refused", tone: "bad" },
+  offline: { label: "Can't reach the gate", tone: "warn" },
+  error: { label: "Couldn't start the tunnel", tone: "bad" },
+};
+
+function ShareList({
+  title,
+  label,
+  shares,
+}: {
+  title: string | null;
+  label: string;
+  shares: ConnectNextStatus["shares"];
+}) {
+  return (
+    <div className="space-y-1">
+      {title === null ? null : (
+        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      )}
+      <ul className="space-y-1" aria-label={label}>
+        {shares.map((share) => (
+          <li key={share.port} className="flex items-center gap-2">
+            <StatusDot tone={SHARE_TONE[share.state]} />
+            <span className="shrink-0 font-mono text-xs tabular-nums">
+              :{share.port}
+            </span>
+            {share.state === "active" ? (
+              <UrlLink
+                href={share.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 truncate font-mono text-xs text-muted-foreground hover:underline"
+              >
+                {share.url}
+              </UrlLink>
+            ) : (
+              <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+                {share.url}
+              </span>
+            )}
+            {share.error !== null ? (
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                {share.error}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function useConnectNextStatus() {
   const rpc = useRpc<typeof connectNextRpcContract>();
   const connectionState = useRealtimeConnectionState();
@@ -148,48 +207,39 @@ function ConnectNextSettingsSection() {
         <p className="text-xs text-muted-foreground">{status.lastError}</p>
       ) : null}
       {status.shares.length > 0 ? (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">
-            Shared ports
-          </p>
-          <ul
-            className="space-y-1"
-            aria-label="Shared ports on the next address"
-          >
-            {status.shares.map((share) => (
-              <li key={share.port} className="flex items-center gap-2">
-                <StatusDot tone={SHARE_TONE[share.state]} />
-                <span className="shrink-0 font-mono text-xs tabular-nums">
-                  :{share.port}
-                </span>
-                {share.state === "active" ? (
-                  <UrlLink
-                    href={share.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-w-0 truncate font-mono text-xs text-muted-foreground hover:underline"
-                  >
-                    {share.url}
-                  </UrlLink>
-                ) : (
-                  <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                    {share.url}
-                  </span>
-                )}
-                {share.error !== null ? (
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">
-                    {share.error}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ShareList
+          title="Shared ports"
+          label="Shared ports on the next address"
+          shares={status.shares}
+        />
       ) : null}
+      {status.machines.map((machine) => (
+        <div key={machine.hostId} className="space-y-1">
+          <div className="flex items-center gap-2">
+            <StatusDot tone={MACHINE_STATE_COPY[machine.state].tone} />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {machine.hostName}
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {MACHINE_STATE_COPY[machine.state].label}
+            </span>
+          </div>
+          {machine.lastError !== null && machine.state !== "connected" ? (
+            <p className="text-xs text-muted-foreground">{machine.lastError}</p>
+          ) : null}
+          {machine.shares.length > 0 ? (
+            <ShareList
+              title={null}
+              label={`Shared ports from ${machine.hostName} on the next address`}
+              shares={machine.shares}
+            />
+          ) : null}
+        </div>
+      ))}
       <p className="text-xs text-muted-foreground">
         Your bb connect address keeps working; both answer at once. Ports you
-        share from this bb's machine with <code>bb connect expose</code> answer
-        on the next address too.
+        share with <code>bb connect expose</code>, from this bb's machine or
+        another enrolled machine, answer on the next address too.
       </p>
     </div>
   );

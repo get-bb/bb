@@ -58,7 +58,11 @@ import {
 
 export {
   HOST_ARTIFACT_MAX_BYTES,
+  HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS,
+  HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION,
   HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonSupportsConnectNext,
+  isCompatibleHostDaemonProtocolVersion,
 } from "./protocol.js";
 export {
   workspaceResolutionFailureCodeSchema,

@@ -217,21 +217,80 @@ is on and bb account is signed in.
   The gate answers an unshared port's address `503` at once (it skips the 15 s reconnect wait for a
   share whose label is still connected). Connect, in turn, reads `bb--connect-next`'s `status`
   while next is on and adds `nextUrl` (`<scheme>://<label>--<port>.<next domain>`) to server-machine
-  share listings, printed by `bb connect expose` and `bb connect shares`. Shares from other machines
-  (`bb.hosts.declareSharedPorts`) are not on next yet.
-- **Surfaces.** The `enabled` setting's switch and a settings section with the state, address and
-  shared ports; RPC `status` (with `shares: [{ port, url, state: pending | active | refused, error }]`)
-  and `setEnabled({ enabled })`; CLI `bb connect-next status|on|off [--json]`
-  (`status` prints a `share <port>  <url>  <state>` line per share).
+  share listings, printed by `bb connect expose` and `bb connect shares`, and
+  `<scheme>://<machine-label>--<port>.<next domain>` to other machines' listings (see Machine tunnels).
+  A machine enrolled through the next address already has that address as its listing's `url`, so
+  its listing carries no `nextUrl` and the CLI prints the address once.
+- **Surfaces.** The `enabled` setting's switch and a settings section with the state, address,
+  shared ports and each machine's tunnel; RPC `status` (with
+  `shares: [{ port, url, state: pending | active | refused, error }]` and
+  `machines: [{ hostId, hostName, label, state, lastError, nextRetryAt, since, shares }]`) and
+  `setEnabled({ enabled })`; CLI `bb connect-next status|on|off [--json]` (`status` prints a
+  `share <port>  <url>  <state>` line per share and a `machine <name> (<host id>)  <label>  <state>`
+  line per machine, followed by its shares).
 - **Env.** `BB_CONNECT_FRPC` runs a given `frpc` instead of downloading one.
   `BB_CONNECT_NEXT_SERVER` (`ws://host:port` or `wss://host:port`) dials another frp server than the
   one derived from the account.
 - **Tests.** `pnpm exec turbo run test --filter=bb-plugin-bb--connect-next` runs real frpc and frps
   0.71.0 (archives cached in `~/.cache/bb-frp/0.71.0`), with a hook server standing in for the gate.
 
+## Machine tunnels
+
+Ports shared from an enrolled machine other than the server's (`bb connect expose <port> --host
+<machine>`, delivered by `bb.hosts.declareSharedPorts`) answer at
+`<scheme>://<machine-label>--<port>.<next domain>` while next is on, served by that machine's host
+daemon through the same gate. The machine label root shows the gate's machine page; there is no
+main proxy for a machine.
+
+- **Policy.** The plugin calls `bb.hosts.internal_DO_NOT_USE_setNextTunnels({ domain, server })` while its
+  own tunnel is wanted (on, signed in, service running) with the domain and tunnel server it dials
+  itself (`BB_CONNECT_NEXT_SERVER` included), and `null` otherwise. The server
+  (`apps/server/src/ws/host-shared-ports.ts`) keeps that one config, owned by the plugin and cleared
+  when it is disabled.
+- **Wire (protocol 247).** The session-open response carries `connectNext: { generation, config }`
+  and the server pushes `{ type: "connect-next.replace", generation, config }` (on socket open and
+  on every change) to each connected daemon that has a bb connect machine credential
+  (`hosts.connect_machine_id` set and `hasMachineCredential`); `config` is `null` for any other host.
+  The daemon answers with `{ type: "connect-next.status", status: { state, label, lastError,
+nextRetryAt, since, shares: [{ port, state, error }] } }` whenever it changes and on every session
+  open; the server keeps the latest per session in memory and drops it with the session. The server
+  accepts protocol 246 and 247 (`HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS`): a 246 daemon gets the
+  old session-open response (no `connectNext`) and no `connect-next.*` message, so its Cloudflare
+  machine tunnel works as before and it simply has no next tunnel.
+- **Runner.** `apps/host-daemon/src/connect-next` runs an `FrpcSupervisor` from `@bb/frp-client`
+  while the config is set and the machine shares at least one port: `user` = the machine label
+  (from the same `connect-tunnel` label assignment the Cloudflare tunnel uses),
+  `metadatas.credential` = the machine credential, `frpc` in `<data dir>/connect-next/frp/<version>/`
+  (or `BB_CONNECT_FRPC`), `frpc.json` (0600) and `roots.pem` in `<data dir>/connect-next/frp/`, and
+  one proxy `share-<port>` per shared port (`subdomain = <machine-label>--<port>`,
+  `127.0.0.1:<port>`, `hostHeaderRewrite = 127.0.0.1:<port>`). Every `connect-shares.replace`
+  hot-reloads the list (`/api/reload`); dropping to no port reloads to an empty list, waits 1 s so
+  the gate sees the proxy removed rather than dropped, then stops frpc. `null`, a new config (then
+  it restarts), daemon shutdown and machine removal stop it too, and so does losing the server
+  session for 30 s (a machine that joined through the next address cannot hear `null` once next is
+  off); the next session-open response starts it again. A Login refusal with the fixed
+  reason reports `refused` and retries after 5 minutes; other failures report `offline` and frpc
+  keeps retrying; `error` covers download, spawn and a refused config. frpc's log goes to the
+  daemon log at debug, with the credential redacted.
+- **Trust.** The daemon only sends its credential to the domain it enrolled with: the config's
+  domain must be the base domain of its enrollment URL or `next.<base domain>`, the tunnel host
+  must be `tunnel.<domain>`, and `wss` is required unless the enrollment is a `*.localhost` one.
+  Anything else is `error` with the reason, and frpc never starts.
+- **Machines that joined through a next address.** A machine can enroll with a join code
+  (`POST /api/v1/hosts/join-codes`) against `https://<label>.next.<domain>`: its runner traffic
+  carries `x-bb-connect-machine`, which the gate checks and signs as a `machine` assertion for the
+  ingress, so the server records its `connect_machine_id` like the Cloudflare path does. Neither
+  loopback-only route (`/internal/hosts/enroll-key`, `/internal/server-move/pending`) is needed for
+  that: `bb-app host-daemon join --join-code … --host-id …` skips the enroll-key request. The
+  machine's label request (`POST /api/connect/machine-label` on the server's address) is relayed by
+  the gate to the account API with the machine credential (`src/machine-label.ts`; 4 KiB body
+  limit, `401` without a credential, `405` for anything but `POST`). Such a machine's trusted base
+  domain is the next domain, which has no `/__tunnel`, so its Cloudflare machine tunnel does not
+  dial (`lastError` says so) and its shares answer only through connect next.
+
 ## Not in the first cut
 
-Machine tunnels and their shares from `host-daemon`, moving `*.getbb.app` itself.
+Moving `*.getbb.app` itself.
 
 ## Operating it
 
@@ -251,7 +310,11 @@ domains; `Ping` (sent only when frpc enables `transport.heartbeatInterval`) clos
 credential the account API now refuses. Server traffic goes to the `<label>` proxy with `target: null`
 in the assertion; a share host `<label>--<port>` goes only to a `<label>--<port>` proxy (`target` =
 the port), and is offline (503) when the client does not hold one. The labels this machine holds
-live behind `TunnelDirectory` (`src/directory.ts`).
+live behind `TunnelDirectory` (`src/directory.ts`). A label is held (for presence, peer
+announcements and the 15 s reconnect wait) while any of its proxies is open, so a machine label
+with only share proxies counts too. When the label's frp connection is still open 500 ms after a
+`CloseProxy` (a hot reload removed the proxy, not a dropped tunnel), that address stops waiting
+and answers 503 at once instead of after the 15 s kept for a dropped tunnel.
 
 Visitor rules follow `apps/connect/src/worker.ts`. Differences: a visitor without a session gets the
 sign-in page only when it asks for HTML (`accept: text/html`); API callers get a plain `401`. The
@@ -423,9 +486,10 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
    with `bb account login --code` (the real redeem), then restarts it in production mode so it serves
    `apps/app/dist`, with `BB_CONNECT_GATE_KEYS_URL` at local bb-web, `BB_CONNECT_NEXT_SERVER` at the
    gate and `BB_CONNECT_FRPC` at the cached frpc. It enables `bb--connect-next` and runs
-   `bb connect-next on`. No host daemon runs, so host-backed API calls answer 502; before the
-   production start it writes a host row and `host-id` into the data dir so the server has a
-   server machine to share ports from.
+   `bb connect-next on`. No host daemon runs on the server machine, so host-backed API calls for it
+   answer 502; before the production start it writes a host row and `host-id` into the data dir so
+   the server has a server machine to share ports from. Other machines' daemons start later (see
+   Machines below).
 5. Checks through `http://cne2e.next.bb.localhost:<gate port>`: the owner gets the app shell, API
    answers and `/ws`; another user gets 403; no cookie gets the sign-in page (HTML) or 401 (API);
    visitor-sent `x-bb-gate-assertion` (even one genuinely signed) and `x-bb-gate-auth` change nothing;
@@ -442,6 +506,28 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
    WebSocket opens and echoes, and foreign-origin or other-user WebSockets get 403.
    `bb connect unexpose` makes the address 503 within 10 s while the main address keeps answering
    200 (polled every 200 ms), and exposing again brings it back.
+   Machines (it builds `@bb/cli` first, which a source daemon injects): seeds a bb connect machine
+   row and credential in local D1, takes a join code from `POST /api/v1/hosts/join-codes`, and
+   starts a second host daemon from source (its own `BB_DATA_DIR`, local API port and
+   `BB_CONNECT_MACHINE_CREDENTIAL`) with `BB_SERVER_URL` at the next address. It checks that the
+   machine enrolls and connects through the gate, that the server recorded its `connect_machine_id`
+   from the machine assertion, that a `codex` thread on it completes a turn (a real model call), and
+   that its label request was relayed by the gate. It then exposes a Vite-like dev server with
+   `bb connect expose <port> --host <machine>` and checks the listing's `nextUrl`, the machine and
+   share in `bb connect-next status` (`--json` and text), the daemon's `frpc.json` (machine label,
+   machine credential, one proxy per share), that the daemon log never holds the credential, the
+   owner's 200 at `<machine-label>--<port>.next…` with Host `127.0.0.1:<port>` and the assertion,
+   the Origin rewrite, another user's 403, the HMR WebSocket and a foreign-origin WebSocket's 403;
+   that unexposing answers 503 within 10 s while the server address keeps answering 200 and stops
+   the machine's frpc; that exposing again brings it back; and that `bb connect-next off` stops the
+   next-joined machine's frpc once it has had no server session for 30 s, and `on` brings it back.
+   Then it turns bb connect on against local Cloud and starts a third daemon through the bb connect
+   address: its share answers on both addresses, the gate reports the machine label's presence in
+   D1, `bb connect-next off` stops its frpc within seconds while its bb connect share stays up, and
+   `on` starts it again. With `BB_E2E_OLD_DAEMON_REPO` (a checkout and install of a protocol-246
+   commit, such as `9fad6b6255`) it also starts that old daemon through the bb connect address and
+   checks that it opens a session, that its Cloudflare share answers, and that it reports no next
+   tunnel; without it that check is listed as skipped.
 6. Session refresh: signs the owner in again, moves that session's `expires_at` in D1 to two days
    ahead, and checks that an app-shell visit returns a renewed `better-auth.session_token` cookie with
    `Domain=.bb.localhost`, that D1 now holds a seven-day expiry, that the renewed cookie works, and that
@@ -466,7 +552,8 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
 `test/fly.ts` in front, landing every visitor on the gate that does not hold the tunnel: requests are
 replayed to the holder, and a body over 1 MiB crosses the peer listener; the server's ingress checks
 the assertion either way. Environment: `BB_E2E_DIR` (default `/tmp/bb-connect-next-e2e`, wiped at
-start), `BB_E2E_SCREENSHOT_DIR`, `BB_E2E_PLAYWRIGHT_DIR`, `BB_FRP_CACHE_DIR`.
+start), `BB_E2E_SCREENSHOT_DIR`, `BB_E2E_PLAYWRIGHT_DIR`, `BB_FRP_CACHE_DIR`,
+`BB_E2E_OLD_DAEMON_REPO`.
 
 ## Regions
 
@@ -485,7 +572,7 @@ it serves. A greeting also drops whatever the receiver believed the greeter held
 An address that leaves DNS takes its labels with it. Every peer route requires
 `Authorization: Bearer <PEER_SECRET>`, compared in constant time; anything else gets `401`.
 
-Announcements. When a label's main proxy opens or closes on a machine, it posts
+Announcements. When a label's first proxy opens or its last one closes on a machine, it posts
 `{label, machineId, region, state, at}` to `POST /__peer/announce` on every peer (fire and forget,
 1 s timeout). A machine that stops posts `{machineId, at}` once to `POST /__peer/goodbye`, and each
 peer forgets every label it believed that machine held since before `at`. Each machine keeps label → `{machineId, region, at}`; the newest `at` wins (machine id
