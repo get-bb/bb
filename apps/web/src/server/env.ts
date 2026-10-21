@@ -13,6 +13,7 @@ export interface Env {
   BETTER_AUTH_SECRET: string;
   LANDING_POSTHOG_KEY?: string;
   DOWNLOAD_CLICK_CONTEXT?: string;
+  PAGE_EXPERIMENTS?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
   MARKETPLACE?: R2Bucket;

@@ -5,6 +5,7 @@ import { routeTree } from "./routeTree.gen";
 export function getRouter() {
   return createRouter({
     routeTree,
+    context: {},
     scrollRestoration: true,
     stringifySearch: stringifySiteSearch,
   });

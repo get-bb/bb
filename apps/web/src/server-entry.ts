@@ -1,3 +1,6 @@
+import { waitUntil } from "cloudflare:workers";
+import { enrollPageRequest, finishPageRequest } from "./experiments/tracking";
+import type { PageExperimentContext } from "./experiments/registry";
 import {
   createStartHandler,
   defaultStreamHandler,
@@ -10,7 +13,7 @@ import {
 
 import { getEnv } from "./server/env";
 
-const fetch = createStartHandler(async (context) => {
+const handleRequest = createStartHandler(async (context) => {
   const pathname = new URL(context.request.url).pathname;
   const status = marketplaceResponseStatus(
     pathname,
@@ -39,4 +42,36 @@ const fetch = createStartHandler(async (context) => {
     : updatedResponse;
 });
 
-export default { fetch };
+export default {
+  async fetch(request: Request) {
+    const env = getEnv();
+    const enrollment = await enrollPageRequest(
+      request,
+      env.PAGE_EXPERIMENTS === "true",
+    );
+    const pageExperiments = enrollment.assignments.length
+      ? Object.fromEntries(
+          enrollment.assignments.map(({ experiment, variant }) => [
+            experiment.id,
+            variant,
+          ]),
+        )
+      : undefined;
+    const response = await handleRequest(request, {
+      context: { pageExperiments },
+    });
+    return finishPageRequest(
+      request,
+      response,
+      enrollment,
+      env.LANDING_POSTHOG_KEY,
+      waitUntil,
+    );
+  },
+};
+
+declare module "@tanstack/react-start" {
+  interface Register {
+    server: { requestContext: PageExperimentContext };
+  }
+}

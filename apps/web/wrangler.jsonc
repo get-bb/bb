@@ -27,6 +27,7 @@
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
     "PRESENCE_WRITES": "on-change",
     "DOWNLOAD_CLICK_CONTEXT": "false",
+    "PAGE_EXPERIMENTS": "false",
   },
   "secrets": {
     "required": [
@@ -97,6 +98,7 @@
         "APP_URL": "https://getbb.app",
         "PRESENCE_WRITES": "on-change",
         "DOWNLOAD_CLICK_CONTEXT": "false",
+        "PAGE_EXPERIMENTS": "false",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
       "d1_databases": [

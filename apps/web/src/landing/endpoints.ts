@@ -1,3 +1,4 @@
+import { downloadVisitorId } from "../experiments/tracking";
 import {
   buildDownloadContext,
   downloadRepeatStatus,
@@ -25,12 +26,14 @@ type DownloadPlacement = CtaPlacement | "direct";
 type MarketingEnv = {
   LANDING_POSTHOG_KEY?: string;
   DOWNLOAD_CLICK_CONTEXT?: string;
+  PAGE_EXPERIMENTS?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
 };
 
 type DownloadEventProperties = Partial<DownloadContext> & {
   $current_url: string;
+  visitor_analytics_id?: string;
   $referrer?: string;
   download_target: DesktopPlatform;
   gbraid?: string;
@@ -57,6 +60,7 @@ type TrackDownloadClickArgs = {
   platform: DesktopPlatform;
   postHogKey: string | undefined;
   contextEnabled: boolean;
+  experimentsEnabled: boolean;
   request: Request;
   requestUrl: URL;
 };
@@ -77,6 +81,7 @@ export async function handleDownload(
         platform,
         postHogKey: env.LANDING_POSTHOG_KEY,
         contextEnabled,
+        experimentsEnabled: env.PAGE_EXPERIMENTS === "true",
         request,
         requestUrl,
       }),
@@ -363,6 +368,7 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
       request: args.request,
       requestUrl: args.requestUrl,
       contextEnabled: args.contextEnabled,
+      experimentsEnabled: args.experimentsEnabled,
     }),
     timestamp: new Date().toISOString(),
   };
@@ -376,6 +382,7 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
 
 type BuildDownloadEventPropertiesArgs = {
   contextEnabled: boolean;
+  experimentsEnabled: boolean;
   platform: DesktopPlatform;
   request: Request;
   requestUrl: URL;
@@ -411,6 +418,9 @@ function buildDownloadEventProperties(
     placement: parseDownloadPlacement(args.requestUrl.searchParams),
     tracking_source: TRACKING_SOURCE,
   };
+
+  const visitorId = downloadVisitorId(args.request, args.experimentsEnabled);
+  if (visitorId) properties.visitor_analytics_id = visitorId;
 
   if (referrer) {
     properties.$referrer = truncateProperty(referrer);

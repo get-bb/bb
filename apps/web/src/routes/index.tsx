@@ -31,6 +31,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
+import { useExperimentVariant } from "../experiments/use-experiment-variant";
 import { useInitAnalytics } from "../landing/analytics";
 import adobeLogo from "../assets/company-logos/adobe.svg";
 import atlassianLogo from "../assets/company-logos/atlassian.svg";
@@ -254,9 +255,16 @@ export const Route = createFileRoute("/")({
   component: LandingRoute,
 });
 
+const HERO_TEST_PAGES: Record<string, typeof LandingPage> = {
+  control: LandingPage,
+  control_copy: LandingPage,
+};
+
 function LandingRoute() {
   useInitAnalytics();
-  return <LandingPage />;
+  const variant = useExperimentVariant("homepage_aa_check");
+  const Page = HERO_TEST_PAGES[variant] ?? LandingPage;
+  return <Page />;
 }
 
 function useConstructMock() {

@@ -1,16 +1,22 @@
 import {
   HeadContent,
   Scripts,
-  createRootRoute,
+  createRootRouteWithContext,
   useRouterState,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+
+import type { PageExperimentContext } from "../experiments/registry";
 
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { canonicalHref } from "../lib/canonical";
 import { THEME_INIT, watchSystemTheme } from "../lib/theme";
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<PageExperimentContext>()({
+  beforeLoad: ({ serverContext }) =>
+    serverContext?.pageExperiments
+      ? { pageExperiments: serverContext.pageExperiments }
+      : undefined,
   head: () => ({
     meta: [
       { charSet: "utf-8" },

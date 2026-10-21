@@ -1,3 +1,5 @@
+import { allowsAnalyticsCookie } from "../analytics/cookie-policy";
+
 export type DownloadContext = {
   device_class: "desktop" | "phone" | "tablet";
   platform: "darwin" | "win32" | "linux" | "ios" | "android" | "other";
@@ -6,65 +8,13 @@ export type DownloadContext = {
   download_repeat: "first" | "repeat" | "unknown";
 };
 
-const COOKIE_RESTRICTED_COUNTRIES = new Set([
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-  "IS",
-  "LI",
-  "NO",
-  "GB",
-  "CH",
-]);
-
 export const DOWNLOAD_REPEAT_COOKIE =
   "bb_dl=1; Path=/download; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax";
 
 export function downloadRepeatStatus(
   request: Request,
 ): DownloadContext["download_repeat"] {
-  const cf: unknown = Reflect.get(request, "cf");
-  const country =
-    typeof cf === "object" &&
-    cf !== null &&
-    "country" in cf &&
-    typeof cf.country === "string"
-      ? cf.country.toUpperCase()
-      : null;
-  if (
-    request.headers.get("Sec-GPC") === "1" ||
-    country === null ||
-    !/^[A-Z]{2}$/.test(country) ||
-    country === "XX" ||
-    country === "T1" ||
-    COOKIE_RESTRICTED_COUNTRIES.has(country)
-  ) {
-    return "unknown";
-  }
+  if (!allowsAnalyticsCookie(request)) return "unknown";
   return request.headers
     .get("cookie")
     ?.split(";")
