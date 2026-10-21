@@ -1,6 +1,6 @@
 import { Video } from "./video";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "./icon";
+import { cn } from "../../lib/utils";
 
 export function VideoThumbnail({
   src,

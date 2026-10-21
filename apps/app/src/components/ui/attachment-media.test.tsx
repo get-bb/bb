@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { VideoThumbnail } from "./video-thumbnail";
+import { VideoThumbnail } from "@bb/shared-ui/video-thumbnail";
 import { AttachmentPreview } from "../promptbox/AttachmentPreview";
 import {
   clearLocalAttachmentPreviews,

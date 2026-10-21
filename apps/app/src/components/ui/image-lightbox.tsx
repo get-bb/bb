@@ -1,4 +1,4 @@
-import { Video } from "./video";
+import { Video } from "@bb/shared-ui/video";
 import {
   useCallback,
   useEffect,

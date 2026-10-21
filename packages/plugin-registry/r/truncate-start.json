@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "truncate-start",
+  "type": "registry:ui",
+  "title": "truncate-start",
+  "description": "BB ui \"truncate-start\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/truncate-start.tsx",
+      "content": "import type { HTMLAttributes } from \"react\";\nimport { cn } from \"../../lib/utils\";\n\ninterface TruncateStartProps extends HTMLAttributes<HTMLSpanElement> {\n  children: string;\n}\n\nexport function TruncateStart({\n  children,\n  className,\n  ...props\n}: TruncateStartProps) {\n  return (\n    <span\n      {...props}\n      dir=\"rtl\"\n      className={cn(\"block w-min max-w-full truncate\", className)}\n    >\n      {`‎${children}‎`}\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/truncate-start.tsx"
+    }
+  ]
+}
