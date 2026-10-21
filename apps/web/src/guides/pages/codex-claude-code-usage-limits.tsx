@@ -224,8 +224,8 @@ export const guide: Guide = {
         "Does using both agents give me more Codex or Claude Code usage?",
       answer: (
         <p>
-          No. Each provider keeps its own limits. That means starting work with
-          another agent on an account you already have, if that account has
+          No. Each provider keeps its own limits. Using both means starting work
+          with another agent on an account you already have, if that account has
           allowance available. bb doesn’t increase or reset either limit.
         </p>
       ),
