@@ -42,6 +42,9 @@ export function onClientSocketMessage(
     case "ping":
       socket.send(JSON.stringify(PONG_MESSAGE));
       break;
+    case "visibility":
+      hub.setClientVisible(socket, parsed.visible);
+      break;
     default: {
       const _exhaustive: never = parsed;
       throw new Error(`Unhandled client message: ${_exhaustive}`);

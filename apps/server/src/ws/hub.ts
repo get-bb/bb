@@ -238,8 +238,12 @@ export class HostOnlineRpcUnavailableError extends Error {
 }
 
 export class NotificationHub implements DbNotifier {
-  private readonly clientKeysBySocket = new Map<HubSocket, Set<string>>();
+  private readonly clientKeysBySocket = new Map<
+    HubSocket,
+    Map<string, RealtimeSubscriptionTarget>
+  >();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
+  private readonly hiddenClients = new Set<HubSocket>();
   private readonly watchedTargets = new WatchedTargetRegistry();
   private readonly daemonSessions = new Map<
     string,
@@ -330,8 +334,38 @@ export class NotificationHub implements DbNotifier {
 
   registerClient(socket: HubSocket): void {
     if (!this.clientKeysBySocket.has(socket)) {
-      this.clientKeysBySocket.set(socket, new Set());
+      this.clientKeysBySocket.set(socket, new Map());
     }
+  }
+
+  setClientVisible(socket: HubSocket, visible: boolean): void {
+    this.registerClient(socket);
+    if (visible !== this.hiddenClients.has(socket)) {
+      return;
+    }
+    const targets = this.clientKeysBySocket.get(socket) ?? new Map();
+    if (visible) {
+      this.hiddenClients.delete(socket);
+      this.watchedTargets.update(
+        [...targets].map(([key, target]) => ({ key, target: { ...target } })),
+        [],
+      );
+      return;
+    }
+    this.hiddenClients.add(socket);
+    this.watchedTargets.update(
+      [],
+      [...targets.keys()].filter((key) => !this.isWatched(key)),
+    );
+  }
+
+  private isWatched(key: string): boolean {
+    for (const socket of this.clientSocketsByKey.get(key) ?? []) {
+      if (!this.hiddenClients.has(socket)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   unregisterClient(socket: HubSocket): void {
@@ -342,7 +376,7 @@ export class NotificationHub implements DbNotifier {
     }
 
     const stoppedKeys: string[] = [];
-    for (const key of keys) {
+    for (const key of keys.keys()) {
       const sockets = this.clientSocketsByKey.get(key);
       if (!sockets) {
         continue;
@@ -350,11 +384,14 @@ export class NotificationHub implements DbNotifier {
       sockets.delete(socket);
       if (sockets.size === 0) {
         this.clientSocketsByKey.delete(key);
+      }
+      if (!this.isWatched(key)) {
         stoppedKeys.push(key);
       }
     }
 
     this.clientKeysBySocket.delete(socket);
+    this.hiddenClients.delete(socket);
     this.watchedTargets.update([], stoppedKeys);
   }
 
@@ -585,12 +622,14 @@ export class NotificationHub implements DbNotifier {
   subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
     this.registerClient(socket);
     const key = subscriptionKey(target);
-    this.clientKeysBySocket.get(socket)?.add(key);
+    this.clientKeysBySocket.get(socket)?.set(key, target);
 
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
     sockets.add(socket);
     this.clientSocketsByKey.set(key, sockets);
-    this.watchedTargets.update([{ key, target: { ...target } }], []);
+    if (!this.hiddenClients.has(socket)) {
+      this.watchedTargets.update([{ key, target: { ...target } }], []);
+    }
   }
 
   unsubscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
@@ -604,6 +643,8 @@ export class NotificationHub implements DbNotifier {
     sockets.delete(socket);
     if (sockets.size === 0) {
       this.clientSocketsByKey.delete(key);
+    }
+    if (!this.isWatched(key)) {
       this.watchedTargets.update([], [key]);
     }
   }

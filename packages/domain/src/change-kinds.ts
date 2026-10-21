@@ -192,10 +192,16 @@ export const pingMessageSchema = z.object({
   type: z.literal("ping"),
 });
 
+const visibilityMessageSchema = z.object({
+  type: z.literal("visibility"),
+  visible: z.boolean(),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
   unsubscribeMessageSchema,
   pingMessageSchema,
+  visibilityMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 

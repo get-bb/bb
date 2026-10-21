@@ -123,7 +123,7 @@ describe("client websocket protocol", () => {
     expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
   });
 
-  it("starts and stops watched targets from subscribe and unsubscribe messages", () => {
+  it("starts and stops watched targets from subscribe, visibility and unsubscribe messages", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
     const changes: unknown[] = [];
@@ -140,6 +140,12 @@ describe("client websocket protocol", () => {
         target: { kind: "environment-detail", environmentId: "env-1" },
       }),
     );
+    for (const visible of [false, true])
+      onClientSocketMessage(
+        hub,
+        socket,
+        JSON.stringify({ type: "visibility", visible }),
+      );
     onClientSocketMessage(
       hub,
       socket,
@@ -150,7 +156,10 @@ describe("client websocket protocol", () => {
     );
 
     const target = { kind: "environment-detail", environmentId: "env-1" };
+    expect(socket.closed).toHaveLength(0);
     expect(changes).toEqual([
+      { started: [target], stopped: [] },
+      { started: [], stopped: [target] },
       { started: [target], stopped: [] },
       { started: [], stopped: [target] },
     ]);
