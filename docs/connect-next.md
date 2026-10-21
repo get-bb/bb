@@ -322,6 +322,14 @@ against its SHA-256. A deploy replaces machines one at a time (Fly's rolling str
 replaced machine redial on their own and may land in another region, which the others learn by
 announcement.
 
+Machine size: `fly.toml`'s `[[vm]]` is `performance-2x` with 4 GB, and `flyctl deploy` applies it to
+every machine, so all regions run that size. The staging load test showed shared CPUs cannot carry
+the gate: a `shared-cpu-2x` 1 GB machine sustained only about 30–40 req/s before Fly throttled its
+CPU, while `performance-2x` 4 GB held 2,500 tunnels at about 280 req/s. A smaller size set with
+`fly scale vm` (`performance-1x` would do for quiet regions such as `sin` and `syd`) lasts only until
+the next deploy resets it. Staging (`bb-connect-next-staging`) overrides the size on its deploy
+command with `--vm-size shared-cpu-2x --vm-memory 1024`.
+
 Locally: `pnpm exec turbo run typecheck test --filter=@bb/connect-next`. The tests download frp
 0.71.0 once into `~/.cache/bb-frp/0.71.0` (checked by SHA-256; skipped with a message when offline) and
 drive real `frps` and `frpc` against a stand-in account API and bb server. To run the gate by hand:
@@ -520,8 +528,8 @@ Presence. Each machine still reports its own labels to the account API. A machin
 superseded does not report `disconnected` for it, so it does not overwrite the newer machine's
 `connected`.
 
-Machine plan: 7 regions, `sjc ord iad ams fra sin syd`, one machine each to start and two where
-traffic needs it. Machines are independent; nothing is shared but the peer secret. `fly.toml` keeps
+Machine plan: 7 regions, `sjc ord iad ams fra sin syd`, one `performance-2x` 4 GB machine each to
+start (the `fly.toml` size, see Machine size) and two where traffic needs it. Machines are independent; nothing is shared but the peer secret. `fly.toml` keeps
 `primary_region = "sjc"`; `min_machines_running` applies to the primary region, and
 `auto_stop_machines = "off"` keeps the rest running, which they must, since an idle machine still
 holds tunnels.
