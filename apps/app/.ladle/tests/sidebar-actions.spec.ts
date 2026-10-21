@@ -16,7 +16,7 @@ for (const width of [220, 288, 360]) {
       (route) => route.abort(),
     );
     await page.goto(
-      "/?story=sidebar--thread-row-actions--overview&mode=preview&theme=light",
+      "/?story=sidebar--thread-list--action-alignment&mode=preview&theme=light",
     );
     const panel = page.locator("[data-thread-row-fixture]");
     await expect(panel).toBeVisible();
@@ -24,7 +24,11 @@ for (const width of [220, 288, 360]) {
     await panel.evaluate((element, value) => {
       element.style.width = `${value}px`;
     }, width);
-    const reference = panel.locator('[data-fixture="leaf-short"]');
+    const rows = panel.locator('[data-sidebar-rename-row][role="button"]');
+    const reference = rows.filter({
+      has: page.locator('[data-sidebar-thread-id="thr_actions_leaf_short"]'),
+    });
+    await expect(rows).toHaveCount(8);
     await reference.hover();
     const referenceArchive = await bounds(
       reference.getByRole("button", { name: "Archive", exact: true }),
@@ -32,7 +36,7 @@ for (const width of [220, 288, 360]) {
     const referenceMenu = await bounds(
       reference.getByRole("button", { name: "Thread actions", exact: true }),
     );
-    for (const row of await panel.locator("[data-fixture]").all()) {
+    for (const row of await rows.all()) {
       await row.hover();
       const archive = row.getByRole("button", { name: "Archive", exact: true });
       const menu = row.getByRole("button", {
