@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AutoHeightSnapContext } from "@/components/ui/height-transition";
+import { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 import {
   TimelineWindowedItems,
   type TimelineWindowedItemRenderState,
@@ -19,6 +20,7 @@ const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
 
 let scrollElement: HTMLDivElement;
 let itemHeights = new Map<number, number>();
+let renderedShift = 0;
 
 function rect(top: number, height: number): DOMRect {
   return {
@@ -89,6 +91,7 @@ function renderWindowedItems(options?: {
   measurements?: Map<string, number>;
   snapAutoHeight?: () => void;
   pinnedToEnd?: boolean;
+  positionKeeper?: ScrollPositionKeeper;
 }) {
   const measurements = options?.measurements ?? new Map<string, number>();
   Object.defineProperty(scrollElement, "clientHeight", {
@@ -109,7 +112,7 @@ function renderWindowedItems(options?: {
           getScrollElement={() => scrollElement}
           itemKeys={ITEM_KEYS}
           measurements={measurements}
-          positionKeeper={null}
+          positionKeeper={options?.positionKeeper ?? null}
           pinnedToEnd={options?.pinnedToEnd ?? false}
           renderItem={(
             index: number,
@@ -138,6 +141,7 @@ function renderWindowedItems(options?: {
 
 beforeEach(() => {
   itemHeights = new Map();
+  renderedShift = 0;
   scrollElement = document.createElement("div");
   document.body.append(scrollElement);
   Object.defineProperty(scrollElement, "clientWidth", {
@@ -157,14 +161,14 @@ beforeEach(() => {
       if (this === scrollElement) return rect(0, scrollElement.clientHeight);
       if (this.hasAttribute("data-timeline-virtual-spacer")) {
         return rect(
-          -scrollElement.scrollTop,
+          -scrollElement.scrollTop - renderedShift,
           Number.parseFloat(this.style.height) || 0,
         );
       }
       const index = Number(this.dataset.index);
       if (Number.isInteger(index)) {
         return rect(
-          index * 32 - scrollElement.scrollTop,
+          index * 32 - scrollElement.scrollTop - renderedShift,
           itemHeights.get(index) ?? 32,
         );
       }
@@ -314,6 +318,25 @@ describe("TimelineWindowedItems", () => {
     expect(
       scrollElement.querySelector("[data-timeline-virtual-spacer]"),
     ).toBeNull();
+  });
+
+  it("windows around the reader's rendered position while the keeper holds a correction", async () => {
+    const positionKeeper = new ScrollPositionKeeper({
+      deferWritesWhileScrolling: true,
+      getDeferredOffsetElement: () => null,
+      getScrollElement: () => scrollElement,
+      getTopLevelRows: () => [],
+      isActive: () => true,
+    });
+    vi.spyOn(positionKeeper, "getDeferredOffset").mockReturnValue(1_600);
+    renderedShift = 1_600;
+    renderWindowedItems({ positionKeeper });
+
+    fireEvent.scroll(scrollElement);
+
+    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
+    expect(screen.queryByTestId("content-0")).toBeNull();
+    expect(scrollElement.scrollTop).toBe(0);
   });
 
   it("mounts only the visible TanStack range and removes offscreen wrappers", async () => {

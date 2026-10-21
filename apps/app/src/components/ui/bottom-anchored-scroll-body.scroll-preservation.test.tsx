@@ -39,8 +39,8 @@ class ResizeObserverMock implements ResizeObserver {
   }
   unobserve() {}
   disconnect() {}
-  trigger() {
-    this.callback(this.targets.map(makeResizeEntry), this);
+  trigger(entries = this.targets.map(makeResizeEntry)) {
+    this.callback(entries, this);
   }
 }
 
@@ -368,6 +368,91 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
   });
 
+  it("does not resume bottom following when a correction exceeds the cached scroll extent", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_000,
+      clientHeight: 100,
+      scrollTop: 900,
+    });
+    getLatestResizeObserver().trigger();
+    scrollArea.scrollTop = 400;
+    fireEvent.wheel(scrollArea, { deltaY: -500 });
+    fireEvent.scroll(scrollArea);
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 3_000,
+      clientHeight: 100,
+      scrollTop: 2_400,
+    });
+    fireEvent.scroll(scrollArea);
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(2_400);
+  });
+
+  it("restores the reading row after a width change clamps the viewport to the end", () => {
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+    });
+    let width = 100;
+    Object.defineProperty(scrollArea, "clientWidth", {
+      configurable: true,
+      get: () => width,
+    });
+    mockScrollAreaRect(scrollArea);
+    vi.spyOn(getRow("row-a"), "getBoundingClientRect").mockImplementation(
+      () =>
+        new DOMRect(0, -scrollArea.scrollTop, width, width === 100 ? 380 : 100),
+    );
+    vi.spyOn(getRow("row-b"), "getBoundingClientRect").mockImplementation(
+      () =>
+        new DOMRect(
+          0,
+          (width === 100 ? 380 : 100) - scrollArea.scrollTop,
+          width,
+          200,
+        ),
+    );
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_000,
+      clientHeight: 100,
+      scrollTop: 900,
+    });
+    const observer = getLatestResizeObserver();
+    observer.trigger();
+    scrollArea.scrollTop = 400;
+    fireEvent.wheel(scrollArea, { deltaY: -500 });
+    fireEvent.scroll(scrollArea);
+    expect(readAnchor("thread-a")).toMatchObject({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    width = 200;
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+    const entries = observer.targets.map((target) => {
+      const entry = makeResizeEntry(target);
+      return target === scrollArea
+        ? { ...entry, contentBoxSize: [{ blockSize: 100, inlineSize: 200 }] }
+        : entry;
+    });
+    act(() => observer.trigger(entries));
+
+    expect(scrollArea.scrollTop).toBe(120);
+    expect(getRow("row-b").getBoundingClientRect().top).toBe(-20);
+  });
+
   it("captures the top-most visible row when scrolled mid-timeline", () => {
     const { scrollArea, rowElements } = renderTimeline({
       threadId: "thread-a",
@@ -679,6 +764,39 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(300);
   });
 
+  it("waits at the bottom until the saved row renders, then restores it", () => {
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
+      rowId: "row-late",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    const { scrollArea, rerenderRows, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+    });
+    mockScrollAreaRect(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+
+    getLatestResizeObserver().trigger();
+    expect(scrollArea.scrollTop).toBe(300);
+
+    rerenderRows(["row-late", "row-a", "row-b"]);
+    mockRowRect(getRow("row-late"), { top: -250, bottom: -150 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(70);
+  });
+
   it.each(["bottom", "message", "clamped message"])(
     "does not let a pending saved-row restore undo an explicit %s scroll",
     (destination) => {
@@ -930,18 +1048,30 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       rowIds: ["row-a", "row-b", "row-c"],
     });
     mockScrollAreaRect(scrollArea);
-    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
-      top: -120,
-      bottom: -20,
-    });
-    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
-      top: -20,
-      bottom: 80,
-    });
-    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
-      top: 80,
-      bottom: 180,
-    });
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-a")!),
+      {
+        top: -120,
+        bottom: -20,
+      },
+      300,
+    );
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-b")!),
+      {
+        top: -20,
+        bottom: 80,
+      },
+      300,
+    );
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-c")!),
+      {
+        top: 80,
+        bottom: 180,
+      },
+      300,
+    );
     setScrollMetrics(scrollArea, {
       scrollHeight: 400,
       clientHeight: 100,
@@ -979,8 +1109,8 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(readScrollHeight).not.toHaveBeenCalled();
     expect(readClientHeight).not.toHaveBeenCalled();
     expect(readAnchor("thread-a")).toEqual({
-      rowId: "row-b",
-      offsetWithinRow: 20,
+      rowId: "row-a",
+      offsetWithinRow: 0,
       atBottom: false,
     });
     setScrollMetrics(scrollArea, {
@@ -1043,14 +1173,22 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       rowIds: ["row-a", "row-b", "row-c"],
     });
     mockScrollAreaRect(scrollArea);
-    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
-      top: -120,
-      bottom: -20,
-    }, 100);
-    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
-      top: -20,
-      bottom: 80,
-    }, 100);
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-a")!),
+      {
+        top: -120,
+        bottom: -20,
+      },
+      100,
+    );
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-b")!),
+      {
+        top: -20,
+        bottom: 80,
+      },
+      100,
+    );
     mockRowRect(
       requireHTMLElement(rowElements.get("row-c")!),
       { top: 80, bottom: 180 },
@@ -1111,14 +1249,22 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       rowIds: ["row-a", "row-b", "row-c"],
     });
     mockScrollAreaRect(scrollArea);
-    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
-      top: -120,
-      bottom: -20,
-    }, 150);
-    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
-      top: -20,
-      bottom: 80,
-    }, 150);
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-a")!),
+      {
+        top: -120,
+        bottom: -20,
+      },
+      150,
+    );
+    mockRowRect(
+      requireHTMLElement(rowElements.get("row-b")!),
+      {
+        top: -20,
+        bottom: 80,
+      },
+      150,
+    );
     mockRowRect(
       requireHTMLElement(rowElements.get("row-c")!),
       { top: 80, bottom: 180 },

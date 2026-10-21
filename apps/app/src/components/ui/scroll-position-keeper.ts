@@ -18,6 +18,8 @@ type KeptAnchor =
     };
 
 interface ScrollPositionKeeperOptions {
+  deferWritesWhileScrolling: boolean;
+  getDeferredOffsetElement: () => HTMLElement | null;
   getScrollElement: () => HTMLElement | null;
   getTopLevelRows: (scrollElement: HTMLElement) => ArrayLike<HTMLElement>;
   isActive: () => boolean;
@@ -30,6 +32,8 @@ const DIRECT_ROW_SELECTOR = [
   `:scope > [data-timeline-items] > ${ROW_SELECTOR}`,
 ].join(", ");
 const MIN_CORRECTION_PX = 0.5;
+const SCROLL_SETTLE_MS = 150;
+const TOUCH_LISTENER_OPTIONS = { capture: true, passive: true } as const;
 
 export function getDirectTimelineRows(
   list: Element,
@@ -55,6 +59,12 @@ export class ScrollPositionKeeper {
   private readonly rowOffsetSources = new Set<ScrollRowOffsetSource>();
   private readonly writeListeners = new Set<() => void>();
   private overflowAnchorDisabled = false;
+  private deferredOffset = 0;
+  private deferredOffsetElement: HTMLElement | null = null;
+  private touching = false;
+  private observedScrollTop: number | null = null;
+  private scrollMovedAt = Number.NEGATIVE_INFINITY;
+  private settleTimeout: number | null = null;
 
   constructor(options: ScrollPositionKeeperOptions) {
     this.options = options;
@@ -62,6 +72,41 @@ export class ScrollPositionKeeper {
 
   isActive(): boolean {
     return this.options.isActive();
+  }
+
+  getDeferredOffset(): number {
+    return this.deferredOffset;
+  }
+
+  observeTouches(scrollElement: HTMLElement): () => void {
+    const start = () => {
+      this.touching = true;
+    };
+    const end = () => {
+      this.touching = false;
+      this.scheduleDeferredWrite();
+    };
+    scrollElement.addEventListener("touchstart", start, TOUCH_LISTENER_OPTIONS);
+    scrollElement.addEventListener("touchend", end, TOUCH_LISTENER_OPTIONS);
+    scrollElement.addEventListener("touchcancel", end, TOUCH_LISTENER_OPTIONS);
+    return () => {
+      scrollElement.removeEventListener(
+        "touchstart",
+        start,
+        TOUCH_LISTENER_OPTIONS,
+      );
+      scrollElement.removeEventListener("touchend", end, TOUCH_LISTENER_OPTIONS);
+      scrollElement.removeEventListener(
+        "touchcancel",
+        end,
+        TOUCH_LISTENER_OPTIONS,
+      );
+      this.touching = false;
+      if (this.settleTimeout !== null) {
+        window.clearTimeout(this.settleTimeout);
+        this.settleTimeout = null;
+      }
+    };
   }
 
   registerRowOffsetSource(source: ScrollRowOffsetSource): () => void {
@@ -105,7 +150,9 @@ export class ScrollPositionKeeper {
   capture(): void {
     const scrollElement = this.options.getScrollElement();
     if (scrollElement === null) return;
+    this.observeScrollMovement(scrollElement);
     if (!this.options.isActive()) {
+      this.writeDeferredOffset(scrollElement);
       this.anchor = null;
       this.holdUntil = 0;
       this.setOverflowAnchorDisabled(scrollElement, false);
@@ -139,6 +186,9 @@ export class ScrollPositionKeeper {
       this.capture();
       return;
     }
+    this.observeScrollMovement(scrollElement);
+    const deferWrite = this.shouldDeferWrite(scrollElement);
+    if (!deferWrite) this.writeDeferredOffset(scrollElement);
     const current = this.locate(scrollElement, anchor);
     if (current === null) {
       this.capture();
@@ -146,8 +196,78 @@ export class ScrollPositionKeeper {
     }
     const delta = current - anchor.offset;
     if (Math.abs(delta) < MIN_CORRECTION_PX) return;
-    anchor.offset = current;
-    scrollElement.scrollTop += delta;
+    if (deferWrite) {
+      this.setDeferredOffset(this.deferredOffset + delta);
+      this.scheduleDeferredWrite();
+    } else {
+      anchor.offset = current;
+      scrollElement.scrollTop += delta;
+      this.observedScrollTop = scrollElement.scrollTop;
+    }
+    this.notifyScrollWrite();
+  }
+
+  private shouldDeferWrite(scrollElement: HTMLElement): boolean {
+    if (!this.options.deferWritesWhileScrolling) return false;
+    if (this.touching) return true;
+    if (window.performance.now() - this.scrollMovedAt < SCROLL_SETTLE_MS) {
+      return true;
+    }
+    const scrollTop = scrollElement.scrollTop;
+    return (
+      scrollTop < 0 ||
+      scrollTop > scrollElement.scrollHeight - scrollElement.clientHeight
+    );
+  }
+
+  private observeScrollMovement(scrollElement: HTMLElement): void {
+    const scrollTop = scrollElement.scrollTop;
+    const previous = this.observedScrollTop;
+    if (scrollTop === previous) return;
+    this.observedScrollTop = scrollTop;
+    if (previous !== null) this.scrollMovedAt = window.performance.now();
+  }
+
+  private scheduleDeferredWrite(): void {
+    if (this.deferredOffset === 0 || this.settleTimeout !== null) return;
+    this.settleTimeout = window.setTimeout(() => {
+      this.settleTimeout = null;
+      const scrollElement = this.options.getScrollElement();
+      if (scrollElement === null || this.deferredOffset === 0) return;
+      this.observeScrollMovement(scrollElement);
+      if (this.options.isActive() && this.shouldDeferWrite(scrollElement)) {
+        this.scheduleDeferredWrite();
+        return;
+      }
+      this.writeDeferredOffset(scrollElement);
+      this.reconcile();
+      this.capture();
+    }, SCROLL_SETTLE_MS);
+  }
+
+  private writeDeferredOffset(scrollElement: HTMLElement): void {
+    const offset = this.deferredOffset;
+    if (offset === 0) return;
+    this.setDeferredOffset(0);
+    if (this.anchor !== null) this.anchor.offset += offset;
+    scrollElement.scrollTop += offset;
+    this.observedScrollTop = scrollElement.scrollTop;
+    this.notifyScrollWrite();
+  }
+
+  private setDeferredOffset(offset: number): void {
+    this.deferredOffset = offset;
+    const element =
+      offset === 0
+        ? this.deferredOffsetElement
+        : this.options.getDeferredOffsetElement();
+    if (element === null) return;
+    element.style.transform =
+      offset === 0 ? "" : `translate3d(0, ${-offset}px, 0)`;
+    this.deferredOffsetElement = offset === 0 ? null : element;
+  }
+
+  private notifyScrollWrite(): void {
     for (const listener of this.writeListeners) listener();
   }
 

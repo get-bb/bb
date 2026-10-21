@@ -13,6 +13,7 @@ import {
   ScrollPositionKeeper,
   getDirectTimelineRows,
 } from "@/components/ui/scroll-position-keeper";
+import { isIOSWebKit } from "@/lib/ios-webkit";
 
 interface StickyBottomScrollBinding<TElement extends HTMLElement> {
   contentRef: RefObject<HTMLDivElement | null>;
@@ -72,6 +73,8 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   const [positionKeeper] = useState(
     () =>
       new ScrollPositionKeeper({
+        deferWritesWhileScrolling: isIOSWebKit(navigator),
+        getDeferredOffsetElement: () => contentRef.current,
         getScrollElement: () => scrollRef.current,
         getTopLevelRows,
         isActive: () => !shouldStickToBottomRef.current,
@@ -88,7 +91,8 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     const element = scrollRef.current;
     if (!element) return;
     refreshMaxScrollOffset(element);
-    if (typeof ResizeObserver === "undefined") return;
+    const unobserveTouches = positionKeeper.observeTouches(element);
+    if (typeof ResizeObserver === "undefined") return unobserveTouches;
 
     const observer = new ResizeObserver(() => {
       positionKeeper.reconcile();
@@ -100,7 +104,10 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     if (content) {
       observer.observe(content);
     }
-    return () => observer.disconnect();
+    return () => {
+      unobserveTouches();
+      observer.disconnect();
+    };
   }, [positionKeeper, refreshMaxScrollOffset]);
 
   useEffect(() => {

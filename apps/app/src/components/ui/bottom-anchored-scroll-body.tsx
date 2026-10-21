@@ -16,6 +16,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
 import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import { PAGE_SCROLL_TO_TOP_EVENT } from "@/lib/page-scroll-to-top";
+import { isIOSWebKit } from "@/lib/ios-webkit";
 import {
   threadTimelineScrollAnchorAtomFamily,
   type ScrollAnchor,
@@ -235,6 +236,7 @@ export function BottomAnchoredScrollBody({
   const isPointerCoarse = usePointerCoarse();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
+  const pageContentRef = useRef<HTMLDivElement>(null);
   const scrollFooterRef = useRef<HTMLDivElement>(null);
   const hasFooter = Boolean(footer);
   const shouldStickToBottomRef = useRef(true);
@@ -248,6 +250,7 @@ export function BottomAnchoredScrollBody({
     anchor: ScrollAnchor;
     attemptsRemaining: number;
     lastAppliedScrollTop: number | null;
+    clampToRow: boolean;
   } | null>(null);
   const contentPositionHoldUntilRef = useRef(0);
   const scrollAnchorCaptureThrottleRef = useRef<{
@@ -259,10 +262,24 @@ export function BottomAnchoredScrollBody({
   const resizeObserverHasDeliveredRef = useRef(false);
   const observedScrollGeometryRef = useRef<{
     scrollAreaClientHeight: number | null;
+    scrollAreaClientWidth: number | null;
     scrollContentHeight: number | null;
-  }>({ scrollAreaClientHeight: null, scrollContentHeight: null });
+  }>({
+    scrollAreaClientHeight: null,
+    scrollAreaClientWidth: null,
+    scrollContentHeight: null,
+  });
   const scrollAnchorRowsRef = useRef<NodeListOf<HTMLElement> | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [viewportRestore, setViewportRestore] = useState<{
+    threadId: string;
+    rowId: string;
+  } | null>(null);
+  const viewportRestoreRowId =
+    viewportRestore !== null &&
+    viewportRestore.threadId === scrollAnchorThreadId
+      ? viewportRestore.rowId
+      : null;
   const initialScrollRestoreRowId = useMemo(() => {
     if (scrollAnchorThreadId === undefined) return null;
     const anchor = store.get(
@@ -293,6 +310,8 @@ export function BottomAnchoredScrollBody({
   const [positionKeeper] = useState(
     () =>
       new ScrollPositionKeeper({
+        deferWritesWhileScrolling: isIOSWebKit(navigator),
+        getDeferredOffsetElement: () => pageContentRef.current,
         getScrollElement: () => scrollAreaRef.current,
         getTopLevelRows: getScrollAnchorRowsCached,
         isActive: () =>
@@ -300,6 +319,17 @@ export function BottomAnchoredScrollBody({
           pendingScrollRestoreRef.current === null,
       }),
   );
+
+  const viewportWidthChanged = useCallback((scrollArea: HTMLElement) => {
+    const previousWidth =
+      observedScrollGeometryRef.current.scrollAreaClientWidth;
+    return (
+      previousWidth !== null &&
+      previousWidth > 0 &&
+      scrollArea.clientWidth > 0 &&
+      Math.abs(previousWidth - scrollArea.clientWidth) > 1
+    );
+  }, []);
 
   const refreshMaxScrollOffset = useCallback((scrollArea: HTMLElement) => {
     const maxScrollOffset = getMaxScrollOffset(scrollArea);
@@ -492,12 +522,23 @@ export function BottomAnchoredScrollBody({
     (scrollAreaOverride?: HTMLElement) => {
       if (scrollAnchorThreadId === undefined) return;
       const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
-      if (!scrollArea) return;
+      if (
+        !scrollArea ||
+        viewportWidthChanged(scrollArea) ||
+        pendingScrollRestoreRef.current !== null
+      ) {
+        return;
+      }
       let atBottomByGeometry = isScrolledNearBottom(
         readMaxScrollOffset(scrollArea),
         scrollArea.scrollTop,
       );
-      if (!atBottomByGeometry && shouldStickToBottomRef.current) {
+      if (
+        (atBottomByGeometry &&
+          scrollArea.scrollTop >
+            maxScrollOffsetRef.current + BOTTOM_ANCHOR_THRESHOLD_PX) ||
+        (!atBottomByGeometry && shouldStickToBottomRef.current)
+      ) {
         atBottomByGeometry = isScrolledNearBottom(
           refreshMaxScrollOffset(scrollArea),
           scrollArea.scrollTop,
@@ -547,6 +588,7 @@ export function BottomAnchoredScrollBody({
       refreshMaxScrollOffset,
       scrollAnchorThreadId,
       store,
+      viewportWidthChanged,
     ],
   );
 
@@ -573,7 +615,7 @@ export function BottomAnchoredScrollBody({
   }, [scrollAnchorCaptureThrottleMs, scrollAnchorThreadId, writeScrollAnchor]);
 
   const applyScrollRestore = useCallback(
-    (anchor: ScrollAnchor): number | null => {
+    (anchor: ScrollAnchor, clampToRow: boolean): number | null => {
       const scrollArea = scrollAreaRef.current;
       if (!scrollArea) return null;
       const rowElement = findTimelineRowElement(scrollArea, anchor.rowId);
@@ -587,7 +629,13 @@ export function BottomAnchoredScrollBody({
       });
       const targetScrollTop = Math.min(
         refreshMaxScrollOffset(scrollArea),
-        revealOffset + anchor.offsetWithinRow,
+        revealOffset +
+          (clampToRow
+            ? Math.min(
+                anchor.offsetWithinRow,
+                Math.max(0, rowElement.getBoundingClientRect().height - 1),
+              )
+            : anchor.offsetWithinRow),
       );
       scrollArea.scrollTop = targetScrollTop;
       return targetScrollTop;
@@ -718,6 +766,14 @@ export function BottomAnchoredScrollBody({
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
 
+    if (
+      !hasRecentUserScrollIntent() &&
+      (viewportWidthChanged(scrollArea) ||
+        pendingScrollRestoreRef.current !== null)
+    ) {
+      return;
+    }
+
     if (scrollToTopInProgressRef.current) {
       if (scrollArea.scrollTop <= 0) scrollToTopInProgressRef.current = false;
       return;
@@ -728,9 +784,12 @@ export function BottomAnchoredScrollBody({
       scrollArea.scrollTop,
     );
     if (
-      !nearBottom &&
-      shouldStickToBottomRef.current &&
-      hasRecentUserScrollIntent()
+      (nearBottom &&
+        scrollArea.scrollTop >
+          maxScrollOffsetRef.current + BOTTOM_ANCHOR_THRESHOLD_PX) ||
+      (!nearBottom &&
+        shouldStickToBottomRef.current &&
+        hasRecentUserScrollIntent())
     ) {
       nearBottom = isScrolledNearBottom(
         refreshMaxScrollOffset(scrollArea),
@@ -756,6 +815,7 @@ export function BottomAnchoredScrollBody({
     hasRecentUserScrollIntent,
     readMaxScrollOffset,
     refreshMaxScrollOffset,
+    viewportWidthChanged,
   ]);
 
   const handleScroll = useCallback(() => {
@@ -769,13 +829,19 @@ export function BottomAnchoredScrollBody({
     const pending = pendingScrollRestoreRef.current;
     if (!pending) return false;
     pending.attemptsRemaining -= 1;
-    const appliedScrollTop = applyScrollRestore(pending.anchor);
+    const appliedScrollTop = applyScrollRestore(
+      pending.anchor,
+      pending.clampToRow,
+    );
     if (appliedScrollTop !== null) {
       if (pending.lastAppliedScrollTop === appliedScrollTop) {
         pendingScrollRestoreRef.current = null;
         return true;
       }
       pending.lastAppliedScrollTop = appliedScrollTop;
+    } else if (pending.lastAppliedScrollTop === null) {
+      const scrollArea = scrollAreaRef.current;
+      if (scrollArea) scrollArea.scrollTop = refreshMaxScrollOffset(scrollArea);
     }
     if (pending.attemptsRemaining <= 0) {
       pendingScrollRestoreRef.current = null;
@@ -786,7 +852,7 @@ export function BottomAnchoredScrollBody({
       }
     }
     return true;
-  }, [applyScrollRestore, queueBottomRestore]);
+  }, [applyScrollRestore, queueBottomRestore, refreshMaxScrollOffset]);
 
   const handleScrollAreaResize = useCallback(
     (entries: ResizeObserverEntry[]) => {
@@ -798,13 +864,42 @@ export function BottomAnchoredScrollBody({
         const previousMaxScrollOffset = maxScrollOffsetRef.current;
         const cacheWasAuthoritative = resizeObserverHasDeliveredRef.current;
         const observedGeometry = observedScrollGeometryRef.current;
+        const previousWidth = observedGeometry.scrollAreaClientWidth;
         for (const entry of entries) {
           if (entry.target === scrollArea) {
+            observedGeometry.scrollAreaClientWidth =
+              entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width;
             observedGeometry.scrollAreaClientHeight =
               entry.contentBoxSize[0]?.blockSize ?? entry.contentRect.height;
           } else if (entry.target === scrollContentRef.current) {
             observedGeometry.scrollContentHeight =
               entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height;
+          }
+        }
+        const widthChanged =
+          previousWidth !== null &&
+          previousWidth > 0 &&
+          observedGeometry.scrollAreaClientWidth !== null &&
+          Math.abs(previousWidth - observedGeometry.scrollAreaClientWidth) > 1;
+        if (
+          widthChanged &&
+          !shouldStickToBottomRef.current &&
+          scrollAnchorThreadId !== undefined
+        ) {
+          const anchor = store.get(
+            threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId),
+          );
+          if (anchor && !anchor.atBottom) {
+            pendingScrollRestoreRef.current = {
+              anchor,
+              attemptsRemaining: SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS,
+              lastAppliedScrollTop: null,
+              clampToRow: true,
+            };
+            setViewportRestore({
+              threadId: scrollAnchorThreadId,
+              rowId: anchor.rowId,
+            });
           }
         }
         let maxScrollOffset: number;
@@ -824,6 +919,7 @@ export function BottomAnchoredScrollBody({
         resizeObserverHasDeliveredRef.current = true;
         shrankOntoBottomWhileDetached =
           cacheWasAuthoritative &&
+          !widthChanged &&
           !shouldStickToBottomRef.current &&
           maxScrollOffset < previousMaxScrollOffset &&
           isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop);
@@ -849,7 +945,9 @@ export function BottomAnchoredScrollBody({
       positionKeeper,
       queueBottomRestore,
       refreshMaxScrollOffset,
+      scrollAnchorThreadId,
       settleContentPositionHold,
+      store,
       writeScrollAnchor,
     ],
   );
@@ -866,9 +964,14 @@ export function BottomAnchoredScrollBody({
       anchor,
       attemptsRemaining: SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS,
       lastAppliedScrollTop: null,
+      clampToRow: false,
     };
     advancePendingScrollRestore();
   }, [scrollAnchorThreadId, store, advancePendingScrollRestore]);
+
+  useLayoutEffect(() => {
+    if (viewportRestore !== null) advancePendingScrollRestore();
+  }, [viewportRestore, advancePendingScrollRestore]);
 
   const bottomAnchorContextValue = useMemo<BottomAnchorContextValue>(
     () => ({
@@ -968,6 +1071,7 @@ export function BottomAnchoredScrollBody({
       handleScroll();
     };
 
+    const unobserveTouches = positionKeeper.observeTouches(scrollArea);
     let resizeObserver: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(handleScrollAreaResize);
@@ -997,6 +1101,7 @@ export function BottomAnchoredScrollBody({
     queueBottomRestore();
 
     return () => {
+      unobserveTouches();
       resizeObserver?.disconnect();
       scrollArea.removeEventListener("scroll", handleScrollEvent);
       scrollArea.removeEventListener("wheel", markWheelScrollIntent);
@@ -1021,6 +1126,7 @@ export function BottomAnchoredScrollBody({
     markTouchMoveScrollIntent,
     markTouchStartScrollIntent,
     markWheelScrollIntent,
+    positionKeeper,
     queueBottomRestore,
     startPointerScrollIntent,
   ]);
@@ -1028,7 +1134,7 @@ export function BottomAnchoredScrollBody({
   return (
     <BottomAnchorContext.Provider value={bottomAnchorContextValue}>
       <TimelineScrollRestoreRowIdContext.Provider
-        value={initialScrollRestoreRowId}
+        value={viewportRestoreRowId ?? initialScrollRestoreRowId}
       >
         <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(auto,1fr)] overflow-hidden">
           <TitleBarScrollFade tone="background" />
@@ -1046,6 +1152,7 @@ export function BottomAnchoredScrollBody({
             >
               {}
               <div
+                ref={pageContentRef}
                 className={cn(
                   "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 pb-4 pt-2",
                   maxWidthClassName,

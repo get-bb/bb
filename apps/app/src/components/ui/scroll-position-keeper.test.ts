@@ -11,7 +11,17 @@ interface LaidOutRow {
   children?: LaidOutRow[];
 }
 
-function createTimeline(initialRows: LaidOutRow[]) {
+function translatedOffset(element: HTMLElement): number {
+  const match = /translate3d\(0(?:px)?, (-?[\d.]+)px/u.exec(
+    element.style.transform,
+  );
+  return match === null ? 0 : Number(match[1]);
+}
+
+function createTimeline(
+  initialRows: LaidOutRow[],
+  { deferWritesWhileScrolling = false } = {},
+) {
   const scrollElement = document.createElement("div");
   const list = document.createElement("div");
   scrollElement.append(list);
@@ -31,6 +41,14 @@ function createTimeline(initialRows: LaidOutRow[]) {
     configurable: true,
     value: VIEWPORT_HEIGHT,
   });
+  Object.defineProperty(scrollElement, "scrollHeight", {
+    configurable: true,
+    get: () =>
+      Math.max(
+        VIEWPORT_HEIGHT,
+        rows.reduce((total, row) => total + row.height, 0),
+      ),
+  });
   vi.spyOn(scrollElement, "getBoundingClientRect").mockReturnValue(
     new DOMRect(0, 0, 100, VIEWPORT_HEIGHT),
   );
@@ -46,7 +64,12 @@ function createTimeline(initialRows: LaidOutRow[]) {
       const offset = offsets.get(id);
       return offset === undefined
         ? new DOMRect(0, 0, 0, 0)
-        : new DOMRect(0, offset.top - scrollTop, 100, offset.height);
+        : new DOMRect(
+            0,
+            offset.top - scrollTop + translatedOffset(list),
+            100,
+            offset.height,
+          );
     });
     return element;
   };
@@ -75,6 +98,8 @@ function createTimeline(initialRows: LaidOutRow[]) {
 
   const keeperOptions = { active: true };
   const keeper = new ScrollPositionKeeper({
+    deferWritesWhileScrolling,
+    getDeferredOffsetElement: () => list,
     getScrollElement: () => scrollElement,
     getTopLevelRows: () =>
       Array.from(list.children).filter(
@@ -93,6 +118,9 @@ function createTimeline(initialRows: LaidOutRow[]) {
     scrollTo(value: number) {
       scrollTop = value;
     },
+    get translatedOffset() {
+      return translatedOffset(list);
+    },
     setRows(next: LaidOutRow[]) {
       rows = next;
       layout();
@@ -100,7 +128,7 @@ function createTimeline(initialRows: LaidOutRow[]) {
     viewportTopOf(id: string) {
       const offset = offsets.get(id);
       if (offset === undefined) throw new Error(`No row ${id}`);
-      return offset.top - scrollTop;
+      return offset.top - scrollTop + translatedOffset(list);
     },
   };
 }
@@ -113,6 +141,7 @@ function rowsOf(count: number, height = 200, prefix = "row"): LaidOutRow[] {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.replaceChildren();
   vi.restoreAllMocks();
 });
@@ -261,5 +290,82 @@ describe("ScrollPositionKeeper", () => {
     timeline.keeper.reconcile();
 
     expect(timeline.viewportTopOf("row-6") + 50).toBe(bottomBefore);
+  });
+
+  it("holds a correction in the rendered position while a touch is down and writes it after scrolling settles", () => {
+    vi.useFakeTimers();
+    const timeline = createTimeline(rowsOf(10), {
+      deferWritesWhileScrolling: true,
+    });
+    const unobserve = timeline.keeper.observeTouches(timeline.scrollElement);
+    timeline.scrollTo(900);
+    timeline.keeper.handleScroll();
+    const before = timeline.viewportTopOf("row-5");
+    timeline.scrollElement.dispatchEvent(new Event("touchstart"));
+
+    timeline.setRows([...rowsOf(4, 300, "older"), ...rowsOf(10)]);
+    timeline.keeper.reconcile();
+
+    expect(timeline.scrollTop).toBe(900);
+    expect(timeline.translatedOffset).toBe(-1_200);
+    expect(timeline.keeper.getDeferredOffset()).toBe(1_200);
+    expect(timeline.viewportTopOf("row-5")).toBe(before);
+
+    timeline.scrollElement.dispatchEvent(new Event("touchend"));
+    vi.advanceTimersByTime(200);
+
+    expect(timeline.scrollTop).toBe(2_100);
+    expect(timeline.translatedOffset).toBe(0);
+    expect(timeline.keeper.getDeferredOffset()).toBe(0);
+    expect(timeline.viewportTopOf("row-5")).toBe(before);
+    unobserve();
+  });
+
+  it("keeps holding while momentum moves the reader and keeps the distance it coasted", () => {
+    vi.useFakeTimers();
+    const timeline = createTimeline(rowsOf(10), {
+      deferWritesWhileScrolling: true,
+    });
+    timeline.scrollTo(900);
+    timeline.keeper.handleScroll();
+    vi.advanceTimersByTime(200);
+    const before = timeline.viewportTopOf("row-5");
+
+    timeline.scrollTo(850);
+    timeline.keeper.handleScroll();
+    timeline.setRows([...rowsOf(4, 300, "older"), ...rowsOf(10)]);
+    timeline.keeper.reconcile();
+    for (const scrollTop of [800, 750, 700]) {
+      vi.advanceTimersByTime(100);
+      timeline.scrollTo(scrollTop);
+      timeline.keeper.handleScroll();
+      expect(timeline.translatedOffset).toBe(-1_200);
+    }
+    vi.advanceTimersByTime(400);
+
+    expect(timeline.translatedOffset).toBe(0);
+    expect(timeline.scrollTop).toBe(1_900);
+    expect(timeline.viewportTopOf("row-5")).toBe(before + 200);
+  });
+
+  it("writes a held correction before it stops keeping the position", () => {
+    vi.useFakeTimers();
+    const timeline = createTimeline(rowsOf(10), {
+      deferWritesWhileScrolling: true,
+    });
+    timeline.scrollTo(900);
+    timeline.keeper.handleScroll();
+    timeline.scrollTo(850);
+    timeline.keeper.handleScroll();
+    timeline.setRows([...rowsOf(4, 300, "older"), ...rowsOf(10)]);
+    timeline.keeper.reconcile();
+    const before = timeline.viewportTopOf("row-5");
+
+    timeline.keeperOptions.active = false;
+    timeline.keeper.capture();
+
+    expect(timeline.translatedOffset).toBe(0);
+    expect(timeline.scrollTop).toBe(2_050);
+    expect(timeline.viewportTopOf("row-5")).toBe(before);
   });
 });

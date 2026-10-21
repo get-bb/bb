@@ -20,7 +20,6 @@ import {
 } from "@tanstack/react-virtual";
 import { AutoHeightSnapContext } from "@/components/ui/height-transition";
 import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
-import { isIOSWebKit } from "@/lib/ios-webkit";
 
 export const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
 const MAX_MEASUREMENTS = 2_000;
@@ -113,11 +112,7 @@ export function TimelineWindowedItems({
   renderItem,
   pinnedToEnd,
 }: TimelineWindowedItemsProps) {
-  const [scrollAdjustmentsKeepMomentum] = useState(
-    () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
-  );
   const configured =
-    scrollAdjustmentsKeepMomentum &&
     itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT &&
     getScrollElement !== null;
   const [scrollRootStatus, setScrollRootStatus] = useState<
@@ -188,7 +183,12 @@ export function TimelineWindowedItems({
   );
   const initialOffset = useCallback(() => {
     const scrollElement = resolvedGetScrollElement();
-    if (!pinnedToEnd) return scrollElement?.scrollTop ?? 0;
+    if (!pinnedToEnd) {
+      return (
+        (scrollElement?.scrollTop ?? 0) +
+        (positionKeeper?.getDeferredOffset() ?? 0)
+      );
+    }
     let estimatedEnd = scrollMargin;
     for (let index = 0; index < itemKeys.length; index += 1) {
       estimatedEnd += estimateSize(index) + (index > 0 ? gap : 0);
@@ -200,6 +200,7 @@ export function TimelineWindowedItems({
     gap,
     initialRect,
     itemKeys,
+    positionKeeper,
     resolvedGetScrollElement,
     scrollMargin,
     pinnedToEnd,
@@ -219,11 +220,19 @@ export function TimelineWindowedItems({
   );
   const observeOffset = useCallback<typeof observeElementOffset<HTMLElement>>(
     (instance, callback) => {
-      const unobserve = observeElementOffset(instance, callback);
+      const unobserve = observeElementOffset(instance, (offset, isScrolling) =>
+        callback(
+          offset + (positionKeeper?.getDeferredOffset() ?? 0),
+          isScrolling,
+        ),
+      );
       const unsubscribe = positionKeeper?.subscribeScrollWrites(() => {
         const scrollElement = instance.scrollElement;
         if (scrollElement !== null) {
-          callback(scrollElement.scrollTop, instance.isScrolling);
+          callback(
+            scrollElement.scrollTop + positionKeeper.getDeferredOffset(),
+            instance.isScrolling,
+          );
         }
       });
       return () => {
@@ -310,11 +319,12 @@ export function TimelineWindowedItems({
       container.getBoundingClientRect().top -
       scrollElement.getBoundingClientRect().top +
       scrollElement.scrollTop -
-      scrollElement.clientTop;
+      scrollElement.clientTop +
+      (positionKeeper?.getDeferredOffset() ?? 0);
     setScrollMargin((previous) =>
       Math.abs(previous - nextMargin) < 0.5 ? previous : nextMargin,
     );
-  }, [configured, resolvedGetScrollElement]);
+  }, [configured, positionKeeper, resolvedGetScrollElement]);
 
   useLayoutEffect(() => {
     if (!configured) return;

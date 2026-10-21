@@ -201,3 +201,40 @@ the cache already covers do not show it. A response clears only sequences
 through its own `maxSeq`. The indicator appears after the timeline has stayed
 behind for one second, disappears as soon as the cache catches up, and renders
 as a row at the end of the timeline.
+
+## Browser scroll ownership
+
+The web timeline windows lists of 20 or more items on every platform,
+including iOS Safari and the mobile app's WKWebView. The virtualizer keeps
+visible rows, overscan, and interaction or navigation pins mounted. Loaded
+history stays available without every rich row being mounted. Expanded detail
+lists use their own scroll roots and the same windowing adapter.
+
+While the reader is scrolled away from the bottom, `ScrollPositionKeeper` is
+the only writer of the reading position, for both the main timeline and nested
+detail scrollers. It anchors the first row that starts in the viewport by its
+offset in the content. When older pages load, rows measure, or a row resizes,
+it applies the change above that row as a relative `scrollTop` adjustment.
+TanStack's own scroll adjustments and native CSS scroll anchoring stay off while
+the keeper holds a row. Stuck-to-bottom following is unchanged.
+
+iOS WebKit overrides a scroll write made while a finger is down, during
+momentum, or during an edge bounce, and the content then sags and snaps back.
+On iOS the keeper waits during those phases instead. It keeps the correction as
+a transform on the scroll content, so rows stay in place visually. The
+virtualizer reads the scroll offset plus the held correction, so the window
+matches what is on screen. Once the touch has ended and the scroll position has
+been still for 150 ms, the keeper writes the correction to `scrollTop` and
+removes the transform in the same frame. It also writes before it stops
+keeping the position, for example when the reader returns to the bottom. Other
+browsers write immediately.
+
+When a detached reader's scrollport changes width (for example after a rotation),
+the shell pins the saved reading row and restores it while measurements settle.
+The restore is scoped to the thread, and it clamps an offset inside the row to
+the row's new height. Height-only changes, such as the keyboard opening, keep the
+existing path. A restore waits at the bottom until the saved row renders. It
+does not stay wherever the new scroll root starts, because that position can
+keep loading older pages. If the scroll position is past the cached scroll extent, the shell
+reads the live extent first. A resize clamp or a correction past an outdated
+extent therefore does not count as the reader returning to the bottom.
