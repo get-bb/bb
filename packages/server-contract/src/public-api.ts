@@ -22,6 +22,9 @@ import {
   type TestAiServiceResponse,
 } from "./api/system.js";
 import {
+  desktopBrowserBrokerProofRequestSchema,
+  type DesktopBrowserBrokerProofRequest,
+  type DesktopBrowserBrokerProof,
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
   desktopBrowserCreateRequestSchema,
@@ -775,6 +778,14 @@ export const publicApiRoutes = {
   },
 
   desktopBrowsers: {
+    brokerProof: defineRoute({
+      path: "/desktop-browsers/broker-proof",
+      method: "post",
+      request: jsonRequest<{}, DesktopBrowserBrokerProofRequest>(
+        desktopBrowserBrokerProofRequestSchema,
+      ),
+      response: jsonResponse<DesktopBrowserBrokerProof>(),
+    }),
     listInstances: defineRoute({
       path: "/desktop-browsers/instances",
       method: "post",

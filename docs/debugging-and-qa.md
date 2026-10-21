@@ -25,6 +25,20 @@ the Connect desktop session in both the app and embedded browser cookie stores.
 This also authenticates shared-port links under the same Connect domain. The
 browser keeps its separate profile; unrelated site cookies are not copied.
 
+Desktop browser registration first uses a private local broker descriptor whose
+recorded server URL matches the selected server's origin. Otherwise it discovers
+the other private local broker descriptors and sends a fresh random challenge to the selected server's `/api/v1/desktop-browsers/broker-proof`
+endpoint. The server routes it to the descriptor's enrolled host, whose broker
+returns an HMAC using its local authentication token. The desktop verifies that
+proof against the private descriptor before registering; the token never leaves
+the machine. This works for alternate domains and proxies without hostname rules
+or plugin dependencies. Redirects and invalid proofs are rejected. This internal
+desktop handshake adds `desktop.broker.prove` in daemon protocol 248. Older
+protocol-246/247 daemons remain compatible for existing operations; the server
+rejects proof requests for those daemons with an upgrade-required error before
+sending any RPC. Failed lookups retry with exponential backoff from 2 seconds up
+to 1 minute.
+
 Saved desktop browser tabs keep their URL and owning host/window. Opening one
 in the desktop app attaches the existing view when that window still owns it,
 including after its connection generation changes. While the desktop or host is

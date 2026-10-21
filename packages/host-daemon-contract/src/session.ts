@@ -485,6 +485,7 @@ function commandRpcResponseSuccessSchemaFor<
 const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   "commandType",
   [
+    onlineRpcResponseSuccessSchemaFor("desktop.broker.prove"),
     onlineRpcResponseSuccessSchemaFor("desktop.browser.list_instances"),
     onlineRpcResponseSuccessSchemaFor("desktop.browser.list_tabs"),
     onlineRpcResponseSuccessSchemaFor("desktop.browser.create_tab"),

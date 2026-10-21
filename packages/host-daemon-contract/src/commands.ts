@@ -1,4 +1,6 @@
 import {
+  desktopBrowserBrokerChallengeSchema,
+  desktopBrowserBrokerProofSchema,
   desktopBrowserCommandSchemas,
   desktopBrowserResultSchemas,
 } from "./desktop-browser.js";
@@ -60,8 +62,10 @@ export {
   HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS,
   HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION,
+  HOST_DAEMON_DESKTOP_BROKER_PROOF_PROTOCOL_VERSION,
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonSupportsConnectNext,
+  hostDaemonSupportsDesktopBrokerProof,
   isCompatibleHostDaemonProtocolVersion,
 } from "./protocol.js";
 export {
@@ -1439,6 +1443,20 @@ function defineHostDaemonCommandDescriptor<
 }
 
 export const hostDaemonCommandRegistry = {
+  "desktop.broker.prove": defineHostDaemonCommandDescriptor({
+    type: "desktop.broker.prove",
+    schema: z
+      .object({
+        type: z.literal("desktop.broker.prove"),
+        challenge: desktopBrowserBrokerChallengeSchema,
+      })
+      .strict(),
+    resultSchema: desktopBrowserBrokerProofSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "desktop.browser.list_instances": defineHostDaemonCommandDescriptor({
     type: "desktop.browser.list_instances",
     schema: desktopBrowserCommandSchemas["desktop.browser.list_instances"],
