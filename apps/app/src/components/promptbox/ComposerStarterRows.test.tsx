@@ -16,14 +16,6 @@ import {
   composerStarterAccessibleName,
 } from "./ComposerStarterRows";
 
-const mocks = vi.hoisted(() => ({
-  useSystemConfig: vi.fn(),
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: mocks.useSystemConfig,
-}));
-
 const promptDraft = getPromptDraftAccessor({
   kind: "plugin-new-thread",
   key: "composer-starter-rows-test",
@@ -43,21 +35,16 @@ function navigationWithThreads(threadCount: number) {
 }
 
 interface ArrangeArgs {
-  flag?: boolean;
   isProjectless?: boolean;
   threadCount?: number | null;
   text?: string;
 }
 
 function arrange({
-  flag = true,
   isProjectless = false,
   threadCount = 0,
   text = "",
 }: ArrangeArgs = {}) {
-  mocks.useSystemConfig.mockReturnValue({
-    data: { featureFlags: { composerStarterRows: flag } },
-  });
   promptDraft.setTextAndMentions(text, []);
   const focus = vi.fn();
   const submit = vi.fn((event: { preventDefault: () => void }) =>
@@ -93,7 +80,7 @@ afterEach(() => {
 });
 
 describe("ComposerStarterRows", () => {
-  it("renders every starter when the flag is on, the composer is empty, a project is selected, and no thread exists", () => {
+  it("renders every starter when the composer is empty, a project is selected, and no thread exists", () => {
     arrange();
 
     expect(screen.getByText("Try asking")).toBeTruthy();
@@ -106,8 +93,6 @@ describe("ComposerStarterRows", () => {
   });
 
   it.each<[string, ArrangeArgs]>([
-    ["the flag is off", { flag: false }],
-    ["no project is selected", { isProjectless: true }],
     ["a thread already exists", { threadCount: 1 }],
     ["threads have not loaded", { threadCount: null }],
     ["the composer has text", { text: "Hello" }],
@@ -116,6 +101,18 @@ describe("ComposerStarterRows", () => {
 
     expect(screen.queryByText("Try asking")).toBeNull();
     expect(starterButtons().every((button) => button === null)).toBe(true);
+  });
+
+  it("offers only the starters that need no project when no project is selected", () => {
+    arrange({ isProjectless: true });
+
+    const visible = COMPOSER_STARTERS.filter(
+      (starter) =>
+        screen.queryByRole("button", {
+          name: composerStarterAccessibleName(starter),
+        }) !== null,
+    ).map((starter) => starter.label);
+    expect(visible).toEqual(["Make bb yours"]);
   });
 
   it("fills the composer draft and focuses it without submitting", () => {

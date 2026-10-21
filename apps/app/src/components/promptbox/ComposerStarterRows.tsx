@@ -4,7 +4,6 @@ import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   usePromptDraftInputEmpty,
   type PromptDraftController,
@@ -15,28 +14,32 @@ export interface ComposerStarter {
   id: string;
   label: string;
   prompt: string;
+  needsProject: boolean;
 }
 
 export const COMPOSER_STARTER_ROWS_HEADING = "Try asking";
 
 export const COMPOSER_STARTERS: readonly ComposerStarter[] = [
   {
+    id: "make-bb-yours",
+    label: "Make bb yours",
+    prompt:
+      "Help me make bb my own. Ask what I'd like to change, like how it looks or a panel or tool I'm missing, then build it as a theme or plugin and install it.",
+    needsProject: false,
+  },
+  {
     id: "explain-codebase",
     label: "Explain this codebase",
     prompt:
       "Give me a short tour of this codebase: what it does, how it's organized, and where to start.",
+    needsProject: true,
   },
   {
     id: "fix-todo",
     label: "Fix a small TODO",
     prompt:
       "Find one TODO or FIXME in this project that's safe to fix, fix it, and explain the change.",
-  },
-  {
-    id: "add-test",
-    label: "Add a missing test",
-    prompt:
-      "Find an important function in this project that has no test, and add a focused test for it.",
+    needsProject: true,
   },
 ];
 
@@ -45,11 +48,13 @@ export function composerStarterAccessibleName(starter: ComposerStarter) {
 }
 
 interface ComposerStarterRowsUIProps {
+  starters: readonly ComposerStarter[];
   onSelect: (starter: ComposerStarter) => void;
   className?: string;
 }
 
 export function ComposerStarterRowsUI({
+  starters,
   onSelect,
   className,
 }: ComposerStarterRowsUIProps) {
@@ -66,7 +71,7 @@ export function ComposerStarterRowsUI({
         {COMPOSER_STARTER_ROWS_HEADING}
       </h2>
       <ul className="flex flex-col gap-0.5">
-        {COMPOSER_STARTERS.map((starter) => (
+        {starters.map((starter) => (
           <li key={starter.id}>
             <button
               type="button"
@@ -103,8 +108,6 @@ export function ComposerStarterRows({
   sidebarNavigation,
   className,
 }: ComposerStarterRowsProps) {
-  const enabled =
-    useSystemConfig().data?.featureFlags.composerStarterRows === true;
   const inputEmpty = usePromptDraftInputEmpty(promptDraft);
   const hasNoThreads =
     sidebarNavigation !== undefined &&
@@ -120,10 +123,17 @@ export function ComposerStarterRows({
     },
     [composerActions],
   );
-  if (!enabled || isProjectless || !inputEmpty || !hasNoThreads) {
+  const starters = isProjectless
+    ? COMPOSER_STARTERS.filter((starter) => !starter.needsProject)
+    : COMPOSER_STARTERS;
+  if (!inputEmpty || !hasNoThreads) {
     return null;
   }
   return (
-    <ComposerStarterRowsUI onSelect={handleSelect} className={className} />
+    <ComposerStarterRowsUI
+      starters={starters}
+      onSelect={handleSelect}
+      className={className}
+    />
   );
 }

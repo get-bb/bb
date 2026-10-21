@@ -5,7 +5,6 @@ import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   defaultAppSettings,
-  defaultFeatureFlags,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
   type ThreadSessionOption,
@@ -276,7 +275,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       primaryHostId: "host_1",
       generalSettings: defaultAppSettings,
-      featureFlags: defaultFeatureFlags,
       serverAccess: {
         providers: [
           {

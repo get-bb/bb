@@ -808,16 +808,6 @@ Timeline builds slower than 150 ms log `Thread timeline build blocked the event
 loop`, and event-loop stalls over 500 ms log `Event loop stalled`, both at
 `info`.
 
-## Composer Starter Rows
-
-`BB_FF_COMPOSER_STARTER_ROWS=true` (off by default) shows three "Try asking"
-rows under the empty new-thread composer while a project is selected and no
-thread is listed in the sidebar yet. Clicking a row fills the message box with
-an editable prompt; nothing is sent until you submit it. The rows disappear
-once the message box has text or a thread exists, and never show with
-"No project" selected. Like every `BB_FF_*` flag it is startup-only: set it
-with `npx bb-app env set BB_FF_COMPOSER_STARTER_ROWS true` and restart bb.
-
 ## Plugins
 
 Plugins are on by default. Builtin plugins ship with bb; the official plugins

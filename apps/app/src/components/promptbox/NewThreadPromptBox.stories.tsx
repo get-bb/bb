@@ -12,7 +12,10 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import { ComposerStarterRowsUI } from "@/components/promptbox/ComposerStarterRows";
+import {
+  COMPOSER_STARTERS,
+  ComposerStarterRowsUI,
+} from "@/components/promptbox/ComposerStarterRows";
 import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -185,6 +188,7 @@ function StarterRowsRow() {
       {value === "" ? (
         <ComposerStarterRowsUI
           className="mt-3"
+          starters={COMPOSER_STARTERS}
           onSelect={(starter) => onChange(starter.prompt, [])}
         />
       ) : null}
@@ -660,7 +664,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="starter rows"
-          hint="BB_FF_COMPOSER_STARTER_ROWS: empty composer, project selected, no threads yet; a row fills the draft without sending"
+          hint="empty composer, no threads yet; a row fills the draft without sending"
         >
           <StarterRowsRow />
         </StoryRow>
