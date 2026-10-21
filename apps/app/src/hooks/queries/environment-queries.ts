@@ -1,6 +1,8 @@
+import { coreRead, dependency } from "./core-read";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTaggedQuery } from "@bb/query-tags";
+import { useLiveQuery } from "@bb/query-changes";
 import type {
+  EnvironmentChangeKind,
   Environment,
   ThreadPullRequest,
   WorkspaceDiffTarget,
@@ -37,7 +39,7 @@ import {
   environmentWorkStatusQueryKey,
 } from "./query-keys";
 import { useDebouncedBranchSearchQuery } from "./branch-search-debounce";
-import { routeTaggedRead } from "./route-tags";
+import { routeLiveRead } from "./route-changes";
 import {
   resolveEnvironmentDiffFilesPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
@@ -93,11 +95,12 @@ export function useEnvironment(
 
   return useQuery<Environment>({
     queryKey: environmentQueryKey(environmentId),
-    queryFn: ({ signal }) =>
+    ...coreRead(environmentRecordDependency(environmentId), ({ signal }) =>
       sdk.environments.get({
         environmentId: requireEnvironmentId(environmentId, "useEnvironment"),
         signal,
       }),
+    ),
     enabled,
     staleTime: options?.staleTime,
   });
@@ -117,15 +120,23 @@ export function useEnvironmentWorkStatus(
       environmentId,
       normalizedMergeBaseBranch,
     ),
-    queryFn: ({ signal }) =>
-      sdk.environments.status({
-        environmentId: requireEnvironmentId(
-          environmentId,
-          "useEnvironmentWorkStatus",
-        ),
-        mergeBaseBranch,
-        signal,
-      }),
+    ...coreRead(
+      environmentRecordDependency(
+        environmentId,
+        ...(normalizedMergeBaseBranch === null
+          ? []
+          : ["git-refs-changed" as const]),
+      ),
+      ({ signal }) =>
+        sdk.environments.status({
+          environmentId: requireEnvironmentId(
+            environmentId,
+            "useEnvironmentWorkStatus",
+          ),
+          mergeBaseBranch,
+          signal,
+        }),
+    ),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     staleTime: 0,
@@ -164,9 +175,9 @@ export function useEnvironmentPullRequest(
   useEnvironmentPullRequestRealtimeSubscription(environmentId, { enabled });
   const queryKey = environmentPullRequestQueryKey(environmentId);
 
-  return useTaggedQuery<EnvironmentPullRequestResponse>({
+  return useLiveQuery<EnvironmentPullRequestResponse>({
     queryKey,
-    ...routeTaggedRead(
+    ...routeLiveRead(
       client,
       queryKey,
       publicApiRoutes.environments.pullRequest,
@@ -206,14 +217,17 @@ export function useEnvironmentMergeBaseBranches(
       limit,
       selectedBranch ?? "",
     ),
-    queryFn: ({ signal }) =>
-      sdk.environments.diffBranches({
-        environmentId,
-        ...(query ? { query } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
-        limit: String(limit),
-        signal,
-      }),
+    ...coreRead(
+      environmentRecordDependency(environmentId, "git-refs-changed"),
+      ({ signal }) =>
+        sdk.environments.diffBranches({
+          environmentId,
+          ...(query ? { query } : {}),
+          ...(selectedBranch ? { selectedBranch } : {}),
+          limit: String(limit),
+          signal,
+        }),
+    ),
     enabled,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: MERGE_BASE_BRANCHES_STALE_MS,
@@ -245,34 +259,37 @@ export function useEnvironmentFilePreview(
 
   return useQuery<FilePreview>({
     queryKey: environmentFilePreviewQueryKey(environmentId, path, source),
-    queryFn: async ({ signal }) => {
-      const resolvedPath = requireEnabledQueryArg({
-        value: path,
-        hookName: "useEnvironmentFilePreview",
-        argName: "path",
-      });
-      const resolvedSource = requireEnabledQueryArg({
-        value: source,
-        hookName: "useEnvironmentFilePreview",
-        argName: "source",
-      });
-      const resolvedEnvironmentId = requireEnvironmentId(
-        environmentId,
-        "useEnvironmentFilePreview",
-      );
-      return loadFilePreview(
-        {
-          name: resolvedPath.split("/").at(-1),
-          path: resolvedPath,
-          url: buildEnvironmentFileContentUrl(
-            resolvedEnvironmentId,
-            resolvedSource,
-            resolvedPath,
-          ),
-        },
-        signal,
-      );
-    },
+    ...coreRead(
+      environmentRecordDependency(environmentId, "work-status-changed"),
+      async ({ signal }) => {
+        const resolvedPath = requireEnabledQueryArg({
+          value: path,
+          hookName: "useEnvironmentFilePreview",
+          argName: "path",
+        });
+        const resolvedSource = requireEnabledQueryArg({
+          value: source,
+          hookName: "useEnvironmentFilePreview",
+          argName: "source",
+        });
+        const resolvedEnvironmentId = requireEnvironmentId(
+          environmentId,
+          "useEnvironmentFilePreview",
+        );
+        return loadFilePreview(
+          {
+            name: resolvedPath.split("/").at(-1),
+            path: resolvedPath,
+            url: buildEnvironmentFileContentUrl(
+              resolvedEnvironmentId,
+              resolvedSource,
+              resolvedPath,
+            ),
+          },
+          signal,
+        );
+      },
+    ),
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
@@ -343,19 +360,26 @@ export function useEnvironmentDiffFiles(
       environmentDiffTargetKey(target),
       ignoreWhitespace,
     ),
-    queryFn: ({ signal }) =>
-      sdk.environments.diffFiles({
-        ...buildEnvironmentDiffArgs(
-          environmentId,
-          requireEnabledQueryArg({
-            value: target,
-            hookName: "useEnvironmentDiffFiles",
-            argName: "target",
-          }),
-        ),
-        ignoreWhitespace,
-        signal,
-      }),
+    ...coreRead(
+      environmentRecordDependency(
+        environmentId,
+        "work-status-changed",
+        "git-refs-changed",
+      ),
+      ({ signal }) =>
+        sdk.environments.diffFiles({
+          ...buildEnvironmentDiffArgs(
+            environmentId,
+            requireEnabledQueryArg({
+              value: target,
+              hookName: "useEnvironmentDiffFiles",
+              argName: "target",
+            }),
+          ),
+          ignoreWhitespace,
+          signal,
+        }),
+    ),
     enabled,
     placeholderData: (previousData, previousQuery) =>
       resolveEnvironmentDiffFilesPlaceholder(
@@ -390,19 +414,26 @@ export function useEnvironmentDiffViewed(
       environmentDiffTargetKey(target),
       paths,
     ),
-    queryFn: ({ signal }) =>
-      sdk.environments.experimental_diffViewed({
-        ...buildEnvironmentDiffArgs(
-          environmentId,
-          requireEnabledQueryArg({
-            value: target,
-            hookName: "useEnvironmentDiffViewed",
-            argName: "target",
-          }),
-        ),
-        signal,
-        paths,
-      }),
+    ...coreRead(
+      dependency(
+        "environment",
+        ["diff-viewed-changed"],
+        environmentId ?? undefined,
+      ),
+      ({ signal }) =>
+        sdk.environments.experimental_diffViewed({
+          ...buildEnvironmentDiffArgs(
+            environmentId,
+            requireEnabledQueryArg({
+              value: target,
+              hookName: "useEnvironmentDiffViewed",
+              argName: "target",
+            }),
+          ),
+          signal,
+          paths,
+        }),
+    ),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
@@ -425,4 +456,22 @@ function buildEnvironmentDiffArgs(
     case "commit":
       return { environmentId, sha: target.sha, target: target.type };
   }
+}
+
+const ENVIRONMENT_RECORD_CHANGES: EnvironmentChangeKind[] = [
+  "environment-created",
+  "environment-deleted",
+  "metadata-changed",
+  "status-changed",
+];
+
+function environmentRecordDependency(
+  id: string | null | undefined,
+  ...changes: EnvironmentChangeKind[]
+) {
+  return dependency(
+    "environment",
+    [...ENVIRONMENT_RECORD_CHANGES, ...changes],
+    id ?? undefined,
+  );
 }

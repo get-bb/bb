@@ -1,4 +1,5 @@
-import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
+import type { ReadChange, ReadDependency } from "@bb/domain";
+import { rpcResponseChanges } from "@get-bb/plugin-sdk/internal/rpc-changes";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -410,9 +411,10 @@ export interface PluginService {
     | {
         ok: true;
         result: JsonValue;
-        tags: string[];
-        keyTags: Record<string, string[]>;
-        invalidated: string[];
+        dependencies: ReadDependency[];
+        keyDependencies: Record<string, ReadDependency[]>;
+        changes: ReadChange[];
+        whileWatched: boolean;
       }
     | { ok: false; error: PluginRpcError }
   >;
@@ -2168,14 +2170,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           parsedOutput,
           throwRpcBoundaryError,
         );
-        const envelope = rpcResponseTags(
+        const envelope = rpcResponseChanges(
           handler.declarations,
           parsedInput,
           parsedOutput,
         );
-        if (envelope.invalidated.length > 0)
-          deps.hub.notifyPluginChanged(id, envelope.invalidated);
-        return { ok: true as const, result: resultValue, ...envelope };
+        for (const change of envelope.changes)
+          deps.hub.notifyPluginChanged(id, change);
+        return {
+          ok: true as const,
+          result: resultValue,
+          ...envelope,
+          whileWatched: handler.whileWatched === true,
+        };
       });
       if (outcome.ok) return outcome.value;
       if (outcome.cause instanceof PluginRpcBoundaryError) {

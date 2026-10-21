@@ -21,22 +21,23 @@ describe("NotificationHub", () => {
     vi.useRealTimers();
   });
 
-  it("batches tag changes and delivers them to every connected client without subscriptions", async () => {
+  it("delivers read changes with their payload to connected clients", () => {
     const hub = new NotificationHub();
     const first = createMockHubSocket();
-    const second = createMockHubSocket();
     const disconnected = createMockHubSocket();
-    for (const socket of [first, second, disconnected])
-      hub.registerClient(socket);
+    hub.registerClient(first);
+    hub.registerClient(disconnected);
     hub.unregisterClient(disconnected);
-    hub.notifyTags([]);
-    hub.notifyTags(["a", "b"]);
-    hub.notifyTags(["b", "c"]);
-    await Promise.resolve();
-    for (const socket of [first, second])
-      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
-        { type: "changed", entity: "tags", tags: ["a", "b", "c"] },
-      ]);
+    const change = {
+      entity: "settings",
+      id: "appearance",
+      changes: ["updated"],
+      value: { theme: "dark" },
+    };
+    hub.notifyReadChanged(change);
+    expect(first.messages.map((message) => JSON.parse(message))).toEqual([
+      { type: "changed", entity: "read", change },
+    ]);
     expect(disconnected.messages).toEqual([]);
   });
 
@@ -889,4 +890,40 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     hub.notifyThread("thread-1", ["events-appended"]);
     expect(seen).toEqual([["events-appended"], ["events-appended"]]);
   });
+});
+
+it("shares watched producers across sockets and signals only plugin subscribers", () => {
+  const hub = new NotificationHub();
+  const a = createMockHubSocket();
+  const b = createMockHubSocket();
+  const idle = createMockHubSocket();
+  const changes = vi.fn();
+  hub.registerClient(idle);
+  const read = {
+    kind: "plugin-read",
+    pluginId: "demo",
+    method: "status",
+    read: { input: { a: 1, b: 2 } },
+  } as const;
+  const stop = hub.onWatchedTargets(["plugin-read"], changes);
+  hub.subscribe(a, read);
+  hub.subscribe(b, { ...read, read: { input: { b: 2, a: 1 } } });
+  expect(changes.mock.calls).toEqual([[{ started: [read], stopped: [] }]]);
+  hub.unsubscribe(a, read);
+  expect(changes).toHaveBeenCalledTimes(1);
+  hub.unregisterClient(b);
+  expect(changes.mock.calls).toEqual([
+    [{ started: [read], stopped: [] }],
+    [{ started: [], stopped: [read] }],
+  ]);
+  hub.subscribe(a, { kind: "plugin", pluginId: "demo" });
+  hub.subscribe(b, { kind: "plugin", pluginId: "other" });
+  expect(hub.notifyPluginSignal("demo", "delivery", { ok: true })).toBe(1);
+  expect(JSON.parse(a.messages[0]!)).toMatchObject({
+    type: "plugin-signal",
+    pluginId: "demo",
+  });
+  expect(b.messages).toEqual([]);
+  expect(idle.messages).toEqual([]);
+  stop();
 });

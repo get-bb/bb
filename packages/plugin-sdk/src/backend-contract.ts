@@ -1,3 +1,4 @@
+import type { ReadChange } from "@bb/domain";
 import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
@@ -871,10 +872,15 @@ export interface PluginHttp {
 }
 
 export interface PluginRpc {
-  /** Refresh reads whose contract tags overlap this nonempty list. */
-  experimental_invalidate(tags: readonly string[]): void;
-  /** Refresh every read of this plugin, including untagged reads. */
-  experimental_invalidateAll(): void;
+  /** Run a producer once per distinct watched read until its last client leaves. Register after the method. Abort stops the producer on unwatch or plugin disposal. */
+  experimental_whileWatched(
+    method: string,
+    handler: (
+      read: { input: JsonValue } | { key: string },
+      signal: AbortSignal,
+    ) => void | Promise<void>,
+  ): void;
+  experimental_publishChange(change: ReadChange): void;
   /**
    * Register a Standard Schema-driven rpc contract and its inferred handlers,
    * served at POST
@@ -898,8 +904,8 @@ export interface PluginRpc {
 export interface PluginRealtime {
   /**
    * Broadcast an ephemeral `plugin-signal` WS message
-   * `{ pluginId, channel, payload }` to every connected client (V1 has no
-   * per-channel subscriptions). `payload` must be JSON-serializable;
+   * `{ pluginId, channel, payload }` to clients subscribed to this plugin.
+   * `useRealtime` retains that subscription; there are no per-channel subscriptions. `payload` must be JSON-serializable;
    * `undefined` is normalized to `null`. Nothing is persisted.
    */
   publish(channel: string, payload: unknown): void;

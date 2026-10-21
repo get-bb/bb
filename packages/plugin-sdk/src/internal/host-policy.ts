@@ -1,4 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
+import type { ContractChangeDeclarations } from "@bb/domain";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -1704,8 +1704,13 @@ function readRpcMethodContract(
   const description = rpcDescriptionSchema.parse(
     Reflect.get(value, "experimental_description"),
   );
-  const declarations: ContractTagDeclarations<unknown, unknown> = {};
-  for (const name of ["tags", "keyTags", "invalidates"] as const) {
+  const declarations: ContractChangeDeclarations<unknown, unknown> = {};
+  for (const name of [
+    "experimental_dependencies",
+    "experimental_keyDependencies",
+    "experimental_changes",
+    "experimental_reactToChange",
+  ] as const) {
     const declaration = Reflect.get(value, name);
     if (declaration !== undefined) {
       if (typeof declaration !== "function")
@@ -2883,7 +2888,7 @@ export function normalizeWebSocketRouteRegistration(
 }
 
 type RpcRegistrationRecord = {
-  declarations: ContractTagDeclarations<unknown, unknown>;
+  declarations: ContractChangeDeclarations<unknown, unknown>;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;

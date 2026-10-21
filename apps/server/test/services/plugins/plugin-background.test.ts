@@ -80,6 +80,7 @@ describe("plugin background services", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -202,6 +203,7 @@ describe("plugin background services", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -264,6 +266,7 @@ describe("plugin background services", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -560,6 +563,7 @@ describe("plugin schedules", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },

@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import type {
   PluginCatalogResolvedSource,
   PluginInstallJob,
@@ -31,7 +32,9 @@ export function isActivePluginInstallJob(
 
 const pluginInstallJobsQueryOptions = queryOptions({
   queryKey: pluginInstallJobsQueryKey(),
-  queryFn: () => createPluginsClient(fetch).installJobs.list(),
+  ...coreRead(dependency("system", ["plugin-install-jobs-changed"]), () =>
+    createPluginsClient(fetch).installJobs.list(),
+  ),
 });
 
 export function usePluginInstallJobs() {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GitHostPullRequest } from "@bb/domain";
-import { environmentPullRequestTag } from "@bb/server-contract";
+import { environmentPullRequestChange } from "@bb/server-contract";
 import {
   listQueuedCommands,
   reportQueuedCommandSuccess,
@@ -85,7 +85,7 @@ async function readPullRequest(
 function tagMessages(socket: { messages: string[] }): unknown[] {
   return socket.messages
     .map((message) => JSON.parse(message))
-    .filter((message) => message.entity === "tags");
+    .filter((message) => message.entity === "read");
 }
 
 describe("environment pull request watch", () => {
@@ -147,8 +147,10 @@ describe("environment pull request watch", () => {
         expect(tagMessages(first)).toEqual([
           {
             type: "changed",
-            entity: "tags",
-            tags: [environmentPullRequestTag(environment.id)],
+            entity: "read",
+            change: expect.objectContaining(
+              environmentPullRequestChange(environment.id),
+            ),
           },
         ]),
       );

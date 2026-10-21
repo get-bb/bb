@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import type { SystemAppUpdateStatus } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
@@ -13,7 +14,9 @@ export function useAppUpdateStatus(options?: QueryOptions) {
   useSystemRealtimeSubscription({ enabled });
   return useQuery<SystemAppUpdateStatus>({
     queryKey: systemAppUpdateQueryKey(),
-    queryFn: ({ signal }) => sdk.system.appUpdate({ signal }),
+    ...coreRead(dependency("system", ["app-update-changed"]), ({ signal }) =>
+      sdk.system.appUpdate({ signal }),
+    ),
     enabled,
     refetchInterval: (query) =>
       query.state.data !== undefined &&

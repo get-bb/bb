@@ -60,7 +60,9 @@ function assertFrontendInference(
     rows: {
       input: z.object({ keys: z.array(z.string()) }),
       output: z.record(z.string(), z.object({ title: z.string() })),
-      keyTags: (key) => [`row:${key}`],
+      experimental_keyDependencies: (key) => [
+        { entity: "row", id: key, changes: ["updated"] },
+      ],
     },
     plain: { input: z.null(), output: z.number() },
     extra: {
@@ -127,7 +129,7 @@ function assertFrontendInference(
       input: z.null(),
       output: z.record(z.string(), z.number()),
       // @ts-expect-error keyed declarations require a keys array.
-      keyTags: () => [],
+      experimental_keyDependencies: () => [],
     },
   });
   defineRpcContract({
@@ -135,7 +137,7 @@ function assertFrontendInference(
       input: z.object({ keys: z.array(z.string()) }),
       output: z.number(),
       // @ts-expect-error keyed declarations require a record output.
-      keyTags: () => [],
+      experimental_keyDependencies: () => [],
     },
   });
   defineRpcContract({
@@ -143,7 +145,7 @@ function assertFrontendInference(
       input: z.object({ keys: z.array(z.string()) }),
       output: z.object({ value: z.number() }),
       // @ts-expect-error fixed object outputs cannot represent arbitrary requested keys.
-      keyTags: () => [],
+      experimental_keyDependencies: () => [],
     },
   });
 

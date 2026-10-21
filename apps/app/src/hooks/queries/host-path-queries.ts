@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useMemo } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
@@ -18,16 +19,19 @@ export function useHostPathExistence(
 
   const query = useQuery({
     queryKey: hostPathExistenceQueryKey(hostId, sortedPaths),
-    queryFn: enabledHostId
-      ? async ({ signal }) =>
-          (
-            await sdk.hosts.pathsExist({
-              hostId: enabledHostId,
-              paths: sortedPaths,
-              signal,
-            })
-          ).existence
-      : skipToken,
+    ...(enabledHostId
+      ? coreRead(
+          dependency("project", ["project-sources-changed"]),
+          async ({ signal }) =>
+            (
+              await sdk.hosts.pathsExist({
+                hostId: enabledHostId,
+                paths: sortedPaths,
+                signal,
+              })
+            ).existence,
+        )
+      : { queryFn: skipToken }),
     staleTime: 10_000,
   });
 

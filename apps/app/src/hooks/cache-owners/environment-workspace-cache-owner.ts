@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { optimisticQueryUpdate } from "@bb/query-tags";
+import { optimisticQueryUpdate } from "@bb/query-changes";
 import type { Environment } from "@bb/domain";
 import {
   environmentQueryKey,

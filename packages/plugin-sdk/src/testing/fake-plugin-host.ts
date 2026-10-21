@@ -1,6 +1,7 @@
+import { readChangeSchema, type ReadChange } from "@bb/domain";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
-import { rpcInvalidationTags, rpcResponseTags } from "../internal/rpc-tags.js";
-import type { ContractTagDeclarations } from "@bb/domain";
+import { rpcResponseChanges } from "../internal/rpc-changes.js";
+import type { ContractChangeDeclarations } from "@bb/domain";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -332,7 +333,8 @@ export interface FakePluginInspectionState {
   /** Every `bb.log` line, in order. */
   readonly logEntries: FakeLogEntry[];
   /** Every `bb.realtime.publish`, payload normalized like the wire. */
-  readonly experimental_rpcInvalidations: (readonly string[] | null)[];
+  experimental_onRpcChange(listener: () => void): () => void;
+  readonly experimental_rpcChanges: ReadChange[];
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
   readonly needsConfigurationMessages: string[];
@@ -602,7 +604,7 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
 }
 
 interface FakeRpcRecord {
-  declarations: ContractTagDeclarations<unknown, unknown>;
+  declarations: ContractChangeDeclarations<unknown, unknown>;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -856,15 +858,18 @@ function createFakePluginHostInternal(
 
   // --- rpc ---
   const rpcHandlers = new Map<string, FakeRpcRecord>();
-  const rpcInvalidations: (readonly string[] | null)[] = [];
+  const rpcChanges: ReadChange[] = [];
+  const changeListeners = new Set<() => void>();
   const rpc: PluginRpc = {
-    experimental_invalidate(tags) {
+    experimental_whileWatched(method) {
       assertLive();
-      rpcInvalidations.push(rpcInvalidationTags.parse(tags));
+      if (!rpcHandlers.has(method))
+        throw new Error(`Unknown RPC method: ${method}`);
     },
-    experimental_invalidateAll() {
+    experimental_publishChange(change) {
       assertLive();
-      rpcInvalidations.push(null);
+      rpcChanges.push(readChangeSchema.parse(change));
+      for (const listener of changeListeners) listener();
     },
     register(contract, handlers, registrationOptions) {
       assertLive();
@@ -1611,7 +1616,13 @@ function createFakePluginHostInternal(
     },
     pluginId,
     logEntries,
-    experimental_rpcInvalidations: rpcInvalidations,
+    experimental_onRpcChange(listener) {
+      changeListeners.add(listener);
+      return () => {
+        changeListeners.delete(listener);
+      };
+    },
+    experimental_rpcChanges: rpcChanges,
     realtimeSignals,
     needsConfigurationMessages,
     get recheckCount() {
@@ -1831,12 +1842,12 @@ function createFakePluginHostInternal(
         throwRpcError,
       );
       const jsonResult = normalizeRpcJsonResult(validatedOutput, throwRpcError);
-      const { invalidated } = rpcResponseTags(
+      const { changes } = rpcResponseChanges(
         record.declarations,
         validatedInput,
         validatedOutput,
       );
-      if (invalidated.length > 0) rpc.experimental_invalidate(invalidated);
+      for (const change of changes) rpc.experimental_publishChange(change);
       return jsonResult;
     },
 

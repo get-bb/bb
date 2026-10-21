@@ -1,3 +1,5 @@
+import { jsonValueSchema } from "@bb/domain";
+import { applyCoreReadChange } from "@/hooks/cache-owners/core-read-changes";
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
@@ -15,11 +17,7 @@ import {
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type { QueryClient } from "@tanstack/react-query";
-import {
-  listSidebarNavigationThreads,
-  updateCachedThreadListStatusState,
-  updateCachedThreadStatusState,
-} from "../cache-owners/query-cache";
+import { listSidebarNavigationThreads } from "../cache-owners/query-cache";
 import {
   sidebarNavigationQueryKey,
   threadsQueryKey,
@@ -201,8 +199,12 @@ it("rolls back a failed pin under concurrent status and membership writes", asyn
       updatedAt: 5,
     };
     server.setRows([{ ...entry("t1", null), ...statusChange }]);
-    updateCachedThreadListStatusState(server.queryClient, "t1", statusChange);
-    updateCachedThreadStatusState(server.queryClient, "t1", statusChange);
+    applyCoreReadChange(server.queryClient, {
+      entity: "thread",
+      id: "t1",
+      changes: ["status-changed"],
+      value: jsonValueSchema.parse(statusChange),
+    });
     writeEveryThreadList(server.queryClient, (list) =>
       list.filter((thread) => thread.id !== "t2"),
     );
@@ -400,8 +402,12 @@ it("keeps concurrent thread state when a pin succeeds", async () => {
       latestAttentionAt: 5,
       updatedAt: 30,
     };
-    updateCachedThreadListStatusState(server.queryClient, "t1", statusChange);
-    updateCachedThreadStatusState(server.queryClient, "t1", statusChange);
+    applyCoreReadChange(server.queryClient, {
+      entity: "thread",
+      id: "t1",
+      changes: ["status-changed"],
+      value: jsonValueSchema.parse(statusChange),
+    });
     writeEveryThreadList(server.queryClient, (list) =>
       list.map((thread) =>
         thread.id === "t1"

@@ -1,3 +1,6 @@
+import { getCachedThreadEnvironmentId } from "../cache-owners/realtime-cache-registry";
+import type { ReadDependency } from "@bb/domain";
+import { coreRead, dependency } from "./core-read";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
   infiniteQueryOptions,
@@ -138,15 +141,18 @@ export function useThreadStorageFiles(
 
   return useQuery<ThreadStorageFileListResponse>({
     queryKey: threadStorageFilesQueryKey(id, listOptions),
-    queryFn: ({ signal }) => {
-      const query = listOptions.query?.trim() ?? "";
-      return sdk.threads.storageFiles({
-        limit: String(listOptions.limit),
-        ...(query.length > 0 ? { query } : {}),
-        threadId: requireThreadId(id, "useThreadStorageFiles"),
-        signal,
-      });
-    },
+    ...coreRead(
+      (client) => threadStorageDependencies(client, id),
+      ({ signal }) => {
+        const query = listOptions.query?.trim() ?? "";
+        return sdk.threads.storageFiles({
+          limit: String(listOptions.limit),
+          ...(query.length > 0 ? { query } : {}),
+          threadId: requireThreadId(id, "useThreadStorageFiles"),
+          signal,
+        });
+      },
+    ),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
@@ -158,11 +164,14 @@ export function threadStorageLocationQueryOptions(
 ) {
   return queryOptions<ThreadStorageLocationResponse>({
     queryKey: threadStorageLocationQueryKey(id),
-    queryFn: ({ signal }) =>
-      sdk.threads.storageLocation({
-        threadId: requireThreadId(id, "useThreadStorageLocation"),
-        signal,
-      }),
+    ...coreRead(
+      (client) => threadStorageDependencies(client, id, false),
+      ({ signal }) =>
+        sdk.threads.storageLocation({
+          threadId: requireThreadId(id, "useThreadStorageLocation"),
+          signal,
+        }),
+    ),
     enabled: (options?.enabled ?? true) && Boolean(id),
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
@@ -184,17 +193,20 @@ export function useThreadStoragePaths(
 
   return useQuery<ThreadStoragePathListResponse>({
     queryKey: threadStoragePathsQueryKey(id, listOptions),
-    queryFn: ({ signal }) => {
-      const query = listOptions.query?.trim() ?? "";
-      return sdk.threads.storagePaths({
-        includeDirectories: listOptions.includeDirectories ? "true" : "false",
-        includeFiles: listOptions.includeFiles ? "true" : "false",
-        limit: String(listOptions.limit),
-        ...(query.length > 0 ? { query } : {}),
-        threadId: requireThreadId(id, "useThreadStoragePaths"),
-        signal,
-      });
-    },
+    ...coreRead(
+      (client) => threadStorageDependencies(client, id),
+      ({ signal }) => {
+        const query = listOptions.query?.trim() ?? "";
+        return sdk.threads.storagePaths({
+          includeDirectories: listOptions.includeDirectories ? "true" : "false",
+          includeFiles: listOptions.includeFiles ? "true" : "false",
+          limit: String(listOptions.limit),
+          ...(query.length > 0 ? { query } : {}),
+          threadId: requireThreadId(id, "useThreadStoragePaths"),
+          signal,
+        });
+      },
+    ),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
@@ -211,12 +223,15 @@ export function useThreadStorageFilePreview(
 
   return useQuery<FilePreview>({
     queryKey: threadStorageFilePreviewQueryKey(id, path),
-    queryFn: ({ signal }) =>
-      api.getThreadStorageFilePreview(
-        requireThreadId(id, "useThreadStorageFilePreview"),
-        path ?? "",
-        signal,
-      ),
+    ...coreRead(
+      (client) => threadStorageDependencies(client, id),
+      ({ signal }) =>
+        api.getThreadStorageFilePreview(
+          requireThreadId(id, "useThreadStorageFilePreview"),
+          path ?? "",
+          signal,
+        ),
+    ),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
@@ -432,4 +447,22 @@ export function useThreadTimelineTurnSummaryDetails(
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
   });
+}
+
+function threadStorageDependencies(
+  client: QueryClient,
+  id: string,
+  includeContent = true,
+): ReadDependency[] {
+  const environmentId = getCachedThreadEnvironmentId({
+    queryClient: client,
+    threadId: id,
+  });
+  return [
+    dependency("thread", ["environment-changed"], id),
+    dependency("host", ["host-connected"]),
+    ...(includeContent && environmentId !== null
+      ? [dependency("environment", ["thread-storage-changed"], environmentId)]
+      : []),
+  ];
 }

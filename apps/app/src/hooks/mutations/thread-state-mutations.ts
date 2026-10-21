@@ -5,7 +5,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useTaggedMutation } from "@bb/query-tags";
+import { useLiveMutation } from "@bb/query-changes";
 import type {
   ThreadArchiveAllResponse,
   ThreadResponse,
@@ -137,14 +137,14 @@ function useThreadPinStateMutation(
   errorMessage: string,
 ) {
   const queryClient = useQueryClient();
-  const { mutate } = useTaggedMutation<ThreadMutationRequest, ThreadResponse>({
+  const { mutate } = useLiveMutation<ThreadMutationRequest, ThreadResponse>({
     client: queryClient,
     meta: { errorMessage },
     call: async ({ id }) => ({
       result: await coreThreadMutations(queryClient)[operation]({
         threadId: id,
       }),
-      invalidated: [],
+      changes: [],
     }),
   });
   return useMemo(

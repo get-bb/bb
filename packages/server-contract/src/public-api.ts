@@ -443,17 +443,17 @@ type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
 
-export const UI_PREFERENCES_TAG = "ui-preferences";
-export const THREAD_LISTS_TAG = "thread-lists";
-export const threadTag = (threadId: string): string => `thread:${threadId}`;
-const pinStateInvalidations = ({
-  params,
-}: {
-  params: Record<string, string>;
-}) => [threadTag(params.id), THREAD_LISTS_TAG];
+const pinStateChanges = ({ params }: { params: Record<string, string> }) => [
+  { entity: "thread", id: params.id, changes: ["pin-state-changed"] },
+];
 
-export function environmentPullRequestTag(environmentId: string): string {
-  return `environment-pull-request:${environmentId}`;
+export const UI_PREFERENCES_CHANGE = {
+  entity: "ui-preferences",
+  changes: ["updated"],
+};
+
+export function environmentPullRequestChange(id: string) {
+  return { entity: "environment-pull-request", id, changes: ["updated"] };
 }
 
 export const publicApiRoutes = {
@@ -522,7 +522,9 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SidebarBootstrapResponse>(),
-      tags: () => [THREAD_LISTS_TAG],
+      experimental_dependencies: () => [
+        { entity: "thread", changes: ["pin-state-changed"] },
+      ],
     }),
     get: defineRoute({
       path: "/projects/:id",
@@ -1205,7 +1207,19 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<EnvironmentPullRequestResponse>(),
-      tags: ({ params }) => [environmentPullRequestTag(params.id)],
+      experimental_dependencies: ({ params }) => [
+        environmentPullRequestChange(params.id),
+        {
+          entity: "environment",
+          id: params.id,
+          changes: [
+            "environment-created",
+            "environment-deleted",
+            "metadata-changed",
+            "status-changed",
+          ],
+        },
+      ],
     }),
     diff: defineRoute({
       path: "/environments/:id/diff",
@@ -1370,7 +1384,9 @@ export const publicApiRoutes = {
         threadListQuerySchema,
       ),
       response: jsonResponse<ThreadListResponse>(),
-      tags: () => [THREAD_LISTS_TAG],
+      experimental_dependencies: () => [
+        { entity: "thread", changes: ["pin-state-changed"] },
+      ],
     }),
     /**
      * Grouped `SELECT count(*)` over threads. Exists because a plugin gate
@@ -1436,7 +1452,9 @@ export const publicApiRoutes = {
         threadGetQuerySchema,
       ),
       response: jsonResponse<ThreadResponse | ThreadWithIncludesResponse>(),
-      tags: ({ params }) => [threadTag(params.id)],
+      experimental_dependencies: ({ params }) => [
+        { entity: "thread", id: params.id, changes: ["pin-state-changed"] },
+      ],
     }),
     update: defineRoute({
       path: "/threads/:id",
@@ -1702,14 +1720,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
-      invalidates: pinStateInvalidations,
+      experimental_changes: pinStateChanges,
     }),
     unpin: defineRoute({
       path: "/threads/:id/unpin",
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
-      invalidates: pinStateInvalidations,
+      experimental_changes: pinStateChanges,
     }),
     pinOrder: defineRoute({
       path: "/threads/:id/pin-order",
@@ -2033,7 +2051,7 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<UiPreferencesResponse>(),
-      tags: () => [UI_PREFERENCES_TAG],
+      experimental_dependencies: () => [UI_PREFERENCES_CHANGE],
     }),
     updateUiPreference: defineRoute({
       path: "/preferences/ui/:key",
@@ -2046,7 +2064,7 @@ export const publicApiRoutes = {
         jsonResponse<ApiError>({ status: 404 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
-      invalidates: () => [UI_PREFERENCES_TAG],
+      experimental_changes: () => [UI_PREFERENCES_CHANGE],
     }),
     resetUiPreference: defineRoute({
       path: "/preferences/ui/:key",
@@ -2056,7 +2074,7 @@ export const publicApiRoutes = {
         jsonResponse<UiPreferenceResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
       ],
-      invalidates: () => [UI_PREFERENCES_TAG],
+      experimental_changes: () => [UI_PREFERENCES_CHANGE],
     }),
     themes: defineRoute({
       path: "/settings/themes",

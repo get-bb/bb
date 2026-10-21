@@ -1,9 +1,13 @@
+import type { ReadChange } from "@bb/domain";
 import type {
   ChangedMessage,
   ClientMessage,
   RealtimeSubscriptionTarget,
 } from "@bb/domain";
-import { realtimeSubscriptionTargetKey } from "@bb/domain";
+import {
+  realtimeSubscriptionTargetSchema,
+  realtimeSubscriptionTargetKey,
+} from "@bb/domain";
 import { serverMessageLenientSchema } from "@bb/server-contract";
 import { resolveRealtimeUrl } from "./realtime-url.js";
 import type {
@@ -50,7 +54,10 @@ type IdScopedChangedEventName =
   | "environment:changed"
   | "host:changed";
 
-type UnscopedChangedEventName = "system:changed" | "system:config-changed";
+type UnscopedChangedEventName =
+  | "plugin:changed"
+  | "system:changed"
+  | "system:config-changed";
 
 interface IdScopedChangedListenerRecord<
   TEventName extends IdScopedChangedEventName,
@@ -175,6 +182,24 @@ function isIdScopedChangedListenerFor<
 }
 
 export class BbRealtimeClient implements BbRealtime {
+  private readonly pluginChanges = new Set<{
+    pluginId: string;
+    callback: (change: ReadChange) => void;
+  }>();
+
+  watchPluginChanges(
+    pluginId: string,
+    callback: (change: ReadChange) => void,
+  ): () => void {
+    const entry = { pluginId, callback };
+    this.pluginChanges.add(entry);
+    const release = this.retainTarget({ kind: "plugin", pluginId });
+    return () => {
+      this.pluginChanges.delete(entry);
+      release();
+    };
+  }
+
   private readonly listeners = new Set<RealtimeListenerRecord>();
   private readonly targetSubscriptions = new Map<string, TargetSubscription>();
   private readonly transport: BbSdkTransport;
@@ -197,10 +222,24 @@ export class BbRealtimeClient implements BbRealtime {
     return this.addListener(args);
   }
 
+  retainTarget(target: RealtimeSubscriptionTarget): () => void {
+    const parsed = realtimeSubscriptionTargetSchema.parse(target);
+    this.addTarget(parsed);
+    void this.connectSocket().catch(() => {});
+    return () => this.removeTarget(parsed);
+  }
+
   private addListener(
     args: BbRealtimeSubscribeArgsUnion,
   ): BbRealtimeUnsubscribe {
     switch (args.event) {
+      case "plugin:changed":
+        return this.activateListener({
+          active: true,
+          callback: args.callback,
+          event: args.event,
+          target: { kind: "plugin", pluginId: args.pluginId },
+        });
       case "thread:changed":
         return this.activateListener({
           active: true,
@@ -378,9 +417,15 @@ export class BbRealtimeClient implements BbRealtime {
       const openedAfterReconnect = this.reconnectingAfterUnexpectedClose;
       this.reconnectingAfterUnexpectedClose = false;
       this.reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
-      for (const subscription of this.targetSubscriptions.values()) {
-        this.sendTargetMessage("subscribe", subscription.target);
-      }
+      if (this.targetSubscriptions.size > 0)
+        socket.send(
+          JSON.stringify({
+            type: "subscribe",
+            targets: [...this.targetSubscriptions.values()].map(
+              ({ target }) => target,
+            ),
+          } satisfies ClientMessage),
+        );
       this.resolveSocketReadyPromise();
       this.closeSocketIfIdle();
       if (this.socket !== socket) {
@@ -442,6 +487,8 @@ export class BbRealtimeClient implements BbRealtime {
     };
 
     socket.onerror = () => {
+      socket.onerror = null;
+      socket.onclose?.();
       socket.close();
     };
 
@@ -524,6 +571,25 @@ export class BbRealtimeClient implements BbRealtime {
 
   private dispatchChangedMessage(message: ChangedMessage): void {
     switch (message.entity) {
+      case "plugin":
+        for (const entry of [...this.pluginChanges])
+          if (entry.pluginId === message.pluginId)
+            entry.callback(message.change);
+        for (const listener of this.listenerSnapshot()) {
+          if (
+            listener.active &&
+            listener.event === "plugin:changed" &&
+            listener.target.kind === "plugin" &&
+            listener.target.pluginId === message.pluginId
+          )
+            this.callListener(listener.callback, {
+              type: "changed",
+              entity: "plugin",
+              pluginId: message.pluginId,
+              tags: null,
+            });
+        }
+        break;
       case "thread":
         this.dispatchIdScopedChangedMessage("thread:changed", message);
         break;

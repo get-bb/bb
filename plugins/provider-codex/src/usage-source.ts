@@ -125,6 +125,37 @@ export function registerUsageSource(bb: BbPluginApi) {
     pending.set(resourceId, { refresh, promise });
     return promise;
   };
+  bb.background.service("usage-inventory", {
+    async start(signal) {
+      const invalidate = () =>
+        [{ entity: "usage-inventory", changes: ["updated"] }].forEach(
+          (change) => bb.rpc.experimental_publishChange(change),
+        );
+      const stopHosts = bb.sdk.subscribe({
+        event: "host:changed",
+        callback: invalidate,
+      });
+      const stopSystem = bb.sdk.subscribe({
+        event: "system:changed",
+        callback: (event) => {
+          if (
+            event.changes.includes("provider-registrations-changed") ||
+            event.changes.includes("config-changed")
+          )
+            invalidate();
+        },
+      });
+      try {
+        if (!signal.aborted)
+          await new Promise<void>((resolve) =>
+            signal.addEventListener("abort", () => resolve(), { once: true }),
+          );
+      } finally {
+        stopHosts();
+        stopSystem();
+      }
+    },
+  });
   bb.rpc.register(
     usageSourceRpcContract,
     {

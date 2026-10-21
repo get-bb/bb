@@ -85,12 +85,16 @@ const maximalChangedMessages: ChangedMessage[] = [
     entity: "system",
     changes: [...SYSTEM_CHANGE_KINDS],
   },
-  { type: "changed", entity: "tags", tags: ["ui-preferences"] },
+  {
+    type: "changed",
+    entity: "read",
+    change: { entity: "ui-preferences", changes: ["updated"] },
+  },
   {
     type: "changed",
     entity: "plugin",
     pluginId: "push-notifications",
-    tags: null,
+    change: { entity: "settings", changes: ["updated"] },
   },
 ];
 
@@ -173,4 +177,39 @@ describe("lenient changed-message schema parity", () => {
       Object.keys(threadChangeMetadataSchema.shape).sort(),
     );
   });
+});
+
+it("canonicalizes watched read identities and caps their UTF-8 encoded read at 16 KiB", async () => {
+  const { pluginReadSubscriptionTargetSchema, realtimeSubscriptionTargetKey } =
+    await import("../src/change-kinds.js");
+  const target = {
+    kind: "plugin-read",
+    pluginId: "demo",
+    method: "status",
+    read: { input: { a: 1, b: 2 } },
+  } as const;
+  expect(realtimeSubscriptionTargetKey(target)).toBe(
+    realtimeSubscriptionTargetKey({
+      ...target,
+      read: { input: { b: 2, a: 1 } },
+    }),
+  );
+  expect(
+    pluginReadSubscriptionTargetSchema.safeParse({
+      ...target,
+      read: { key: "x".repeat(16_374) },
+    }).success,
+  ).toBe(true);
+  expect(
+    pluginReadSubscriptionTargetSchema.safeParse({
+      ...target,
+      read: { key: "x".repeat(16_375) },
+    }).success,
+  ).toBe(false);
+  expect(
+    pluginReadSubscriptionTargetSchema.safeParse({
+      ...target,
+      read: { input: "é".repeat(8192) },
+    }).success,
+  ).toBe(false);
 });

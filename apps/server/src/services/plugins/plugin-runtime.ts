@@ -1,3 +1,7 @@
+import {
+  realtimeSubscriptionTargetKey,
+  type PluginReadSubscriptionTarget,
+} from "@bb/domain";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -1618,7 +1622,40 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       rpcCaller: rpcCallers.issue(row.id),
-      invalidateRpc: (tags) => deps.hub.notifyPluginChanged(row.id, tags),
+      publishRpcChange: (change) =>
+        deps.hub.notifyPluginChanged(row.id, change),
+      whileRpcWatched: (method, handler) => {
+        const active = new Map<string, AbortController>();
+        const isWatchedRead = (target: PluginReadSubscriptionTarget) =>
+          target.pluginId === row.id && target.method === method;
+        const stop = deps.hub.onWatchedTargets(["plugin-read"], (change) => {
+          for (const target of change.stopped.filter(isWatchedRead)) {
+            const key = realtimeSubscriptionTargetKey(target);
+            active.get(key)?.abort();
+            active.delete(key);
+          }
+          for (const target of change.started.filter(isWatchedRead)) {
+            const controller = new AbortController();
+            active.set(realtimeSubscriptionTargetKey(target), controller);
+            void Promise.resolve()
+              .then(() => {
+                if (!controller.signal.aborted)
+                  return handler(target.read, controller.signal);
+              })
+              .catch((error: unknown) => {
+                if (!controller.signal.aborted)
+                  deps.logger.warn(
+                    `Plugin ${row.id} watched RPC failed: ${String(error)}`,
+                  );
+              });
+          }
+        });
+        return () => {
+          stop();
+          for (const controller of active.values()) controller.abort();
+          active.clear();
+        };
+      },
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1867,7 +1904,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     }
     disposeUnavailableProviderRegistrations(row.id);
-    deps.hub.notifyPluginChanged(row.id, null);
+    deps.hub.notifyPluginChanged(row.id, {
+      entity: "plugin",
+      changes: ["reset"],
+    });
     loaded.set(row.id, plugin);
     appBundles.set(row.id, appBundleCandidate.snapshot);
     if (hostArtifactCandidate === null) hostArtifacts.delete(row.id);
@@ -1967,7 +2007,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const plugin = loaded.get(id);
     if (!plugin) return;
     loaded.delete(id);
-    deps.hub.notifyPluginChanged(id, null);
+    deps.hub.notifyPluginChanged(id, { entity: "plugin", changes: ["reset"] });
     await disposePluginInstance(id, plugin);
     releaseMutableRoots(plugin.moduleRootUrls);
     hostArtifacts.delete(id);

@@ -13,11 +13,10 @@ keep your own copy of the Zod schemas (see `src/contract.ts`). bb account
 loads before most plugins but can be disabled or held, so call it lazily and
 treat an HTTP 503 as signed out.
 
-| Method                              | Input                                      | Output                                                          |
-| ----------------------------------- | ------------------------------------------ | --------------------------------------------------------------- |
-| `bb-account.v1.status`              | `{}`                                       | `{state, revision, account}`                                    |
-| `bb-account.v1.waitForStatusChange` | `{afterRevision}`                          | the status once `revision > afterRevision`, or after 25 seconds |
-| `bb-account.v1.fetch`               | `{target, method, path, body, timeoutMs?}` | `{status, body}`                                                |
+| Method                 | Input                                      | Output                       |
+| ---------------------- | ------------------------------------------ | ---------------------------- |
+| `bb-account.v1.status` | `{}`                                       | `{state, revision, account}` |
+| `bb-account.v1.fetch`  | `{target, method, path, body, timeoutMs?}` | `{status, body}`             |
 
 `state` is `signed-in`, `signed-out`, or `profile-pending` (bb holds a server
 credential but hasn't loaded its account yet and keeps retrying). Treat every
@@ -87,3 +86,5 @@ may name an `http://bb.localhost:<port>` origin or `https://vibecodethis.site`.
 `--base-url` and the rpc `baseUrl` override it per command but accept only
 `https://getbb.app` and `https://vibecodethis.site`, plus
 `http://bb.localhost:<port>` in a development build.
+
+Account status and login reads declare contract tags. Consumers use `bb.sdk.plugins.experimental_watchRpc`; CLI consumers can run `bb plugin rpc call bb-account bb-account.v1.status --watch --json`. Account changes invalidate status and login reads.

@@ -1,9 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import type {
-  Thread,
-  ThreadListEntry,
-  ThreadStatusChangeMetadata,
-} from "@bb/domain";
+import type { Thread, ThreadListEntry } from "@bb/domain";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -19,21 +15,17 @@ import type {
 } from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
-  ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   environmentDiffFilesQueryKeyPrefix,
   environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentPullRequestQueryKey,
-  environmentQueryKey,
-  environmentWorkStatusQueryKey,
   environmentWorkStatusQueryKeyPrefix,
   SIDEBAR_NAVIGATION_QUERY_KEY,
   sidebarNavigationQueryKey,
   THREADS_QUERY_KEY,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
-  type EnvironmentWorkStatusQueryKey,
   type ArchivedThreadsListFilters,
   type ThreadListQueryFilters,
 } from "../queries/query-keys";
@@ -314,12 +306,6 @@ export function findSidebarNavigationThreadPlaceholder(
       );
 }
 
-export function getEnvironmentRecordInvalidationQueryKeys({
-  environmentId,
-}: EnvironmentInvalidationParams): QueryKey[] {
-  return [environmentQueryKey(environmentId)];
-}
-
 export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
@@ -345,46 +331,6 @@ export function getEnvironmentBranchListInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [environmentMergeBaseBranchesQueryKeyPrefix(environmentId)];
-}
-
-function isEnvironmentWorkStatusQueryKeyForEnvironment(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentWorkStatusQueryKey {
-  return (
-    queryKey[0] === ENVIRONMENT_WORK_STATUS_QUERY_KEY &&
-    queryKey[1] === environmentId &&
-    (typeof queryKey[2] === "string" || queryKey[2] === null)
-  );
-}
-
-function isMergeBaseEnvironmentWorkStatusQueryKey(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentWorkStatusQueryKey {
-  return (
-    isEnvironmentWorkStatusQueryKeyForEnvironment(queryKey, environmentId) &&
-    typeof queryKey[2] === "string"
-  );
-}
-
-export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
-  queryClient: QueryClient,
-  { environmentId }: EnvironmentInvalidationParams,
-): QueryKey[] {
-  const queryKeys: QueryKey[] = [];
-
-  for (const [queryKey] of queryClient.getQueriesData({
-    queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
-  })) {
-    if (isMergeBaseEnvironmentWorkStatusQueryKey(queryKey, environmentId)) {
-      queryKeys.push(environmentWorkStatusQueryKey(environmentId, queryKey[2]));
-    }
-  }
-
-  queryKeys.push(environmentDiffFilesQueryKeyPrefix(environmentId));
-
-  return queryKeys;
 }
 
 export function getEnvironmentActionInvalidationQueryKeys({
@@ -624,32 +570,6 @@ export function updateCachedThreadListPendingInteractionState(
   hasPendingInteraction: boolean,
 ): void {
   patchThreadEntity(queryClient, threadId, { hasPendingInteraction });
-}
-
-export function updateCachedThreadListStatusState(
-  queryClient: QueryClient,
-  threadId: string,
-  statusChange: ThreadStatusChangeMetadata,
-): void {
-  patchThreadEntity(
-    queryClient,
-    threadId,
-    statusChange,
-    statusChange.updatedAt,
-  );
-}
-
-export function updateCachedThreadStatusState(
-  queryClient: QueryClient,
-  threadId: string,
-  { status, runtime, latestAttentionAt, updatedAt }: ThreadStatusChangeMetadata,
-): void {
-  patchThreadEntity(
-    queryClient,
-    threadId,
-    { status, runtime, latestAttentionAt, updatedAt },
-    updatedAt,
-  );
 }
 
 export function getFetchingThreadListQueryKeys(

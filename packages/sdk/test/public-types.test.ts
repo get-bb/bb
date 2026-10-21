@@ -303,6 +303,8 @@ type ExpectedHostsKey =
   | "update";
 
 type ExpectedPluginsKey =
+  | "experimental_watchRpc"
+  | "experimental_watchDiscovery"
   | "experimental_discoverRpc"
   | "experimental_getSafeMode"
   | "experimental_setSafeMode"

@@ -1,5 +1,5 @@
-import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
-import type { ContractTagDeclarations } from "@bb/domain";
+import { readChangeSchema, type ReadChange } from "@bb/domain";
+import type { ContractChangeDeclarations } from "@bb/domain";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -193,7 +193,8 @@ export interface PluginWebSocketRouteRecord {
 }
 
 export interface PluginRpcHandler {
-  declarations: ContractTagDeclarations<unknown, unknown>;
+  whileWatched?: boolean;
+  declarations: ContractChangeDeclarations<unknown, unknown>;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -358,6 +359,9 @@ function wrapSdkForPlugin(
       callRpc(args) {
         return rpcCallerSdk.plugins.callRpc(args);
       },
+      experimental_watchRpc(args) {
+        return rpcCallerSdk.plugins.experimental_watchRpc(args);
+      },
     },
     threads: {
       ...sdk.threads,
@@ -495,7 +499,11 @@ export function createPluginApi(options: {
    * Revoked when the handle is invalidated.
    */
   rpcCaller: PluginRpcCallerCredential;
-  invalidateRpc: (tags: readonly string[] | null) => void;
+  publishRpcChange: (change: ReadChange) => void;
+  whileRpcWatched?: (
+    method: string,
+    handler: Parameters<PluginRpc["experimental_whileWatched"]>[1],
+  ) => () => void;
   publishSignal: (channel: string, payload: unknown) => void;
   settingsChanged: () => void;
   reportNeedsConfiguration: (message: string) => void;
@@ -562,7 +570,7 @@ export function createPluginApi(options: {
     getLoopbackBaseUrl,
     rpcCaller,
     publishSignal,
-    invalidateRpc: optionsInvalidate,
+    publishRpcChange: optionsPublish,
     settingsChanged,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
@@ -840,13 +848,20 @@ export function createPluginApi(options: {
   };
 
   const rpc: PluginRpc = {
-    experimental_invalidate(tags) {
+    experimental_whileWatched(method, handler) {
       assertLive();
-      optionsInvalidate(rpcInvalidationTags.parse(tags));
+      const record = rpcHandlers.get(method);
+      if (!record) throw new Error(`Unknown RPC method: ${method}`);
+      if (record.whileWatched)
+        throw new Error(`RPC producer already registered: ${method}`);
+      if (!options.whileRpcWatched)
+        throw new Error("RPC watching is unavailable");
+      record.whileWatched = true;
+      disposeHooks.push(options.whileRpcWatched(method, handler));
     },
-    experimental_invalidateAll() {
+    experimental_publishChange(change) {
       assertLive();
-      optionsInvalidate(null);
+      optionsPublish(readChangeSchema.parse(change));
     },
     register(contract, handlers, options) {
       assertLive();

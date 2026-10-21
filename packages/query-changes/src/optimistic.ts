@@ -9,7 +9,7 @@ import {
 import { tick } from "./clock.js";
 import { predictKeyed, type KeyedCollection } from "./keyed-store.js";
 
-export interface TaggedOptimisticUpdate {
+export interface LiveQueryOptimisticUpdate {
   queryKey: QueryKey;
   path: readonly string[];
   update(current: unknown, result: { value: unknown } | undefined): unknown;
@@ -21,7 +21,9 @@ export interface KeyedOptimisticUpdate {
   update(current: unknown, result: { value: unknown } | undefined): unknown;
 }
 
-export type OptimisticUpdate = TaggedOptimisticUpdate | KeyedOptimisticUpdate;
+export type OptimisticUpdate =
+  | LiveQueryOptimisticUpdate
+  | KeyedOptimisticUpdate;
 
 export function optimisticKeyedUpdate<Entity, Result = unknown>(
   collection: KeyedCollection<Entity>,
@@ -40,7 +42,7 @@ export function optimisticQueryUpdate<Value, Result = unknown>(
   queryKey: QueryKey,
   update: (current: Value, result: { value: Result } | undefined) => Value,
   path: readonly string[] = [],
-): TaggedOptimisticUpdate {
+): LiveQueryOptimisticUpdate {
   return {
     queryKey,
     path: [...path],
@@ -72,7 +74,7 @@ type Receipt = {
 };
 const predictions = new WeakMap<Query, PredictionState>();
 const receipts = new WeakMap<Query, Receipt>();
-const taggedMeta = new WeakSet<object>();
+const liveMeta = new WeakSet<object>();
 const syncedClients = new WeakMap<
   QueryClient,
   { queries: Set<Query>; unsubscribe: () => void }
@@ -222,8 +224,8 @@ export function subscribeOptimisticQuery(
   };
 }
 
-function isTaggedQuery(query: Query): boolean {
-  return query.meta !== undefined && taggedMeta.has(query.meta);
+function isLiveQuery(query: Query): boolean {
+  return query.meta !== undefined && liveMeta.has(query.meta);
 }
 
 function applyLayer(data: unknown, layer: Prediction): unknown {
@@ -240,11 +242,11 @@ function confirmLayers(
   state: PredictionState,
   ready: (layer: Prediction) => boolean,
 ): void {
-  const tagged = isTaggedQuery(query);
+  const live = isLiveQuery(query);
   while (state.layers[0] !== undefined && ready(state.layers[0])) {
     const layer = state.layers.shift()!;
     state.base = applyLayer(state.base, layer);
-    if (tagged && !layer.fresh) state.guards.push(layer);
+    if (live && !layer.fresh) state.guards.push(layer);
   }
 }
 
@@ -275,7 +277,7 @@ function track(query: Query, state: PredictionState): void {
     const unsubscribe = state.client.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.action.type !== "success") return;
       const current = predictions.get(event.query);
-      if (current === undefined || isTaggedQuery(event.query)) return;
+      if (current === undefined || isLiveQuery(event.query)) return;
       const data = event.query.state.data;
       if (event.action.manual) {
         confirmBeforeWrite(event.query, current);
@@ -292,7 +294,7 @@ function track(query: Query, state: PredictionState): void {
 }
 
 function publish(query: Query, state: PredictionState): void {
-  if (!isTaggedQuery(query))
+  if (!isLiveQuery(query))
     confirmLayers(query, state, (layer) => layer.settled);
   const data = replaceEqualDeep(query.state.data, projected(state));
   state.visible = data;
@@ -301,11 +303,11 @@ function publish(query: Query, state: PredictionState): void {
   for (const listener of predictionListeners.get(query) ?? []) listener();
 }
 
-export function markTaggedQueryMeta(meta: object): void {
-  taggedMeta.add(meta);
+export function markLiveQueryMeta(meta: object): void {
+  liveMeta.add(meta);
 }
 
-export function commitTaggedReadReceipt(
+export function commitLiveReadReceipt(
   query: Query,
   data: unknown,
   started: number,
@@ -324,7 +326,7 @@ function refreshedBy(receipt: Receipt, layer: Prediction): boolean {
   return layer.acceptedAt !== null && receipt.started > layer.acceptedAt;
 }
 
-export function taggedStructuralSharing(
+export function liveStructuralSharing(
   client: QueryClient,
   queryKey: QueryKey,
   previous: unknown,
@@ -374,7 +376,7 @@ export function taggedStructuralSharing(
       : replaceEqualDeep(previous, next);
 }
 
-export function getTaggedReadData<Data>(
+export function getLiveReadData<Data>(
   client: QueryClient,
   queryKey: QueryKey,
 ): Data | undefined {
@@ -426,7 +428,7 @@ export function beginOptimisticMutation(
   let accepted: { at: number; result: { value: unknown } } | undefined;
   let done = false;
   const updates = allUpdates.filter(
-    (update): update is TaggedOptimisticUpdate => !isKeyedUpdate(update),
+    (update): update is LiveQueryOptimisticUpdate => !isKeyedUpdate(update),
   );
   const keyed = beginKeyedPredictions(
     client,
@@ -434,10 +436,10 @@ export function beginOptimisticMutation(
     () => (accepted?.result.value === undefined ? undefined : accepted.result),
   );
   const affected = new Map<Query, PredictionState>();
-  const attached = new Map<TaggedOptimisticUpdate, Set<Query>>(
+  const attached = new Map<LiveQueryOptimisticUpdate, Set<Query>>(
     updates.map((update) => [update, new Set()]),
   );
-  const attach = (query: Query, update: TaggedOptimisticUpdate) => {
+  const attach = (query: Query, update: LiveQueryOptimisticUpdate) => {
     const queries = attached.get(update)!;
     if (queries.has(query) || query.state.data === undefined) return;
     const state = predictions.get(query) ?? {
@@ -527,11 +529,11 @@ export function beginOptimisticMutation(
       finish();
       notifyManager.batch(() => {
         for (const [query, state] of affected) {
-          const tagged = isTaggedQuery(query);
+          const live = isLiveQuery(query);
           state.layers = state.layers.filter((layer) => {
             if (layer.owner !== owner) return true;
             layer.settled = true;
-            if (!tagged) return true;
+            if (!live) return true;
             if (!layer.fresh) return true;
             if (!olderPending(state, layer)) return false;
             const current = valueAt(state.base, layer.path);

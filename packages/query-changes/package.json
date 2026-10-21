@@ -1,5 +1,5 @@
 {
-  "name": "@bb/query-tags",
+  "name": "@bb/query-changes",
   "version": "0.0.1",
   "type": "module",
   "sideEffects": false,
@@ -13,6 +13,11 @@
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",
       "default": "./src/testing.ts"
+    },
+    "./policy": {
+      "source": "./src/policy.ts",
+      "types": "./src/policy.ts",
+      "default": "./src/policy.ts"
     }
   },
   "types": "./src/index.ts",
@@ -36,5 +41,8 @@
     "vitest": "^4.1.1",
     "@testing-library/react": "^16.3.2",
     "jsdom": "^29.0.1"
+  },
+  "dependencies": {
+    "@bb/domain": "workspace:*"
   }
 }

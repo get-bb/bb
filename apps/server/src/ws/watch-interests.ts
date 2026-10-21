@@ -265,7 +265,7 @@ export class WatchInterestCoordinator {
       case "host":
       case "system":
       case "plugin":
-      case "tags":
+      case "read":
         return keys;
     }
   }

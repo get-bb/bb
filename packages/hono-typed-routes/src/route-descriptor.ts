@@ -1,4 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
+import type { ContractChangeDeclarations } from "@bb/domain";
 import type {
   ContentfulStatusCode,
   SuccessStatusCode,
@@ -64,7 +64,7 @@ export type RouteResponseDefinition =
   | AnyRouteResponseDescriptor
   | readonly AnyRouteResponseDescriptor[];
 
-export interface RouteTagInput<ParsedInput> {
+export interface RouteChangeInput<ParsedInput> {
   params: Record<string, string>;
   input: ParsedInput;
 }
@@ -82,7 +82,9 @@ export type RouteSuccessOutput<Response> =
         : never
       : never;
 
-type RouteTagParsedInput<Request> = [RouteParsedInput<Request>] extends [never]
+type RouteChangeParsedInput<Request> = [RouteParsedInput<Request>] extends [
+  never,
+]
   ? undefined
   : RouteParsedInput<Request>;
 
@@ -251,11 +253,11 @@ export function formRequest<InputPrefix, FormInput>(): FormRouteRequest<
   return { source: "form" };
 }
 
-export type RouteTagDeclarations<
+export type RouteChangeDeclarations<
   Request extends AnyRouteRequestDescriptor = AnyRouteRequestDescriptor,
   Response extends RouteResponseDefinition = RouteResponseDefinition,
-> = ContractTagDeclarations<
-  RouteTagInput<RouteTagParsedInput<Request>>,
+> = ContractChangeDeclarations<
+  RouteChangeInput<RouteChangeParsedInput<Request>>,
   RouteSuccessOutput<Response>
 >;
 
@@ -266,8 +268,8 @@ export function defineRoute<
   const Response extends RouteResponseDefinition,
 >(
   definition: RouteDefinition<Path, Method, Request, Response> &
-    RouteTagDeclarations<Request, Response>,
+    RouteChangeDeclarations<Request, Response>,
 ): RouteDefinition<Path, Method, Request, Response> &
-  RouteTagDeclarations<Request, Response> {
+  RouteChangeDeclarations<Request, Response> {
   return definition;
 }

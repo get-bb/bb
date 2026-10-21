@@ -6,7 +6,6 @@ import { serverUrlForHandle } from "@bb/connect-client";
 import { normalizeOrigin } from "./base-url.js";
 import {
   FETCH_REQUEST_BODY_MAX_BYTES,
-  LONG_POLL_TIMEOUT_MS,
   type AccountFetchInput,
   type AccountFetchResult,
   type AccountStatus,
@@ -75,7 +74,6 @@ export class AccountService {
   private credential: StoredCredential | null = null;
   private profile: AccountProfile | null = null;
   private revision = 0;
-  private readonly waiters = new Set<() => void>();
   private mutations: Promise<unknown> = Promise.resolve();
   private revisionWrites: Promise<unknown> = Promise.resolve();
   private wakeProfileRefresh: (() => void) | null = null;
@@ -124,22 +122,6 @@ export class AccountService {
         baseUrl: credential.baseUrl,
       },
     };
-  }
-
-  waitForStatusChange(afterRevision: number): Promise<AccountStatus> {
-    if (this.revision > afterRevision || this.disposed) {
-      return Promise.resolve(this.status());
-    }
-    return new Promise((resolve) => {
-      const finish = () => {
-        clearTimeout(timer);
-        this.waiters.delete(finish);
-        resolve(this.status());
-      };
-      const timer = setTimeout(finish, LONG_POLL_TIMEOUT_MS);
-      timer.unref?.();
-      this.waiters.add(finish);
-    });
   }
 
   async fetch(
@@ -417,7 +399,6 @@ export class AccountService {
 
   dispose(): void {
     this.disposed = true;
-    for (const waiter of [...this.waiters]) waiter();
     this.wakeProfileRefresh?.();
   }
 
@@ -543,6 +524,5 @@ export class AccountService {
       });
     const status = this.status();
     this.options.onChange(status);
-    for (const waiter of [...this.waiters]) waiter();
   }
 }

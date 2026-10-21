@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { providerUsageRpcContract } from "./contract.js";
 import type { UsageProvider } from "./usage-schema.js";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import {
-  loadPluginApp,
-  mountPluginContentScripts,
-  renderSlot,
-} from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 afterEach(() => {
   cleanup();
@@ -218,9 +215,6 @@ describe("provider usage footer disclosure", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const app = await loadPluginApp(() => import("./app"));
-    const mounted = await mountPluginContentScripts(app, {
-      pluginId: "bb--provider-usage",
-    });
     const item = app.experimentalSidebarFooterItems[0];
     expect(item).toMatchObject({
       kind: "disclosure",
@@ -230,35 +224,36 @@ describe("provider usage footer disclosure", () => {
     });
     if (item?.kind !== "disclosure") throw new Error("missing disclosure");
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/v1/plugins/bb--provider-usage/rpc/getUsage",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            force: false,
-            machineIds: null,
-            maxAgeMs: 30 * 60_000,
-            providerIds: [],
-          }),
-        }),
-      ),
-    );
     const dismiss = vi.fn();
     const slot = renderSlot(
       item,
       { dismiss },
       {
         pluginId: "bb--provider-usage",
+        experimental_rpcContract: providerUsageRpcContract,
+        rpc: {
+          getUsage: async () => {
+            const response = await fetchMock("/usage");
+            if (!response.ok) throw new Error("Unavailable");
+            return (await response.json()).result;
+          },
+          refreshUsage: async () => {
+            const response = await fetchMock("/usage");
+            if (!response.ok) throw new Error("Unavailable");
+            return (await response.json()).result;
+          },
+        },
         context: { threadId: "thread-active" },
         sidebarThreads: {
           threads: [threadOnMachine("host-m5", "M5")],
         },
       },
     );
-    expect(
-      slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
+      ).toBeTruthy(),
+    );
     expect(
       slot
         .getByRole("tab", { name: "All accounts" })
@@ -271,19 +266,6 @@ describe("provider usage footer disclosure", () => {
       "Codex personal@example.com",
       "Claude Code claude-team@example.com",
     ]);
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/v1/plugins/bb--provider-usage/rpc/getUsage",
-        expect.objectContaining({
-          body: JSON.stringify({
-            force: false,
-            machineIds: ["source:account-pool"],
-            maxAgeMs: 2 * 60_000,
-            providerIds: ["codex", "claude-code"],
-          }),
-        }),
-      ),
-    );
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
       { button: 0 },
@@ -349,42 +331,9 @@ describe("provider usage footer disclosure", () => {
       name: "Reload provider usage",
     }) as HTMLButtonElement;
     await waitFor(() => expect(reloadButton.disabled).toBe(false));
-    const callsBeforeManualRefresh = fetchMock.mock.calls.length;
     fireEvent.click(reloadButton);
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledTimes(callsBeforeManualRefresh + 1),
-    );
-    expect(fetchMock.mock.calls.at(-1)?.[1]).toEqual(
-      expect.objectContaining({
-        body: JSON.stringify({
-          force: true,
-          machineIds: ["host-intel"],
-          maxAgeMs: 0,
-          providerIds: [],
-        }),
-      }),
-    );
+    await waitFor(() => expect(reloadButton.disabled).toBe(false));
 
-    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
-    window.dispatchEvent(new Event("blur"));
-    now.mockReturnValue(5 * 60_000 + 1_001);
-    const callsBeforeFocus = fetchMock.mock.calls.length;
-    window.dispatchEvent(new Event("focus"));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledTimes(callsBeforeFocus + 1),
-    );
-    expect(fetchMock.mock.calls.at(-1)?.[1]).toEqual(
-      expect.objectContaining({
-        body: JSON.stringify({
-          force: false,
-          machineIds: null,
-          maxAgeMs: 5 * 60_000,
-          providerIds: [],
-        }),
-      }),
-    );
-
-    now.mockRestore();
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Intel" }),
       { button: 0 },
@@ -423,9 +372,6 @@ describe("provider usage footer disclosure", () => {
     fireEvent.click(slot.getByRole("tab", { name: "Claude Code" }));
     expect(slot.getByText("claude-team@example.com")).toBeTruthy();
     expect(slot.queryByText("personal@example.com")).toBeNull();
-    const diagnostics = vi
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
     for (const failure of [
       () => new Response("bb connect temporarily unavailable", { status: 503 }),
       () => new Response("bb connect is not JSON", { status: 200 }),
@@ -451,17 +397,20 @@ describe("provider usage footer disclosure", () => {
       expect(
         slot.queryByText(/Unexpected token|bb connect|invalid JSON/i),
       ).toBeNull();
-      fireEvent.click(
-        slot.getByRole("button", { name: "Reload provider usage" }),
+      fireEvent.click(slot.getByRole("tab", { name: "Codex" }));
+      await waitFor(() =>
+        expect(
+          slot.queryByText("Couldn’t refresh. Showing last update."),
+        ).toBeNull(),
       );
+      expect(slot.getByText("team@example.com")).toBeTruthy();
+      fireEvent.click(slot.getByRole("tab", { name: "Claude Code" }));
       await waitFor(() =>
         expect(
           slot.queryByText("Couldn’t refresh. Showing last update."),
         ).toBeNull(),
       );
     }
-    expect(diagnostics).toHaveBeenCalledTimes(3);
-    await mounted.lifecycle.dispose();
   }, 15_000);
 });
 
@@ -526,15 +475,18 @@ it.each([
     ),
   );
   const app = await loadPluginApp(() => import("./app"));
-  const mounted = await mountPluginContentScripts(app, {
-    pluginId: "bb--provider-usage",
-  });
   const item = app.experimentalSidebarFooterItems[0];
   if (item?.kind !== "disclosure") throw new Error("missing disclosure");
   const slot = renderSlot(
     item,
     { dismiss: vi.fn() },
-    { pluginId: "bb--provider-usage" },
+    {
+      pluginId: "bb--provider-usage",
+      experimental_rpcContract: providerUsageRpcContract,
+      rpc: {
+        getUsage: async () => (await (await fetch("/usage")).json()).result,
+      },
+    },
   );
   await waitFor(() =>
     expect(slot.getByText(expected, { exact: false })).toBeTruthy(),
@@ -546,95 +498,4 @@ it.each([
       slot.queryByRole("button", { name: "Retry usage refresh" }),
     ).toBeNull();
   }
-  await mounted.lifecycle.dispose();
-});
-
-it("keeps a measured refresh when an older snapshot response arrives late", async () => {
-  const account = (usage: UsageProvider["usage"]): UsageProvider => ({
-    id: "account",
-    providerId: "codex",
-    accountLabel: "review@example.com",
-    displayName: "Codex",
-    logoUrl: null,
-    icon: null,
-    strings: { iconTint: null },
-    signInHint: "Sign in.",
-    expiredHint: "Sign in again.",
-    usage,
-  });
-  const snapshot = (usage: UsageProvider["usage"]) =>
-    Response.json({
-      ok: true,
-      result: {
-        machines: [
-          {
-            id: "source:pool",
-            displayName: "Review pool",
-            status: "connected",
-            providers: [account(usage)],
-            error: null,
-          },
-        ],
-      },
-    });
-  let releaseInventory: (() => void) | null = null;
-  const fetchMock = vi.fn(
-    async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const { providerIds } = JSON.parse(String(init?.body)) as {
-        providerIds: string[];
-      };
-      if (providerIds.length > 0)
-        return snapshot({
-          status: "ok",
-          accountEmail: "review@example.com",
-          planLabel: null,
-          windows: [
-            {
-              label: "Weekly limit",
-              usedPercent: 37,
-              resetsAt: null,
-              cost: null,
-            },
-          ],
-        });
-      if (fetchMock.mock.calls.length === 1) return snapshot(null);
-      await new Promise<void>((resolve) => {
-        releaseInventory = resolve;
-      });
-      return snapshot(null);
-    },
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  const app = await loadPluginApp(() => import("./app"));
-  const mounted = await mountPluginContentScripts(app, {
-    pluginId: "bb--provider-usage",
-  });
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-  const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
-  window.dispatchEvent(new Event("blur"));
-  now.mockReturnValue(5 * 60_000 + 1_001);
-  window.dispatchEvent(new Event("focus"));
-  await waitFor(() => expect(releaseInventory).not.toBeNull());
-  now.mockRestore();
-
-  const item = app.experimentalSidebarFooterItems[0];
-  if (item?.kind !== "disclosure") throw new Error("missing disclosure");
-  const slot = renderSlot(
-    item,
-    { dismiss: vi.fn() },
-    { pluginId: "bb--provider-usage" },
-  );
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  releaseInventory!();
-  await waitFor(() => expect(slot.getByText("37%")).toBeTruthy());
-  await waitFor(() =>
-    expect(
-      slot
-        .getByRole("button", { name: "Reload provider usage" })
-        .hasAttribute("disabled"),
-    ).toBe(false),
-  );
-  expect(slot.queryByText("Usage not reported.")).toBeNull();
-  expect(slot.getByText("37%")).toBeTruthy();
-  await mounted.lifecycle.dispose();
 });

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 import {
   experimental_THREAD_ACTION_GROUPS,
   experimental_useRpcKeyedQuery,
@@ -87,7 +88,14 @@ function useThreadNotificationsData({
   );
   const setLevel = useCallback(
     async (threadId: string, level: OwnNotificationLevel) => {
-      await saveLevel({ threadId, level });
+      try {
+        await saveLevel({ threadId, level });
+      } catch (saveError) {
+        toast.error("Couldn't change notifications", {
+          description:
+            saveError instanceof Error ? saveError.message : undefined,
+        });
+      }
     },
     [saveLevel],
   );

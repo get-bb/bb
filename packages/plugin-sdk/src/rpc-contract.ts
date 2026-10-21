@@ -1,4 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
+import type { ContractChangeDeclarations } from "@bb/domain";
 
 /** A JSON-safe path segment reported by a Standard Schema validation issue. */
 export type PluginRpcIssuePathSegment = string | number;
@@ -183,7 +183,7 @@ export type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> =
 export interface PluginRpcMethodContract<
   InputSchema extends StandardSchemaV1 = StandardSchemaV1,
   OutputSchema extends StandardSchemaV1 = StandardSchemaV1,
-> extends ContractTagDeclarations<
+> extends ContractChangeDeclarations<
   StandardSchemaV1InferOutput<InputSchema>,
   StandardSchemaV1InferOutput<OutputSchema>
 > {
@@ -226,8 +226,8 @@ type KeyedContractShape<
         Outputs[Method & keyof Outputs]
       >
       ? unknown
-      : { keyTags?: never }
-    : { keyTags?: never };
+      : { experimental_keyDependencies?: never }
+    : { experimental_keyDependencies?: never };
 };
 
 type PluginRpcContractDefinition<
@@ -244,8 +244,8 @@ type PluginRpcContractDefinition<
 
 /**
  * Define a shared RPC contract while preserving exact method/schema types.
- * `tags`, `keyTags` and `invalidates` receive each method's parsed input and
- * output types. A method declaring keyTags must accept parsed keys: string[]
+ * `experimental_dependencies`, `experimental_keyDependencies` and `experimental_changes` receive each method's parsed input and
+ * output types. A method declaring experimental_keyDependencies must accept parsed keys: string[]
  * and return a string-indexed record.
  */
 export function defineRpcContract<

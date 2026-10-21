@@ -3,7 +3,7 @@ import { act, cleanup } from "@testing-library/react";
 import {
   keyedStoreContract,
   type KeyedStoreSubject,
-} from "@bb/query-tags/testing";
+} from "@bb/query-changes/testing";
 import { afterEach, it, vi } from "vitest";
 import { z } from "zod";
 import {
@@ -19,7 +19,9 @@ const contract = defineRpcContract({
   rows: {
     input: z.object({ keys: z.array(z.string()) }),
     output: z.record(z.string(), z.number()),
-    keyTags: (key) => [`row:${key}`],
+    experimental_keyDependencies: (key) => [
+      { entity: `row:${key}`, changes: ["updated"] },
+    ],
   },
   save: {
     input: z.object({ key: z.string(), value: z.number() }),
@@ -139,9 +141,14 @@ function pluginSubject(): KeyedStoreSubject {
       await act(async () => {
         if (added.length > 0) show([...keys, ...added]);
         else
-          refreshing = slot!.experimental_invalidateRpc(
-            Object.keys(next).map((key) => `row:${key}`),
-          );
+          refreshing = Promise.all(
+            Object.keys(next).map((key) =>
+              slot!.experimental_publishRpcChange({
+                entity: `row:${key}`,
+                changes: ["updated"],
+              }),
+            ),
+          ).then(() => {});
       });
       await read.started.promise;
       return {

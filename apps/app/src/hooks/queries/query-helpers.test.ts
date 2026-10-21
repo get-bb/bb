@@ -22,14 +22,11 @@ import {
   makeThreadTimelineResponse as makeThreadTimelineResponseFixture,
 } from "@/test/fixtures/thread-responses";
 import {
-  getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   optimisticallyInsertThread,
 } from "../cache-owners/query-cache";
 import {
-  environmentDiffFilesQueryKeyPrefix,
   environmentDiffPatchQueryKeyPrefix,
-  environmentWorkStatusQueryKey,
   sidebarNavigationQueryKey,
   threadListQueryKey,
   threadsQueryKey,
@@ -466,47 +463,6 @@ describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
     ]);
     expect(queryKeys).not.toContainEqual(
       environmentDiffPatchQueryKeyPrefix("env-1"),
-    );
-  });
-});
-
-describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
-  it("targets only merge-base-dependent work status and the diff TOC/patch caches", () => {
-    const { queryClient } = createQueryClientTestHarness();
-
-    queryClient.setQueryData(
-      environmentWorkStatusQueryKey("env-1", null),
-      null,
-    );
-    queryClient.setQueryData(
-      environmentWorkStatusQueryKey("env-1", "main"),
-      null,
-    );
-    queryClient.setQueryData(
-      environmentWorkStatusQueryKey("env-2", "main"),
-      null,
-    );
-
-    const queryKeys =
-      getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(queryClient, {
-        environmentId: "env-1",
-      });
-
-    expect(queryKeys).toHaveLength(2);
-    expect(queryKeys).toContainEqual(
-      environmentWorkStatusQueryKey("env-1", "main"),
-    );
-    expect(queryKeys).toContainEqual(
-      environmentDiffFilesQueryKeyPrefix("env-1"),
-    );
-    expect(queryKeys).not.toContainEqual(
-      environmentDiffPatchQueryKeyPrefix("env-1"),
-    );
-    expect(queryKeys).not.toContainEqual(
-      environmentWorkStatusQueryKey("env-1", null),
-    );
-    expect(queryKeys).not.toContainEqual(
-      environmentWorkStatusQueryKey("env-2", "main"),
     );
   });
 });

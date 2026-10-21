@@ -1,13 +1,14 @@
+import type { ReadChange } from "@bb/domain";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, expect, it } from "vitest";
 import {
-  CORE_TAG_SCOPE,
+  CORE_CHANGE_SCOPE,
   optimisticQueryUpdate,
-  runTaggedMutation,
-  runTaggedRead,
-  taggedQueryOptions,
-  type TaggedMutationOutcome,
-  type TaggedOptimisticUpdate,
+  runLiveMutation,
+  runLiveRead,
+  liveQueryOptions,
+  type LiveMutationOutcome,
+  type LiveQueryOptimisticUpdate,
 } from "../src/index.js";
 
 type Row = { id: string; pinnedAt: number | null; status: string };
@@ -24,12 +25,12 @@ function client() {
   return result;
 }
 
-function write(client: QueryClient, optimistic: TaggedOptimisticUpdate[]) {
-  let settle!: (outcome: TaggedMutationOutcome<number> | Error) => void;
-  const done = runTaggedMutation(
+function write(client: QueryClient, optimistic: LiveQueryOptimisticUpdate[]) {
+  let settle!: (outcome: LiveMutationOutcome<number> | Error) => void;
+  const done = runLiveMutation(
     async () => {},
     () =>
-      new Promise<TaggedMutationOutcome<number>>((resolve, reject) => {
+      new Promise<LiveMutationOutcome<number>>((resolve, reject) => {
         settle = (outcome) =>
           outcome instanceof Error ? reject(outcome) : resolve(outcome);
       }),
@@ -37,7 +38,7 @@ function write(client: QueryClient, optimistic: TaggedOptimisticUpdate[]) {
   ).catch(() => {});
   return {
     accept: async (pinnedAt: number) => {
-      settle({ result: pinnedAt, invalidated: [] });
+      settle({ result: pinnedAt, changes: changesOf([]) });
       await done;
     },
     fail: async () => {
@@ -56,12 +57,12 @@ const pinRow = (queryKey: string[], predicted: number) =>
 function observe(client: QueryClient, queryKey: string[], row: () => Row) {
   const observer = new QueryObserver<Row>(client, {
     queryKey,
-    ...taggedQueryOptions(client, queryKey, {
-      scope: CORE_TAG_SCOPE,
-      tagsOf: () => [],
+    ...liveQueryOptions(client, queryKey, {
+      scope: CORE_CHANGE_SCOPE,
+      dependenciesOf: () => changesOf([]),
     }),
     queryFn: () =>
-      runTaggedRead(client, queryKey, async () => structuredClone(row())),
+      runLiveRead(client, queryKey, async () => structuredClone(row())),
   });
   disposers.push(observer.subscribe(() => {}));
   return observer;
@@ -111,9 +112,9 @@ it("leaves predictions alone when an observer selects from the query", async () 
   await observe(cache, queryKey, () => server).refetch();
   const selected = new QueryObserver<Row, Error, string>(cache, {
     queryKey,
-    ...taggedQueryOptions(cache, queryKey, {
-      scope: CORE_TAG_SCOPE,
-      tagsOf: () => [],
+    ...liveQueryOptions(cache, queryKey, {
+      scope: CORE_CHANGE_SCOPE,
+      dependenciesOf: () => changesOf([]),
     }),
     enabled: false,
     select: (row) => `${row.id}:${row.pinnedAt}`,
@@ -138,11 +139,11 @@ it("lets a write after acknowledgement replace the acknowledged value", async ()
   });
   const observer = new QueryObserver<Row>(cache, {
     queryKey,
-    ...taggedQueryOptions(cache, queryKey, {
-      scope: CORE_TAG_SCOPE,
-      tagsOf: () => [],
+    ...liveQueryOptions(cache, queryKey, {
+      scope: CORE_CHANGE_SCOPE,
+      dependenciesOf: () => changesOf([]),
     }),
-    queryFn: () => runTaggedRead(cache, queryKey, () => read),
+    queryFn: () => runLiveRead(cache, queryKey, () => read),
   });
   disposers.push(observer.subscribe(() => {}));
   await observer.refetch();
@@ -169,3 +170,7 @@ it("lets a write after acknowledgement replace the acknowledged value", async ()
   await observer.refetch();
   expect(row()?.pinnedAt).toBe(270);
 });
+
+function changesOf(values: readonly string[]): ReadChange[] {
+  return values.map((entity) => ({ entity, changes: ["updated"] }));
+}

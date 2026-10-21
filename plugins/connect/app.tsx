@@ -1,25 +1,30 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   definePluginApp,
   experimental_copyToClipboard,
   UrlLink as UrlLink,
-  useRealtime,
-  useRealtimeConnectionState,
-  useRpc,
-  useSdk,
+  experimental_useRpcQuery,
+  experimental_useRpcMutation,
 } from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
   mobilePairingPayload,
   type MobilePairingPayload,
 } from "@bb/connect-client";
-import type { connectRpcContract } from "./src/rpc.js";
+import { connectRpcContract } from "./src/rpc.js";
 import type { MachineCodeErrorCode } from "./src/machine-code.js";
 import {
   ACCOUNT_PLUGIN_ID,
   accountErrorCode,
-  accountStatusSchema,
+  accountLoginRpcContract,
   loginPollOutputSchema,
   loginViewSchema,
   type LoginView,
@@ -36,7 +41,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
+import { type ConnectStatus } from "@/src/types";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -59,15 +64,6 @@ interface PairErrorCopy {
   lead: string;
   linkLabel: string;
   tail: string;
-}
-
-const LOGIN_POLL_MS = 2_000;
-const LOGIN_POLL_MAX_MS = 30_000;
-
-function loginPollDelay(failures: number): number {
-  return failures === 0
-    ? LOGIN_POLL_MS
-    : Math.min(LOGIN_POLL_MS * 2 ** failures, LOGIN_POLL_MAX_MS);
 }
 
 const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
@@ -424,7 +420,11 @@ function PairForm({
   dashboardUrl: string;
   onPaired: () => void;
 }) {
-  const sdk = useSdk();
+  const { mutate: redeemRpc } = experimental_useRpcMutation({
+    contract: accountLoginRpcContract,
+    pluginId: ACCOUNT_PLUGIN_ID,
+    method: "redeemCode",
+  });
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [errorCode, setErrorCode] = useState<ConnectPairErrorCode | null>(null);
@@ -438,27 +438,20 @@ function PairForm({
       submittedRef.current = canonical;
       setPending(true);
       setErrorCode(null);
-      sdk.plugins
-        .callRpc({
-          pluginId: ACCOUNT_PLUGIN_ID,
-          method: "redeemCode",
-          input: { code: canonical, baseUrl: null },
-          outputSchema: accountStatusSchema,
-        })
-        .then(
-          () => {
-            setPending(false);
-            setCode("");
-            submittedRef.current = null;
-            onPaired();
-          },
-          (rpcError: unknown) => {
-            setPending(false);
-            setErrorCode(toPairErrorCode(rpcError));
-          },
-        );
+      redeemRpc({ code: canonical, baseUrl: null }).then(
+        () => {
+          setPending(false);
+          setCode("");
+          submittedRef.current = null;
+          onPaired();
+        },
+        (rpcError: unknown) => {
+          setPending(false);
+          setErrorCode(toPairErrorCode(rpcError));
+        },
+      );
     },
-    [pending, sdk, onPaired],
+    [pending, redeemRpc, onPaired],
   );
 
   const onChange = useCallback(
@@ -647,7 +640,10 @@ function MobilePairingCard({
 }
 
 function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
-  const rpc = useRpc<typeof connectRpcContract>();
+  const { mutate: mintRpc } = experimental_useRpcMutation<
+    typeof connectRpcContract,
+    "createMachineCode"
+  >({ contract: connectRpcContract, method: "createMachineCode" });
   const [payload, setPayload] = useState<MobilePairingPayload | null>(null);
   const [minting, setMinting] = useState(false);
   const [errorCode, setErrorCode] = useState<MachineCodeErrorCode | null>(null);
@@ -657,7 +653,7 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
     if (minting) return;
     setMinting(true);
     setErrorCode(null);
-    rpc.call("createMachineCode").then(
+    mintRpc().then(
       (result) => {
         setMinting(false);
         setPayload(mobilePairingPayload(result));
@@ -667,7 +663,7 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
         setErrorCode(toMachineCodeErrorCode(rpcError));
       },
     );
-  }, [minting, rpc]);
+  }, [minting, mintRpc]);
 
   return (
     <div className="mt-3 space-y-2.5 border-t border-border-seam pt-3">
@@ -779,20 +775,52 @@ function SharedPortsSection({
   shares: ConnectStatus["shares"];
   dimmed: boolean;
 }) {
-  const rpc = useRpc<typeof connectRpcContract>();
+  const { mutate: exposeRpc } = experimental_useRpcMutation<
+    typeof connectRpcContract,
+    "expose"
+  >({ contract: connectRpcContract, method: "expose" });
+  const { mutate: unexposeRpc, pendingInputs: revokingShares } =
+    experimental_useRpcMutation<typeof connectRpcContract, "unexpose">({
+      contract: connectRpcContract,
+      method: "unexpose",
+      optimistic(input, cache) {
+        if (input.hostId === undefined) return;
+        cache.update("status", null, (current) => ({
+          ...current,
+          shares: current.shares.filter(
+            (share) =>
+              share.port !== input.port ||
+              (input.hostId !== undefined && share.hostId !== input.hostId),
+          ),
+        }));
+      },
+    });
+  const { mutate: unexposeAllRpc, pendingInputs: revokingHosts } =
+    experimental_useRpcMutation<typeof connectRpcContract, "unexposeAll">({
+      contract: connectRpcContract,
+      method: "unexposeAll",
+      optimistic(input, cache) {
+        cache.update("status", null, (current) => ({
+          ...current,
+          shares: current.shares.filter(
+            (share) => share.hostId !== input.hostId,
+          ),
+        }));
+      },
+    });
   const [portInput, setPortInput] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [exposing, setExposing] = useState(false);
   const [collapsedHosts, setCollapsedHosts] = useState<Set<string>>(
     () => new Set(),
   );
-  const [revokingHost, setRevokingHost] = useState<string | null>(null);
-  const [revokingShare, setRevokingShare] = useState<string | null>(null);
+  const revokingHost = revokingHosts.at(-1)?.hostId ?? null;
+  const revokingShare = revokingShares.at(-1);
   const [error, setError] = useState<string | null>(null);
 
   const expose = useCallback(() => {
     const trimmed = portInput.trim();
-    if (trimmed.length === 0 || exposing || revokingHost !== null) return;
+    if (trimmed.length === 0 || exposing) return;
     const port = Number(trimmed);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       setError("Port must be an integer between 1 and 65535");
@@ -800,7 +828,7 @@ function SharedPortsSection({
     }
     setExposing(true);
     setError(null);
-    rpc.call("expose", { port }).then(
+    exposeRpc({ port }).then(
       () => {
         setExposing(false);
         setPortInput("");
@@ -811,37 +839,41 @@ function SharedPortsSection({
         setError(errorText(rpcError));
       },
     );
-  }, [portInput, exposing, revokingHost, rpc]);
+  }, [
+    portInput,
+    exposing,
+    revokingHost,
+    exposeRpc,
+    unexposeRpc,
+    unexposeAllRpc,
+  ]);
 
   const unexpose = useCallback(
     (hostId: string, port: number) => {
-      if (revokingShare !== null || revokingHost !== null) return;
-      const key = `${hostId}:${port}`;
-      setRevokingShare(key);
+      if (
+        revokingShares.some(
+          (input) => input.hostId === hostId && input.port === port,
+        )
+      )
+        return;
       setError(null);
-      rpc.call("unexpose", { hostId, port }).then(
-        () => {
-          setRevokingShare(null);
-        },
+      unexposeRpc({ hostId, port }).then(
+        () => undefined,
         (rpcError: unknown) => {
-          setRevokingShare(null);
           setError(errorText(rpcError));
         },
       );
     },
-    [revokingShare, revokingHost, rpc],
+    [revokingShares, unexposeRpc],
   );
 
   const unexposeAll = async (hostId: string) => {
-    if (revokingHost !== null || revokingShare !== null) return;
-    setRevokingHost(hostId);
+    if (revokingHosts.some((input) => input.hostId === hostId)) return;
     setError(null);
     try {
-      await rpc.call("unexposeAll", { hostId });
+      await unexposeAllRpc({ hostId });
     } catch (rpcError) {
       setError(errorText(rpcError));
-    } finally {
-      setRevokingHost(null);
     }
   };
 
@@ -862,7 +894,7 @@ function SharedPortsSection({
           variant="ghost"
           size="sm"
           className="text-muted-foreground"
-          disabled={revokingHost !== null}
+          disabled={exposing}
           onClick={() => setFormOpen((open) => !open)}
         >
           <Icon name="Plus" className="size-3.5" />
@@ -915,11 +947,7 @@ function SharedPortsSection({
                     size="sm"
                     className={DANGER_QUIET_CLASS}
                     aria-label={`Revoke all (${group.shares.length}) shared ports on ${group.hostName}`}
-                    disabled={
-                      revokingHost !== null ||
-                      revokingShare !== null ||
-                      exposing
-                    }
+                    disabled={exposing}
                     onClick={() => void unexposeAll(group.hostId)}
                   >
                     {revokingHost === group.hostId ? (
@@ -973,12 +1001,15 @@ function SharedPortsSection({
                         variant="ghost"
                         size="sm"
                         className={DANGER_QUIET_CLASS}
-                        disabled={
-                          revokingHost !== null || revokingShare !== null
-                        }
+                        aria-busy={revokingShares.some(
+                          (input) =>
+                            input.hostId === share.hostId &&
+                            input.port === share.port,
+                        )}
                         onClick={() => unexpose(share.hostId, share.port)}
                       >
-                        {revokingShare === `${share.hostId}:${share.port}` ? (
+                        {revokingShare?.hostId === share.hostId &&
+                        revokingShare.port === share.port ? (
                           <Icon
                             name="Spinner"
                             className="size-4 animate-spin"
@@ -1096,92 +1127,81 @@ function TurnOffDialog({
 }
 
 function useAccountLogin(onSignedIn: () => void) {
-  const sdk = useSdk();
-  const [login, setLogin] = useState<LoginView | null>(null);
+  const { mutate: startRpc } = experimental_useRpcMutation({
+    contract: accountLoginRpcContract,
+    pluginId: ACCOUNT_PLUGIN_ID,
+    method: "login.start",
+  });
+  const { mutate: cancelRpc } = experimental_useRpcMutation({
+    contract: accountLoginRpcContract,
+    pluginId: ACCOUNT_PLUGIN_ID,
+    method: "login.cancel",
+  });
+  const [startedLogin, setStartedLogin] = useState<LoginView | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const start = useCallback(() => {
     setStarting(true);
     setError(null);
-    sdk.plugins
-      .callRpc({
-        pluginId: ACCOUNT_PLUGIN_ID,
-        method: "login.start",
-        input: { baseUrl: null },
-        outputSchema: loginViewSchema,
-      })
-      .then(
-        (view) => {
-          setStarting(false);
-          setLogin(view);
-        },
-        (rpcError: unknown) => {
-          setStarting(false);
-          setError(signInStartErrorText(rpcError));
-        },
-      );
-  }, [sdk]);
+    startRpc({ baseUrl: null }).then(
+      (view) => {
+        setStarting(false);
+        setStartedLogin(loginViewSchema.parse(view));
+      },
+      (rpcError: unknown) => {
+        setStarting(false);
+        setError(signInStartErrorText(rpcError));
+      },
+    );
+  }, [startRpc]);
 
-  const pendingId = login?.state === "pending" ? login.id : null;
+  const pendingId = startedLogin?.state === "pending" ? startedLogin.id : null;
+  const pendingLogin = experimental_useRpcQuery({
+    contract: accountLoginRpcContract,
+    pluginId: ACCOUNT_PLUGIN_ID,
+    method: "login.poll",
+    input: { loginId: pendingId },
+    enabled: pendingId !== null,
+  });
+  const result =
+    pendingId !== null && pendingLogin.data !== undefined
+      ? loginPollOutputSchema.parse(pendingLogin.data)
+      : undefined;
+  const state = result?.login?.state;
   useEffect(() => {
-    if (pendingId === null) return;
-    let cancelled = false;
-    let failures = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = () => {
-      sdk.plugins
-        .callRpc({
-          pluginId: ACCOUNT_PLUGIN_ID,
-          method: "login.poll",
-          input: { loginId: pendingId },
-          outputSchema: loginPollOutputSchema,
-        })
-        .then(
-          (result) => {
-            failures = 0;
-            if (cancelled) return;
-            if (result.login !== null) setLogin(result.login);
-            if (result.login?.state === "signed-in") onSignedIn();
-          },
-          () => {
-            failures += 1;
-          },
-        )
-        .finally(() => {
-          if (!cancelled) timer = setTimeout(poll, loginPollDelay(failures));
-        });
-    };
-    timer = setTimeout(poll, LOGIN_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [onSignedIn, pendingId, sdk]);
+    if (state === "signed-in") onSignedIn();
+  }, [state, onSignedIn]);
 
   const cancel = useCallback(() => {
     if (pendingId !== null) {
-      sdk.plugins
-        .callRpc({
-          pluginId: ACCOUNT_PLUGIN_ID,
-          method: "login.cancel",
-          input: { loginId: pendingId },
-          outputSchema: loginPollOutputSchema.pick({ login: true }),
-        })
-        .then(
-          () => {},
-          () => {},
-        );
+      cancelRpc({ loginId: pendingId }).then(
+        () => {},
+        () => {},
+      );
     }
-    setLogin(null);
+    setStartedLogin(null);
     setError(null);
-  }, [pendingId, sdk]);
+  }, [pendingId, cancelRpc]);
 
-  return { login, starting, error, start, cancel };
+  return {
+    login: result === undefined ? startedLogin : result.login,
+    starting,
+    error:
+      error ??
+      pendingLogin.error?.message ??
+      (result?.login === null
+        ? "This sign-in is no longer active. Try again for a new code."
+        : null),
+    start,
+    cancel,
+    retry: pendingLogin.refetch,
+  };
 }
 
 function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
-  const { login, starting, error, start, cancel } = useAccountLogin(onSignedIn);
+  const { login, starting, error, start, cancel, retry } =
+    useAccountLogin(onSignedIn);
 
   if (login === null) {
     return (
@@ -1261,6 +1281,18 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
         <Icon name="Spinner" className="size-3.5 animate-spin" />
         Waiting for you to approve it. You can approve from any device.
       </p>
+      {error !== null ? (
+        <div role="alert">
+          <p className="text-xs text-destructive-text">{error}</p>
+          <Button
+            onClick={() => {
+              void retry();
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1309,38 +1341,57 @@ function NotPairedContent({
   );
 }
 
+function useRemoteAccessMutation() {
+  return experimental_useRpcMutation<
+    typeof connectRpcContract,
+    "setRemoteAccess"
+  >({
+    contract: connectRpcContract,
+    method: "setRemoteAccess",
+    optimistic(input, cache) {
+      cache.update("status", null, (current) => ({
+        ...current,
+        enabled: input.enabled,
+        state: input.enabled ? "reconnecting" : "disconnected",
+        lastError: null,
+        nextRetryAt: null,
+      }));
+    },
+  });
+}
+
+const remoteAccessContext = createContext<ReturnType<
+  typeof useRemoteAccessMutation
+> | null>(null);
+function useRemoteAccessControl() {
+  const mutation = useContext(remoteAccessContext);
+  if (mutation === null)
+    throw new Error("Remote access controls require a settings owner");
+  return mutation;
+}
+
 function TurnOffControls({
   status,
   note,
-  onChanged,
   onTurnedOff,
 }: {
   status: ConnectStatus;
   note: string;
-  onChanged: () => void;
   onTurnedOff: () => void;
 }) {
-  const rpc = useRpc<typeof connectRpcContract>();
+  const { mutate: setRemoteAccessRpc, isPending: pending } =
+    useRemoteAccessControl();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const turnOff = useCallback(() => {
-    setPending(true);
-    setError(null);
-    rpc.call("setRemoteAccess", { enabled: false }).then(
+    setRemoteAccessRpc({ enabled: false }).then(
       () => {
-        setPending(false);
         setConfirmOpen(false);
         onTurnedOff();
-        onChanged();
       },
-      (rpcError: unknown) => {
-        setPending(false);
-        setError(errorText(rpcError));
-      },
+      () => undefined,
     );
-  }, [rpc, onChanged, onTurnedOff]);
+  }, [setRemoteAccessRpc, onTurnedOff]);
 
   const host = status.url !== null ? hostOf(status.url) : "this bb";
 
@@ -1359,9 +1410,6 @@ function TurnOffControls({
           Turn off
         </Button>
       </div>
-      {error !== null ? (
-        <p className="text-xs text-destructive-text">{error}</p>
-      ) : null}
 
       <TurnOffDialog
         open={confirmOpen}
@@ -1376,11 +1424,9 @@ function TurnOffControls({
 
 function ConnectedContent({
   status,
-  onChanged,
   onTurnedOff,
 }: {
   status: ConnectStatus;
-  onChanged: () => void;
   onTurnedOff: () => void;
 }) {
   return (
@@ -1403,7 +1449,6 @@ function ConnectedContent({
       <TurnOffControls
         status={status}
         note="Turning off keeps this bb signed in to your bb account."
-        onChanged={onChanged}
         onTurnedOff={onTurnedOff}
       />
     </div>
@@ -1412,11 +1457,9 @@ function ConnectedContent({
 
 function ReconnectingContent({
   status,
-  onChanged,
   onTurnedOff,
 }: {
   status: ConnectStatus;
-  onChanged: () => void;
   onTurnedOff: () => void;
 }) {
   const why = [status.lastError, retryHint(status.nextRetryAt)]
@@ -1452,38 +1495,22 @@ function ReconnectingContent({
       <TurnOffControls
         status={status}
         note="Remote devices can't reach this bb right now. Local access is unaffected."
-        onChanged={onChanged}
         onTurnedOff={onTurnedOff}
       />
     </div>
   );
 }
 
-function OffContent({
-  status,
-  onChanged,
-}: {
-  status: ConnectStatus;
-  onChanged: () => void;
-}) {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function OffContent({ status }: { status: ConnectStatus }) {
+  const { mutate: setRemoteAccessRpc, isPending: pending } =
+    useRemoteAccessControl();
 
   const turnOn = useCallback(() => {
-    setPending(true);
-    setError(null);
-    rpc.call("setRemoteAccess", { enabled: true }).then(
-      () => {
-        setPending(false);
-        onChanged();
-      },
-      (rpcError: unknown) => {
-        setPending(false);
-        setError(errorText(rpcError));
-      },
+    setRemoteAccessRpc({ enabled: true }).then(
+      () => {},
+      () => undefined,
     );
-  }, [rpc, onChanged]);
+  }, [setRemoteAccessRpc]);
 
   return (
     <div className="space-y-4">
@@ -1491,7 +1518,7 @@ function OffContent({
         <StatusDot tone="muted" />
         <span className="text-sm font-semibold">Remote access is off</span>
         <span className="flex-1" />
-        <Button type="button" size="sm" disabled={pending} onClick={turnOn}>
+        <Button type="button" size="sm" aria-busy={pending} onClick={turnOn}>
           {pending ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
           ) : null}
@@ -1504,87 +1531,59 @@ function OffContent({
         {status.url !== null ? ` at ${hostOf(status.url)}` : ""}.
       </p>
       <SharedPortsSection shares={status.shares} dimmed />
-      {error !== null ? (
-        <p className="text-xs text-destructive-text">{error}</p>
-      ) : null}
     </div>
   );
 }
 
 function useConnectStatus() {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const connectionState = useRealtimeConnectionState();
-  const previousConnectionState = useRef(connectionState);
-  const [status, setStatus] = useState<ConnectStatus | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const latestStatusRequest = useRef(0);
-
-  const refetch = useCallback(() => {
-    const request = ++latestStatusRequest.current;
-    rpc.call("status").then(
-      (result) => {
-        if (request !== latestStatusRequest.current) return;
-        const next = asStatus(result);
-        if (next !== null) {
-          setStatus(next);
-          setLoadError(null);
-        } else {
-          setLoadError("Unexpected status payload.");
-        }
-      },
-      (error: unknown) => {
-        if (request !== latestStatusRequest.current) return;
-        setLoadError(errorText(error));
-      },
-    );
-  }, [rpc]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  useEffect(() => {
-    const previous = previousConnectionState.current;
-    previousConnectionState.current = connectionState;
-    if (connectionState === "connected" && previous !== "connected") {
-      refetch();
-    }
-  }, [connectionState, refetch]);
-
-  useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
-    const next = asStatus(payload);
-    if (next !== null) {
-      setStatus(next);
-      setLoadError(null);
-    }
+  const query = experimental_useRpcQuery<typeof connectRpcContract, "status">({
+    contract: connectRpcContract,
+    method: "status",
+    input: null,
   });
-
-  return { status, loadError, refetch };
+  return {
+    status: query.data === undefined ? null : asStatus(query.data),
+    loadError: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 function MobilePairingSection() {
   const { status, loadError, refetch } = useConnectStatus();
-  if (loadError !== null)
-    return (
-      <div className="mt-3 space-y-2 border-t border-border-seam pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-xs font-medium">Pair your phone</h3>
+  const canPair =
+    status?.paired && status.enabled && status.state === "connected";
+  if (!canPair && loadError === null) return null;
+  return (
+    <div className="space-y-2">
+      {loadError !== null ? (
+        <div role="alert" className="space-y-2">
+          <p className="text-xs text-destructive-text">
+            Could not load phone pairing: {loadError}
+          </p>
           <Button variant="ghost" size="sm" onClick={refetch}>
-            Try again
+            Retry
           </Button>
         </div>
-        <p role="alert" className="text-xs text-destructive-text">
-          Could not load phone pairing: {loadError}
-        </p>
-      </div>
-    );
-  if (!status?.paired || !status.enabled || status.state !== "connected")
-    return null;
-  return <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />;
+      ) : null}
+      {canPair ? (
+        <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
+      ) : null}
+    </div>
+  );
 }
 
 function ConnectSettingsSection() {
+  const mutation = useRemoteAccessMutation();
+  return (
+    <remoteAccessContext.Provider value={mutation}>
+      <ConnectSettingsContent />
+    </remoteAccessContext.Provider>
+  );
+}
+
+function ConnectSettingsContent() {
   const { status, loadError, refetch } = useConnectStatus();
+  const remoteAccess = useRemoteAccessControl();
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showTurnedOff = useCallback(() => {
@@ -1600,19 +1599,32 @@ function ConnectSettingsSection() {
     [],
   );
 
-  if (loadError !== null) {
-    return (
-      <p className="text-sm text-destructive-text">
-        Failed to load remote-access status: {loadError}
-      </p>
+  const error =
+    loadError === null ? null : (
+      <div role="alert">
+        <p className="text-sm text-destructive-text">
+          Failed to load remote-access status: {loadError}
+        </p>
+        <Button
+          onClick={() => {
+            void refetch();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
     );
-  }
-  if (status === null) {
-    return <p className="text-sm text-muted-foreground">Loading...</p>;
-  }
+  if (status === null)
+    return error ?? <p className="text-sm text-muted-foreground">Loading...</p>;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-busy={remoteAccess.isPending}>
+      {error}
+      {remoteAccess.error && (
+        <p role="alert" className="text-sm text-destructive-text">
+          {remoteAccess.error.message}
+        </p>
+      )}
       {flash !== null && !status.enabled ? (
         <div
           role="status"
@@ -1628,19 +1640,11 @@ function ConnectSettingsSection() {
           onPaired={refetch}
         />
       ) : !status.enabled ? (
-        <OffContent status={status} onChanged={refetch} />
+        <OffContent status={status} />
       ) : status.state === "reconnecting" ? (
-        <ReconnectingContent
-          status={status}
-          onChanged={refetch}
-          onTurnedOff={showTurnedOff}
-        />
+        <ReconnectingContent status={status} onTurnedOff={showTurnedOff} />
       ) : (
-        <ConnectedContent
-          status={status}
-          onChanged={refetch}
-          onTurnedOff={showTurnedOff}
-        />
+        <ConnectedContent status={status} onTurnedOff={showTurnedOff} />
       )}
     </div>
   );

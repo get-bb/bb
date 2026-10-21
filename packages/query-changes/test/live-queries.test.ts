@@ -1,18 +1,19 @@
+import type { ReadChange } from "@bb/domain";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  CORE_TAG_SCOPE,
-  createTaggedKeyedQueryOwner,
-  invalidateTags,
+  CORE_CHANGE_SCOPE,
+  createLiveKeyedQueryOwner,
+  applyQueryChange,
   KeyedCollection,
   optimisticKeyedUpdate,
   optimisticQueryUpdate,
-  runTaggedMutation,
-  runTaggedRead,
-  taggedQueryOptions,
+  runLiveMutation,
+  runLiveRead,
+  liveQueryOptions,
 } from "../src/index.js";
 
-type Data = { value: number; tags: string[] };
+type Data = { value: number; dependencies: readonly ReadChange[] };
 const disposers: (() => void)[] = [];
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
@@ -26,7 +27,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-const collection = new KeyedCollection<unknown>("rows");
+const collection = new KeyedCollection<number>("rows");
 function setup() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -38,17 +39,17 @@ function observe(
   client: QueryClient,
   key: string,
   read: () => Promise<Data>,
-  scope = CORE_TAG_SCOPE,
+  scope = CORE_CHANGE_SCOPE,
 ) {
   const fn = vi.fn(read);
   const observer = new QueryObserver(client, {
     queryKey: [key],
     staleTime: Infinity,
-    ...taggedQueryOptions<Data>(client, [key], {
+    ...liveQueryOptions<Data>(client, [key], {
       scope,
-      tagsOf: (data) => data.tags,
+      dependenciesOf: (data) => data?.dependencies,
     }),
-    queryFn: ({ queryKey }) => runTaggedRead(client, queryKey, fn),
+    queryFn: ({ queryKey }) => runLiveRead(client, queryKey, fn),
   });
   const stop = observer.subscribe(() => {});
   disposers.push(stop);
@@ -64,12 +65,12 @@ describe("tagged reads and mutations", () => {
   it("refreshes matching active reads, leaves inactive data stale and isolates clients and scopes", async () => {
     const client = setup();
     let value = 1;
-    const read = async () => ({ value, tags: ["item:a"] });
+    const read = async () => ({ value, dependencies: changesOf(["item:a"]) });
     const matched = observe(client, "a", read);
     const inactive = observe(client, "inactive", read);
     const unrelated = observe(client, "b", async () => ({
       value,
-      tags: ["item:b"],
+      dependencies: changesOf(["item:b"]),
     }));
     const otherScope = observe(client, "scope", read, "other");
     const otherClient = observe(setup(), "a", read);
@@ -85,7 +86,7 @@ describe("tagged reads and mutations", () => {
     });
     inactive.stop();
     value = 2;
-    await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
     expect(matched.value()).toBe(2);
     for (const item of [inactive, unrelated, otherScope, otherClient])
       expect(item.value()).toBe(1);
@@ -93,7 +94,7 @@ describe("tagged reads and mutations", () => {
   });
 
   it.each([true, false])(
-    "only repeats an initial read when its returned tags overlap (%s)",
+    "only repeats an initial read when its returned dependencies overlap (%s)",
     async (overlap) => {
       const client = setup();
       const first = deferred<Data>();
@@ -101,19 +102,22 @@ describe("tagged reads and mutations", () => {
       const read = observe(client, "a", () => first.promise);
       read.fn.mockImplementationOnce(() => second.promise);
       let settled = false;
-      const mutation = runTaggedMutation(
-        (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
-        async () => ({ result: "saved", invalidated: ["item:a"] }),
+      const mutation = runLiveMutation(
+        (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
+        async () => ({ result: "saved", changes: changesOf(["item:a"]) }),
       ).then((result) => {
         settled = true;
         return result;
       });
       await Promise.resolve();
-      first.resolve({ value: 1, tags: [overlap ? "item:a" : "item:b"] });
+      first.resolve({
+        value: 1,
+        dependencies: changesOf([overlap ? "item:a" : "item:b"]),
+      });
       if (overlap) {
         await vi.waitFor(() => expect(read.fn).toHaveBeenCalledTimes(2));
         expect(settled).toBe(true);
-        second.resolve({ value: 2, tags: ["item:a"] });
+        second.resolve({ value: 2, dependencies: changesOf(["item:a"]) });
       }
       await expect(mutation).resolves.toBe("saved");
       await vi.waitFor(() => expect(read.value()).toBe(overlap ? 2 : 1));
@@ -125,7 +129,7 @@ describe("tagged reads and mutations", () => {
     const client = setup();
     const read = observe(client, "a", async () => ({
       value: 1,
-      tags: ["item:a"],
+      dependencies: changesOf(["item:a"]),
     }));
     await vi.waitFor(() => expect(read.value()).toBe(1));
     const stale = deferred<Data>();
@@ -133,17 +137,17 @@ describe("tagged reads and mutations", () => {
     read.fn
       .mockImplementationOnce(() => stale.promise)
       .mockImplementationOnce(() => fresh.promise);
-    const invalidate = (tags: readonly string[]) =>
-      invalidateTags(client, CORE_TAG_SCOPE, tags);
-    const first = invalidate(["item:a"]);
-    const mutation = runTaggedMutation(invalidate, async () => ({
+    const invalidate = (dependencies: readonly ReadChange[]) =>
+      applyChanges(client, CORE_CHANGE_SCOPE, dependencies);
+    const first = invalidate(changesOf(["item:a"]));
+    const mutation = runLiveMutation(invalidate, async () => ({
       result: "saved",
-      invalidated: ["item:a"],
+      changes: changesOf(["item:a"]),
     }));
     await Promise.resolve();
-    stale.resolve({ value: 2, tags: ["item:a"] });
+    stale.resolve({ value: 2, dependencies: changesOf(["item:a"]) });
     await vi.waitFor(() => expect(read.fn).toHaveBeenCalledTimes(3));
-    fresh.resolve({ value: 3, tags: ["item:a"] });
+    fresh.resolve({ value: 3, dependencies: changesOf(["item:a"]) });
     await first;
     await mutation;
     expect(read.value()).toBe(3);
@@ -153,21 +157,21 @@ describe("tagged reads and mutations", () => {
     const client = setup();
     const read = observe(client, "a", async () => ({
       value: 1,
-      tags: ["item:a"],
+      dependencies: changesOf(["item:a"]),
     }));
     await vi.waitFor(() => expect(read.value()).toBe(1));
     read.fn.mockRejectedValueOnce(new Error("offline"));
     await expect(
-      runTaggedMutation(
-        (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
-        async () => ({ result: "saved", invalidated: ["item:a"] }),
+      runLiveMutation(
+        (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
+        async () => ({ result: "saved", changes: changesOf(["item:a"]) }),
       ),
     ).resolves.toBe("saved");
     expect(read.value()).toBe(1);
     await vi.waitFor(() =>
       expect(read.observer.getCurrentResult().error?.message).toBe("offline"),
     );
-    await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
     expect(read.observer.getCurrentResult().error).toBeNull();
   });
 
@@ -179,8 +183,11 @@ describe("tagged reads and mutations", () => {
     await vi.waitFor(() =>
       expect(read.observer.getCurrentResult().isError).toBe(true),
     );
-    read.fn.mockResolvedValue({ value: 2, tags: ["item:a"] });
-    await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    read.fn.mockResolvedValue({
+      value: 2,
+      dependencies: changesOf(["item:a"]),
+    });
+    await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
     expect(read.value()).toBe(2);
     expect(read.observer.getCurrentResult().error).toBeNull();
   });
@@ -188,13 +195,13 @@ describe("tagged reads and mutations", () => {
   it("does not invalidate on rejected writes or empty tag lists", async () => {
     const invalidate = vi.fn(async () => {});
     await expect(
-      runTaggedMutation(invalidate, async () => {
+      runLiveMutation(invalidate, async () => {
         throw new Error("rejected");
       }),
     ).rejects.toThrow("rejected");
-    await runTaggedMutation(invalidate, async () => ({
+    await runLiveMutation(invalidate, async () => ({
       result: 1,
-      invalidated: [],
+      changes: changesOf([]),
     }));
     expect(invalidate).not.toHaveBeenCalled();
   });
@@ -203,16 +210,19 @@ describe("tagged reads and mutations", () => {
 it("refreshes untagged reads on scoped invalidate-all", async () => {
   const client = setup();
   let value = 1;
-  const read = observe(client, "untagged", async () => ({ value, tags: [] }));
+  const read = observe(client, "untagged", async () => ({
+    value,
+    dependencies: changesOf([]),
+  }));
   const other = observe(
     client,
     "other",
-    async () => ({ value, tags: [] }),
+    async () => ({ value, dependencies: changesOf([]) }),
     "other",
   );
   await vi.waitFor(() => expect(read.value()).toBe(1));
   value = 2;
-  await invalidateTags(client, CORE_TAG_SCOPE, null);
+  await applyChanges(client, CORE_CHANGE_SCOPE, null);
   expect(read.value()).toBe(2);
   expect(other.value()).toBe(1);
 });
@@ -222,18 +232,22 @@ it("shares one keyed observer, batches consumers, and retains data through refre
   let value = 1;
   let failure = false;
   const requested: string[][] = [];
-  const owner = createTaggedKeyedQueryOwner({
+  const owner = createLiveKeyedQueryOwner({
     client,
     queryKey: ["keyed"],
-    scope: CORE_TAG_SCOPE,
+    scope: CORE_CHANGE_SCOPE,
     collection,
     read: async (keys) => {
       requested.push([...keys]);
       if (failure) throw new Error("offline");
       return {
         result: Object.fromEntries(keys.map((key) => [key, value])),
-        tags: [],
-        keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+        dependencies: changesOf([]),
+        keyDependencies: Object.fromEntries(
+          Object.entries(
+            Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+          ).map(([key, values]) => [key, changesOf(values)]),
+        ),
       };
     },
   });
@@ -252,7 +266,7 @@ it("shares one keyed observer, batches consumers, and retains data through refre
     true,
   );
   failure = true;
-  await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
   expect(owner.observer.getCurrentResult().data?.result).toEqual({
     a: 1,
     b: 1,
@@ -273,10 +287,10 @@ it("re-reads after a dormant read completes without a subscription to changes", 
   const gate = deferred<void>();
   let value = 1;
   let first = true;
-  const owner = createTaggedKeyedQueryOwner({
+  const owner = createLiveKeyedQueryOwner({
     client,
     queryKey: ["dormant"],
-    scope: CORE_TAG_SCOPE,
+    scope: CORE_CHANGE_SCOPE,
     collection,
     read: async () => {
       const captured = value;
@@ -284,7 +298,11 @@ it("re-reads after a dormant read completes without a subscription to changes", 
         first = false;
         await gate.promise;
       }
-      return { result: { a: captured }, tags: ["item:a"], keyTags: {} };
+      return {
+        result: { a: captured },
+        dependencies: changesOf(["item:a"]),
+        keyDependencies: {},
+      };
     },
   });
   const stop = owner.subscribe(["a"], () => {});
@@ -304,21 +322,25 @@ it("re-reads after a dormant read completes without a subscription to changes", 
   );
 });
 
-it("refreshes only keys matched by key tags and all keys matched by response tags", async () => {
+it("refreshes only keys matched by key dependencies and all keys matched by response dependencies", async () => {
   const client = setup();
   const requested: string[][] = [];
   let value = 1;
-  const owner = createTaggedKeyedQueryOwner({
+  const owner = createLiveKeyedQueryOwner({
     client,
     queryKey: ["precise"],
-    scope: CORE_TAG_SCOPE,
+    scope: CORE_CHANGE_SCOPE,
     collection,
     read: async (keys) => {
       requested.push([...keys]);
       return {
         result: Object.fromEntries(keys.map((key) => [key, value])),
-        tags: ["board"],
-        keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+        dependencies: changesOf(["board"]),
+        keyDependencies: Object.fromEntries(
+          Object.entries(
+            Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+          ).map(([key, values]) => [key, changesOf(values)]),
+        ),
       };
     },
   });
@@ -331,16 +353,21 @@ it("refreshes only keys matched by key tags and all keys matched by response tag
   );
   requested.length = 0;
   value = 2;
-  await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
   expect(requested).toEqual([["a"]]);
   expect(owner.observer.getCurrentResult().data).toEqual({
     result: { a: 2, b: 1 },
-    tags: ["board"],
-    keyTags: { a: ["item:a"], b: ["item:b"] },
+    dependencies: changesOf(["board"]),
+    keyDependencies: Object.fromEntries(
+      Object.entries({ a: ["item:a"], b: ["item:b"] }).map(([key, values]) => [
+        key,
+        changesOf(values),
+      ]),
+    ),
   });
   requested.length = 0;
   value = 3;
-  await invalidateTags(client, CORE_TAG_SCOPE, ["board"]);
+  await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["board"]));
   expect(requested).toEqual([["a", "b"]]);
   expect(owner.observer.getCurrentResult().data?.result).toEqual({
     a: 3,
@@ -355,16 +382,20 @@ it.each([false, true])(
     let value = 1;
     const response = (keys: readonly string[], current: number) => ({
       result: Object.fromEntries(keys.map((key) => [key, current])),
-      tags: [],
-      keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+      dependencies: changesOf([]),
+      keyDependencies: Object.fromEntries(
+        Object.entries(
+          Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+        ).map(([key, values]) => [key, changesOf(values)]),
+      ),
     });
     const read = vi.fn(async (keys: readonly string[]) =>
       response(keys, value),
     );
-    const owner = createTaggedKeyedQueryOwner({
+    const owner = createLiveKeyedQueryOwner({
       client,
       queryKey: ["partial"],
-      scope: CORE_TAG_SCOPE,
+      scope: CORE_CHANGE_SCOPE,
       collection,
       read,
     });
@@ -377,11 +408,19 @@ it.each([false, true])(
     );
     const gate = deferred<ReturnType<typeof response>>();
     read.mockImplementationOnce(() => gate.promise);
-    const first = invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    const first = applyChanges(
+      client,
+      CORE_CHANGE_SCOPE,
+      changesOf(["item:a"]),
+    );
     await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
     value = 3;
     if (failure) read.mockRejectedValueOnce(new Error("offline"));
-    const second = invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
+    const second = applyChanges(
+      client,
+      CORE_CHANGE_SCOPE,
+      changesOf(["item:b"]),
+    );
     gate.resolve(response(["a"], 2));
     await Promise.all([first, second]);
     if (failure) {
@@ -417,14 +456,19 @@ it("inherits retry and mount freshness defaults from the query client", async ()
   });
   const read = vi.fn(async () => ({
     result: { a: 1 },
-    tags: [],
-    keyTags: { a: ["item:a"] },
+    dependencies: changesOf([]),
+    keyDependencies: Object.fromEntries(
+      Object.entries({ a: ["item:a"] }).map(([key, values]) => [
+        key,
+        changesOf(values),
+      ]),
+    ),
   }));
   read.mockRejectedValueOnce(new Error("transient"));
-  const owner = createTaggedKeyedQueryOwner({
+  const owner = createLiveKeyedQueryOwner({
     client,
     queryKey: ["defaults"],
-    scope: CORE_TAG_SCOPE,
+    scope: CORE_CHANGE_SCOPE,
     collection,
     read,
   });
@@ -446,14 +490,18 @@ it("loads new subscribers without rereading other rows during a keyed invalidati
   let value = 1;
   const response = (keys: readonly string[], current: number) => ({
     result: Object.fromEntries(keys.map((key) => [key, current])),
-    tags: [],
-    keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+    dependencies: changesOf([]),
+    keyDependencies: Object.fromEntries(
+      Object.entries(
+        Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+      ).map(([key, values]) => [key, changesOf(values)]),
+    ),
   });
   const read = vi.fn(async (keys: readonly string[]) => response(keys, value));
-  const owner = createTaggedKeyedQueryOwner({
+  const owner = createLiveKeyedQueryOwner({
     client,
     queryKey: ["membership"],
-    scope: CORE_TAG_SCOPE,
+    scope: CORE_CHANGE_SCOPE,
     collection,
     read,
   });
@@ -466,7 +514,11 @@ it("loads new subscribers without rereading other rows during a keyed invalidati
   );
   const gate = deferred<ReturnType<typeof response>>();
   read.mockImplementationOnce(() => gate.promise);
-  const invalidation = invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  const invalidation = applyChanges(
+    client,
+    CORE_CHANGE_SCOPE,
+    changesOf(["item:a"]),
+  );
   await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
   disposers.push(owner.subscribe(["c"], () => {}));
   value = 3;
@@ -485,7 +537,7 @@ it("loads new subscribers without rereading other rows during a keyed invalidati
 });
 
 describe("optimistic tagged mutations", () => {
-  const outcome = () => ({ result: "saved", invalidated: ["item:a"] });
+  const outcome = () => ({ result: "saved", changes: changesOf(["item:a"]) });
   function prediction(client: QueryClient, value: number) {
     return {
       client,
@@ -503,7 +555,7 @@ describe("optimistic tagged mutations", () => {
     let value = 1;
     const read = observe(client, "a", async () => ({
       value,
-      tags: ["item:a"],
+      dependencies: changesOf(["item:a"]),
     }));
     await vi.waitFor(() => expect(read.value()).toBe(1));
     const second = new QueryObserver(client, read.observer.options);
@@ -514,15 +566,15 @@ describe("optimistic tagged mutations", () => {
       }),
     );
     const write = deferred<ReturnType<typeof outcome>>();
-    const mutation = runTaggedMutation(
-      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    const mutation = runLiveMutation(
+      (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
       () => write.promise,
       prediction(client, 2),
     );
     expect(read.value()).toBe(2);
     expect(second.getCurrentResult().data?.value).toBe(2);
     value = 3;
-    await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+    await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
     expect(read.value()).toBe(2);
     const fresh = deferred<Data>();
     read.fn.mockImplementationOnce(() => fresh.promise);
@@ -531,7 +583,7 @@ describe("optimistic tagged mutations", () => {
     await expect(mutation).resolves.toBe("saved");
     expect(read.value()).toBe(2);
     expect(second.getCurrentResult().data?.value).toBe(2);
-    fresh.resolve({ value: 4, tags: ["item:a"] });
+    fresh.resolve({ value: 4, dependencies: changesOf(["item:a"]) });
     await vi.waitFor(() => expect(read.value()).toBe(4));
     expect(second.getCurrentResult().data?.value).toBe(4);
     expect(seen.every((value) => value === 2 || value === 4)).toBe(true);
@@ -541,12 +593,12 @@ describe("optimistic tagged mutations", () => {
     const client = setup();
     const read = observe(client, "a", async () => ({
       value: 1,
-      tags: ["item:a"],
+      dependencies: changesOf(["item:a"]),
     }));
     await vi.waitFor(() => expect(read.value()).toBe(1));
     const write = deferred<ReturnType<typeof outcome>>();
-    const mutation = runTaggedMutation(
-      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    const mutation = runLiveMutation(
+      (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
       () => write.promise,
       prediction(client, 2),
     );
@@ -565,11 +617,11 @@ describe("optimistic tagged mutations", () => {
       let settings = { archive: false, delete: false };
       const observer = new QueryObserver(client, {
         queryKey,
-        ...taggedQueryOptions<Settings>(client, queryKey, {
-          scope: CORE_TAG_SCOPE,
-          tagsOf: () => ["item:a"],
+        ...liveQueryOptions<Settings>(client, queryKey, {
+          scope: CORE_CHANGE_SCOPE,
+          dependenciesOf: () => changesOf(["item:a"]),
         }),
-        queryFn: () => runTaggedRead(client, queryKey, async () => settings),
+        queryFn: () => runLiveRead(client, queryKey, async () => settings),
       });
       disposers.push(observer.subscribe(() => {}));
       await vi.waitFor(() =>
@@ -583,8 +635,9 @@ describe("optimistic tagged mutations", () => {
         deferred<ReturnType<typeof outcome>>(),
       ];
       const mutations = writes.map((write, index) =>
-        runTaggedMutation(
-          (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+        runLiveMutation(
+          (dependencies) =>
+            applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
           () => write.promise,
           {
             client,
@@ -626,12 +679,12 @@ describe("optimistic tagged mutations", () => {
     const client = setup();
     const read = observe(client, "a", async () => ({
       value: 1,
-      tags: ["item:a"],
+      dependencies: changesOf(["item:a"]),
     }));
     await vi.waitFor(() => expect(read.value()).toBe(1));
     read.fn.mockRejectedValueOnce(new Error("read offline"));
-    await runTaggedMutation(
-      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    await runLiveMutation(
+      (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
       async () => outcome(),
       prediction(client, 2),
     );
@@ -641,7 +694,10 @@ describe("optimistic tagged mutations", () => {
         "read offline",
       ),
     );
-    read.fn.mockResolvedValueOnce({ value: 3, tags: ["item:a"] });
+    read.fn.mockResolvedValueOnce({
+      value: 3,
+      dependencies: changesOf(["item:a"]),
+    });
     await read.observer.refetch();
     expect(read.value()).toBe(3);
     expect(read.observer.getCurrentResult().error).toBeNull();
@@ -663,7 +719,7 @@ describe("optimistic tagged mutations", () => {
       let value = 0;
       const read = observe(client, "a", async () => ({
         value,
-        tags: ["item:a"],
+        dependencies: changesOf(["item:a"]),
       }));
       await vi.waitFor(() => expect(read.value()).toBe(0));
       const writes = [
@@ -671,8 +727,9 @@ describe("optimistic tagged mutations", () => {
         deferred<ReturnType<typeof outcome>>(),
       ];
       const mutations = writes.map((write, index) =>
-        runTaggedMutation(
-          (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+        runLiveMutation(
+          (dependencies) =>
+            applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
           () => write.promise,
           prediction(client, index + 1),
         ).then(
@@ -698,7 +755,7 @@ describe("optimistic tagged mutations", () => {
         expect(read.value()).toBe(later ? 20 : earlier ? 10 : 0),
       );
       value = 99;
-      await invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+      await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
       expect(read.value()).toBe(99);
     },
   );
@@ -708,18 +765,20 @@ describe("optimistic tagged mutations", () => {
     const queryKey = ["optimistic-rows"];
     let value = 1;
     let failure = false;
-    const owner = createTaggedKeyedQueryOwner({
+    const owner = createLiveKeyedQueryOwner({
       client,
       queryKey,
-      scope: CORE_TAG_SCOPE,
+      scope: CORE_CHANGE_SCOPE,
       collection,
       read: async (keys) => {
         if (failure && keys.includes("a")) throw new Error("read offline");
         return {
           result: Object.fromEntries(keys.map((key) => [key, value])),
-          tags: [],
-          keyTags: Object.fromEntries(
-            keys.map((key) => [key, [`item:${key}`]]),
+          dependencies: changesOf([]),
+          keyDependencies: Object.fromEntries(
+            Object.entries(
+              Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+            ).map(([key, values]) => [key, changesOf(values)]),
           ),
         };
       },
@@ -736,8 +795,8 @@ describe("optimistic tagged mutations", () => {
       }),
     );
     failure = true;
-    await runTaggedMutation(
-      (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    await runLiveMutation(
+      (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
       async () => outcome(),
       {
         client,
@@ -750,7 +809,7 @@ describe("optimistic tagged mutations", () => {
     });
     stopA();
     value = 3;
-    await invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
+    await applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:b"]));
     expect(owner.observer.getCurrentResult().data?.result).toEqual({ b: 3 });
     failure = false;
     value = 4;
@@ -769,15 +828,15 @@ it("re-reads when a write completes between a read resolving and its cache commi
   let value = 1;
   const read = observe(client, "commit-gap", async () => ({
     value,
-    tags: ["item:a"],
+    dependencies: changesOf(["item:a"]),
   }));
   await vi.waitFor(() => expect(read.value()).toBe(1));
   const old = deferred<Data>();
-  const write = deferred<{ result: string; invalidated: string[] }>();
+  const write = deferred<{ result: string; changes: ReadChange[] }>();
   read.fn.mockImplementationOnce(() => old.promise);
   const refreshing = read.observer.refetch();
-  const mutation = runTaggedMutation(
-    (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+  const mutation = runLiveMutation(
+    (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
     () => write.promise,
     {
       client,
@@ -790,10 +849,10 @@ it("re-reads when a write completes between a read resolving and its cache commi
     },
   );
   expect(read.value()).toBe(2);
-  old.resolve({ value: 1, tags: ["item:a"] });
+  old.resolve({ value: 1, dependencies: changesOf(["item:a"]) });
   queueMicrotask(() => {
     value = 3;
-    write.resolve({ result: "saved", invalidated: ["item:a"] });
+    write.resolve({ result: "saved", changes: changesOf(["item:a"]) });
   });
   await mutation;
   await refreshing;
@@ -806,14 +865,18 @@ it("does not show a row read that started before the write once a later batch re
   let value = 1;
   const response = (keys: readonly string[], current: number) => ({
     result: Object.fromEntries(keys.map((key) => [key, current])),
-    tags: [],
-    keyTags: Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+    dependencies: changesOf([]),
+    keyDependencies: Object.fromEntries(
+      Object.entries(
+        Object.fromEntries(keys.map((key) => [key, [`item:${key}`]])),
+      ).map(([key, values]) => [key, changesOf(values)]),
+    ),
   });
   const read = vi.fn(async (keys: readonly string[]) => response(keys, value));
-  const owner = createTaggedKeyedQueryOwner({
+  const owner = createLiveKeyedQueryOwner({
     client,
     queryKey,
-    scope: CORE_TAG_SCOPE,
+    scope: CORE_CHANGE_SCOPE,
     collection,
     read,
   });
@@ -828,9 +891,9 @@ it("does not show a row read that started before the write once a later batch re
       b: 1,
     }),
   );
-  const write = deferred<{ result: string; invalidated: string[] }>();
-  const mutation = runTaggedMutation(
-    (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+  const write = deferred<{ result: string; changes: ReadChange[] }>();
+  const mutation = runLiveMutation(
+    (dependencies) => applyChanges(client, CORE_CHANGE_SCOPE, dependencies),
     () => write.promise,
     {
       client,
@@ -839,14 +902,14 @@ it("does not show a row read that started before the write once a later batch re
   );
   const old = deferred<ReturnType<typeof response>>();
   read.mockImplementationOnce(() => old.promise);
-  const first = invalidateTags(client, CORE_TAG_SCOPE, ["item:a"]);
+  const first = applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:a"]));
   await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
   stopA();
-  const second = invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
+  const second = applyChanges(client, CORE_CHANGE_SCOPE, changesOf(["item:b"]));
   old.resolve(response(["a"], 1));
   queueMicrotask(() => {
     value = 3;
-    write.resolve({ result: "saved", invalidated: ["item:a"] });
+    write.resolve({ result: "saved", changes: changesOf(["item:a"]) });
   });
   await Promise.all([first, second, mutation]);
   expect(owner.observer.getCurrentResult().data?.result).toEqual({ b: 3 });
@@ -858,3 +921,18 @@ it("does not show a row read that started before the write once a later batch re
     }),
   );
 });
+
+function changesOf(values: readonly string[]): ReadChange[] {
+  return values.map((entity) => ({ entity, changes: ["updated"] }));
+}
+async function applyChanges(
+  client: QueryClient,
+  scope: string,
+  changes: readonly ReadChange[] | null,
+) {
+  if (changes === null) await applyQueryChange(client, scope, null);
+  else
+    await Promise.all(
+      changes.map((change) => applyQueryChange(client, scope, change)),
+    );
+}

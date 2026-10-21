@@ -1,6 +1,6 @@
 import { getEnvironment, type EnvironmentRow } from "@bb/db";
 import {
-  environmentPullRequestTag,
+  environmentPullRequestChange,
   type EnvironmentPullRequestResponse,
 } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -111,7 +111,10 @@ export function createEnvironmentPullRequestWatch(
     }
     const fingerprint = JSON.stringify(response);
     if (entry.fingerprint !== null && entry.fingerprint !== fingerprint) {
-      deps.hub.notifyTags([environmentPullRequestTag(environmentId)]);
+      deps.hub.notifyReadChanged({
+        ...environmentPullRequestChange(environmentId),
+        value: response,
+      });
     }
     entry.fingerprint = fingerprint;
     entry.needsChecks = needsActiveChecks(response);

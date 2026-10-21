@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CloseTerminalRequest,
@@ -45,15 +46,26 @@ export function useTerminals(
     queryKey: terminalsQueryKey(
       scope ?? { kind: "host_path", hostId: "__disabled__" },
     ),
-    queryFn: ({ signal }) =>
-      sdk.terminals.list({
-        scope: requireEnabledQueryArg({
-          value: scope,
-          hookName: "useTerminals",
-          argName: "terminal scope",
+    ...coreRead(
+      scope?.kind === "thread"
+        ? [dependency("thread", ["terminals-changed"], scope.threadId)]
+        : [],
+      ({ signal }) =>
+        sdk.terminals.list({
+          scope: requireEnabledQueryArg({
+            value: scope,
+            hookName: "useTerminals",
+            argName: "terminal scope",
+          }),
+          signal,
         }),
-        signal,
-      }),
+      (_data, change) =>
+        change.entity === "thread" &&
+        change.id === undefined &&
+        change.changes.includes("terminals-changed")
+          ? { action: "reload" }
+          : undefined,
+    ),
     enabled:
       (options?.enabled ?? true) && scope !== null && scope !== undefined,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,

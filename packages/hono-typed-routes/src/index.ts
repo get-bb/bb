@@ -1,8 +1,8 @@
 export type { EmptyInput, Endpoint } from "./endpoint.js";
 export type {
   ApiSchemaFromRouteDescriptors,
-  RouteTagDeclarations,
-  RouteTagInput,
+  RouteChangeDeclarations,
+  RouteChangeInput,
   RouteSuccessOutput,
 } from "./route-descriptor.js";
 export {

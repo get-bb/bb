@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.65",
+  "version": "0.6.67",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -128,11 +128,11 @@
       "import": "./dist/testing/host.js",
       "default": "./dist/testing/host.js"
     },
-    "./internal/rpc-tags": {
-      "source": "./src/internal/rpc-tags.ts",
-      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-tags.d.ts",
-      "import": "./dist/internal/rpc-tags.js",
-      "default": "./dist/internal/rpc-tags.js"
+    "./internal/rpc-changes": {
+      "source": "./src/internal/rpc-changes.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-changes.d.ts",
+      "import": "./dist/internal/rpc-changes.js",
+      "default": "./dist/internal/rpc-changes.js"
     },
     "./internal/rpc-query-host": {
       "source": "./src/internal/rpc-query-host.ts",
@@ -180,7 +180,7 @@
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1",
-    "@bb/query-tags": "workspace:*"
+    "@bb/query-changes": "workspace:*"
   },
   "peerDependencies": {
     "@testing-library/react": "^16.3.2",

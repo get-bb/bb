@@ -24,7 +24,7 @@ const WIRE_SOURCE = `
     refuse: {
       input: z.enum(["forbidden", "not_found", "conflict", "invalid"]),
       output: z.null(),
-      invalidates: () => ["private"],
+      experimental_changes: () => [{ entity: "private", changes: ["updated"] }],
     },
     boom: { input: z.record(z.string(), z.unknown()), output: z.null() },
     publish: {
@@ -562,9 +562,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await oldRpc.json()).toEqual({
       ok: true,
       result: { echoed: { kept: true } },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
+      dependencies: [],
+      keyDependencies: {},
+      changes: [],
+      whileWatched: false,
     });
     const candidateRoute = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/candidate`,
@@ -586,9 +587,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await ok.json()).toEqual({
       ok: true,
       result: { echoed: { x: 1 } },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
+      dependencies: [],
+      keyDependencies: {},
+      changes: [],
+      whileWatched: false,
     });
 
     const boom = await rpc(harness, "boom", {});
@@ -715,7 +717,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
   });
 
-  it("bb.realtime.publish broadcasts a plugin-signal WS frame to connected clients", async () => {
+  it("bb.realtime.publish delivers a plugin-signal only to subscribers of that plugin", async () => {
+    const pluginSocket = createMockHubSocket();
+    harness.hub.subscribe(pluginSocket, { kind: "plugin", pluginId: "wire" });
     const systemSocket = createMockHubSocket();
     const threadSocket = createMockHubSocket();
     harness.hub.subscribe(systemSocket, { kind: "system" });
@@ -732,20 +736,21 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: "published",
-      tags: [],
-      keyTags: {},
-      invalidated: [],
+      dependencies: [],
+      keyDependencies: {},
+      changes: [],
+      whileWatched: false,
     });
 
-    for (const socket of [systemSocket, threadSocket]) {
-      expect(socket.messages).toHaveLength(1);
-      expect(JSON.parse(socket.messages[0])).toEqual({
-        type: "plugin-signal",
-        pluginId: "wire",
-        channel: "issues-updated",
-        payload: { count: 42 },
-      });
-    }
+    for (const socket of [systemSocket, threadSocket])
+      expect(socket.messages).toEqual([]);
+    expect(pluginSocket.messages).toHaveLength(1);
+    expect(JSON.parse(pluginSocket.messages[0])).toEqual({
+      type: "plugin-signal",
+      pluginId: "wire",
+      channel: "issues-updated",
+      payload: { count: 42 },
+    });
   });
 
   it("bb.realtime.publish rejects payloads that do not survive JSON", async () => {
@@ -808,9 +813,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: { gen: firstGen + 1 },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
+      dependencies: [],
+      keyDependencies: {},
+      changes: [],
+      whileWatched: false,
     });
   });
 });

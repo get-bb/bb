@@ -28,6 +28,4 @@ export interface ConnectStatus {
   shares: ShareListing[];
 }
 
-export const CONNECT_REALTIME_CHANNEL = "connect";
-
 export const REMOTE_ACTIVITY_INSTRUCTIONS_MS = 5 * 60 * 1000;

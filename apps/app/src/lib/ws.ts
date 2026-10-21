@@ -1,4 +1,5 @@
 import ReconnectingWebSocket from "partysocket/ws";
+import { realtimeSubscriptionTargetSchema } from "@bb/domain";
 import {
   changedMessageLenientSchema,
   pluginSignalLenientSchema,
@@ -464,6 +465,13 @@ export class WebSocketManager {
     const existing = this.subscriptions.get(key);
     if (existing) {
       existing.count += 1;
+      return;
+    }
+    if (!realtimeSubscriptionTargetSchema.safeParse(target).success) {
+      console.error(
+        "Skipped invalid realtime subscription target",
+        target.kind,
+      );
       return;
     }
 

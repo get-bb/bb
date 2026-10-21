@@ -8,13 +8,13 @@ import type {
 } from "@bb/domain";
 import {
   publicApiRoutes,
-  UI_PREFERENCES_TAG,
+  UI_PREFERENCES_CHANGE,
   type UiPreferencesResponse,
 } from "@bb/server-contract";
-import { CORE_TAG_SCOPE, invalidateTags } from "@bb/query-tags";
+import { CORE_CHANGE_SCOPE, applyQueryChange } from "@bb/query-changes";
 import { appToast } from "@/components/ui/app-toast";
 import { uiPreferencesQueryOptions } from "@/hooks/queries/system-queries";
-import { runRouteMutation } from "@/hooks/queries/route-tags";
+import { runRouteMutation } from "@/hooks/queries/route-changes";
 import { BbHttpError, sdk } from "../sdk";
 
 type JotaiStore = ReturnType<typeof getDefaultStore>;
@@ -258,9 +258,11 @@ async function flushUiPreference<Key extends UiPreferenceKey>(
     .catch((error: unknown) => {
       failed = true;
       notifySyncFailure(error);
-      void invalidateTags(activeContext.queryClient, CORE_TAG_SCOPE, [
-        UI_PREFERENCES_TAG,
-      ]);
+      void applyQueryChange(
+        activeContext.queryClient,
+        CORE_CHANGE_SCOPE,
+        UI_PREFERENCES_CHANGE,
+      );
     })
     .finally(() => {
       state.inFlight = null;

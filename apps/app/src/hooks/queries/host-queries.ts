@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useMemo } from "react";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
@@ -25,7 +26,10 @@ export function useHosts(
 
   return useQuery<Host[]>({
     queryKey: hostsQueryKey(includeCreating),
-    queryFn: ({ signal }) => sdk.hosts.list({ signal, includeCreating }),
+    ...coreRead(
+      dependency("host", ["host-connected", "host-disconnected"]),
+      ({ signal }) => sdk.hosts.list({ signal, includeCreating }),
+    ),
     enabled,
     staleTime: 60_000,
   });

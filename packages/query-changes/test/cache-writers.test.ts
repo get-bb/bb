@@ -1,12 +1,13 @@
+import type { ReadChange } from "@bb/domain";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  CORE_TAG_SCOPE,
+  CORE_CHANGE_SCOPE,
   optimisticQueryUpdate,
-  runTaggedMutation,
-  runTaggedRead,
-  taggedQueryOptions,
-  type TaggedMutationOutcome,
+  runLiveMutation,
+  runLiveRead,
+  liveQueryOptions,
+  type LiveMutationOutcome,
 } from "../src/index.js";
 
 type Row = { id: string; pinnedAt: number | null; status: string };
@@ -23,12 +24,12 @@ async function setup(row: Row) {
   let server = row;
   const observer = new QueryObserver<Row>(client, {
     queryKey,
-    ...taggedQueryOptions(client, queryKey, {
-      scope: CORE_TAG_SCOPE,
-      tagsOf: () => ["row"],
+    ...liveQueryOptions(client, queryKey, {
+      scope: CORE_CHANGE_SCOPE,
+      dependenciesOf: () => changesOf(["row"]),
     }),
     queryFn: () =>
-      runTaggedRead(client, queryKey, async () => structuredClone(server)),
+      runLiveRead(client, queryKey, async () => structuredClone(server)),
   });
   disposers.push(
     observer.subscribe(() => {}),
@@ -48,12 +49,12 @@ async function setup(row: Row) {
 function pin(client: QueryClient, pinnedAt: number) {
   let fail!: (error: Error) => void;
   let accept!: () => void;
-  const write = runTaggedMutation(
+  const write = runLiveMutation(
     async () => {},
     () =>
-      new Promise<TaggedMutationOutcome<undefined>>((resolve, reject) => {
+      new Promise<LiveMutationOutcome<undefined>>((resolve, reject) => {
         fail = reject;
-        accept = () => resolve({ result: undefined, invalidated: [] });
+        accept = () => resolve({ result: undefined, changes: changesOf([]) });
       }),
     {
       client,
@@ -123,3 +124,7 @@ describe("cache writes under a prediction", () => {
     expect(cache.row()).toEqual({ id: "a", pinnedAt: 150, status: "running" });
   });
 });
+
+function changesOf(values: readonly string[]): ReadChange[] {
+  return values.map((entity) => ({ entity, changes: ["updated"] }));
+}

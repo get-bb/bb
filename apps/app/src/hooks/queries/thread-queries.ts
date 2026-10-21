@@ -18,7 +18,7 @@ import type {
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { useDebouncedValue } from "../useDebouncedValue";
-import { routeTaggedPages, routeTaggedRead } from "./route-tags";
+import { routeLivePages, routeLiveRead } from "./route-changes";
 import { applyTimelineDelta, publicApiRoutes } from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
@@ -292,7 +292,7 @@ export function threadListRead(
   queryKey: QueryKey,
   read: (signal: AbortSignal) => Promise<ThreadListResponse>,
 ) {
-  return routeTaggedRead(
+  return routeLiveRead(
     queryClient,
     queryKey,
     publicApiRoutes.threads.list,
@@ -320,7 +320,7 @@ export function archivedThreadsQueryOptions(
     number
   >({
     queryKey,
-    ...routeTaggedPages(
+    ...routeLivePages(
       queryClient,
       queryKey,
       publicApiRoutes.threads.list,
@@ -705,7 +705,7 @@ export function threadQueryOptions(
   const queryKey = threadQueryKey(id);
   return queryOptions<ThreadResponse>({
     queryKey,
-    ...routeTaggedRead(
+    ...routeLiveRead(
       queryClient,
       queryKey,
       publicApiRoutes.threads.get,

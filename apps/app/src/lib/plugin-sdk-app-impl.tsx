@@ -1,3 +1,10 @@
+import {
+  useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcKeyedQuery,
+  experimental_useRpcMutation,
+  experimental_useRpcRefresh,
+} from "./plugin-rpc-hooks";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
@@ -37,11 +44,6 @@ import {
   useProviders,
   useRealtime,
   useRealtimeConnectionState,
-  useRpc,
-  experimental_useRpcQuery,
-  experimental_useRpcKeyedQuery,
-  experimental_useRpcMutation,
-  experimental_useRpcRefresh,
   useSdk,
   useSettings,
   experimental_useAppPanel,

@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import type { PluginUpdateJob } from "@bb/server-contract";
 import { createPluginsClient } from "./plugin-client";
@@ -10,7 +11,9 @@ export function isActivePluginUpdateJob(job: PluginUpdateJob): boolean {
 export function usePluginUpdateJobs() {
   return useQuery({
     queryKey: pluginUpdateJobsQueryKey(),
-    queryFn: () => createPluginsClient(fetch).experimental_updateJobs.list(),
+    ...coreRead(dependency("system", ["plugin-update-jobs-changed"]), () =>
+      createPluginsClient(fetch).experimental_updateJobs.list(),
+    ),
     refetchInterval: (query) =>
       query.state.data?.some(isActivePluginUpdateJob) ? 1000 : false,
   });

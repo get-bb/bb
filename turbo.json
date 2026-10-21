@@ -86,6 +86,10 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@bb/app#check-bundle-budget": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
     "@bb/app#build": {
       "env": [
         "NODE_OPTIONS",

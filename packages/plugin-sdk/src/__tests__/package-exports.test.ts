@@ -44,7 +44,7 @@ describe("packed plugin SDK exports", () => {
       "./testing",
       "./testing/app",
       "./testing/host",
-      "./internal/rpc-tags",
+      "./internal/rpc-changes",
       "./internal/rpc-query-host",
     ]);
 

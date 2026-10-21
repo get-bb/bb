@@ -1,3 +1,4 @@
+import { useRpc } from "@/lib/plugin-rpc-hooks";
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -22,7 +23,6 @@ import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import {
   useBbContext,
   useBbNavigate,
-  useRpc,
   useSettings,
 } from "@/lib/plugin-sdk-hooks";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";

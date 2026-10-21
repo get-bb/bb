@@ -95,7 +95,7 @@ describe("typedRoutes", () => {
 });
 
 describe("contract invalidations", () => {
-  it("publishes tags from parsed input and successful JSON output without changing the body", async () => {
+  it("publishes changes from parsed input and successful JSON output without changing the body", async () => {
     const route = defineRoute({
       path: "/items/:id",
       method: "put",
@@ -104,15 +104,20 @@ describe("contract invalidations", () => {
         jsonResponse<{ value: number }>(),
         jsonResponse<{ error: string }>({ status: 409 }),
       ],
-      invalidates: ({ params, input }, output) => [
-        `item:${params.id}:${input.value}:${output.value}`,
+      experimental_changes: ({ params, input }, output) => [
+        {
+          entity: "item",
+          id: params.id,
+          changes: ["updated"],
+          value: { input: input.value, output: output.value },
+        },
       ],
     });
     const publish = vi.fn();
     const app = createApp();
     const { put } = typedRoutes<ApiSchemaFromRouteDescriptors<typeof route>>(
       app,
-      { invalidateTags: publish },
+      { publishChanges: publish },
     );
     put(route, (context, input) =>
       input.value < 0
@@ -134,7 +139,14 @@ describe("contract invalidations", () => {
         expect(await response.json()).toEqual({ value: 5 });
       }
     }
-    expect(publish).toHaveBeenCalledExactlyOnceWith(["item:a:4:5"]);
+    expect(publish).toHaveBeenCalledExactlyOnceWith([
+      {
+        entity: "item",
+        id: "a",
+        changes: ["updated"],
+        value: { input: 4, output: 5 },
+      },
+    ]);
   });
 
   it("requires a publisher for declared writes and skips non-JSON responses", async () => {
@@ -143,15 +155,15 @@ describe("contract invalidations", () => {
       method: "post",
       request: noRequest(),
       response: textResponse<string>(),
-      invalidates: () => ["item"],
+      experimental_changes: () => [{ entity: "item", changes: ["updated"] }],
     });
     const app = createApp();
     type Schema = ApiSchemaFromRouteDescriptors<typeof route>;
     expect(() =>
       typedRoutes<Schema>(app).post(route, (c) => c.text("ok")),
-    ).toThrow("no invalidateTags option");
+    ).toThrow("no publishChanges option");
     const publish = vi.fn();
-    typedRoutes<Schema>(app, { invalidateTags: publish }).post(route, (c) =>
+    typedRoutes<Schema>(app, { publishChanges: publish }).post(route, (c) =>
       c.text("ok"),
     );
     const response = await app.request("/write", { method: "POST" });

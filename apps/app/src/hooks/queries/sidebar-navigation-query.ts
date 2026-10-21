@@ -22,7 +22,7 @@ import {
 import type { QueryOptions } from "./query-helpers";
 import { sidebarNavigationQueryKey } from "./query-keys";
 import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
-import { routeTaggedRead } from "./route-tags";
+import { routeLiveRead } from "./route-changes";
 import {
   readCachedSidebarBootstrap,
   writeCachedSidebarBootstrap,
@@ -43,7 +43,7 @@ function sidebarNavigationReadOptions(
   const queryKey = sidebarNavigationQueryKey();
   return {
     queryKey,
-    ...routeTaggedRead(
+    ...routeLiveRead(
       client,
       queryKey,
       publicApiRoutes.projects.sidebarBootstrap,

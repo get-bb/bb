@@ -184,8 +184,13 @@ export function createPushNotificationsPlugin(
           childLevel: ownNotificationLevelSchema.parse(childLevel),
         };
       },
-      publish: (threadIds) =>
-        bb.rpc.experimental_invalidate(threadIds.map((id) => `thread:${id}`)),
+      publish: (id, value) =>
+        bb.rpc.experimental_publishChange({
+          entity: "thread-notifications",
+          id,
+          changes: ["preferences-changed"],
+          ...(value === undefined ? {} : { value }),
+        }),
     });
     const subscriptions = createPushSubscriptionStore(bb, {
       ...(options.now === undefined ? {} : { now: options.now }),

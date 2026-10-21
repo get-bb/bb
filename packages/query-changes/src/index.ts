@@ -1,3 +1,12 @@
+import type { ReadDependency } from "@bb/domain";
+import { matchesReadChange, resolveReadChange } from "./policy.js";
+export {
+  matchesReadChange,
+  resolveReadChange,
+  mapReadChange,
+} from "./policy.js";
+import type { ReadChange, ReadChangeReaction } from "@bb/domain";
+export type { ReadChange, ReadChangeReaction } from "@bb/domain";
 import {
   useCallback,
   useEffect,
@@ -18,11 +27,13 @@ import {
   type Query,
   type QueryClient,
   type QueryKey,
+  type QueryFunctionContext,
 } from "@tanstack/react-query";
 
 import { tick } from "./clock.js";
 import {
   recordKeyedRead,
+  readKeyedBaseEntity,
   registerKeyedView,
   type KeyedCollection,
   type KeyedView,
@@ -30,10 +41,10 @@ import {
 import {
   beginOptimisticMutation,
   subscribeOptimisticQuery,
-  getTaggedReadData,
-  markTaggedQueryMeta,
-  commitTaggedReadReceipt,
-  taggedStructuralSharing,
+  getLiveReadData,
+  markLiveQueryMeta,
+  commitLiveReadReceipt,
+  liveStructuralSharing,
   type OptimisticUpdate,
 } from "./optimistic.js";
 export {
@@ -42,7 +53,7 @@ export {
   optimisticQueryUpdate,
   type KeyedOptimisticUpdate,
   type OptimisticUpdate,
-  type TaggedOptimisticUpdate,
+  type LiveQueryOptimisticUpdate,
 } from "./optimistic.js";
 export {
   KeyedCollection,
@@ -55,7 +66,7 @@ export {
   type KeyedViewSlot,
 } from "./keyed-store.js";
 
-export function useTaggedQuery<
+export function useLiveQuery<
   QueryData = unknown,
   Error = DefaultError,
   Data = QueryData,
@@ -77,39 +88,60 @@ export function useTaggedQuery<
   return result;
 }
 
-export const CORE_TAG_SCOPE = "core";
+export const CORE_CHANGE_SCOPE = "core";
 
-export interface TaggedQueryRegistration<Data> {
+export interface LiveQueryRegistration<Data> {
   scope: string;
-  tagsOf(data: Data): readonly string[];
-  onInvalidate?(data: Data | undefined, tags: readonly string[] | null): void;
+  read?: (context: QueryFunctionContext) => Promise<Data>;
+  dependenciesOf: (
+    data: Data | undefined,
+    client: QueryClient,
+  ) => readonly ReadDependency[] | undefined;
+  reactToChange?: (
+    data: Data | undefined,
+    change: ReadChange,
+  ) => ReadChangeReaction<Data>;
+  onReload?(
+    data: Data | undefined,
+    change: ReadChange | null,
+    keys?: readonly string[],
+  ): void;
 }
 
-export interface TaggedMutationOutcome<Result> {
+export interface LiveMutationOutcome<Result> {
   result: Result;
-  invalidated: readonly string[];
+  changes: readonly ReadChange[];
 }
 
-const registrations = new WeakMap<object, TaggedQueryRegistration<unknown>>();
-const reads = new WeakMap<object, { tags: Set<string>; restart: boolean }>();
+const registrations = new WeakMap<object, LiveQueryRegistration<unknown>>();
+const reads = new WeakMap<
+  object,
+  { changes: ReadChange[]; restart: boolean }
+>();
 
-export function taggedQueryOptions<Data>(
-  client: QueryClient,
-  queryKey: QueryKey,
-  registration: TaggedQueryRegistration<Data>,
-) {
+export function liveQueryMeta<Data>(registration: LiveQueryRegistration<Data>) {
+  const { read } = registration;
   const meta = {};
-  markTaggedQueryMeta(meta);
-  registrations.set(meta, {
-    scope: registration.scope,
-    tagsOf: (data) => registration.tagsOf(data as Data),
-    onInvalidate: (data, tags) =>
-      registration.onInvalidate?.(data as Data | undefined, tags),
-  });
+  markLiveQueryMeta(meta);
+  registrations.set(meta, registration as LiveQueryRegistration<unknown>);
   return {
     meta,
+    ...(read && {
+      queryFn: (context: QueryFunctionContext) =>
+        runLiveRead(context.client, context.queryKey, () => read(context)),
+    }),
+  };
+}
+
+export function liveQueryOptions<Data>(
+  client: QueryClient,
+  queryKey: QueryKey,
+  registration: LiveQueryRegistration<Data>,
+) {
+  return {
+    ...liveQueryMeta(registration),
     structuralSharing: (previous: unknown, next: unknown) =>
-      taggedStructuralSharing(client, queryKey, previous, next),
+      liveStructuralSharing(client, queryKey, previous, next),
   };
 }
 
@@ -117,7 +149,7 @@ function registrationOf(query: Query) {
   return query.meta === undefined ? undefined : registrations.get(query.meta);
 }
 
-export async function runTaggedRead<Data>(
+export async function runLiveRead<Data>(
   client: QueryClient,
   queryKey: QueryKey,
   read: () => Promise<Data>,
@@ -128,17 +160,26 @@ export async function runTaggedRead<Data>(
   if (query === undefined) return read();
   const registration = registrationOf(query);
   for (;;) {
-    const pending = { tags: new Set<string>(), restart: false };
+    const pending = { changes: [] as ReadChange[], restart: false };
     reads.set(query, pending);
     const started = tick();
     try {
       const result = await read();
-      const overlap = registration
-        ?.tagsOf(result)
-        .some((tag) => pending.tags.has(tag));
-      if (overlap) registration?.onInvalidate?.(result, [...pending.tags]);
-      if (pending.restart || overlap) continue;
-      commitTaggedReadReceipt(query, result, started);
+      if (
+        pending.restart ||
+        pending.changes.some(
+          (change) =>
+            registration &&
+            resolveReadChange(
+              result,
+              registration.dependenciesOf(result, client) ?? [],
+              change,
+              registration.reactToChange,
+            ),
+        )
+      )
+        continue;
+      commitLiveReadReceipt(query, result, started);
       return result;
     } catch (error) {
       if (pending.restart) continue;
@@ -149,73 +190,100 @@ export async function runTaggedRead<Data>(
   }
 }
 
-export async function invalidateTags(
+export async function refreshLiveQueries(
   client: QueryClient,
   scope: string,
-  tags: readonly string[] | null,
 ): Promise<void> {
-  if (tags?.length === 0) return;
-  const matched = new Set<Query>();
-  const pendingReads: Promise<unknown>[] = [];
+  return applyQueryChange(client, scope, null);
+}
+
+export async function applyQueryChanges(
+  client: QueryClient,
+  scope: string,
+  changes: readonly ReadChange[],
+) {
+  await Promise.all(
+    changes.map((change) => applyQueryChange(client, scope, change)),
+  );
+}
+
+export async function applyQueryChange(
+  client: QueryClient,
+  scope: string,
+  change: ReadChange | null,
+): Promise<void> {
+  const reload = new Set<Query>();
+  const waiting: Promise<unknown>[] = [];
   for (const query of client.getQueryCache().getAll()) {
     const registration = registrationOf(query);
-    if (registration?.scope !== scope) continue;
+    const own = registration?.scope === scope ? registration : undefined;
+    const react = own?.reactToChange;
+    if (!own) continue;
+    if (change) reads.get(query)?.changes.push(change);
+    const data = getLiveReadData(client, query.queryKey);
+    const dependencies = own?.dependenciesOf(data, client);
+    let reaction =
+      change === null
+        ? { action: "reload" as const }
+        : resolveReadChange(data, dependencies ?? [], change, react);
+    if (
+      !reaction &&
+      data === undefined &&
+      dependencies === undefined &&
+      !reads.has(query)
+    )
+      reaction = { action: "reload" };
+    if (!reaction) continue;
+    if (reaction.action === "patch" && data !== undefined) {
+      const next = reaction.data;
+      client.setQueryData(query.queryKey, () => next, {
+        updatedAt: query.state.dataUpdatedAt,
+      });
+      if (query.state.fetchStatus !== "fetching") continue;
+    }
+    own?.onReload?.(
+      data,
+      change,
+      reaction.action === "reload" ? reaction.keys : undefined,
+    );
     const pending = reads.get(query);
-    const data = getTaggedReadData(client, query.queryKey);
-    const matches =
-      tags === null ||
-      (data === undefined && pending === undefined) ||
-      (data !== undefined &&
-        registration.tagsOf(data).some((tag) => tags.includes(tag)));
-    if (matches) registration.onInvalidate?.(data, tags);
-    if (pending !== undefined) {
-      if (matches) pending.restart = true;
-      else for (const tag of tags ?? []) pending.tags.add(tag);
-      if (query.isActive() && query.promise !== undefined)
-        pendingReads.push(query.promise);
+    if (pending) {
+      pending.restart = true;
+      if (query.isActive() && query.promise) waiting.push(query.promise);
+    } else if (query.state.fetchStatus === "fetching" && query.promise) {
+      const refresh = () =>
+        client.invalidateQueries(
+          { predicate: (candidate) => candidate === query },
+          { cancelRefetch: false },
+        );
+      waiting.push(query.promise.then(refresh, refresh));
     }
-    if (matches) {
-      matched.add(query);
-      if (
-        pending === undefined &&
-        query.isActive() &&
-        query.state.fetchStatus === "fetching" &&
-        query.promise !== undefined
-      ) {
-        const refetch = () =>
-          client.invalidateQueries(
-            { predicate: (candidate) => candidate === query },
-            { cancelRefetch: false },
-          );
-        pendingReads.push(query.promise.then(refetch, refetch));
-      }
-    }
+    reload.add(query);
   }
   await Promise.allSettled([
     client.invalidateQueries(
-      { predicate: (query) => matched.has(query) },
+      { predicate: (query) => reload.has(query) },
       { cancelRefetch: false },
     ),
-    ...pendingReads,
+    ...waiting,
   ]);
 }
 
-export interface TaggedMutationOptions {
+export interface LiveMutationOptions {
   client: QueryClient;
   optimistic: readonly OptimisticUpdate[];
 }
 
-async function executeTaggedMutation<Result>(
-  invalidate: ((tags: readonly string[]) => Promise<void>) | undefined,
-  call: () => Promise<TaggedMutationOutcome<Result>>,
+async function executeLiveMutation<Result>(
+  publish: ((changes: readonly ReadChange[]) => Promise<void>) | undefined,
+  call: () => Promise<LiveMutationOutcome<Result>>,
   prediction: ReturnType<typeof beginOptimisticMutation> | undefined,
 ): Promise<Result> {
-  const { result, invalidated } = await call();
+  const { result, changes } = await call();
   prediction?.accept(result);
   const refresh = async () => {
     try {
-      if (invalidate !== undefined && invalidated.length > 0)
-        await invalidate(invalidated);
+      if (publish !== undefined && changes.length > 0) await publish(changes);
     } finally {
       prediction?.settle();
     }
@@ -224,44 +292,44 @@ async function executeTaggedMutation<Result>(
   return result;
 }
 
-export async function runTaggedMutation<Result>(
-  invalidate: (tags: readonly string[]) => Promise<void>,
-  call: () => Promise<TaggedMutationOutcome<Result>>,
-  options?: TaggedMutationOptions,
+export async function runLiveMutation<Result>(
+  publish: (changes: readonly ReadChange[]) => Promise<void>,
+  call: () => Promise<LiveMutationOutcome<Result>>,
+  options?: LiveMutationOptions,
 ): Promise<Result> {
   const prediction =
     options && beginOptimisticMutation(options.client, options.optimistic);
   try {
-    return await executeTaggedMutation(invalidate, call, prediction);
+    return await executeLiveMutation(publish, call, prediction);
   } catch (error) {
     prediction?.rollback();
     throw error;
   }
 }
 
-export const pluginTagScope = (pluginId: string): string =>
+export const pluginChangeScope = (pluginId: string): string =>
   `plugin:${pluginId}`;
 
-export function restartTaggedRead(query: object): void {
+export function restartLiveRead(query: object): void {
   const pending = reads.get(query);
   if (pending) pending.restart = true;
 }
 
-export interface UseTaggedMutationOptions<Input, Result> {
+export interface UseLiveMutationOptions<Input, Result> {
   client: QueryClient;
-  invalidate?(tags: readonly string[]): Promise<void>;
-  call(input: Input): Promise<TaggedMutationOutcome<Result>>;
+  publish?(changes: readonly ReadChange[]): Promise<void>;
+  call(input: Input): Promise<LiveMutationOutcome<Result>>;
   optimistic?(input: Input): readonly OptimisticUpdate[];
   meta?: Record<string, unknown>;
 }
 
-export function useTaggedMutation<Input, Result>({
+export function useLiveMutation<Input, Result>({
   client,
-  invalidate,
+  publish,
   call,
   optimistic,
   meta,
-}: UseTaggedMutationOptions<Input, Result>) {
+}: UseLiveMutationOptions<Input, Result>) {
   const [owner] = useState(() => ({}));
   const predict = useRef(optimistic);
   useEffect(() => {
@@ -273,9 +341,9 @@ export function useTaggedMutation<Input, Result>({
   };
   const mutation = useMutation<Result, Error, Variables>(
     {
-      meta: { ...meta, taggedMutationOwner: owner },
+      meta: { ...meta, liveMutationOwner: owner },
       mutationFn: ({ input, prediction }) =>
-        executeTaggedMutation(invalidate, () => call(input), prediction),
+        executeLiveMutation(publish, () => call(input), prediction),
     },
     client,
   );
@@ -283,7 +351,7 @@ export function useTaggedMutation<Input, Result>({
     {
       filters: {
         status: "pending",
-        predicate: (entry) => entry.options.meta?.taggedMutationOwner === owner,
+        predicate: (entry) => entry.options.meta?.liveMutationOwner === owner,
       },
       select: (entry) => (entry.state.variables as Variables).input,
     },
@@ -314,8 +382,8 @@ export function useTaggedMutation<Input, Result>({
 
 type KeyedData<Value> = {
   result: Record<string, Value>;
-  tags: string[];
-  keyTags: Record<string, string[]>;
+  dependencies: ReadDependency[];
+  keyDependencies: Record<string, ReadDependency[]>;
 };
 
 function hasRows(data: unknown): data is { result: object } {
@@ -363,12 +431,17 @@ function keyedRowsView(
   };
 }
 
-export function createTaggedKeyedQueryOwner<Value>(options: {
+export function createLiveKeyedQueryOwner<Value>(options: {
   client: QueryClient;
   queryKey: QueryKey;
   scope: string;
-  collection: KeyedCollection<unknown>;
+  collection: KeyedCollection<Value>;
   read(keys: readonly string[]): Promise<KeyedData<Value>>;
+  reactToChange?(
+    data: KeyedData<Value> | undefined,
+    change: ReadChange,
+    keys: readonly string[],
+  ): ReadChangeReaction<KeyedData<Value>>;
 }) {
   const { client, queryKey, scope, collection, read } = options;
   registerKeyedView(client, queryKey, keyedRowsView(collection));
@@ -383,33 +456,59 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
     });
   const observer = new QueryObserver<KeyedData<Value>>(client, {
     queryKey,
-    ...taggedQueryOptions(client, queryKey, {
+    ...liveQueryOptions(client, queryKey, {
       scope,
-      tagsOf: (data: KeyedData<Value>) => [
-        ...data.tags,
-        ...Object.values(data.keyTags).flat(),
-      ],
-      onInvalidate: (data, tags) => {
+      reactToChange: (data, change) =>
+        options.reactToChange?.(
+          data && {
+            ...data,
+            result: Object.fromEntries(
+              Object.keys(data.result).flatMap((key) => {
+                const value = readKeyedBaseEntity(client, collection, key);
+                return value === undefined ? [] : [[key, value]];
+              }),
+            ),
+          },
+          change,
+          [...keys.keys()],
+        ),
+      dependenciesOf: (data: KeyedData<Value> | undefined) =>
+        data && [
+          ...data.dependencies,
+          ...Object.values(data.keyDependencies).flat(),
+        ],
+      onReload: (data, change, requestedKeys) => {
         if (
-          tags === null ||
+          change === null ||
           data === undefined ||
-          data.tags.some((tag) => tags.includes(tag))
-        ) {
+          (requestedKeys === undefined &&
+            data.dependencies.some((dependency) =>
+              matchesReadChange(dependency, change),
+            ))
+        )
           refreshAll = true;
-        } else {
-          for (const [key, ownTags] of Object.entries(data.keyTags))
-            if (ownTags.some((tag) => tags.includes(tag))) dirtyKeys.add(key);
+        else {
+          for (const key of requestedKeys ?? []) dirtyKeys.add(key);
+          for (const [key, dependencies] of Object.entries(
+            data.keyDependencies,
+          ))
+            if (
+              dependencies.some((dependency) =>
+                matchesReadChange(dependency, change),
+              )
+            )
+              dirtyKeys.add(key);
         }
       },
     }),
     queryFn: () => {
-      let previous = getTaggedReadData<KeyedData<Value>>(client, queryKey);
+      let previous = getLiveReadData<KeyedData<Value>>(client, queryKey);
       const startedAt = new Map<string, number>();
       let refresh = !missingOnly && dirtyKeys.size === 0;
       missingOnly = false;
       const refreshedKeys = new Set<string>();
       let refreshedAll = false;
-      return runTaggedRead(client, queryKey, async () => {
+      return runLiveRead(client, queryKey, async () => {
         const subscribed = await collectSubscribedKeys();
         const all = refreshAll || refresh;
         refresh = false;
@@ -450,18 +549,20 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
               ),
               ...results.flatMap((response) => Object.entries(response.result)),
             ]),
-            tags: [
-              ...new Set([
-                ...(all ? [] : (previous?.tags ?? [])),
-                ...results.flatMap((r) => r.tags),
-              ]),
+            dependencies: [
+              ...new Map(
+                [
+                  ...(all ? [] : (previous?.dependencies ?? [])),
+                  ...results.flatMap((r) => r.dependencies),
+                ].map((dependency) => [JSON.stringify(dependency), dependency]),
+              ).values(),
             ],
-            keyTags: Object.fromEntries([
-              ...Object.entries(previous?.keyTags ?? {}).filter(([key]) =>
-                retained(key),
+            keyDependencies: Object.fromEntries([
+              ...Object.entries(previous?.keyDependencies ?? {}).filter(
+                ([key]) => retained(key),
               ),
               ...results.flatMap((response) =>
-                Object.entries(response.keyTags),
+                Object.entries(response.keyDependencies),
               ),
             ]),
           };
@@ -487,7 +588,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
         if (!keys.has(key)) added = true;
         keys.set(key, (keys.get(key) ?? 0) + 1);
       }
-      const cached = getTaggedReadData<KeyedData<Value>>(client, queryKey);
+      const cached = getLiveReadData<KeyedData<Value>>(client, queryKey);
       const missing = requested.filter(
         (key) => !Object.hasOwn(cached?.result ?? {}, key),
       );
@@ -504,7 +605,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
             readingKeys.size > 0 &&
             missing.some((key) => !readingKeys.has(key))
           )
-            restartTaggedRead(observer.getCurrentQuery());
+            restartLiveRead(observer.getCurrentQuery());
         } else {
           missingOnly = true;
           void observer.refetch({ cancelRefetch: false });

@@ -7,7 +7,7 @@ export default defineWorkspaceTestConfig({
     silent: "passed-only",
     projects: sharedWorkerProjects({
       pkgDir: __dirname,
-      name: "@bb/query-tags",
+      name: "@bb/query-changes",
       include: ["test/**/*.test.ts"],
     }),
   },

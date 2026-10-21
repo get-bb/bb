@@ -563,6 +563,16 @@ export function readKeyedEntity<Entity>(
   return readEntity(collectionOf(store, collection), id) as Entity | undefined;
 }
 
+export function readKeyedBaseEntity<Entity>(
+  client: QueryClient,
+  collection: KeyedCollection<Entity>,
+  id: string,
+): Entity | undefined {
+  return collectionOf(storeOf(client), collection).base.get(id) as
+    | Entity
+    | undefined;
+}
+
 export function keyedEntities<Entity>(
   client: QueryClient,
   collection: KeyedCollection<Entity>,

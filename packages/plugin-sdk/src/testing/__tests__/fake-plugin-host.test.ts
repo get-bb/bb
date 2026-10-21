@@ -631,7 +631,9 @@ describe("rpc", () => {
       save: {
         input: z.null(),
         output: z.null(),
-        invalidates: () => ["private"],
+        experimental_changes: () => [
+          { entity: "private", changes: ["updated"] },
+        ],
       },
     });
     bb.rpc.register(contract, {
@@ -648,7 +650,7 @@ describe("rpc", () => {
       message: "Private",
       issues: [{ message: "Caller denied" }],
     });
-    expect(harness.experimental_rpcInvalidations).toEqual([]);
+    expect(harness.experimental_rpcChanges).toEqual([]);
   });
 
   it("rejects invalid and duplicate registrations", () => {

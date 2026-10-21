@@ -1,11 +1,13 @@
+import { readChangeSchema, type ReadChange } from "@bb/domain";
+import { applyQueryChange } from "@bb/query-changes";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
-import { invalidateTags, pluginTagScope } from "@bb/query-tags";
+import { refreshLiveQueries, pluginChangeScope } from "@bb/query-changes";
 import { QueryClient } from "@tanstack/react-query";
 import {
   createRpcQueryHooks,
   type RpcQueryHost,
 } from "../internal/rpc-query-host.js";
-import { rpcResponseTags } from "../internal/rpc-tags.js";
+import { rpcResponseChanges } from "../internal/rpc-changes.js";
 import * as React from "react";
 import {
   createContext,
@@ -1442,9 +1444,8 @@ const testPluginSdkApp = {
     _options,
   ): ExperimentalSidebarNavigationSplit {
     const env = useSlotEnv("experimental_useSidebarNavigationSplit");
-    const kind = env.sidebarNavigation.items.find(
-      (item) => item.id === itemId,
-    )?.action.kind;
+    const kind = env.sidebarNavigation.items.find((item) => item.id === itemId)
+      ?.action.kind;
     const isAvailable = kind === "new-thread" || kind === "open-plugin-panel";
     return useMemo(
       () => ({
@@ -1944,7 +1945,10 @@ export interface RenderedSlotBehaviorDrivers {
    * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
    * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
    */
-  experimental_invalidateRpc(tags: readonly string[] | null): Promise<void>;
+  experimental_publishRpcChange(
+    change: ReadChange,
+    pluginId?: string,
+  ): Promise<void>;
   emitRealtime(channel: string, payload: unknown): Promise<void>;
   /** Drive the lifecycle of the same connection used by realtime events. */
   setRealtimeConnectionState(
@@ -2082,7 +2086,9 @@ export function renderSlot<
       });
     return parsed.value;
   };
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   const callRpc = async (method: string, input?: unknown) => {
     const normalizedInput =
       input === undefined
@@ -2109,7 +2115,7 @@ export function renderSlot<
     const parsedOutput = declaration
       ? await parseRpcValue(declaration.output, result, "invalid_output")
       : result;
-    const envelope = rpcResponseTags(
+    const envelope = rpcResponseChanges(
       declaration ?? {},
       parsedInput,
       parsedOutput,
@@ -2755,7 +2761,14 @@ export function renderSlot<
   const setRealtimeConnectionState = async (
     state: PluginRealtimeConnectionState,
   ): Promise<void> => {
-    await act(async () => realtimeConnection.setState(state));
+    await act(async () => {
+      realtimeConnection.setState(state);
+      if (state === "connected")
+        await refreshLiveQueries(
+          queryClient,
+          pluginChangeScope(options.pluginId ?? "test-plugin"),
+        );
+    });
   };
   const setComposerText = async (text: string): Promise<void> => {
     await act(async () => commitComposerText(text));
@@ -2768,12 +2781,15 @@ export function renderSlot<
       notifyComposerListeners();
     });
   };
-  const experimental_invalidateRpc = async (tags: readonly string[] | null) => {
+  const experimental_publishRpcChange = async (
+    change: ReadChange,
+    pluginId = rpcQueryHost.pluginId,
+  ) => {
     await act(async () => {
-      await invalidateTags(
+      await applyQueryChange(
         queryClient,
-        pluginTagScope(rpcQueryHost.pluginId),
-        tags,
+        pluginChangeScope(pluginId),
+        readChangeSchema.parse(change),
       );
     });
   };
@@ -2787,7 +2803,7 @@ export function renderSlot<
     rerender: rerenderSlot,
     unmount: unmountSlot,
     rpcCalls,
-    experimental_invalidateRpc,
+    experimental_publishRpcChange,
     emitRealtime,
     setRealtimeConnectionState,
     setComposerText,
@@ -2801,7 +2817,7 @@ export function renderSlot<
     experimental_clipboardWrites,
     composer: composerLog,
     behavior: {
-      experimental_invalidateRpc,
+      experimental_publishRpcChange,
       emitRealtime,
       setRealtimeConnectionState,
       setComposerText,

@@ -1,3 +1,4 @@
+import { coreRead, PLUGIN_DEPENDENCY } from "./core-read";
 import type { PluginMarketplaceCategory } from "@bb/domain";
 import type {
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
@@ -73,7 +74,7 @@ export function usePluginSource(
 ) {
   return useQuery({
     queryKey: pluginSourceQueryKey(pluginId),
-    queryFn: () => fetchPluginSource(fetch, pluginId),
+    ...coreRead(PLUGIN_DEPENDENCY, () => fetchPluginSource(fetch, pluginId)),
     enabled: options.enabled,
     staleTime: 30_000,
   });
@@ -315,7 +316,7 @@ export function usePluginCatalogSearch(
 ) {
   return useQuery({
     queryKey: pluginCatalogSearchQueryKey(query),
-    queryFn: () => searchPluginCatalog(fetch, query),
+    ...coreRead(PLUGIN_DEPENDENCY, () => searchPluginCatalog(fetch, query)),
     enabled: options.enabled,
     refetchOnWindowFocus: false,
     staleTime: PLUGIN_CATALOG_STALE_TIME_MS,

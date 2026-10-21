@@ -1,4 +1,6 @@
+import { readChangeSchema } from "./read-change.js";
 import { z } from "zod";
+import { jsonValueSchema, type JsonValue } from "./json-value.js";
 import {
   threadEventTypeSchema,
   threadEventTypeValues,
@@ -89,7 +91,43 @@ export type ThreadTimelineSubscriptionTarget = z.infer<
   typeof threadTimelineSubscriptionTargetSchema
 >;
 
+export function canonicalPluginReadInput(value: JsonValue): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(canonicalPluginReadInput).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${canonicalPluginReadInput(value[key]!)}`,
+    )
+    .join(",")}}`;
+}
+
+export const pluginReadSubscriptionTargetSchema = z
+  .object({
+    kind: z.literal("plugin-read"),
+    pluginId: z.string().min(1),
+    method: z.string().min(1),
+    read: z
+      .union([
+        z.object({ input: jsonValueSchema }).strict(),
+        z.object({ key: z.string() }).strict(),
+      ])
+      .refine(
+        (read) =>
+          new TextEncoder().encode(canonicalPluginReadInput(read)).byteLength <=
+          16_384,
+        "Plugin read input exceeds 16 KiB",
+      ),
+  })
+  .strict();
+export type PluginReadSubscriptionTarget = z.infer<
+  typeof pluginReadSubscriptionTargetSchema
+>;
+
 export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
+  pluginReadSubscriptionTargetSchema,
   z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1) }).strict(),
   z
     .object({
@@ -152,31 +190,22 @@ export type RealtimeSubscriptionTarget = z.infer<
   typeof realtimeSubscriptionTargetSchema
 >;
 
-function isUnknownSubscriptionTarget(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "kind" in value &&
-    typeof value.kind === "string" &&
-    !realtimeSubscriptionTargetSchema.options.some(
-      (option) => option.shape.kind.value === value.kind,
-    )
-  );
+function isValidSubscriptionTarget(value: unknown): boolean {
+  return realtimeSubscriptionTargetSchema.safeParse(value).success;
 }
-const knownSubscriptionTargetsSchema = z.preprocess(
+const validSubscriptionTargetsSchema = z.preprocess(
   (value) =>
-    Array.isArray(value)
-      ? value.filter((target) => !isUnknownSubscriptionTarget(target))
-      : value,
+    Array.isArray(value) ? value.filter(isValidSubscriptionTarget) : value,
   z.array(realtimeSubscriptionTargetSchema),
 );
-const knownSubscriptionTargetSchema = z.preprocess(
-  (value) => (isUnknownSubscriptionTarget(value) ? null : value),
+const validSubscriptionTargetSchema = z.preprocess(
+  (value) =>
+    value === undefined || isValidSubscriptionTarget(value) ? value : null,
   realtimeSubscriptionTargetSchema.nullable().optional(),
 );
 const subscriptionFields = {
-  target: knownSubscriptionTargetSchema,
-  targets: knownSubscriptionTargetsSchema.optional(),
+  target: validSubscriptionTargetSchema,
+  targets: validSubscriptionTargetsSchema.optional(),
 };
 const hasSubscriptionTargets = (value: {
   target?: RealtimeSubscriptionTarget | null;
@@ -247,6 +276,8 @@ export function realtimeSubscriptionTargetKey(
       return "host-list";
     case "plugin":
       return `plugin:${target.pluginId}`;
+    case "plugin-read":
+      return `plugin-read:${canonicalPluginReadInput({ pluginId: target.pluginId, method: target.method, read: target.read })}`;
     case "system":
       return "system";
     default:
@@ -329,21 +360,20 @@ export const systemChangedMessageSchema = z
   })
   .strict();
 
-export const tagsChangedMessageSchema = z
+export const readChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
-    entity: z.literal("tags"),
-    tags: z.array(z.string().min(1)).min(1),
+    entity: z.literal("read"),
+    change: readChangeSchema,
   })
   .strict();
-export type TagsChangedMessage = z.infer<typeof tagsChangedMessageSchema>;
-
+export type ReadChangedMessage = z.infer<typeof readChangedMessageSchema>;
 export const pluginChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("plugin"),
     pluginId: z.string().min(1),
-    tags: z.array(z.string().min(1)).min(1).nullable(),
+    change: readChangeSchema,
   })
   .strict();
 
@@ -353,7 +383,7 @@ export const changedMessageSchema = z.discriminatedUnion("entity", [
   environmentChangedMessageSchema,
   hostChangedMessageSchema,
   systemChangedMessageSchema,
-  tagsChangedMessageSchema,
+  readChangedMessageSchema,
   pluginChangedMessageSchema,
 ]);
 export type ChangedMessage = z.infer<typeof changedMessageSchema>;
@@ -428,6 +458,6 @@ export const changedMessageLenientSchema = z.discriminatedUnion("entity", [
   environmentChangedMessageLenientSchema,
   hostChangedMessageLenientSchema,
   systemChangedMessageLenientSchema,
-  tagsChangedMessageSchema.strip(),
+  readChangedMessageSchema.strip(),
   pluginChangedMessageSchema.strip(),
 ]);

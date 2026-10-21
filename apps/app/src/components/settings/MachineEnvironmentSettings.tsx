@@ -5,7 +5,10 @@ import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { Icon } from "@bb/shared-ui/icon";
 import { useState, type ReactNode } from "react";
 import { Switch } from "@bb/shared-ui/switch";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
+import {
+  machineEnvironmentQueryOptions,
+  useSystemConfig,
+} from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,7 +27,6 @@ import {
   invalidateMachineEnvironment,
   invalidateSystemConfig,
 } from "@/hooks/cache-owners/system-cache-effects";
-import { machineEnvironmentQueryKey } from "@/hooks/queries/query-keys";
 
 const GLOBAL_SCOPE = "global";
 
@@ -81,13 +83,7 @@ export function ScopedMachineEnvironmentSettings({
   const queryClient = useQueryClient();
   const settings = useSystemConfig().data?.generalSettings;
   const updateSettings = useUpdateGeneralSettings();
-  const query = useQuery({
-    queryKey: machineEnvironmentQueryKey(projectId),
-    queryFn: async () =>
-      projectId === null
-        ? { ...(await sdk.system.machineEnvironment()), inheritedVariables: [] }
-        : sdk.projects.machineEnvironment({ projectId }),
-  });
+  const query = useQuery(machineEnvironmentQueryOptions(projectId));
   const save = async (rows: readonly DraftRow[]) => {
     const input = {
       variables: rows.map((row) => ({

@@ -8,7 +8,6 @@ import {
 } from "./schemas.js";
 
 export {
-  ACCOUNT_REALTIME_CHANNEL,
   type AccountStatus,
   type LoginState,
   type LoginView,
@@ -17,8 +16,6 @@ export {
 export const CONNECT_PLUGIN_ID = "connect";
 
 export const STATUS_METHOD = "bb-account.v1.status";
-export const WAIT_FOR_STATUS_CHANGE_METHOD =
-  "bb-account.v1.waitForStatusChange";
 export const FETCH_METHOD = "bb-account.v1.fetch";
 export const ADOPT_CONNECT_CREDENTIAL_METHOD =
   "bb-account.v1.adoptConnectCredential";
@@ -26,7 +23,6 @@ export const CONNECT_CREDENTIAL_METHOD = "bb-account.v1.connectCredential";
 export const CONFIRM_REFUSED_CREDENTIAL_METHOD =
   "bb-account.v1.confirmRefusedCredential";
 
-export const LONG_POLL_TIMEOUT_MS = 25_000;
 export const FETCH_BODY_MAX_BYTES = 1024 * 1024;
 export const FETCH_REQUEST_BODY_MAX_BYTES = 16 * 1024 * 1024;
 export const FETCH_TIMEOUT_MIN_MS = 1_000;
@@ -122,12 +118,9 @@ export const accountRpcContract = defineRpcContract({
       "This bb's getbb.app account. revision increases on every change.",
     input: emptyInputSchema,
     output: accountStatusSchema,
-  },
-  [WAIT_FOR_STATUS_CHANGE_METHOD]: {
-    experimental_description:
-      "Long-poll: resolves once revision exceeds afterRevision, or after 25 seconds with the current status.",
-    input: z.object({ afterRevision: z.number().int() }).strict(),
-    output: accountStatusSchema,
+    experimental_dependencies: () => [
+      { entity: "status", changes: ["updated"] },
+    ],
   },
   [FETCH_METHOD]: {
     experimental_description:
@@ -155,16 +148,28 @@ export const accountPrivateRpcContract = defineRpcContract({
   "login.start": {
     input: z.object({ baseUrl: baseUrlOverrideSchema }).strict(),
     output: loginViewSchema,
+    experimental_changes: () => [
+      { entity: "login", changes: ["updated"] },
+      { entity: "status", changes: ["updated"] },
+    ],
   },
   "login.poll": {
     input: z
       .object({ loginId: z.string().min(1).nullable().default(null) })
       .strict(),
     output: loginPollOutputSchema,
+    experimental_dependencies: () => [
+      { entity: "login", changes: ["updated"] },
+      { entity: "status", changes: ["updated"] },
+    ],
   },
   "login.cancel": {
     input: z.object({ loginId: z.string().min(1) }).strict(),
     output: z.object({ login: loginViewSchema.nullable() }).strict(),
+    experimental_changes: () => [
+      { entity: "login", changes: ["updated"] },
+      { entity: "status", changes: ["updated"] },
+    ],
   },
   redeemCode: {
     input: z
@@ -174,10 +179,18 @@ export const accountPrivateRpcContract = defineRpcContract({
       })
       .strict(),
     output: accountStatusSchema,
+    experimental_changes: () => [
+      { entity: "login", changes: ["updated"] },
+      { entity: "status", changes: ["updated"] },
+    ],
   },
   signOut: {
     input: emptyInputSchema,
     output: signOutResultSchema,
+    experimental_changes: () => [
+      { entity: "login", changes: ["updated"] },
+      { entity: "status", changes: ["updated"] },
+    ],
   },
 });
 

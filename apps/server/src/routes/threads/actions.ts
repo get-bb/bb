@@ -202,7 +202,8 @@ function assertPinnedThreadOrderResult(
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
-    invalidateTags: (tags) => deps.hub.notifyTags(tags),
+    publishChanges: (changes) =>
+      changes.forEach((change) => deps.hub.notifyReadChanged(change)),
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;

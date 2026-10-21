@@ -1,3 +1,4 @@
+import { readChangeSchema, type ReadChange } from "@bb/domain";
 import { emitPluginThreadEvents } from "../services/plugins/plugin-thread-events.js";
 import { Buffer } from "node:buffer";
 import {
@@ -63,7 +64,7 @@ export type ServerChangedMessage =
       ChangedMessage,
       { entity: "thread" | "project" | "environment" | "host" }
     > & { id: string })
-  | Extract<ChangedMessage, { entity: "system" | "tags" | "plugin" }>;
+  | Extract<ChangedMessage, { entity: "system" | "read" | "plugin" }>;
 
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
 
@@ -138,7 +139,7 @@ function subscriptionKeysForMessage(message: ServerChangedMessage): string[] {
       ];
     case "plugin":
       return [subscriptionKey({ kind: "plugin", pluginId: message.pluginId })];
-    case "tags":
+    case "read":
       return [];
     case "system":
       return [subscriptionKey({ kind: "system" })];
@@ -305,31 +306,17 @@ export class NotificationHub implements DbNotifier {
     PendingThreadListEventsAppended
   >();
 
-  private readonly pendingTags = new Set<string>();
-
-  notifyPluginChanged(pluginId: string, tags: readonly string[] | null): void {
-    this.notifyClients({
-      type: "changed",
-      entity: "plugin",
-      pluginId,
-      tags: tags === null ? null : [...tags],
-    });
+  notifyPluginChanged(pluginId: string, change: ReadChange): void {
+    this.notifyReadChanged(change, pluginId);
   }
 
-  notifyTags(tags: readonly string[]): void {
-    if (tags.length === 0) return;
-    const scheduled = this.pendingTags.size > 0;
-    for (const tag of tags) this.pendingTags.add(tag);
-    if (scheduled) return;
-    queueMicrotask(() => {
-      const message: ServerChangedMessage = {
-        type: "changed",
-        entity: "tags",
-        tags: [...this.pendingTags],
-      };
-      this.pendingTags.clear();
-      this.notifyClients(message);
-    });
+  notifyReadChanged(change: ReadChange, pluginId?: string): void {
+    const parsed = readChangeSchema.parse(change);
+    this.notifyClients(
+      pluginId === undefined
+        ? { type: "changed", entity: "read", change: parsed }
+        : { type: "changed", entity: "plugin", pluginId, change: parsed },
+    );
   }
 
   registerClient(socket: HubSocket): void {
@@ -999,7 +986,7 @@ export class NotificationHub implements DbNotifier {
     thread: { projectId: string; threadId: string },
     request: { split: ThreadOpenSplit; file: ThreadOpenFile | null },
   ): number {
-    return this.broadcastToAllClients(
+    return this.sendClientControlSignal(
       JSON.stringify(
         threadOpenSignalSchema.parse({
           type: "thread-open",
@@ -1016,7 +1003,7 @@ export class NotificationHub implements DbNotifier {
     thread: { projectId: string; threadId: string },
     action: ThreadPaneAction,
   ): number {
-    return this.broadcastToAllClients(
+    return this.sendClientControlSignal(
       JSON.stringify(
         threadPaneActionSignalSchema.parse({
           type: "thread-pane-action",
@@ -1033,19 +1020,23 @@ export class NotificationHub implements DbNotifier {
     channel: string,
     payload: unknown,
   ): number {
-    return this.broadcastToAllClients(
-      JSON.stringify(
-        pluginSignalSchema.parse({
-          type: "plugin-signal",
-          pluginId,
-          channel,
-          payload,
-        }),
-      ),
+    const sockets = this.clientSocketsByKey.get(
+      subscriptionKey({ kind: "plugin", pluginId }),
     );
+    if (!sockets) return 0;
+    const encoded = JSON.stringify(
+      pluginSignalSchema.parse({
+        type: "plugin-signal",
+        pluginId,
+        channel,
+        payload,
+      }),
+    );
+    this.notifyClientsByKeySet(sockets, encoded);
+    return sockets.size;
   }
 
-  private broadcastToAllClients(payload: string): number {
+  private sendClientControlSignal(payload: string): number {
     let delivered = 0;
     for (const socket of this.clientKeysBySocket.keys()) {
       socket.send(payload);
@@ -1286,7 +1277,7 @@ export class NotificationHub implements DbNotifier {
 
   private notifyClients(message: ServerChangedMessage): void {
     const sockets = new Set<HubSocket>(
-      message.entity === "tags" ? this.clientKeysBySocket.keys() : [],
+      message.entity === "read" ? this.clientKeysBySocket.keys() : [],
     );
     for (const key of subscriptionKeysForMessage(message)) {
       const specificSockets = this.clientSocketsByKey.get(key);

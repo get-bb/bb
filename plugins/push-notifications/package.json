@@ -6,7 +6,7 @@
   "description": "Notifications for threads that need attention on mobile, web, and desktop",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.63"
+    "bbPluginSdk": ">=0.6.67"
   },
   "bb": {
     "name": "Push notifications",
@@ -49,6 +49,7 @@
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"

@@ -168,7 +168,7 @@ export interface NotificationPreferences {
 export function createNotificationPreferences(args: {
   bb: BbPluginApi;
   getDefaults(): Promise<NotificationDefaults>;
-  publish(threadIds: readonly string[]): void;
+  publish(threadId: string, inputs?: ThreadNotificationInputs): void;
 }): NotificationPreferences {
   const { bb, getDefaults, publish } = args;
 
@@ -234,11 +234,15 @@ export function createNotificationPreferences(args: {
     return resolved;
   }
 
-  async function publishSubtree(threadId: string): Promise<void> {
+  async function publishSubtree(
+    threadId: string,
+    inputs?: ThreadNotificationInputs,
+  ): Promise<void> {
     const { threads } = await bb.sdk.threads.experimental_listDescendants({
       threadIds: [threadId],
     });
-    publish([threadId, ...(threads[0]?.descendantIds ?? [])]);
+    const ids = [threadId, ...(threads[0]?.descendantIds ?? [])];
+    for (const id of ids) publish(id, id === threadId ? inputs : undefined);
   }
 
   return {
@@ -263,8 +267,9 @@ export function createNotificationPreferences(args: {
           ? { threadId, remove: [NOTIFICATIONS_METADATA_KEY] }
           : { threadId, set: { [NOTIFICATIONS_METADATA_KEY]: { own: level } } },
       );
-      await publishSubtree(threadId);
-      return (await requireInputs(threadId)).inputs;
+      const { inputs } = await requireInputs(threadId);
+      await publishSubtree(threadId, inputs);
+      return inputs;
     },
     async effectiveLevel(thread) {
       const [resolved, defaults] = await Promise.all([

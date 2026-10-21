@@ -258,9 +258,6 @@ type ProjectCommandsQueryKey = readonly [
   string | null,
   string | null,
 ];
-type AllProjectCommandsQueryKeyPrefix = readonly [
-  typeof PROJECT_COMMANDS_QUERY_KEY,
-];
 type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
   string,
@@ -433,10 +430,6 @@ type EnvironmentDiffViewedQueryKey = readonly [
   string | null,
   string | null,
   (readonly string[])?,
-];
-type EnvironmentDiffViewedQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_DIFF_VIEWED_QUERY_KEY,
-  string,
 ];
 type EnvironmentDiffFileQueryKey = readonly [
   typeof ENVIRONMENT_DIFF_FILE_QUERY_KEY,
@@ -836,10 +829,6 @@ export function projectCommandsQueryKey(
   ];
 }
 
-export function allProjectCommandsQueryKeyPrefix(): AllProjectCommandsQueryKeyPrefix {
-  return [PROJECT_COMMANDS_QUERY_KEY];
-}
-
 export function threadStorageFilesQueryKey(
   threadId: string,
   options: ThreadStorageFileListOptions = DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -1121,12 +1110,6 @@ export function environmentDiffViewedQueryKey(
   return paths === undefined ? prefix : [...prefix, paths];
 }
 
-export function environmentDiffViewedQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentDiffViewedQueryKeyPrefix {
-  return [ENVIRONMENT_DIFF_VIEWED_QUERY_KEY, environmentId];
-}
-
 export function environmentDiffFileQueryKey(
   environmentId: string,
   targetType: string,
@@ -1328,24 +1311,12 @@ export function pluginSettingsViewQueryKey(pluginId: string) {
   return [PLUGIN_SETTINGS_VIEW_QUERY_KEY, pluginId] as const;
 }
 
-export function allPluginSettingsViewQueryKeyPrefix() {
-  return [PLUGIN_SETTINGS_VIEW_QUERY_KEY] as const;
-}
-
 export function pluginContributionsQueryKey() {
-  return [PLUGIN_CONTRIBUTIONS_QUERY_KEY] as const;
-}
-
-export function allPluginContributionsQueryKeyPrefix() {
   return [PLUGIN_CONTRIBUTIONS_QUERY_KEY] as const;
 }
 
 export function pluginSdkSettingsQueryKey(pluginId: string) {
   return [PLUGIN_SDK_SETTINGS_QUERY_KEY, pluginId] as const;
-}
-
-export function allPluginSettingsQueryKeyPrefix() {
-  return [PLUGIN_SDK_SETTINGS_QUERY_KEY] as const;
 }
 
 export function pluginUpdateCheckQueryKey(pluginId: string | null) {
@@ -1354,10 +1325,6 @@ export function pluginUpdateCheckQueryKey(pluginId: string | null) {
 
 export function pluginSourceQueryKey(pluginId: string) {
   return [PLUGIN_SOURCE_QUERY_KEY, pluginId] as const;
-}
-
-export function allPluginSourceQueryKeyPrefix() {
-  return [PLUGIN_SOURCE_QUERY_KEY] as const;
 }
 
 export function pluginCatalogSearchQueryKey(query: string) {

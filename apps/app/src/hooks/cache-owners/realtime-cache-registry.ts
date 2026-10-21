@@ -1,7 +1,6 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   EnvironmentChangeKind,
-  HostChangeKind,
   ProjectChangeKind,
   SystemChangeKind,
   ThreadChangeKind,
@@ -10,79 +9,35 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import {
-  getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
   getCachedGlobalThreadListInvalidationQueryKeys,
   getCachedProjectThreadListInvalidationQueryKeys,
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
   getCachedThreadListQueryKeys,
-  getEnvironmentBranchListInvalidationQueryKeys,
-  getEnvironmentRecordInvalidationQueryKeys,
-  getEnvironmentWorkspaceStateInvalidationQueryKeys,
   getFetchingThreadListQueryKeys,
   isArchivedThreadListQueryKey,
   updateCachedThreadListPendingInteractionState,
-  updateCachedThreadListStatusState,
-  updateCachedThreadStatusState,
 } from "./query-cache";
 import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
-import { invalidateSystemExecutionOptions } from "./system-cache-effects";
+
 import { markThreadTimelineUnseenEvents } from "./thread-timeline-unseen-events";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 import {
-  allHostQueryKeyPrefix,
-  allMachineEnvironmentQueryKeyPrefix,
-  allPluginCatalogSearchQueryKeyPrefix,
-  allPluginContributionsQueryKeyPrefix,
-  allPluginListQueryKeyPrefix,
-  allPluginSettingsQueryKeyPrefix,
-  allPluginSettingsViewQueryKeyPrefix,
-  allPluginSourceQueryKeyPrefix,
-  pluginSafeModeQueryKey,
-  allProjectCommandsQueryKeyPrefix,
-  allThreadStorageFilePreviewQueryKeyPrefix,
-  allThreadStorageFilesQueryKeyPrefix,
-  allThreadStorageLocationsQueryKeyPrefix,
-  allThreadStoragePathsQueryKeyPrefix,
-  allSystemExecutionOptionsQueryKeyPrefix,
-  allSystemThemesQueryKeyPrefix,
-  allThreadQueryKeyPrefix,
-  allTerminalsQueryKeyPrefix,
-  environmentDiffFilesQueryKeyPrefix,
-  environmentDiffViewedQueryKeyPrefix,
-  environmentFilePreviewQueryKeyPrefix,
   environmentPullRequestQueryKey,
   environmentWorkStatusQueryKeyPrefix,
-  hostsQueryKey,
-  serverMoveStatusQueryKey,
-  systemAppUpdateQueryKey,
-  pluginInstallJobsQueryKey,
-  pluginUpdateJobsQueryKey,
   sidebarNavigationQueryKey,
-  systemAiServicesQueryKey,
-  systemConfigQueryKey,
-  allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
-  threadTabsQueryKey,
   threadSearchQueryKeyPrefix,
-  terminalsQueryKey,
   threadsQueryKey,
-  threadStorageFilePreviewQueryKeyPrefix,
-  threadStorageFilesForThreadQueryKeyPrefix,
-  threadStorageLocationQueryKey,
-  threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
 } from "../queries/query-keys";
-import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
+
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
-  getProjectListInvalidationQueryKeys,
-  getProjectPromptHistoryInvalidationQueryKeys,
-  getProjectSourceDependentInvalidationQueryKeys,
   getThreadConversationOutlineInvalidationQueryKeys,
   getThreadDetailInvalidationQueryKeys,
   getThreadListInvalidationQueryKeys,
@@ -94,11 +49,6 @@ import {
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 import { isCachedThreadTimelinePushEnabled } from "./thread-timeline-push-owner";
-
-interface CollectCachedThreadIdsForEnvironmentArgs {
-  environmentId: string;
-  queryClient: QueryClient;
-}
 
 interface TimelineInvalidationQueryKeysArgs {
   queryClient: QueryClient;
@@ -338,7 +288,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries,
       dirtyThreadDetailQueries,
       dirtyThreadTimelineQueries,
-      dirtyProjectPromptHistoryQueries,
     ],
   },
   "thread-deleted": {
@@ -347,7 +296,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries,
       dirtyThreadDetailQueries,
       dirtyThreadTimelineQueries,
-      dirtyProjectPromptHistoryQueries,
     ],
   },
   "events-appended": {
@@ -369,7 +317,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadSearchQueries,
       getThreadTimelineInvalidationQueryKeys,
       getThreadQueueContentInvalidationQueryKeys,
-      dirtyProjectPromptHistoryQueries,
       getThreadPendingInteractionInvalidationQueryKeys,
     ],
   },
@@ -387,7 +334,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "status-changed": {
     flush: "immediate",
-    patch: [patchThreadStatusState],
     dirty: [refreshThreadListStatusState, dirtyThreadDetailQueries],
   },
   "title-changed": {
@@ -403,11 +349,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "archived-changed": {
     flush: "debounced",
-    dirty: [
-      dirtyThreadListQueries,
-      dirtyThreadDetailQueries,
-      dirtyProjectPromptHistoryQueries,
-    ],
+    dirty: [dirtyThreadListQueries, dirtyThreadDetailQueries],
   },
   "pin-state-changed": {
     flush: "debounced",
@@ -419,12 +361,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "environment-changed": {
     flush: "immediate",
-    dirty: [
-      dirtyActiveThreadListQueries,
-      dirtyThreadDetailQueries,
-      dirtyThreadDefaultExecutionOptionsQueries,
-      dirtyThreadStorageQueriesForThread,
-    ],
+    dirty: [dirtyActiveThreadListQueries, dirtyThreadDetailQueries],
   },
   "read-state-changed": {
     flush: "debounced",
@@ -432,148 +369,74 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "tabs-changed": {
     flush: "immediate",
-    dirty: [dirtyThreadTabsQueries],
+    dirty: [],
   },
   "terminals-changed": {
     flush: "debounced",
-    dirty: [dirtyThreadTerminalQueries],
+    dirty: [],
   },
 } satisfies ThreadChangeRegistry;
 
-export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
+export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY: EnvironmentChangeRegistry = {
   "environment-created": {
-    dirty: [
-      dirtyEnvironmentRecordQueries,
-      dirtyEnvironmentWorkspaceStateQueries,
-      dirtyEnvironmentBranchListQueries,
-    ],
+    dirty: [dirtyEnvironmentWorkspaceStateQueries],
   },
   "environment-deleted": {
-    dirty: [
-      dirtyEnvironmentRecordQueries,
-      dirtyEnvironmentWorkspaceStateQueries,
-      dirtyEnvironmentBranchListQueries,
-    ],
+    dirty: [dirtyEnvironmentWorkspaceStateQueries],
   },
   "metadata-changed": {
     dirty: [
-      dirtyEnvironmentRecordQueries,
       dirtyEnvironmentWorkspaceStateQueries,
-      dirtyEnvironmentBranchListQueries,
       dirtyEnvironmentThreadListQueries,
       dirtyThreadSearchQueries,
     ],
   },
   "status-changed": {
-    dirty: [
-      dirtyEnvironmentRecordQueries,
-      dirtyEnvironmentWorkspaceStateQueries,
-      dirtyEnvironmentBranchListQueries,
-    ],
+    dirty: [dirtyEnvironmentWorkspaceStateQueries],
   },
   "work-status-changed": {
     dirty: [dirtyEnvironmentLiveWorkspaceStateQueries],
   },
   "git-refs-changed": {
-    dirty: [
-      dirtyEnvironmentRefDerivedWorkspaceStateQueries,
-      dirtyEnvironmentBranchListQueries,
-    ],
+    dirty: [dirtyEnvironmentWorkspaceStateQueries],
   },
-  "thread-storage-changed": {
-    dirty: [dirtyThreadStorageQueriesForEnvironment],
-  },
-  "diff-viewed-changed": {
-    dirty: [dirtyEnvironmentDiffViewedQueries],
-  },
-} satisfies EnvironmentChangeRegistry;
+};
 
 export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-created": {
-    dirty: [getProjectListInvalidationQueryKeys],
+    dirty: [dirtyProjectThreadViews],
   },
   "project-updated": {
-    dirty: [getProjectListInvalidationQueryKeys],
+    dirty: [dirtyProjectThreadViews],
   },
   "project-deleted": {
-    dirty: [getProjectListInvalidationQueryKeys],
+    dirty: [dirtyProjectThreadViews],
   },
   "project-sources-changed": {
-    dirty: [getProjectSourceDependentInvalidationQueryKeys],
+    dirty: [dirtyProjectSourceThreadViews],
   },
   "threads-changed": {
-    dirty: [
-      getProjectListInvalidationQueryKeys,
-      dirtyProjectPromptHistoryQueries,
-    ],
+    dirty: [dirtyProjectThreadViews],
   },
   "project-order-changed": {
-    dirty: [getProjectListInvalidationQueryKeys],
+    dirty: [dirtyProjectThreadViews],
   },
 } satisfies ProjectChangeRegistry;
 
-const HOST_CONNECTION_DIRTY_HANDLERS = [
-  dirtyHostAvailabilityQueries,
-  getProjectListInvalidationQueryKeys,
-  dirtySystemProviderQueries,
-] satisfies readonly RealtimeDirtyHandler<HostRealtimeDirtyContext>[];
-
 export const REALTIME_HOST_CHANGE_REGISTRY = {
-  "host-connected": {
-    dirty: [
-      ...HOST_CONNECTION_DIRTY_HANDLERS,
-      dirtyHostSystemExecutionOptionQueries,
-      dirtyAllThreadStorageQueries,
-    ],
-  },
-  "host-disconnected": {
-    dirty: HOST_CONNECTION_DIRTY_HANDLERS,
-  },
-  "provider-model-catalog-changed": {
-    dirty: [dirtyHostSystemExecutionOptionQueries],
-  },
-} satisfies HostChangeRegistry;
+  "host-connected": { dirty: [dirtyProjectThreadViews] },
+  "host-disconnected": { dirty: [dirtyProjectThreadViews] },
+  "provider-model-catalog-changed": { dirty: [] },
+};
 
-export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
+export const REALTIME_SYSTEM_CHANGE_REGISTRY: SystemChangeRegistry = {
   "config-changed": {
-    dirty: [
-      dirtySystemConfigQueries,
-      dirtyMachineEnvironmentQueries,
-      dirtyAllThreadTimelineQueries,
-      dirtySystemProviderQueries,
-      dirtySystemExecutionOptionQueries,
-      dirtyEnvironmentProviderQueries,
-    ],
+    dirty: [dirtyAllThreadTimelineQueries],
   },
   "plugins-changed": {
-    dirty: [
-      dirtySystemConfigQueries,
-      dirtyPluginContributionQueries,
-      dirtyProjectCommandCatalogQueries,
-      dirtyPluginManagementQueries,
-      dirtyEnvironmentProviderQueries,
-      reconcilePluginFrontendBundles,
-    ],
+    dirty: [reconcilePluginFrontendBundles],
   },
-  "plugin-update-jobs-changed": {
-    dirty: [() => [pluginUpdateJobsQueryKey()]],
-  },
-  "plugin-install-jobs-changed": {
-    dirty: [dirtyPluginInstallJobQueries],
-  },
-  "provider-registrations-changed": {
-    dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
-  },
-  "environment-availability-changed": {
-    dirty: [dirtyEnvironmentProviderQueries],
-  },
-  "server-move-changed": {
-    dirty: [dirtyServerMoveStatusQueries],
-  },
-  "app-update-changed": {
-    dirty: [dirtyAppUpdateStatusQueries],
-  },
-} satisfies SystemChangeRegistry;
+};
 
 type ThreadChangeFlushPriority = "debounced" | "immediate";
 
@@ -605,15 +468,10 @@ export function createFlushOncePredicate(): (key: string) => boolean {
 
 interface EnvironmentRealtimeDirtyContext extends RealtimeDirtyContext {
   environmentId: string;
-  getCachedThreadIdsForEnvironment: () => string[];
 }
 
 interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
   projectId: string | undefined;
-}
-
-interface HostRealtimeDirtyContext extends RealtimeDirtyContext {
-  hostId: string | undefined;
 }
 
 type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
@@ -646,9 +504,8 @@ interface EnvironmentChangeRule {
   dirty: readonly RealtimeDirtyHandler<EnvironmentRealtimeDirtyContext>[];
 }
 
-type EnvironmentChangeRegistry = Record<
-  EnvironmentChangeKind,
-  EnvironmentChangeRule
+type EnvironmentChangeRegistry = Partial<
+  Record<EnvironmentChangeKind, EnvironmentChangeRule>
 >;
 
 interface ProjectChangeRule {
@@ -656,12 +513,6 @@ interface ProjectChangeRule {
 }
 
 type ProjectChangeRegistry = Record<ProjectChangeKind, ProjectChangeRule>;
-
-interface HostChangeRule {
-  dirty: readonly RealtimeDirtyHandler<HostRealtimeDirtyContext>[];
-}
-
-type HostChangeRegistry = Record<HostChangeKind, HostChangeRule>;
 
 interface SystemChangeRule {
   dirty: readonly RealtimeDirtyHandler<RealtimeDirtyContext>[];
@@ -713,30 +564,6 @@ export function partitionThreadChangesByFlushPriority(
     }
   }
   return { debounced, immediate };
-}
-
-export function collectCachedThreadIdsForEnvironment({
-  environmentId,
-  queryClient,
-}: CollectCachedThreadIdsForEnvironmentArgs): string[] {
-  const threadIds = new Set<string>();
-  for (const [, thread] of queryClient.getQueriesData<ThreadWithRuntime>({
-    queryKey: allThreadQueryKeyPrefix(),
-  })) {
-    if (thread?.environmentId === environmentId) {
-      threadIds.add(thread.id);
-    }
-  }
-  for (const { data } of getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  })) {
-    for (const thread of iterateThreadListCacheEntries(data)) {
-      if (thread.environmentId === environmentId) {
-        threadIds.add(thread.id);
-      }
-    }
-  }
-  return Array.from(threadIds);
 }
 
 function dirtyThreadListQueries({
@@ -842,18 +669,6 @@ function dirtyThreadDetailQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return getThreadDetailInvalidationQueryKeys({ threadId });
-}
-
-function dirtyThreadDefaultExecutionOptionsQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return threadId ? [threadDefaultExecutionOptionsQueryKey(threadId)] : [];
-}
-
-function dirtyThreadTabsQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return threadId ? [threadTabsQueryKey(threadId)] : [];
 }
 
 function dirtyThreadSearchQueries(): QueryKey[] {
@@ -995,34 +810,6 @@ export function getCachedThreadEnvironmentId({
   return cachedThread?.environmentId ?? null;
 }
 
-function dirtyThreadTerminalQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return threadId
-    ? [terminalsQueryKey({ kind: "thread", threadId })]
-    : [allTerminalsQueryKeyPrefix()];
-}
-
-function dirtyThreadStorageQueriesForThread({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  if (!threadId) {
-    return dirtyAllThreadStorageQueries();
-  }
-  return [
-    threadStorageFilesForThreadQueryKeyPrefix(threadId),
-    threadStorageLocationQueryKey(threadId),
-    threadStoragePathsForThreadQueryKeyPrefix(threadId),
-    threadStorageFilePreviewQueryKeyPrefix(threadId),
-  ];
-}
-
-function dirtyProjectPromptHistoryQueries({
-  projectId,
-}: ProjectRealtimeDirtyContext | ThreadRealtimeDirtyContext): QueryKey[] {
-  return getProjectPromptHistoryInvalidationQueryKeys({ projectId });
-}
-
 function markThreadDetailQueryStale({
   queryClient,
   threadId,
@@ -1051,16 +838,6 @@ function patchThreadListPendingInteractionState({
   );
 }
 
-function patchThreadStatusState({
-  queryClient,
-  statusChange,
-  threadId,
-}: ThreadRealtimePatchContext): void {
-  if (!statusChange) return;
-  updateCachedThreadListStatusState(queryClient, threadId, statusChange);
-  updateCachedThreadStatusState(queryClient, threadId, statusChange);
-}
-
 function refreshThreadListStatusState(
   context: ThreadRealtimeDirtyContext,
 ): void {
@@ -1080,21 +857,10 @@ function refreshThreadListStatusState(
   }
 }
 
-function dirtyEnvironmentRecordQueries(
-  context: EnvironmentRealtimeDirtyContext,
-): QueryKey[] {
-  return getEnvironmentRecordInvalidationQueryKeys(context);
-}
-
 function dirtyEnvironmentWorkspaceStateQueries(
   context: EnvironmentRealtimeDirtyContext,
 ): void {
   bumpDiffPatchFreshnessGeneration(context.environmentId);
-  for (const queryKey of getEnvironmentWorkspaceStateInvalidationQueryKeys(
-    context,
-  )) {
-    context.queryClient.invalidateQueries({ queryKey });
-  }
 }
 
 function dirtyEnvironmentLiveWorkspaceStateQueries({
@@ -1108,31 +874,6 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
     queryClient,
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
   });
-  queryClient.invalidateQueries({
-    queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
-  });
-  queryClient.invalidateQueries({
-    queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
-  });
-}
-
-function dirtyEnvironmentRefDerivedWorkspaceStateQueries({
-  environmentId,
-  queryClient,
-}: EnvironmentRealtimeDirtyContext): void {
-  bumpDiffPatchFreshnessGeneration(environmentId);
-  for (const queryKey of getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
-    queryClient,
-    { environmentId },
-  )) {
-    queryClient.invalidateQueries({ queryKey });
-  }
-}
-
-function dirtyEnvironmentBranchListQueries(
-  context: EnvironmentRealtimeDirtyContext,
-): QueryKey[] {
-  return getEnvironmentBranchListInvalidationQueryKeys(context);
 }
 
 function dirtyEnvironmentThreadListQueries({
@@ -1162,112 +903,17 @@ function dirtyEnvironmentThreadListQueries({
   return queryKeys;
 }
 
-function dirtyEnvironmentDiffViewedQueries({
-  environmentId,
-}: EnvironmentRealtimeDirtyContext): QueryKey[] {
-  return [environmentDiffViewedQueryKeyPrefix(environmentId)];
-}
-
-function dirtyThreadStorageQueriesForEnvironment({
-  getCachedThreadIdsForEnvironment,
-}: EnvironmentRealtimeDirtyContext): QueryKey[] {
-  const queryKeys: QueryKey[] = [];
-  for (const threadId of getCachedThreadIdsForEnvironment()) {
-    queryKeys.push(threadStorageFilesForThreadQueryKeyPrefix(threadId));
-    queryKeys.push(threadStoragePathsForThreadQueryKeyPrefix(threadId));
-    queryKeys.push(threadStorageFilePreviewQueryKeyPrefix(threadId));
-  }
-  return queryKeys;
-}
-
-function dirtyAllThreadStorageQueries(): QueryKey[] {
-  return [
-    allThreadStorageFilesQueryKeyPrefix(),
-    allThreadStorageLocationsQueryKeyPrefix(),
-    allThreadStoragePathsQueryKeyPrefix(),
-    allThreadStorageFilePreviewQueryKeyPrefix(),
-  ];
-}
-
-function dirtyHostAvailabilityQueries(): QueryKey[] {
-  return [hostsQueryKey(), allHostQueryKeyPrefix()];
-}
-
-function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
-  invalidateQueryKeysWithoutCancelingActiveFetches({
-    queryClient,
-    queryKeys: [
-      systemConfigQueryKey(),
-      systemAiServicesQueryKey(),
-      allSystemThemesQueryKeyPrefix(),
-    ],
-  });
-}
-
-function dirtyMachineEnvironmentQueries({
-  queryClient,
-}: RealtimeDirtyContext): void {
-  invalidateQueryKeysWithoutCancelingActiveFetches({
-    queryClient,
-    queryKeys: [allMachineEnvironmentQueryKeyPrefix()],
-  });
-}
-
-function dirtyServerMoveStatusQueries(): QueryKey[] {
-  return [serverMoveStatusQueryKey()];
-}
-
-function dirtyAppUpdateStatusQueries(): QueryKey[] {
-  return [systemAppUpdateQueryKey()];
-}
-
-function dirtyPluginInstallJobQueries(): QueryKey[] {
-  return [pluginInstallJobsQueryKey()];
-}
-
 function dirtyAllThreadTimelineQueries(): QueryKey[] {
   return getThreadTimelineInvalidationQueryKeys({ threadId: undefined });
 }
 
-function dirtySystemProviderQueries(): QueryKey[] {
-  return [allSystemProvidersQueryKeyPrefix()];
-}
-
-function dirtySystemExecutionOptionQueries(): QueryKey[] {
-  return [allSystemExecutionOptionsQueryKeyPrefix()];
-}
-
-function dirtyHostSystemExecutionOptionQueries({
-  hostId,
-  queryClient,
-}: HostRealtimeDirtyContext): QueryKey[] | void {
-  if (hostId === undefined) return [allSystemExecutionOptionsQueryKeyPrefix()];
-  void invalidateSystemExecutionOptions({ hostId, queryClient });
-}
-
-function dirtyPluginContributionQueries(): QueryKey[] {
-  return [allPluginContributionsQueryKeyPrefix()];
-}
-
-function dirtyProjectCommandCatalogQueries(): QueryKey[] {
-  return [allProjectCommandsQueryKeyPrefix()];
-}
-
-function dirtyPluginManagementQueries(): QueryKey[] {
-  return [
-    allPluginListQueryKeyPrefix(),
-    allPluginSettingsViewQueryKeyPrefix(),
-    allPluginSettingsQueryKeyPrefix(),
-    allPluginSourceQueryKeyPrefix(),
-    allPluginCatalogSearchQueryKeyPrefix(),
-    pluginSafeModeQueryKey(),
-  ];
-}
-
-function dirtyEnvironmentProviderQueries(): QueryKey[] {
-  return [systemEnvironmentProvidersQueryKey()];
-}
-
 function reconcilePluginFrontendBundles(): void {
   schedulePluginFrontendReconcile();
+}
+
+function dirtyProjectThreadViews(): QueryKey[] {
+  return [sidebarNavigationQueryKey(), threadSearchQueryKeyPrefix()];
+}
+function dirtyProjectSourceThreadViews(): QueryKey[] {
+  return [sidebarNavigationQueryKey()];
 }

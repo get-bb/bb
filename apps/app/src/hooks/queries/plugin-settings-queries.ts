@@ -1,3 +1,4 @@
+import { coreRead, PLUGIN_DEPENDENCY } from "./core-read";
 import type {
   InstalledPlugin,
   PluginCachePruneResponse,
@@ -222,9 +223,12 @@ export async function prunePluginCache(
 export function usePluginSafeMode() {
   return useQuery({
     queryKey: pluginSafeModeQueryKey(),
-    queryFn: async ({ signal }) =>
-      (await createPluginsClient(fetch).experimental_getSafeMode({ signal }))
-        .enabled,
+    ...coreRead(
+      PLUGIN_DEPENDENCY,
+      async ({ signal }) =>
+        (await createPluginsClient(fetch).experimental_getSafeMode({ signal }))
+          .enabled,
+    ),
     staleTime: 30_000,
   });
 }
@@ -232,7 +236,9 @@ export function usePluginSafeMode() {
 export function pluginListQueryOptions(args: { enabled: boolean }) {
   return queryOptions({
     queryKey: pluginListQueryKey(args.enabled),
-    queryFn: ({ signal }) => fetchInstalledPlugins(fetch, signal),
+    ...coreRead(PLUGIN_DEPENDENCY, ({ signal }) =>
+      fetchInstalledPlugins(fetch, signal),
+    ),
     enabled: args.enabled,
     staleTime: 30_000,
   });
@@ -250,7 +256,9 @@ export function usePluginList(args: { enabled: boolean }) {
 export function pluginSettingsViewQueryOptions(pluginId: string) {
   return queryOptions({
     queryKey: pluginSettingsViewQueryKey(pluginId),
-    queryFn: () => fetchPluginSettingsView(fetch, pluginId),
+    ...coreRead(PLUGIN_DEPENDENCY, () =>
+      fetchPluginSettingsView(fetch, pluginId),
+    ),
     staleTime: 30_000,
   });
 }

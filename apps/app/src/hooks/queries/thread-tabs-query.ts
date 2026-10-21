@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import type { ThreadTabsResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
@@ -16,7 +17,10 @@ export function useThreadTabs(
 
   return useQuery<ThreadTabsResponse>({
     queryKey: threadTabsQueryKey(threadId),
-    queryFn: ({ signal }) => sdk.threads.tabs.get({ threadId, signal }),
+    ...coreRead(
+      dependency("thread", ["tabs-changed"], threadId),
+      ({ signal }) => sdk.threads.tabs.get({ threadId, signal }),
+    ),
     enabled,
     ...RESUME_REFETCH_QUERY_POLICY,
   });

@@ -101,10 +101,37 @@ export const pushNotificationsRpcContract = defineRpcContract({
       })
       .strict(),
     output: z.record(z.string(), threadNotificationInputsSchema),
-    keyTags: (key) => [`thread:${key}`],
+    experimental_reactToChange: ({ keys }, output, change) => {
+      if (
+        change.entity !== "thread-notifications" ||
+        !change.changes.includes("preferences-changed") ||
+        (change.id && !keys.includes(change.id))
+      )
+        return undefined;
+      if (output && change.id && change.value !== undefined) {
+        return {
+          action: "patch",
+          data: {
+            ...output,
+            [change.id]: threadNotificationInputsSchema.parse(change.value),
+          },
+        };
+      }
+      return { action: "reload" };
+    },
+    experimental_keyDependencies: (id) => [
+      { entity: "thread-notifications", id, changes: ["preferences-changed"] },
+    ],
   },
   "threadNotifications.set": {
-    invalidates: ({ threadId }) => [`thread:${threadId}`],
+    experimental_changes: ({ threadId }, value) => [
+      {
+        entity: "thread-notifications",
+        id: threadId,
+        changes: ["preferences-changed"],
+        value,
+      },
+    ],
     input: z
       .object({
         threadId: z.string().min(1),

@@ -1,3 +1,4 @@
+import type { ReadChange } from "@bb/domain";
 // @vitest-environment jsdom
 import { createElement } from "react";
 import {
@@ -11,11 +12,11 @@ import {
 import { QueryClient, useQuery } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 import {
-  useTaggedQuery,
+  useLiveQuery,
   optimisticQueryUpdate,
-  runTaggedMutation,
-  useTaggedMutation,
-  type TaggedMutationOutcome,
+  runLiveMutation,
+  useLiveMutation,
+  type LiveMutationOutcome,
 } from "../src/index.js";
 
 function deferred<T>() {
@@ -33,23 +34,31 @@ afterEach(cleanup);
 it("reports only writes awaiting acknowledgement in each hook", async () => {
   const client = new QueryClient();
   const writes = {
-    a: deferred<TaggedMutationOutcome<string>>(),
-    b: deferred<TaggedMutationOutcome<string>>(),
-    c: deferred<TaggedMutationOutcome<string>>(),
+    a: deferred<LiveMutationOutcome<string>>(),
+    b: deferred<LiveMutationOutcome<string>>(),
+    c: deferred<LiveMutationOutcome<string>>(),
   };
   const reread = deferred<void>();
   const reading = deferred<void>();
   type Input = { taskId: keyof typeof writes };
   const call = (input: Input) => writes[input.taskId].promise;
-  const invalidate = async (tags: readonly string[]) => {
-    if (tags.length) {
+  const invalidate = async (dependencies: readonly ReadChange[]) => {
+    if (dependencies.length) {
       reading.resolve();
       await reread.promise;
     }
   };
   const hooks = renderHook(() => ({
-    first: useTaggedMutation<Input, string>({ client, invalidate, call }),
-    second: useTaggedMutation<Input, string>({ client, invalidate, call }),
+    first: useLiveMutation<Input, string>({
+      client,
+      publish: invalidate,
+      call,
+    }),
+    second: useLiveMutation<Input, string>({
+      client,
+      publish: invalidate,
+      call,
+    }),
   }));
   let a!: Promise<string>;
   let b!: Promise<string | Error>;
@@ -72,7 +81,7 @@ it("reports only writes awaiting acknowledgement in each hook", async () => {
     expect(hooks.result.current.first.isPending).toBe(true);
   });
   await act(async () => {
-    writes.a.resolve({ result: "saved", invalidated: ["tasks"] });
+    writes.a.resolve({ result: "saved", changes: changesOf(["tasks"]) });
     await reading.promise;
     await a;
   });
@@ -100,7 +109,7 @@ it("reports only writes awaiting acknowledgement in each hook", async () => {
     expect(hooks.result.current.first.isPending).toBe(false);
   });
   await act(async () => {
-    writes.c.resolve({ result: "saved", invalidated: [] });
+    writes.c.resolve({ result: "saved", changes: changesOf([]) });
     await c;
   });
   await waitFor(() =>
@@ -121,12 +130,12 @@ it.each(["core", "plugin"] as const)(
     });
     client.setQueryData(["order"], ["Alpha", "Beta"]);
     client.setQueryData(["ordinary"], "unchanged");
-    const write = new Promise<TaggedMutationOutcome<void>>(() => {});
+    const write = new Promise<LiveMutationOutcome<void>>(() => {});
     const predict = () => [
       optimisticQueryUpdate<string[]>(["order"], () => ["Beta", "Alpha"]),
     ];
     function Predicted() {
-      const query = useTaggedQuery<string[]>(
+      const query = useLiveQuery<string[]>(
         { queryKey: ["order"], enabled: false },
         client,
       );
@@ -140,9 +149,9 @@ it.each(["core", "plugin"] as const)(
       return createElement("output", null, query.data);
     }
     function Control() {
-      const mutation = useTaggedMutation<void, void>({
+      const mutation = useLiveMutation<void, void>({
         client,
-        invalidate: async () => {},
+        publish: async () => {},
         call: () => write,
         optimistic: predict,
       });
@@ -152,7 +161,7 @@ it.each(["core", "plugin"] as const)(
           onClick: () => {
             if (surface === "plugin") void mutation.mutate(undefined);
             else
-              void runTaggedMutation(
+              void runLiveMutation(
                 async () => {},
                 () => write,
                 {
@@ -191,3 +200,7 @@ it.each(["core", "plugin"] as const)(
     }
   },
 );
+
+function changesOf(values: readonly string[]): ReadChange[] {
+  return values.map((entity) => ({ entity, changes: ["updated"] }));
+}

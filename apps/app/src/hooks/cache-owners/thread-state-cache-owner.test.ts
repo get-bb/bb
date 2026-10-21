@@ -30,10 +30,7 @@ import {
   rollbackThreadReadStateTransaction,
 } from "./thread-state-cache-owner";
 
-import {
-  updateCachedThreadStatusState,
-  updateCachedThreadListStatusState,
-} from "./query-cache";
+import { applyCoreReadChange } from "./core-read-changes";
 import { beginSendThreadMessageTransaction } from "./thread-runtime-cache-owner";
 
 function makeThreadWithRuntime(
@@ -674,8 +671,12 @@ it("preserves concurrent state when an older status event reaches detail and sid
     activity: original.activity,
     updatedAt: 20,
   };
-  updateCachedThreadStatusState(queryClient, original.id, stale);
-  updateCachedThreadListStatusState(queryClient, original.id, stale);
+  void applyCoreReadChange(queryClient, {
+    entity: "thread",
+    id: original.id,
+    changes: ["status-changed"],
+    value: stale,
+  });
   for (const thread of read())
     expect(thread).toMatchObject({
       status: "active",

@@ -1,3 +1,5 @@
+import { threadChangeMetadataSchema } from "@bb/domain";
+import { coreRead, dependency, PLUGIN_DEPENDENCY } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 import type {
@@ -110,28 +112,31 @@ export function useProjectSourceBranches(
       limit,
       selectedBranch,
     ),
-    queryFn: ({ signal }) => {
-      const remoteRefresh = remoteRefreshRef.current;
-      const startsBlockingRefresh =
-        remoteRefresh.requested && remoteRefresh.blockingSignal === null;
-      const blocking =
-        startsBlockingRefresh || remoteRefresh.blockingSignal === signal;
-      if (startsBlockingRefresh) {
-        remoteRefresh.requested = false;
-        remoteRefresh.blockingSignal = signal;
-      }
-      const readBranches = blocking
-        ? sdk.projects.branches
-        : readProjectBranchOptions;
-      return readBranches({
-        projectId: requireProjectId(projectId, "useProjectSourceBranches"),
-        hostId: hostId ?? "",
-        ...(query ? { query } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
-        limit: String(limit),
-        signal,
-      });
-    },
+    ...coreRead(
+      dependency("project", ["project-sources-changed"], projectId),
+      ({ signal }) => {
+        const remoteRefresh = remoteRefreshRef.current;
+        const startsBlockingRefresh =
+          remoteRefresh.requested && remoteRefresh.blockingSignal === null;
+        const blocking =
+          startsBlockingRefresh || remoteRefresh.blockingSignal === signal;
+        if (startsBlockingRefresh) {
+          remoteRefresh.requested = false;
+          remoteRefresh.blockingSignal = signal;
+        }
+        const readBranches = blocking
+          ? sdk.projects.branches
+          : readProjectBranchOptions;
+        return readBranches({
+          projectId: requireProjectId(projectId, "useProjectSourceBranches"),
+          hostId: hostId ?? "",
+          ...(query ? { query } : {}),
+          ...(selectedBranch ? { selectedBranch } : {}),
+          limit: String(limit),
+          signal,
+        });
+      },
+    ),
     enabled,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: PROJECT_SOURCE_BRANCHES_STALE_MS,
@@ -179,11 +184,34 @@ export function useProjectPromptHistory(
 
   return useQuery<PromptHistoryResponse>({
     queryKey: projectPromptHistoryQueryKey(projectId),
-    queryFn: ({ signal }) =>
-      sdk.projects.promptHistory({
-        projectId: requireProjectId(projectId, "useProjectPromptHistory"),
-        signal,
-      }),
+    ...coreRead(
+      dependency("project", ["threads-changed"], projectId),
+      ({ signal }) =>
+        sdk.projects.promptHistory({
+          projectId: requireProjectId(projectId, "useProjectPromptHistory"),
+          signal,
+        }),
+      (_data, change) => {
+        if (
+          change.entity !== "thread" ||
+          !change.changes.some((kind) =>
+            [
+              "thread-created",
+              "thread-deleted",
+              "archived-changed",
+              "history-rewritten",
+            ].includes(kind),
+          )
+        )
+          return undefined;
+        const changedProjectId = threadChangeMetadataSchema.parse(
+          change.value ?? {},
+        ).projectId;
+        return changedProjectId === undefined || changedProjectId === projectId
+          ? { action: "reload" }
+          : undefined;
+      },
+    ),
     enabled,
     staleTime: PROMPT_HISTORY_STALE_TIME_MS,
   });
@@ -211,20 +239,23 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
       includeFiles,
       includeDirectories,
     ),
-    queryFn: ({ signal }) =>
-      sdk.projects.paths({
-        projectId: projectId ?? "",
-        query: trimmedQuery,
-        limit: String(limit),
-        includeFiles: includeFiles ? "true" : "false",
-        includeDirectories: includeDirectories ? "true" : "false",
-        signal,
-        ...(args.environmentId !== null
-          ? { environmentId: args.environmentId }
-          : args.hostId !== null
-            ? { hostId: args.hostId }
-            : {}),
-      }),
+    ...coreRead(
+      dependency("project", ["project-sources-changed"], projectId),
+      ({ signal }) =>
+        sdk.projects.paths({
+          projectId: projectId ?? "",
+          query: trimmedQuery,
+          limit: String(limit),
+          includeFiles: includeFiles ? "true" : "false",
+          includeDirectories: includeDirectories ? "true" : "false",
+          signal,
+          ...(args.environmentId !== null
+            ? { environmentId: args.environmentId }
+            : args.hostId !== null
+              ? { hostId: args.hostId }
+              : {}),
+        }),
+    ),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
@@ -290,7 +321,7 @@ export function projectCommandsQueryOptions(args: UseProjectCommandsArgs) {
       args.environmentId,
       args.hostId,
     ),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
+    ...coreRead(PLUGIN_DEPENDENCY, ({ signal }: { signal: AbortSignal }) =>
       sdk.projects.commands({
         projectId: requireProjectId(args.projectId, "useProjectCommands"),
         provider: requireProviderId(args.providerId, "useProjectCommands"),
@@ -301,6 +332,7 @@ export function projectCommandsQueryOptions(args: UseProjectCommandsArgs) {
             ? { hostId: args.hostId }
             : {}),
       }),
+    ),
   };
 }
 

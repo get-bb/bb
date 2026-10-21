@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { TaggedMutationOutcome } from "@bb/query-tags";
+import type { LiveMutationOutcome } from "@bb/query-changes";
 import type {
   BbSdkAreas,
   ThreadMutationResult,
@@ -15,7 +15,8 @@ import {
   predictThreadPinState,
   rollbackThreadMetadataBatchTransaction,
 } from "../cache-owners/thread-state-cache-owner";
-import { callRoute, invalidateCoreTags } from "../queries/route-tags";
+import { applyQueryChanges, CORE_CHANGE_SCOPE } from "@bb/query-changes";
+import { callRoute } from "../queries/route-changes";
 
 type ThreadMutations = Pick<BbSdkAreas["threads"], "update" | "pin" | "unpin">;
 
@@ -28,7 +29,7 @@ type PendingThreadMutation = {
   | {
       operation: "pin" | "unpin";
       acknowledge: (
-        outcome: Promise<TaggedMutationOutcome<ThreadMutationResult>>,
+        outcome: Promise<LiveMutationOutcome<ThreadMutationResult>>,
       ) => Promise<void>;
     }
 );
@@ -154,12 +155,12 @@ export function createThreadMutationBatcher(
           threadId,
         });
         const acknowledge = async (
-          outcome: Promise<TaggedMutationOutcome<ThreadMutationResult>>,
+          outcome: Promise<LiveMutationOutcome<ThreadMutationResult>>,
         ) => {
           try {
-            const { result, invalidated } = await outcome;
+            const { result, changes } = await outcome;
             prediction.succeed(result);
-            void invalidateCoreTags(queryClient)(invalidated);
+            void applyQueryChanges(queryClient, CORE_CHANGE_SCOPE, changes);
           } catch {
             prediction.fail();
           }

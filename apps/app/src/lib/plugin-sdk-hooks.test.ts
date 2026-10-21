@@ -1,7 +1,7 @@
+import { callPluginRpc } from "./plugin-rpc-hooks";
 import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
-  callPluginRpc,
   fetchPluginSdkSettings,
   isAutomationEditRoutePath,
 } from "./plugin-sdk-hooks";

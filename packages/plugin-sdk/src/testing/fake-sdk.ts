@@ -1,4 +1,6 @@
-import { validatePluginMetadata } from "@bb/domain";
+import { createPluginReadWatcher } from "@bb/sdk/internal/plugin-read-watcher";
+import { z } from "zod";
+import { jsonValueSchema, validatePluginMetadata } from "@bb/domain";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 type BbSdk = BbPluginApi["sdk"];
@@ -36,6 +38,7 @@ export interface FakeSdkHarness {
    * rejected by argument validation are not recorded.
    */
   readonly calls: FakeSdkCall[];
+  emitPluginChange(pluginId: string): void;
   /** Argument lists of the calls to one dot-joined path. */
   callsTo(path: string): unknown[][];
   /** Add or replace one method's implementation after creation. */
@@ -140,6 +143,7 @@ export function createFakeSdk(options: {
   overrides?: FakeSdkOverrides;
 }): { sdk: BbSdk; harness: FakeSdkHarness } {
   const calls: FakeSdkCall[] = [];
+  const watches = new Map<string, Set<() => void>>();
   const stubs = new Map<string, (...args: unknown[]) => unknown>();
 
   function addOverrides(prefix: string, value: unknown): void {
@@ -163,6 +167,39 @@ export function createFakeSdk(options: {
     }
     calls.push({ path, args });
     const stub = stubs.get(path);
+    if (!stub && path === "plugins.experimental_watchRpc") {
+      const input = z
+        .object({
+          pluginId: z.string(),
+          method: z.string(),
+          input: jsonValueSchema.optional(),
+          signal: z.instanceof(AbortSignal),
+          outputSchema: z.custom<z.ZodType>(),
+          onChange: z.custom<(value: unknown) => void>(),
+          prepare: z
+            .custom<(value: unknown) => void | Promise<void>>()
+            .optional(),
+          onError: z.custom<(error: Error) => void>().optional(),
+        })
+        .parse(args[0]);
+      const listeners = watches.get(input.pluginId) ?? new Set<() => void>();
+      watches.set(input.pluginId, listeners);
+      const refresh = () => watcher.refresh();
+      const watcher = createPluginReadWatcher({
+        ...input,
+        retryNotFound: true,
+        read: async (signal) =>
+          invoke("plugins.callRpc", [{ ...input, signal }]),
+        onStop: () => {
+          listeners.delete(refresh);
+        },
+      });
+      if (!input.signal.aborted) {
+        listeners.add(refresh);
+        watcher.refresh();
+      }
+      return watcher;
+    }
     if (!stub) {
       throw new Error(
         `bb.sdk.${path} is not stubbed — pass an implementation via ` +
@@ -193,6 +230,9 @@ export function createFakeSdk(options: {
 
   const harness: FakeSdkHarness = {
     calls,
+    emitPluginChange(pluginId) {
+      for (const refresh of watches.get(pluginId) ?? []) refresh();
+    },
     callsTo(path) {
       return calls
         .filter((call) => call.path === path)

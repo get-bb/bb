@@ -1,9 +1,17 @@
-import { CORE_TAG_SCOPE, invalidateTags, pluginTagScope } from "@bb/query-tags";
+import { jsonValueSchema } from "@bb/domain";
+import { applyCoreReadChange } from "./cache-owners/core-read-changes";
+import {
+  applyQueryChange,
+  CORE_CHANGE_SCOPE,
+  refreshLiveQueries,
+  pluginChangeScope,
+} from "@bb/query-changes";
 import type { QueryClient } from "@tanstack/react-query";
 import { assertNever } from "@bb/core-ui";
 import {
   createDebouncedCallbackScheduler,
   type ChangedMessage,
+  type ReadChange,
   type EnvironmentChangeKind,
   type HostChangeKind,
   type ProjectChangeKind,
@@ -13,7 +21,7 @@ import {
   type ThreadChangeKind,
 } from "@bb/domain";
 import {
-  environmentPullRequestTag,
+  environmentPullRequestChange,
   type RealtimeSubscriptionTarget,
 } from "@bb/server-contract";
 import {
@@ -29,7 +37,6 @@ import {
 } from "@/lib/document-visibility";
 import {
   applyRealtimeThreadPatches,
-  collectCachedThreadIdsForEnvironment,
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
@@ -219,6 +226,10 @@ function flushThreadInvalidations(
 ): void {
   const flushOnce = createFlushOncePredicate();
   for (const changeKind of state.globalChangeKinds) {
+    void applyQueryChange(queryClient, CORE_CHANGE_SCOPE, {
+      entity: "thread",
+      changes: [changeKind],
+    });
     executeRealtimeDirtyHandlers({
       context: {
         backgroundActivityChanged: undefined,
@@ -238,6 +249,13 @@ function flushThreadInvalidations(
   for (const [threadId, changeKinds] of state.changedThreadKinds) {
     const metadata = state.metadataByThreadId.get(threadId);
     for (const changeKind of changeKinds) {
+      void applyQueryChange(queryClient, CORE_CHANGE_SCOPE, {
+        entity: "thread",
+        id: threadId,
+        changes: [changeKind],
+        value:
+          metadata === undefined ? undefined : jsonValueSchema.parse(metadata),
+      });
       executeRealtimeDirtyHandlers({
         context: {
           backgroundActivityChanged: metadata?.backgroundActivityChanged,
@@ -280,6 +298,13 @@ function applyImmediateThreadChanges({
     : undefined;
   const flushOnce = createFlushOncePredicate();
   for (const changeKind of changes) {
+    void applyQueryChange(queryClient, CORE_CHANGE_SCOPE, {
+      entity: "thread",
+      id,
+      changes: [changeKind],
+      value:
+        metadata === undefined ? undefined : jsonValueSchema.parse(metadata),
+    });
     executeRealtimeDirtyHandlers({
       context: {
         backgroundActivityChanged: merged?.backgroundActivityChanged,
@@ -335,15 +360,20 @@ function invalidateRealtimeEnvironmentChange({
   environmentId,
   queryClient,
 }: RealtimeEnvironmentChangedArg): void {
+  void applyQueryChange(queryClient, CORE_CHANGE_SCOPE, {
+    entity: "environment",
+    id: environmentId,
+    changes: [...changeKinds],
+  });
   for (const changeKind of changeKinds) {
+    const rule = REALTIME_ENVIRONMENT_CHANGE_REGISTRY[changeKind];
+    if (!rule) continue;
     executeRealtimeDirtyHandlers({
       context: {
         environmentId,
-        getCachedThreadIdsForEnvironment: () =>
-          collectCachedThreadIdsForEnvironment({ environmentId, queryClient }),
         queryClient,
       },
-      handlers: REALTIME_ENVIRONMENT_CHANGE_REGISTRY[changeKind].dirty,
+      handlers: rule.dirty,
     });
   }
 }
@@ -439,7 +469,13 @@ export function createRealtimeCacheEffects({
     hostId: string | undefined,
     changeKinds: Iterable<HostChangeKind>,
   ): void => {
-    for (const changeKind of changeKinds) {
+    const changes = [...changeKinds];
+    void applyCoreReadChange(queryClient, {
+      entity: "host",
+      id: hostId,
+      changes,
+    });
+    for (const changeKind of changes) {
       executeRealtimeDirtyHandlers({
         context: { hostId, queryClient },
         handlers: REALTIME_HOST_CHANGE_REGISTRY[changeKind].dirty,
@@ -450,7 +486,13 @@ export function createRealtimeCacheEffects({
     projectId: string | undefined,
     changeKinds: Iterable<ProjectChangeKind>,
   ): void => {
-    for (const changeKind of changeKinds) {
+    const changes = [...changeKinds];
+    void applyQueryChange(queryClient, CORE_CHANGE_SCOPE, {
+      entity: "project",
+      id: projectId,
+      changes,
+    });
+    for (const changeKind of changes) {
       executeRealtimeDirtyHandlers({
         context: { projectId, queryClient },
         handlers: REALTIME_PROJECT_CHANGE_REGISTRY[changeKind].dirty,
@@ -460,7 +502,13 @@ export function createRealtimeCacheEffects({
   const applySystemChanges = (
     changeKinds: Iterable<SystemChangeKind>,
   ): void => {
-    for (const changeKind of changeKinds) {
+    const changes = [...changeKinds];
+    if (changes.length)
+      void applyQueryChange(queryClient, CORE_CHANGE_SCOPE, {
+        entity: "system",
+        changes,
+      });
+    for (const changeKind of changes) {
       const rule = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind];
       if (!rule) {
         continue;
@@ -472,18 +520,20 @@ export function createRealtimeCacheEffects({
     }
   };
 
-  const deferredTags = new Map<string, Set<string> | null>();
-  const applyTags = (scope: string, tags: readonly string[] | null): void => {
+  const deferredReadChanges = new Map<string, ReadChange[] | null>();
+  const applyReadChange = (scope: string, change: ReadChange | null): void => {
     if (visibility.isDocumentVisible()) {
-      void invalidateTags(queryClient, scope, tags);
+      void (change
+        ? applyQueryChange(queryClient, scope, change)
+        : refreshLiveQueries(queryClient, scope));
       return;
     }
-    const previous = deferredTags.get(scope);
-    deferredTags.set(
+    const previous = deferredReadChanges.get(scope);
+    deferredReadChanges.set(
       scope,
-      previous === null || tags === null
+      previous === null || change === null || (previous?.length ?? 0) >= 200
         ? null
-        : new Set([...(previous ?? []), ...tags]),
+        : [...(previous ?? []), change],
     );
   };
   const catchUpReleasedWatch = (target: RealtimeSubscriptionTarget): void => {
@@ -508,9 +558,13 @@ export function createRealtimeCacheEffects({
         return;
       }
       case "environment-pull-request":
-        applyTags(CORE_TAG_SCOPE, [
-          environmentPullRequestTag(target.environmentId),
-        ]);
+        applyReadChange(
+          CORE_CHANGE_SCOPE,
+          environmentPullRequestChange(target.environmentId),
+        );
+        return;
+      case "plugin-read":
+        applyReadChange(pluginChangeScope(target.pluginId), null);
         return;
       case "thread-timeline":
       case "thread-list":
@@ -527,9 +581,13 @@ export function createRealtimeCacheEffects({
     }
   };
   const flushDeferredChanges = (): void => {
-    for (const [scope, tags] of deferredTags)
-      void invalidateTags(queryClient, scope, tags === null ? null : [...tags]);
-    deferredTags.clear();
+    for (const [scope, changes] of deferredReadChanges) {
+      if (changes === null) void refreshLiveQueries(queryClient, scope);
+      else
+        for (const change of changes)
+          void applyQueryChange(queryClient, scope, change);
+    }
+    deferredReadChanges.clear();
     if (hasDeferredNonThreadChanges(deferredNonThreadChanges)) {
       const { environmentKindsById, hostKinds, projectKindsById, systemKinds } =
         deferredNonThreadChanges;
@@ -572,6 +630,13 @@ export function createRealtimeCacheEffects({
       const documentVisible = visibility.isDocumentVisible();
       switch (message.entity) {
         case "thread": {
+          if (message.changes.includes("status-changed"))
+            void applyCoreReadChange(queryClient, {
+              entity: "thread",
+              id: message.id,
+              changes: ["status-changed"],
+              value: message.metadata?.statusChange,
+            });
           if (message.id) {
             applyRealtimeThreadPatches(message.changes, {
               hasPendingInteraction: message.metadata?.hasPendingInteraction,
@@ -642,10 +707,10 @@ export function createRealtimeCacheEffects({
           applyProjectChanges(message.id, message.changes);
           break;
         case "plugin":
-          applyTags(pluginTagScope(message.pluginId), message.tags);
+          applyReadChange(pluginChangeScope(message.pluginId), message.change);
           break;
-        case "tags":
-          applyTags(CORE_TAG_SCOPE, message.tags);
+        case "read":
+          applyReadChange(CORE_CHANGE_SCOPE, message.change);
           break;
         case "system":
           if (!documentVisible) {
@@ -669,8 +734,8 @@ export function createRealtimeCacheEffects({
         );
         for (const pluginId of pluginIds)
           if (typeof pluginId === "string")
-            applyTags(pluginTagScope(pluginId), null);
-        applyTags(CORE_TAG_SCOPE, null);
+            applyReadChange(pluginChangeScope(pluginId), null);
+        applyReadChange(CORE_CHANGE_SCOPE, null);
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,
           queryClient,

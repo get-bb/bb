@@ -159,6 +159,7 @@
     "sonner"
   ],
   "splitBoundaries": {
+    "src/lib/plugin-rpc-hooks.ts": ["boot"],
     "src/components/promptbox/MicrophonePreferences.tsx": [
       "boot",
       "ThreadPage",

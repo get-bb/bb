@@ -28,7 +28,7 @@ import {
   sidebarNavigationQueryKey,
   uiPreferencesQueryKey,
 } from "@/hooks/queries/query-keys";
-import { updateCachedThreadListStatusState } from "@/hooks/cache-owners/query-cache";
+import { applyCoreReadChange } from "@/hooks/cache-owners/core-read-changes";
 import {
   Sidebar,
   SidebarContent,
@@ -131,10 +131,17 @@ function stubPluginRpcFetch(): void {
         JSON.stringify({
           ok: true,
           result,
-          keyTags: Object.fromEntries(
-            notificationListRequests
-              .at(-1)
-              ?.map((id) => [id, [`thread:${id}`]]) ?? [],
+          keyDependencies: Object.fromEntries(
+            notificationListRequests.at(-1)?.map((id) => [
+              id,
+              [
+                {
+                  entity: "thread-notifications",
+                  id,
+                  changes: ["preferences-changed"],
+                },
+              ],
+            ]) ?? [],
           ),
         }),
         {
@@ -451,20 +458,25 @@ async function runScenario(
     const targetId = `thr_${(iteration * 7) % THREAD_COUNT}`;
     patchSamples.push(
       await measure(() => {
-        updateCachedThreadListStatusState(queryClient, targetId, {
-          status: iteration % 2 === 0 ? "active" : "idle",
-          runtime: {
-            displayStatus: iteration % 2 === 0 ? "active" : "idle",
+        void applyCoreReadChange(queryClient, {
+          entity: "thread",
+          id: targetId,
+          changes: ["status-changed"],
+          value: {
+            status: iteration % 2 === 0 ? "active" : "idle",
+            runtime: {
+              displayStatus: iteration % 2 === 0 ? "active" : "idle",
+            },
+            activity: {
+              activeWorkflowCount: 0,
+              activeBackgroundAgentCount: 0,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 0,
+              activeGoalCount: 0,
+            },
+            latestAttentionAt: 5_000_000 + iteration,
+            updatedAt: 5_000_000 + iteration,
           },
-          activity: {
-            activeWorkflowCount: 0,
-            activeBackgroundAgentCount: 0,
-            activeBackgroundCommandCount: 0,
-            activePlanModeCount: 0,
-            activeGoalCount: 0,
-          },
-          latestAttentionAt: 5_000_000 + iteration,
-          updatedAt: 5_000_000 + iteration,
         });
       }),
     );

@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import type { ResolvedThreadExecutionOptions } from "@bb/domain";
 import { sdk } from "@/lib/sdk";
@@ -48,11 +49,14 @@ export function useThreadDefaultExecutionOptions(
 
   return useQuery<ResolvedThreadExecutionOptions | null>({
     queryKey: threadDefaultExecutionOptionsQueryKey(id),
-    queryFn: ({ signal }) =>
-      fetchThreadDefaultExecutionOptions(
-        requireThreadId(id, "useThreadDefaultExecutionOptions"),
-        signal,
-      ),
+    ...coreRead(
+      dependency("thread", ["environment-changed"], id),
+      ({ signal }) =>
+        fetchThreadDefaultExecutionOptions(
+          requireThreadId(id, "useThreadDefaultExecutionOptions"),
+          signal,
+        ),
+    ),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,

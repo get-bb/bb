@@ -1,3 +1,4 @@
+import { coreRead, dependency } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import type {
   SystemEnvironmentProvider,
@@ -51,11 +52,18 @@ function environmentProvidersQueryOptions(
   });
   return {
     queryKey: systemEnvironmentProvidersQueryKey(query),
-    queryFn: async () => {
-      const providers = await sdk.environments.listProviders(query);
-      writeCachedEnvironmentProviderList(cacheKey, providers);
-      return providers;
-    },
+    ...coreRead(
+      dependency("system", [
+        "config-changed",
+        "plugins-changed",
+        "environment-availability-changed",
+      ]),
+      async () => {
+        const providers = await sdk.environments.listProviders(query);
+        writeCachedEnvironmentProviderList(cacheKey, providers);
+        return providers;
+      },
+    ),
     placeholderData: () =>
       readCachedEnvironmentProviderList(cacheKey) ?? undefined,
     ...SERVER_SESSION_QUERY_POLICY,

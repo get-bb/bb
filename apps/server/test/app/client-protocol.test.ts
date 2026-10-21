@@ -32,7 +32,7 @@ describe("client websocket protocol", () => {
     });
   });
 
-  it("rejects subscribe messages whose target id is not a string", () => {
+  it("skips a subscribe target whose id is not a string and keeps the socket", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
@@ -47,8 +47,41 @@ describe("client websocket protocol", () => {
     );
     hub.notifyThread("thread-1", ["events-appended"]);
 
-    expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
+    expect(socket.closed).toEqual([]);
     expect(socket.messages).toHaveLength(0);
+  });
+
+  it("subscribes the valid targets of a batch that also holds an oversized plugin read", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    const watched: unknown[] = [];
+    hub.onWatchedTargets(["thread-detail", "plugin-read"], (change) => {
+      watched.push(change);
+    });
+    const thread = { kind: "thread-detail", threadId: "thread-1" };
+
+    onClientSocketOpen(hub, socket);
+    onClientSocketMessage(
+      hub,
+      socket,
+      JSON.stringify({
+        type: "subscribe",
+        targets: [
+          {
+            kind: "plugin-read",
+            pluginId: "usage",
+            method: "getUsage",
+            read: { input: "x".repeat(17_000) },
+          },
+          thread,
+        ],
+      }),
+    );
+    hub.notifyThread("thread-1", ["events-appended"]);
+
+    expect(socket.closed).toEqual([]);
+    expect(watched).toEqual([{ started: [thread], stopped: [] }]);
+    expect(socket.messages).toHaveLength(1);
   });
 
   it("removes subscriptions after unsubscribe messages", () => {
@@ -219,15 +252,21 @@ it("routes batched plugin subscriptions and invalidate-all to the subscribed soc
       ],
     }),
   );
-  hub.notifyPluginChanged("other", null);
-  hub.notifyPluginChanged("push-notifications", null);
+  hub.notifyPluginChanged("other", {
+    entity: "settings",
+    changes: ["updated"],
+  });
+  hub.notifyPluginChanged("push-notifications", {
+    entity: "settings",
+    changes: ["updated"],
+  });
   expect(socket.closed).toEqual([]);
   expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
     {
       type: "changed",
       entity: "plugin",
       pluginId: "push-notifications",
-      tags: null,
+      change: { entity: "settings", changes: ["updated"] },
     },
   ]);
   expect(idle.messages).toEqual([]);

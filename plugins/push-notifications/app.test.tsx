@@ -10,6 +10,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { pushNotificationsRpcContract } from "./contract.js";
 import type { ThreadNotificationInputs } from "./preferences.js";
 
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
+
 const app = await loadPluginApp(() => import("./app.js"));
 afterEach(() => {
   cleanup();
@@ -107,6 +110,7 @@ function renderNotifications(
     itemFor = next;
   };
   let current = stored;
+  let failSet = false;
   const listInput =
     pushNotificationsRpcContract["threadNotifications.keyed"].input;
   const view = renderSlot(
@@ -133,6 +137,7 @@ function renderNotifications(
           return threads;
         },
         "threadNotifications.set": (input) => {
+          if (failSet) throw new Error("Notification store is read-only");
           const { threadId, level } =
             pushNotificationsRpcContract["threadNotifications.set"].input.parse(
               input,
@@ -167,6 +172,9 @@ function renderNotifications(
     },
     restore(next: Record<string, ThreadNotificationInputs>) {
       current = next;
+    },
+    failSets() {
+      failSet = true;
     },
   };
 }
@@ -247,8 +255,39 @@ describe("thread notifications action", () => {
     await act(() => item()!.run({ value: "muted", requestRename: () => {} }));
     await waitFor(() => expect(summary()?.selected).toBe("muted"));
     restore({ thr_top: { own: "all", ancestorCap: null } });
-    await view.behavior.experimental_invalidateRpc(["thread:thr_top"]);
+    await view.behavior.experimental_publishRpcChange({
+      entity: "thread-notifications",
+      id: "thr_top",
+      changes: ["preferences-changed"],
+    });
     await waitFor(() => expect(summary()?.selected).toBe("all"));
+    const reads = view.rpcCalls.filter(
+      (call) => call.method === "threadNotifications.keyed",
+    ).length;
+    await view.behavior.experimental_publishRpcChange({
+      entity: "thread-notifications",
+      id: "thr_top",
+      changes: ["preferences-changed"],
+      value: { own: "input-only", ancestorCap: null },
+    });
+    expect(summary()?.selected).toBe("input-only");
+    expect(
+      view.rpcCalls.filter(
+        (call) => call.method === "threadNotifications.keyed",
+      ),
+    ).toHaveLength(reads);
+  });
+  it("toasts a failed level save once and keeps the stored level", async () => {
+    toastError.mockReset();
+    const { item, summary, failSets } = renderNotifications({}, ["thr_top"]);
+    await waitFor(() => expect(summary()?.selected).toBe("inherit"));
+    failSets();
+    await act(() => item()!.run({ value: "muted", requestRename: () => {} }));
+    await waitFor(() => expect(summary()?.selected).toBe("inherit"));
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith("Couldn't change notifications", {
+      description: expect.stringContaining("read-only"),
+    });
   });
   it("reflects a parent cap changed by another client", async () => {
     const { view, summary, restore } = renderNotifications({}, [
@@ -266,10 +305,10 @@ describe("thread notifications action", () => {
         ancestorCap: { level: "muted", threadId: "thr_top" },
       },
     });
-    await view.behavior.experimental_invalidateRpc([
-      "thread:thr_top",
-      "thread:thr_child",
-    ]);
+    await view.behavior.experimental_publishRpcChange({
+      entity: "thread-notifications",
+      changes: ["preferences-changed"],
+    });
     expect(summary(child)).toMatchObject({
       detail: "Muted",
       hint: "Limited by a parent thread",

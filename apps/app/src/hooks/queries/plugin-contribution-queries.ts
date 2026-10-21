@@ -1,3 +1,4 @@
+import { coreRead, PLUGIN_DEPENDENCY } from "./core-read";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchPluginContributions,
@@ -9,7 +10,9 @@ import { pluginContributionsQueryKey } from "./query-keys";
 export function usePluginContributions() {
   return useQuery({
     queryKey: pluginContributionsQueryKey(),
-    queryFn: ({ signal }) => fetchPluginContributions(signal),
+    ...coreRead(PLUGIN_DEPENDENCY, ({ signal }) =>
+      fetchPluginContributions(signal),
+    ),
     staleTime: 30_000,
   });
 }

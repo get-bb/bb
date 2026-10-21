@@ -1,3 +1,4 @@
+import { readChangeSchema, type ReadChange } from "@bb/domain";
 import type { Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ZodError, type ZodType } from "zod";
@@ -7,7 +8,7 @@ import type {
   RouteDefinition,
   RouteMethod,
   RouteParsedInput,
-  RouteTagDeclarations,
+  RouteChangeDeclarations,
 } from "./route-descriptor.js";
 
 type EndpointInput<E> = E extends Endpoint<infer I, any, any, any> ? I : never;
@@ -94,7 +95,7 @@ type TypedRegisterWithDescriptor<
 
 interface TypedRoutesOptions {
   onValidationError?: (message: string) => Error;
-  invalidateTags?: (tags: readonly string[]) => void;
+  publishChanges?: (changes: readonly ReadChange[]) => void;
 }
 
 type ValidationMessageFromZodError = (error: ZodError) => string;
@@ -166,16 +167,16 @@ export function typedRoutes<Schema>(
     }
   }
 
-  function publishInvalidations(
-    descriptor: RouteDefinition & RouteTagDeclarations,
+  function publishChanges(
+    descriptor: RouteDefinition & RouteChangeDeclarations,
     handler: Function,
   ): Function {
-    const invalidates = descriptor.invalidates?.bind(descriptor);
-    if (invalidates === undefined) return handler;
-    const invalidateTags = options?.invalidateTags;
-    if (invalidateTags === undefined)
+    const changesOf = descriptor.experimental_changes?.bind(descriptor);
+    if (changesOf === undefined) return handler;
+    const publish = options?.publishChanges;
+    if (publish === undefined)
       throw new Error(
-        `${descriptor.method.toUpperCase()} ${descriptor.path} declares invalidates but typedRoutes has no invalidateTags option`,
+        `${descriptor.method.toUpperCase()} ${descriptor.path} declares experimental_changes but typedRoutes has no publishChanges option`,
       );
     return async (c: Context, input: unknown) => {
       const response: Response = await handler(c, input);
@@ -184,22 +185,19 @@ export function typedRoutes<Schema>(
         response.headers.get("content-type")?.includes("application/json")
       ) {
         const output: unknown = await response.clone().json();
-        const tags = [
-          ...new Set(
-            invalidates(
-              {
-                params: c.req.param(),
-                input:
-                  descriptor.request.source === "json" ||
-                  descriptor.request.source === "query"
-                    ? input
-                    : undefined,
-              },
-              output,
-            ),
-          ),
-        ];
-        if (tags.length > 0) invalidateTags(tags);
+        const changes = changesOf(
+          {
+            params: c.req.param(),
+            input:
+              descriptor.request.source === "json" ||
+              descriptor.request.source === "query"
+                ? input
+                : undefined,
+          },
+          output,
+        );
+        if (changes.length > 0)
+          publish(changes.map((change) => readChangeSchema.parse(change)));
       }
       return response;
     };
@@ -207,10 +205,10 @@ export function typedRoutes<Schema>(
 
   function registerDescriptor(
     method: HttpMethod,
-    descriptor: RouteDefinition & RouteTagDeclarations,
+    descriptor: RouteDefinition & RouteChangeDeclarations,
     routeHandler: Function,
   ): void {
-    const handler = publishInvalidations(descriptor, routeHandler);
+    const handler = publishChanges(descriptor, routeHandler);
     if (
       descriptor.request.source === "query" ||
       descriptor.request.source === "json"

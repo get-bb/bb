@@ -1,8 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import {
-  useRpc,
-  experimental_ProviderIcon as ProviderIcon,
-} from "@get-bb/plugin-sdk/app";
+import { useId, useState, type ReactNode } from "react";
+import { experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -12,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { providerUsageRpcContract, UsageRequest } from "./server.js";
+import { useUsage } from "./use-usage.js";
 import {
   emptyUsageMessage,
   hasReportedUsage,
@@ -25,7 +22,6 @@ import {
   type UsageMachine,
   type UsageProvider,
   type ProviderUsage,
-  type UsageSnapshot,
   type UsageWindow,
 } from "./usage-schema.js";
 function SettingsBadge({ children }: { children: ReactNode }) {
@@ -463,6 +459,16 @@ export function UsageSettingsContent({
             className={groups.size > 0 ? "mb-3" : undefined}
           />
         ) : null}
+        {error || selected?.error ? (
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="mb-3 text-xs underline"
+          >
+            Retry
+          </button>
+        ) : null}
         <div className="divide-y divide-border">
           {[...groups].map(([id, resources]) => {
             const provider = resources[0]!;
@@ -488,93 +494,17 @@ export function UsageSettingsContent({
   );
 }
 
-interface UsageLoadTarget {
-  disposed: () => boolean;
-  setMachines: (machines: UsageMachine[]) => void;
-  setError: (error: boolean) => void;
-}
-
-export async function loadUsage(
-  getUsage: (input: UsageRequest) => Promise<UsageSnapshot>,
-  selectedId: string | null,
-  force: boolean,
-  target: UsageLoadTarget,
-): Promise<void> {
-  target.setError(false);
-  try {
-    const inventory = await getUsage({
-      force: false,
-      machineIds: null,
-      providerIds: [],
-      maxAgeMs: 60_000,
-    });
-    if (target.disposed()) return;
-    target.setMachines(inventory.machines);
-    const selected = selectUsageMachine(inventory.machines, selectedId, null);
-    const providerIds = [
-      ...new Set(selected?.providers.map((provider) => provider.providerId)),
-    ];
-    if (selected && selected.status === "connected" && providerIds.length > 0) {
-      const result = await getUsage({
-        force,
-        machineIds: [selected.id],
-        providerIds,
-        maxAgeMs: 60_000,
-      });
-      if (target.disposed()) return;
-      target.setMachines(result.machines);
-    }
-  } catch {
-    if (!target.disposed()) target.setError(true);
-  }
-}
-
 export function UsageSettings() {
-  const rpc = useRpc<typeof providerUsageRpcContract>();
-  const [machines, setMachines] = useState<UsageMachine[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [refresh, setRefresh] = useState(0);
-  const forceGeneration = useRef(0);
-  useEffect(() => {
-    let disposed = false;
-    let running = false;
-    const force = refresh > forceGeneration.current;
-    forceGeneration.current = refresh;
-    async function load(force: boolean) {
-      if (running) return;
-      running = true;
-      setLoading(true);
-      try {
-        await loadUsage(
-          (input) => rpc.call("getUsage", input),
-          selectedId,
-          force,
-          { disposed: () => disposed, setMachines, setError },
-        );
-      } finally {
-        running = false;
-        if (!disposed) setLoading(false);
-      }
-    }
-    void load(force);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load(false);
-    }, 60_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [rpc, selectedId, refresh]);
+  const usage = useUsage(selectedId, null, 60_000);
   return (
     <UsageSettingsContent
-      machines={machines}
+      machines={usage.data?.machines ?? []}
       selectedId={selectedId}
-      loading={loading}
-      error={error}
+      loading={usage.isRefreshing}
+      error={usage.error}
       onSelect={setSelectedId}
-      onRefresh={() => setRefresh((value) => value + 1)}
+      onRefresh={usage.refresh}
     />
   );
 }

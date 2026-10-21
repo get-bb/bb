@@ -80,6 +80,8 @@ export * from "./project-attachment.js";
 export * from "./mobile-app.js";
 export * from "./environment-removal.js";
 
-export type { ContractTagDeclarations } from "./contract-tags.js";
+export type { ContractChangeDeclarations } from "./contract-changes.js";
 
 export const ARCHIVE_UNDO_GRACE_MS = 30_000;
+
+export * from "./read-change.js";

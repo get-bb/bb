@@ -1,7 +1,9 @@
-import { useTaggedQuery } from "@bb/query-tags";
+import { coreRead, dependency, SYSTEM_CONFIG_DEPENDENCY } from "./core-read";
+import { useLiveQuery } from "@bb/query-changes";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
+  Environment,
   PermissionMode,
   ProviderInfo,
   ProviderModelCatalogScope,
@@ -9,6 +11,7 @@ import type {
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import { permissionModeValues } from "@bb/domain";
 import type {
+  SystemConfigResponse,
   SystemCliCommandStatus,
   SystemCliSkillsStatusResponse,
   SystemExecutionOptionsResponse,
@@ -37,9 +40,11 @@ import {
   allSystemExecutionOptionsQueryKeyPrefix,
   allSystemProvidersQueryKeyPrefix,
   hostProviderCliStatusQueryKey,
+  environmentQueryKey,
   systemCliCommandQueryKey,
   systemCliSkillsQueryKey,
   systemAiServicesQueryKey,
+  machineEnvironmentQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
@@ -50,7 +55,7 @@ import {
   uiPreferencesQueryKey,
 } from "./query-keys";
 import { publicApiRoutes } from "@bb/server-contract";
-import { routeTaggedRead } from "./route-tags";
+import { routeLiveRead } from "./route-changes";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
   SERVER_SESSION_QUERY_POLICY,
@@ -230,27 +235,36 @@ export function systemProvidersQueryOptions(args: UseSystemProvidersArgs = {}) {
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
   return queryOptions<ProviderInfo[]>({
     queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
-    queryFn: async ({ signal }) => {
-      const capabilityFilter =
-        args.capability === undefined ? {} : { capability: args.capability };
-      const providers = await (args.environmentId !== undefined
-        ? sdk.providers.list({
-            ...capabilityFilter,
-            environmentId: args.environmentId,
-            signal,
-          })
-        : args.hostId !== undefined
+    ...coreRead(
+      [
+        dependency("system", [
+          "config-changed",
+          "provider-registrations-changed",
+        ]),
+        dependency("host", ["host-connected", "host-disconnected"]),
+      ],
+      async ({ signal }) => {
+        const capabilityFilter =
+          args.capability === undefined ? {} : { capability: args.capability };
+        const providers = await (args.environmentId !== undefined
           ? sdk.providers.list({
               ...capabilityFilter,
-              hostId: args.hostId,
+              environmentId: args.environmentId,
               signal,
             })
-          : sdk.providers.list({ ...capabilityFilter, signal }));
-      if (capability === null) {
-        writeCachedProviderList(providersCacheKey, providers);
-      }
-      return providers;
-    },
+          : args.hostId !== undefined
+            ? sdk.providers.list({
+                ...capabilityFilter,
+                hostId: args.hostId,
+                signal,
+              })
+            : sdk.providers.list({ ...capabilityFilter, signal }));
+        if (capability === null) {
+          writeCachedProviderList(providersCacheKey, providers);
+        }
+        return providers;
+      },
+    ),
     enabled: args.enabled ?? true,
     staleTime: 60_000,
     placeholderData: () => {
@@ -352,74 +366,95 @@ function systemExecutionOptionsQueryOptions({
       providerId,
       projectId,
     }),
-    queryFn: async ({ signal }) => {
-      const { response, loadedProviderId } =
-        await requestOfferedProviderExecutionOptions({
-          environmentId,
-          hostId,
-          providerId,
-          projectId,
-          signal,
-        });
-      const modelsProviderId =
-        loadedProviderId ?? response.providers[0]?.id ?? null;
-      if (writeLastKnown) {
-        writeCachedProviderList(
-          providerListCacheKey({ environmentId, hostId }),
-          response.providers,
-        );
-        if (response.modelLoadError === null) {
-          const catalog = {
-            models: response.models,
-            selectedOnlyModels: response.selectedOnlyModels,
-          };
-          writeCachedModelCatalog(
-            modelCatalogCacheKey({
-              environmentId,
-              hostId,
-              providerId: loadedProviderId,
-              projectId,
-            }),
-            catalog,
+    ...coreRead(
+      (client) => [
+        dependency("system", [
+          "config-changed",
+          "provider-registrations-changed",
+        ]),
+        dependency(
+          "host",
+          ["host-connected", "provider-model-catalog-changed"],
+          hostId ??
+            (environmentId
+              ? client.getQueryData<Environment>(
+                  environmentQueryKey(environmentId),
+                )?.hostId
+              : client.getQueryData<SystemConfigResponse>(
+                  systemConfigQueryKey(),
+                )?.primaryHostId) ??
+            undefined,
+        ),
+      ],
+      async ({ signal }) => {
+        const { response, loadedProviderId } =
+          await requestOfferedProviderExecutionOptions({
+            environmentId,
+            hostId,
+            providerId,
+            projectId,
+            signal,
+          });
+        const modelsProviderId =
+          loadedProviderId ?? response.providers[0]?.id ?? null;
+        if (writeLastKnown) {
+          writeCachedProviderList(
+            providerListCacheKey({ environmentId, hostId }),
+            response.providers,
           );
-          if (loadedProviderId === null && modelsProviderId !== null) {
+          if (response.modelLoadError === null) {
+            const catalog = {
+              models: response.models,
+              selectedOnlyModels: response.selectedOnlyModels,
+            };
             writeCachedModelCatalog(
               modelCatalogCacheKey({
                 environmentId,
                 hostId,
-                providerId: modelsProviderId,
+                providerId: loadedProviderId,
                 projectId,
               }),
               catalog,
             );
+            if (loadedProviderId === null && modelsProviderId !== null) {
+              writeCachedModelCatalog(
+                modelCatalogCacheKey({
+                  environmentId,
+                  hostId,
+                  providerId: modelsProviderId,
+                  projectId,
+                }),
+                catalog,
+              );
+            }
           }
         }
-      }
-      if (
-        writeLastKnown &&
-        response.modelLoadError?.providerId === modelsProviderId &&
-        response.models.length === 0 &&
-        response.selectedOnlyModels.length === 0 &&
-        (response.modelLoadError?.code === "failed" ||
-          response.modelLoadError?.code === "timeout")
-      ) {
-        const cached = readCachedModelCatalog(
-          modelCatalogCacheKey({
-            environmentId,
-            hostId,
-            providerId: modelsProviderId,
-            projectId,
-          }),
-        );
         if (
-          cached !== null &&
-          (cached.models.length > 0 || cached.selectedOnlyModels.length > 0)
+          writeLastKnown &&
+          response.modelLoadError?.providerId === modelsProviderId &&
+          response.models.length === 0 &&
+          response.selectedOnlyModels.length === 0 &&
+          (response.modelLoadError?.code === "failed" ||
+            response.modelLoadError?.code === "timeout")
         ) {
-          return { ...response, ...cached, modelLoadError: null };
+          const cached = readCachedModelCatalog(
+            modelCatalogCacheKey({
+              environmentId,
+              hostId,
+              providerId: modelsProviderId,
+              projectId,
+            }),
+          );
+          if (
+            cached !== null &&
+            (cached.models.length > 0 || cached.selectedOnlyModels.length > 0)
+          ) {
+            return { ...response, ...cached, modelLoadError: null };
+          }
         }
-      }
-      return response;
-    },
+        return response;
+      },
+    ),
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
@@ -497,7 +532,9 @@ export function useSystemExecutionOptions(
 export function systemConfigQueryOptions() {
   return queryOptions({
     queryKey: systemConfigQueryKey(),
-    queryFn: ({ signal }) => sdk.system.config({ signal }),
+    ...coreRead(SYSTEM_CONFIG_DEPENDENCY, ({ signal }) =>
+      sdk.system.config({ signal }),
+    ),
     staleTime: 60_000,
   });
 }
@@ -505,7 +542,9 @@ export function systemConfigQueryOptions() {
 export function systemAiServicesQueryOptions() {
   return queryOptions({
     queryKey: systemAiServicesQueryKey(),
-    queryFn: ({ signal }) => sdk.system.aiServices({ signal }),
+    ...coreRead(SYSTEM_CONFIG_DEPENDENCY, ({ signal }) =>
+      sdk.system.aiServices({ signal }),
+    ),
     staleTime: 10_000,
   });
 }
@@ -524,7 +563,7 @@ export function uiPreferencesQueryOptions(client: QueryClient) {
   const queryKey = uiPreferencesQueryKey();
   return queryOptions({
     queryKey,
-    ...routeTaggedRead(
+    ...routeLiveRead(
       client,
       queryKey,
       publicApiRoutes.system.uiPreferences,
@@ -540,7 +579,7 @@ export function useUiPreferences(options?: QueryOptions) {
   const enabled = options?.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
 
-  return useTaggedQuery({
+  return useLiveQuery({
     ...uiPreferencesQueryOptions(client),
     enabled,
   });
@@ -549,7 +588,9 @@ export function useUiPreferences(options?: QueryOptions) {
 export function systemThemeQueryOptions(themeId: string) {
   return queryOptions({
     queryKey: systemThemeQueryKey(themeId),
-    queryFn: ({ signal }) => sdk.theme.resolve({ signal, themeId }),
+    ...coreRead(SYSTEM_CONFIG_DEPENDENCY, ({ signal }) =>
+      sdk.theme.resolve({ signal, themeId }),
+    ),
     staleTime: 60_000,
   });
 }
@@ -652,4 +693,15 @@ export function useSystemProviderCatalog() {
     queryKey: systemProviderCatalogQueryKey(),
     queryFn: () => sdk.providers.catalog(),
   });
+}
+
+export function machineEnvironmentQueryOptions(projectId: string | null) {
+  return {
+    queryKey: machineEnvironmentQueryKey(projectId),
+    ...coreRead(dependency("system", ["config-changed"]), async () =>
+      projectId === null
+        ? { ...(await sdk.system.machineEnvironment()), inheritedVariables: [] }
+        : sdk.projects.machineEnvironment({ projectId }),
+    ),
+  };
 }

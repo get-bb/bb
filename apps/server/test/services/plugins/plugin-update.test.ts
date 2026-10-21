@@ -98,6 +98,7 @@ describe("plugin update scheduling", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -132,6 +133,7 @@ describe("plugin update scheduling", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem,
       },
@@ -251,6 +253,7 @@ describe("plugin update scheduling", () => {
         hub: {
           getDaemonSessionIdForHost: () => null,
           notifyPluginChanged: () => {},
+          onWatchedTargets: () => () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },
@@ -350,6 +353,7 @@ describe("plugin update service and routes", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -824,6 +828,7 @@ describe("plugin update service and routes", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -927,6 +932,7 @@ describe("plugin update service and routes", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -966,6 +972,7 @@ describe("plugin update service and routes", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -1084,6 +1091,7 @@ describe("plugin update service and routes", () => {
         hub: {
           getDaemonSessionIdForHost: () => null,
           notifyPluginChanged: () => {},
+          onWatchedTargets: () => () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },

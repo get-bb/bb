@@ -29,7 +29,8 @@ function requireUiPreferenceKey(key: string): UiPreferenceKey {
 
 export function registerUiPreferenceRoutes(app: Hono, deps: AppDeps): void {
   const { del, get, put } = typedRoutes<PublicApiSchema>(app, {
-    invalidateTags: (tags) => deps.hub.notifyTags(tags),
+    publishChanges: (changes) =>
+      changes.forEach((change) => deps.hub.notifyReadChanged(change)),
     onValidationError: (message) =>
       new ApiError(400, "invalid_request", message),
   });

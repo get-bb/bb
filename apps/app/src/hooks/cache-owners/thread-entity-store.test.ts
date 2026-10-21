@@ -1,8 +1,10 @@
+import { jsonValueSchema } from "@bb/domain";
+import { applyCoreReadChange } from "@/hooks/cache-owners/core-read-changes";
 import type { ThreadListEntry } from "@bb/domain";
 import {
   keyedStoreContract,
   type KeyedStoreSubject,
-} from "@bb/query-tags/testing";
+} from "@bb/query-changes/testing";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { makeThreadListEntry as makeEntry } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
@@ -16,7 +18,7 @@ import {
   threadListQueryKey,
   threadQueryKey,
 } from "../queries/query-keys";
-import { updateCachedThreadListStatusState } from "./query-cache";
+
 import {
   beginThreadEntityPrediction,
   getThreadEntity,
@@ -91,12 +93,17 @@ describe("thread entity store", () => {
       pinnedAt: 5,
       threadId: "t1",
     });
-    updateCachedThreadListStatusState(s.queryClient, "t1", {
-      status: "active",
-      runtime: { displayStatus: "active" },
-      activity: server[0]!.activity,
-      latestAttentionAt: 20,
-      updatedAt: 11,
+    applyCoreReadChange(s.queryClient, {
+      entity: "thread",
+      id: "t1",
+      changes: ["status-changed"],
+      value: jsonValueSchema.parse({
+        status: "active",
+        runtime: { displayStatus: "active" },
+        activity: server[0]!.activity,
+        latestAttentionAt: 20,
+        updatedAt: 11,
+      }),
     });
     await s.fetchList(s.lateKey, () => server);
 
@@ -209,12 +216,17 @@ describe("thread entity store", () => {
       ["active", 11],
       ["idle", 12],
     ] as const)
-      updateCachedThreadListStatusState(s.queryClient, "t1", {
-        status,
-        runtime: { displayStatus: status },
-        activity: server[0]!.activity,
-        latestAttentionAt: updatedAt,
-        updatedAt,
+      applyCoreReadChange(s.queryClient, {
+        entity: "thread",
+        id: "t1",
+        changes: ["status-changed"],
+        value: jsonValueSchema.parse({
+          status,
+          runtime: { displayStatus: status },
+          activity: server[0]!.activity,
+          latestAttentionAt: updatedAt,
+          updatedAt,
+        }),
       });
     expect(s.describeRows(s.sidebarRows())).toEqual(["t2:null:idle"]);
     rollbackArchiveThreadsTransaction({

@@ -2,9 +2,9 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadPullRequest } from "@bb/domain";
-import { CORE_TAG_SCOPE, invalidateTags } from "@bb/query-tags";
+import { CORE_CHANGE_SCOPE, applyQueryChange } from "@bb/query-changes";
 import {
-  environmentPullRequestTag,
+  environmentPullRequestChange,
   type EnvironmentPullRequestResponse,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
@@ -135,7 +135,7 @@ describe("useEnvironmentPullRequest", () => {
     expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(2);
   });
 
-  it("refetches only the environment whose pull request tag the server invalidates", async () => {
+  it("refetches only the environment whose pull request the server reports changed", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const pending = pullRequestResponse({
       ...pullRequestFixture,
@@ -152,14 +152,18 @@ describe("useEnvironmentPullRequest", () => {
     );
     await waitFor(() => expect(result.current.data).toEqual(pending));
 
-    await invalidateTags(queryClient, CORE_TAG_SCOPE, [
-      environmentPullRequestTag("env-other"),
-    ]);
+    await applyQueryChange(
+      queryClient,
+      CORE_CHANGE_SCOPE,
+      environmentPullRequestChange("env-other"),
+    );
     expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(1);
 
-    await invalidateTags(queryClient, CORE_TAG_SCOPE, [
-      environmentPullRequestTag(ENVIRONMENT_ID),
-    ]);
+    await applyQueryChange(
+      queryClient,
+      CORE_CHANGE_SCOPE,
+      environmentPullRequestChange(ENVIRONMENT_ID),
+    );
     await waitFor(() => expect(result.current.data).toEqual(passing));
     expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(2);
   });

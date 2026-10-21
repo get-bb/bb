@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => ({
   projectList: vi.fn(),
   projectReplace: vi.fn(),
 }));
-vi.mock("@/hooks/queries/system-queries", () => ({
+vi.mock("@/hooks/queries/system-queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/queries/system-queries")>()),
   useSystemConfig: () => ({
     data: { generalSettings: { machineGitCredentialsEnabled: true } },
   }),

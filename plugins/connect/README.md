@@ -3,7 +3,7 @@
 bb account owns this server's getbb.app credential. Every hosted request goes
 through the bb account plugin's `bb-account.v1.fetch` RPC, which serves
 `/api/connect/` paths only to the connect plugin, and connect follows sign-in
-changes with `bb-account.v1.waitForStatusChange`. While bb account reports any state other
+changes with `bb.sdk.plugins.experimental_watchRpc`. While bb account reports any state other
 than `signed-in`, or is stopped or held, connect treats this bb as signed out.
 
 ## Tunnel

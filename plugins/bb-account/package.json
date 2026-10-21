@@ -6,7 +6,7 @@
   "description": "Signs this bb in to your getbb.app account and holds its server credential for remote access and hosted services.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.63"
+    "bbPluginSdk": ">=0.6.67"
   },
   "bb": {
     "name": "bb account",
