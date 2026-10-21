@@ -374,6 +374,12 @@
       "cache": false,
       "passThroughEnv": ["*"]
     },
+    "@bb/app#test:browser": {
+      "dependsOn": ["topo", "@bb/templates#generate:templates"],
+      "cache": false,
+      "passThroughEnv": ["CI", "PLAYWRIGHT_BROWSERS_PATH"],
+      "outputs": []
+    },
     "storybook": {
       "dependsOn": ["@bb/templates#generate:templates"],
       "cache": false,
