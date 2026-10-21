@@ -1278,6 +1278,60 @@ describe("bridge", () => {
     }
   });
 
+  it("requires a sandbox and excludes external tools and inherited hooks for network-disabled work", () => {
+    const options = buildSessionOptions(
+      {
+        chromeEnabled: true,
+        disable1MContext: false,
+        artifactsEnabled: false,
+        sandboxEnabled: false,
+        networkAccess: false,
+        serviceTier: "default",
+        workflowsEnabled: false,
+        cwd: "/workspace",
+        instructionMode: "append",
+        permissionMode: "acceptEdits",
+        permissionScope: "workspace",
+        plugins: [{ type: "local", path: "/plugins" }],
+      },
+      {},
+    );
+    expect(options).toMatchObject({
+      allowBypassPermissions: false,
+      settingSources: [],
+      strictMcpConfig: true,
+      tools: [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep",
+        "NotebookEdit",
+        "TodoWrite",
+      ],
+      settings: { disableAllHooks: true },
+      sandbox: {
+        enabled: true,
+        failIfUnavailable: true,
+        allowUnsandboxedCommands: false,
+        excludedCommands: [],
+        enableWeakerNetworkIsolation: false,
+        enableWeakerNestedSandbox: false,
+        network: {
+          allowedDomains: [],
+          deniedDomains: ["*"],
+          strictAllowlist: true,
+          allowLocalBinding: false,
+          allowUnixSockets: [],
+          allowAllUnixSockets: false,
+        },
+      },
+    });
+    expect(options).not.toHaveProperty("plugins");
+    expect(options).not.toHaveProperty("extraArgs");
+  });
+
   it("keeps manager sessions on a plain string system prompt", () => {
     const options = buildSessionOptions(
       {

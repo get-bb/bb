@@ -20,12 +20,14 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
+    "host.ts",
     "actions-menu.tsx",
     "app.tsx",
     "automations.stories.tsx",
     "detail-view.tsx",
     "metadata.tsx",
     "overview-view.tsx",
+    "result-action.tsx",
     "lib",
     "vitest.config.ts"
   ]

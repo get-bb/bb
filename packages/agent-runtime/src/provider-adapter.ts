@@ -24,6 +24,7 @@ export interface CreateBridgeAdapterOptions {
 }
 
 export type ProviderExecutionContext = {
+  networkAccess?: boolean;
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;

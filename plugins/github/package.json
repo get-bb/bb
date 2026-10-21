@@ -19,7 +19,9 @@
     "server.ts",
     "app.tsx",
     "components",
-    "README.md"
+    "README.md",
+    "main-branch-checks.ts",
+    "skills"
   ],
   "engines": {
     "bb": ">=0.0",
@@ -32,7 +34,10 @@
       "icon": "Github"
     },
     "server": "./server.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
   },
   "keywords": [
     "bb-plugin"

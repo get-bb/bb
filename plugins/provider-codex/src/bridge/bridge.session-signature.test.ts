@@ -373,3 +373,52 @@ it("applies follow-up permission changes in both directions without replacing th
     recordedRequests().filter((request) => request.method === "initialize"),
   ).toHaveLength(1);
 }, 30_000);
+
+it.each(["start", "resume", "fork"] as const)(
+  "closes native and injected network tool routes for a restricted %s session",
+  async (kind) => {
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        configRead: {
+          config: {
+            mcp_servers: { github: { command: "github-mcp", enabled: true } },
+          },
+        },
+      }),
+    );
+    harness.sendRequest(1, `thread/${kind}`, {
+      threadId: THREAD_ID,
+      ...(kind === "resume" ? { providerThreadId: "provider-original" } : {}),
+      ...(kind === "fork"
+        ? { sourceProviderThreadId: "provider-original" }
+        : {}),
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: { ...autoAskSessionOptions, networkAccess: false },
+      dynamicTools: [
+        {
+          name: "publish",
+          description: "Publish changes",
+          inputSchema: { type: "object" },
+        },
+      ],
+    });
+    expect((await harness.waitForResponse(1)).error).toBeUndefined();
+    expect(recordedRequests()).toContainEqual({
+      method: `thread/${kind}`,
+      params: expect.objectContaining({
+        approvalPolicy: "never",
+        sandbox: "workspace-write",
+        dynamicTools: [],
+        config: expect.objectContaining({
+          "sandbox_workspace_write.network_access": false,
+          web_search: "disabled",
+          mcp_servers: { github: { command: "github-mcp", enabled: false } },
+        }),
+      }),
+    });
+  },
+  30_000,
+);

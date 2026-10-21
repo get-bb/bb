@@ -1,3 +1,8 @@
+import type {
+  SetupJobDecisionRequest,
+  SetupJobReadQuery,
+  SetupJobResponse,
+} from "@bb/server-contract";
 import type { HoldoutKey } from "@bb/domain";
 import type { SystemHoldoutsResponse } from "@bb/server-contract";
 import { mobileAppDownloads } from "@bb/domain";
@@ -182,6 +187,13 @@ export interface SystemArea {
   installCliSkills(
     args: SystemInstallCliSkillsArgs,
   ): Promise<SystemInstallCliSkillsResult>;
+  experimental_setupJob(input?: SetupJobReadQuery): Promise<SetupJobResponse>;
+  experimental_setupJobShown(
+    suggestionAnalyticsId: string,
+  ): Promise<{ ok: true }>;
+  experimental_decideSetupJob(
+    input: SetupJobDecisionRequest,
+  ): Promise<SetupJobResponse>;
   holdouts(): Promise<SystemHoldoutsResponse>;
   exposeHoldout(key: HoldoutKey): Promise<{ exposed: boolean }>;
   experimental_recordTelemetryEvent(
@@ -244,6 +256,7 @@ function appUpdateQuery(
 
 export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
   const { transport } = args;
+  const systemClient = () => transport.api.v1.system;
   const uiPreferences: SystemUiPreferencesArea = {
     async list(input) {
       return transport.readJson(
@@ -300,15 +313,12 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async attention(input) {
       return transport.readJson(
-        transport.api.v1.system.attention.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
+        systemClient().attention.$get({}, ...signalRequestArgs(input?.signal)),
       );
     },
     async aiServices(input) {
       return transport.readJson(
-        transport.api.v1.system["ai-services"].$get(
+        systemClient()["ai-services"].$get(
           {},
           ...signalRequestArgs(input?.signal),
         ),
@@ -316,20 +326,17 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async setAiServiceSelection(input) {
       return transport.readJson(
-        transport.api.v1.system["ai-services"].selection.$put({ json: input }),
+        systemClient()["ai-services"].selection.$put({ json: input }),
       );
     },
     async testAiService(input) {
       return transport.readJson(
-        transport.api.v1.system["ai-services"].test.$post({ json: input }),
+        systemClient()["ai-services"].test.$post({ json: input }),
       );
     },
     async config(input) {
       return transport.readJson(
-        transport.api.v1.system.config.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
+        systemClient().config.$get({}, ...signalRequestArgs(input?.signal)),
       );
     },
     async executionOptions(input = {}) {
@@ -337,7 +344,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async cliSkillsStatus(input = {}) {
       return transport.readJson(
-        transport.api.v1.system["cli-skills"].$get(
+        systemClient()["cli-skills"].$get(
           {
             query:
               input.hostIds === undefined
@@ -350,26 +357,43 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async installCliSkills(input) {
       return transport.readJson(
-        transport.api.v1.system["cli-skills"].install.$post({ json: input }),
+        systemClient()["cli-skills"].install.$post({ json: input }),
+      );
+    },
+    async experimental_setupJob(input = {}) {
+      return transport.readJson(
+        systemClient()["setup-job"].$get({ query: input }),
+      );
+    },
+    async experimental_setupJobShown(suggestionAnalyticsId) {
+      return transport.readJson(
+        systemClient()["setup-job"].shown.$post({
+          json: { suggestionAnalyticsId },
+        }),
+      );
+    },
+    async experimental_decideSetupJob(input) {
+      return transport.readJson(
+        systemClient()["setup-job"].decision.$post({ json: input }),
       );
     },
     async holdouts() {
-      return transport.readJson(transport.api.v1.system.holdouts.$get());
+      return transport.readJson(systemClient().holdouts.$get());
     },
     async exposeHoldout(key) {
       return transport.readJson(
-        transport.api.v1.system.holdouts[":key"].exposure.$post({
+        systemClient().holdouts[":key"].exposure.$post({
           param: { key },
         }),
       );
     },
     async experimental_recordTelemetryEvent(input) {
       return transport.readJson(
-        transport.api.v1.system.telemetry.events.$post({ json: input }),
+        systemClient().telemetry.events.$post({ json: input }),
       );
     },
     async reloadConfig() {
-      return transport.readJson(transport.api.v1.system.config.reload.$post());
+      return transport.readJson(systemClient().config.reload.$post());
     },
     async transcribeVoice(input) {
       if (input.file.size === 0) {
@@ -391,9 +415,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       );
     },
     async mobileAppReleases() {
-      return transport.readJson(
-        transport.api.v1.system["mobile-app-releases"].$get(),
-      );
+      return transport.readJson(systemClient()["mobile-app-releases"].$get());
     },
     mobileAppDownloads() {
       return { ...mobileAppDownloads };
@@ -415,7 +437,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async providerStates(input = {}) {
       return transport.readJson(
-        transport.api.v1.system.providers.state.$get(
+        systemClient().providers.state.$get(
           {
             query: {
               environmentId: input.environmentId,
@@ -428,7 +450,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async usageLimits(input = {}) {
       return transport.readJson(
-        transport.api.v1.system["usage-limits"].$get(
+        systemClient()["usage-limits"].$get(
           {
             query: {
               hostId: input.hostId,
@@ -447,7 +469,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async version(input) {
       return transport.readJson(
-        transport.api.v1.system.version.$get(
+        systemClient().version.$get(
           { query: versionQuery(input) },
           ...signalRequestArgs(input?.signal),
         ),
@@ -455,7 +477,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async appUpdate(input) {
       return transport.readJson(
-        transport.api.v1.system["app-update"].$get(
+        systemClient()["app-update"].$get(
           { query: appUpdateQuery(input) },
           ...signalRequestArgs(input?.signal),
         ),
@@ -463,19 +485,19 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async applyAppUpdate(input) {
       return transport.readJson(
-        transport.api.v1.system["app-update"].apply.$post({ json: input }),
+        systemClient()["app-update"].apply.$post({ json: input }),
       );
     },
     async acknowledgeAppUpdate(input) {
       return transport.readJson(
-        transport.api.v1.system["app-update"].acknowledge.$post({
+        systemClient()["app-update"].acknowledge.$post({
           json: input,
         }),
       );
     },
     async experimental_cliCommand(input) {
       return transport.readJson(
-        transport.api.v1.system["cli-command"].$get(
+        systemClient()["cli-command"].$get(
           {},
           ...signalRequestArgs(input?.signal),
         ),
@@ -483,13 +505,11 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     },
     async experimental_installCliCommand() {
       return transport.readJson(
-        transport.api.v1.system["cli-command"].install.$post({}),
+        systemClient()["cli-command"].install.$post({}),
       );
     },
     async experimental_removeCliCommand() {
-      return transport.readJson(
-        transport.api.v1.system["cli-command"].remove.$post({}),
-      );
+      return transport.readJson(systemClient()["cli-command"].remove.$post({}));
     },
   };
 }

@@ -1,3 +1,4 @@
+import { threadNetworkAccess } from "./thread-network-policy.js";
 import {
   resolveHostEnvironment,
   mergeHostAndProviderEnvironment,
@@ -120,6 +121,7 @@ export async function resolveThreadRuntimeCommandConfig(
   args: ResolveThreadRuntimeCommandConfigArgs,
 ): Promise<ResolvedThreadRuntimeCommandConfig> {
   markTurnTraceSpan("runtimeConfig.started");
+  const networkAccess = threadNetworkAccess(deps.db, args.thread.id);
   const workspacePath = requireWorkspacePath(args.environment);
   const project = getProject(deps.db, args.thread.projectId);
   if (!project) {
@@ -281,8 +283,8 @@ export async function resolveThreadRuntimeCommandConfig(
   markTurnTraceSpan("runtimeConfig.built");
   return {
     contributedEnv,
-    dynamicTools,
-    injectedSkillSources,
+    dynamicTools: networkAccess ? dynamicTools : [],
+    injectedSkillSources: networkAccess ? injectedSkillSources : [],
     instructionMode: "append",
     instructions,
     projectId: args.thread.projectId,

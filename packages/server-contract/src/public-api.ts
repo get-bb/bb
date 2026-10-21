@@ -1,3 +1,11 @@
+import {
+  setupJobReadQuerySchema,
+  setupJobDecisionRequestSchema,
+  setupJobShownRequestSchema,
+  type SetupJobResponse,
+  type SetupJobReadQuery,
+  type SetupJobDecisionRequest,
+} from "./api/setup-job.js";
 import type { SystemHoldoutsResponse } from "./api/system.js";
 import {
   machineEnvironmentSetSchema,
@@ -1974,6 +1982,32 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
+    }),
+    setupJob: defineRoute({
+      path: "/system/setup-job",
+      method: "get",
+      request: queryRequest<
+        EmptyInput,
+        SetupJobReadQuery,
+        typeof setupJobReadQuerySchema
+      >(setupJobReadQuerySchema),
+      response: jsonResponse<SetupJobResponse>(),
+    }),
+    setupJobShown: defineRoute({
+      path: "/system/setup-job/shown",
+      method: "post",
+      request: jsonRequest<EmptyInput, { suggestionAnalyticsId: string }>(
+        setupJobShownRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    setupJobDecision: defineRoute({
+      path: "/system/setup-job/decision",
+      method: "post",
+      request: jsonRequest<EmptyInput, SetupJobDecisionRequest>(
+        setupJobDecisionRequestSchema,
+      ),
+      response: jsonResponse<SetupJobResponse>(),
     }),
     holdouts: defineRoute({
       path: "/system/holdouts",

@@ -22,10 +22,18 @@ bb plugin install github
 - **Homepage section**: recent open issues with the same Send agent buttons.
 - **Mentions**: `@` or `#` in any composer completes GitHub issues and PRs; the
   selected item's title/body/state is attached as agent context at send time.
-- **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `sync` — also
+- **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `checks <projectId>`, `sync` — also
   discoverable by agents through the plugin-commands skill. Each command takes
   `--json` (`{"ok":true,…}` on success, `{"ok":false,"error":{…}}` on failure)
   and `--help`, which prints its arguments and options and exits 0.
+
+`bb github checks <projectId> --json` reads current CI for the project's default
+branch using the existing GitHub CLI sign-in. It resolves the branch to a commit
+before reading all pages of check runs and commit statuses; each check includes
+its source URL. Plugin RPC `mainBranchChecks` accepts `{ projectId }` and returns
+this same result. Missing sign-in, repository mapping, or GitHub availability
+returns an explicit unavailable reason so scheduled work can run local tests
+only. It never substitutes cached checks.
 
 ## Auth
 

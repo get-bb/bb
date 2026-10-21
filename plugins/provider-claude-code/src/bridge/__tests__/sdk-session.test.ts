@@ -90,6 +90,28 @@ describe("SdkSession", () => {
     vi.restoreAllMocks();
   });
 
+  it("passes native tool and settings restrictions into the SDK query", () => {
+    const session = new SdkSession(
+      {
+        ...defaultOptions,
+        settingSources: [],
+        strictMcpConfig: true,
+        tools: ["Bash", "Read", "Edit"],
+        disallowedTools: ["WebFetch", "WebSearch", "Agent", "Task"],
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+    session.start();
+    expect(getLatestQueryCall().options).toMatchObject({
+      settingSources: [],
+      strictMcpConfig: true,
+      tools: ["Bash", "Read", "Edit"],
+      disallowedTools: ["WebFetch", "WebSearch", "Agent", "Task"],
+    });
+    session.stop();
+  });
+
   it("rejects queued input when the SDK input stream closes before consumption", async () => {
     const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
     const consumed = session.pushInput("hello");

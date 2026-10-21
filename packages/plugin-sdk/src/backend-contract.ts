@@ -1290,6 +1290,8 @@ export type PluginProviderComposerAction = "plan" | "goal";
  * starting the bridge first.
  */
 export interface PluginProviderCapabilities {
+  /** Enforces networkAccess:false with local edits/tests, no escalation, and no external tools. */
+  experimental_supportsNetworkIsolation?: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;

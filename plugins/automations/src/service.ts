@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -72,7 +73,9 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
-    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
+    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn"> &
+      Partial<Pick<BbPluginApi["sdk"]["threads"], "list" | "events">>;
+    plugins?: Pick<BbPluginApi["sdk"]["plugins"], "list" | "callRpc">;
   };
 };
 
@@ -445,6 +448,9 @@ function applyAgentExecutionUpdate(
 
   const next = {
     ...execution,
+    ...(update.networkAccess !== undefined
+      ? { networkAccess: update.networkAccess }
+      : {}),
     ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
     ...(update.providerId !== undefined
       ? { providerId: update.providerId }
@@ -563,6 +569,7 @@ export function createAutomationService(args: {
   serverUrl: string;
 }): AutomationService {
   const { bb, db, pluginDataDir, serverUrl } = args;
+  const creations = new Map<string, Promise<AutomationDetailResponse>>();
 
   return {
     async overview() {
@@ -597,65 +604,94 @@ export function createAutomationService(args: {
     },
 
     async create(payload) {
-      const project = await requireProjectAvailable(bb, payload.projectId);
-      const now = Date.now();
-      validateTrigger(payload.trigger, now);
-      assertNotRecursiveCreation(db, payload.createdByThreadId);
-      if (payload.execution.mode === "agent") {
-        await resolvePermissionMode(
-          bb,
-          payload.execution.providerId,
-          payload.execution.permissionMode,
-          providerRoutingForEnvironment(payload.execution.environment),
-        );
-      }
-      const automationId = createAutomationId();
-      const stored = await resolveStoredExecution({
-        pluginDataDir,
-        automationId,
-        execution: payload.execution,
-        defaultWorkingDirectory:
-          payload.execution.mode === "script" &&
-          payload.execution.workingDirectory === undefined
-            ? defaultScriptWorkingDirectory(
-                project,
-                (await bb.sdk.system.config()).primaryHostId,
+      const automationId =
+        payload.idempotencyKey === undefined
+          ? createAutomationId()
+          : `auto_${createHash("sha256")
+              .update(
+                JSON.stringify([payload.projectId, payload.idempotencyKey]),
               )
-            : AUTOMATION_STORAGE_WORKING_DIRECTORY,
-      });
-      let created: AutomationRow;
-      try {
-        created = createAutomation(db, {
-          id: automationId,
+              .digest("hex")
+              .slice(0, 32)}`;
+      const pending = creations.get(automationId);
+      if (pending !== undefined) return pending;
+      const create = async (): Promise<AutomationDetailResponse> => {
+        const existing = getAutomationForProject(db, {
           projectId: payload.projectId,
-          name: payload.name,
-          enabled: payload.enabled,
-          trigger: payload.trigger,
-          runMode: stored.execution.mode,
-          execution: stored.execution,
-          origin: payload.origin,
-          createdByThreadId: payload.createdByThreadId ?? null,
-          nextRunAt: computeInitialNextRunAt({
-            trigger: payload.trigger,
-            enabled: payload.enabled,
-            now,
-          }),
+          automationId,
         });
-      } catch (error) {
-        await discardUncommittedScript({
-          bb,
+        if (existing !== null)
+          return withResolvedWorkingDirectory({
+            bb,
+            pluginDataDir,
+            automation: toStoredAutomationResponse(pluginDataDir, existing),
+          });
+        const project = await requireProjectAvailable(bb, payload.projectId);
+        const now = Date.now();
+        validateTrigger(payload.trigger, now);
+        assertNotRecursiveCreation(db, payload.createdByThreadId);
+        if (payload.execution.mode === "agent") {
+          await resolvePermissionMode(
+            bb,
+            payload.execution.providerId,
+            payload.execution.permissionMode,
+            providerRoutingForEnvironment(payload.execution.environment),
+          );
+        }
+        const stored = await resolveStoredExecution({
           pluginDataDir,
           automationId,
-          scriptFile: stored.writtenScriptFile,
+          execution: payload.execution,
+          defaultWorkingDirectory:
+            payload.execution.mode === "script" &&
+            payload.execution.workingDirectory === undefined
+              ? defaultScriptWorkingDirectory(
+                  project,
+                  (await bb.sdk.system.config()).primaryHostId,
+                )
+              : AUTOMATION_STORAGE_WORKING_DIRECTORY,
         });
-        throw error;
+        let created: AutomationRow;
+        try {
+          created = createAutomation(db, {
+            id: automationId,
+            projectId: payload.projectId,
+            name: payload.name,
+            enabled: payload.enabled,
+            trigger: payload.trigger,
+            runMode: stored.execution.mode,
+            execution: stored.execution,
+            origin: payload.origin,
+            createdByThreadId: payload.createdByThreadId ?? null,
+            nextRunAt: computeInitialNextRunAt({
+              trigger: payload.trigger,
+              enabled: payload.enabled,
+              now,
+            }),
+          });
+        } catch (error) {
+          await discardUncommittedScript({
+            bb,
+            pluginDataDir,
+            automationId,
+            scriptFile: stored.writtenScriptFile,
+          });
+          throw error;
+        }
+        publishAutomationChange(bb, payload.projectId, "automations-changed");
+        return withResolvedWorkingDirectory({
+          bb,
+          pluginDataDir,
+          automation: toStoredAutomationResponse(pluginDataDir, created),
+        });
+      };
+      const pendingCreation = create();
+      creations.set(automationId, pendingCreation);
+      try {
+        return await pendingCreation;
+      } finally {
+        creations.delete(automationId);
       }
-      publishAutomationChange(bb, payload.projectId, "automations-changed");
-      return withResolvedWorkingDirectory({
-        bb,
-        pluginDataDir,
-        automation: toStoredAutomationResponse(pluginDataDir, created),
-      });
     },
 
     async update(input) {

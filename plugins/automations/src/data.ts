@@ -912,7 +912,7 @@ export function createManualRun(
   })();
 }
 
-function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(
@@ -1047,4 +1047,17 @@ export function disableAutomationsForDeletedThread(
     )
     .all(args)
     .map(requiredAutomationRow);
+}
+
+export function latestAutomationRunForThread(
+  db: Db,
+  threadId: string,
+): AutomationRunRow | null {
+  return optionalRunRow(
+    db
+      .prepare(
+        `SELECT ${AUTOMATION_RUN_COLUMNS} FROM automation_runs WHERE thread_id = ? ORDER BY started_at DESC, id DESC LIMIT 1`,
+      )
+      .get(threadId),
+  );
 }

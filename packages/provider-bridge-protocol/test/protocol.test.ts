@@ -427,6 +427,7 @@ describe("execution options", () => {
       input: [{ type: "text", text: "hello", mentions: [] }],
       clientRequestId: "creq_abcdefghjk",
       options: {
+        networkAccess: false,
         model: "claude-opus-5",
         permissionMode: "auto",
         permissionScope: "workspace",
@@ -435,6 +436,7 @@ describe("execution options", () => {
         providerOptions: { workflowsEnabled: false },
       },
     });
+    expect(parsed.options.networkAccess).toBe(false);
     expect(parsed.options.providerOptions).toStrictEqual({
       workflowsEnabled: false,
     });

@@ -42,6 +42,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
+    "test:provider-network": "node --conditions=source --import tsx scripts/provider-network-e2e.mjs",
     "qa:standalone:start": "node tests/qa/scripts/run-root-command.mjs standalone:start",
     "qa:standalone:stop": "node tests/qa/scripts/run-root-command.mjs standalone:stop",
     "qa:standalone:cleanup": "node tests/qa/scripts/run-root-command.mjs standalone:cleanup",

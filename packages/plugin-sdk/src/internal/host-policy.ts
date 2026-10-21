@@ -1424,7 +1424,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: new Set(["experimental_supportsNetworkIsolation"]),
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1467,7 +1467,17 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
   }
+  if (
+    capabilities.experimental_supportsNetworkIsolation !== undefined &&
+    typeof capabilities.experimental_supportsNetworkIsolation !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsNetworkIsolation must be a boolean`,
+    );
+  }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
+    experimental_supportsNetworkIsolation:
+      capabilities.experimental_supportsNetworkIsolation ?? false,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,

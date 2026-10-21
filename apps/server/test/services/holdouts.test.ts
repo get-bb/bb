@@ -57,7 +57,9 @@ describe("per-install holdouts", () => {
       force: options.force ?? null,
       pendingMove: options.pendingMove ?? false,
       logger,
-      ...(options.registry === undefined ? {} : { registry: options.registry }),
+      registry:
+        options.registry ??
+        holdoutRegistry.filter((entry) => entry.key === key),
     });
   async function telemetry(holdouts: ReturnType<typeof start>, enabled = true) {
     return createTelemetryService({

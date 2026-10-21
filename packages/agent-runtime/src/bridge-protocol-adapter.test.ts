@@ -1,7 +1,21 @@
-import type { ThreadEvent } from "@bb/domain";
+import {
+  runtimeThreadExecutionOptionsSchema,
+  type ThreadEvent,
+} from "@bb/domain";
+import {
+  threadStartParamsSchema,
+  threadResumeParamsSchema,
+  threadForkParamsSchema,
+  turnStartParamsSchema,
+  turnSteerParamsSchema,
+} from "@bb/provider-bridge-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
-import type { ProviderExecutionContext } from "./provider-adapter.js";
+import { toProviderExecutionContext } from "./execution-options.js";
+import type {
+  AdapterCommand,
+  ProviderExecutionContext,
+} from "./provider-adapter.js";
 
 function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
   return createBridgeProtocolAdapter({
@@ -262,6 +276,76 @@ describe("thread/stop intent", () => {
 });
 
 describe("options mapping", () => {
+  it("preserves disabled network access through runtime parsing and every provider wire command", () => {
+    const adapter = makeAdapter();
+    completeHandshake(adapter, { fork: "checkpoint" });
+    const options = toProviderExecutionContext({
+      execOpts: runtimeThreadExecutionOptionsSchema.parse({
+        model: "fixture-model",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+        permissionEscalation: "deny",
+        networkAccess: false,
+        providerOptions: {},
+      }),
+      envVars: {},
+      instructions: undefined,
+    });
+    const session = {
+      threadId: "thr_network",
+      cwd: "/workspace",
+      options,
+      instructionMode: "replace" as const,
+    };
+    const turn = {
+      threadId: "thr_network",
+      providerThreadId: "provider_network",
+      options,
+      input: [{ type: "text" as const, text: "Run local tests", mentions: [] }],
+      clientRequestId: "creq_abcdefghjk",
+    };
+    const commands: AdapterCommand[] = [
+      { type: "thread/start", ...session },
+      {
+        type: "thread/resume",
+        ...session,
+        providerThreadId: "provider_network",
+      },
+      {
+        type: "thread/fork",
+        ...session,
+        sourceProviderThreadId: "provider_original",
+      },
+      { type: "turn/start", ...turn },
+      { type: "turn/steer", ...turn, expectedTurnId: "turn_network" },
+    ];
+    for (const command of commands) {
+      const plan = adapter.buildCommandPlan(command);
+      expect(plan.kind).toBe("request");
+      if (plan.kind !== "request") throw new Error("Missing provider request");
+      const wire = JSON.parse(JSON.stringify(plan.params));
+      const parsed =
+        plan.method === "thread/start"
+          ? threadStartParamsSchema.parse(wire)
+          : plan.method === "thread/resume"
+            ? threadResumeParamsSchema.parse(wire)
+            : plan.method === "thread/fork"
+              ? threadForkParamsSchema.parse(wire)
+              : plan.method === "turn/start"
+                ? turnStartParamsSchema.parse(wire)
+                : turnSteerParamsSchema.parse(wire);
+      expect(parsed.options).toMatchObject({
+        networkAccess: false,
+        permissionMode: "accept-edits",
+        permissionEscalation: "deny",
+      });
+      expect(parsed.options.providerOptions?.networkAccess).toBeUndefined();
+    }
+  });
+
   it("keeps core fields top-level and merges the plugin-derived bag over the static options", () => {
     const adapter = makeAdapter({ acpLaunchSpec: { command: "echo" } });
     const plan = adapter.buildCommandPlan({

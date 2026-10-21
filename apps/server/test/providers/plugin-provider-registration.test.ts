@@ -53,6 +53,7 @@ describe("buildPluginProviderRegistration", () => {
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
       maintenance: { health: true, usage: false, installation: true },
       capabilities: {
+        experimental_supportsNetworkIsolation: false,
         supportsThreadArchive: true,
         supportsThreadRename: true,
         supportsServiceTier: true,

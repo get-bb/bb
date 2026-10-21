@@ -30,6 +30,8 @@ const THREAD_ID = "thr_target";
 const SECTION_ID = "sec_reviews";
 
 const rpcMethods = [
+  "automation_publish",
+  "automation_result",
   "automations_overview",
   "automations_list",
   "automations_get",

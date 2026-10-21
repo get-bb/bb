@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-export const holdoutKeySchema = z.enum(["app_aa_check"]);
+export const holdoutKeySchema = z.enum([
+  "app_aa_check",
+  "app_setup_recurring_job",
+]);
 export const holdoutArmSchema = z
   .string()
   .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/);
@@ -56,6 +59,14 @@ export const holdoutRegistry = holdoutRegistrySchema
       arms: ["control", "test"],
       weights: [50, 50],
       surface: "setup_finished",
+      status: "enrolling",
+      winner: null,
+    },
+    {
+      key: "app_setup_recurring_job",
+      arms: ["a", "b"],
+      weights: [50, 50],
+      surface: "setup_recurring_job",
       status: "enrolling",
       winner: null,
     },

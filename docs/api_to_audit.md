@@ -3255,3 +3255,23 @@ current result as `RenderedSlotInspectionState.experimental_pageTitle`;
 audit test-host lifecycle parity before stabilization.
 Before stabilization, audit focus changes, same-plugin splits, loading,
 back/forward navigation, crash/reload recovery, links and overflow.
+
+## Setup recurring job
+
+`bb.sdk.system.experimental_setupJob`, `experimental_setupJobShown`, and `experimental_decideSetupJob` share the setup screen's server routes. Reads return the eligible offered arm and persisted opt-in state without recording exposure; shown records the anonymous suggestion impression once; decisions require the offer's random ID and create a schedule only for explicit acceptance. `bb setup-job show|accept|dismiss` uses the same routes. The setup screen separately calls the existing holdout exposure API when the row renders.
+
+Stabilization requires verified replay, concurrent acceptance and retry behavior, missing-agent/plugin recovery, telemetry opt-out, and the setup screen and CLI using this same path. Restricted job sessions add the optional `networkAccess` field to the host-daemon and provider bridge execution contract; the daemon protocol is incremented.
+
+## Provider network isolation
+
+`PluginProviderCapabilities.experimental_supportsNetworkIsolation` advertises
+native enforcement of `networkAccess: false`: local edits and tests remain
+available, network and escalation are denied, and external tools cannot bypass
+the sandbox. Absence defaults to false at provider registration. Setup offer
+eligibility and every restricted thread dispatch consume this capability;
+Claude Code and Codex advertise it and enforce the same runtime session field.
+
+Before stabilization, verify both native runtimes in isolated CI, policy
+persistence across start/resume/fork/turns, and rejection of unsupported
+providers before session startup. The Plugin Guide's Agent providers card
+owns this contract's documentation.

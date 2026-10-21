@@ -260,6 +260,7 @@ describe("first-party provider plugins", () => {
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {
+            experimental_supportsNetworkIsolation: true,
             supportsThreadArchive: true,
             supportsThreadRename: true,
             supportsServiceTier: true,
@@ -281,6 +282,7 @@ describe("first-party provider plugins", () => {
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {
+            experimental_supportsNetworkIsolation: true,
             supportsThreadArchive: false,
             supportsThreadRename: false,
             supportsServiceTier: true,
@@ -299,6 +301,7 @@ describe("first-party provider plugins", () => {
           available: true,
           maintenance: { health: true, usage: false, installation: true },
           capabilities: {
+            experimental_supportsNetworkIsolation: false,
             supportsThreadArchive: false,
             supportsThreadRename: false,
             supportsServiceTier: false,
@@ -317,6 +320,7 @@ describe("first-party provider plugins", () => {
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {
+            experimental_supportsNetworkIsolation: false,
             supportsThreadArchive: false,
             supportsThreadRename: false,
             supportsServiceTier: true,

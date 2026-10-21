@@ -1,3 +1,5 @@
+import type { AutomationResults } from "./results.js";
+import { publicationSnapshotSchema } from "./publication-contract.js";
 import { isAbsolute, resolve } from "node:path";
 import {
   PluginCliError,
@@ -109,6 +111,12 @@ const SCHEDULE_OPTIONS = {
 } as const;
 
 const AGENT_OPTIONS = {
+  network: {
+    type: "enum",
+    values: ["on", "off"],
+    description:
+      "Allow network access, or use a separate local-only Claude Code or Codex session",
+  },
   prompt: {
     type: "string",
     placeholder: "text",
@@ -222,6 +230,7 @@ interface ScheduleOptionValues {
 }
 
 interface AgentOptionValues {
+  network?: "on" | "off";
   prompt: string | undefined;
   provider: string | undefined;
   model: string | undefined;
@@ -290,8 +299,8 @@ function requireProjectId(
   });
 }
 
-function requireOptionValue(name: string, value: string): string {
-  if (value === "") {
+function requireOptionValue(name: string, value: string | undefined): string {
+  if (value === undefined || value === "") {
     throw cliError(
       `Missing required option --${name} <value>.`,
       "missing_required",
@@ -651,6 +660,9 @@ async function buildExecution(
     return {
       execution: {
         mode: "agent",
+        ...(options.network === undefined
+          ? {}
+          : { networkAccess: options.network === "on" }),
         prompt,
         providerId: provider,
         model,
@@ -670,6 +682,7 @@ async function buildExecution(
     };
   }
   if (
+    options.network !== undefined ||
     options.provider !== undefined ||
     options.model !== undefined ||
     options.reasoning !== undefined ||
@@ -732,6 +745,7 @@ async function buildAgentExecutionUpdate(
   options: AgentOptionValues,
 ): Promise<AgentExecutionUpdate | undefined> {
   const agentOptionNames = [
+    options.network,
     options.prompt,
     options.provider,
     options.model,
@@ -748,6 +762,8 @@ async function buildAgentExecutionUpdate(
 
   validateAgentTargetOptions(options);
   const update: AgentExecutionUpdate = {};
+  if (options.network !== undefined)
+    update.networkAccess = options.network === "on";
   if (options.prompt !== undefined) {
     update.prompt = requireOptionValue("prompt", options.prompt);
   }
@@ -1055,6 +1071,7 @@ function printRunTable(runs: AutomationRunResponse[]): string {
 export function registerAutomationCli(args: {
   bb: Pick<BbPluginApi, "cli" | "sdk">;
   service: AutomationService;
+  results?: AutomationResults;
 }): void {
   const { bb, service } = args;
   bb.cli.register(
@@ -1067,6 +1084,74 @@ export function registerAutomationCli(args: {
         run: (input) => ({ exitCode: 0, stdout: input.help }),
       }),
       commands: {
+        result: cliCommand({
+          summary: "Review a completed local job result",
+          positionals: [
+            { name: "threadId", required: true, description: "Result thread" },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              if (!args.results)
+                throw new Error("Result review is unavailable");
+              return {
+                exitCode: 0,
+                stdout: jsonOutput(
+                  await args.results.read({
+                    threadId: input.positionals.threadId,
+                  }),
+                ),
+              };
+            }),
+        }),
+        publish: cliCommand({
+          summary:
+            "Explicitly publish a reviewed local result as a draft pull request",
+          positionals: [
+            { name: "threadId", required: true, description: "Result thread" },
+          ],
+          options: {
+            snapshot: {
+              type: "string",
+              description: "Exact snapshot JSON from automation result",
+            },
+            title: { type: "string", description: "Pull request title" },
+            body: { type: "string", description: "Pull request description" },
+            yes: {
+              type: "boolean",
+              description:
+                "Approve pushing this exact snapshot and opening a draft pull request",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attempt(async () => {
+              if (!args.results)
+                throw new Error("Result publication is unavailable");
+              if (!input.options.yes)
+                throw cliError(
+                  "Publication requires --yes after reviewing the result snapshot.",
+                  "missing_required",
+                );
+              const snapshot = publicationSnapshotSchema.parse(
+                JSON.parse(
+                  requireOptionValue("snapshot", input.options.snapshot),
+                ),
+              );
+              const result = await args.results.publish({
+                threadId: input.positionals.threadId,
+                snapshot,
+                title: requireOptionValue("title", input.options.title),
+                body: requireOptionValue("body", input.options.body),
+              });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(result)
+                  : `${result.url}\n`,
+              };
+            }),
+        }),
         list: cliCommand({
           summary: "List automations for a project",
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
@@ -1097,6 +1182,12 @@ export function registerAutomationCli(args: {
               required: true,
               description: "Display name, at most 200 characters",
             },
+            "idempotency-key": {
+              type: "string",
+              placeholder: "key",
+              description:
+                "Return the same project automation when creation is retried",
+            },
             disabled: {
               type: "boolean",
               description: "Create the automation paused",
@@ -1125,6 +1216,9 @@ export function registerAutomationCli(args: {
                 enabled: !input.options.disabled,
                 trigger: buildTrigger(input.options),
                 execution,
+                ...(input.options["idempotency-key"]
+                  ? { idempotencyKey: input.options["idempotency-key"] }
+                  : {}),
                 origin: ctx.threadId ? "agent" : "human",
                 ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
               };

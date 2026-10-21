@@ -55,7 +55,9 @@ export function getGateMachineId(context: GateAuthHeaderReader): string | null {
   return value ? value : null;
 }
 
-export function resolveRequestAppSurface(context: Context): RequestAppSurface {
+export function resolveRequestAppSurface(context: {
+  req: { header(name: string): string | undefined };
+}): RequestAppSurface {
   return (
     parseRequestAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ??
     APP_SURFACE_API

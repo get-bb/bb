@@ -1,3 +1,7 @@
+import {
+  automationResultRpcContract,
+  createAutomationResults,
+} from "./results.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { migrations } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
@@ -31,7 +35,12 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
-  registerAutomationCli({ bb, service });
+  const results = createAutomationResults(bb, db);
+  bb.rpc.register(automationResultRpcContract, {
+    automation_result: results.read,
+    automation_publish: results.publish,
+  });
+  registerAutomationCli({ bb, service, results });
 
   bb.events.on("thread.idle", ({ thread }) => {
     closeAutomationRunForSettledThread(bb, db, {

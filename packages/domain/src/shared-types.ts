@@ -576,6 +576,7 @@ export type SessionOptionSelections = z.infer<
 >;
 
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
+  networkAccess: z.boolean().optional(),
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,

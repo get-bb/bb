@@ -16,6 +16,7 @@ import {
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
+  jsonValueSchema,
   modelListParamsSchema,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
@@ -593,6 +594,7 @@ function constructionSignature(
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
+    networkAccess: sessionOptions.networkAccess ?? true,
     poolRoute:
       poolBaseUrl === undefined || poolToken === undefined
         ? null
@@ -822,6 +824,16 @@ function handleChildRequest(
   }
 
   if (method === BRIDGE_INBOUND_REQUEST_METHODS.toolCall) {
+    if (
+      session.turnPermissionSettings.sandboxPolicy.type === "workspaceWrite" &&
+      !session.turnPermissionSettings.sandboxPolicy.networkAccess
+    ) {
+      responder.error(
+        BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+        "External tools are disabled for this session.",
+      );
+      return;
+    }
     const parsed = codexChildToolCallParamsSchema.safeParse(params);
     if (!parsed.success) {
       responder.error(
@@ -1299,7 +1311,33 @@ async function constructThreadSession(
         options: decoded.sessionOptions,
       },
     });
-    const dynamicTools = toCodexDynamicTools(args.dynamicTools);
+    const dynamicTools =
+      decoded.sessionOptions.networkAccess === false
+        ? undefined
+        : toCodexDynamicTools(args.dynamicTools);
+    const networkDisabledConfig =
+      decoded.sessionOptions.networkAccess === false
+        ? await connection
+            .request({
+              method: "config/read",
+              params: { cwd: args.cwd, includeLayers: false },
+              resultSchema: z.object({
+                config: z.object({
+                  mcp_servers: z
+                    .record(z.string(), z.record(z.string(), jsonValueSchema))
+                    .default({}),
+                }),
+              }),
+              timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+            })
+            .then((result) => ({
+              mcp_servers: Object.fromEntries(
+                Object.entries(result.config.mcp_servers).map(
+                  ([name, config]) => [name, { ...config, enabled: false }],
+                ),
+              ),
+            }))
+        : undefined;
     const instructionOverrides = resolveCodexInstructionOverrides({
       instructionMode: args.instructionMode,
       options: decoded.sessionOptions,
@@ -1312,8 +1350,14 @@ async function constructThreadSession(
       ...instructionOverrides,
       model: decoded.sessionOptions.model ?? undefined,
       serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
-      config: preparedGitRoots.config ?? undefined,
-      ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
+      config: networkDisabledConfig
+        ? { ...preparedGitRoots.config, ...networkDisabledConfig }
+        : (preparedGitRoots.config ?? undefined),
+      ...(decoded.sessionOptions.networkAccess === false
+        ? { dynamicTools: [] }
+        : dynamicTools && dynamicTools.length > 0
+          ? { dynamicTools }
+          : {}),
     };
 
     let method: string;

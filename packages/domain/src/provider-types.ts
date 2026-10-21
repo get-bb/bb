@@ -44,6 +44,7 @@ export type ProviderModelCatalogScope = z.infer<
 >;
 
 const providerCapabilitiesSchema = z.object({
+  experimental_supportsNetworkIsolation: z.boolean().optional(),
   supportsThreadArchive: z.boolean(),
   supportsThreadRename: z.boolean(),
   supportsServiceTier: z.boolean(),

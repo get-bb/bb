@@ -371,6 +371,9 @@ type ExpectedProvidersKey = "catalog" | "list" | "models" | "setEnabled";
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
+  | "experimental_setupJob"
+  | "experimental_setupJobShown"
+  | "experimental_decideSetupJob"
   | "holdouts"
   | "exposeHoldout"
   | "acknowledgeAppUpdate"

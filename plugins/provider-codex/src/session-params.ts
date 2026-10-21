@@ -25,6 +25,7 @@ export type CodexSessionOptions = {
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
   memoryEnabled?: boolean;
+  networkAccess?: boolean;
   providerSubagentsEnabled?: boolean;
   instructions?: string;
   envVars?: Record<string, string>;
@@ -156,11 +157,12 @@ export function resolveCodexInstructionOverrides(
 
 function toWorkspaceWriteCodexSandboxPolicy(
   writableRoots: readonly string[],
+  networkAccess: boolean,
 ): SandboxPolicy {
   return {
     type: "workspaceWrite",
     writableRoots: [...writableRoots],
-    networkAccess: true,
+    networkAccess,
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
   };
@@ -509,11 +511,20 @@ function toCodexApprovalsReviewer(
 export function toCodexThreadPermissionSettings(
   options: CodexSessionOptions,
 ): CodexThreadPermissionSettings {
+  if (
+    options.networkAccess === false &&
+    options.permissionScope !== "workspace"
+  ) {
+    throw new Error("Network-disabled sessions require workspace permissions.");
+  }
   const permissionPolicy = options;
   switch (permissionPolicy.permissionScope) {
     case "workspace":
       return {
-        approvalPolicy: toWorkspaceApprovalPolicy(permissionPolicy),
+        approvalPolicy:
+          options.networkAccess === false
+            ? "never"
+            : toWorkspaceApprovalPolicy(permissionPolicy),
         approvalsReviewer: toCodexApprovalsReviewer(options),
         sandbox: "workspace-write",
       };
@@ -538,6 +549,7 @@ export function toCodexPermissionSettings(
               args.gitWritableRoots,
               args.additionalWorkspaceWriteRoots,
             ),
+            args.options.networkAccess ?? true,
           )
         : { type: "dangerFullAccess" },
   };
@@ -613,9 +625,42 @@ export function buildCodexConfig(
       args.options.reasoningLevel,
     );
   }
-  if (args.options?.providerSubagentsEnabled === false) {
+  if (
+    args.options?.providerSubagentsEnabled === false &&
+    args.options.networkAccess !== false
+  ) {
     config["features.multi_agent"] = false;
     config["features.multi_agent_v2.max_concurrent_threads_per_session"] = 1;
+  }
+  if (args.options?.networkAccess === false) {
+    config["sandbox_workspace_write.network_access"] = false;
+    config["web_search"] = "disabled";
+    for (const feature of [
+      "apps",
+      "plugins",
+      "hooks",
+      "codex_hooks",
+      "plugin_hooks",
+      "browser_use",
+      "browser_use_external",
+      "computer_use",
+      "image_generation",
+      "imagegenext",
+      "multi_agent",
+      "multi_agent_v2",
+      "remote_control",
+      "js_repl",
+      "code_mode_host",
+      "code_mode",
+      "shell_snapshot",
+      "shell_snapshot_v2",
+      "request_permissions",
+      "request_permissions_tool",
+    ]) {
+      config[`features.${feature}`] = false;
+    }
+    config["agents.enabled"] = false;
+    config["notify"] = [];
   }
   config["memories.use_memories"] = args.options?.memoryEnabled ?? true;
   config["memories.generate_memories"] = args.options?.memoryEnabled ?? true;

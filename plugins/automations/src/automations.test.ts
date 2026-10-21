@@ -1011,6 +1011,56 @@ describe("automation data access", () => {
 });
 
 describe("automation service", () => {
+  it("creates one schedule across concurrent retries and a service restart", async () => {
+    const db = createTestDb();
+    const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-idempotency-"));
+    const args = {
+      bb: createAutomationServiceBb(),
+      db,
+      pluginDataDir,
+      serverUrl: "http://server",
+    };
+    const service = createAutomationService(args);
+    const input = {
+      projectId: "proj_test",
+      name: "Weeknight job",
+      enabled: true,
+      origin: "app" as const,
+      idempotencyKey: "same-choice",
+      trigger: {
+        triggerType: "schedule" as const,
+        cron: "0 22 * * 1-5",
+        timezone: "UTC",
+      },
+      execution: {
+        mode: "agent" as const,
+        providerId: "codex",
+        model: "test-model",
+        reasoningLevel: "medium",
+        permissionMode: "accept-edits" as const,
+        environment: { type: "project-default" as const },
+        prompt: "Work locally",
+      },
+    };
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () => service.create(input)),
+      );
+      expect(new Set(results.map((result) => result.id)).size).toBe(1);
+      const restarted = createAutomationService(args);
+      expect(
+        (await restarted.create({ ...input, name: "Not a rename" })).name,
+      ).toBe("Weeknight job");
+      expect(service.list({ projectId: input.projectId })).toHaveLength(1);
+      expect(
+        (await restarted.create({ ...input, projectId: "proj_other" })).id,
+      ).not.toBe(results[0]?.id);
+    } finally {
+      db.close();
+      await rm(pluginDataDir, { recursive: true, force: true });
+    }
+  });
+
   it("chooses runnable defaults for new scripts and preserves the automation-storage directory on replacement", async () => {
     const db = createTestDb();
     const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-service-"));

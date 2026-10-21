@@ -1,3 +1,4 @@
+import { createSetupJobService } from "../services/system/setup-job.js";
 import { holdoutKeySchema } from "@bb/domain";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
@@ -8,7 +9,10 @@ import {
   machineEnvironmentView,
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
-import { getGateAuthKind } from "../request-context.js";
+import {
+  getGateAuthKind,
+  resolveRequestAppSurface,
+} from "../request-context.js";
 import { serverAccessStatus } from "../services/machines/server-access.js";
 import {
   getAppSettings,
@@ -346,6 +350,20 @@ export function registerSystemRoutes(
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());
   });
+
+  const setupJob = createSetupJobService(deps, pluginService);
+  get(routes.setupJob, async (context, query) => {
+    context.header("cache-control", "no-store");
+    return context.json(await setupJob.read(query.timezone));
+  });
+  post(routes.setupJobShown, async (context, input) => {
+    if (resolveRequestAppSurface(context) === "mobile")
+      return context.json({ ok: true as const });
+    return context.json(await setupJob.shown(input.suggestionAnalyticsId));
+  });
+  post(routes.setupJobDecision, async (context, input) =>
+    context.json(await setupJob.decide(input)),
+  );
 
   get(routes.holdouts, (context) =>
     context.json(

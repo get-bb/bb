@@ -449,6 +449,32 @@ function permissionSettings(
 }
 
 describe("codex permission settings", () => {
+  it("disables network and escalation while retaining local workspace writes", () => {
+    expect(
+      permissionSettings({ ...AUTO_ASK_OPTIONS, networkAccess: false }),
+    ).toMatchObject({
+      approvalPolicy: "never",
+      sandbox: "workspace-write",
+      sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+    });
+    expect(() =>
+      permissionSettings({ ...FULL_OPTIONS, networkAccess: false }),
+    ).toThrow("Network-disabled sessions require workspace permissions");
+    expect(
+      configFor({ ...WORKSPACE_DENY_OPTIONS, networkAccess: false }),
+    ).toMatchObject({
+      "sandbox_workspace_write.network_access": false,
+      web_search: "disabled",
+      "features.apps": false,
+      "features.plugins": false,
+      "features.hooks": false,
+      "features.multi_agent": false,
+      "features.multi_agent_v2": false,
+      "features.js_repl": false,
+      notify: [],
+    });
+  });
+
   it("defaults full permission scope to unreviewed danger-full-access", () => {
     expect(permissionSettings(FULL_OPTIONS)).toEqual({
       approvalPolicy: "never",

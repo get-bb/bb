@@ -507,6 +507,13 @@ async function applyPermissionSettings(
       ? params.additionalWorkspaceWriteRoots
       : [];
   const sandboxEnabled = params.sandboxEnabled ?? construction.sandboxEnabled;
+  const networkAccess =
+    construction.networkAccess === false ? false : params.networkAccess;
+  if (networkAccess === false && construction.networkAccess !== false) {
+    throw new Error(
+      "Start a separate network-disabled session instead of changing an active session.",
+    );
+  }
   if (
     attachment.approvedPlanPermissionMode === params.permissionMode &&
     construction.permissionScope === params.permissionScope &&
@@ -526,6 +533,7 @@ async function applyPermissionSettings(
     permissionScope: params.permissionScope,
     additionalWorkspaceWriteRoots: writeRoots,
     sandboxEnabled,
+    ...(networkAccess === false ? { networkAccess: false } : {}),
   };
   const rebuilt = buildSessionOptions(
     {
@@ -1023,6 +1031,7 @@ function toSessionConstructionConfig(
       permissionScope: params.permissionScope,
       plugins: params.plugins,
       sandboxEnabled: params.sandboxEnabled,
+      ...(params.networkAccess === false ? { networkAccess: false } : {}),
     },
   };
 }
@@ -2337,7 +2346,11 @@ function attachThreadSession(
     sessionOptions.sessionId = providerThreadId;
   }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
-  if (params.dynamicTools && params.dynamicTools.length > 0) {
+  if (
+    params.networkAccess !== false &&
+    params.dynamicTools &&
+    params.dynamicTools.length > 0
+  ) {
     const mcpServer = buildBridgeMcpServer(
       params.dynamicTools,
       createForwardToolCall(() => threadIdRef.current),

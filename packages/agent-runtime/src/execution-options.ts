@@ -44,6 +44,9 @@ export function toProviderExecutionContext(
 ): ProviderExecutionContext {
   const permissionPolicy: RuntimePermissionPolicy = args.execOpts;
   return {
+    ...(args.execOpts.networkAccess !== undefined
+      ? { networkAccess: args.execOpts.networkAccess }
+      : {}),
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,

@@ -27,7 +27,7 @@ Use `agent` when the run needs reasoning: summarize a feed, pick interesting ite
 Creating:
 
 ```bash
-bb automation create --project <id> --name "..." [schedule flags] [mode flags]
+bb automation create --project <id> --name "..." [--idempotency-key <key>] [schedule flags] [mode flags]
 ```
 
 For creation flags and mode-specific defaults, read
@@ -56,3 +56,23 @@ read [references/updates.md](references/updates.md). Every command supports `--j
 accepted values, and rules. Unknown commands, unknown options, and stray
 arguments are rejected rather than ignored, and a failure under `--json` also
 prints a `{"ok":false,"error":{"code","message","hint"}}` envelope on stdout.
+
+The `automations_create` RPC accepts an optional `idempotencyKey`. Within a project, retries with the same key return the existing automation without changing it, including after restart. Different projects have separate keys. Use a fresh key for a new job; omit it for the existing always-create behavior. Setup uses this path so repeating an opt-in request never creates a second schedule.
+
+## Local job results
+
+Weeknight jobs offered in setup run with network access disabled. They leave
+local commits and use the normal thread completion notification. Arm selection
+and opt-in are available through `bb setup-job show|accept|dismiss`.
+
+Read a completed result with `bb automation result <threadId> --json`. Review
+its repository, branch, commit and diff before publishing. The result thread's
+**Review result** control opens the same review and offers **Push and open draft
+PR**, **Keep local**, and **Stop this job**.
+
+Explicit CLI publication uses `bb automation publish <threadId> --snapshot
+'<snapshot JSON from result>' --title '<title>' --body '<description>' --yes`.
+This pushes only the reviewed commit and opens a draft PR outside the job's
+restricted session. A dirty worktree, changed snapshot or active job rejects
+publication. The SDK equivalents call this plugin's `automation_result` and
+`automation_publish` RPCs through `sdk.plugins.callRpc` with those same inputs.

@@ -74,6 +74,50 @@ const FULL_POLICY = {
 } satisfies RuntimePermissionPolicy;
 
 describe("buildClaudeSessionParams", () => {
+  it("drops external tools and provider features for network-disabled sessions and turns", () => {
+    const options = {
+      ...toCanonicalWireOptions(EXECUTION_CONTEXT),
+      networkAccess: false,
+    };
+    const params = buildClaudeSessionParams({
+      threadId: "thread-restricted",
+      cwd: "/workspace",
+      instructionMode: "append",
+      options,
+      dynamicTools: [
+        {
+          name: "publish",
+          description: "Publish",
+          inputSchema: { type: "object" },
+        },
+      ],
+      skillRoots: [{ id: "skill", localPluginPath: "/skills" }],
+    });
+    expect(params).toMatchObject({
+      networkAccess: false,
+      permissionEscalation: "deny",
+      workflowsEnabled: false,
+      chromeEnabled: false,
+      providerSubagentsEnabled: false,
+    });
+    expect(params).not.toHaveProperty("dynamicTools");
+    expect(params).not.toHaveProperty("plugins");
+    expect(
+      buildClaudeTurnParams({
+        threadId: "thread-restricted",
+        providerThreadId: null,
+        input: [{ type: "text", text: "Continue locally", mentions: [] }],
+        options,
+      }),
+    ).toMatchObject({
+      networkAccess: false,
+      permissionEscalation: "deny",
+      workflowsEnabled: false,
+      chromeEnabled: false,
+      providerSubagentsEnabled: false,
+    });
+  });
+
   it("maps every claude-flavored knob out of the providerOptions bag", () => {
     const params = buildClaudeSessionParams({
       threadId: "thread-1",

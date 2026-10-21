@@ -12,6 +12,10 @@ import {
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import {
+  mainBranchChecksSchema,
+  readMainBranchChecks,
+} from "./main-branch-checks";
 
 const SYNC_INTERVAL_MS = 15 * 60_000;
 const SYNC_RETRY_MAX_MS = 5 * 60_000;
@@ -149,6 +153,10 @@ export const githubRpcContract = defineRpcContract({
       .strict(),
   },
   refresh: { input: z.null(), output: syncResultSchema },
+  mainBranchChecks: {
+    input: z.object({ projectId: z.string().min(1) }).strict(),
+    output: mainBranchChecksSchema,
+  },
   listItems: {
     input: z
       .object({
@@ -1071,6 +1079,42 @@ export default async function plugin(bb: BbPluginApi) {
     return labels;
   }
 
+  async function mainBranchChecks(
+    projectId: string,
+  ): Promise<z.infer<typeof mainBranchChecksSchema>> {
+    try {
+      await checkAuth();
+    } catch (error) {
+      return {
+        status: "unavailable",
+        reason: isNeedsConfigurationError(error)
+          ? "signed_out"
+          : "github_unavailable",
+      };
+    }
+    let repo: string | null = null;
+    try {
+      const project = await bb.sdk.projects.get({ projectId });
+      repo = project.gitRemoteUrl
+        ? parseGithubRemote(project.gitRemoteUrl)
+        : null;
+    } catch {}
+    repo ??=
+      (await discoverRepos(true)).find((entry) => entry.projectId === projectId)
+        ?.repo ?? null;
+    if (repo === null) {
+      return { status: "unavailable", reason: "repository_unavailable" };
+    }
+    try {
+      return await readMainBranchChecks(
+        (args) => gh(args, 30_000, "background"),
+        repo,
+      );
+    } catch {
+      return { status: "unavailable", reason: "github_unavailable" };
+    }
+  }
+
   bb.rpc.register(githubRpcContract, {
     async status() {
       if (ghState !== "ready") {
@@ -1089,6 +1133,10 @@ export default async function plugin(bb: BbPluginApi) {
         repos,
         lastSyncedAt: cursor?.lastSyncedAt ?? null,
       };
+    },
+
+    async mainBranchChecks({ projectId }) {
+      return mainBranchChecks(projectId);
     },
 
     async refresh() {
@@ -1770,6 +1818,46 @@ export default async function plugin(bb: BbPluginApi) {
                   )
                   .join("\n"),
                 ...warning,
+              };
+            });
+          },
+        }),
+        checks: cliCommand({
+          summary: "Read the current default branch CI checks for a project",
+          description:
+            "Uses the existing GitHub CLI sign-in. Unavailable results mean local tests only; no cached CI result is substituted.",
+          positionals: [
+            {
+              name: "projectId",
+              required: true,
+              description: "BB project whose GitHub remote to inspect",
+            },
+          ],
+          options: {
+            json: {
+              type: "boolean",
+              description:
+                "Emit the branch, commit and checks or the reason CI is unavailable",
+            },
+          },
+          run(input) {
+            return guarded(async () => {
+              const result = await mainBranchChecks(
+                z.string().min(1).parse(input.positionals.projectId),
+              );
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ ok: true, ...result })
+                  : result.status === "unavailable"
+                    ? `CI unavailable (${result.reason}); run local tests only.`
+                    : [
+                        `${result.repo} ${result.branch} ${result.commit}`,
+                        ...result.checks.map(
+                          (check) =>
+                            `${check.status}\t${check.name}\t${check.url}`,
+                        ),
+                      ].join("\n"),
               };
             });
           },

@@ -415,3 +415,13 @@ backup before rolling back to a build predating the tolerant-reader fix #5286.
 `bb holdouts list [--json]` shows this install's persisted holdout assignments: key, variant, assigned and exposed dates, version at draw, and status. New installs can receive a random `control` or `test` arm; `app_aa_check` changes no behavior. Existing installs are not enrolled. Turning telemetry off stops reporting without changing the arm.
 
 For QA only, set `BB_HOLDOUT_FORCE=app_aa_check:control` or `app_aa_check:test` before server startup. This forces behavior in memory and suppresses the assignment, holdout event and property. A local exclusion persists after removing the variable; use a fresh data dir to test normal enrollment.
+
+## Setup's recurring job
+
+On setup's last step, eligible installs see one unticked weeknight job for an imported project and a ready agent. Nothing is scheduled unless you opt in. It runs at 10 pm Monday–Friday in the displayed time zone, using your own agent. Work stays local until you explicitly choose to publish it. Turn the schedule off in Automations or choose Stop this job in a result.
+
+- `bb setup-job show [--timezone <IANA zone>] [--json]` reads the offered arm, project, agent, schedule, and opt-in state. Reading does not record an impression or exposure. The time zone is used when the offer is first prepared; subsequent reads preserve it.
+- `bb setup-job accept --offer <suggestionAnalyticsId> [--json]` explicitly opts in to that offer. Retrying does not create another job.
+- `bb setup-job dismiss --offer <suggestionAnalyticsId> [--json]` continues without creating a job.
+
+An unavailable offer is `{ "offer": null }`. Accepted and dismissed decisions remain readable; replaying setup does not create another schedule. Acceptance requires the same imported checkout and ready agent while setup is still open.

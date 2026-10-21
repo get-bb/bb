@@ -6,7 +6,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.65"
+    "bbPluginSdk": ">=0.6.66"
   },
   "bb": {
     "name": "Automations",
@@ -18,7 +18,8 @@
     "app": "./app.tsx",
     "skills": [
       "skills"
-    ]
+    ],
+    "host": "./host.ts"
   },
   "keywords": [
     "bb-plugin"

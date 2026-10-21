@@ -175,6 +175,8 @@ export function buildPluginProviderRegistration(args: {
       ? { icon: { glyph: declaration.icon } }
       : {}),
     capabilities: {
+      experimental_supportsNetworkIsolation:
+        capabilities.experimental_supportsNetworkIsolation ?? false,
       supportsThreadArchive,
       supportsThreadRename,
       supportsServiceTier,

@@ -30,6 +30,7 @@ export interface BuildSessionOptionsArgs {
   disable1MContext: boolean;
   artifactsEnabled: boolean;
   sandboxEnabled: boolean;
+  networkAccess?: boolean;
   memoryEnabled?: boolean;
 }
 
@@ -39,6 +40,7 @@ type WorkspaceWriteSandboxArgs = Pick<
   | "permissionMode"
   | "permissionScope"
   | "sandboxEnabled"
+  | "networkAccess"
 >;
 
 export interface PermissionEscalationWorkContext {
@@ -89,6 +91,7 @@ function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
     enableWorkflows: params.workflowsEnabled,
     ultracode: params.reasoningLevel === "ultracode",
     fastMode: params.serviceTier === "fast",
+    ...(params.networkAccess === false ? { disableAllHooks: true } : {}),
   };
 }
 
@@ -148,17 +151,42 @@ function isWorkspaceWriteSession(params: WorkspaceWriteSandboxArgs): boolean {
 export function buildWorkspaceWriteSandbox(
   params: WorkspaceWriteSandboxArgs,
 ): Options["sandbox"] | undefined {
-  if (!params.sandboxEnabled || !isWorkspaceWriteSession(params)) {
+  if (params.networkAccess === false && !isWorkspaceWriteSession(params)) {
+    throw new Error(
+      "Network-disabled sessions require workspace edit permissions.",
+    );
+  }
+  if (
+    (params.networkAccess !== false && !params.sandboxEnabled) ||
+    !isWorkspaceWriteSession(params)
+  ) {
     return undefined;
   }
 
   const allowWrite = params.additionalWorkspaceWriteRoots ?? [];
   return {
     enabled: true,
-    failIfUnavailable: false,
+    failIfUnavailable: params.networkAccess === false,
     autoAllowBashIfSandboxed: true,
-    allowUnsandboxedCommands: true,
-    network: { allowLocalBinding: true },
+    allowUnsandboxedCommands: params.networkAccess !== false,
+    ...(params.networkAccess === false
+      ? {
+          excludedCommands: [],
+          enableWeakerNetworkIsolation: false,
+          enableWeakerNestedSandbox: false,
+        }
+      : {}),
+    network:
+      params.networkAccess === false
+        ? {
+            allowedDomains: [],
+            deniedDomains: ["*"],
+            strictAllowlist: true,
+            allowLocalBinding: false,
+            allowUnixSockets: [],
+            allowAllUnixSockets: false,
+          }
+        : { allowLocalBinding: true },
     ...(allowWrite.length > 0
       ? { filesystem: { allowWrite: [...allowWrite] } }
       : {}),
@@ -277,7 +305,9 @@ export function buildSessionOptions(
     params.reasoningLevel === undefined
       ? undefined
       : toSdkEffort(params.reasoningLevel);
-  const extraArgs = buildChromeExtraArgs(params.chromeEnabled);
+  const extraArgs = buildChromeExtraArgs(
+    params.networkAccess === false ? false : params.chromeEnabled,
+  );
 
   return {
     cwd: params.cwd,
@@ -294,7 +324,32 @@ export function buildSessionOptions(
     settings: flagSettings,
     ...(extraArgs ? { extraArgs } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
-    ...(params.plugins ? { plugins: params.plugins } : {}),
+    ...(params.networkAccess === false
+      ? {
+          settingSources: [],
+          strictMcpConfig: true,
+          tools: [
+            "Bash",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "NotebookEdit",
+            "TodoWrite",
+          ],
+          disallowedTools: [
+            "WebFetch",
+            "WebSearch",
+            "Agent",
+            "Task",
+            "Workflow",
+            "Skill",
+          ],
+        }
+      : params.plugins
+        ? { plugins: params.plugins }
+        : {}),
     ...(sandbox ? { sandbox } : {}),
     ...(additionalDirectories.length > 0
       ? { additionalDirectories: [...additionalDirectories] }

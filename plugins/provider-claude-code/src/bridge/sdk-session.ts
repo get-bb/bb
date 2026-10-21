@@ -33,6 +33,10 @@ export interface SdkSessionOptions {
   permissionMode?: ClaudePermissionMode;
   allowBypassPermissions: boolean;
   sandbox?: Options["sandbox"];
+  settingSources?: Options["settingSources"];
+  strictMcpConfig?: boolean;
+  tools?: Options["tools"];
+  disallowedTools?: string[];
   hooks?: Options["hooks"];
   mcpServers?: Record<string, McpSdkServerConfigWithInstance>;
   allowedTools?: string[];
@@ -261,7 +265,18 @@ export class SdkSession {
           }
         : {}),
       includePartialMessages: true,
-      settingSources: ["user", "project", "local"],
+      settingSources: this.options.settingSources ?? [
+        "user",
+        "project",
+        "local",
+      ],
+      ...(this.options.strictMcpConfig !== undefined
+        ? { strictMcpConfig: this.options.strictMcpConfig }
+        : {}),
+      ...(this.options.tools ? { tools: this.options.tools } : {}),
+      ...(this.options.disallowedTools
+        ? { disallowedTools: this.options.disallowedTools }
+        : {}),
       persistSession: true,
       env: this.options.env ?? process.env,
       stderr: onStderr,

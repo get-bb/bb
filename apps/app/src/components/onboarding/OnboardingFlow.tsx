@@ -1,3 +1,5 @@
+import { SetupJobCheckbox } from "./SetupJobCheckbox";
+import { useSetupJob } from "./useSetupJob";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
@@ -854,6 +856,7 @@ function DevicesStepContainer({
   onFinish: () => void;
   onLeave: () => void;
 }) {
+  const setupJob = useSetupJob();
   const configQuery = useSystemConfig();
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
@@ -875,7 +878,9 @@ function DevicesStepContainer({
       title="Use bb from anywhere"
       description="All optional. Everything here also lives in Settings → Machines."
       primaryLabel="Start using bb"
-      onPrimary={onFinish}
+      onPrimary={() => void setupJob.complete(onFinish)}
+      primaryBusy={setupJob.busy}
+      onSkipAll={() => void setupJob.complete(chrome.onSkipAll, false)}
       onBack={onBack}
     >
       <DevicesStep
@@ -888,6 +893,14 @@ function DevicesStepContainer({
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={() => setAddMachineOpen(true)}
       />
+      {setupJob.offer === null ? null : (
+        <SetupJobCheckbox
+          offer={setupJob.offer}
+          checked={setupJob.checked}
+          disabled={setupJob.busy}
+          onCheckedChange={setupJob.setChecked}
+        />
+      )}
       <AddMachineDialog
         open={addMachineOpen}
         onOpenChange={setAddMachineOpen}

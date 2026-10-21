@@ -357,3 +357,12 @@ This index lists every command path that the core CLI registers, including alias
 
 - `bb holdouts`
 - `bb holdouts list`
+
+## setup-job
+
+- `bb setup-job`
+- `bb setup-job show`
+- `bb setup-job accept`
+- `bb setup-job dismiss`
+
+See `bb guide customization` for eligibility, the time zone, and explicit opt-in.

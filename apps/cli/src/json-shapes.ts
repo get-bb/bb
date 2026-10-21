@@ -12,6 +12,12 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
     "the created thread: {id, status, title, projectId, environmentId, ...}",
   "thread wait": "{threadId, matched: true, target}",
   "thread search": "{active: {total, results}, archived: {total, results}}",
+  "setup-job show":
+    "{offer: {arm, suggestionAnalyticsId, title, projectId, projectName, providerName, timezone, status, automationId} | null}",
+  "setup-job accept":
+    "{offer: {arm, suggestionAnalyticsId, title, projectId, projectName, providerName, timezone, status, automationId} | null}",
+  "setup-job dismiss":
+    "{offer: {arm, suggestionAnalyticsId, title, projectId, projectName, providerName, timezone, status, automationId} | null}",
   "holdouts list":
     "{assignments: [{key, variant, assignedAt, exposedAt, appVersion, status}]}    (timestamps are epoch milliseconds; exposedAt can be null)",
   "prompt-history list":

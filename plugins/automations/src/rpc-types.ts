@@ -157,6 +157,18 @@ export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 const automationAgentExecutionSchema = z
   .object({
     mode: z.literal("agent"),
+    networkAccess: z.boolean().optional(),
+    preparation: z
+      .discriminatedUnion("kind", [
+        z
+          .object({
+            kind: z.literal("unfinished-thread"),
+            timezone: z.string().min(1),
+          })
+          .strict(),
+        z.object({ kind: z.literal("main-branch-checks") }).strict(),
+      ])
+      .optional(),
     prompt: z.string().min(1),
     providerId: z.string().min(1),
     model: z.string().min(1),
@@ -292,6 +304,7 @@ const agentExecutionTargetSchema = z.discriminatedUnion("type", [
 
 const agentExecutionUpdateSchema = z
   .object({
+    networkAccess: z.boolean().optional(),
     prompt: z.string().min(1).optional(),
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
@@ -303,6 +316,7 @@ const agentExecutionUpdateSchema = z
   .strict()
   .refine(
     (value) =>
+      value.networkAccess !== undefined ||
       value.prompt !== undefined ||
       value.providerId !== undefined ||
       value.model !== undefined ||
@@ -416,6 +430,11 @@ export const listAutomationsInputSchema = z
 
 export const createAutomationInputSchema = z
   .object({
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(AUTOMATION_IDEMPOTENCY_KEY_MAX_LENGTH)
+      .optional(),
     projectId: z.string().min(1),
     name: z.string().min(1).max(AUTOMATION_NAME_MAX_LENGTH),
     enabled: z.boolean().default(true),

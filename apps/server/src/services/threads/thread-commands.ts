@@ -1,3 +1,4 @@
+import { threadNetworkAccess } from "./thread-network-policy.js";
 import { environments, hasStoredSpawnAgentToolCall, threads } from "@bb/db";
 import { and, eq, isNull } from "drizzle-orm";
 import {
@@ -215,7 +216,9 @@ function toRuntimeExecutionOptions(
     args.deps.db,
     args.threadId,
   );
+  const networkAccess = threadNetworkAccess(args.deps.db, args.threadId);
   const base = {
+    ...(networkAccess ? {} : { networkAccess: false }),
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
@@ -223,6 +226,24 @@ function toRuntimeExecutionOptions(
     ...(Object.keys(sessionOptions).length > 0 ? { sessionOptions } : {}),
     providerOptions,
   };
+  if (!networkAccess) {
+    if (
+      args.deps.providerRegistry.get(args.providerId)?.info.capabilities
+        .experimental_supportsNetworkIsolation !== true
+    )
+      throw new ApiError(
+        409,
+        "network_policy_unsupported",
+        "This agent cannot run with network access disabled.",
+      );
+    return {
+      ...base,
+      permissionMode: "accept-edits",
+      permissionScope: "workspace",
+      approvalReviewer: "user",
+      permissionEscalation: "deny",
+    };
+  }
   if (permissionMode === "full") {
     return {
       ...base,

@@ -16,6 +16,32 @@ const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
 export type TelemetryEvent =
   | {
+      name: "suggestion_shown";
+      properties: {
+        surface: "next_step";
+        kind: "automation";
+        trigger: "first_run";
+        suggestion_analytics_id: string;
+      };
+    }
+  | {
+      name: "suggestion_accepted";
+      properties: {
+        surface: "next_step";
+        kind: "automation";
+        suggestion_analytics_id: string;
+      };
+    }
+  | {
+      name: "suggestion_dismissed";
+      properties: {
+        surface: "next_step";
+        kind: "automation";
+        suggestion_analytics_id: string;
+        dismiss: "not_now";
+      };
+    }
+  | {
       name: "experiment_exposed";
       properties: {
         experiment_id: HoldoutDefinition["key"];

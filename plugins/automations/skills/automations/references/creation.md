@@ -39,3 +39,9 @@ Script mode flags:
 --env-json <json>              Script variables as a string-to-string JSON object
 --working-directory <value>    automation-storage, project, or an absolute server-host path
 ```
+
+Use `--network off` for a new local-only Claude Code or Codex session. The
+provider sandbox denies network access, escalation, and external tools while
+allowing local file edits and tests. This cannot be combined with an existing
+target thread. `--network on` retains normal provider behavior. A job created
+from setup always starts with network access off.

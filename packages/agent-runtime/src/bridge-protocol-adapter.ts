@@ -112,6 +112,7 @@ function toBridgeWireOptions(
   staticProviderOptions?: Record<string, unknown>,
 ): Record<string, unknown> {
   const {
+    networkAccess,
     model,
     serviceTier,
     reasoningLevel,
@@ -129,6 +130,7 @@ function toBridgeWireOptions(
     ...options.providerOptions,
   };
   return {
+    ...(networkAccess !== undefined ? { networkAccess } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(serviceTier !== undefined ? { serviceTier } : {}),
     ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),

@@ -67,6 +67,7 @@ function buildClaudeCodeConfig(
 }
 
 export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
+  networkAccess?: boolean | undefined;
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   serviceTier?: ServiceTier | undefined;
@@ -86,7 +87,9 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
 function resolveClaudeSessionPermissionMode(
   options: ClaudeSessionExecutionOptions,
 ): ClaudePermissionMode {
-  return options.claudeCodePermissionMode ?? toClaudePermissionMode(options);
+  return options.networkAccess === false
+    ? toClaudePermissionMode(options)
+    : (options.claudeCodePermissionMode ?? toClaudePermissionMode(options));
 }
 
 interface BuildInternalSessionParamsArgs {
@@ -103,7 +106,9 @@ function buildInternalSessionParams(
 ): Record<string, unknown> {
   const baseInstructions = args.options.instructions ?? "";
   const config = buildClaudeCodeConfig(args.options.envVars);
-  const dynamicTools = args.dynamicTools?.map((t) => ({
+  const dynamicTools = (
+    args.options.networkAccess === false ? undefined : args.dynamicTools
+  )?.map((t) => ({
     name: t.name,
     description: t.description,
     inputSchema: jsonValueSchema.parse(t.inputSchema),
@@ -115,7 +120,10 @@ function buildInternalSessionParams(
           args.additionalWorkspaceWriteRoots,
         )
       : undefined;
-  const skillConfig = buildClaudeSkillConfigParams(args.options.skillRoots);
+  const skillConfig =
+    args.options.networkAccess === false
+      ? undefined
+      : buildClaudeSkillConfigParams(args.options.skillRoots);
   return {
     baseInstructions,
     threadId: args.threadId,
@@ -124,7 +132,11 @@ function buildInternalSessionParams(
     permissionMode: resolveClaudeSessionPermissionMode(args.options),
     approvedPlanPermissionMode: toClaudePermissionMode(permissionPolicy),
     permissionScope: permissionPolicy.permissionScope,
-    permissionEscalation: permissionPolicy.permissionEscalation,
+    permissionEscalation:
+      args.options.networkAccess === false
+        ? "deny"
+        : permissionPolicy.permissionEscalation,
+    ...(args.options.networkAccess === false ? { networkAccess: false } : {}),
     ...(additionalWorkspaceWriteRootsParams
       ? additionalWorkspaceWriteRootsParams
       : {}),
@@ -135,13 +147,20 @@ function buildInternalSessionParams(
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
     serviceTier: args.options.serviceTier ?? "default",
-    workflowsEnabled: args.options.workflowsEnabled,
-    chromeEnabled: args.options.chromeEnabled,
+    workflowsEnabled:
+      args.options.networkAccess === false
+        ? false
+        : args.options.workflowsEnabled,
+    chromeEnabled:
+      args.options.networkAccess === false ? false : args.options.chromeEnabled,
     disable1MContext: args.options.disable1MContext,
     artifactsEnabled: args.options.artifactsEnabled,
     sandboxEnabled: args.options.sandboxEnabled,
     memoryEnabled: args.options.memoryEnabled,
-    providerSubagentsEnabled: args.options.providerSubagentsEnabled,
+    providerSubagentsEnabled:
+      args.options.networkAccess === false
+        ? false
+        : args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
   };
 }
@@ -161,6 +180,7 @@ const claudeProviderOptionsSchema = z
   .passthrough();
 
 type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
+  networkAccess?: boolean | undefined;
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   serviceTier?: ServiceTier | undefined;
@@ -202,7 +222,10 @@ export function buildClaudeSessionParams(
       artifactsEnabled: providerOptions.artifactsEnabled ?? false,
       sandboxEnabled: providerOptions.sandboxEnabled ?? true,
       memoryEnabled: providerOptions.memoryEnabled,
-      providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
+      providerSubagentsEnabled:
+        args.options.networkAccess === false
+          ? false
+          : providerOptions.providerSubagentsEnabled,
     },
   });
 }
@@ -252,19 +275,34 @@ export function buildClaudeTurnParams(
     ...(args.options.serviceTier !== undefined
       ? { serviceTier: args.options.serviceTier }
       : {}),
-    workflowsEnabled: providerOptions.workflowsEnabled,
-    chromeEnabled: providerOptions.chromeEnabled,
+    workflowsEnabled:
+      args.options.networkAccess === false
+        ? false
+        : providerOptions.workflowsEnabled,
+    chromeEnabled:
+      args.options.networkAccess === false
+        ? false
+        : providerOptions.chromeEnabled,
     disable1MContext: providerOptions.disable1MContext,
     artifactsEnabled: providerOptions.artifactsEnabled,
     sandboxEnabled: providerOptions.sandboxEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
-    providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
+    providerSubagentsEnabled:
+      args.options.networkAccess === false
+        ? false
+        : providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),
     permissionMode: toClaudePermissionMode(args.options),
     permissionScope: args.options.permissionScope,
-    additionalWorkspaceWriteRoots: providerOptions.additionalWorkspaceWriteRoots ?? [],
-    permissionEscalation: args.options.permissionEscalation,
-    ...(providerOptions.claudeCodePermissionMode !== undefined
+    additionalWorkspaceWriteRoots:
+      providerOptions.additionalWorkspaceWriteRoots ?? [],
+    permissionEscalation:
+      args.options.networkAccess === false
+        ? "deny"
+        : args.options.permissionEscalation,
+    ...(args.options.networkAccess === false ? { networkAccess: false } : {}),
+    ...(args.options.networkAccess !== false &&
+    providerOptions.claudeCodePermissionMode !== undefined
       ? { claudeCodePermissionMode: providerOptions.claudeCodePermissionMode }
       : {}),
   };

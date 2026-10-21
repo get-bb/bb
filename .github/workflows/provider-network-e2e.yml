@@ -1,0 +1,48 @@
+name: Provider network isolation
+
+on:
+  pull_request:
+    paths:
+      - "plugins/provider-codex/**"
+      - "plugins/provider-claude-code/**"
+      - "plugins/automations/**"
+      - "apps/server/src/services/threads/**"
+      - "apps/server/src/services/system/setup-job*"
+      - "packages/domain/**"
+      - "packages/host-daemon-contract/**"
+      - "scripts/provider-network-e2e.mjs"
+      - ".github/workflows/provider-network-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-network-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  network-isolation:
+    name: Native provider publication isolation
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: "22.x"
+          pnpm-version: "9.15.0"
+      - name: Install workspace dependencies
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/app...' --filter 'bb-plugin-provider-codex...' --filter 'bb-plugin-provider-claude-code...'
+      - name: Install native sandbox prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap socat gh
+          if [[ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          npm install --global @openai/codex
+      - name: Exercise native providers without model credentials
+        run: pnpm exec turbo run //#test:provider-network

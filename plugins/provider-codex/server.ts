@@ -41,6 +41,7 @@ export default function plugin(bb: BbPluginApi) {
     ...CODEX_NATIVE_ROOTS_DECLARATION,
     maintenance: { health: true, usage: true, installation: true },
     capabilities: {
+      experimental_supportsNetworkIsolation: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",

@@ -1,3 +1,4 @@
+import { AutomationResultAction } from "./result-action";
 import { QueryClient, useQuery } from "@tanstack/react-query";
 import { composerCustomization, CREATE_AUTOMATION_PROMPT } from "./composer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -771,6 +772,11 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
 
 export default definePluginApp((app) => {
   app.composer.customize(composerCustomization);
+  app.slots.experimental_threadHeaderAction({
+    id: "local-job-result",
+    title: "Local job result",
+    component: AutomationResultAction,
+  });
   app.slots.navPanel({
     id: "automations",
     title: "Automations",
