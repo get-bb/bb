@@ -95,6 +95,8 @@ export type PluginEnvironmentProviderCreateResult =
   | { status: "failed"; message: string };
 
 export interface PluginEnvironmentProviderRemoveContext {
+  /** Explicit archive discard authorization. Older cores omit this field; omission never authorizes discarding work. */
+  experimental_discardWorktree?: boolean;
   environment: Environment | null;
   hostId: string | null;
   path: string | null;

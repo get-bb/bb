@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { makeThread } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ThreadArchiveWorktree } from "@bb/server-contract";
 import { ThreadArchiveDialog } from "./ThreadArchiveDialog";
 
 afterEach(() => {
@@ -13,8 +14,10 @@ function renderDialog({
   childThreadCount = 1,
   status = "idle",
   pending = false,
+  worktrees = [],
 }: {
   pending?: boolean;
+  worktrees?: ThreadArchiveWorktree[];
   childThreadCount?: number;
   status?: "idle" | "starting" | "active" | "stopping";
 } = {}) {
@@ -23,7 +26,7 @@ function renderDialog({
   const thread = makeThread({ status });
   const view = render(
     <ThreadArchiveDialog
-      target={{ thread, childThreadCount }}
+      target={{ thread, childThreadCount, worktrees }}
       pending={pending}
       onOpenChange={onOpenChange}
       onArchive={onArchive}
@@ -36,17 +39,40 @@ describe("ThreadArchiveDialog", () => {
   it("announces the cascade with singular and plural child counts", () => {
     const { view } = renderDialog({ childThreadCount: 1 });
     expect(screen.getByRole("dialog").textContent).toContain(
-      "Its 1 child thread will be archived too.",
+      "The thread under it will be archived too.",
     );
-    expect(screen.getByText("1 child thread").className).toContain(
-      "font-semibold",
-    );
+    expect(screen.getByText("thread").className).toContain("font-semibold");
 
     view.unmount();
     renderDialog({ childThreadCount: 3 });
     expect(screen.getByRole("dialog").textContent).toContain(
-      "Its 3 child threads will be archived too.",
+      "The 3 threads under it will be archived too.",
     );
+  });
+
+  it("only offers keeping when the worktree cannot be checked", () => {
+    const { onArchive } = renderDialog({
+      worktrees: [
+        {
+          environmentId: "env_offline",
+          threadId: "thr_offline",
+          path: "/offline/repo",
+          state: "unavailable",
+        },
+      ],
+    });
+    expect(
+      screen.queryByRole("button", { name: "Commit and push first" }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        "bb couldn't check this worktree for unsaved changes, so it will be kept.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep worktree and archive" }),
+    );
+    expect(onArchive).toHaveBeenCalledWith(expect.anything(), "keep");
   });
 
   it("names the single thread in the title and action", () => {
@@ -55,9 +81,7 @@ describe("ThreadArchiveDialog", () => {
     expect(
       screen.getByRole("heading", { name: "Archive thread?" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Archive" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeTruthy();
   });
 
   it.each(["starting", "active", "stopping"] as const)(
@@ -103,6 +127,9 @@ describe("ThreadArchiveDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
-    expect(onArchive).toHaveBeenCalledWith({ thread, childThreadCount: 2 });
+    expect(onArchive).toHaveBeenCalledWith(
+      { thread, childThreadCount: 2, worktrees: [] },
+      "auto",
+    );
   });
 });

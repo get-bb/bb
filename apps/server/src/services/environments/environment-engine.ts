@@ -1,3 +1,8 @@
+import {
+  isManagedWorktree,
+  readArchiveWorktreeState,
+  retainArchivedWorktree,
+} from "./archive-safety.js";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
@@ -637,6 +642,7 @@ export function requestEnvironmentRemoval(
   const row = getEnvironment(deps.db, environmentId);
   if (row === null) return false;
   const removingMachine = getHost(deps.db, row.hostId)?.phase === "removing";
+  if (!removingMachine && row.archiveRetained) return false;
   if (!removingMachine && environmentHasLiveThreads(deps.db, environmentId))
     return false;
   if (row.ownerThreadId !== null && row.teardownStatus === null) {
@@ -700,6 +706,7 @@ async function runRemove(
     );
   await withHostCleanup(deps, row.hostId, async () => {
     try {
+      if (!requestEnvironmentRemoval(deps, environmentId)) return;
       if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
         await runEnvironmentHook(deps, {
           projectId: row.projectId,
@@ -722,8 +729,13 @@ async function runRemove(
       const invocation = await invokeEnvironmentProvider(
         record,
         "environment remove",
-        () =>
-          record.provider.remove({
+        () => {
+          if (!requestEnvironmentRemoval(deps, environmentId))
+            throw new Error(
+              `Worktree ${row.path ?? row.id} is in use or marked to keep, so it wasn't removed.`,
+            );
+          const current = getEnvironment(deps.db, environmentId);
+          return record.provider.remove({
             environment:
               row.ownerThreadId !== null
                 ? null
@@ -732,10 +744,12 @@ async function runRemove(
             path: row.path,
             pathKey: row.environmentProviderInstanceKey ?? row.id,
             resource: row.resource,
+            experimental_discardWorktree: current?.archiveDiscard === true,
             attempt,
             report: emptyReporter(),
             signal,
-          }),
+          });
+        },
       );
       if (!invocation.ok) throw new Error(invocation.error);
       if (invocation.value === null)
@@ -859,6 +873,7 @@ async function sweepProviderEnvironmentInSlot(
     writeEnvironment(deps, environmentId, released);
     row = { ...row, ...released };
   }
+  if (row.archiveRetained && !machineRemoving) return;
   const cancelled = row.ownerThreadId !== null && row.teardownStatus !== null;
   if (!cancelled && row.ownerThreadId !== null) return;
   const record = getEnvironmentProvider(environmentProviderId);
@@ -892,6 +907,18 @@ async function sweepProviderEnvironmentInSlot(
     row = { ...row, retireAt };
   }
   if (row.retireAt !== null && row.retireAt > now) return;
+  if (
+    isManagedWorktree(row) &&
+    !row.archiveDiscard &&
+    row.status === "ready" &&
+    row.teardownStatus === null
+  ) {
+    const state = await readArchiveWorktreeState(deps, row);
+    if (state !== "clean") {
+      retainArchivedWorktree(deps, environmentId);
+      return;
+    }
+  }
   if (!requestEnvironmentRemoval(deps, environmentId)) return;
   if (cancelled && row.providerOwnsPath && row.path !== null) {
     await cancelPendingEnvironmentHook(deps, {
@@ -936,7 +963,10 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   )
     return false;
   if (row.teardownStatus === "removed") return true;
-  writeEnvironment(deps, environmentId, { retireAt: Date.now() });
+  writeEnvironment(deps, environmentId, {
+    archiveRetained: false,
+    retireAt: Date.now(),
+  });
   void sweepProviderEnvironment(deps, environmentId).catch((error) => {
     deps.logger.warn(
       { environmentId, error: errorMessage(error) },
@@ -998,7 +1028,8 @@ export function refreshProviderRetirement(
   if (
     row === null ||
     row.environmentProviderId === null ||
-    row.teardownStatus !== null
+    row.teardownStatus !== null ||
+    row.archiveRetained
   )
     return;
   const provider = getEnvironmentProvider(row.environmentProviderId);

@@ -37,6 +37,8 @@ function makeRow(overrides: Partial<EnvironmentRow> = {}): EnvironmentRow {
     environmentProviderInstanceKey: null,
     providerOwnsPath: false,
     retireAt: null,
+    archiveRetained: false,
+    archiveDiscard: false,
     teardownAttempt: 0,
     teardownStatus: null,
     teardownMessage: null,

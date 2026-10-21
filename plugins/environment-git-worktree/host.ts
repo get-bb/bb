@@ -1,4 +1,5 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+import { dirname } from "node:path";
 import { readdir, rm } from "node:fs/promises";
 import { createHostProgress } from "bb-environment-provider-host/progress";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
@@ -17,6 +18,7 @@ import {
   createWorktree,
   listAdoptableWorktrees,
   removeWorktree,
+  removeDirectoryIfEmpty,
   resolveAdoptableWorktree,
 } from "./host/worktree.js";
 
@@ -132,9 +134,9 @@ export function createWorktreeHostEntry() {
                 })
               : [input.path];
           for (const path of paths) {
-            await rm(completionPathForWorktree(path), { force: true });
             await removeWorktree({
               path,
+              discard: input.discard,
               onProgress: createHostProgress({
                 operationId: input.operationId,
                 emit: (payload) =>
@@ -142,6 +144,8 @@ export function createWorktreeHostEntry() {
               }),
               signal: context.signal,
             });
+            await rm(completionPathForWorktree(path), { force: true });
+            await removeDirectoryIfEmpty(dirname(path));
           }
           return { status: "removed" } as const;
         } catch (error) {

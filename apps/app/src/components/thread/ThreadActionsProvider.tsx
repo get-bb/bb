@@ -1,3 +1,4 @@
+import type { ThreadArchiveQuery } from "@bb/server-contract";
 import {
   createContext,
   useCallback,
@@ -87,6 +88,7 @@ interface ThreadActionsProviderProps {
 }
 
 interface ArchiveThreadActionRequest {
+  worktree?: ThreadArchiveQuery["worktree"];
   childThreadsConfirmed: boolean;
   closeDialog?: () => void;
   thread: Thread;
@@ -413,13 +415,21 @@ export function ThreadActionsProvider({
       childThreadsConfirmed,
       closeDialog,
       thread,
+      worktree,
     }: ArchiveThreadActionRequest) => {
       archiveThreadAndChildrenMutateAsync({
         id: thread.id,
         childThreadsConfirmed,
+        ...(worktree === undefined ? {} : { worktree }),
       }).then(
         (response) => {
           closeDialog?.();
+          if (response.preparing) {
+            appToast.success(
+              "Asked the agent to commit, push, and archive the thread.",
+            );
+            return;
+          }
           const viewedThreadId = viewedThreadIdRef.current;
           const archiveDisplacedThread = viewedThreadId === thread.id;
           const closeResult = closePanesForThreads(response.archivedThreadIds);
@@ -488,6 +498,7 @@ export function ThreadActionsProvider({
             openArchiveDialog({
               thread,
               childThreadCount: error.childThreadCount,
+              worktrees: error.worktrees,
             });
             return;
           }
@@ -521,8 +532,12 @@ export function ThreadActionsProvider({
   );
 
   const confirmArchive = useCallback(
-    (target: ThreadArchiveDialogTarget) => {
+    (
+      target: ThreadArchiveDialogTarget,
+      worktree: ThreadArchiveQuery["worktree"] = "auto",
+    ) => {
       performArchive({
+        worktree,
         childThreadsConfirmed: true,
         closeDialog: closeArchiveDialog,
         thread: target.thread,

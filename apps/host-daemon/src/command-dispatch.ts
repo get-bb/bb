@@ -1,3 +1,4 @@
+import { readWorktreeArchiveStatus } from "bb-environment-provider-host/git";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { withVcsProcessPriority } from "@bb/process-utils";
@@ -713,6 +714,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     });
   },
   "provider.installation.run": runProviderInstallationOnHost,
+  "workspace.archive_status": (command, _options, signal) =>
+    readWorktreeArchiveStatus(command.workspaceContext.workspacePath, signal),
   "workspace.status": (command, options) =>
     readAvailableWorkspace(command, options, async (workspace) => ({
       workspaceStatus: await workspace.getStatus({

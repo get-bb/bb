@@ -15,6 +15,7 @@ import {
   hasRef,
   readDefaultBranch,
   readGitRepositoryState,
+  readWorktreeArchiveStatus,
   runGit,
   WorkspaceError,
   type GitProcessOptions,
@@ -57,6 +58,7 @@ interface CreateWorktreeArgs {
 }
 
 interface RemoveWorktreeArgs {
+  discard?: boolean;
   path: string;
   onProgress?: ProgressCallback | undefined;
   signal?: AbortSignal | undefined;
@@ -606,7 +608,9 @@ export async function createWorktree(
   }
 }
 
-async function removeDirectoryIfEmpty(pathToRemove: string): Promise<void> {
+export async function removeDirectoryIfEmpty(
+  pathToRemove: string,
+): Promise<void> {
   try {
     await fs.rmdir(pathToRemove);
   } catch (error) {
@@ -629,54 +633,80 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   const parentPath = path.dirname(workspacePath);
   try {
     await fs.access(workspacePath);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
+      throw error;
     await removeDirectoryIfEmpty(parentPath);
     return;
   }
 
-  await experimental_killProcessesWithCwdUnder({
-    directories: [workspacePath],
-  });
-  throwIfProvisionAborted(args.signal);
-
   const commonDirResult = await runGit(["rev-parse", "--git-common-dir"], {
     cwd: workspacePath,
-    ...(args.signal !== undefined ? { signal: args.signal } : {}),
+    ...signalOptions(args.signal),
     allowFailure: true,
   });
-
-  if (commonDirResult.exitCode === 0) {
-    const commonDir = path.resolve(
-      workspacePath,
-      commonDirResult.stdout.trim(),
-    );
-    await tryWithCheckoutMutationLock(
-      workspacePath,
-      () =>
-        withWorktreeMetadataLock(commonDir, () =>
-          runGit(
-            [
-              "--git-dir",
-              commonDir,
-              "worktree",
-              "remove",
-              workspacePath,
-              "--force",
-            ],
-            {
-              cwd: path.dirname(workspacePath),
-              ...(args.signal !== undefined ? { signal: args.signal } : {}),
-              allowFailure: true,
-            },
-          ),
-        ),
-      args.signal,
-      signalOptions(args.signal),
-    );
+  if (commonDirResult.exitCode !== 0) {
+    await fs.rmdir(workspacePath);
+    await removeDirectoryIfEmpty(parentPath);
+    return;
   }
+  const commonDir = path.resolve(workspacePath, commonDirResult.stdout.trim());
+  const removed = await tryWithCheckoutMutationLock(
+    workspacePath,
+    () =>
+      withWorktreeMetadataLock(commonDir, async () => {
+        if (args.discard !== true) {
+          const status = await readWorktreeArchiveStatus(
+            workspacePath,
+            args.signal,
+          );
+          if (status.hasUncommittedChanges || status.hasUnpushedCommits) {
+            throw new WorkspaceError(
+              "worktree_has_local_changes",
+              `Worktree ${workspacePath} has uncommitted or unpushed changes and was kept.`,
+            );
+          }
+        }
+        await experimental_killProcessesWithCwdUnder({
+          directories: [workspacePath],
+        });
+        throwIfProvisionAborted(args.signal);
+        if (args.discard !== true) {
+          const status = await readWorktreeArchiveStatus(
+            workspacePath,
+            args.signal,
+          );
+          if (status.hasUncommittedChanges || status.hasUnpushedCommits)
+            throw new WorkspaceError(
+              "worktree_has_local_changes",
+              `Worktree ${workspacePath} has uncommitted or unpushed changes and was kept.`,
+            );
+        }
+        await runGit(
+          [
+            "--git-dir",
+            commonDir,
+            "worktree",
+            "remove",
+            ...(args.discard === true ? ["--force"] : []),
+            workspacePath,
+          ],
+          {
+            cwd: parentPath,
+            ...signalOptions(args.signal),
+          },
+        );
+        return true;
+      }),
+    args.signal,
+    signalOptions(args.signal),
+  );
 
-  throwIfProvisionAborted(args.signal);
-  await fs.rm(workspacePath, { recursive: true, force: true });
+  if (removed === null)
+    throw new WorkspaceError(
+      "worktree_unavailable",
+      `Couldn't check worktree ${workspacePath} for unsaved changes, so it was kept.`,
+    );
   await removeDirectoryIfEmpty(parentPath);
 }
 

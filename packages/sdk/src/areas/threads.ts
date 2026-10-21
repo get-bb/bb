@@ -1,3 +1,4 @@
+import type { ThreadArchiveQuery } from "@bb/server-contract";
 import {
   parseThreadEventRow,
   type PromptInput,
@@ -599,9 +600,15 @@ export interface ThreadQueueArea {
 }
 
 export interface ThreadsArea {
-  archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
-  archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
-  childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
+  archive(
+    args: ThreadActionArgs & ThreadArchiveQuery,
+  ): Promise<ThreadArchiveResult>;
+  archiveAll(
+    args: ThreadActionArgs & ThreadArchiveQuery,
+  ): Promise<ThreadArchiveAllResult>;
+  childSummary(
+    args: ThreadStatusArgs & { checkWorktrees?: boolean },
+  ): Promise<ThreadChildSummaryResult>;
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearContext(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
@@ -976,11 +983,12 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       ),
     );
   const archiveAll = async (
-    input: ThreadActionArgs,
+    input: ThreadActionArgs & ThreadArchiveQuery,
   ): Promise<ThreadArchiveAllResult> =>
     transport.readJson(
       transport.api.v1.threads[":id"]["archive-all"].$post({
         param: { id: input.threadId },
+        query: input.worktree === undefined ? {} : { worktree: input.worktree },
       }),
     );
   const events: ThreadEventsArea = {
@@ -1218,7 +1226,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async childSummary(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["child-summary"].$get(
-          { param: { id: input.threadId } },
+          {
+            param: { id: input.threadId },
+            query:
+              input.checkWorktrees === undefined
+                ? {}
+                : { checkWorktrees: input.checkWorktrees ? "true" : "false" },
+          },
           ...signalRequestArgs(input.signal),
         ),
       );

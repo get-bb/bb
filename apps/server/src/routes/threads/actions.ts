@@ -1,3 +1,4 @@
+import { retainArchivedWorktree } from "../../services/environments/archive-safety.js";
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
   deleteQueuedThreadMessage,
@@ -79,7 +80,11 @@ import {
   requestThreadEnvironmentRestore,
   scheduleThreadProvisioningAdvance,
 } from "../../services/threads/thread-provisioning.js";
-import { archiveThreadAndChildren } from "../../services/threads/thread-archive.js";
+import {
+  archiveThreadAndChildren,
+  inspectArchiveWorktrees,
+  setArchiveWorktreeChoice,
+} from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
   requireThreadHostCommandEnvironment,
@@ -545,8 +550,45 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json(buildActivePinnedThreadRootListResponse(deps));
   });
 
-  post(routes.archiveAll, (context) => {
+  post(routes.archiveAll, async (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const strategy = query.worktree ?? "auto";
+    if (strategy === "keep" || strategy === "discard") {
+      setArchiveWorktreeChoice(deps, thread, strategy);
+    } else {
+      setArchiveWorktreeChoice(deps, thread, "auto");
+      const worktrees = await inspectArchiveWorktrees(deps, thread);
+      const unsafe = worktrees.filter((worktree) => worktree.state !== "clean");
+      if (strategy === "require-clean" && unsafe.length > 0) {
+        throw new ApiError(
+          409,
+          "worktree_not_safe_to_archive",
+          `${unsafe.length} worktrees have uncommitted or unpushed changes, or could not be checked: ${unsafe.map((worktree) => worktree.path ?? worktree.environmentId).join(", ")}. Commit and push first, or rerun with --keep-worktree.`,
+        );
+      }
+      if (strategy === "commit-and-push") {
+        await acceptThreadSendRequest(deps, {
+          thread,
+          payload: {
+            mode: "queue-if-active",
+            input: [
+              {
+                type: "text",
+                mentions: [],
+                text: `The user chose to commit and push before archiving this thread and the threads under it. Preserve all work. Inspect and commit intended changes, push normally (never force-push), and verify success. Worktrees to check: ${JSON.stringify(worktrees)}. Use their threads on their machines when needed. Only after every affected worktree is clean and pushed, run bb thread archive ${thread.id} --require-clean. If committing or pushing fails, leave this thread unarchived and explain the blocker. Never discard changes or bypass the archive safety check.`,
+              },
+            ],
+          },
+        });
+        return context.json({
+          ok: true,
+          archivedThreadIds: [],
+          preparing: true,
+        });
+      }
+      for (const worktree of unsafe)
+        retainArchivedWorktree(deps, worktree.environmentId);
+    }
     const archivedThreadIds = archiveThreadAndChildren(deps, {
       parentThread: thread,
     });
@@ -563,6 +605,19 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     if (!unarchiveThread(deps.db, deps.hub, thread.id)) {
       if (getThread(deps.db, thread.id)?.archivedAt === null)
         return context.json({ ok: true });
+      const environment =
+        thread.environmentId === null
+          ? null
+          : getEnvironment(deps.db, thread.environmentId);
+      if (
+        environment?.archiveDiscard &&
+        environment.teardownStatus === "running"
+      )
+        throw new ApiError(
+          409,
+          "worktree_removal_started",
+          `Worktree ${environment.path ?? environment.id} is already being removed, so it can't be kept now.`,
+        );
       throw new ApiError(
         409,
         "invalid_request",

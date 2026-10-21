@@ -125,6 +125,116 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it.each(["tracked", "untracked", "unpushed"])(
+    "preserves a worktree with %s work when cleanup runs",
+    async (kind) => {
+      const { sourcePath, dataDir } = await createSourceRepository();
+      await git(sourcePath, "update-ref", "refs/remotes/origin/main", "HEAD");
+      const harness = createHarness(dataDir);
+      const created = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create-safe",
+          sourcePath,
+          pathKey: "thr_safe",
+          branchName: "bb/keep-work",
+        }),
+      );
+      if (created.status !== "created") throw new Error(created.message);
+      const file = kind === "tracked" ? "README.md" : "work.txt";
+      await writeFile(join(created.path, file), "work to preserve\n");
+      if (kind === "unpushed") {
+        await git(created.path, "add", file);
+        await git(created.path, "commit", "-m", "not pushed");
+      }
+      const result = await harness.experimental_call("remove", {
+        operationId: "remove-safe",
+        pathKey: "thr_safe",
+        path: created.path,
+      });
+      expect(result.status).toBe("failed");
+      expect(await readFile(join(created.path, file), "utf8")).toBe(
+        "work to preserve\n",
+      );
+      await harness.experimental_dispose();
+    },
+  );
+
+  it("discards local work only with explicit discard authorization", async () => {
+    const { sourcePath, dataDir } = await createSourceRepository();
+    const harness = createHarness(dataDir);
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-discard",
+        sourcePath,
+        pathKey: "thr_discard",
+        branchName: "bb/discard",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    await writeFile(join(created.path, "untracked.txt"), "discard this work\n");
+    const result = await harness.experimental_call("remove", {
+      operationId: "remove-discard",
+      pathKey: "thr_discard",
+      path: created.path,
+      discard: true,
+    });
+    expect(result.status).toBe("removed");
+    expect(existsSync(created.path)).toBe(false);
+    await harness.experimental_dispose();
+  });
+
+  it
+    .skipIf(process.platform === "win32")
+    .each(["tracked", "untracked", "unpushed"])(
+    "preserves %s work written during process shutdown",
+    async (kind) => {
+      const { sourcePath, dataDir } = await createSourceRepository();
+      await git(sourcePath, "update-ref", "refs/remotes/origin/main", "HEAD");
+      const harness = createHarness(dataDir);
+      const created = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create-race",
+          sourcePath,
+          pathKey: "thr_race",
+          branchName: "bb/race",
+        }),
+      );
+      if (created.status !== "created") throw new Error(created.message);
+      const file = kind === "tracked" ? "README.md" : "late.txt";
+      const script = `const fs = require('node:fs'); const cp = require('node:child_process'); process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(file)}, 'late work\\n'); ${kind === "unpushed" ? "cp.execFileSync('git', ['add', 'late.txt']); cp.execFileSync('git', ['-c', 'user.name=bb', '-c', 'user.email=bb@example.com', 'commit', '-m', 'late unpushed work']);" : ""} process.exit(0); }); process.send('ready'); setInterval(() => {}, 1000);`;
+      const writer = spawn(process.execPath, ["-e", script], {
+        cwd: created.path,
+        detached: true,
+        stdio: ["ignore", "ignore", "ignore", "ipc"],
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          writer.once("message", () => resolve());
+          writer.once("error", reject);
+        });
+        const result = await harness.experimental_call("remove", {
+          operationId: "remove-race",
+          pathKey: "thr_race",
+          path: created.path,
+        });
+        expect(result.status).toBe("failed");
+        expect(await readFile(join(created.path, file), "utf8")).toBe(
+          "late work\n",
+        );
+        if (kind === "unpushed")
+          expect(
+            (await git(created.path, "log", "-1", "--format=%s")).trim(),
+          ).toBe("late unpushed work");
+      } finally {
+        writer.kill("SIGKILL");
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
   it.each([
     { existingBranch: false, branchMode: "reset" },
     { existingBranch: false, branchMode: "reuse-existing" },
@@ -303,6 +413,7 @@ describe("worktree host entry", () => {
     async (_label, repositoryName, expectedLeaf) => {
       const { sourcePath, dataDir } =
         await createSourceRepository(repositoryName);
+      await git(sourcePath, "update-ref", "refs/remotes/origin/main", "HEAD");
       const harness = createHarness(dataDir);
       const pathKey = "special-name";
       const result = await harness.experimental_call(
@@ -552,6 +663,7 @@ describe("worktree host entry", () => {
 
   it("replaces an invalid target before recreating the expected branch", async () => {
     const { sourcePath, dataDir } = await createSourceRepository();
+    await git(sourcePath, "update-ref", "refs/remotes/origin/main", "HEAD");
     const harness = createHarness(dataDir);
     const input = createInput({
       operationId: "first",
@@ -649,6 +761,7 @@ describe("worktree host entry", () => {
     );
     await git(sourcePath, "add", ".");
     await git(sourcePath, "commit", "-m", "add teardown script");
+    await git(sourcePath, "update-ref", "refs/remotes/origin/main", "HEAD");
     const harness = createHarness(dataDir);
     const created = await harness.experimental_call(
       "create",

@@ -330,6 +330,61 @@ describe("machine creation hosts", () => {
 });
 
 describe("machine retirement", () => {
+  it.each(["keep", "auto"] as const)(
+    "keeps an ephemeral machine after archiving retained work with %s",
+    async (worktree) =>
+      withTestHarness(async (harness) => {
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        installMachineProvider({ ephemeral: true, remove });
+        const target = seedHostSession(harness.deps, {
+          id: "retained-machine",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: target.host.id,
+        });
+        const environment = createEnvironment(harness.db, harness.hub, {
+          projectId: project.id,
+          hostId: target.host.id,
+          path: "/retained/work",
+          providerOwnsPath: true,
+          status: "ready",
+          environmentProvider: null,
+        });
+        harness.db
+          .update(environments)
+          .set({ isGitRepo: true, isWorktree: true })
+          .where(eq(environments.id, environment.id))
+          .run();
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          status: "idle",
+        });
+        updateHost(harness.db, harness.hub, target.host.id, {
+          machineProviderId: "test-machine",
+          type: "ephemeral",
+          phase: "active",
+          resource: { id: "retained" },
+        });
+        harness.hub.unregisterDaemon(target.session.id);
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/archive-all?worktree=${worktree}`,
+          { method: "POST" },
+        );
+        expect(response.status).toBe(200);
+        expect(
+          getEnvironment(harness.db, environment.id)?.archiveRetained,
+        ).toBe(true);
+        await sweepProviderMachine(harness.deps, target.host.id);
+        await sweepMachineLifecycles(harness.deps);
+        expect(remove).not.toHaveBeenCalled();
+        expect(getHost(harness.db, target.host.id)?.phase).toBe("active");
+        expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+          "ready",
+        );
+      }),
+  );
+
   it.each([1, 2])(
     "retires each of %i machines only after every project and shared environment releases it",
     async (machineCount) =>

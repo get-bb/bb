@@ -512,6 +512,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "workspace.archive_status": {
+    hasUncommittedChanges: true,
+    hasUnpushedCommits: false,
+  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": {
     outcome: "unavailable",
@@ -1266,7 +1270,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(246);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(248);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

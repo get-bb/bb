@@ -1,7 +1,7 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import {
   createHostId,
   hostDaemonSessions,
@@ -1099,6 +1099,19 @@ export function requestAutomaticMachineRemoval(
   ) {
     return false;
   }
+  const retained = deps.db
+    .select({ id: environmentRows.id })
+    .from(environmentRows)
+    .where(
+      and(
+        eq(environmentRows.hostId, hostId),
+        eq(environmentRows.archiveRetained, true),
+        ne(environmentRows.status, "destroyed"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (retained !== undefined) return false;
   return requestMachineRemoval(deps, hostId);
 }
 

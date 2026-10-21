@@ -1082,6 +1082,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "environment-providers",
+        reference: [
+          "Remove context experimental_discardWorktree is true only when the user explicitly authorized discarding work during archive. False or omitted must preserve uncommitted and unpushed work.",
+        ],
         tagline: "Provision where a thread runs",
         title: "Environment providers",
         summary:
@@ -1338,6 +1341,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Start plugin updates in the background and follow their progress or rollback",
           "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
         ],
+        reference: [
+          "Archive with threads.archive({ threadId, worktree }): auto keeps local work, keep retains worktrees, require-clean refuses if any worktree has unsaved work, commit-and-push asks the agent to prepare before archiving, and discard deletes worktrees even if they have uncommitted or unpushed changes",
+          "Inspect archive safety with threads.childSummary({ threadId, checkWorktrees: true }); unavailable checks keep worktrees",
+        ],
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
@@ -1356,6 +1363,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
           "PluginBbSdk.threads.experimental_listDescendants",
+          "PluginBbSdk.threads.archive",
+          "PluginBbSdk.threads.childSummary",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

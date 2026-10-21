@@ -1,4 +1,10 @@
 import {
+  threadArchiveQuerySchema,
+  threadChildSummaryQuerySchema,
+  type ThreadArchiveQuery,
+  type ThreadChildSummaryQuery,
+} from "./api/threads.js";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1501,7 +1507,9 @@ export const publicApiRoutes = {
     childSummary: defineRoute({
       path: "/threads/:id/child-summary",
       method: "get",
-      request: noRequest<PathId>(),
+      request: queryRequest<PathId, ThreadChildSummaryQuery>(
+        threadChildSummaryQuerySchema,
+      ),
       response: jsonResponse<ThreadChildSummaryResponse>(),
     }),
     send: defineRoute({
@@ -1741,7 +1749,9 @@ export const publicApiRoutes = {
     archiveAll: defineRoute({
       path: "/threads/:id/archive-all",
       method: "post",
-      request: noRequest<PathId>(),
+      request: queryRequest<PathId, ThreadArchiveQuery>(
+        threadArchiveQuerySchema,
+      ),
       response: jsonResponse<ThreadArchiveAllResponse>(),
     }),
     unarchive: defineRoute({

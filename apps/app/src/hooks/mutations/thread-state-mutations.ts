@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-query";
 import type {
   ThreadArchiveAllResponse,
+  ThreadArchiveWorktree,
+  ThreadArchiveQuery,
   ThreadResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
@@ -48,12 +50,16 @@ interface UpdateThreadMutationOptions {
 }
 
 interface ArchiveThreadAndChildrenMutationRequest {
+  worktree?: ThreadArchiveQuery["worktree"];
   id: string;
   childThreadsConfirmed: boolean;
 }
 
 export class ArchiveThreadConfirmationRequired extends Error {
-  constructor(readonly childThreadCount: number) {
+  constructor(
+    readonly childThreadCount: number,
+    readonly worktrees: ThreadArchiveWorktree[] = [],
+  ) {
     super("Archiving child threads requires confirmation");
   }
 }
@@ -208,22 +214,40 @@ export function useArchiveThreadAndChildren() {
     mutationFn: async ({
       id,
       childThreadsConfirmed,
+      worktree,
     }: ArchiveThreadAndChildrenMutationRequest): Promise<ThreadArchiveAllResponse> => {
-      if (!childThreadsConfirmed) {
-        const summary = await sdk.threads.childSummary({ threadId: id });
-        if (summary.unarchivedDescendantCount > 0) {
+      if (worktree === undefined) {
+        const summary = await sdk.threads.childSummary({
+          threadId: id,
+          checkWorktrees: true,
+        });
+        const worktrees =
+          summary.worktrees?.filter((item) => item.state !== "clean") ?? [];
+        if (
+          (!childThreadsConfirmed && summary.unarchivedDescendantCount > 0) ||
+          worktrees.length > 0
+        ) {
           throw new ArchiveThreadConfirmationRequired(
             summary.unarchivedDescendantCount,
+            worktrees,
           );
         }
       }
-      return sdk.threads.archiveAll({ threadId: id });
+      return sdk.threads.archiveAll({
+        threadId: id,
+        ...(worktree === undefined ? {} : { worktree }),
+      });
     },
-    onMutate: async ({ id }): Promise<ArchiveThreadsTransaction> =>
-      beginArchiveThreadAndChildrenTransaction({
+    onMutate: async ({
+      id,
+      worktree,
+    }): Promise<ArchiveThreadsTransaction | undefined> => {
+      if (worktree === "commit-and-push") return undefined;
+      return beginArchiveThreadAndChildrenTransaction({
         queryClient,
         threadId: id,
-      }),
+      });
+    },
     onError: (_error, _variables, context) => {
       rollbackArchiveThreadsTransaction({ queryClient, transaction: context });
     },

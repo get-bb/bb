@@ -722,7 +722,28 @@ export type ThreadQueuedMessageListResponse = z.infer<
   typeof threadQueuedMessageListResponseSchema
 >;
 
+export const threadArchiveWorktreeSchema = z.object({
+  environmentId: z.string(),
+  threadId: z.string(),
+  path: z.string().nullable(),
+  state: z.enum(["clean", "changes", "unavailable"]),
+});
+export type ThreadArchiveWorktree = z.infer<typeof threadArchiveWorktreeSchema>;
+export const threadChildSummaryQuerySchema = z.object({
+  checkWorktrees: z.enum(["true", "false"]).optional(),
+});
+export type ThreadChildSummaryQuery = z.infer<
+  typeof threadChildSummaryQuerySchema
+>;
+export const threadArchiveQuerySchema = z.object({
+  worktree: z
+    .enum(["auto", "keep", "require-clean", "commit-and-push", "discard"])
+    .optional(),
+});
+export type ThreadArchiveQuery = z.infer<typeof threadArchiveQuerySchema>;
+
 export const threadChildSummaryResponseSchema = z.object({
+  worktrees: z.array(threadArchiveWorktreeSchema).optional(),
   nonDeletedChildCount: z.number().int().nonnegative(),
   unarchivedDescendantCount: z.number().int().nonnegative(),
 });
@@ -874,6 +895,7 @@ export type ThreadPaneActionResponse = z.infer<
 >;
 
 export const threadArchiveAllResponseSchema = z.object({
+  preparing: z.literal(true).optional(),
   ok: z.literal(true),
   archivedThreadIds: z.array(z.string().min(1)),
 });

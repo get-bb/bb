@@ -33,6 +33,7 @@ describe("bb thread action command output", () => {
 
     expect(archivePost).toHaveBeenCalledWith({
       param: { id: "thread-archive-1" },
+      query: { worktree: "auto" },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Thread thread-archive-1 archived",
@@ -50,6 +51,7 @@ describe("bb thread action command output", () => {
 
     expect(archivePost).toHaveBeenCalledWith({
       param: { id: "thread-archive-1" },
+      query: { worktree: "auto" },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Thread thread-archive-1 archived (1 related thread also archived)",
@@ -68,6 +70,7 @@ describe("bb thread action command output", () => {
 
     expect(archivePost).toHaveBeenCalledWith({
       param: { id: "thread-archive-2" },
+      query: { worktree: "auto" },
     });
   });
 
@@ -86,8 +89,36 @@ describe("bb thread action command output", () => {
     );
     expect(archivePost).toHaveBeenCalledWith({
       param: { id: "thread-archive-1" },
+      query: { worktree: "auto" },
     });
   });
+
+  it.each([
+    ["--keep-worktree", "keep"],
+    ["--discard-worktree", "discard"],
+    ["--require-clean", "require-clean"],
+    ["--commit-and-push", "commit-and-push"],
+  ])(
+    "passes archive protection %s to the shared endpoint",
+    async (flag, worktree) => {
+      const preparing = worktree === "commit-and-push";
+      const archivePost = vi.fn(async () => ({
+        ok: true,
+        archivedThreadIds: preparing ? [] : ["thr_safe"],
+        ...(preparing ? { preparing: true } : {}),
+      }));
+      stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
+      await runCommand(["thread", "archive", "thr_safe", flag], register);
+      expect(archivePost).toHaveBeenCalledWith({
+        param: { id: "thr_safe" },
+        query: { worktree },
+      });
+      if (preparing)
+        expect(collectLogLines(vi.mocked(console.log))).toContain(
+          "Asked the agent to commit, push, and archive the thread.",
+        );
+    },
+  );
 
   it("bb thread unarchive --self resolves from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-unarchive-1");

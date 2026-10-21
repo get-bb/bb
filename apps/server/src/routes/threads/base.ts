@@ -1,4 +1,7 @@
-import { countUnarchivedThreadDescendants } from "../../services/threads/thread-archive.js";
+import {
+  countUnarchivedThreadDescendants,
+  inspectArchiveWorktrees,
+} from "../../services/threads/thread-archive.js";
 import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
@@ -424,9 +427,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     };
   }
 
-  get(routes.childSummary, (context) => {
+  get(routes.childSummary, async (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(getThreadChildSummary(thread));
+    return context.json({
+      ...getThreadChildSummary(thread),
+      ...(query.checkWorktrees === "true"
+        ? { worktrees: await inspectArchiveWorktrees(deps, thread) }
+        : {}),
+    });
   });
 
   patch(routes.update, async (context, payload) => {

@@ -2017,6 +2017,22 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "workspace.archive_status": defineHostDaemonCommandDescriptor({
+    type: "workspace.archive_status",
+    schema: hostDaemonWorkspaceTargetSchema.extend({
+      type: z.literal("workspace.archive_status"),
+    }),
+    resultSchema: z
+      .object({
+        hasUncommittedChanges: z.boolean(),
+        hasUnpushedCommits: z.boolean(),
+      })
+      .strict(),
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
   "workspace.status": defineHostDaemonCommandDescriptor({
     type: "workspace.status",
     schema: workspaceStatusCommandSchema,

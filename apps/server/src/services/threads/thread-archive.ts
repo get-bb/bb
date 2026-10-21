@@ -1,3 +1,11 @@
+import { ApiError } from "../../errors.js";
+import { eq } from "drizzle-orm";
+import {
+  isManagedWorktree,
+  readArchiveWorktreeState,
+  retainArchivedWorktree,
+} from "../environments/archive-safety.js";
+import type { ThreadArchiveWorktree } from "@bb/server-contract";
 import {
   cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
@@ -11,6 +19,7 @@ import {
   listLifecycleThreadDependents,
   archiveThread,
   getEnvironment,
+  environments,
   listNonDeletedChildThreads,
   listNonDeletedHiddenSourceThreads,
 } from "@bb/db";
@@ -106,6 +115,9 @@ export function archiveEnvironmentThreads(
 ): string[] {
   const roots = listLiveThreadsInEnvironment(deps.db, {
     environmentId: args.environment.id,
+  });
+  deps.db.transaction(() => {
+    for (const root of roots) setArchiveWorktreeChoice(deps, root, "auto");
   });
   return archiveThreadTrees(deps, roots, (thread) =>
     thread.environmentId === null
@@ -225,4 +237,62 @@ function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {
     }
   }
   return threads;
+}
+
+export async function inspectArchiveWorktrees(
+  deps: AppDeps,
+  thread: Thread,
+): Promise<ThreadArchiveWorktree[]> {
+  const seen = new Set<string>();
+  const result: ThreadArchiveWorktree[] = [];
+  for (const candidate of listArchiveCandidates(deps.db, [thread])) {
+    if (candidate.environmentId === null || seen.has(candidate.environmentId))
+      continue;
+    seen.add(candidate.environmentId);
+    const row = getEnvironment(deps.db, candidate.environmentId);
+    if (row === null || !isManagedWorktree(row)) continue;
+    result.push({
+      environmentId: row.id,
+      threadId: candidate.id,
+      path: row.path,
+      state: await readArchiveWorktreeState(deps, row),
+    });
+  }
+  return result;
+}
+
+export function setArchiveWorktreeChoice(
+  deps: AppDeps,
+  thread: Thread,
+  choice: "keep" | "discard" | "auto",
+): void {
+  deps.db.transaction(() => {
+    for (const candidate of listArchiveCandidates(deps.db, [thread])) {
+      if (candidate.environmentId === null) continue;
+      const row = getEnvironment(deps.db, candidate.environmentId);
+      if (row === null || !isManagedWorktree(row)) continue;
+      if (row.teardownStatus === "running")
+        throw new ApiError(
+          409,
+          "worktree_removal_started",
+          `Worktree ${row.path ?? row.id} is already being removed, so it can't be kept now.`,
+        );
+      if (choice === "discard") {
+        deps.db
+          .update(environments)
+          .set({ archiveRetained: false, archiveDiscard: true, retireAt: null })
+          .where(eq(environments.id, row.id))
+          .run();
+        deps.hub.notifyEnvironment(row.id, ["metadata-changed"]);
+      } else if (choice === "auto") {
+        deps.db
+          .update(environments)
+          .set({ archiveDiscard: false })
+          .where(eq(environments.id, row.id))
+          .run();
+      } else {
+        retainArchivedWorktree(deps, row.id);
+      }
+    }
+  });
 }

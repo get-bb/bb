@@ -160,6 +160,7 @@ export async function archiveThread(
 ): Promise<void> {
   const response = await api.threads[":id"]["archive-all"].$post({
     param: { id: threadId },
+    query: {},
   });
   await expectStatus(response, 200, `archive thread ${threadId}`);
 }

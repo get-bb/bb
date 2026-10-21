@@ -77,6 +77,7 @@ export const worktreeHostContract = defineRpcContract({
         operationId: z.string().min(1),
         pathKey: z.string().min(1),
         path: z.string().min(1).nullable(),
+        discard: z.boolean().default(false),
       })
       .strict(),
     output: z.discriminatedUnion("status", [

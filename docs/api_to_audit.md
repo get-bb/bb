@@ -14,6 +14,11 @@ question.
 [provider-bridge-protocol.md](provider-bridge-protocol.md). An entry without
 a "Docs:" line has no owning doc, so it keeps the essential contract itself.
 
+
+## `PluginEnvironmentProviderRemoveContext.experimental_discardWorktree`
+
+The server supplies explicit archive discard authorization to the existing provider removal path. True permits destroying uncommitted and unpushed work; false or absence never authorizes it. The bundled worktree provider is the core caller, reached through the same thread archive endpoint used by the UI, CLI and SDK. Stabilize after auditing all providers for preservation by default, explicit authorization, restart persistence, and unarchive cancellation.
+
 ## Composer popups
 
 `ComposerCustomization.experimental_popups` registers `{ id, label, component }`

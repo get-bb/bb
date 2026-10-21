@@ -206,7 +206,10 @@ describe("ThreadActionsProvider archive confirmation", () => {
     expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
       threadId: "thr_parent",
     });
-    expect(sdk.threads.childSummary).not.toHaveBeenCalled();
+    expect(sdk.threads.childSummary).toHaveBeenCalledWith({
+      threadId: "thr_parent",
+      checkWorktrees: true,
+    });
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     const undo = vi.mocked(appToast.success).mock.calls[0]?.[1]?.cancel;
     if (undo === undefined) throw new Error("Expected archive Undo");
@@ -222,6 +225,68 @@ describe("ThreadActionsProvider archive confirmation", () => {
       threadId: "thr_child",
     });
   });
+
+  it.each(["keep", "commit-and-push"] as const)(
+    "warns about local work even with confirmation disabled and handles %s",
+    async (worktree) => {
+      mocks.confirmThreadArchive = false;
+      const thread = makeThreadListEntry(makeThread());
+      queryClient.setQueryData(threadListQueryKey({ archived: false }), [
+        thread,
+      ]);
+      vi.mocked(sdk.threads.childSummary).mockResolvedValue({
+        nonDeletedChildCount: 0,
+        unarchivedDescendantCount: 0,
+        worktrees: [
+          {
+            environmentId: "env_dirty",
+            threadId: thread.id,
+            path: "/repo/work",
+            state: "changes",
+          },
+        ],
+      });
+      if (worktree === "commit-and-push") {
+        vi.mocked(sdk.threads.archiveAll).mockResolvedValue({
+          ok: true,
+          archivedThreadIds: [],
+          preparing: true,
+        });
+      }
+      renderProvider(<ArchiveButton thread={thread} />);
+      fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent).toContain(
+        "changes that aren't committed or pushed",
+      );
+      expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name:
+            worktree === "keep"
+              ? "Keep worktree and archive"
+              : "Commit and push first",
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+          threadId: thread.id,
+          worktree,
+        }),
+      );
+      if (worktree === "commit-and-push") {
+        await vi.waitFor(() =>
+          expect(appToast.success).toHaveBeenCalledWith(
+            "Asked the agent to commit, push, and archive the thread.",
+          ),
+        );
+        expect(
+          queryClient.getQueryData(threadListQueryKey({ archived: false })),
+        ).toEqual([thread]);
+        expect(mocks.navigate).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("keeps confirmation enabled before settings are available", async () => {
     mocks.confirmThreadArchive = undefined;
@@ -405,7 +470,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
     expect((await screen.findByRole("dialog")).textContent).toContain(
-      "Its 4 child threads will be archived too.",
+      "The 4 threads under it will be archived too.",
     );
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
   });

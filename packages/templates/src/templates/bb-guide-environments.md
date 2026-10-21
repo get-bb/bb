@@ -192,12 +192,14 @@ Making your repo work with bb:
   bb environment archive-threads <id>     Archive all threads in an environment
 
   After the last live thread is archived, the environment provider's policy
-  sets a retirement deadline; checkout environments never retire. A worktree
+  sets a retirement deadline; checkout environments never retire. A clean worktree
   waits five minutes and then tears down: it runs .bb-env-teardown.sh, stops
   every process whose working directory is inside the worktree (the agent
   process, background jobs it left behind, and also shells, editors, or
   servers you started there yourself), removes the worktree, and records the
-  environment as destroyed. The branch is kept. Unarchiving a thread inside
+  environment as destroyed. The branch is kept. bb keeps the worktree on disk if it has uncommitted changes or commits
+  that aren't on any local remote-tracking ref, or if its state can't be checked. The archive dialog offers keeping the worktree
+  or asking the agent to commit and push before archiving. Unarchiving a thread inside
   the grace window cancels the teardown. Move your own shells out of the
   worktree first if you want to keep them. Deleting the last thread, or an
   explicit environment or project deletion, skips the grace (including a
@@ -208,7 +210,8 @@ Making your repo work with bb:
   `bb environment cleanup <id> [--json]` overrides retention and retry backoff
   to remove an unused provider-managed environment early. It is not a routine
   end-of-task step. It rejects live threads and unmanaged environments,
-  succeeds if already removed, and completes asynchronously.
+  succeeds if already removed, and completes asynchronously. It does not
+  override worktree safety: commit and push before requesting cleanup.
 
   bb environment pull-request show <id>   Inspect a pull request
   bb environment pull-request ready <id>  Mark a pull request ready
@@ -220,3 +223,5 @@ Every inspection command accepts an arbitrary environment ID and supports
 `--json`. Non-git status/diff responses are reported explicitly. `diff-file`
 prints UTF-8 content directly and labels base64 binary content; diff and patch
 truncation markers are preserved.
+
+Explicit `bb thread archive <id> --discard-worktree` allows cleanup to delete uncommitted and unpushed work after the usual delay. Unarchiving cancels that authorization.

@@ -69,6 +69,10 @@ describe.sequential("fake provider environment-isolation multi-thread integratio
             throw new Error("Managed worktree path was not assigned");
           }
 
+          await runGit({
+            cwd: harness.repoDir,
+            args: ["update-ref", "refs/remotes/origin/main", "HEAD"],
+          });
           await archiveThread(harness.api, worktreeThread.thread.id);
           await deleteThread(harness.api, siblingThread.thread.id);
           await expect

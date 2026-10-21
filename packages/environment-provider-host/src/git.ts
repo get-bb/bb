@@ -39,6 +39,35 @@ export interface GitCommandResult {
   exitCode: number;
 }
 
+export async function readWorktreeArchiveStatus(
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<{
+  hasUncommittedChanges: boolean;
+  hasUnpushedCommits: boolean;
+}> {
+  const options = { cwd, timeoutMs: 15_000, ...(signal ? { signal } : {}) };
+  const [status, commits] = await Promise.all([
+    runGit(
+      [
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+      ],
+      options,
+    ),
+    runGit(
+      ["rev-list", "--max-count=1", "HEAD", "--not", "--remotes"],
+      options,
+    ),
+  ]);
+  return {
+    hasUncommittedChanges: status.stdout.trim().length > 0,
+    hasUnpushedCommits: commits.stdout.trim().length > 0,
+  };
+}
+
 export type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
 
 export type DefaultBranchRelation =

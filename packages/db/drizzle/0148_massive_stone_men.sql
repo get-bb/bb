@@ -1,0 +1,1 @@
+ALTER TABLE `environments` ADD `archive_discard` integer DEFAULT false NOT NULL;

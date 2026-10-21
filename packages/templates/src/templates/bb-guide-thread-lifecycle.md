@@ -50,8 +50,27 @@ Lifecycle:
   is attempted now, and may still queue behind a busy thread or a plugin.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
-  bb thread archive [id]                   Archive a thread (and children/hidden forks)
+  bb thread archive [id]                   Archive a thread and the threads under it
     --self                                 Archive current thread
+    --discard-worktree                      Delete the worktrees even if they have uncommitted or unpushed changes
+    --keep-worktree                         Keep the worktrees when archiving
+    --require-clean                         Archive only if no worktree has uncommitted or unpushed changes
+    --commit-and-push                       Ask the agent to commit and push, then archive
+
+  These worktree flags are mutually exclusive. By default, archive succeeds
+  and keeps worktrees with uncommitted or unpushed changes, or whose state
+  cannot be checked. Clean worktrees keep their usual cleanup schedule.
+  `--commit-and-push` leaves the thread open while the agent prepares it; the
+  agent archives with `--require-clean` only after committing and pushing
+  succeeds. A failure leaves the thread open.
+  `--discard-worktree` deletes the worktree after the usual cleanup delay, even
+  if it has uncommitted or unpushed changes. Use it only when that work can be
+  lost. It matches the old default, for scripts that archive to free disk space.
+  Unarchiving the thread cancels it. Once removal has started, the choice can't
+  be changed: bb returns an error rather than promise to keep a worktree it's
+  already deleting.
+  SDK: `threads.archive({ threadId, worktree?: "auto" | "keep" | "require-clean" | "commit-and-push" | "discard" })`.
+  Inspect affected worktrees with `threads.childSummary({ threadId, checkWorktrees: true })`.
 
   Archive is not a hard stop: for 30 seconds a running turn and the thread's
   terminals keep going, and unarchiving within that window leaves everything in
@@ -76,8 +95,11 @@ Lifecycle:
   bb thread restore-environment [id]       Restore a destroyed workspace
     --self                                 Restore current thread
 
-  Archiving a thread retires its environment, and a managed workspace is removed
-  from disk once the provider's grace window passes. Sending to a thread whose
+  Archiving a thread retires its environment. A clean managed worktree is
+  removed from disk once the provider's grace window passes; local changes
+  and commits absent from every local remote-tracking ref prevent removal.
+  Repositories without remote-tracking refs are kept. Kept worktrees remain
+  until an explicit cleanup request, which checks their safety again. Sending to a thread whose
   workspace is gone fails; `restore-environment` asks the environment provider
   to build it again and attaches it, leaving the conversation where it was.
   Each provider decides what that means: a worktree is re-created on the branch

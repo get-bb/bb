@@ -225,6 +225,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             operationId,
             pathKey: context.pathKey,
             path: context.path,
+            discard: context.experimental_discardWorktree === true,
           },
           {
             hostId: context.hostId,
