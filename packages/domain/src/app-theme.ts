@@ -6,6 +6,7 @@ import {
 
 const builtInThemeIdSchema = z.enum([
   "default",
+  "handshake",
   "nord",
   "dracula",
   "solarized",
@@ -22,6 +23,11 @@ interface BuiltInThemeMeta {
 
 export const builtInThemes: readonly BuiltInThemeMeta[] = [
   { id: "default", name: "Default", description: "The standard bb look" },
+  {
+    id: "handshake",
+    name: "Handshake",
+    description: "Handshake cyan, lime, and bright status colors",
+  },
   { id: "nord", name: "Nord", description: "Cool, muted arctic blues" },
   {
     id: "dracula",

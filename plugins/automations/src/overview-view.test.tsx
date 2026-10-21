@@ -62,6 +62,30 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
 afterEach(cleanup);
 
 describe("AutomationOverviewView", () => {
+  it("starts automation creation from the overview hero", () => {
+    const onCreateViaChat = vi.fn();
+    render(
+      <AutomationOverviewView
+        entries={INSTALLED_AUTOMATIONS}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
+        onDelete={() => {}}
+        onCreateViaChat={onCreateViaChat}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create an automation" }),
+    );
+
+    expect(onCreateViaChat).toHaveBeenCalledWith();
+  });
+
   it("keeps lifecycle groups stable around the selected sort", () => {
     const baseEntry = INSTALLED_AUTOMATIONS[0]!;
     if ("problem" in baseEntry.automation) {

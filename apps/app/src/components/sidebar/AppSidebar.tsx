@@ -418,6 +418,7 @@ export function AppSidebar({
             </SidebarCollapsibleBody>
             {placement === "rail" ? (
               <div
+                data-sidebar-navigation-rail-footer=""
                 className={cn(
                   "col-start-1 row-start-2 flex shrink-0 items-center justify-center",
                   NAV_RAIL_WIDTH_CLASS,

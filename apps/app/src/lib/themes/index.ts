@@ -6,6 +6,7 @@ import {
 import { catppuccinThemeCss } from "./catppuccin";
 import { draculaThemeCss } from "./dracula";
 import { gruvboxThemeCss } from "./gruvbox";
+import { handshakeThemeCss } from "./handshake";
 import { nordThemeCss } from "./nord";
 import { solarizedThemeCss } from "./solarized";
 
@@ -14,6 +15,7 @@ export const APP_THEME_CSS_STORAGE_KEY = "bb.appThemeCss";
 
 const builtInThemeCss: Record<BuiltInThemeId, string> = {
   default: "",
+  handshake: handshakeThemeCss,
   nord: nordThemeCss,
   dracula: draculaThemeCss,
   solarized: solarizedThemeCss,

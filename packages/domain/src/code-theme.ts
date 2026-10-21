@@ -59,6 +59,10 @@ export const builtInPaletteCodeThemes = {
     dark: DEFAULT_CODE_THEME_DARK,
     light: DEFAULT_CODE_THEME_LIGHT,
   },
+  handshake: {
+    dark: DEFAULT_CODE_THEME_DARK,
+    light: DEFAULT_CODE_THEME_LIGHT,
+  },
   nord: { dark: "nord", light: "bb:nord:light" },
   dracula: { dark: "dracula", light: "bb:dracula:light" },
   solarized: { dark: "solarized-dark", light: "solarized-light" },

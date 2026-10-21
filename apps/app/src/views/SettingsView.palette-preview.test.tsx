@@ -69,6 +69,7 @@ describe("palette hover preview", () => {
     expect(onAppearanceThemePrefetch).toHaveBeenCalledTimes(1);
     expect(onAppearanceThemePrefetch).toHaveBeenCalledWith([
       "default",
+      "handshake",
       "nord",
       "dracula",
       "solarized",

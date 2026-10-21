@@ -1,0 +1,189 @@
+:root,
+.light {
+  --handshake-deep-cyan: #052326;
+  --handshake-lime: #d3fb52;
+  --handshake-cyan: #00d3d8;
+  --handshake-on-deep: #ffffff;
+  --canvas: #ffffff;
+  --ink: #14151c;
+  --background: color-mix(in oklch, var(--ink) 3%, var(--canvas));
+  --card: var(--canvas);
+  --popover: var(--canvas);
+  --primary: var(--handshake-deep-cyan);
+  --primary-foreground: var(--handshake-lime);
+  --secondary: color-mix(in oklch, var(--ink) 6%, var(--canvas));
+  --accent: color-mix(in oklch, var(--handshake-lime) 30%, var(--canvas));
+  --muted: color-mix(in oklch, var(--ink) 8%, var(--canvas));
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --timeline-accent: #2e6aff;
+  --file-accent: var(--timeline-accent);
+  --destructive: #d72235;
+  --destructive-text: #b31b2d;
+  --attention: var(--handshake-lime);
+  --warning: #f94f00;
+  --warning-text: #b63800;
+  --success: #6fbb28;
+  --diff-added: #438b20;
+  --diff-removed: #d72235;
+  --pr-merged: #9b53f6;
+  --border: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 14%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 10%, var(--canvas));
+  --border-seam-vertical: var(--border-seam);
+  --input: color-mix(in oklch, var(--ink) 24%, var(--canvas));
+  --ring: #1552d6;
+  --surface-selected: color-mix(
+    in oklab,
+    var(--handshake-lime) 30%,
+    transparent
+  );
+  --surface-selected-border: color-mix(
+    in oklab,
+    var(--handshake-deep-cyan) 35%,
+    transparent
+  );
+  --sidebar: var(--canvas);
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: color-mix(
+    in oklch,
+    var(--handshake-lime) 24%,
+    var(--canvas)
+  );
+  --sidebar-accent-foreground: var(--handshake-deep-cyan);
+  --sidebar-border: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+  --sidebar-ring: #1552d6;
+  --radius: 0.75rem;
+  --shadow-lift: 0 -8px 30px -16px
+    color-mix(in oklab, var(--handshake-deep-cyan) 24%, transparent);
+}
+
+.dark {
+  --handshake-deep-cyan: #052326;
+  --handshake-lime: #d3fb52;
+  --handshake-cyan: #00d3d8;
+  --handshake-on-deep: #f3f4fa;
+  --canvas: #101216;
+  --ink: #f3f4fa;
+  --background: var(--canvas);
+  --card: color-mix(in oklch, var(--ink) 5%, var(--canvas));
+  --popover: color-mix(in oklch, var(--ink) 7%, var(--canvas));
+  --primary: var(--handshake-lime);
+  --primary-foreground: var(--handshake-deep-cyan);
+  --secondary: color-mix(in oklch, var(--ink) 12%, var(--canvas));
+  --accent: color-mix(in oklch, var(--handshake-lime) 15%, var(--canvas));
+  --muted: color-mix(in oklch, var(--ink) 15%, var(--canvas));
+  --muted-foreground: color-mix(in oklch, var(--ink) 78%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 66%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 72%, var(--canvas));
+  --timeline-accent: #99b8ff;
+  --file-accent: var(--timeline-accent);
+  --destructive: #ff5261;
+  --destructive-text: #ff7b86;
+  --attention: var(--handshake-lime);
+  --warning: #ff7a3d;
+  --warning-text: #ff9c70;
+  --success: #a1dd3b;
+  --diff-added: #a1dd3b;
+  --diff-removed: #ff5261;
+  --pr-merged: #dcb3ff;
+  --border: color-mix(in oklch, var(--ink) 18%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 20%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 12%, var(--canvas));
+  --border-seam-vertical: var(--border-seam);
+  --input: color-mix(in oklch, var(--ink) 30%, var(--canvas));
+  --ring: var(--handshake-lime);
+  --surface-selected: color-mix(
+    in oklab,
+    var(--handshake-lime) 16%,
+    transparent
+  );
+  --surface-selected-border: color-mix(
+    in oklab,
+    var(--handshake-lime) 35%,
+    transparent
+  );
+  --sidebar: color-mix(in oklch, var(--ink) 4%, var(--canvas));
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: color-mix(
+    in oklch,
+    var(--handshake-lime) 15%,
+    var(--canvas)
+  );
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: color-mix(in oklch, var(--ink) 17%, var(--canvas));
+  --sidebar-ring: var(--handshake-lime);
+  --shadow-lift: 0 -8px 30px -16px
+    color-mix(in oklab, var(--canvas) 70%, transparent);
+}
+
+[data-sidebar-navigation-placement="rail"],
+[data-sidebar-navigation-rail-footer] {
+  background: var(--handshake-deep-cyan);
+  color: var(--handshake-on-deep);
+}
+
+[data-testid="app-nav-rail"]::before {
+  content: "H";
+  display: grid;
+  place-items: center;
+  width: var(--bb-sidebar-control-size);
+  height: var(--bb-sidebar-control-size);
+  margin-block: 0.125rem 0.5rem;
+  border-radius: 0.65rem;
+  background: var(--handshake-lime);
+  color: var(--handshake-deep-cyan);
+  font-weight: 850;
+  font-style: italic;
+  font-size: var(--text-base);
+}
+
+[data-sidebar-navigation-placement="rail"] button,
+[data-sidebar-navigation-rail-footer] button {
+  color: color-mix(
+    in oklch,
+    var(--handshake-on-deep) 72%,
+    var(--handshake-deep-cyan)
+  );
+}
+
+[data-sidebar-navigation-placement="rail"] button:hover,
+[data-sidebar-navigation-rail-footer] button:hover {
+  background: color-mix(in oklab, var(--handshake-on-deep) 11%, transparent);
+  color: var(--handshake-on-deep);
+}
+
+[data-sidebar-navigation-placement="rail"] button[aria-current="page"],
+[data-sidebar-navigation-rail-footer] button[aria-current="page"] {
+  background: var(--handshake-lime);
+  color: var(--handshake-deep-cyan);
+  box-shadow: 0 8px 24px
+    color-mix(in oklab, var(--handshake-lime) 20%, transparent);
+}
+
+[data-resource-list-panel] {
+  border-radius: 0.875rem;
+  box-shadow: 0 10px 30px
+    color-mix(in oklab, var(--handshake-deep-cyan) 6%, transparent);
+}
+
+[data-automation-hero] {
+  background:
+    radial-gradient(
+      circle at 82% 45%,
+      color-mix(in oklab, var(--handshake-cyan) 24%, transparent),
+      transparent 28%
+    ),
+    var(--handshake-deep-cyan);
+  color: var(--handshake-on-deep);
+  box-shadow: 0 18px 45px
+    color-mix(in oklab, var(--handshake-deep-cyan) 18%, transparent);
+}
+
+[data-automation-hero] [data-automation-hero-kicker],
+[data-automation-hero] [data-automation-hero-action],
+[data-automation-hero] [data-automation-hero-core] {
+  background: var(--handshake-lime);
+  color: var(--handshake-deep-cyan);
+}

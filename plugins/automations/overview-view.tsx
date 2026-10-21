@@ -107,6 +107,61 @@ interface AutomationDetailNavigationOptions {
   editing?: boolean;
 }
 
+function AutomationHero({ onCreate }: { onCreate: () => void }) {
+  return (
+    <section
+      data-automation-hero
+      className="relative hidden min-h-44 shrink-0 overflow-hidden rounded-xl bg-primary px-7 py-6 text-primary-foreground md:grid md:grid-cols-[minmax(0,1fr)_18rem]"
+    >
+      <div className="relative z-10 flex max-w-xl flex-col items-start justify-center">
+        <span
+          data-automation-hero-kicker
+          className="rounded-full bg-primary-foreground px-2.5 py-1 text-2xs font-semibold tracking-wide text-primary"
+        >
+          WORK ON AUTOPILOT
+        </span>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+          Make space for the work that matters.
+        </h2>
+        <p className="mt-1.5 max-w-lg text-sm leading-relaxed opacity-75">
+          Schedule an agent to review, summarize, or monitor work across your
+          projects.
+        </p>
+        <Button
+          type="button"
+          data-automation-hero-action
+          variant="secondary"
+          size="sm"
+          className="mt-4 bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+          onClick={onCreate}
+        >
+          Create an automation
+          <Icon name="ArrowRight" aria-hidden />
+        </Button>
+      </div>
+      <div className="relative" aria-hidden>
+        <span className="absolute top-1/2 left-1/2 h-28 w-44 -translate-x-1/2 -translate-y-1/2 -rotate-12 rounded-[50%] border border-current/25" />
+        <span className="absolute top-1/2 left-1/2 h-40 w-64 -translate-x-1/2 -translate-y-1/2 rotate-12 rounded-[50%] border border-current/20" />
+        <span
+          data-automation-hero-core
+          className="absolute top-1/2 left-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-xl bg-primary-foreground text-primary shadow-lg"
+        >
+          <Icon name="Repeat" className="size-6" />
+        </span>
+        <span className="absolute top-7 left-8 grid size-8 place-items-center rounded-lg bg-timeline-accent text-background shadow-md">
+          <Icon name="Check" className="size-4" />
+        </span>
+        <span className="absolute right-7 bottom-7 grid size-8 place-items-center rounded-lg bg-warning text-background shadow-md">
+          <Icon name="ArrowUpRight" className="size-4" />
+        </span>
+        <span className="absolute bottom-4 left-16 grid size-8 place-items-center rounded-lg bg-pr-merged text-background shadow-md">
+          <Icon name="Star" className="size-4" />
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function routeOf(
   automation: Pick<AutomationResponse, "id" | "projectId">,
 ): AutomationDetailRoute {
@@ -648,110 +703,115 @@ export function AutomationOverviewView({
   }
 
   return (
-    <ResourceCollectionPage
-      id="automations-collection"
-      description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
-      modes={[
-        {
-          id: "installed",
-          label: "Installed",
-          count: entries?.length ?? undefined,
-        },
-        { id: "browse", label: "Browse" },
-      ]}
-      activeMode={activeMode}
-      onModeChange={onModeChange}
-      actions={
-        <ResourceCreateButton
-          label="New automation"
-          templates={AUTOMATION_CREATE_TEMPLATES}
-          onCreate={onCreateViaChat}
-        />
-      }
-    >
-      {activeMode === "browse" ? (
-        <ResourceCollectionViewport contentClassName="space-y-3">
-          <ResourceBrowseGrid>
-            {AUTOMATION_CREATE_TEMPLATES.map((template) => (
-              <ResourceTemplateBrowseCard
-                key={template.label}
-                title={template.label}
-                description={template.description}
-                onUse={() => onCreateViaChat(template.prompt)}
-              />
-            ))}
-          </ResourceBrowseGrid>
-        </ResourceCollectionViewport>
-      ) : (
-        <ResourceCollectionViewport
-          scrollId="automations-installed-results"
-          viewportRef={setInstalledViewport}
-          toolbar={
-            <ResourceToolbar
-              searchValue={query}
-              searchPlaceholder="Search automations"
-              onSearchChange={setQuery}
-              controls={
-                <>
-                  <ResourceFilterMenu
-                    compact
-                    groups={[
-                      {
-                        id: "projects",
-                        label: "Projects",
-                        options: projectOptions,
-                        selectedValues: projectFilters,
-                        onChange: (values) =>
-                          setProjectFilters(
-                            values.filter(isAutomationProjectFilter),
-                          ),
-                      },
-                      {
-                        id: "status",
-                        label: "Status",
-                        options: AUTOMATION_STATUS_FILTER_OPTIONS,
-                        selectedValues: statusFilters,
-                        onChange: (values) =>
-                          setStatusFilters(
-                            values.filter(isAutomationStatusFilter),
-                          ),
-                      },
-                    ]}
-                  />
-                  <ResourceSortMenu
-                    value={sortMode}
-                    direction={sortDirection}
-                    compact
-                    options={[
-                      {
-                        id: "project",
-                        label: "Project",
-                        disabled: projectBucketCount <= 1,
-                      },
-                      { id: "alpha", label: "Automation name" },
-                    ]}
-                    onChange={handleSortChange}
-                  />
-                </>
-              }
+    <div className="flex h-full min-h-0 flex-col gap-5">
+      <AutomationHero onCreate={() => onCreateViaChat()} />
+      <div className="min-h-0 flex-1">
+        <ResourceCollectionPage
+          id="automations-collection"
+          description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
+          modes={[
+            {
+              id: "installed",
+              label: "Installed",
+              count: entries?.length ?? undefined,
+            },
+            { id: "browse", label: "Browse" },
+          ]}
+          activeMode={activeMode}
+          onModeChange={onModeChange}
+          actions={
+            <ResourceCreateButton
+              label="New automation"
+              templates={AUTOMATION_CREATE_TEMPLATES}
+              onCreate={onCreateViaChat}
             />
           }
-          footer={
-            hasInstalledPagination ? (
-              <ResourcePagination
-                page={installedPagination.page}
-                pageSize={installedPagination.pageSize}
-                total={installedPagination.total}
-                visibleCount={installedPagination.visibleCount}
-                onPageChange={installedPagination.setPage}
-                scrollTargetId="automations-installed-results"
-              />
-            ) : undefined
-          }
         >
-          {body}
-        </ResourceCollectionViewport>
-      )}
-    </ResourceCollectionPage>
+          {activeMode === "browse" ? (
+            <ResourceCollectionViewport contentClassName="space-y-3">
+              <ResourceBrowseGrid>
+                {AUTOMATION_CREATE_TEMPLATES.map((template) => (
+                  <ResourceTemplateBrowseCard
+                    key={template.label}
+                    title={template.label}
+                    description={template.description}
+                    onUse={() => onCreateViaChat(template.prompt)}
+                  />
+                ))}
+              </ResourceBrowseGrid>
+            </ResourceCollectionViewport>
+          ) : (
+            <ResourceCollectionViewport
+              scrollId="automations-installed-results"
+              viewportRef={setInstalledViewport}
+              toolbar={
+                <ResourceToolbar
+                  searchValue={query}
+                  searchPlaceholder="Search automations"
+                  onSearchChange={setQuery}
+                  controls={
+                    <>
+                      <ResourceFilterMenu
+                        compact
+                        groups={[
+                          {
+                            id: "projects",
+                            label: "Projects",
+                            options: projectOptions,
+                            selectedValues: projectFilters,
+                            onChange: (values) =>
+                              setProjectFilters(
+                                values.filter(isAutomationProjectFilter),
+                              ),
+                          },
+                          {
+                            id: "status",
+                            label: "Status",
+                            options: AUTOMATION_STATUS_FILTER_OPTIONS,
+                            selectedValues: statusFilters,
+                            onChange: (values) =>
+                              setStatusFilters(
+                                values.filter(isAutomationStatusFilter),
+                              ),
+                          },
+                        ]}
+                      />
+                      <ResourceSortMenu
+                        value={sortMode}
+                        direction={sortDirection}
+                        compact
+                        options={[
+                          {
+                            id: "project",
+                            label: "Project",
+                            disabled: projectBucketCount <= 1,
+                          },
+                          { id: "alpha", label: "Automation name" },
+                        ]}
+                        onChange={handleSortChange}
+                      />
+                    </>
+                  }
+                />
+              }
+              footer={
+                hasInstalledPagination ? (
+                  <ResourcePagination
+                    page={installedPagination.page}
+                    pageSize={installedPagination.pageSize}
+                    total={installedPagination.total}
+                    visibleCount={installedPagination.visibleCount}
+                    onPageChange={installedPagination.setPage}
+                    scrollTargetId="automations-installed-results"
+                  />
+                ) : undefined
+              }
+            >
+              {body}
+            </ResourceCollectionViewport>
+          )}
+        </ResourceCollectionPage>
+      </div>
+    </div>
   );
 }
