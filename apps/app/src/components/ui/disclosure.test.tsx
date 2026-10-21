@@ -10,7 +10,7 @@ import {
 import { Provider, createStore } from "jotai";
 import { useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExpandablePanel } from "./disclosure";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
@@ -26,16 +26,44 @@ class ResizeObserverStub implements ResizeObserver {
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
 
+const frames = new Map<number, FrameRequestCallback>();
+let nextFrame = 0;
+
+beforeEach(() => {
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    const id = ++nextFrame;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+});
+
 afterEach(() => {
-  ResizeObserverStub.instances.length = 0;
   cleanup();
+  ResizeObserverStub.instances.length = 0;
+  frames.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-function renderPanel(isExpanded: boolean) {
-  return render(
+function flushFrame() {
+  const batch = [...frames.keys()];
+  act(() => {
+    for (const id of batch) {
+      const callback = frames.get(id);
+      frames.delete(id);
+      callback?.(0);
+    }
+  });
+}
+
+function fakeTimeouts() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+}
+
+function panel(isExpanded: boolean) {
+  return (
     <ExpandablePanel
       isExpanded={isExpanded}
       summaryContent="Tool call"
@@ -43,8 +71,12 @@ function renderPanel(isExpanded: boolean) {
       collapsedContent={<span>Collapsed summary</span>}
     >
       <span>Expanded body</span>
-    </ExpandablePanel>,
+    </ExpandablePanel>
   );
+}
+
+function renderPanel(isExpanded: boolean) {
+  return render(panel(isExpanded));
 }
 
 function fireResize(entries: ResizeObserverEntry[] = []): void {
@@ -55,6 +87,16 @@ function fireResize(entries: ResizeObserverEntry[] = []): void {
   act(() => {
     observer.callback(entries, observer);
   });
+}
+
+function entry(target: Element, height: number): ResizeObserverEntry {
+  return {
+    target,
+    borderBoxSize: [{ blockSize: height, inlineSize: 320 }],
+    contentBoxSize: [{ blockSize: height, inlineSize: 320 }],
+    devicePixelContentBoxSize: [],
+    contentRect: new DOMRect(0, 0, 320, height),
+  };
 }
 
 describe("ExpandablePanel body height", () => {
@@ -85,6 +127,7 @@ describe("ExpandablePanel body height", () => {
         contentRect: new DOMRect(0, 0, 320, 120),
       },
     ]);
+    flushFrame();
     expect(target.parentElement?.style.height).toBe("120px");
     expect(readHeight).not.toHaveBeenCalled();
   });
@@ -102,6 +145,7 @@ describe("ExpandablePanel body height", () => {
     expect(region.style.transitionDuration).toBe("0s");
 
     fireResize();
+    flushFrame();
     expect(region.style.transitionDuration).toBe("0s");
 
     view.rerender(
@@ -116,11 +160,76 @@ describe("ExpandablePanel body height", () => {
     );
     expect(region.style.transitionDuration).toBe("");
     fireResize();
+    flushFrame();
     expect(region.style.transitionDuration).toBe("");
 
     vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
     fireResize();
+    flushFrame();
     expect(region.style.transitionDuration).toBe("0s");
+  });
+
+  it("keeps toggle sizing authoritative over queued and subsequently delivered old measurements", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    const height = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockReturnValue(40);
+    const view = renderPanel(true);
+    const target = view.getByText("Expanded body").parentElement?.parentElement;
+    const region = target?.parentElement;
+    if (!target || !region) throw new Error("Panel content was not rendered");
+    fireResize([entry(target, 120)]);
+    height.mockReturnValue(20);
+    view.rerender(panel(false));
+    expect(region.style.height).toBe("20px");
+    expect(region.style.transitionDuration).toBe("");
+    flushFrame();
+    expect(region.style.height).toBe("20px");
+    fireResize([entry(target, 140)]);
+    height.mockReturnValue(30);
+    fireResize([entry(target, 160)]);
+    flushFrame();
+    expect(region.style.height).toBe("30px");
+    fireResize([entry(target, 35)]);
+    flushFrame();
+    expect(region.style.height).toBe("35px");
+  });
+
+  it("samples the toggle deadline during delivery rather than delayed commit", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    const now = vi.spyOn(performance, "now").mockReturnValue(0);
+    const view = renderPanel(true);
+    view.rerender(panel(false));
+    const target = view.getByText("Collapsed summary").parentElement;
+    const region = target?.parentElement;
+    if (!target || !region) throw new Error("Panel content was not rendered");
+    now.mockReturnValue(199);
+    fireResize([entry(target, 40)]);
+    now.mockReturnValue(201);
+    flushFrame();
+    expect(region.style.transitionDuration).toBe("");
+    fireResize([entry(target, 60)]);
+    flushFrame();
+    expect(region.style.height).toBe("60px");
+    expect(region.style.transitionDuration).toBe("0s");
+  });
+
+  it("does not write or measure after unmount with queued geometry", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    const view = renderPanel(true);
+    const target = view.getByText("Expanded body").parentElement?.parentElement;
+    const region = target?.parentElement;
+    if (!target || !region) throw new Error("Panel content was not rendered");
+    fireResize([entry(target, 120)]);
+    const observer = ResizeObserverStub.instances.at(-1);
+    view.unmount();
+    const readHeight = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get");
+    expect(frames.size).toBe(0);
+    fireResize();
+    flushFrame();
+    expect(region.style.height).toBe("");
+    expect(readHeight).not.toHaveBeenCalled();
+    expect(observer?.disconnect).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -164,7 +273,7 @@ describe("ExpandablePanel deferred body realization", () => {
   });
 
   it("keeps the closing body mounted through the collapse animation", () => {
-    vi.useFakeTimers();
+    fakeTimeouts();
     render(<TogglablePanel />);
     const header = screen.getByRole("button", { name: "Tool call" });
     fireEvent.click(header);
@@ -188,7 +297,7 @@ describe("ExpandablePanel deferred body realization", () => {
         return this.textContent?.length ?? 0;
       },
     );
-    vi.useFakeTimers();
+    fakeTimeouts();
     const store = createStore();
     render(
       <Provider store={store}>
@@ -202,6 +311,7 @@ describe("ExpandablePanel deferred body realization", () => {
       throw new Error("Panel body region was not rendered");
     }
     fireResize();
+    flushFrame();
     const previewHeight = `${"Collapsed summary".length}px`;
     const bodyHeight = `${"Expanded body".length}px`;
     expect(region.style.height).toBe(previewHeight);
@@ -246,7 +356,7 @@ describe("ExpandablePanel deferred body realization", () => {
   });
 
   it("reuses the retained body when a reopen lands inside the close window", () => {
-    vi.useFakeTimers();
+    fakeTimeouts();
     render(<TogglablePanel />);
     const header = screen.getByRole("button", { name: "Tool call" });
     fireEvent.click(header);

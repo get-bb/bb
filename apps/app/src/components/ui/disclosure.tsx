@@ -14,6 +14,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   observedBorderBoxBlockSize,
   observeSharedResize,
+  type SharedResizeSubscription,
 } from "@/lib/shared-resize-observer";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
@@ -160,12 +161,16 @@ function AnimatedExpandablePanelContent({
 }: AnimatedExpandablePanelContentProps) {
   const regionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const resizeRef = useRef<SharedResizeSubscription | null>(null);
+  const useLiveMeasurementRef = useRef(false);
   const toggleAnimationDeadlineRef = useRef(0);
   const previousBodyExpandedRef = useRef(isBodyExpanded);
   useBrowserLayoutEffect(() => {
     if (previousBodyExpandedRef.current === isBodyExpanded) return;
     previousBodyExpandedRef.current = isBodyExpanded;
     if (typeof ResizeObserver === "undefined") return;
+    resizeRef.current?.discardPending();
+    useLiveMeasurementRef.current = true;
     toggleAnimationDeadlineRef.current = animate
       ? performance.now() + EXPANDABLE_PANEL_TRANSITION_MS
       : 0;
@@ -189,7 +194,9 @@ function AnimatedExpandablePanelContent({
       entry: ResizeObserverEntry | undefined,
     ): PanelHeightSync => {
       const observedHeight =
-        entry === undefined ? undefined : observedBorderBoxBlockSize(entry);
+        useLiveMeasurementRef.current || entry === undefined
+          ? undefined
+          : observedBorderBoxBlockSize(entry);
       return {
         isToggleAnimating:
           performance.now() < toggleAnimationDeadlineRef.current,
@@ -200,6 +207,7 @@ function AnimatedExpandablePanelContent({
       heightPx,
       isToggleAnimating,
     }: PanelHeightSync) => {
+      useLiveMeasurementRef.current = false;
       region.style.transitionDuration = isToggleAnimating ? "" : "0s";
       region.style.height = `${heightPx}px`;
     };
@@ -209,10 +217,15 @@ function AnimatedExpandablePanelContent({
       return;
     }
 
-    return observeSharedResize(target, {
+    const resize = observeSharedResize(target, {
       read: readHeightSync,
       write: writeHeightSync,
     });
+    resizeRef.current = resize;
+    return () => {
+      resizeRef.current = null;
+      resize.disconnect();
+    };
   }, []);
 
   return (

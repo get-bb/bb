@@ -35,12 +35,14 @@ interface IntrinsicHeightResizeState {
   usingIntrinsicHeight: boolean;
 }
 
-interface ScheduleIntrinsicHeightRestoreArgs {
-  inner: HTMLElement;
-  snapState: SnapState;
-  target: HTMLElement;
-  resizeState: IntrinsicHeightResizeState;
+interface HeightSync {
+  nextHeight: string;
+  snap: boolean;
 }
+
+type AutoHeightSync =
+  | { useIntrinsicHeight: true }
+  | ({ useIntrinsicHeight: false } & HeightSync);
 
 function enterSnapMode(target: HTMLElement, state: SnapState): void {
   if (state.savedDuration === null) {
@@ -104,22 +106,17 @@ function enterIntrinsicHeightMode(
   resizeState.usingIntrinsicHeight = true;
 }
 
-function scheduleIntrinsicHeightRestore({
-  inner,
-  resizeState,
-  snapState,
-  target,
-}: ScheduleIntrinsicHeightRestoreArgs): void {
+function scheduleIntrinsicHeightRestore(
+  resizeState: IntrinsicHeightResizeState,
+  restore: () => void,
+): void {
   if (resizeState.restoreTimerId !== null) {
     window.clearTimeout(resizeState.restoreTimerId);
   }
   resizeState.restoreTimerId = window.setTimeout(() => {
     resizeState.restoreTimerId = null;
-    if (!resizeState.usingIntrinsicHeight) {
-      return;
-    }
-    resizeState.usingIntrinsicHeight = false;
-    applyHeight(target, `${inner.offsetHeight}px`, true, snapState);
+    if (!resizeState.usingIntrinsicHeight) return;
+    restore();
   }, AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS);
 }
 
@@ -142,6 +139,15 @@ function getObservedInnerHeight(
   return observed ?? inner.offsetHeight;
 }
 
+function getObservedInnerWidth(
+  entry: ResizeObserverEntry | undefined,
+  inner: HTMLElement,
+): number {
+  return (
+    entry?.borderBoxSize?.[0]?.inlineSize ?? inner.getBoundingClientRect().width
+  );
+}
+
 interface HeightTransitionProps {
   visible: boolean;
   children: ReactNode;
@@ -157,43 +163,50 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
     if (!wrapper || !inner) return;
     wrapper.style.height = visible ? `${inner.offsetHeight}px` : "0px";
     if (typeof ResizeObserver === "undefined") return;
-    let lastWidth: number | null = null;
+    let lastWidth = inner.getBoundingClientRect().width;
+    let useLiveMeasurement = true;
     let pendingVisibilitySnap = false;
     const snapState: SnapState = { savedDuration: null, restoreFrame: null };
-    const unobserveInner = observeSharedResize(inner, {
-      read: (entry) => {
-        const width = entry?.contentRect?.width;
-        const widthChanged =
-          lastWidth !== null && width !== undefined && width !== lastWidth;
+    const resize = observeSharedResize(inner, {
+      read: (entry): HeightSync => {
+        const measurement = useLiveMeasurement ? undefined : entry;
+        const width = getObservedInnerWidth(measurement, inner);
+        const widthChanged = width !== lastWidth;
         const layoutAnimationActive =
           store.get(layoutAnimationInFlightCountAtom) > 0;
         const snap =
           widthChanged || pendingVisibilitySnap || layoutAnimationActive;
-        pendingVisibilitySnap = false;
-        if (width !== undefined) {
-          lastWidth = width;
-        }
+        lastWidth = width;
         return {
           nextHeight: visible
-            ? `${getObservedInnerHeight(entry, inner)}px`
+            ? `${getObservedInnerHeight(measurement, inner)}px`
             : "0px",
           snap,
         };
       },
       write: ({ nextHeight, snap }) => {
+        useLiveMeasurement = false;
+        pendingVisibilitySnap = false;
         applyHeight(wrapper, nextHeight, snap, snapState);
       },
+      coalesce: (previous, latest) => ({
+        ...latest,
+        snap: previous.snap || latest.snap,
+      }),
     });
     const onVisibility = () => {
       if (!isDocumentVisible()) return;
+      resize.discardPending();
+      useLiveMeasurement = true;
       pendingVisibilitySnap = true;
+      lastWidth = inner.getBoundingClientRect().width;
       const nextHeight = visible ? `${inner.offsetHeight}px` : "0px";
       applyHeight(wrapper, nextHeight, true, snapState);
     };
     const unsubscribeFromDocumentVisibility =
       subscribeToDocumentVisibility(onVisibility);
     return () => {
-      unobserveInner();
+      resize.disconnect();
       unsubscribeFromDocumentVisibility();
       cleanupSnapState(wrapper, snapState);
     };
@@ -256,6 +269,7 @@ export function AutoHeightContainer({
     if (!wrapper || !inner || typeof ResizeObserver === "undefined") return;
     wrapper.style.height = `${inner.offsetHeight}px`;
     let lastWidth: number | null = null;
+    let useLiveMeasurement = false;
     let pendingVisibilitySnap = false;
     let initialSettleComplete = false;
     let initialSettleTimerId = window.setTimeout(() => {
@@ -267,6 +281,9 @@ export function AutoHeightContainer({
       usingIntrinsicHeight: false,
     };
     const snapToCurrentHeight = () => {
+      resize.discardPending();
+      useLiveMeasurement = true;
+      lastWidth = inner.getBoundingClientRect().width;
       cancelIntrinsicHeightRestore(resizeState);
       resizeState.usingIntrinsicHeight = false;
       applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
@@ -281,11 +298,11 @@ export function AutoHeightContainer({
         initialSettleComplete = true;
       }, AUTO_HEIGHT_INITIAL_SETTLE_MS);
     };
-    const unobserveInner = observeSharedResize(inner, {
-      read: (entry) => {
-        const width = entry?.contentRect?.width;
-        const widthChanged =
-          lastWidth !== null && width !== undefined && width !== lastWidth;
+    const resize = observeSharedResize(inner, {
+      read: (entry): AutoHeightSync => {
+        const measurement = useLiveMeasurement ? undefined : entry;
+        const width = getObservedInnerWidth(measurement, inner);
+        const widthChanged = lastWidth !== null && width !== lastWidth;
         const layoutAnimationActive =
           store.get(layoutAnimationInFlightCountAtom) > 0;
         const snap =
@@ -293,34 +310,32 @@ export function AutoHeightContainer({
           pendingVisibilitySnap ||
           !initialSettleComplete ||
           layoutAnimationActive;
-        pendingVisibilitySnap = false;
-        if (width !== undefined) {
-          lastWidth = width;
-        }
+        lastWidth = width;
         if (widthChanged || resizeState.usingIntrinsicHeight) {
-          return { useIntrinsicHeight: true as const };
+          return { useIntrinsicHeight: true };
         }
         return {
-          useIntrinsicHeight: false as const,
-          nextHeight: `${getObservedInnerHeight(entry, inner)}px`,
+          useIntrinsicHeight: false,
+          nextHeight: `${getObservedInnerHeight(measurement, inner)}px`,
           snap,
         };
       },
       write: (sync) => {
+        useLiveMeasurement = false;
+        pendingVisibilitySnap = false;
         if (sync.useIntrinsicHeight) {
           enterIntrinsicHeightMode(wrapper, resizeState, snapState);
-          scheduleIntrinsicHeightRestore({
-            inner,
-            resizeState,
-            snapState,
-            target: wrapper,
-          });
+          scheduleIntrinsicHeightRestore(resizeState, snapToCurrentHeight);
           deferInitialSettleComplete();
           return;
         }
         applyHeight(wrapper, sync.nextHeight, sync.snap, snapState);
         deferInitialSettleComplete();
       },
+      coalesce: (previous, latest): AutoHeightSync =>
+        previous.useIntrinsicHeight || latest.useIntrinsicHeight
+          ? { useIntrinsicHeight: true }
+          : { ...latest, snap: previous.snap || latest.snap },
     });
     const onVisibility = () => {
       if (!isDocumentVisible()) return;
@@ -331,7 +346,7 @@ export function AutoHeightContainer({
       subscribeToDocumentVisibility(onVisibility);
     return () => {
       snapToCurrentHeightRef.current = null;
-      unobserveInner();
+      resize.disconnect();
       unsubscribeFromDocumentVisibility();
       window.clearTimeout(initialSettleTimerId);
       cancelIntrinsicHeightRestore(resizeState);
