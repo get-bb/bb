@@ -291,6 +291,47 @@ describe("resuming released watches", () => {
   });
 });
 
+describe("core tag reconnect refresh", () => {
+  it("re-reads core tagged data after a reconnect but not on the first connect", async () => {
+    const client = createAppQueryClient();
+    const effects = createRealtimeCacheEffects({
+      queryClient: client,
+      visibility: createFakeVisibility(),
+    });
+    let value = 1;
+    const queryKey = environmentPullRequestQueryKey("env-1");
+    const observer = new QueryObserver(client, {
+      queryKey,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      ...taggedQueryOptions<number>(client, queryKey, {
+        scope: CORE_TAG_SCOPE,
+        tagsOf: () => [environmentPullRequestTag("env-1")],
+      }),
+      queryFn: ({ queryKey: key }) =>
+        runTaggedRead(client, key, async () => value),
+    });
+    const stop = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
+      value = 2;
+      effects.handleConnected({ reconnected: false });
+      await Promise.resolve();
+      expect(observer.getCurrentResult().data).toBe(1);
+
+      effects.handleConnected({
+        reconnected: true,
+        disconnectedAt: Date.now() - 1_000,
+      });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
+    } finally {
+      stop();
+      effects.dispose();
+      client.clear();
+    }
+  });
+});
+
 describe("createRealtimeCacheEffects", () => {
   it.each(
     [

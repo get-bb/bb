@@ -670,6 +670,7 @@ export function createRealtimeCacheEffects({
         for (const pluginId of pluginIds)
           if (typeof pluginId === "string")
             applyTags(pluginTagScope(pluginId), null);
+        applyTags(CORE_TAG_SCOPE, null);
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,
           queryClient,
