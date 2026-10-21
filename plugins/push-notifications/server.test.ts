@@ -128,6 +128,7 @@ async function setup(options: SetupOptions = {}) {
           if (!thread) throw new Error("Thread not found");
           return thread;
         },
+        events: { list: async () => [] },
         experimental_listAncestors: listAncestors,
         experimental_listDescendants: async ({
           threadIds,

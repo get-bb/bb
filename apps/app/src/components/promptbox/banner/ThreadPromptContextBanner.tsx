@@ -1229,6 +1229,7 @@ function ReadOnlyContextBanner({
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <div
+        data-composer-status-banner=""
         className={cn(
           "flex items-center gap-0.5 text-xs text-muted-foreground",
           PROMPT_STACK_INLAY_INSET_CLASS,

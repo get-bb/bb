@@ -25,6 +25,9 @@ describe("ThreadModelFallbackCard", () => {
     );
 
     expect(screen.getByText("Model fallback")).toBeTruthy();
+    expect(
+      screen.getByRole("status").hasAttribute("data-composer-status-banner"),
+    ).toBe(true);
     expect(screen.getByText("Switched from Fable 5 to Opus 4.8")).toBeTruthy();
 
     fireEvent.click(

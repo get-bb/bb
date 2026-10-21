@@ -10,6 +10,7 @@ import {
   buildFileOpenerRef,
   resolveComposerActions,
   resolveComposerBanners,
+  resolveComposerHint,
   resolveComposerDraftObservers,
   resolveComposerEditorEffects,
   resolveComposerPlusMenuItems,
@@ -35,6 +36,33 @@ function composerCustomization(
 }
 
 describe("Composer slot resolvers", () => {
+  it("reserves one Hint for the first applicable thread registration", () => {
+    const excluded = composerCustomization({
+      id: "excluded",
+      scopes: [],
+      experimental_hint: { id: "excluded", component: Component },
+    });
+    const first = composerCustomization({
+      id: "first",
+      scopes: ["thread"],
+      experimental_hint: { id: "first", component: Component },
+    });
+    const second = composerCustomization({
+      id: "second",
+      experimental_hint: { id: "second", component: Component },
+    });
+    const registrations = [excluded, first, second];
+    expect(resolveComposerHint(registrations, "thread")).toEqual({
+      pluginId: "composer-plugin",
+      customizationId: "first",
+      generation: 1,
+      key: "composer-plugin/1/first/first",
+      hint: first.experimental_hint,
+    });
+    expect(resolveComposerHint(registrations, "new-thread")).toBeNull();
+    expect(resolveComposerHint(registrations, "queued-message")).toBeNull();
+  });
+
   it("projects applicable contributions in registration order with generation keys", () => {
     const onDraftChange = vi.fn();
     const match = () => [];

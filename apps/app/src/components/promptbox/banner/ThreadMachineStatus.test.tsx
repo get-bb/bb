@@ -42,6 +42,7 @@ describe("ThreadMachineStatusBanner", () => {
     const { markup, status, buttons } = renderBanner("suspended");
 
     expect(status).toBe("Machine is paused");
+    expect(markup).toContain('data-composer-status-banner=""');
     expect(markup).toContain('data-icon="Cloud"');
     expect(markup).not.toContain("Modal sandbox ugxe6e");
     expect(markup).not.toContain(provider.displayName);

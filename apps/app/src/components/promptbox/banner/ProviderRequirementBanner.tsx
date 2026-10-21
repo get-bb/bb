@@ -14,6 +14,7 @@ export function ProviderRequirementBanner({
   return (
     <PromptStackCard ariaLabel={title} className="@container overflow-hidden">
       <div
+        data-composer-status-banner=""
         role="alert"
         className="flex flex-col gap-2 px-3 py-2.5 @md:flex-row @md:items-center @md:gap-3"
       >

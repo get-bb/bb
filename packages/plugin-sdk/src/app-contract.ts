@@ -2921,6 +2921,13 @@ export interface ComposerCustomization {
     chrome?: "card" | "bare";
     component: ComponentType;
   }[];
+  /**
+   * One low-priority Hint attached to a thread composer. The host mounts only
+   * the first applicable registration and suppresses it while status banners
+   * or pending interactions are visible. The host supplies tint and padding;
+   * the component supplies content and may return null.
+   */
+  experimental_hint?: { id: string; component: ComponentType };
   plusMenu?: readonly ComposerPlusMenuItem[];
   /** Host-rendered rows in the menu next to the composer's send button. */
   sendMenu?: readonly ComposerSendMenuItem[];

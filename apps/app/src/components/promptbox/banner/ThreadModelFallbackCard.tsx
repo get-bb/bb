@@ -48,6 +48,7 @@ export function ThreadModelFallbackCard({
   return (
     <PromptStackCard ariaLabel="Model fallback" className="overflow-hidden">
       <div
+        data-composer-status-banner=""
         role="status"
         aria-live="polite"
         className="flex min-h-8 items-center gap-1.5 px-3 py-1.5 text-xs"

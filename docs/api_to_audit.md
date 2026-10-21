@@ -14,6 +14,25 @@ question.
 [provider-bridge-protocol.md](provider-bridge-protocol.md). An entry without
 a "Docs:" line has no owning doc, so it keeps the essential contract itself.
 
+## Composer Hint
+
+`ComposerCustomization.experimental_hint` registers `{ id, component }` for a
+thread composer. The first applicable registration owns the one slot, even
+when its component returns null. Core's `FollowUpPromptBox` uses the same host
+for main and embedded thread composers. Visible semantic status banners and
+pending interactions suppress mounting; ordinary context, git, todo, and queued
+message cards do not. The host owns the full-width tint, padding, and attachment
+above the composer. The Push notifications plugin supplies
+ON-R1 content through this surface. New-thread and queued-message composers
+do not mount Hints.
+
+Docs: `plugins/plugin-api-docs/src/surfaces.ts`, `composer-hint`.
+
+Before stabilization, verify competing registrations, split panes and embedded
+thread composers, plugin reload/crash recovery, status changes, and compact
+Safari layout. Audit whether explicit eligibility is needed for arbitration
+between multiple conditional Hints.
+
 ## Composer popups
 
 `ComposerCustomization.experimental_popups` registers `{ id, label, component }`
@@ -3100,13 +3119,23 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide and new-thread-submit events; anything else is a 400. Core
+setup-guide, new-thread-submit, and notification Hint suggestion events;
+anything else is a 400. Core
 callers, all through `recordTelemetryEvent` in
 `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 (`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
 
+The bundled push-notifications plugin uses the same route after persisted,
+idempotent Hint actions. `suggestion_shown`, `suggestion_accepted`, and
+`suggestion_dismissed` accept only `surface: hint`, `kind: notifications`, and
+a random UUID `suggestion_analytics_id`. Shown also carries `trigger: event`;
+dismissed also carries `dismiss: not_now | never`. No copy, titles, thread IDs,
+or other free text is accepted. Nothing is queued while telemetry is off.
+
 Stabilize after deciding whether third-party plugins may emit product events
-at all and, if so, how they are namespaced and rate limited.
+at all and, if so, how they are namespaced and rate limited. Verify strict
+property rejection, once-per-suggestion events, and opt-out in the development
+end-to-end analytics gate.
 
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 

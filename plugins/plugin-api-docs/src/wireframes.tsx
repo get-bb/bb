@@ -1603,6 +1603,7 @@ export function RealComposerAnnotated({
   mobile?: boolean;
 }) {
   const banners = useEngagement("composer-banners");
+  const hint = useEngagement("composer-hint");
   return (
     <div className={cn("relative pb-2 pt-4", mobile ? "px-6" : "px-7")}>
       <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
@@ -1614,6 +1615,12 @@ export function RealComposerAnnotated({
             id="composer-banners"
             label="Plugin composer banners, above the prompt box"
             anchor='[data-guide-target="composer-banners"]'
+            at="end"
+          />
+          <MeasuredBadge
+            id="composer-hint"
+            label="A low-priority Hint attached to the composer"
+            anchor='[data-guide-target="composer-hint"]'
             at="end"
           />
           <MeasuredBadge
@@ -1684,7 +1691,8 @@ export function RealComposerAnnotated({
                 showChip={false}
                 target
                 className={cn(
-                  "relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
+                  "relative mb-2.5 items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
+                  hint.active ? "hidden" : "flex",
                   engagedRingClass(banners.outlined),
                 )}
               >
@@ -1692,6 +1700,24 @@ export function RealComposerAnnotated({
                 <span className="text-foreground">Your banner</span>
               </Mark>
 
+              <Mark
+                id="composer-hint"
+                label="A low-priority Hint attached to the composer"
+                showChip={false}
+                target
+                className={cn(
+                  "w-full items-center gap-2 rounded-t-xl bg-muted/50 px-3 py-2 text-sm text-foreground",
+                  hint.active ? "flex" : "hidden",
+                  engagedRingClass(hint.outlined),
+                )}
+              >
+                <MiniIcon icon="BellDot" className="size-3.5" />
+                <span>Your next step</span>
+                <span className="ml-auto rounded bg-foreground px-2 py-1 text-background">
+                  Try it
+                </span>
+                <span>Not now</span>
+              </Mark>
               <StaticEmbeddedComposer mobile={mobile} />
             </div>
           </div>

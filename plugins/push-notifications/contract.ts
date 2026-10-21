@@ -59,7 +59,67 @@ export const listPushSubscriptionsOutputSchema = z
   .object({ subscriptions: z.array(pushSubscriptionSummarySchema) })
   .strict();
 
+export const notificationsHintStateSchema = z
+  .object({
+    dismissCount: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    snoozedUntil: z.number().int().nonnegative().nullable(),
+    accepted: z.boolean(),
+    suggestion: z
+      .object({ id: z.string().uuid(), shown: z.boolean() })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type NotificationsHintState = z.infer<
+  typeof notificationsHintStateSchema
+>;
+
+export const notificationsHintEligibilitySchema = z
+  .object({
+    suggestion: z.object({ id: z.string().uuid() }).strict().nullable(),
+    nextCheckAt: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+export type NotificationsHintEligibility = z.infer<
+  typeof notificationsHintEligibilitySchema
+>;
+
+const hintActionInputSchema = z.object({ id: z.string().uuid() }).strict();
+export const NOTIFICATIONS_HINT_TAG = "notification-hint";
+
 export const pushNotificationsRpcContract = defineRpcContract({
+  "notificationsHint.eligibility": {
+    input: z
+      .object({ threadId: z.string().min(1), channel: clientChannelSchema })
+      .strict(),
+    output: notificationsHintEligibilitySchema,
+    tags: () => [NOTIFICATIONS_HINT_TAG],
+  },
+  "notificationsHint.state": {
+    input: emptyInputSchema,
+    output: notificationsHintStateSchema,
+    tags: () => [NOTIFICATIONS_HINT_TAG],
+  },
+  "notificationsHint.reset": {
+    input: emptyInputSchema,
+    output: notificationsHintStateSchema,
+    invalidates: () => [NOTIFICATIONS_HINT_TAG],
+  },
+  "notificationsHint.shown": {
+    input: hintActionInputSchema,
+    output: notificationsHintStateSchema,
+    invalidates: () => [NOTIFICATIONS_HINT_TAG],
+  },
+  "notificationsHint.accept": {
+    input: hintActionInputSchema,
+    output: notificationsHintStateSchema,
+    invalidates: () => [NOTIFICATIONS_HINT_TAG],
+  },
+  "notificationsHint.dismiss": {
+    input: hintActionInputSchema,
+    output: notificationsHintStateSchema,
+    invalidates: () => [NOTIFICATIONS_HINT_TAG],
+  },
   "notifications.test": {
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),

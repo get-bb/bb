@@ -13,8 +13,10 @@ import {
 import {
   clientChannel,
   createClientDelivery,
-  notificationPermission,
+  requestNotificationPermission,
 } from "./client.js";
+import { useNotificationPermission } from "./notification-permission.js";
+import { NotificationsHint } from "./notifications-hint.js";
 import { notificationsThreadAction } from "./notificationsAction.js";
 
 function NotificationDelivery() {
@@ -41,18 +43,9 @@ function NotificationSettings() {
   const rpc = useRpc<typeof pushNotificationsRpcContract>();
   const { values } = useSettings();
   const channel = clientChannel();
-  const [permission, setPermission] = useState(notificationPermission);
+  const [permission, setPermission] = useNotificationPermission();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => {
-    const refresh = () => setPermission(notificationPermission());
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, []);
   if (channel === null) return null;
   const enabled = values?.[`${channel}Enabled`] === true;
   const status =
@@ -68,7 +61,7 @@ function NotificationSettings() {
     setBusy(true);
     setMessage(null);
     try {
-      setPermission(await Notification.requestPermission());
+      setPermission(await requestNotificationPermission());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -139,6 +132,11 @@ function NotificationSettings() {
 }
 
 export default definePluginApp((app) => {
+  app.composer.customize({
+    id: "notifications-hint",
+    scopes: ["thread"],
+    experimental_hint: { id: "notifications", component: NotificationsHint },
+  });
   app.slots.experimental_appOverlay({
     id: "delivery",
     component: NotificationDelivery,

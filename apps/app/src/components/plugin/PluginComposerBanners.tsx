@@ -54,13 +54,15 @@ function ComposerBannerRows({
             slotId={slotId}
             crashFallback={<></>}
           >
-            {banner.chrome === "bare" ? (
-              <banner.component />
-            ) : (
-              <PromptStackCard ariaLabel={pluginId} className="empty:hidden">
+            <div data-composer-status-banner="" className="contents">
+              {banner.chrome === "bare" ? (
                 <banner.component />
-              </PromptStackCard>
-            )}
+              ) : (
+                <PromptStackCard ariaLabel={pluginId} className="empty:hidden">
+                  <banner.component />
+                </PromptStackCard>
+              )}
+            </div>
           </PluginSlotMount>
         );
       }),

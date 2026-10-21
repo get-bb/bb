@@ -26,6 +26,7 @@ import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { modifierSubmitShortcutLabel } from "./modifier-submit-shortcut";
 import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
+import { ComposerHintSlot } from "@/components/plugin/PluginComposerHint";
 import {
   composerScopeIdentity,
   PluginComposerHostProvider,
@@ -715,6 +716,14 @@ function FollowUpPromptBoxWithComposer({
       onFocusCapture={handleComposerFocus}
       onPointerDownCapture={handleComposerPointerDown}
     >
+      {composerScope !== null &&
+      !suppressPluginComposerCustomizations &&
+      !hasPendingInteraction ? (
+        <ComposerHintSlot
+          key={composerScopeIdentity(composerScope)}
+          statusStackRef={stackRef}
+        />
+      ) : null}
       <PromptBoxWithScrollAnchor
         id={id}
         promptBoxRef={promptBoxRef}

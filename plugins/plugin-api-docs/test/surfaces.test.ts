@@ -44,6 +44,7 @@ describe("product-map surfaces", () => {
   it("reads composer annotations from the banner through the draft and action row", () => {
     const ordered = [
       "composer-banners",
+      "composer-hint",
       "composer-state",
       "mention-provider",
       "composer-rich-text",

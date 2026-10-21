@@ -13,6 +13,7 @@ import {
   DEFAULT_EXPO_PUSH_URL,
   DEVICE_LABEL_MAX_LENGTH,
   EXPO_PUSH_TOKEN_MAX_LENGTH,
+  NOTIFICATIONS_HINT_TAG,
   pushNotificationsRpcContract,
   type ClientNotification,
   type PushSubscriptionSummary,
@@ -31,6 +32,7 @@ import {
   type LastSendOutcome,
 } from "./sender.js";
 import { createPushSubscriptionStore } from "./subscriptions.js";
+import { createNotificationsHint } from "./hint-state.js";
 
 interface PushNotificationsPluginOptions {
   coalesceMs?: number;
@@ -204,6 +206,17 @@ export function createPushNotificationsPlugin(
       ...(options.now === undefined ? {} : { now: options.now }),
     });
 
+    const hint = createNotificationsHint(bb, {
+      ...(options.now === undefined ? {} : { now: options.now }),
+      getChannelEnabled: async (channel) => {
+        const config = await settings.get();
+        return channel === "web" ? config.webEnabled : config.desktopEnabled;
+      },
+    });
+    settings.onChange(() => {
+      bb.rpc.experimental_invalidate([NOTIFICATIONS_HINT_TAG]);
+    });
+
     async function status(): Promise<StatusView> {
       const [
         {
@@ -245,6 +258,12 @@ export function createPushNotificationsPlugin(
     }
 
     bb.rpc.register(pushNotificationsRpcContract, {
+      "notificationsHint.eligibility": (input) => hint.eligibility(input),
+      "notificationsHint.state": () => hint.state(),
+      "notificationsHint.reset": () => hint.reset(),
+      "notificationsHint.shown": ({ id }) => hint.shown(id),
+      "notificationsHint.accept": ({ id }) => hint.accept(id),
+      "notificationsHint.dismiss": ({ id }) => hint.dismiss(id),
       "notifications.test": ({ channel }) => sendTest(channel),
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
@@ -279,6 +298,35 @@ export function createPushNotificationsPlugin(
         description:
           "Mobile devices receive Expo push messages; web and desktop clients receive system notifications while they are open.",
         commands: {
+          hint: cliCommand({
+            summary: "Read or reset the install's notification Hint",
+            description:
+              "Not now hides the Hint for 14 days; a second dismissal hides it permanently. Reset clears dismissals and acceptance for this install, but never changes browser or OS permission.",
+            options: {
+              reset: {
+                type: "boolean",
+                description:
+                  "Clear notification Hint suppression and analytics identity",
+              },
+              json: JSON_OPTION,
+            },
+            async run(input) {
+              const state = input.options.reset
+                ? await hint.reset()
+                : await hint.state();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(state)
+                  : [
+                      `Accepted: ${state.accepted}`,
+                      `Dismissals: ${state.dismissCount}`,
+                      `Snoozed until: ${state.snoozedUntil === null ? "None" : new Date(state.snoozedUntil).toISOString()}`,
+                      `Suggestion: ${state.suggestion?.id ?? "None"}`,
+                    ].join("\n"),
+              };
+            },
+          }),
           test: cliCommand({
             summary:
               "Send a test to connected web or desktop clients with permission",
@@ -465,14 +513,35 @@ export function createPushNotificationsPlugin(
       }),
     );
 
-    bb.events.on("interaction.pending", (payload) => {
+    for (const event of [
+      "thread.active",
+      "thread.idle",
+      "thread.failed",
+      "thread.archived",
+      "thread.deleted",
+      "interaction.pending",
+    ] as const) {
+      bb.events.on(event, () => {
+        bb.rpc.experimental_invalidate([NOTIFICATIONS_HINT_TAG]);
+      });
+    }
+    bb.events.on("interaction.pending", async (payload) => {
       sender.onInteractionPending(payload);
+      await hint.observe(payload.thread, true).catch(() => {
+        bb.log.debug("Notification Hint trigger check deferred");
+      });
     });
-    bb.events.on("thread.idle", (payload) => {
+    bb.events.on("thread.idle", async (payload) => {
       sender.onThreadIdle(payload);
+      await hint.observe(payload.thread, false).catch(() => {
+        bb.log.debug("Notification Hint trigger check deferred");
+      });
     });
-    bb.events.on("thread.failed", (payload) => {
+    bb.events.on("thread.failed", async (payload) => {
       sender.onThreadFailed(payload);
+      await hint.observe(payload.thread, false).catch(() => {
+        bb.log.debug("Notification Hint trigger check deferred");
+      });
     });
     bb.events.on("experimental_thread.parentChanged", ({ thread }) =>
       preferences.publishSubtree(thread.id),

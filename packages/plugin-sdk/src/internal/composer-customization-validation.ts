@@ -250,6 +250,7 @@ function parseRegions(
   | "sendMenu"
   | "richText"
   | "experimental_popups"
+  | "experimental_hint"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -277,6 +278,23 @@ function parseRegions(
       component: requireComponent(entryKind, entry?.component),
     };
   });
+  let hint: ComposerCustomization["experimental_hint"];
+  if (registration.experimental_hint !== undefined) {
+    const hintKind = `${kind}.experimental_hint`;
+    try {
+      const raw = registration.experimental_hint;
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new Error(`${hintKind}: must be an object when set`);
+      }
+      const entry = raw as Record<string, unknown>;
+      hint = {
+        id: requireSlotId(hintKind, entry.id),
+        component: requireComponent(hintKind, entry.component),
+      };
+    } catch (error) {
+      onRejected(error instanceof Error ? error.message : String(error));
+    }
+  }
   const plusMenu = parseContributionArray<ComposerMenuItem>(
     `${kind}.plusMenu`,
     registration.plusMenu,
@@ -360,6 +378,7 @@ function parseRegions(
   return {
     ...(actions !== undefined ? { actions } : {}),
     ...(banners !== undefined ? { banners } : {}),
+    ...(hint !== undefined ? { experimental_hint: hint } : {}),
     ...(plusMenu !== undefined ? { plusMenu } : {}),
     ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),

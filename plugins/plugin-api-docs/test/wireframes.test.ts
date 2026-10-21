@@ -52,6 +52,23 @@ function guideSurfaceIds(markup: string): string[] {
 }
 
 describe("guide fixture boundaries", () => {
+  it("shows the Hint attached to the composer while suppressing the status banner", () => {
+    const markup = renderWireframe(createElement(RealComposerAnnotated), {
+      ...mapState,
+      activeId: "composer-hint",
+    });
+    expect(markup).toMatch(
+      /data-guide-target="composer-hint"[^>]*class="[^"]*rounded-t-xl[^"]*flex/,
+    );
+    expect(markup).toMatch(
+      /data-guide-target="composer-banners"[^>]*class="[^"]*hidden/,
+    );
+    for (const label of anatomy.surfaceFixtures["composer-hint"].labels
+      .anchor) {
+      expect(markup).toContain(label);
+    }
+  });
+
   it("draws exactly the surfaces of each visual group on its fixture", () => {
     const fixtures: Record<string, ReactNode[]> = {
       "app-shell": [createElement(AppShellWireframe)],
@@ -413,6 +430,7 @@ describe("guide fixture boundaries", () => {
     expect(markup).toContain('data-guide-annotation-layer="composer-controls"');
     for (const id of [
       "composer-banners",
+      "composer-hint",
       "composer-state",
       "composer-plus-menu",
       "provider-picker",

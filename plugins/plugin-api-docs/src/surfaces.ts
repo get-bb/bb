@@ -506,6 +506,20 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Send later", "Workflows"],
       },
       {
+        id: "composer-hint",
+        title: "Hint",
+        summary:
+          "Add a Hint attached to the thread composer. With this, a plugin can:",
+        bullets: [
+          "Supply content inside a full-width tinted bar with host-owned padding",
+          "Read the owning thread composer, including embedded thread composers",
+          "Yield to visible status banners and pending interactions before mounting",
+          "Share one slot: the first applicable registration wins, even when its content is empty",
+        ],
+        apiSymbols: ["ComposerCustomization.experimental_hint", "useComposer"],
+        firstParty: ["Push notifications"],
+      },
+      {
         id: "composer-state",
         title: "Draft prompt state & locking",
         summary:

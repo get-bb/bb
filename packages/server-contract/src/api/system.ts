@@ -216,7 +216,37 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const notificationHintTelemetryPropertiesSchema = z
+  .object({
+    surface: z.literal("hint"),
+    kind: z.literal("notifications"),
+    suggestion_analytics_id: z.string().uuid(),
+  })
+  .strict();
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("suggestion_shown"),
+      properties: notificationHintTelemetryPropertiesSchema
+        .extend({ trigger: z.literal("event") })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("suggestion_accepted"),
+      properties: notificationHintTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("suggestion_dismissed"),
+      properties: notificationHintTelemetryPropertiesSchema
+        .extend({ dismiss: z.enum(["not_now", "never"]) })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       name: z.literal("onboarding_agent_state"),

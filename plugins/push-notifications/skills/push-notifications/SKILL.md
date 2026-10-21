@@ -13,6 +13,7 @@ the plugin settings.
 
 ```sh
 bb push-notifications status [--json]
+bb push-notifications hint [--reset] [--json]
 bb push-notifications list [--json]
 bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-name> [--json]
 bb push-notifications remove <id> [--json]
@@ -28,6 +29,15 @@ bb plugin config push-notifications set expoPushUrl <url>
   and keeps its id. Expo tokens that are no longer registered are removed after
   a failed delivery.
 - `list` shows token suffixes only.
+- `hint` reads this install's notification Hint state: acceptance, dismissal
+  count, snooze deadline, and current random suggestion identity. `--reset`
+  clears that state through the same implementation as the
+  `notificationsHint.reset` plugin RPC; it never changes browser or OS
+  permission. `notificationsHint.state` reads the same state through the SDK.
+  The Hint appears only while permission is undecided, after a sent thread
+  waits for input or runs longer than 60 seconds. The first **Not now** hides
+  it for 14 days; the second hides it permanently. **Turn on** uses the
+  existing client permission request and ends suggestions for this install.
 - The three channel switches default to `true` and apply immediately to this
   server. `bb plugin disable push-notifications` stops all delivery.
 - `test` broadcasts to every connected, permitted client of that type and
@@ -43,3 +53,19 @@ bb plugin config push-notifications set expoPushUrl <url>
 
 Inspect `status` before changing a channel, and change only the requested
 channel or device.
+
+## Hint SDK contract
+
+Use `sdk.plugins.callRpc` with plugin `push-notifications` and method
+`notificationsHint.state` or `notificationsHint.reset`, each with `{}`, for
+the same read/reset operations as the CLI.
+`notificationsHint.eligibility` takes `{ threadId, channel: "web" | "desktop" }`
+and returns `{ suggestion: { id } | null, nextCheckAt: number | null }`.
+The server checks sent-turn history and pending interactions; `nextCheckAt`
+is a server timestamp for another eligibility check, never proof of eligibility.
+Call `notificationsHint.shown`, `notificationsHint.accept`, or
+`notificationsHint.dismiss` with `{ id }` for the active suggestion. Repeated
+or stale actions are harmless; mutations return the resulting state. Shown
+records actual desktop/web display only, not eligibility checks. Accept and
+dismiss record the shared server action. All three events use fixed Hint
+properties and a random suggestion analytics ID and respect telemetry opt-out.

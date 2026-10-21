@@ -27,6 +27,28 @@
     ]
   },
   "surfaceFixtures": {
+    "composer-hint": {
+      "groupId": "composer",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": { "anchor": ["Your next step", "Try it", "Not now"] },
+      "fixtureClassAnchors": ["rounded-t-xl", "bg-muted/50", "px-3", "py-2"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginComposerHint.tsx",
+          "anchors": [
+            "data-composer-hint",
+            "slotKind=\"composerHint\"",
+            "data-composer-status-banner"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+          "anchors": ["<ComposerHintSlot", "!hasPendingInteraction"]
+        }
+      ]
+    },
     "composer-actions": {
       "groupId": "composer",
       "fidelity": "flow",

@@ -25,6 +25,10 @@ export function notificationPermission():
     : Notification.permission;
 }
 
+export function requestNotificationPermission(): Promise<NotificationPermission> {
+  return Notification.requestPermission();
+}
+
 export function createClientDelivery(navigate: (threadId: string) => void) {
   const active = new Set<Notification>();
   let disposed = false;

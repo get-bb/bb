@@ -8,7 +8,13 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { Profiler, startTransition, type ReactNode } from "react";
+import {
+  Profiler,
+  startTransition,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
@@ -361,6 +367,160 @@ beforeEach(() => {
 });
 
 describe("FollowUpPromptBox", () => {
+  it("reacts when a previously empty plugin status banner renders independently", async () => {
+    let showStatus = () => {};
+    function StatusBanner() {
+      const [visible, setVisible] = useState(false);
+      useEffect(() => {
+        showStatus = () => setVisible(true);
+      }, []);
+      return visible ? (
+        <div data-testid="plugin-status">Retrying the turn</div>
+      ) : null;
+    }
+    setPluginSlotRegistrations(
+      "hint-with-status",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "guidance",
+            scopes: ["thread"],
+            experimental_hint: {
+              id: "notifications",
+              component: () => <span>Notification Hint</span>,
+            },
+            banners: [{ id: "retry", component: StatusBanner, chrome: "bare" }],
+          },
+        ],
+      }),
+    );
+    const height = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.matches('[data-testid="plugin-status"]') ||
+          this.querySelector('[data-testid="plugin-status"]')
+          ? 32
+          : 0;
+      });
+    try {
+      render(
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+          pluginComposerScope={{ kind: "thread", threadId: "thr_hint" }}
+        />,
+      );
+      expect(screen.getByText("Notification Hint")).toBeTruthy();
+      act(showStatus);
+      await waitFor(() => {
+        expect(screen.queryByText("Notification Hint")).toBeNull();
+      });
+      expect(screen.getByText("Retrying the turn")).toBeTruthy();
+    } finally {
+      height.mockRestore();
+    }
+  });
+
+  it.each([true, false])(
+    "attaches only one Hint after actual status content clears (primary: %s)",
+    (isPrimaryComposer) => {
+      const mounted = vi.fn();
+      function Hint() {
+        useEffect(mounted, []);
+        return <span>Notification Hint</span>;
+      }
+      function EmptyStatus() {
+        return null;
+      }
+      setPluginSlotRegistrations(
+        "hint-plugin",
+        makePluginRegistrationSet({
+          composerCustomizations: [
+            {
+              id: "first",
+              scopes: ["thread"],
+              experimental_hint: { id: "notifications", component: Hint },
+              banners: [{ id: "empty-status", component: EmptyStatus }],
+            },
+            {
+              id: "second",
+              scopes: ["thread"],
+              experimental_hint: {
+                id: "other",
+                component: () => <span>Second Hint</span>,
+              },
+            },
+          ],
+        }),
+      );
+      const height = vi
+        .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+        .mockImplementation(function (this: HTMLElement) {
+          const content =
+            '[data-testid="visible-status"], [data-testid="ordinary-context"]';
+          return this.matches(content) || this.querySelector(content) ? 32 : 0;
+        });
+      try {
+        const props = {
+          ...createFollowUpPromptBoxProps({ kind: "ready" }),
+          isPrimaryComposer,
+          pluginComposerScope: {
+            kind: "thread" as const,
+            threadId: "thr_hint",
+          },
+        };
+        const { container, rerender } = render(
+          <FollowUpPromptBox
+            {...props}
+            stack={
+              <div data-testid="visible-status" data-composer-status-banner="">
+                Waiting for the host
+              </div>
+            }
+          />,
+        );
+        expect(screen.queryByText("Notification Hint")).toBeNull();
+        expect(mounted).not.toHaveBeenCalled();
+
+        rerender(
+          <FollowUpPromptBox
+            {...props}
+            stack={
+              <>
+                <EmptyStatus />
+                <div data-testid="ordinary-context">
+                  Changed files and todos
+                </div>
+              </>
+            }
+          />,
+        );
+        expect(screen.getByText("Notification Hint")).toBeTruthy();
+        expect(screen.queryByText("Second Hint")).toBeNull();
+        expect(mounted).toHaveBeenCalledOnce();
+        const hint = container.querySelector("[data-composer-hint]");
+        const prompt = screen.getByTestId("prompt-box");
+        expect(hint?.closest("[data-bb-plugin-root]")?.nextElementSibling).toBe(
+          prompt,
+        );
+
+        rerender(
+          <FollowUpPromptBox
+            {...props}
+            pendingInteraction={<div>Approve this action</div>}
+          />,
+        );
+        expect(screen.queryByText("Notification Hint")).toBeNull();
+        expect(mounted).toHaveBeenCalledOnce();
+        rerender(
+          <FollowUpPromptBox {...props} suppressPluginComposerCustomizations />,
+        );
+        expect(screen.queryByText("Notification Hint")).toBeNull();
+      } finally {
+        height.mockRestore();
+      }
+    },
+  );
+
   it.each([
     { height: 24, expectedMinHeight: 79 },
     { height: 35, expectedMinHeight: 68 },

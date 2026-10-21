@@ -32,6 +32,10 @@ export interface ResolvedComposerAction extends ResolvedComposerContribution {
   action: ComposerAction;
 }
 
+interface ResolvedComposerHint extends ResolvedComposerContribution {
+  hint: NonNullable<ComposerCustomization["experimental_hint"]>;
+}
+
 interface ResolvedComposerBanner extends ResolvedComposerContribution {
   banner: ComposerBanner;
 }
@@ -97,6 +101,24 @@ export function resolveComposerActions(
     }
   }
   return resolved;
+}
+
+export function resolveComposerHint(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+): ResolvedComposerHint | null {
+  if (scopeKind !== "thread") return null;
+  for (const customization of customizations) {
+    if (!composerCustomizationApplies(customization, scopeKind)) continue;
+    const hint = customization.experimental_hint;
+    if (hint !== undefined) {
+      return {
+        ...resolvedComposerContribution(customization, hint.id),
+        hint,
+      };
+    }
+  }
+  return null;
 }
 
 export function resolveComposerBanners(

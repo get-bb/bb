@@ -321,6 +321,16 @@ function pluginAppSurfaceItems(
             "Opens plugin content beside the composer, sharing the mention menu's placement.",
           ),
         ),
+        ...(slot.experimental_hint
+          ? [
+              namedSurface(
+                `composer:${slot.id}:hint`,
+                slot.experimental_hint.id,
+                undefined,
+                "Shows a low-priority Hint attached to the thread composer.",
+              ),
+            ]
+          : []),
         ...(slot.banners ?? []).map((banner) =>
           namedSurface(
             `composer:${slot.id}:banner`,

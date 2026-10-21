@@ -37,6 +37,7 @@ it("selects only each composer control's own annotation when clicked", () => {
     );
     for (const id of [
       "composer-banners",
+      "composer-hint",
       "composer-state",
       "mention-provider",
       "composer-rich-text",
