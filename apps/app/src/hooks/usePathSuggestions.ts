@@ -163,7 +163,9 @@ export function usePathSuggestions(
       ? "project"
       : "none";
   const includeWorkspace = workspaceSource !== "none";
-  const includeThreadStorage = Boolean(args.currentThreadId);
+  const includeThreadStorage = Boolean(
+    args.currentThreadId && args.environmentId,
+  );
   const isWorkspaceQueryEnabled = includeWorkspace && hasDebouncedQuery;
   const isThreadStorageQueryEnabled = includeThreadStorage && hasDebouncedQuery;
 
