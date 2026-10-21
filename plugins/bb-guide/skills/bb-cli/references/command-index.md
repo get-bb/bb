@@ -352,3 +352,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb browser watch`
 - `bb browser import-sources`
 - `bb browser import-cookies`
+
+## holdouts
+
+- `bb holdouts`
+- `bb holdouts list`

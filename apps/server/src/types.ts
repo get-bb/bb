@@ -1,3 +1,4 @@
+import type { HoldoutService } from "./services/system/holdouts.js";
 import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
@@ -63,6 +64,7 @@ export interface AppDeps {
 }
 
 export interface ServerAppDeps extends AppDeps {
+  holdouts: HoldoutService;
   appUpdate: AppUpdateService;
   appVersion: AppVersionService;
   bbAppManagedConfig: BbAppManagedConfigReloader;

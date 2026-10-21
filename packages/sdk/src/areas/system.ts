@@ -1,3 +1,5 @@
+import type { HoldoutKey } from "@bb/domain";
+import type { SystemHoldoutsResponse } from "@bb/server-contract";
 import { mobileAppDownloads } from "@bb/domain";
 import type {
   MachineEnvironmentReplace,
@@ -180,6 +182,8 @@ export interface SystemArea {
   installCliSkills(
     args: SystemInstallCliSkillsArgs,
   ): Promise<SystemInstallCliSkillsResult>;
+  holdouts(): Promise<SystemHoldoutsResponse>;
+  exposeHoldout(key: HoldoutKey): Promise<{ exposed: boolean }>;
   experimental_recordTelemetryEvent(
     args: SystemRecordTelemetryEventArgs,
   ): Promise<SystemRecordTelemetryEventResult>;
@@ -347,6 +351,16 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async installCliSkills(input) {
       return transport.readJson(
         transport.api.v1.system["cli-skills"].install.$post({ json: input }),
+      );
+    },
+    async holdouts() {
+      return transport.readJson(transport.api.v1.system.holdouts.$get());
+    },
+    async exposeHoldout(key) {
+      return transport.readJson(
+        transport.api.v1.system.holdouts[":key"].exposure.$post({
+          param: { key },
+        }),
       );
     },
     async experimental_recordTelemetryEvent(input) {

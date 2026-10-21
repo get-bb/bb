@@ -83,3 +83,4 @@ export * from "./environment-removal.js";
 export type { ContractTagDeclarations } from "./contract-tags.js";
 
 export const ARCHIVE_UNDO_GRACE_MS = 30_000;
+export * from "./holdouts.js";

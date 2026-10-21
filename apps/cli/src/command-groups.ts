@@ -42,6 +42,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerSettingsCommands(program, deps.getUrl),
   ),
   group(
+    "holdouts",
+    () => import("./commands/holdouts.js"),
+    (m) => (program, deps) => m.registerHoldoutCommands(program, deps.getUrl),
+  ),
+  group(
     "project",
     () => import("./commands/project.js"),
     (m) => (program, deps) => m.registerProjectCommands(program, deps.getUrl),

@@ -1,3 +1,4 @@
+import type { HoldoutDefinition, HoldoutArm } from "@bb/domain";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { release } from "node:os";
 import type { AppInstall } from "@bb/config/app-install";
@@ -21,6 +22,13 @@ export type TelemetryInitiator =
   | "system";
 
 export type TelemetryEvent =
+  | {
+      name: "experiment_exposed";
+      properties: {
+        experiment_id: HoldoutDefinition["key"];
+        variant: HoldoutArm;
+      };
+    }
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
   | {
@@ -57,6 +65,7 @@ export interface TelemetryService {
 }
 
 interface CreateTelemetryServiceArgs {
+  holdoutProperties?: Record<string, HoldoutArm>;
   apiKey: string;
   appInstall: AppInstall | null;
   appSurface: AppSurface;
@@ -139,6 +148,7 @@ export async function createTelemetryService(
   const osRelease = release();
   const commonProperties = {
     ...appInstallProperties(args.appInstall),
+    ...args.holdoutProperties,
     app_version: args.appVersion,
     arch: process.arch,
     is_wsl:

@@ -1,3 +1,4 @@
+import { createHoldoutService } from "./services/system/holdouts.js";
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
@@ -219,7 +220,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
+  const holdouts = createHoldoutService({
+    db,
+    appVersion: serverConfig.BB_APP_VERSION,
+    pendingMove: pendingServerMove !== null || serverImport.manualImportPending,
+    force: serverConfig.BB_HOLDOUT_FORCE,
+    logger,
+  });
   const telemetry = await createTelemetryService({
+    holdoutProperties: holdouts.properties(),
     apiKey: serverConfig.BB_POSTHOG_API_KEY,
     appInstall: appInstallFromServerConfig(serverConfig),
     appSurface: serverConfig.BB_APP_SURFACE,
@@ -313,6 +322,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     tunnelIngress,
   } = createApp(
     {
+      holdouts,
       appUpdate,
       appVersion,
       bbAppManagedConfig,

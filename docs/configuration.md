@@ -275,7 +275,8 @@ lists what `bb project discover` and
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
-The server sends `app_started`, `telemetry_disabled`, `thread_created`,
+Some new installs try a new version of a feature before everyone else, chosen at random on your device; their events note which version that install has.
+The server sends `experiment_exposed` (fixed `experiment_id` and `variant` values), `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
@@ -1236,3 +1237,13 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+## Per-install holdouts
+
+`bb holdouts list [--json]` reads assignments, including key, variant, assigned and exposed timestamps, version at assignment, and registry status. The SDK equivalents are `sdk.system.holdouts()` and `sdk.system.exposeHoldout(key)`; HTTP routes are `GET /api/v1/system/holdouts` and `POST /api/v1/system/holdouts/:key/exposure`. Exposure records `experiment_exposed` once per install and key, including before setup completes. Its `experiment_id` is the registered key and its `variant` matches `$feature/<key>` on that event. Each feature calls it at its own exposure point, identically in every arm. The A/A caller checks that setup is complete, a project is imported, and an agent is ready. The A/A holdout `app_aa_check` changes no behavior. New installs draw once regardless of telemetry; existing installs keep the first declared arm. Live assignments add `$feature/app_aa_check` (`control` or `test`) to events. Ended holdouts stop reporting and use their winner or control.
+
+`BB_HOLDOUT_FORCE=app_aa_check:control` (or `:test`) is a startup-only QA override parsed by the server. It never stores the forced arm or reports holdout telemetry. A local exclusion marker persists across restarts and removal of the variable so QA cannot later enter analysis. No assignment is created for an excluded holdout. Use a fresh data directory for ordinary enrollment after QA. Telemetry opt-out stops all reporting without changing assignment.
+
+Each holdout declares its own fixed list of lowercase snake_case arms, with the first arm serving as control (for example `a`/`b`), and matching nonnegative integer weights with a positive total. New installs draw once by those weights. `app_aa_check` remains `control`/`test` at 50/50. Three or more arms use the same storage, exposure and reporting path; keys and arm lists are registered in a release, never supplied by clients.
+
+The registry can hold any number of tests. Keys are fixed enums in each release and begin with `app_`; live tests use distinct surfaces. Every key draws independently, and exposure of one key does not expose another. A new feature adds its key and declaration in `packages/domain/src/holdouts.ts`, reads its assignment, and calls `sdk.system.exposeHoldout(key)` at its own exposure point.

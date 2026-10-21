@@ -1,3 +1,4 @@
+import type { SystemHoldoutsResponse } from "./api/system.js";
 import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
@@ -1973,6 +1974,18 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
+    }),
+    holdouts: defineRoute({
+      path: "/system/holdouts",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemHoldoutsResponse>(),
+    }),
+    holdoutExposure: defineRoute({
+      path: "/system/holdouts/:key/exposure",
+      method: "post",
+      request: noRequest<{ param: { key: string } }>(),
+      response: jsonResponse<{ exposed: boolean }>(),
     }),
     recordTelemetryEvent: defineRoute({
       path: "/system/telemetry/events",
