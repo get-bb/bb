@@ -48,6 +48,8 @@ import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
 } from "../system/provider-bridge-launch.js";
+import { appendAgentOnlyPromptContext } from "./deferred-first-turn-context.js";
+import { resolveSkillMentionContextInputs } from "../skills/skill-mention-context.js";
 
 type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -277,6 +279,20 @@ export async function buildThreadStartCommand(
     environment: args.environment,
     model: args.execution.model,
   });
+  const prompt = appendAgentOnlyPromptContext(
+    {
+      input: args.input,
+      ...(args.inputGroups !== undefined
+        ? { inputGroups: args.inputGroups }
+        : {}),
+    },
+    await resolveSkillMentionContextInputs(deps, {
+      hostId: args.environment.hostId,
+      input: args.input,
+      providerId: args.providerId,
+      workspacePath: runtimeContext.workspacePath,
+    }),
+  );
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
   return {
     type: "thread.start",
@@ -289,15 +305,15 @@ export async function buildThreadStartCommand(
     providerId: args.providerId,
     bridgeLaunch,
     requestId: args.requestId,
-    input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
+    input: prompt.input,
+    ...(prompt.inputGroups !== undefined
+      ? { inputGroups: prompt.inputGroups }
       : {}),
     options: toRuntimeExecutionOptions({
       ...args,
       deps,
       hostId: args.environment.hostId,
-      input: args.input,
+      input: prompt.input,
       threadId: args.thread.id,
     }),
     instructions: runtimeContext.instructions,
@@ -374,15 +390,29 @@ export async function prepareTurnSubmitCommandPayload(
     environment: args.environment,
     model: args.execution.model,
   });
+  const prompt = appendAgentOnlyPromptContext(
+    {
+      input: args.input,
+      ...(args.inputGroups !== undefined
+        ? { inputGroups: args.inputGroups }
+        : {}),
+    },
+    await resolveSkillMentionContextInputs(deps, {
+      hostId: args.environment.hostId,
+      input: args.input,
+      providerId: runtimeContext.providerId,
+      workspacePath: runtimeContext.workspacePath,
+    }),
+  );
   return buildPreparedTurnSubmitCommandPayload({
     deps,
     environmentId: args.environment.id,
     hostId: args.environment.hostId,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,
-    input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
+    input: prompt.input,
+    ...(prompt.inputGroups !== undefined
+      ? { inputGroups: prompt.inputGroups }
       : {}),
     providerThreadId,
     runtimeContext,

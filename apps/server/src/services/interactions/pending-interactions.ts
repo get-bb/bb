@@ -343,6 +343,7 @@ export class PendingInteractionLifecycle {
       logger: args.logger,
       machineAuth: args.machineAuth,
       providerRegistry: args.providerRegistry,
+      providerNativeRoots: args.providerNativeRoots,
       pluginHostArtifacts: args.pluginHostArtifacts,
       aiServices: args.aiServices,
       skillTreeRegistry: args.skillTreeRegistry,

@@ -71,6 +71,7 @@ import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js
 import { clearThreadContext } from "./thread-context-clear.js";
 import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
 import {
+  appendAgentOnlyPromptContext,
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
   resolveDeferredFirstTurnContext,
@@ -348,30 +349,10 @@ export function appendPluginMentionContext(
 export async function appendPluginMentionContext(
   prompt: PromptWithGroups,
 ): Promise<PromptWithGroups> {
-  const pluginMentionContext = await resolvePluginMentionContextInputs(
-    prompt.input,
+  return appendAgentOnlyPromptContext(
+    prompt,
+    await resolvePluginMentionContextInputs(prompt.input),
   );
-  if (pluginMentionContext.length === 0) {
-    return prompt;
-  }
-  const inputGroups = prompt.inputGroups;
-  return {
-    input: [...prompt.input, ...pluginMentionContext],
-    ...(inputGroups !== undefined
-      ? {
-          inputGroups:
-            inputGroups.length > 0
-              ? [
-                  ...inputGroups.slice(0, -1),
-                  [
-                    ...inputGroups[inputGroups.length - 1]!,
-                    ...pluginMentionContext,
-                  ],
-                ]
-              : inputGroups,
-        }
-      : {}),
-  };
 }
 
 type UserMessageSentProperties = Extract<

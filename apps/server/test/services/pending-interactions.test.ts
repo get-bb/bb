@@ -523,6 +523,7 @@ describe("pending interaction lifecycle", () => {
         logger,
         machineAuth: harness.deps.machineAuth,
         providerRegistry: harness.deps.providerRegistry,
+        providerNativeRoots: harness.deps.providerNativeRoots,
         aiServices: harness.deps.aiServices,
         pluginHostArtifacts: harness.deps.pluginHostArtifacts,
         skillTreeRegistry: harness.deps.skillTreeRegistry,

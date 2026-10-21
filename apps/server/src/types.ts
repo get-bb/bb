@@ -77,6 +77,7 @@ export type WorkSessionDeps = Pick<
   | "lifecycleDedupers"
   | "machineAuth"
   | "providerRegistry"
+  | "providerNativeRoots"
   | "pluginHostArtifacts"
   | "aiServices"
   | "skillTreeRegistry"

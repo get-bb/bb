@@ -22,6 +22,29 @@ export interface GroupedPrompt {
   input: PromptInput[];
   inputGroups: PromptInput[][];
 }
+export function appendAgentOnlyPromptContext(
+  prompt: PromptWithGroups,
+  contextInputs: readonly PromptInput[],
+): PromptWithGroups {
+  if (contextInputs.length === 0) {
+    return prompt;
+  }
+  const inputGroups = prompt.inputGroups;
+  return {
+    input: [...prompt.input, ...contextInputs],
+    ...(inputGroups !== undefined
+      ? {
+          inputGroups:
+            inputGroups.length > 0
+              ? [
+                  ...inputGroups.slice(0, -1),
+                  [...inputGroups[inputGroups.length - 1]!, ...contextInputs],
+                ]
+              : inputGroups,
+        }
+      : {}),
+  };
+}
 
 export function getLeadingAgentOnlyInput(input: PromptInput[]): PromptInput[] {
   const visibleInputIndex = input.findIndex(

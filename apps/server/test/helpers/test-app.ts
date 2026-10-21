@@ -273,6 +273,7 @@ export async function createTestAppHarness(
     logger,
     machineAuth: testMachineAuth,
     providerRegistry,
+    providerNativeRoots,
     pluginHostArtifacts,
     aiServices,
     skillTreeRegistry,
