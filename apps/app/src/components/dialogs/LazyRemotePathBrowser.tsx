@@ -17,5 +17,5 @@ export const LazyRemotePathBrowser = defineSplit<
       className="px-2 py-3"
     />
   ),
-  tier: "intent",
+  tier: "preload",
 });

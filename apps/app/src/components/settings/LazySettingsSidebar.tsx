@@ -32,5 +32,5 @@ export const LazySettingsSidebar = defineSplit<RouteSidebarProps>({
     import("./SettingsSidebar").then((module) => module.SettingsSidebar),
   loading: SettingsSidebarPlaceholder,
   error: SettingsSidebarPlaceholder,
-  tier: "intent",
+  tier: "preload",
 });
