@@ -54,6 +54,16 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Archive the focused thread.",
       ),
       command(
+        "thread.markRead",
+        "Mark thread read or unread",
+        "Toggle the targeted thread between read and unread.",
+      ),
+      command(
+        "thread.pin",
+        "Pin or unpin thread",
+        "Toggle whether the targeted thread is pinned.",
+      ),
+      command(
         "thread.previous",
         "Previous thread",
         "Open the previous visible sidebar thread.",
