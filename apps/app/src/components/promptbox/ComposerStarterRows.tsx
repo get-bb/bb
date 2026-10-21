@@ -97,6 +97,7 @@ interface ComposerStarterRowsProps {
   promptDraft: PromptDraftController;
   focus: () => void;
   isProjectless: boolean;
+  isSubmitting: boolean;
   sidebarNavigation: SidebarBootstrapResponse | undefined;
   className?: string;
 }
@@ -105,6 +106,7 @@ export function ComposerStarterRows({
   promptDraft,
   focus,
   isProjectless,
+  isSubmitting,
   sidebarNavigation,
   className,
 }: ComposerStarterRowsProps) {
@@ -126,7 +128,7 @@ export function ComposerStarterRows({
   const starters = isProjectless
     ? COMPOSER_STARTERS.filter((starter) => !starter.needsProject)
     : COMPOSER_STARTERS;
-  if (!inputEmpty || !hasNoThreads) {
+  if (isSubmitting || !inputEmpty || !hasNoThreads) {
     return null;
   }
   return (

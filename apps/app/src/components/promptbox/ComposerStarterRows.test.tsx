@@ -36,12 +36,14 @@ function navigationWithThreads(threadCount: number) {
 
 interface ArrangeArgs {
   isProjectless?: boolean;
+  isSubmitting?: boolean;
   threadCount?: number | null;
   text?: string;
 }
 
 function arrange({
   isProjectless = false,
+  isSubmitting = false,
   threadCount = 0,
   text = "",
 }: ArrangeArgs = {}) {
@@ -56,6 +58,7 @@ function arrange({
         promptDraft={promptDraft}
         focus={focus}
         isProjectless={isProjectless}
+        isSubmitting={isSubmitting}
         sidebarNavigation={
           threadCount === null ? undefined : navigationWithThreads(threadCount)
         }
@@ -94,6 +97,7 @@ describe("ComposerStarterRows", () => {
 
   it.each<[string, ArrangeArgs]>([
     ["a thread already exists", { threadCount: 1 }],
+    ["the first thread is being created", { isSubmitting: true }],
     ["threads have not loaded", { threadCount: null }],
     ["the composer has text", { text: "Hello" }],
   ])("renders nothing when %s", (_label, args) => {

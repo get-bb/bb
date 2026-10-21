@@ -1525,6 +1525,7 @@ function RootComposeSurface({
       promptDraft={promptDraft}
       focus={pluginComposerHost.focus}
       isProjectless={isProjectless}
+      isSubmitting={isSubmitting}
       sidebarNavigation={sidebarNavigation}
       className={isCompactViewport ? "pb-2" : "mt-3"}
     />
