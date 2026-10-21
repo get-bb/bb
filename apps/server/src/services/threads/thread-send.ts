@@ -1,3 +1,4 @@
+import { withMessageOrigin } from "../system/work-telemetry.js";
 import {
   getEnvironment,
   getThread,
@@ -395,6 +396,7 @@ export function captureUserMessageSentTelemetry(
     initiator: TelemetryInitiator;
   },
 ): void {
+  if (deps.telemetry.isEnabled()) return;
   deps.telemetry.capture({
     name: "user_message_sent",
     properties: {
@@ -482,7 +484,29 @@ export async function sendThreadMessage(
     return;
   }
   return withThreadSendGuard(args.thread.id, () =>
-    sendThreadMessageWithoutContextClear(deps, args),
+    withMessageOrigin(
+      {
+        threadId: args.thread.id,
+        source: "thread_send",
+        initiator: resolveTelemetryInitiator({
+          origin: args.payload.originPluginId === undefined ? null : "plugin",
+          originPluginId: args.payload.originPluginId ?? null,
+          initiator: args.retryOf
+            ? "system"
+            : args.payload.senderThreadId
+              ? "agent"
+              : "user",
+        }),
+        captureMessage:
+          args.trigger === "user" &&
+          !args.payload.senderThreadId &&
+          args.retryOf === undefined &&
+          args.payload.input.length > 0,
+        reuse: true,
+        ...(args.retryOf ? { retryRequestId: args.retryOf.requestId } : {}),
+      },
+      () => sendThreadMessageWithoutContextClear(deps, args),
+    ),
   );
 }
 

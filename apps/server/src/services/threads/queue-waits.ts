@@ -1,3 +1,4 @@
+import { recordQueuedMessageOrigin } from "../system/work-telemetry.js";
 import {
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessageInTransaction,
@@ -121,7 +122,7 @@ export function recordQueuedMessageWait(
     row = deps.db.transaction(
       (tx) => {
         assertThreadHostAcceptsWork(tx, args.thread);
-        return createQueuedThreadMessageInTransaction(tx, {
+        const queued = createQueuedThreadMessageInTransaction(tx, {
           threadId: args.thread.id,
           content: args.message.input,
           senderThreadId: args.message.senderThreadId,
@@ -137,6 +138,8 @@ export function recordQueuedMessageWait(
           payload: args.message.payload,
           systemNotice: args.message.systemNotice,
         });
+        recordQueuedMessageOrigin(tx, args.thread.id, queued.id);
+        return queued;
       },
       { behavior: "immediate" },
     );

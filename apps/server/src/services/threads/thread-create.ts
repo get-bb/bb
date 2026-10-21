@@ -1,3 +1,8 @@
+import type { TelemetryInitiator } from "../system/telemetry.js";
+import {
+  captureThreadCreated,
+  withMessageOrigin,
+} from "../system/work-telemetry.js";
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
@@ -419,6 +424,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
     sendAt: number | undefined;
+    telemetryInitiator: TelemetryInitiator;
   },
 ) {
   const environment =
@@ -480,39 +486,46 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
-    await attemptDispatch(deps, {
-      thread,
-      payload: {
-        input: args.request.input,
-        mode: "start",
-        model: execution.model,
-        reasoningLevel: execution.reasoningLevel,
-        serviceTier: execution.serviceTier,
-        permissionMode: execution.permissionMode,
-        ...(args.request.executionInputSources !== undefined
-          ? { executionInputSources: args.request.executionInputSources }
-          : {}),
-        ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+    await withMessageOrigin(
+      {
+        threadId: thread.id,
+        source: "thread_create",
+        initiator: args.telemetryInitiator,
+        captureMessage:
+          args.request.startedOnBehalfOf === null &&
+          args.request.input.length > 0,
       },
-      source: { kind: "inline" },
-      queuePayload: { kind: "inline" },
-      pluginSubmission: args.request.pluginSubmission ?? null,
-      startContext,
-      executionDefaults: executionPlanArgs,
-      origin: args.request.origin,
-      originPluginId: args.request.originPluginId ?? null,
-      startedOnBehalfOf: args.request.startedOnBehalfOf,
-      trigger: "user",
-    });
+      () =>
+        attemptDispatch(deps, {
+          thread,
+          payload: {
+            input: args.request.input,
+            mode: "start",
+            model: execution.model,
+            reasoningLevel: execution.reasoningLevel,
+            serviceTier: execution.serviceTier,
+            permissionMode: execution.permissionMode,
+            ...(args.request.executionInputSources !== undefined
+              ? { executionInputSources: args.request.executionInputSources }
+              : {}),
+            ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+          },
+          source: { kind: "inline" },
+          queuePayload: { kind: "inline" },
+          pluginSubmission: args.request.pluginSubmission ?? null,
+          startContext,
+          executionDefaults: executionPlanArgs,
+          origin: args.request.origin,
+          originPluginId: args.request.originPluginId ?? null,
+          startedOnBehalfOf: args.request.startedOnBehalfOf,
+          trigger: "user",
+        }),
+    );
   } catch (error) {
-    emitPluginThreadDeleted({
-      ...thread,
-      deletedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
     const deleted = markThreadDeleted(deps.db, deps.hub, {
       threadId: thread.id,
     });
+    if (deleted) emitPluginThreadDeleted(deleted);
     if (deleted)
       requestThreadStorageDeletion(
         deps,
@@ -850,10 +863,6 @@ export async function createThreadFromRequest(
       : {}),
     request,
   };
-  const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
-    ...createArgs,
-    sendAt: request.sendAt,
-  });
   const { initiator } = resolveDispatchAuthor({
     retrying: false,
     senderThreadId: null,
@@ -868,18 +877,31 @@ export async function createThreadFromRequest(
     initiator:
       spawnedByWorkingAgent && initiator === "user" ? "agent" : initiator,
   });
-  deps.telemetry.capture({
-    name: "thread_created",
-    properties: {
-      is_child_thread: parentThread !== null,
-      provider: request.providerId,
-      ...initiatorTelemetryProperty(
-        deps.config.featureFlags,
-        telemetryInitiator,
-      ),
-    },
+  const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
+    ...createArgs,
+    telemetryInitiator,
+    sendAt: request.sendAt,
   });
-  if (initiator === "user" && request.input.length > 0) {
+  if (deps.telemetry.isEnabled())
+    captureThreadCreated(thread, telemetryInitiator);
+  else {
+    deps.telemetry.capture({
+      name: "thread_created",
+      properties: {
+        is_child_thread: parentThread !== null,
+        provider: request.providerId,
+        ...initiatorTelemetryProperty(
+          deps.config.featureFlags,
+          telemetryInitiator,
+        ),
+      },
+    });
+  }
+  if (
+    !deps.telemetry.isEnabled() &&
+    initiator === "user" &&
+    request.input.length > 0
+  ) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: parentThread !== null,
       messageSource: "thread_create",

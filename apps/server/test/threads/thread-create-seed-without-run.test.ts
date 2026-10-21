@@ -53,7 +53,11 @@ function threadStartTurnRequest(
 
 function installTelemetryCaptureSpy(harness: TestAppHarness) {
   const capture = vi.fn<TelemetryService["capture"]>();
-  harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+  harness.deps.telemetry = {
+    ...harness.deps.telemetry,
+    capture,
+    isEnabled: () => true,
+  };
   return capture;
 }
 
@@ -90,13 +94,19 @@ describe("thread creation telemetry", () => {
         startedOnBehalfOf: null,
       });
 
-      expect(capture).toHaveBeenCalledWith({
+      expect(
+        capture.mock.calls.find(
+          ([event]) => event.name === "user_message_sent",
+        )?.[0],
+      ).toMatchObject({
         name: "user_message_sent",
         properties: {
           initiator: "user",
           is_child_thread: false,
           message_source: "thread_create",
           provider: "codex",
+          thread_analytics_id: expect.stringMatching(/^[0-9a-f]{32}$/),
+          request_analytics_id: expect.stringMatching(/^[0-9a-f]{32}$/),
         },
       });
     });
@@ -140,10 +150,28 @@ describe("thread creation initiator telemetry", () => {
         initiatorTelemetry: false,
       };
       await createThreadFromRequest(harness.deps, request);
-      expect(capture).toHaveBeenCalledWith({
-        name: "thread_created",
-        properties: { is_child_thread: false, provider: "codex" },
-      });
+      expect(capture.mock.calls.map(([event]) => event)).toContainEqual(
+        expect.objectContaining({
+          name: "thread_created",
+          properties: expect.objectContaining({
+            is_child_thread: false,
+            provider: "codex",
+          }),
+        }),
+      );
+
+      expect(
+        capture.mock.calls
+          .filter(
+            ([event]) =>
+              event.name === "thread_created" ||
+              event.name === "user_message_sent",
+          )
+          .every(
+            ([event]) =>
+              !("properties" in event) || !("initiator" in event.properties),
+          ),
+      ).toBe(true);
 
       capture.mockClear();
       harness.deps.config.featureFlags = {
@@ -151,23 +179,27 @@ describe("thread creation initiator telemetry", () => {
         initiatorTelemetry: true,
       };
       await createThreadFromRequest(harness.deps, request);
-      expect(capture).toHaveBeenCalledWith({
-        name: "thread_created",
-        properties: {
-          is_child_thread: false,
-          provider: "codex",
-          initiator: "user",
-        },
-      });
-      expect(capture).toHaveBeenCalledWith({
-        name: "user_message_sent",
-        properties: {
-          is_child_thread: false,
-          message_source: "thread_create",
-          provider: "codex",
-          initiator: "user",
-        },
-      });
+      expect(capture.mock.calls.map(([event]) => event)).toContainEqual(
+        expect.objectContaining({
+          name: "thread_created",
+          properties: expect.objectContaining({
+            is_child_thread: false,
+            provider: "codex",
+            initiator: "user",
+          }),
+        }),
+      );
+      expect(capture.mock.calls.map(([event]) => event)).toContainEqual(
+        expect.objectContaining({
+          name: "user_message_sent",
+          properties: expect.objectContaining({
+            is_child_thread: false,
+            message_source: "thread_create",
+            provider: "codex",
+            initiator: "user",
+          }),
+        }),
+      );
     });
   });
 });
@@ -222,14 +254,16 @@ describe("thread creation initiator for CLI spawns from a thread", () => {
           startedOnBehalfOf: null,
         });
 
-        expect(capture).toHaveBeenCalledWith({
-          name: "thread_created",
-          properties: {
-            is_child_thread: false,
-            provider: "codex",
-            initiator: expected,
-          },
-        });
+        expect(capture.mock.calls.map(([event]) => event)).toContainEqual(
+          expect.objectContaining({
+            name: "thread_created",
+            properties: expect.objectContaining({
+              is_child_thread: false,
+              provider: "codex",
+              initiator: expected,
+            }),
+          }),
+        );
       });
     },
   );
@@ -311,6 +345,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       expect(persistedFork?.titleFallback).toBe("Continue from the fork point");
       expect(capture).not.toHaveBeenCalledWith(
         expect.objectContaining({ name: "user_message_sent" }),
+        expect.any(Number),
       );
     });
   });
@@ -830,6 +865,7 @@ describe("thread creation child-thread boundary validation", () => {
         });
         expect(capture).not.toHaveBeenCalledWith(
           expect.objectContaining({ name: "user_message_sent" }),
+          expect.any(Number),
         );
 
         await reportQueuedCommandSuccess(harness, queuedStart, {

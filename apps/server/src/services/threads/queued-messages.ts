@@ -1,3 +1,8 @@
+import { resolveTelemetryInitiator } from "./telemetry-initiator.js";
+import {
+  withMessageOrigin,
+  recordQueuedMessageOrigin,
+} from "../system/work-telemetry.js";
 import {
   getLatestThreadSequence,
   claimNextQueuedThreadMessageGroup,
@@ -226,7 +231,27 @@ function admitQueuedMessage(
   return { hasProviderSession };
 }
 
-export async function createQueuedMessageForThread(
+export function createQueuedMessageForThread(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: CreateQueuedMessageForThreadArgs,
+): Promise<ThreadQueuedMessage> {
+  return withMessageOrigin(
+    {
+      threadId: args.thread.id,
+      source: "queued_message",
+      initiator: resolveTelemetryInitiator({
+        origin: null,
+        originPluginId: null,
+        initiator: args.payload.senderThreadId ? "agent" : "user",
+      }),
+      captureMessage:
+        !args.payload.senderThreadId && args.payload.input.length > 0,
+    },
+    () => createQueuedMessageWithOrigin(deps, args),
+  );
+}
+
+async function createQueuedMessageWithOrigin(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: CreateQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
@@ -279,6 +304,7 @@ export async function createQueuedMessageForThread(
           payload: { kind: "inline" },
           systemNotice: null,
         });
+        recordQueuedMessageOrigin(tx, thread.id, queuedMessage.id);
         return { currentThread, hasProviderSession, queuedMessage };
       },
       { behavior: "immediate" },
@@ -490,6 +516,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   const environment = await requireReadyQueuedMessageEnvironment(deps, thread);
   const queuedMessages = args.queuedMessages.map(toThreadQueuedMessage);
   const queuedMessage = queuedMessages[0]!;
+  if (queuedMessage.payload.kind === "retry") return null;
 
   const senderThreadId = args.queuedMessages[0]!.senderThreadId;
   let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
@@ -518,10 +545,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   );
   const initiator: ThreadTurnInitiator =
     senderThreadId === null ? "user" : "agent";
-  // A retry row's model is provenance — the failed attempt's tuple, replayed —
-  // not a model the user picked for this row, so it must not become the
-  // thread's sticky override the way a composed queued message's choice does.
-  if (initiator === "user" && queuedMessage.payload.kind !== "retry") {
+  if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource: "explicit",
@@ -690,7 +714,27 @@ async function sendClaimedSystemNotice(
  * claim the caller already won is handed to the attempt, which either consumes
  * it inside the dispatch transaction (exactly once) or gives it back.
  */
-async function sendClaimedQueuedMessageForThread(
+function sendClaimedQueuedMessageForThread(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: SendClaimedQueuedMessageForThreadArgs,
+): Promise<ThreadQueuedMessage> {
+  return withMessageOrigin(
+    {
+      threadId: args.thread.id,
+      source: "queued_message",
+      initiator: resolveTelemetryInitiator({
+        origin: args.queuedMessages[0]?.origin ?? null,
+        originPluginId: args.queuedMessages[0]?.originPluginId ?? null,
+        initiator: args.queuedMessages[0]?.senderThreadId ? "agent" : "user",
+      }),
+      captureMessage: false,
+      queuedIds: args.queuedMessages.map((row) => row.id),
+    },
+    () => sendClaimedQueuedMessageWithOrigin(deps, args),
+  );
+}
+
+async function sendClaimedQueuedMessageWithOrigin(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {

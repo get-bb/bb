@@ -1,3 +1,5 @@
+import { resolveTelemetryInitiator } from "./telemetry-initiator.js";
+import { withMessageOrigin } from "../system/work-telemetry.js";
 import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
 import {
   cancelPreparingMachinePause,
@@ -300,7 +302,31 @@ export function attemptDispatch(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
 ): Promise<DispatchAttemptOutcome> {
-  return runDispatchAttempt(deps, args, false);
+  const initiator = args.payload.senderThreadId
+    ? "agent"
+    : args.startedOnBehalfOf?.initiator;
+  return withMessageOrigin(
+    {
+      threadId: args.thread.id,
+      source: args.startContext ? "thread_create" : "thread_send",
+      reuse: true,
+      initiator: resolveTelemetryInitiator({
+        origin: args.origin,
+        originPluginId: args.originPluginId,
+        initiator: args.retryOf ? "system" : (initiator ?? "user"),
+      }),
+      captureMessage:
+        args.trigger === "user" &&
+        initiator === undefined &&
+        args.payload.input.length > 0 &&
+        args.retryOf === undefined,
+      ...(args.source.kind === "drain"
+        ? { queuedIds: args.source.claimed.map((row) => row.id) }
+        : {}),
+      ...(args.retryOf ? { retryRequestId: args.retryOf.requestId } : {}),
+    },
+    () => runDispatchAttempt(deps, args, false),
+  );
 }
 
 async function runDispatchAttempt(
