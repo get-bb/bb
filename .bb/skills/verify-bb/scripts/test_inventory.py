@@ -66,6 +66,37 @@ class InventoryTest(unittest.TestCase):
         self.assertNotEqual(changed.returncode, 0)
         self.assertIn('new-capability', changed.stdout)
 
+    def test_browser_inventory_links_desktop_and_tracks_behavior(self):
+        source = 'apps/cli/src/commands/browser.ts'
+        declaration = 'const browser = program.command("browser"); browser.command("instances");'
+        self.write(source, declaration)
+        accepted = self.run_check('--write')
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        snapshot = json.loads((self.repo / SKILL / 'inventory.json').read_text())
+        self.assertEqual(snapshot['groups']['cli:browser']['recipes'], ['features/desktop.md'])
+        self.assertIn(f'cli-command: {source}: instances', snapshot['groups']['cli:browser']['declarations'])
+        catalog = (self.repo / SKILL / 'INVENTORY.md').read_text()
+        self.assertIn('## cli:browser', catalog)
+        self.assertIn('[desktop](features/desktop.md)', catalog)
+        self.assertEqual(self.run_check().returncode, 0)
+        self.write(source, declaration + ' browser.option("--json");')
+        drift = self.run_check()
+        self.assertNotEqual(drift.returncode, 0)
+        self.assertIn('Source drift', drift.stdout)
+        self.assertIn('sourceDigest', drift.stdout)
+
+    def test_browser_missing_recipe_does_not_replace_baseline(self):
+        saved = {name: (self.repo / SKILL / name).read_bytes()
+                 for name in ['inventory.json', 'INVENTORY.md']}
+        self.write('apps/cli/src/commands/browser.ts', 'program.command("browser");')
+        (self.repo / SKILL / 'features/desktop.md').unlink()
+        rejected = self.run_check('--write')
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('cli:browser has no recipe: features/desktop.md', rejected.stderr)
+        for name, content in saved.items():
+            with self.subTest(saved_file=name):
+                self.assertEqual((self.repo / SKILL / name).read_bytes(), content)
+
     def test_unowned_plugin_cannot_be_baselined(self):
         before = (self.repo / SKILL / 'inventory.json').read_bytes()
         self.write('plugins/new-capability/package.json', '{"bb": {"server": "./server.ts"}}')
