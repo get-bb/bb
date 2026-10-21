@@ -45,7 +45,7 @@ describe("loadPluginFrontend", () => {
     });
     const warn = vi.fn();
 
-    const deps = { importModule, warn };
+    const deps = { importModule, prefetchModule: vi.fn(), warn };
 
     expect(await loadPluginFrontend(candidate("broken"), deps)).toEqual({
       pluginId: "broken",
@@ -69,6 +69,7 @@ describe("loadPluginFrontend", () => {
       candidate("odd", { cssUrl: null }),
       {
         importModule: async () => undefined,
+        prefetchModule: vi.fn(),
         warn: vi.fn(),
       },
     );
@@ -88,7 +89,7 @@ describe("loadPluginFrontend", () => {
         sdkMajor: 9,
         sdkVersion: "9.2.0",
       }),
-      { importModule, warn },
+      { importModule, prefetchModule: vi.fn(), warn },
     );
 
     expect(record).toEqual({
@@ -159,30 +160,36 @@ describe("installPluginRuntime", () => {
     expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
   });
 
-  it("provides @pierre/diffs only to bundles that import it, before they evaluate", async () => {
+  it("provides @pierre/diffs only to bundles that import it, downloading the bundle meanwhile", async () => {
+    const pierreSlots = () =>
+      Object.keys(
+        (globalThis as RuntimeHost).__bbPluginRuntime as Record<string, unknown>,
+      ).filter((slot) => slot.startsWith("pierre"));
     const slotsAtImport: string[][] = [];
     const importModule = vi.fn(async () => {
-      const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
-        string,
-        unknown
-      >;
-      slotsAtImport.push(
-        Object.keys(runtime).filter((slot) => slot.startsWith("pierre")),
-      );
+      slotsAtImport.push(pierreSlots());
       return { default: {} };
     });
     installPluginRuntime();
 
+    const prefetchModule = vi.fn((url: string) =>
+      slotsAtImport.push([`prefetch ${url.split("/")[4]}`, ...pierreSlots()]),
+    );
     await loadPluginFrontend(candidate("plain", { runtimeSlots: ["react"] }), {
       importModule,
+      prefetchModule,
       warn: vi.fn(),
     });
     await loadPluginFrontend(
       candidate("differ", { runtimeSlots: ["pierreDiffsReact", "react"] }),
-      { importModule, warn: vi.fn() },
+      { importModule, prefetchModule, warn: vi.fn() },
     );
 
-    expect(slotsAtImport).toEqual([[], ["pierreDiffs", "pierreDiffsReact"]]);
+    expect(slotsAtImport).toEqual([
+      [],
+      ["prefetch differ"],
+      ["pierreDiffs", "pierreDiffsReact"],
+    ]);
     const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
       string,
       unknown

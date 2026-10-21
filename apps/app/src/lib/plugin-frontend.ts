@@ -55,7 +55,6 @@ import {
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { createRetryingModuleLoader } from "./plugin-frontend-lazy";
-import { getPluginPanelRoutePluginId } from "./route-paths";
 import {
   pluginSdkAppImplementation,
   retiredPluginSdkAppMembers,
@@ -139,6 +138,7 @@ export type PluginFrontendDiagnostic =
 
 interface PluginFrontendLoaderDeps {
   importModule: (url: string) => Promise<unknown>;
+  prefetchModule: (url: string) => void;
   warn: (message: string) => void;
 }
 
@@ -158,7 +158,11 @@ export async function loadPluginFrontend(
     };
   }
   try {
-    await provideLazyRuntimeSlots(bundle.runtimeSlots);
+    if (needsLazyRuntimeSlots(bundle.runtimeSlots)) {
+      const slotsProvided = provideLazyRuntimeSlots();
+      deps.prefetchModule(bundle.jsUrl);
+      await slotsProvided;
+    }
     const mod = await deps.importModule(bundle.jsUrl);
     if (typeof mod !== "object" || mod === null) {
       throw new Error("bundle did not evaluate to a module namespace");
@@ -246,12 +250,14 @@ const loadPierreRuntime = createRetryingModuleLoader(
   () => import("./plugin-pierre-runtime"),
 );
 
-async function provideLazyRuntimeSlots(
-  slots: readonly string[],
-): Promise<void> {
-  if (!slots.includes("pierreDiffs") && !slots.includes("pierreDiffsReact")) {
-    return;
-  }
+function needsLazyRuntimeSlots(runtimeSlots: readonly string[]): boolean {
+  return (
+    runtimeSlots.includes("pierreDiffs") ||
+    runtimeSlots.includes("pierreDiffsReact")
+  );
+}
+
+async function provideLazyRuntimeSlots(): Promise<void> {
   const { pierreRuntimeSlots } = await loadPierreRuntime();
   Object.assign(installPluginRuntime(), pierreRuntimeSlots);
 }
@@ -770,7 +776,11 @@ async function reconcileCandidate(
               : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount),
         },
       },
-      { importModule: deps.importModule, warn: deps.warn },
+      {
+        importModule: deps.importModule,
+        prefetchModule: deps.prefetchModule,
+        warn: deps.warn,
+      },
     );
   if (candidate.bundle.cssUrl !== null)
     deps.prefetchCss(candidate.bundle.cssUrl);
