@@ -474,6 +474,29 @@ describe("prompt library popup", () => {
     );
   });
 
+  it("keeps saved stars visible when keyboard selection moves to another prompt", async () => {
+    const { slot } = render({
+      recent: [
+        recentRow("h1", "saved history prompt", "prompt_2"),
+        recentRow("h2", "ordinary history prompt"),
+      ],
+    });
+    const saved = await slot.findByRole("option", { name: /starred prompt/ });
+    const history = slot.getByRole("option", { name: /saved history prompt/ });
+    const savedStar = within(saved).getByRole("button", { name: "Unstar" });
+    const historyStar = within(history).getByRole("button", { name: "Unstar" });
+
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+
+    expect(saved.getAttribute("aria-selected")).toBe("false");
+    expect(history.getAttribute("aria-selected")).toBe("false");
+    for (const button of [savedStar, historyStar]) {
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(button.classList.contains("opacity-0")).toBe(false);
+    }
+  });
+
   it("stars and unstars prompts with Mod+S", async () => {
     const { slot, star, unstar } = render({
       recent: [
