@@ -12,6 +12,7 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   LANDING_POSTHOG_KEY?: string;
+  DOWNLOAD_CLICK_CONTEXT?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
   MARKETPLACE?: R2Bucket;

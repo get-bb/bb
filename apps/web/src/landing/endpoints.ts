@@ -1,4 +1,10 @@
 import {
+  buildDownloadContext,
+  downloadRepeatStatus,
+  DOWNLOAD_REPEAT_COOKIE,
+} from "./download-context";
+import type { DownloadContext } from "./download-context";
+import {
   DESKTOP_DOWNLOADS,
   DOWNLOAD_FALLBACK_URL,
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
@@ -18,11 +24,12 @@ type DownloadPlacement = CtaPlacement | "direct";
 
 type MarketingEnv = {
   LANDING_POSTHOG_KEY?: string;
+  DOWNLOAD_CLICK_CONTEXT?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
 };
 
-type DownloadEventProperties = {
+type DownloadEventProperties = Partial<DownloadContext> & {
   $current_url: string;
   $referrer?: string;
   download_target: DesktopPlatform;
@@ -49,6 +56,7 @@ type PostHogCapturePayload = {
 type TrackDownloadClickArgs = {
   platform: DesktopPlatform;
   postHogKey: string | undefined;
+  contextEnabled: boolean;
   request: Request;
   requestUrl: URL;
 };
@@ -61,16 +69,20 @@ export async function handleDownload(
 ): Promise<Response> {
   const requestUrl = new URL(request.url);
   const range = request.headers.get("range");
-  if (isFirstByteRequest(range)) {
+  const firstRequest = isFirstByteRequest(range);
+  const contextEnabled = env.DOWNLOAD_CLICK_CONTEXT === "true";
+  if (firstRequest) {
     waitUntil(
       trackDownloadClick({
         platform,
         postHogKey: env.LANDING_POSTHOG_KEY,
+        contextEnabled,
         request,
         requestUrl,
       }),
     );
   }
+  let response: Response;
   if (requestUrl.searchParams.get("instructions") === "1") {
     const params = new URLSearchParams();
     for (const name of [...CAMPAIGN_PARAM_NAMES, "placement"]) {
@@ -85,11 +97,20 @@ export async function handleDownload(
       }
     }
     const search = params.toString();
-    return redirectResponse(
+    response = redirectResponse(
       `/install/${platform}${search ? `?${search}` : ""}`,
     );
+  } else {
+    response = await handleInstallerDownload(platform, request);
   }
-  return handleInstallerDownload(platform, request);
+  if (
+    contextEnabled &&
+    firstRequest &&
+    downloadRepeatStatus(request) !== "unknown"
+  ) {
+    response.headers.append("Set-Cookie", DOWNLOAD_REPEAT_COOKIE);
+  }
+  return response;
 }
 
 export async function handleInstallerDownload(
@@ -341,6 +362,7 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
       platform: args.platform,
       request: args.request,
       requestUrl: args.requestUrl,
+      contextEnabled: args.contextEnabled,
     }),
     timestamp: new Date().toISOString(),
   };
@@ -353,6 +375,7 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
 }
 
 type BuildDownloadEventPropertiesArgs = {
+  contextEnabled: boolean;
   platform: DesktopPlatform;
   request: Request;
   requestUrl: URL;
@@ -382,6 +405,7 @@ function buildDownloadEventProperties(
   }
   const referrerSearchParams = readReferrerSearchParams(referrer);
   const properties: DownloadEventProperties = {
+    ...(args.contextEnabled ? buildDownloadContext(args.request) : {}),
     $current_url: truncateProperty(requestUrl.href),
     download_target: args.platform,
     placement: parseDownloadPlacement(args.requestUrl.searchParams),

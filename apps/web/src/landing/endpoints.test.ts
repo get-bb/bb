@@ -391,6 +391,251 @@ describe("marketing download", () => {
   );
 });
 
+describe("download click context", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function click({
+    enabled = "true",
+    country = "US",
+    headers = {},
+  }: {
+    enabled?: string;
+    country?: string;
+    headers?: Record<string, string>;
+  } = {}) {
+    const fetchMock = vi.fn(
+      async (_url: unknown, _init?: RequestInit) => new Response("{}"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new Request(
+      "https://getbb.app/download/macos?instructions=1&utm_campaign=qa-context",
+      { headers },
+    );
+    Object.defineProperty(request, "cf", { value: { country } });
+    const pending: Promise<void>[] = [];
+    const response = await handleDownload(
+      "macos",
+      request,
+      {
+        LANDING_POSTHOG_KEY: "phc_test",
+        DOWNLOAD_CLICK_CONTEXT: enabled,
+      },
+      (promise) => {
+        pending.push(promise);
+      },
+    );
+    await Promise.all(pending);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(payload.event).toBe("landing_download_macos_clicked");
+    expect(payload.properties.utm_campaign).toBe("qa-context");
+    return { response, properties: payload.properties };
+  }
+
+  it.each([
+    [
+      "Mac Safari",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "",
+      "desktop",
+      "darwin",
+      "safari",
+      "unknown",
+    ],
+    [
+      "Mac Chrome ARM",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/155.0.0.0 Safari/537.36",
+      '"arm"',
+      "desktop",
+      "darwin",
+      "chrome",
+      "apple",
+    ],
+    [
+      "Mac Chrome x86",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/155.0.0.0 Safari/537.36",
+      '"x86"',
+      "desktop",
+      "darwin",
+      "chrome",
+      "intel",
+    ],
+    [
+      "Windows Edge",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
+      '"x86"',
+      "desktop",
+      "win32",
+      "edge",
+      "unknown",
+    ],
+    [
+      "iPhone",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+      "",
+      "phone",
+      "ios",
+      "safari",
+      "unknown",
+    ],
+    [
+      "Android",
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/155.0.0.0 Mobile Safari/537.36",
+      '"arm"',
+      "phone",
+      "android",
+      "chrome",
+      "unknown",
+    ],
+    [
+      "Android tablet",
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/155.0.0.0 Safari/537.36",
+      "",
+      "tablet",
+      "android",
+      "chrome",
+      "unknown",
+    ],
+    [
+      "iPad",
+      "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+      "",
+      "tablet",
+      "ios",
+      "safari",
+      "unknown",
+    ],
+    [
+      "Linux Firefox",
+      "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
+      "",
+      "desktop",
+      "linux",
+      "firefox",
+      "unknown",
+    ],
+    ["missing UA", "", "", "desktop", "other", "other", "unknown"],
+  ])(
+    "sends only coarse context for %s",
+    async (_name, ua, arch, device, platform, browser, chip) => {
+      const { properties } = await click({
+        headers: { "User-Agent": ua, "Sec-CH-UA-Arch": arch },
+      });
+      expect(properties).toMatchObject({
+        device_class: device,
+        platform,
+        browser,
+        mac_chip: chip,
+        download_repeat: "first",
+      });
+      expect(Object.keys(properties).sort()).toEqual([
+        "$current_url",
+        "browser",
+        "device_class",
+        "download_repeat",
+        "download_target",
+        "mac_chip",
+        "placement",
+        "platform",
+        "tracking_source",
+        "utm_campaign",
+      ]);
+      if (ua) expect(JSON.stringify(properties)).not.toContain(ua);
+    },
+  );
+
+  it.each(["false", "", "TRUE"])(
+    "keeps tracking unchanged with setting %j",
+    async (enabled) => {
+      const { response, properties } = await click({
+        enabled,
+        headers: { cookie: "bb_dl=1" },
+      });
+      expect(response.headers.get("Set-Cookie")).toBeNull();
+      expect(Object.keys(properties).sort()).toEqual([
+        "$current_url",
+        "download_target",
+        "placement",
+        "tracking_source",
+        "utm_campaign",
+      ]);
+    },
+  );
+
+  it("sets the restricted repeat marker on the redirect and reads it on the next click", async () => {
+    const first = await click();
+    expect(first.response.status).toBe(302);
+    expect(first.response.headers.get("Set-Cookie")).toBe(
+      "bb_dl=1; Path=/download; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax",
+    );
+    expect(first.properties.download_repeat).toBe("first");
+    const second = await click({ headers: { cookie: "other=value; bb_dl=1" } });
+    expect(second.properties.download_repeat).toBe("repeat");
+    const unrelated = await click({
+      headers: { cookie: "prefix_bb_dl=1; bb_dl=10" },
+    });
+    expect(unrelated.properties.download_repeat).toBe("first");
+  });
+
+  it.each([
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
+    "IS",
+    "LI",
+    "NO",
+    "GB",
+    "CH",
+    "XX",
+    "T1",
+    "",
+  ])(
+    "ignores existing cookies and sets none for country %s",
+    async (country) => {
+      const { response, properties } = await click({
+        country,
+        headers: { cookie: "bb_dl=1" },
+      });
+      expect(response.headers.get("Set-Cookie")).toBeNull();
+      expect(properties.download_repeat).toBe("unknown");
+    },
+  );
+
+  it("ignores repeat markers when GPC is on even outside restricted countries", async () => {
+    const { response, properties } = await click({
+      headers: { "Sec-GPC": "1", cookie: "bb_dl=1" },
+    });
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(properties.download_repeat).toBe("unknown");
+  });
+});
+
 describe("marketing subscribe endpoint", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

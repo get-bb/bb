@@ -8,6 +8,8 @@ import {
   marketplaceResponseStatus,
 } from "./marketplace/marketplace-response-status.js";
 
+import { getEnv } from "./server/env";
+
 const fetch = createStartHandler(async (context) => {
   const pathname = new URL(context.request.url).pathname;
   const status = marketplaceResponseStatus(
@@ -20,9 +22,13 @@ const fetch = createStartHandler(async (context) => {
   const result = await defaultStreamHandler(context);
   const response = "response" in result ? result.response : result;
   const cacheControl = marketplaceHtmlCacheControl(pathname, response.status);
-  if (cacheControl === null) return result;
+  const requestArchitecture =
+    getEnv().DOWNLOAD_CLICK_CONTEXT === "true" &&
+    response.headers.get("content-type")?.split(";")[0]?.trim() === "text/html";
+  if (cacheControl === null && !requestArchitecture) return result;
   const headers = new Headers(response.headers);
-  headers.set("cache-control", cacheControl);
+  if (cacheControl !== null) headers.set("cache-control", cacheControl);
+  if (requestArchitecture) headers.set("Accept-CH", "Sec-CH-UA-Arch");
   const updatedResponse = new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

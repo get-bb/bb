@@ -1207,3 +1207,9 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+## Website download context
+
+The getbb.app Worker setting `DOWNLOAD_CLICK_CONTEXT` defaults to `"false"` in both environments. Only `"true"` enables coarse device, OS, browser, Mac architecture and repeat-click properties on existing download events. Enabling it requires the analytics/privacy release approval; this setting does not change application telemetry.
+
+When enabled, HTML responses request only `Sec-CH-UA-Arch`. Missing or unrecognized architecture stays unknown; Safari and desktop-mode iPads cannot reliably identify their chip or device class. Download click responses may set `bb_dl=1`, scoped to `/download` for 30 days, Secure, HttpOnly and SameSite=Lax. No marker is set or read for GPC or EEA/UK/Swiss visitors; missing/unknown country also yields `download_repeat: unknown`. Country comes from Cloudflare request metadata, never a client-supplied country header.
