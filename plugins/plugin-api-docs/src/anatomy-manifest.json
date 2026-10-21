@@ -173,7 +173,7 @@
           ]
         },
         {
-          "path": "packages/plugin-sdk/src/internal/plugin-app-collector.ts",
+          "path": "packages/plugin-sdk/src/internal/plugin-app-registration-collector.ts",
           "anchors": [
             "adaptSidebarFooterAction",
             "experimental_sidebarFooter.register",
