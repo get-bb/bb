@@ -1,8 +1,13 @@
 import {
+  managedRunInputSchema,
+  managedCheckpointInputSchema,
+} from "./managed-types.js";
+import {
   automationDetailReadResultSchema,
   automationDetailResponseSchema,
   automationListResponseSchema,
   automationResponseSchema,
+  automationRunResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
   automationRunsInputSchema,
@@ -18,6 +23,14 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { AutomationService } from "./service.js";
 
 export const automationRpcContract = defineRpcContract({
+  automations_run_status: {
+    input: managedRunInputSchema,
+    output: automationRunResponseSchema,
+  },
+  automations_checkpoint: {
+    input: managedCheckpointInputSchema,
+    output: automationRunResponseSchema,
+  },
   automations_overview: {
     input: z.null(),
     output: automationsOverviewResponseSchema,
@@ -62,6 +75,14 @@ export const automationRpcContract = defineRpcContract({
 
 export function createRpcHandlers(service: AutomationService) {
   return {
+    automations_run_status(input: z.output<typeof managedRunInputSchema>) {
+      return service.runStatus(input);
+    },
+    automations_checkpoint(
+      input: z.output<typeof managedCheckpointInputSchema>,
+    ) {
+      return service.checkpoint(input);
+    },
     automations_overview() {
       return service.overview();
     },

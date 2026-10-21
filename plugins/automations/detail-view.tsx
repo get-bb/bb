@@ -353,7 +353,7 @@ function formatRunDuration(run: AutomationRunResponse): string | null {
 function isSilentRun(run: AutomationRunResponse): boolean {
   return (
     run.status === "succeeded" &&
-    run.runMode === "script" &&
+    (run.runMode === "script" || run.workflow != null) &&
     (run.output === null || run.output.trim().length === 0)
   );
 }
@@ -370,6 +370,22 @@ const AUTOMATION_RUN_STATUS_VISUALS: Record<
     label: "Running",
     icon: "Loading",
     className: "animate-spin text-muted-foreground",
+  },
+  pausing: {
+    label: "Finishing current work",
+    icon: "Loading",
+    className: "text-muted-foreground",
+  },
+  paused: {
+    label: "Paused",
+    icon: "Pause",
+    className: "text-muted-foreground",
+  },
+  blocked: { label: "Blocked", icon: "CircleX", className: "text-destructive" },
+  recovering: {
+    label: "Recovering",
+    icon: "Loading",
+    className: "text-muted-foreground",
   },
   failed: {
     label: "Failed",
@@ -450,7 +466,11 @@ export function RunRow({
             : "text-subtle-foreground",
         )}
       >
-        {running ? `${visual.label}\u2026` : (duration ?? "")}
+        {run.workflow
+          ? `${visual.label}${duration ? ` · ${duration}` : ""}`
+          : running
+            ? `${visual.label}\u2026`
+            : (duration ?? "")}
         {run.skipReason ? `${duration ? " · " : ""}${run.skipReason}` : ""}
       </span>
       {openable ? (

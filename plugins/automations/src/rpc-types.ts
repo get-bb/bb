@@ -1,3 +1,4 @@
+import { managedWorkflowSchema } from "./managed-types.js";
 import { z } from "zod";
 import {
   AUTOMATION_IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -94,6 +95,10 @@ export const automationRunModeSchema = z.enum(["agent", "script"]);
 export type AutomationRunMode = z.infer<typeof automationRunModeSchema>;
 export const automationRunStatusSchema = z.enum([
   "running",
+  "pausing",
+  "paused",
+  "blocked",
+  "recovering",
   "succeeded",
   "failed",
   "skipped",
@@ -157,6 +162,7 @@ export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 const automationAgentExecutionSchema = z
   .object({
     mode: z.literal("agent"),
+    workflow: z.literal("managed").optional(),
     prompt: z.string().min(1),
     providerId: z.string().min(1),
     model: z.string().min(1),
@@ -166,7 +172,14 @@ const automationAgentExecutionSchema = z
     environment: agentEnvironmentSchema,
     targetThreadId: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.workflow !== "managed" || value.targetThreadId === undefined,
+    {
+      message: "Managed automations require a fresh coordinator per run",
+    },
+  );
 
 const automationScriptExecutionFields = {
   mode: z.literal("script"),
@@ -220,7 +233,7 @@ export const automationExecutionSchema = z.discriminatedUnion("mode", [
 export type AutomationExecution = z.infer<typeof automationExecutionSchema>;
 
 const legacyEmptyPromptAgentExecutionSchema =
-  automationAgentExecutionSchema.extend({ prompt: z.literal("") });
+  automationAgentExecutionSchema.safeExtend({ prompt: z.literal("") });
 export const persistedAutomationExecutionSchema = z.union([
   automationExecutionSchema,
   storedAutomationScriptExecutionSchema,
@@ -292,6 +305,7 @@ const agentExecutionTargetSchema = z.discriminatedUnion("type", [
 
 const agentExecutionUpdateSchema = z
   .object({
+    workflow: z.literal("managed").optional(),
     prompt: z.string().min(1).optional(),
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
@@ -303,6 +317,7 @@ const agentExecutionUpdateSchema = z
   .strict()
   .refine(
     (value) =>
+      value.workflow !== undefined ||
       value.prompt !== undefined ||
       value.providerId !== undefined ||
       value.model !== undefined ||
@@ -390,6 +405,7 @@ export const automationRunResponseSchema = z
     automationId: z.string(),
     runMode: automationRunModeSchema,
     threadId: z.string().min(1).nullable(),
+    workflow: managedWorkflowSchema.nullable().optional(),
     status: automationRunStatusSchema,
     trigger: automationRunTriggerSchema,
     skipReason: z.string().nullable(),

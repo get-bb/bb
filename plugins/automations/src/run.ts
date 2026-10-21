@@ -1,3 +1,9 @@
+import {
+  initializeManagedRun,
+  blockManagedRun,
+  managedDefinition,
+  managedDispatches,
+} from "./managed.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -109,7 +115,16 @@ export async function executeAgentRun(
   db: Db,
   args: AgentRunArgs,
 ): Promise<void> {
+  initializeManagedRun(db, args.run.id);
+  if (args.execution.workflow === "managed") managedDispatches.add(args.run.id);
   try {
+    if (
+      args.execution.workflow === "managed" &&
+      args.automation.targetThreadId !== null
+    )
+      throw new Error(
+        "Managed automations require a fresh coordinator per run",
+      );
     if (args.automation.targetThreadId !== null) {
       await reuseTargetThreadForRun(bb, db, {
         ...args,
@@ -123,9 +138,16 @@ export async function executeAgentRun(
         environment: args.execution.environment,
         prompt: renderAutomationDueMessage({
           automationId: args.automation.id,
-          prompt: args.execution.prompt,
+          prompt:
+            args.execution.workflow === "managed"
+              ? `[bb managed run:${args.run.id}]\n` +
+                args.execution.prompt.replaceAll("{{runId}}", args.run.id)
+              : args.execution.prompt,
         }),
-        title: args.automation.name,
+        title:
+          args.execution.workflow === "managed"
+            ? `${args.automation.name} — ${new Intl.DateTimeFormat("en-CA", { timeZone: JSON.parse(args.automation.triggerConfig).timezone ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(args.run.scheduledFor)}`
+            : args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,
         reasoningLevel: args.execution.reasoningLevel,
@@ -143,8 +165,16 @@ export async function executeAgentRun(
       now: Date.now(),
     });
   } catch (error) {
-    settleDispatchFailure(bb, db, args, error);
+    if (args.execution.workflow === "managed")
+      blockManagedRun(
+        bb,
+        db,
+        args.run,
+        `Coordinator launch acknowledgement uncertain: ${errorMessage(error)}`,
+      );
+    else settleDispatchFailure(bb, db, args, error);
   } finally {
+    managedDispatches.delete(args.run.id);
     publishAutomationChange(bb, args.automation.projectId, [
       "automations-changed",
       "automation-runs-changed",
@@ -333,6 +363,7 @@ export function closeAutomationRunForSettledThread(
   const now = Date.now();
   const changedProjects = new Set<string>();
   for (const run of runs) {
+    if (run.workflow || managedDefinition(db, run)) continue;
     const closed = closeAutomationRun(db, {
       runId: run.id,
       status: args.status === "idle" ? "succeeded" : "failed",
@@ -363,6 +394,7 @@ export async function reconcileRunningAutomationRuns(
 ): Promise<void> {
   const changedProjects = new Set<string>();
   for (const run of listRunningAutomationRuns(db)) {
+    if (run.workflow || managedDefinition(db, run)) continue;
     const outcome = await reconcileOutcome(bb, run);
     if (outcome === null) continue;
     const closed = closeAutomationRun(db, {

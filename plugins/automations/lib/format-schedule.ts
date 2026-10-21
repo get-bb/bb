@@ -1,3 +1,4 @@
+import type { AutomationRunStatus } from "../src/rpc-types.js";
 import { toString as cronstrueToString } from "cronstrue";
 import type { AutomationTrigger } from "../src/rpc-types";
 
@@ -15,7 +16,7 @@ interface FormatScheduleStatusLabelArgs {
   nextRunAt: number | null;
   trigger?: AutomationTrigger;
   runCount?: number;
-  lastRunStatus?: "running" | "succeeded" | "failed" | "skipped" | null;
+  lastRunStatus?: AutomationRunStatus | null;
   now?: number;
 }
 
@@ -30,11 +31,14 @@ interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
   runCount: number;
-  lastRunStatus: "running" | "succeeded" | "failed" | "skipped" | null;
+  lastRunStatus: AutomationRunStatus | null;
   now?: number;
 }
 
 type OneShotLifecycle =
+  | "pausing"
+  | "blocked"
+  | "recovering"
   | "scheduled"
   | "paused"
   | "expired"
@@ -101,6 +105,13 @@ export function getOneShotLifecycle({
   if (trigger.triggerType !== "once") return null;
   if (enabled) return "scheduled";
   if (runCount > 0) {
+    if (
+      lastRunStatus === "paused" ||
+      lastRunStatus === "pausing" ||
+      lastRunStatus === "blocked" ||
+      lastRunStatus === "recovering"
+    )
+      return lastRunStatus;
     if (lastRunStatus === "running") return "running";
     if (lastRunStatus === "failed") return "failed";
     if (lastRunStatus === "skipped") return "skipped";

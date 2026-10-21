@@ -1,3 +1,4 @@
+import { managedCheckpointInputSchema } from "./managed-types.js";
 import { isAbsolute, resolve } from "node:path";
 import {
   PluginCliError,
@@ -109,6 +110,11 @@ const SCHEDULE_OPTIONS = {
 } as const;
 
 const AGENT_OPTIONS = {
+  managed: {
+    type: "boolean",
+    description:
+      "Keep the daily run open until its coordinator explicitly checkpoints completion",
+  },
   prompt: {
     type: "string",
     placeholder: "text",
@@ -225,6 +231,7 @@ interface AgentOptionValues {
   prompt: string | undefined;
   provider: string | undefined;
   model: string | undefined;
+  managed?: boolean;
   reasoning: ReasoningLevel | undefined;
   "service-tier": string | undefined;
   "clear-service-tier": boolean | undefined;
@@ -651,6 +658,7 @@ async function buildExecution(
     return {
       execution: {
         mode: "agent",
+        ...(options.managed ? { workflow: "managed" as const } : {}),
         prompt,
         providerId: provider,
         model,
@@ -732,6 +740,7 @@ async function buildAgentExecutionUpdate(
   options: AgentOptionValues,
 ): Promise<AgentExecutionUpdate | undefined> {
   const agentOptionNames = [
+    options.managed || undefined,
     options.prompt,
     options.provider,
     options.model,
@@ -748,6 +757,7 @@ async function buildAgentExecutionUpdate(
 
   validateAgentTargetOptions(options);
   const update: AgentExecutionUpdate = {};
+  if (options.managed) update.workflow = "managed";
   if (options.prompt !== undefined) {
     update.prompt = requireOptionValue("prompt", options.prompt);
   }
@@ -1067,6 +1077,90 @@ export function registerAutomationCli(args: {
         run: (input) => ({ exitCode: 0, stdout: input.help }),
       }),
       commands: {
+        "run-show": cliCommand({
+          summary:
+            "Inspect one automation run and its durable workflow checkpoint",
+          positionals: [
+            { name: "runId", required: true, description: "Automation run id" },
+          ],
+          options: { project: PROJECT_OPTION, json: JSON_OPTION },
+          run: (input, ctx) =>
+            attempt(async () => ({
+              exitCode: 0,
+              stdout: jsonOutput(
+                service.runStatus({
+                  projectId: requireProjectId(input.options.project, ctx),
+                  runId: input.positionals.runId!,
+                }),
+              ),
+            })),
+        }),
+        checkpoint: cliCommand({
+          summary:
+            "Checkpoint the current coordinator's managed automation run",
+          positionals: [
+            { name: "runId", required: true, description: "Automation run id" },
+          ],
+          options: {
+            project: PROJECT_OPTION,
+            json: JSON_OPTION,
+            revision: {
+              type: "string",
+              description: "Revision returned by run-show",
+            },
+            state: {
+              type: "enum",
+              values: [
+                "running",
+                "paused",
+                "blocked",
+                "succeeded",
+                "failed",
+                "skipped",
+              ],
+              description: "Durable workflow state",
+            },
+            summary: {
+              type: "string",
+              description: "Progress, checkpoint reason or final report",
+            },
+            "wait-for": {
+              type: "string",
+              description: "Direct child thread to await",
+            },
+            "wake-at": {
+              type: "string",
+              description: "Epoch milliseconds for the next coordinator wake",
+            },
+          },
+          run: (input, ctx) =>
+            attempt(async () => {
+              if (!ctx.threadId)
+                throw cliError(
+                  "Run this command from the linked coordinator thread",
+                  "missing_required",
+                );
+              const request = managedCheckpointInputSchema.parse({
+                projectId: requireProjectId(input.options.project, ctx),
+                runId: input.positionals.runId,
+                threadId: ctx.threadId,
+                revision: Number(
+                  requireOptionValue("revision", input.options.revision ?? ""),
+                ),
+                state: input.options.state,
+                summary: input.options.summary,
+                waitFor: input.options["wait-for"] ?? null,
+                wakeAt:
+                  input.options["wake-at"] === undefined
+                    ? null
+                    : Number(input.options["wake-at"]),
+              });
+              return {
+                exitCode: 0,
+                stdout: jsonOutput(await service.checkpoint(request)),
+              };
+            }),
+        }),
         list: cliCommand({
           summary: "List automations for a project",
           options: { project: PROJECT_OPTION, json: JSON_OPTION },

@@ -118,7 +118,10 @@ function AutomationRowLeading({
 }: {
   automation: AutomationResponse;
 }) {
-  if (automation.lastRunStatus === "failed") {
+  if (
+    automation.lastRunStatus === "failed" ||
+    automation.lastRunStatus === "blocked"
+  ) {
     return (
       <Icon
         name="CircleX"
@@ -130,7 +133,11 @@ function AutomationRowLeading({
       />
     );
   }
-  if (automation.lastRunStatus === "running") {
+  if (
+    ["running", "pausing", "recovering"].includes(
+      automation.lastRunStatus ?? "",
+    )
+  ) {
     return (
       <Icon
         name="Loading"

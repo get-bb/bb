@@ -1,3 +1,4 @@
+import { createManagedSupervisor } from "./managed.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { migrations } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
@@ -30,6 +31,7 @@ export default async function plugin(bb: BbPluginApi) {
     serverUrl: resolveServerUrl(),
   });
 
+  const managed = createManagedSupervisor(bb, db);
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
@@ -38,6 +40,7 @@ export default async function plugin(bb: BbPluginApi) {
       threadId: thread.id,
       status: "idle",
     });
+    void managed.threadSettled(thread.id);
   });
   bb.events.on("thread.failed", ({ thread, error }) => {
     closeAutomationRunForSettledThread(bb, db, {
@@ -45,6 +48,7 @@ export default async function plugin(bb: BbPluginApi) {
       status: "failed",
       error,
     });
+    void managed.threadSettled(thread.id);
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {
@@ -64,6 +68,7 @@ export default async function plugin(bb: BbPluginApi) {
       while (!signal.aborted) {
         try {
           serverHostId ??= (await bb.sdk.system.config()).primaryHostId;
+          await managed.sweep();
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
             serverUrl: resolveServerUrl(),

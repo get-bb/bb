@@ -1141,3 +1141,12 @@ provider child. Recordings can contain secrets; redact them with
 App production builds cache React Compiler output at
 `<git-common-dir>/bb-cache/react-compiler`; it has no configuration and can be
 deleted while no build runs.
+
+## Managed automation completion
+
+Agent automations can opt into `execution.workflow: "managed"` (`bb automation
+create --managed` or a complete execution replacement). The native run remains open
+across coordinator turns until an explicit lifecycle checkpoint ends it. Pause and
+blocked checkpoints retain single ownership; resume wakes the existing coordinator.
+See the Automations skill's `references/managed-runs.md` for checkpoint, child-wait
+and recovery contracts. Ordinary agent and script automations are unchanged.

@@ -1,3 +1,4 @@
+import { managedWorkflowSchema } from "./managed-types.js";
 import type Database from "better-sqlite3";
 import { createAutomationId, createAutomationRunId } from "./ids.js";
 import {
@@ -30,7 +31,7 @@ const AUTOMATION_COLUMNS = `id, project_id AS projectId, target_thread_id AS tar
   created_at AS createdAt, updated_at AS updatedAt`;
 
 const AUTOMATION_RUN_COLUMNS = `id, automation_id AS automationId, run_mode AS runMode,
-  thread_id AS threadId, status, trigger, skip_reason AS skipReason,
+  thread_id AS threadId, workflow, status, trigger, skip_reason AS skipReason,
   error, output, exit_code AS exitCode,
   idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
   started_at AS startedAt, finished_at AS finishedAt`;
@@ -64,6 +65,7 @@ export interface AutomationRow {
 }
 
 export interface AutomationRunRow {
+  workflow?: string | null;
   id: string;
   automationId: string;
   runMode: AutomationRunMode;
@@ -217,6 +219,10 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `ALTER TABLE automation_runs ADD COLUMN workflow TEXT;
+   DROP INDEX automation_runs_single_flight_idx;
+   CREATE UNIQUE INDEX automation_runs_single_flight_idx
+     ON automation_runs(automation_id) WHERE finished_at IS NULL;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -398,6 +404,9 @@ export function toAutomationRunResponse(
     runMode: row.runMode,
     threadId: row.threadId,
     status: row.status,
+    workflow: row.workflow
+      ? managedWorkflowSchema.parse(JSON.parse(row.workflow))
+      : null,
     trigger: row.trigger,
     skipReason: row.skipReason,
     error: row.error,
@@ -649,7 +658,7 @@ export function getRunningAutomationRun(
         `SELECT
            ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs
-         WHERE automation_id = ? AND status = 'running'
+         WHERE automation_id = ? AND finished_at IS NULL
          ORDER BY started_at DESC, id DESC
          LIMIT 1`,
       )
@@ -796,7 +805,7 @@ export function closeAutomationRun(
 ): { run: AutomationRunRow; automationId: string } | null {
   return db.transaction(() => {
     const existing = getAutomationRun(db, args.runId);
-    if (!existing || existing.status !== "running") return null;
+    if (!existing || existing.finishedAt !== null) return null;
     const settled = db
       .prepare(
         `UPDATE automation_runs SET
@@ -807,7 +816,7 @@ export function closeAutomationRun(
          exit_code = @exitCode,
          thread_id = CASE WHEN @hasThreadId THEN @threadId ELSE thread_id END,
          finished_at = @now
-       WHERE id = @runId AND status = 'running'`,
+       WHERE id = @runId AND finished_at IS NULL`,
       )
       .run({
         runId: args.runId,
@@ -824,7 +833,7 @@ export function closeAutomationRun(
     if (args.status === "failed") {
       recordAutomationFailure(db, {
         automationId: existing.automationId,
-        retrySchedule: existing.trigger === "schedule",
+        retrySchedule: existing.trigger === "schedule" && !existing.workflow,
         error: args.error ?? "Automation run failed",
         now: args.now,
       });
@@ -912,7 +921,7 @@ export function createManualRun(
   })();
 }
 
-function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(
@@ -965,7 +974,7 @@ export function listRunningAutomationRuns(db: Db): AutomationRunRow[] {
       `SELECT
            ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs
-         WHERE status = 'running'
+         WHERE finished_at IS NULL
          ORDER BY started_at ASC, id ASC`,
     )
     .all() as AutomationRunRow[];
@@ -980,7 +989,7 @@ export function listRunningAutomationRunsByThread(
       `SELECT
            ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs
-         WHERE thread_id = ? AND status = 'running'
+         WHERE thread_id = ? AND finished_at IS NULL
          ORDER BY started_at DESC, id DESC`,
     )
     .all(threadId) as AutomationRunRow[];

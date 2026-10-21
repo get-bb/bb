@@ -1,3 +1,9 @@
+import {
+  checkpointManagedRun,
+  controlManagedRun,
+  managedRun,
+} from "./managed.js";
+import type { ManagedCheckpointInput } from "./managed-types.js";
 import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -7,6 +13,7 @@ import {
   decodeAutomationRow,
   deleteAutomation,
   getAutomationForProject,
+  getRunningAutomationRun,
   isAutomationSpawnedThread,
   listAllAutomations,
   listAutomationRuns,
@@ -38,6 +45,7 @@ import {
   type AutomationDetailResponse,
   type AutomationReadProblem,
   type AutomationReadResult,
+  type AutomationRunResponse,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
@@ -72,11 +80,15 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
-    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
+    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn"> & {
+      interactions: Pick<BbPluginApi["sdk"]["threads"]["interactions"], "list">;
+    };
   };
 };
 
 export interface AutomationService {
+  runStatus(input: { projectId: string; runId: string }): AutomationRunResponse;
+  checkpoint(input: ManagedCheckpointInput): Promise<AutomationRunResponse>;
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: { projectId: string }): AutomationReadResult[];
   get(input: {
@@ -450,6 +462,7 @@ function applyAgentExecutionUpdate(
       ? { providerId: update.providerId }
       : {}),
     ...(update.model !== undefined ? { model: update.model } : {}),
+    ...(update.workflow !== undefined ? { workflow: update.workflow } : {}),
     ...(update.reasoningLevel !== undefined
       ? { reasoningLevel: update.reasoningLevel }
       : {}),
@@ -565,6 +578,12 @@ export function createAutomationService(args: {
   const { bb, db, pluginDataDir, serverUrl } = args;
 
   return {
+    runStatus(input) {
+      return managedRun(db, input);
+    },
+    checkpoint(input) {
+      return checkpointManagedRun(bb, db, input);
+    },
     async overview() {
       const projects = await projectNameById(bb);
       const automations: AutomationsOverviewResponse["automations"] = [];
@@ -661,6 +680,13 @@ export function createAutomationService(args: {
     async update(input) {
       const project = await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
+      if (
+        (input.execution || input.agent || input.script) &&
+        getRunningAutomationRun(db, current.id)?.workflow
+      )
+        throw new Error(
+          "Complete the managed run before changing its execution configuration",
+        );
       const currentAutomation = decodeAutomationRow(current).automation;
       if (
         "problem" in currentAutomation &&
@@ -807,6 +833,10 @@ export function createAutomationService(args: {
 
     async delete(input) {
       const automation = requireProjectAutomation(db, input);
+      if (getRunningAutomationRun(db, input.automationId)?.workflow)
+        throw new Error(
+          "Checkpoint or complete the managed run before deleting its automation",
+        );
       deleteAutomation(db, input);
       await deleteAutomationScriptDir({
         dataDir: pluginDataDir,
@@ -830,7 +860,11 @@ export function createAutomationService(args: {
       });
       if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toStoredAutomationResponse(pluginDataDir, updated);
+      controlManagedRun(bb, db, current.id, "pause");
+      return toStoredAutomationResponse(
+        pluginDataDir,
+        requireProjectAutomation(db, input),
+      );
     },
 
     resume(input) {
@@ -842,12 +876,17 @@ export function createAutomationService(args: {
       );
       const { trigger } = canonical;
       const now = Date.now();
-      validateTrigger(trigger, now);
+      const live = getRunningAutomationRun(db, current.id);
+      if (!live?.workflow) validateTrigger(trigger, now);
+      controlManagedRun(bb, db, current.id, "resume");
       const updated = setAutomationEnabled(db, {
         projectId: input.projectId,
         automationId: current.id,
         enabled: true,
-        nextRunAt: computeNextRunAt(trigger, now),
+        nextRunAt:
+          live?.workflow && trigger.triggerType === "once"
+            ? null
+            : computeNextRunAt(trigger, now),
         lastError: null,
         resetConsecutiveFailures: true,
       });

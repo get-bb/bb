@@ -219,6 +219,7 @@ function createAutomationServiceBb() {
           ] as never,
       },
       threads: {
+        interactions: { list: async () => [] },
         get: async () => {
           throw new Error("not expected");
         },
@@ -1279,6 +1280,7 @@ describe("automation service", () => {
           list: async () => [],
         },
         threads: {
+          interactions: { list: async () => [] },
           get: async () => {
             throw new Error("not expected");
           },
