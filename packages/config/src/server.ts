@@ -1,4 +1,4 @@
-import type { FeatureFlags } from "@bb/domain";
+import type { HoldoutForce, FeatureFlags } from "@bb/domain";
 import type { AppInstallKind, AppSourceOrigin } from "./app-install.js";
 import type { AppSurface } from "./app-surface.js";
 import type { AppUpdateMode } from "./app-update.js";
@@ -30,6 +30,7 @@ import {
   BB_APP_UPDATE_MODE_ENV,
   BB_CLI_LAUNCHER_ENV,
   BB_TELEMETRY_ENV,
+  BB_HOLDOUT_FORCE_ENV,
   BB_PERF_DIAGNOSTICS_ENV,
   BB_SKIP_ONBOARDING_ENV,
   DEFAULT_BB_APP_URL,
@@ -67,6 +68,7 @@ export interface ServerConfig
   BB_APP_UPDATE_MODE?: AppUpdateMode;
   BB_CLI_LAUNCHER?: string;
   BB_TELEMETRY: boolean;
+  BB_HOLDOUT_FORCE: HoldoutForce | null;
   BB_PERF_DIAGNOSTICS: boolean;
   BB_SKIP_ONBOARDING: boolean;
   featureFlags: FeatureFlags;
@@ -180,6 +182,12 @@ export function loadServerConfig(
       defaultValue: DEFAULT_BB_TELEMETRY,
       definition: BB_TELEMETRY_ENV,
       env: loader.env,
+    }),
+    BB_HOLDOUT_FORCE: readEnvVarWithDefault({
+      context: loader.context,
+      definition: BB_HOLDOUT_FORCE_ENV,
+      env: loader.env,
+      defaultValue: null,
     }),
     featureFlags: loadFeatureFlags({
       env: loader.env,

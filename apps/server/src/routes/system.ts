@@ -1,3 +1,4 @@
+import { holdoutKeySchema } from "@bb/domain";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
@@ -33,6 +34,7 @@ import {
 } from "@bb/domain";
 import {
   publicApiRoutes,
+  systemHoldoutsResponseSchema,
   typedRoutes,
   type PublicApiSchema,
   type SystemEnvironmentProvider,
@@ -343,6 +345,19 @@ export function registerSystemRoutes(
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());
+  });
+
+  get(routes.holdouts, (context) =>
+    context.json(
+      systemHoldoutsResponseSchema.parse({ assignments: deps.holdouts.list() }),
+    ),
+  );
+  post(routes.holdoutExposure, (context) => {
+    const key = holdoutKeySchema.safeParse(context.req.param("key"));
+    if (!key.success) throw new ApiError(404, "not_found", "Unknown holdout");
+    return context.json({
+      exposed: deps.holdouts.expose(key.data, deps.telemetry),
+    });
   });
 
   post(routes.recordTelemetryEvent, (context, payload) => {

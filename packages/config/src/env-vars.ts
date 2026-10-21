@@ -1,3 +1,4 @@
+import { holdoutForceSchema, type HoldoutForce } from "@bb/domain";
 import { z } from "zod";
 import { delimiter } from "node:path";
 import { defaultFeatureFlags } from "@bb/domain";
@@ -416,3 +417,15 @@ export const DEFAULT_BB_MARKETPLACE_URL =
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;
+
+export const BB_HOLDOUT_FORCE_ENV = defineEnvVar<HoldoutForce | null>({
+  name: "BB_HOLDOUT_FORCE",
+  description:
+    "Force one holdout arm for QA without recording its assignment or telemetry.",
+  parse: ({ value }) => {
+    const parts = value.split(":");
+    if (parts.length !== 2)
+      throw new Error("BB_HOLDOUT_FORCE must be <key>:<arm>");
+    return holdoutForceSchema.parse({ key: parts[0], arm: parts[1] });
+  },
+});

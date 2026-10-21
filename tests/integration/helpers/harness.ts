@@ -1,3 +1,4 @@
+import { createHoldoutService } from "../../../apps/server/src/services/system/holdouts.js";
 import { sweepProviderLifecycles } from "../../../apps/server/src/services/environments/environment-engine.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -261,6 +262,13 @@ async function startIntegrationServer(
     notifyChanged: () => hub.notifySystem(["app-update-changed"]),
   });
   const serverDeps = {
+    holdouts: createHoldoutService({
+      db,
+      appVersion: config.appVersion,
+      force: null,
+      pendingMove: false,
+      logger: testLogger,
+    }),
     appUpdate,
     cliCommand: createCliCommandService({
       env: {},

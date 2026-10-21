@@ -1,3 +1,9 @@
+import {
+  holdoutKeySchema,
+  holdoutRegistry,
+  holdoutArmSchema,
+  holdoutStatusSchema,
+} from "@bb/domain";
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import {
@@ -700,4 +706,28 @@ export const systemProviderEnabledRequestSchema = z
   .strict();
 export type SystemProviderEnabledRequest = z.infer<
   typeof systemProviderEnabledRequestSchema
+>;
+
+export const systemHoldoutsResponseSchema = z.object({
+  assignments: z.array(
+    z
+      .object({
+        key: holdoutKeySchema,
+        variant: holdoutArmSchema,
+        assignedAt: z.number(),
+        exposedAt: z.number().nullable(),
+        appVersion: z.string(),
+        status: holdoutStatusSchema,
+      })
+      .refine(
+        (row) =>
+          holdoutRegistry
+            .find((entry) => entry.key === row.key)
+            ?.arms.includes(row.variant) === true,
+        { message: "Variant must belong to the holdout" },
+      ),
+  ),
+});
+export type SystemHoldoutsResponse = z.infer<
+  typeof systemHoldoutsResponseSchema
 >;

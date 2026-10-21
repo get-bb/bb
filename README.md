@@ -88,6 +88,8 @@ docs, start with
 
 ### Telemetry
 
+Some new installs try a new version of a feature before everyone else, chosen at random on your device; their events note which version that install has.
+
 Production runs (the desktop app, `npx bb-app`, and `pnpm start` checkouts) send
 anonymous usage telemetry (app starts, thread creation counts, user message
 counts, and plugin installs) to help us understand adoption. Each event carries

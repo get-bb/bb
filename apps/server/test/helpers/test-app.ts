@@ -1,3 +1,4 @@
+import { createHoldoutService } from "../../src/services/system/holdouts.js";
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -303,6 +304,13 @@ export async function createTestAppHarness(
       notifyChanged: () => hub.notifySystem(["app-update-changed"]),
     });
   const deps: ServerAppDeps = {
+    holdouts: createHoldoutService({
+      db,
+      appVersion: config.appVersion,
+      pendingMove: false,
+      force: null,
+      logger,
+    }),
     appUpdate,
     appVersion,
     bbAppManagedConfig,

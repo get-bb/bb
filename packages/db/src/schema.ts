@@ -1367,3 +1367,11 @@ export const projectAttachmentBackfills = sqliteTable(
     error: text("error"),
   },
 );
+
+export const holdoutAssignments = sqliteTable("holdout_assignments", {
+  key: text("key").primaryKey(),
+  arm: text("arm").notNull(),
+  assignedAt: integer("assigned_at").notNull(),
+  appVersion: text("app_version").notNull(),
+  exposedAt: integer("exposed_at"),
+});
