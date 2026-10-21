@@ -121,6 +121,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(bundle.compatible).toBe(true);
     expect(bundle.sdkMajor).toBe(PLUGIN_SDK_MAJOR);
     expect(bundle.sdkVersion).toBe(PLUGIN_SDK_VERSION);
+    expect(bundle.runtimeSlots).toEqual(["jsxRuntime"]);
     expect(bundle.jsUrl).toBe(
       `/api/v1/plugin-app-assets/${bundle.hash}/app.js`,
     );
@@ -350,6 +351,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       sdkMajor: staleMajor,
       sdkVersion: `${staleMajor}.0.0`,
       compatible: false,
+      runtimeSlots: expect.arrayContaining(["pierreDiffs", "pierreDiffsReact"]),
     });
     const meta = JSON.parse(
       await readFile(join(rootDir, "dist", "app.meta.json"), "utf8"),
@@ -506,6 +508,11 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       { sdkMajor: 0.5, sdkVersion: "0.5.0" },
       { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: "banana" },
       { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: `${PLUGIN_SDK_MAJOR + 1}.0.0` },
+      {
+        sdkMajor: PLUGIN_SDK_MAJOR,
+        sdkVersion: PLUGIN_SDK_VERSION,
+        runtimeSlots: "pierreDiffs",
+      },
     ];
     for (const badMeta of badMetas) {
       await writeFile(

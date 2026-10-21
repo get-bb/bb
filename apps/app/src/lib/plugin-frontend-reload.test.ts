@@ -55,6 +55,7 @@ function candidate(
       sdkMajor: 0,
       sdkVersion: "0.1.0",
       compatible: true,
+      runtimeSlots: [],
       ...overrides,
     },
   };

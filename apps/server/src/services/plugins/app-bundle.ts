@@ -6,6 +6,7 @@ import { PLUGIN_SDK_MAJOR } from "@bb/domain";
 import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
+  RUNTIME_SLOT_BY_SPECIFIER,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -18,6 +19,7 @@ interface PluginArtifactMeta {
     bbVersion: string;
     pluginSdkVersion: string;
   };
+  runtimeSlots?: string[];
 }
 
 interface PluginArtifactMetaParseResult {
@@ -33,6 +35,7 @@ interface PluginAppBundleInfo {
   sdkMajor: number;
   sdkVersion: string;
   compatible: boolean;
+  runtimeSlots: string[];
 }
 
 interface PluginAppState {
@@ -176,6 +179,16 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         "sdkMajor must be a non-negative integer and must match the valid semver sdkVersion",
     };
   }
+  let runtimeSlots: string[] | undefined;
+  if ("runtimeSlots" in meta) {
+    if (
+      !Array.isArray(meta.runtimeSlots) ||
+      !meta.runtimeSlots.every((slot) => typeof slot === "string")
+    ) {
+      return { meta: null, error: "runtimeSlots must be an array of strings" };
+    }
+    runtimeSlots = meta.runtimeSlots;
+  }
   const authoritativeKeys = [
     "artifactFormatVersion",
     "pluginId",
@@ -185,7 +198,11 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
   const hasAuthoritativeField = authoritativeKeys.some((key) => key in meta);
   if (!hasAuthoritativeField) {
     return {
-      meta: { sdkMajor: meta.sdkMajor, sdkVersion: meta.sdkVersion },
+      meta: {
+        sdkMajor: meta.sdkMajor,
+        sdkVersion: meta.sdkVersion,
+        ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
+      },
       error: null,
     };
   }
@@ -241,10 +258,15 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         bbVersion: builtWith.bbVersion,
         pluginSdkVersion: builtWith.pluginSdkVersion,
       },
+      ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
     },
     error: null,
   };
 }
+
+const ALL_RUNTIME_SLOTS = [
+  ...new Set(Object.values(RUNTIME_SLOT_BY_SPECIFIER)),
+].sort();
 
 export function parsePluginAppBundleMeta(
   raw: string,
@@ -335,6 +357,7 @@ export async function loadPluginAppBundle(
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,
         compatible: meta.sdkMajor === PLUGIN_SDK_MAJOR,
+        runtimeSlots: meta.runtimeSlots ?? ALL_RUNTIME_SLOTS,
       },
     },
     assets: { jsPath, cssPath: css !== null ? cssPath : null, hash },

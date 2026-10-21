@@ -1,3 +1,4 @@
+import * as pierreDiffs from "@pierre/diffs";
 import {
   CodeView,
   File,
@@ -91,7 +92,7 @@ function HostWorkerPoolContextProvider({ children }: { children: ReactNode }) {
   return <PierreWorkerPoolBoundary>{children}</PierreWorkerPoolBoundary>;
 }
 
-export function createGatedPierreDiffsReact(): Record<string, unknown> {
+function createGatedPierreDiffsReact(): Record<string, unknown> {
   return {
     CodeView: GatedCodeView,
     File: GatedFile,
@@ -116,3 +117,8 @@ export function createGatedPierreDiffsReact(): Record<string, unknown> {
     useWorkerPool: usePierreWorkerPool,
   };
 }
+
+export const pierreRuntimeSlots = {
+  pierreDiffs,
+  pierreDiffsReact: createGatedPierreDiffsReact(),
+};

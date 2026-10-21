@@ -175,6 +175,7 @@ export const pluginAppStateSchema = z.object({
       sdkMajor: z.number(),
       sdkVersion: z.string(),
       compatible: z.boolean(),
+      runtimeSlots: z.array(z.string()),
     })
     .nullable(),
 });

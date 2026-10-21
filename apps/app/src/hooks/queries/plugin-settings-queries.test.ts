@@ -77,6 +77,7 @@ function pluginWithBundle(hash: string) {
         sdkMajor: 0,
         sdkVersion: "0.4.27",
         compatible: true,
+        runtimeSlots: [],
       },
     },
   };

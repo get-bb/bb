@@ -28,6 +28,7 @@ function candidate(
       sdkMajor: 0,
       sdkVersion: "0.1.0",
       compatible: true,
+      runtimeSlots: [],
       ...overrides,
     },
   };
@@ -110,7 +111,7 @@ describe("installPluginRuntime", () => {
     delete (globalThis as RuntimeHost).__bbPluginRuntime;
   });
 
-  it("exposes the app's own runtime modules on every shim slot, exactly once", () => {
+  it("exposes the app's eager runtime modules, exactly once", () => {
     installPluginRuntime();
     const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
       string,
@@ -121,8 +122,6 @@ describe("installPluginRuntime", () => {
       "clsx",
       "jsxDevRuntime",
       "jsxRuntime",
-      "pierreDiffs",
-      "pierreDiffsReact",
       "pluginSdkApp",
       "questionFormHost",
       "radixAlertDialog",
@@ -160,13 +159,37 @@ describe("installPluginRuntime", () => {
     expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
   });
 
-  it("hands plugins every @pierre/diffs/react export, with the diff components gated", async () => {
+  it("provides @pierre/diffs only to bundles that import it, before they evaluate", async () => {
+    const slotsAtImport: string[][] = [];
+    const importModule = vi.fn(async () => {
+      const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
+        string,
+        unknown
+      >;
+      slotsAtImport.push(
+        Object.keys(runtime).filter((slot) => slot.startsWith("pierre")),
+      );
+      return { default: {} };
+    });
     installPluginRuntime();
+
+    await loadPluginFrontend(candidate("plain", { runtimeSlots: ["react"] }), {
+      importModule,
+      warn: vi.fn(),
+    });
+    await loadPluginFrontend(
+      candidate("differ", { runtimeSlots: ["pierreDiffsReact", "react"] }),
+      { importModule, warn: vi.fn() },
+    );
+
+    expect(slotsAtImport).toEqual([[], ["pierreDiffs", "pierreDiffsReact"]]);
     const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
       string,
       unknown
     >;
+    const pierreDiffs = await import("@pierre/diffs");
     const pierreDiffsReact = await import("@pierre/diffs/react");
+    expect(runtime.pierreDiffs).toBe(pierreDiffs);
     const slot = runtime.pierreDiffsReact as Record<string, unknown>;
     expect(Object.keys(slot).sort()).toEqual(
       Object.keys(pierreDiffsReact).sort(),

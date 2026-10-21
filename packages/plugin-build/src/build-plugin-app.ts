@@ -494,6 +494,17 @@ async function bundledInputPaths(
   return paths;
 }
 
+function bundledRuntimeSlots(metafile: Metafile): string[] {
+  const prefix = `${SHIM_NAMESPACE}:`;
+  const slots = new Set<string>();
+  for (const input of Object.keys(metafile.inputs)) {
+    if (!input.startsWith(prefix)) continue;
+    const specifier = input.slice(prefix.length);
+    slots.add(RUNTIME_SLOT_BY_SPECIFIER[specifier] ?? specifier);
+  }
+  return [...slots].sort();
+}
+
 interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
@@ -536,7 +547,7 @@ export async function buildPluginApp(
       outfile: stagedJsPath,
       absWorkingDir: rootDir,
       bundle: true,
-      metafile: dependencySources.length > 0,
+      metafile: true,
       format: "esm",
       platform: "browser",
       target: "es2022",
@@ -566,15 +577,11 @@ export async function buildPluginApp(
     } catch (error) {
       if (!isRecord(error) || error.code !== "ENOENT") throw error;
     }
-    let bundledInputs: ReadonlySet<string> = new Set();
-    if (dependencySources.length > 0) {
-      if (bundle.metafile === undefined) {
-        throw new Error(
-          "esbuild did not return the metafile required for dependency Tailwind scanning",
-        );
-      }
-      bundledInputs = await bundledInputPaths(bundle.metafile, rootDir);
-    }
+    const runtimeSlots = bundledRuntimeSlots(bundle.metafile);
+    const bundledInputs: ReadonlySet<string> =
+      dependencySources.length > 0
+        ? await bundledInputPaths(bundle.metafile, rootDir)
+        : new Set();
     const tailwindCss = (
       await buildTailwindCss(
         rootDir,
@@ -594,7 +601,10 @@ export async function buildPluginApp(
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
-        createPluginArtifactMeta({ packageName, pluginVersion, bbVersion }),
+        {
+          ...createPluginArtifactMeta({ packageName, pluginVersion, bbVersion }),
+          runtimeSlots,
+        },
         null,
         2,
       ) + "\n",

@@ -1344,7 +1344,8 @@ Run \`bb plugin build\` before publishing git/npm installs. It writes
 \`dist/server.js\` + \`server.meta.json\` and \`app.js\` / \`app.css\` /
 \`app.meta.json\`. Each \`*.meta.json\` stamps SDK major/version,
 \`artifactFormatVersion\`, \`pluginId\`, \`pluginVersion\`, and
-\`builtWith\` so managed installs can verify the artifacts.
+\`builtWith\` so managed installs can verify the artifacts. \`app.meta.json\`
+also lists \`runtimeSlots\`, the shimmed host modules the bundle imports.
 
 ## Store listing
 

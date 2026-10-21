@@ -426,6 +426,53 @@ describe("plugin app runtime shim", () => {
     ).toBe(2);
   });
 
+  it("records in app.meta.json the runtime slots the bundle imports", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-runtime-slots-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-runtime-slots-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Runtime slots fixture",
+          description: "Records the host runtime slots a bundle imports.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          app: "./app.tsx",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.tsx"),
+      [
+        'import { parsePatchFiles } from "@pierre/diffs";',
+        'import { FileDiff } from "@pierre/diffs/react";',
+        'import clsx from "clsx";',
+        "export default function App() {",
+        "  return <FileDiff fileDiff={parsePatchFiles(\"\")[0]} className={clsx(\"a\")} />;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const { metaPath } = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    expect(JSON.parse(await readFile(metaPath, "utf8")).runtimeSlots).toEqual([
+      "clsx",
+      "jsxRuntime",
+      "pierreDiffs",
+      "pierreDiffsReact",
+    ]);
+  });
+
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-minify-"));
     tempDirs.push(dir);
