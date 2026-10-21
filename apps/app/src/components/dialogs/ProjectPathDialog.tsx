@@ -27,6 +27,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import {
+  missingProjectFolderMessage,
+  useProjectFolderCheck,
+} from "@/hooks/useProjectFolderCheck";
 import { selectHosts } from "@/hooks/queries/host-queries";
 
 export type ProjectPathDialogTarget =
@@ -155,7 +159,7 @@ function getPlatformCopy(
 
 export function ProjectPathDialogContent({
   target,
-  pending,
+  pending: isSaving,
   platform,
   hostId,
   hostName,
@@ -163,6 +167,7 @@ export function ProjectPathDialogContent({
   onSubmit,
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
+  const [browserRevision, setBrowserRevision] = useState(0);
   const isPointerCoarse = usePointerCoarse();
   const machineOptions =
     target.kind === "create" ? selectHosts(hosts, "all") : undefined;
@@ -206,6 +211,8 @@ export function ProjectPathDialogContent({
   const selectedPath = selectedHostId
     ? browserDirectory
     : normalizeProjectPathInput(manualPath) || null;
+  const folderCheck = useProjectFolderCheck(selectedHostId, selectedPath);
+  const pending = isSaving || folderCheck.isChecking;
   const derivedProjectName = selectedPath
     ? deriveProjectNameFromPath(selectedPath)
     : "";
@@ -214,7 +221,7 @@ export function ProjectPathDialogContent({
     setValidationMessage(null);
   }, [selectedPath]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
 
@@ -239,6 +246,7 @@ export function ProjectPathDialogContent({
       return;
     }
 
+    if (target.kind !== "update" && !(await folderCheck.check())) return;
     void onSubmit(target, normalizedPath, selectedHostId);
   };
 
@@ -323,7 +331,7 @@ export function ProjectPathDialogContent({
         ) : null}
         {selectedHostId ? (
           <RemotePathBrowser
-            key={selectedHostId}
+            key={`${selectedHostId}:${browserRevision}`}
             hostId={selectedHostId}
             initialPath={target.kind === "update" ? target.currentPath : null}
             allowCreateFolder={target.kind === "create"}
@@ -361,6 +369,24 @@ export function ProjectPathDialogContent({
             {validationMessage ? (
               <p className="text-sm text-destructive">{validationMessage}</p>
             ) : null}
+          </div>
+        ) : null}
+        {folderCheck.isMissing ? (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-destructive">
+              {missingProjectFolderMessage(selectedHostName)}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setBrowserDirectory(null);
+                setManualPath("");
+                setBrowserRevision((revision) => revision + 1);
+              }}
+            >
+              Choose another folder
+            </Button>
           </div>
         ) : null}
         <DialogFooter>

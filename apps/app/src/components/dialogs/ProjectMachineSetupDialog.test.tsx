@@ -70,7 +70,7 @@ function renderDialog(target: ProjectMachineSetupDialogTarget) {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 describe("ProjectMachineSetupDialog", () => {
@@ -232,4 +232,73 @@ describe("ProjectMachineSetupDialog", () => {
       screen.getByRole("button", { name: "Use folder & continue" }),
     ).toBeTruthy();
   });
+});
+
+it("refuses attaching a folder deleted after it was browsed", async () => {
+  const folder = "/work/projects/example";
+  vi.mocked(sdk.hosts.directory).mockResolvedValue({
+    directory: folder,
+    parent: "/work/projects",
+    entries: [],
+    roots: ["/"],
+  });
+  vi.mocked(sdk.hosts.pathsExist).mockResolvedValue({
+    existence: { [folder]: true },
+  });
+  vi.mocked(sdk.projects.sources.add).mockResolvedValue({
+    ...createdSource,
+    path: folder,
+  });
+  const { onComplete } = renderDialog({ ...gitTarget, gitRemoteUrl: null });
+  await screen.findByText("This folder is empty.");
+  const submit = screen.getByRole("button", { name: "Use folder & continue" });
+  await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
+  vi.mocked(sdk.hosts.directory).mockRejectedValue(
+    new BbHttpError({
+      status: 502,
+      code: "ENOENT",
+      message: "Folder not found",
+      body: { code: "ENOENT", message: "Folder not found" },
+    }),
+  );
+
+  fireEvent.click(submit);
+
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "This folder isn't on Mac Studio. It may have been moved or deleted.",
+  );
+  expect(sdk.projects.sources.add).not.toHaveBeenCalled();
+  expect(onComplete).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Choose another folder" }),
+  ).toBeTruthy();
+});
+
+it("attaches a folder when its fresh check cannot confirm existence", async () => {
+  const folder = "/work/projects/example";
+  vi.mocked(sdk.hosts.directory).mockResolvedValue({
+    directory: folder,
+    parent: "/work/projects",
+    entries: [],
+    roots: ["/"],
+  });
+  vi.mocked(sdk.projects.sources.add).mockResolvedValue({
+    ...createdSource,
+    path: folder,
+  });
+  const { onComplete } = renderDialog({ ...gitTarget, gitRemoteUrl: null });
+  await screen.findByText("This folder is empty.");
+  const submit = screen.getByRole("button", { name: "Use folder & continue" });
+  await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
+  vi.mocked(sdk.hosts.directory).mockRejectedValue(
+    new BbHttpError({
+      status: 502,
+      code: "EACCES",
+      message: "Permission denied",
+      body: { code: "EACCES" },
+    }),
+  );
+  fireEvent.click(submit);
+  await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("alert")).toBeNull();
 });

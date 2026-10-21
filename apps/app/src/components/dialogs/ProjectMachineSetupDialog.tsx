@@ -19,9 +19,9 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
 import { useAddProjectSource } from "@/hooks/mutations/project-mutations";
 import {
-  isHostPathMissing,
-  useHostPathExistence,
-} from "@/hooks/queries/host-path-queries";
+  missingProjectFolderMessage,
+  useProjectFolderCheck,
+} from "@/hooks/useProjectFolderCheck";
 import { useHostCloneDefaultPath } from "@/hooks/queries/host-queries";
 import { BbHttpError } from "@bb/sdk/browser";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -101,6 +101,7 @@ function ProjectMachineSetupDialogContent({
   const [customClonePath, setCustomClonePath] = useState<string | null>(null);
   const [isEditingClonePath, setIsEditingClonePath] = useState(false);
   const [clonePathDraft, setClonePathDraft] = useState("");
+  const [browserRevision, setBrowserRevision] = useState(0);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
@@ -113,12 +114,12 @@ function ProjectMachineSetupDialogContent({
   );
   const clonePath = customClonePath ?? defaultClonePathQuery.data ?? null;
 
-  const folderExistence = useHostPathExistence(
+  const folderCheck = useProjectFolderCheck(
     option === "folder" ? target.hostId : null,
-    folderPath !== null ? [folderPath] : [],
+    folderPath,
   );
 
-  const pending = addSource.isPending;
+  const pending = addSource.isPending || folderCheck.isChecking;
 
   const selectOption = (nextOption: SetupOption) => {
     if (pending || option === nextOption) return;
@@ -145,7 +146,7 @@ function ProjectMachineSetupDialogContent({
     });
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
     setValidationMessage(null);
@@ -174,12 +175,7 @@ function ProjectMachineSetupDialogContent({
       setValidationMessage("Choose a folder.");
       return;
     }
-    if (isHostPathMissing(folderExistence, folderPath)) {
-      setValidationMessage(
-        `That folder no longer exists on ${target.hostName}.`,
-      );
-      return;
-    }
+    if (!(await folderCheck.check())) return;
     submit({
       projectId: target.projectId,
       request: { type: "local_path", hostId: target.hostId, path: folderPath },
@@ -293,6 +289,7 @@ function ProjectMachineSetupDialogContent({
         ) : null}
         {option === "folder" ? (
           <RemotePathBrowser
+            key={browserRevision}
             hostId={target.hostId}
             allowCreateFolder={false}
             onDirectoryChange={(directory) => {
@@ -310,6 +307,23 @@ function ProjectMachineSetupDialogContent({
         ) : null}
         {validationMessage ? (
           <p className="text-sm text-destructive">{validationMessage}</p>
+        ) : null}
+        {folderCheck.isMissing ? (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-destructive">
+              {missingProjectFolderMessage(target.hostName)}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setFolderPath(null);
+                setBrowserRevision((revision) => revision + 1);
+              }}
+            >
+              Choose another folder
+            </Button>
+          </div>
         ) : null}
         {errorMessage ? (
           <div className="space-y-1">
