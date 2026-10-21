@@ -6,7 +6,7 @@ import {
   type UIEvent,
 } from "react";
 import { directoryFromPath } from "@bb/thread-view";
-import { promptCommandIconName } from "@/components/promptbox/mentions/prompt-mention-display";
+import { promptCommandIconName } from "@bb/client-core";
 import { ComposerMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";

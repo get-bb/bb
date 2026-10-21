@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import type { PromptBoxAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import type { ProviderComposerAction } from "@bb/domain";
 import type { ProviderCommand } from "@bb/server-contract";

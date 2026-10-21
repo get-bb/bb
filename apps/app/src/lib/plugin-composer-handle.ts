@@ -29,7 +29,7 @@ import {
   type PromptDraftState,
 } from "@bb/client-core";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { serializedTextForPromptMentionResource } from "@/components/promptbox/mentions/prompt-mention-clipboard";
+import { serializedTextForPromptMentionResource } from "@bb/client-core";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
   getComposerEditorBridge,

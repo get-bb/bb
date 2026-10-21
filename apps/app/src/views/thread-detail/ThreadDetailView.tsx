@@ -232,7 +232,7 @@ import {
 } from "@/components/secondary-panel/useThreadFileTabs";
 import { isSecondaryFileTab } from "@bb/client-core";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import type {
   SecondaryPanelFixedTab,
   SecondaryPanelRenderableTab,

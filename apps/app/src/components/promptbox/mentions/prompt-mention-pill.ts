@@ -1,18 +1,14 @@
 import type { PromptMentionResource } from "@bb/domain";
 import {
   composerMentionTargetFromResource,
+  parsePromptMentionClipboardElement,
+  PROMPT_MENTION_PILL_CLASS,
+  promptMentionClipboardDataAttributes,
+  promptMentionDisplayLabel,
   promptMentionResourceFromComposerMention,
+  promptMentionTooltipLabel,
   type ComposerMentionTargetShape,
 } from "@bb/client-core";
-import {
-  PROMPT_MENTION_PILL_CLASS,
-  promptMentionDisplayLabel,
-  promptMentionTooltipLabel,
-} from "./prompt-mention-display";
-import {
-  parsePromptMentionClipboardElement,
-  promptMentionClipboardDataAttributes,
-} from "./prompt-mention-clipboard";
 
 export interface PromptMentionPresentation {
   className: string;

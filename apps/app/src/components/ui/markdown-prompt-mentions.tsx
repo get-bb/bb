@@ -5,7 +5,7 @@ import type {} from "mdast-util-to-hast";
 import { visit } from "unist-util-visit";
 import type { PromptTextMention } from "@bb/domain";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const SENTINEL_OPEN = String.fromCharCode(0xe000);

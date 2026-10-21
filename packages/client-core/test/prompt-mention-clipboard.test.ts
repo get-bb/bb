@@ -3,7 +3,7 @@ import {
   parsePromptMentionClipboardElement,
   promptMentionClipboardDataAttributes,
   serializedTextForPromptMentionResource,
-} from "./prompt-mention-clipboard";
+} from "../src/prompt/mentions/prompt-mention-clipboard.js";
 
 describe("serializedTextForPromptMentionResource", () => {
   it("serializes a project mention as an @project token", () => {

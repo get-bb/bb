@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { ThreadTimelineUnreadDividerPlacement } from "@/components/thread/timeline";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import type { ThreadTimelineSurfaceProps } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";

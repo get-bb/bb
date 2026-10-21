@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { promptMentionIconName } from "./prompt-mention-display";
+import { promptMentionIconName } from "../src/prompt/mentions/prompt-mention-display.js";
 
 describe("promptMentionIconName", () => {
   it("uses distinct icons for threads, projects, and sections", () => {

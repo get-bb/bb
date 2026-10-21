@@ -90,7 +90,7 @@ import {
 import {
   promptMentionClipboardDataAttributes,
   serializedTextForPromptMentionResource,
-} from "./mentions/prompt-mention-clipboard";
+} from "@bb/client-core";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
   ComposerMentionShape,
@@ -1716,7 +1716,8 @@ describe("PromptBoxInternal controlled value sync", () => {
       ),
     );
     await act(
-      () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
+      () =>
+        new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
     );
 
     fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowUp" });

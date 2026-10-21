@@ -95,7 +95,7 @@ import {
   type OpenAttachmentRequest,
 } from "@/components/secondary-panel/AttachmentOpenerContext";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import {

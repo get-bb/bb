@@ -149,17 +149,14 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
-import { isProjectAttachmentPath } from "@/lib/file-content-urls";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import { FailedVoiceRecordings } from "./FailedVoiceRecordings";
 import {
   ComposerPlusMenuSlot,
   type PromptBoxAction,
 } from "./PromptBoxActionsMenu";
-import type {
-  ComposerMentionLinkResolver,
-  PromptMentionLinkResolver,
-} from "./editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
+import { mentionLinkResolver } from "./editor/prompt-mention-link";
 import { refreshPromptDecorations } from "./editor/prompt-decoration-extension";
 import {
   composerDecorationSources,
@@ -194,10 +191,7 @@ import {
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu } from "./mentions/MentionMenu";
 import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
-import {
-  composerMentionResource,
-  readPromptMentionClipboard,
-} from "./mentions/prompt-mention-pill";
+import { readPromptMentionClipboard } from "./mentions/prompt-mention-pill";
 import {
   readMessageClipboardHtml,
   readMessageClipboardImage,
@@ -1357,27 +1351,12 @@ export function PromptBoxInternal({
     projectId: attachmentProjectId,
   } = attachmentConfig;
   const openAttachment = useAttachmentOpener();
-  const resolveEditorMentionLink: ComposerMentionLinkResolver = (mention) => {
-    if (mention.kind !== "attachment") {
-      return mentionResolveLink?.(composerMentionResource(mention)) ?? null;
-    }
-    const attachment = attachments.find((item) => item.path === mention.path);
-    const projectId = attachment?.sourceProjectId ?? attachmentProjectId;
-    if (
-      !attachment ||
-      !openAttachment ||
-      !projectId ||
-      !isProjectAttachmentPath(attachment)
-    ) {
-      return null;
-    }
-    return () =>
-      openAttachment({
-        name: attachment.name,
-        path: attachment.path,
-        projectId,
-      });
-  };
+  const resolveEditorMentionLink = mentionLinkResolver({
+    resolveLink: mentionResolveLink,
+    attachments,
+    attachmentProjectId,
+    openAttachment,
+  });
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";

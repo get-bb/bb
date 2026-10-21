@@ -14,7 +14,7 @@ import {
 import { createPortal } from "react-dom";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import type { IconName } from "@bb/shared-ui/icon";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,

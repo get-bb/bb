@@ -26,7 +26,7 @@ import type {
   AttachmentsConfig,
   HistoryConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { PageShell } from "@/components/ui/page-shell.js";

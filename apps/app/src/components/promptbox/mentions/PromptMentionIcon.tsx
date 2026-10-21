@@ -2,7 +2,7 @@ import type { PromptMentionResource } from "@bb/domain";
 import type { ComposerMentionTargetShape } from "@bb/client-core";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
-import { promptMentionIconName } from "./prompt-mention-display";
+import { promptMentionIconName } from "@bb/client-core";
 import { composerMentionResource } from "./prompt-mention-pill";
 
 export function PromptMentionIcon({

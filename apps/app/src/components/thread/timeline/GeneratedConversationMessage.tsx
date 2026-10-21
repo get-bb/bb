@@ -21,7 +21,7 @@ import { AUTOMATION_DETAIL_ROUTE_PATH } from "@/lib/route-paths";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   ConversationAttachments,
   type ConversationAttachmentItems,

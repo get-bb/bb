@@ -1,16 +1,23 @@
 import type { PromptMentionResource } from "@bb/domain";
-import type { IconName } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+
+export type PromptMentionIconName =
+  | "UserRound"
+  | "Folder"
+  | "SectionAdd"
+  | "Zap"
+  | "Paperclip"
+  | "File"
+  | "ListTodo"
+  | "Target"
+  | "Terminal";
 
 type PromptCommandLike = Pick<
   Extract<PromptMentionResource, { kind: "command" }>,
   "name" | "source"
 >;
 
-export const PROMPT_MENTION_PILL_CLASS = cn(
-  "prompt-mention-pill inline-flex max-w-full items-baseline gap-0.5 rounded-full border py-0.5 pl-1 pr-1.5 text-xs leading-4",
-  "align-baseline",
-);
+export const PROMPT_MENTION_PILL_CLASS =
+  "prompt-mention-pill inline-flex max-w-full items-baseline gap-0.5 rounded-full border py-0.5 pl-1 pr-1.5 text-xs leading-4 align-baseline";
 
 function promptMentionIconLabel(resource: PromptMentionResource): string {
   if (resource.kind === "thread") {
@@ -39,7 +46,7 @@ function promptMentionIconLabel(resource: PromptMentionResource): string {
 
 export function promptMentionIconName(
   resource: PromptMentionResource,
-): IconName {
+): PromptMentionIconName {
   if (resource.kind === "thread") {
     return "UserRound";
   }
@@ -61,7 +68,9 @@ export function promptMentionIconName(
   return resource.entryKind === "directory" ? "Folder" : "File";
 }
 
-export function promptCommandIconName(command: PromptCommandLike): IconName {
+export function promptCommandIconName(
+  command: PromptCommandLike,
+): PromptMentionIconName {
   if (command.source === "skill") {
     return "Zap";
   }
