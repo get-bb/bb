@@ -2592,8 +2592,9 @@ throws when a menu `trigger` drops its props and ref.
 **Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`
 (`apps/app/src/lib/thread-actions/core-thread-actions.ts`), registered under
 the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
-`ThreadDetailHeader`), `RootComposeMobileRecents`, and
-`ThreadArchiveCommandHandler` read the same registry, and the thread list's
+`ThreadDetailHeader`), `RootComposeMobileRecents`, and the thread action
+command handlers (`ThreadActionCommandHandler`,
+`PaneThreadActionCommandHandler`) read the same registry, and the thread list's
 row menus and quick actions use the SDK exports. The contract table in
 `ThreadActionsMenu.test.tsx` runs every menu surface against the same
 registrations.

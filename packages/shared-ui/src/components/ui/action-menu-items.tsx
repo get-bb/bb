@@ -1,10 +1,23 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./icon";
-import { ContextMenuItem, ContextMenuSeparator } from "./context-menu";
-import { DropdownMenuItem, DropdownMenuSeparator } from "./dropdown-menu";
+import {
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+} from "./context-menu";
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+} from "./dropdown-menu";
 import { cn } from "../../lib/utils";
 
 export type ActionMenuSurface = "context" | "dropdown";
+
+interface ActionMenuShortcut {
+  label: string;
+  ariaKeyshortcuts: string;
+}
 
 interface ActionMenuItemProps {
   children: ReactNode;
@@ -13,6 +26,7 @@ interface ActionMenuItemProps {
   icon: IconName;
   href?: string;
   onSelect?: (event: Event) => void;
+  shortcut?: ActionMenuShortcut;
   surface: ActionMenuSurface;
 }
 
@@ -27,12 +41,18 @@ export function ActionMenuItem({
   icon,
   href,
   onSelect,
+  shortcut,
   surface,
 }: ActionMenuItemProps) {
+  const Shortcut =
+    surface === "context" ? ContextMenuShortcut : DropdownMenuShortcut;
   const content = (
     <>
       <Icon name={icon} aria-hidden="true" />
       {children}
+      {shortcut === undefined ? null : (
+        <Shortcut aria-hidden="true">{shortcut.label}</Shortcut>
+      )}
     </>
   );
   const body = href === undefined ? content : <a href={href}>{content}</a>;
@@ -46,6 +66,7 @@ export function ActionMenuItem({
             "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive",
         )}
         disabled={disabled}
+        aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         onSelect={onSelect}
       >
         {body}
@@ -58,6 +79,7 @@ export function ActionMenuItem({
       asChild={href !== undefined}
       variant={variant}
       disabled={disabled}
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onSelect={onSelect}
     >
       {body}

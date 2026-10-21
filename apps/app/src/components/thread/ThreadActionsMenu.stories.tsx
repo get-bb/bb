@@ -1,8 +1,12 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import type { ThreadListEntry } from "@bb/domain";
+import type { AppCommandId, AppKeybinding, ThreadListEntry } from "@bb/domain";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { ThreadActionsProvider } from "./ThreadActionsProvider";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
 
@@ -74,5 +78,71 @@ export function Overview() {
         </Stage>
       </StoryRow>
     </StoryCard>
+  );
+}
+
+function boundChord(command: AppCommandId, key: string): AppKeybinding {
+  return {
+    command,
+    desktopOnly: false,
+    shortcut: {
+      key,
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: true,
+    },
+    when: { all: ["mainSurface"], none: ["modalOpen"] },
+  };
+}
+
+function createBoundShortcutsQueryClient(): QueryClient {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        gcTime: Infinity,
+        refetchOnWindowFocus: false,
+        retry: false,
+        staleTime: Infinity,
+      },
+    },
+  });
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      keybindings: [
+        boundChord("thread.pin", "."),
+        boundChord("thread.markRead", "u"),
+        boundChord("thread.archive", "e"),
+      ],
+    }),
+  );
+  return queryClient;
+}
+
+export function BoundShortcuts() {
+  const [queryClient] = useState(createBoundShortcutsQueryClient);
+  const thread = makeThreadListEntry({
+    id: "thr_bound",
+    lastReadAt: 200,
+    latestAttentionAt: 100,
+  });
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppCommandProvider>
+        <StoryCard>
+          <StoryRow
+            label="bound shortcuts"
+            hint="Pin, Mark unread and Archive show their chords; unbound Rename shows none"
+          >
+            <Stage>
+              <Menu thread={thread} />
+            </Stage>
+          </StoryRow>
+        </StoryCard>
+      </AppCommandProvider>
+    </QueryClientProvider>
   );
 }

@@ -418,6 +418,13 @@ function evaluateThreadActions(
   });
 }
 
+export function evaluateThreadActionEntries(
+  thread: PluginThreadActionTarget,
+  options?: PluginThreadActionsOptions,
+): readonly PluginThreadActionEntry[] {
+  return evaluateThreadActions(getSnapshot(), thread, options);
+}
+
 export function useThreadActionEntries(
   thread: PluginThreadActionTarget,
   options?: PluginThreadActionsOptions,

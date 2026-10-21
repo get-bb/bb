@@ -413,14 +413,23 @@ chat-pane focus). These start unassigned on Windows/Linux to preserve native
 Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 `panel.fullScreen.toggle` start unassigned.
 
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unassigned and run the matching thread menu item; Mark read and Pin toggle.
+They act on the thread whose thread-actions menu is open, otherwise the
+sidebar row with keyboard focus, otherwise the focused pane's open thread.
+Once bound, the shortcut appears beside the item in the thread header menu,
+the sidebar row menu, and the right-click menu; compact-screen drawers omit it.
+
 | Area      | Command                                      | Default                     | Availability             |
 | --------- | -------------------------------------------- | --------------------------- | ------------------------ |
 | Palette   | Quick palette                                | `Mod+Shift+P`               | All clients              |
 | Window    | Back to app (from Settings, Plugins, Skills) | `Escape`                    | All clients              |
 | Threads   | New thread                                   | `Mod+N` / `Mod+Shift+O`     | Desktop / web            |
 | Threads   | Search threads                               | `Mod+K`                     | All clients              |
-| Threads   | Rename focused thread                        | Unassigned                  | Thread view              |
-| Threads   | Archive focused thread                       | Unassigned                  | Thread view              |
+| Threads   | Rename thread                                | Unassigned                  | Thread, row, or menu     |
+| Threads   | Archive thread                               | Unassigned                  | Thread, row, or menu     |
+| Threads   | Mark thread read or unread                   | Unassigned                  | Thread, row, or menu     |
+| Threads   | Pin or unpin thread                          | Unassigned                  | Thread, row, or menu     |
 | Threads   | Previous / next thread                       | Surface defaults above      | Desktop / web            |
 | Threads   | Open visible thread 1–9                      | Platform defaults above     | Web / desktop            |
 | Layout    | Previous / next chat pane                    | Unassigned                  | While split              |

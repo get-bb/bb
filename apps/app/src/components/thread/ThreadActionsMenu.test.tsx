@@ -13,13 +13,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   experimental_THREAD_ACTION_GROUPS,
   type PluginThreadActionRegistration,
   type PluginThreadActionsInlineItem,
 } from "@get-bb/plugin-sdk";
-import type { ThreadListEntry } from "@bb/domain";
+import type {
+  AppCommandId,
+  AppKeybinding,
+  AppKeybindings,
+  ThreadListEntry,
+} from "@bb/domain";
+import type { SystemConfigResponse } from "@bb/server-contract";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
@@ -40,7 +46,9 @@ import {
   useThreadActionRegistrationInfos,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { usePublishThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
@@ -60,8 +68,14 @@ const sdkThreads = vi.hoisted(() => ({
   get: vi.fn(),
 }));
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
+const systemConfig = vi.hoisted(() => ({
+  data: undefined as SystemConfigResponse | undefined,
+}));
 
 vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({ data: systemConfig.data }),
+}));
 vi.mock("@/lib/clipboard", () => ({ copyToClipboardWithToast }));
 vi.mock("./ThreadActionsProvider", () => ({
   useThreadActions: () => hostActions,
@@ -238,6 +252,7 @@ interface HostState {
   layout?: SplitLayout | null;
   cached?: boolean;
   threadActions?: readonly PluginThreadActionRegistration[];
+  keybindings?: AppKeybindings;
 }
 
 function renderSurface(
@@ -248,6 +263,7 @@ function renderSurface(
     layout = null,
     cached = true,
     threadActions = [],
+    keybindings,
   }: HostState = {},
 ) {
   const queryClient = new QueryClient();
@@ -262,21 +278,47 @@ function renderSurface(
       threadActions: [moveAction, pluginGroupAction, ...threadActions],
     }),
   );
+  const menu = (
+    <CompactViewportOverrideProvider isCompactViewport={surface.compact}>
+      <ThreadActionCollectors
+        coreRegistrations={CORE_THREAD_ACTIONS}
+        requestRename={defaultRequestRename}
+      />
+      {surface.render(options)}
+    </CompactViewportOverrideProvider>
+  );
+  if (keybindings !== undefined) {
+    systemConfig.data = makeSystemConfig({ keybindings });
+  }
   return render(
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
         <MemoryRouter initialEntries={[route]}>
-          <CompactViewportOverrideProvider isCompactViewport={surface.compact}>
-            <ThreadActionCollectors
-              coreRegistrations={CORE_THREAD_ACTIONS}
-              requestRename={defaultRequestRename}
-            />
-            {surface.render(options)}
-          </CompactViewportOverrideProvider>
+          {keybindings === undefined ? (
+            menu
+          ) : (
+            <AppCommandProvider>{menu}</AppCommandProvider>
+          )}
         </MemoryRouter>
       </Provider>
     </QueryClientProvider>,
   );
+}
+
+function boundChord(command: AppCommandId, key: string): AppKeybinding {
+  return {
+    command,
+    desktopOnly: false,
+    shortcut: {
+      key,
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: true,
+    },
+    when: { all: ["mainSurface"], none: ["modalOpen"] },
+  };
 }
 
 async function openMenu(): Promise<HTMLElement> {
@@ -317,6 +359,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.sessionStorage.clear();
+  systemConfig.data = undefined;
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
   vi.clearAllMocks();
@@ -562,9 +605,70 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
   ])(
     "lists the items for $state",
     async ({ thread, route, layout, desktop, compact }) => {
-      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, { route, layout });
+      renderSurface(
+        surface,
+        { thread, inline: [CUSTOMIZE] },
+        { route, layout },
+      );
       await surface.open();
       expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
+    },
+  );
+
+  it.each([
+    {
+      state: "a bound Pin on macOS",
+      platform: "MacIntel",
+      thread: baseThread,
+      keybindings: [boundChord("thread.pin", ".")],
+      hinted: [{ row: "Pin", label: "⇧ ⌘ .", aria: "Shift+Meta+." }],
+      plain: ["Mark unread", "Rename", "Archive"],
+    },
+    {
+      state: "a pinned thread whose bound Archive does not apply",
+      platform: "MacIntel",
+      thread: makeThreadListEntry({
+        ...baseThread,
+        archivedAt: 20,
+        pinnedAt: 3,
+      }),
+      keybindings: [
+        boundChord("thread.pin", "."),
+        boundChord("thread.archive", "e"),
+      ],
+      hinted: [{ row: "Unpin", label: "⇧ ⌘ .", aria: "Shift+Meta+." }],
+      plain: ["Mark unread", "Rename", "Unarchive", "Delete"],
+    },
+  ])(
+    "shows shortcut hints only on desktop for $state",
+    async ({ platform, thread, keybindings, hinted, plain }) => {
+      const platformSpy = vi
+        .spyOn(navigator, "platform", "get")
+        .mockReturnValue(platform);
+      onTestFinished(() => platformSpy.mockRestore());
+      renderSurface(surface, { thread }, { keybindings });
+      await surface.open();
+      const menu = await openMenu();
+
+      expect(
+        hinted.map(({ row }) => {
+          const item = within(menu).getByRole("menuitem", { name: row });
+          return [item.textContent, item.getAttribute("aria-keyshortcuts")];
+        }),
+      ).toEqual(
+        hinted.map(({ row, label, aria }) =>
+          surface.compact ? [row, null] : [`${row}${label}`, aria],
+        ),
+      );
+      expect(
+        plain.map((row) => {
+          const item = within(menu).getByRole("menuitem", { name: row });
+          return [item.textContent, item.getAttribute("aria-keyshortcuts")];
+        }),
+      ).toEqual(plain.map((row) => [row, null]));
+      expect(menu.querySelectorAll("[aria-keyshortcuts]")).toHaveLength(
+        surface.compact ? 0 : hinted.length,
+      );
     },
   );
 

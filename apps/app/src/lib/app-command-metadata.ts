@@ -47,22 +47,14 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Search threads",
         "Search threads in the quick palette.",
       ),
-      command("thread.rename", "Rename thread", "Rename the focused thread."),
-      command(
-        "thread.archive",
-        "Archive thread",
-        "Archive the focused thread.",
-      ),
+      command("thread.rename", "Rename thread", "Rename the thread."),
+      command("thread.archive", "Archive thread", "Archive the thread."),
       command(
         "thread.markRead",
         "Mark thread read or unread",
-        "Toggle the targeted thread between read and unread.",
+        "Mark the thread read or unread.",
       ),
-      command(
-        "thread.pin",
-        "Pin or unpin thread",
-        "Toggle whether the targeted thread is pinned.",
-      ),
+      command("thread.pin", "Pin or unpin thread", "Pin or unpin the thread."),
       command(
         "thread.previous",
         "Previous thread",

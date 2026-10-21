@@ -231,6 +231,13 @@ in the current window, like the sidebar arrows. `thread.previous` /
 `thread.next` follow sidebar order instead: `Mod+Shift+[` / `Mod+Shift+]`
 on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
 
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unbound and run the matching thread menu item; Mark read and Pin toggle. They
+act on the thread whose thread-actions menu is open, otherwise the sidebar row
+with keyboard focus, otherwise the focused pane's open thread. Once bound, the
+shortcut appears beside the item in the thread header menu, the sidebar row
+menu, and the right-click menu; compact-screen drawers omit it.
+
 An override can be scoped with `--platform`; without it, it applies on all
 platforms. A platform-specific override takes precedence over a general one,
 including when disabled. Scoped `set` and `reset` keep other platforms'

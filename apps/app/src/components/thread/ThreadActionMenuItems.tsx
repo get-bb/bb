@@ -23,6 +23,14 @@ import {
   ActionMenuItem,
   ActionMenuSeparator,
 } from "@bb/shared-ui/action-menu-items";
+import { useAppCommandShortcuts } from "@/components/commands/AppCommandProvider";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import {
+  THREAD_ACTION_COMMAND_IDS,
+  threadActionCommand,
+  threadActionCommandApplies,
+  type ThreadActionCommandId,
+} from "@/lib/thread-actions/thread-action-commands";
 import {
   bindThreadAction,
   useDefaultRequestRename,
@@ -35,6 +43,7 @@ export interface ThreadActionMenuEntry {
   key: string;
   group: string;
   action: PluginBoundThreadAction;
+  command: ThreadActionCommandId | null;
 }
 
 const CHOICES_CONTENT_CLASS =
@@ -55,6 +64,16 @@ export function groupThreadActionMenuEntries(
     .map(([, group]) => group);
 }
 
+function threadActionMenuCommand(
+  key: string,
+  thread: PluginThreadActionTarget,
+): ThreadActionCommandId | null {
+  const command = threadActionCommand(key);
+  return command !== undefined && threadActionCommandApplies(command, thread)
+    ? command
+    : null;
+}
+
 export function useThreadActionMenuGroups({
   thread,
   inline = [],
@@ -68,11 +87,17 @@ export function useThreadActionMenuGroups({
   const rename = requestRename ?? defaultRequestRename;
   const entries = useThreadActionEntries(thread, { requestRename: rename });
   return groupThreadActionMenuEntries(
-    entries,
+    entries.map((entry) => ({
+      key: entry.key,
+      group: entry.group,
+      action: entry.action,
+      command: threadActionMenuCommand(entry.key, thread),
+    })),
     inline.map((item) => ({
       key: item.key,
       group: item.group,
       action: bindThreadAction(item.key, item.action, rename),
+      command: null,
     })),
   );
 }
@@ -158,11 +183,13 @@ function ThreadActionMenuRow({
   entry,
   surface,
   isDrawer,
+  shortcut,
   onOpenDrawerStep,
 }: {
   entry: ThreadActionMenuEntry;
   surface: ThreadActionMenuSurface;
   isDrawer: boolean;
+  shortcut: AppShortcutPresentation | undefined;
   onOpenDrawerStep: (key: string) => void;
 }) {
   const { action } = entry;
@@ -173,6 +200,7 @@ function ThreadActionMenuRow({
         icon={action.icon}
         variant={action.variant}
         disabled={action.disabled}
+        shortcut={isDrawer ? undefined : shortcut}
         onSelect={() => {
           void action.run();
         }}
@@ -256,6 +284,7 @@ export function ThreadActionMenuRows({
   drawerStep: string | null;
   onDrawerStepChange: (key: string | null) => void;
 }) {
+  const shortcuts = useAppCommandShortcuts(THREAD_ACTION_COMMAND_IDS);
   const stepEntry =
     isDrawer && drawerStep !== null
       ? groups.flat().find((entry) => entry.key === drawerStep)
@@ -277,6 +306,9 @@ export function ThreadActionMenuRows({
           entry={entry}
           surface={surface}
           isDrawer={isDrawer}
+          shortcut={
+            entry.command === null ? undefined : shortcuts.get(entry.command)
+          }
           onOpenDrawerStep={onDrawerStepChange}
         />
       ))}

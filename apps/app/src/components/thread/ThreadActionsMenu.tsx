@@ -27,6 +27,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { CompactLongPressMenu } from "@bb/shared-ui/compact-long-press-menu";
+import { usePublishOpenThreadActionMenuTarget } from "@/lib/thread-actions/thread-action-menu-target";
 import {
   ThreadActionMenuRows,
   useThreadActionMenuGroups,
@@ -130,10 +131,22 @@ export function ThreadActionsMenu({
   sideOffset,
 }: PluginThreadActionsMenuProps) {
   const isCompactViewport = useIsCompactViewport();
+  const [open, setOpen] = useState(false);
   const { drawerStep, setDrawerStep, handleOpenChange } =
     useDrawerStep(onOpenChange);
+  const handleMenuOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen);
+      handleOpenChange(nextOpen);
+    },
+    [handleOpenChange],
+  );
+  usePublishOpenThreadActionMenuTarget(
+    { thread, requestRename, close: () => handleMenuOpenChange(false) },
+    open && !isCompactViewport,
+  );
   return (
-    <DropdownMenu modal={false} onOpenChange={handleOpenChange}>
+    <DropdownMenu modal={false} open={open} onOpenChange={handleMenuOpenChange}>
       <DropdownMenuTrigger asChild>
         <ThreadActionsTriggerSlot render={trigger} />
       </DropdownMenuTrigger>
@@ -225,6 +238,10 @@ function ThreadActionsDesktopContextMenu({
   useEffect(() => {
     if (dragging && open) handleOpenChange(false);
   }, [dragging, handleOpenChange, open]);
+  usePublishOpenThreadActionMenuTarget(
+    { thread, requestRename, close: () => handleOpenChange(false) },
+    open,
+  );
   return (
     <ContextMenu modal={false} open={open} onOpenChange={handleOpenChange}>
       <ContextMenuTrigger asChild disabled={disabled || dragging}>
