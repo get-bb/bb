@@ -574,18 +574,19 @@ describe("EmbeddedThreadChat", () => {
     expect(screen.queryByTestId("embedded-chat-queued-messages")).toBeNull();
   });
 
-  it("keeps the composer for a plugin-owned interaction", () => {
+  it("shows a plugin-rendered interaction in place of the composer", () => {
     mocks.pendingInteractions = [
       { id: "int_2", createdAt: 1, payload: { kind: "plugin" } },
     ];
 
     renderEmbeddedChat({ threadId: "thr_side_chat" });
 
-    expect(screen.queryByTestId("pending-interaction-banner")).toBeNull();
-    expect(screen.getByTestId("embedded-chat-composer")).toBeTruthy();
+    expect(screen.getByTestId("pending-interaction-banner").textContent).toBe(
+      "thr_side_chat",
+    );
   });
 
-  it("keeps queued messages attached for a plugin-owned interaction", () => {
+  it("hides held messages while a plugin-rendered interaction is answered", () => {
     mocks.pendingInteractions = [
       { id: "int_2", createdAt: 1, payload: { kind: "plugin" } },
     ];
@@ -593,11 +594,8 @@ describe("EmbeddedThreadChat", () => {
 
     renderEmbeddedChat({ threadId: "thr_side_chat" });
 
-    expect(
-      screen
-        .getByTestId("embedded-chat-queued-messages")
-        .getAttribute("data-attached-to-composer"),
-    ).toBe("true");
+    expect(screen.getByTestId("pending-interaction-banner")).toBeTruthy();
+    expect(screen.queryByTestId("embedded-chat-queued-messages")).toBeNull();
   });
 
   it("keeps sending available while the first interaction check is pending", async () => {
