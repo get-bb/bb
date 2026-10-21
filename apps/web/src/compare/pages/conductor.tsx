@@ -217,11 +217,10 @@ export const comparison: Comparison = {
                 </p>
               </blockquote>
               <p>
-                NSEGmc also said recent UI changes could be confusing. These
-                are individual experiences, not a survey or endorsements
+                These are individual experiences, not a survey or endorsements
                 of bb. They are good reasons to value Conductor’s workflow.
                 Consider bb if you also want agents to change the app with
-                plugins, or need a Windows or Linux desktop app.
+                plugins, or need a Windows or Linux desktop app (both in Alpha).
               </p>
             </>
           ),
