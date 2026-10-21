@@ -219,6 +219,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
 
   const telemetry = await createTelemetryService({
+    workTelemetry: serverConfig.featureFlags.workTelemetry,
     apiKey: serverConfig.BB_POSTHOG_API_KEY,
     appInstall: appInstallFromServerConfig(serverConfig),
     appSurface: serverConfig.BB_APP_SURFACE,

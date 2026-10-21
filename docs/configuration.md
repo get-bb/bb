@@ -293,6 +293,21 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
+`feature_used` uses a finite capability registry:
+threads, child threads, providers, remote access, automations, browser,
+terminals, files, git, settings, projects, environments, split view, search,
+voice and plugin management. Core actions carry only `kind`,
+`feature_scope=core`, `interaction=opened/invoked/ran`, and
+`initiator=user/agent/automation/plugin/system`. Client requests count as user use, including CLI requests. Plugin and agent
+execution contexts are attributed at their shared invocation boundaries.
+
+Successful explicit core API actions are captured at their shared route
+boundary for UI, SDK and CLI callers. File previews, side-panel opens and
+split additions cover local UI actions. Background queries, resize/persistence
+writes and layout restoration are excluded. The telemetry endpoint rejects
+unknown fields, feature codes and caller-supplied plugin provenance. Legacy
+client event variants remain accepted for compatibility.
+
 ## AI services
 
 Thread titles (and the branch names built from them), commit messages, and
@@ -1213,3 +1228,7 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+Core capability and work telemetry are behind `BB_FF_WORK_TELEMETRY` (default `false`). The flag gates new work events; the telemetry setting gates all sends.
+
+`automation_created` accepts `kind=schedule/once`, `mode=agent/script`, and the canonical `initiator`. `split_view_opened` accepts `panes` from 2 to 8.

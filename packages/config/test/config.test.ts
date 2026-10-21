@@ -317,6 +317,7 @@ describe("consumer-specific config", () => {
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       initiatorTelemetry: true,
+      workTelemetry: false,
       timelineWindowEventBudget: 1_500,
     });
   });

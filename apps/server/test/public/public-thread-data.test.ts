@@ -2935,7 +2935,11 @@ describe("public thread data routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toEqual([]);
-      expect(capture).not.toHaveBeenCalled();
+      expect(
+        capture.mock.calls.filter(
+          ([event]) => event.name === "user_message_sent",
+        ),
+      ).toEqual([]);
     });
   });
 

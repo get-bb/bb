@@ -22,3 +22,5 @@ export type {
 } from "@bb/domain";
 
 export * from "./api/machine-environment.js";
+
+export * from "./feature-telemetry.js";

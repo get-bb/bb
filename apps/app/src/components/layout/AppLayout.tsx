@@ -122,6 +122,7 @@ import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
 import { isIOSWebKit } from "@/lib/ios-webkit";
 import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { useSplitViewTelemetry } from "@/lib/split-layout/useSplitViewTelemetry";
 import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
@@ -552,6 +553,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   useServerDaemonLogsCommand();
   useDataDirectoryCommand();
   useWindowReloadCommand();
+  useSplitViewTelemetry();
   usePluginSafeModeCommands();
   usePluginCachePruneCommand();
   const archivedSectionId = isArchivedView

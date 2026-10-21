@@ -96,3 +96,5 @@ BB guide plugin:
 
   Changes apply when agent configuration is next assembled. They do not erase
   existing conversation text or disable independently installed copies.
+
+`BB_FF_WORK_TELEMETRY=true` enables anonymous capability and work events (default off). Usage data sharing must also be enabled.
