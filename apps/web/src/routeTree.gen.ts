@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from "./routes/__root";
 import { Route as UninstallRouteImport } from "./routes/uninstall";
 import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
 import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
-import { Route as ReviewersRouteImport } from "./routes/reviewers";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
 import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
@@ -69,11 +68,6 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: "/robots.txt",
   path: "/robots.txt",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const ReviewersRoute = ReviewersRouteImport.update({
-  id: "/reviewers",
-  path: "/reviewers",
   getParentRoute: () => rootRouteImport,
 } as any);
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -303,7 +297,6 @@ export interface FileRoutesByFullPath {
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
-  "/reviewers": typeof ReviewersRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/uninstall": typeof UninstallRoute;
@@ -351,7 +344,6 @@ export interface FileRoutesByTo {
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
-  "/reviewers": typeof ReviewersRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/uninstall": typeof UninstallRoute;
@@ -400,7 +392,6 @@ export interface FileRoutesById {
   "/marketplace_": typeof MarketplaceRouteWithChildren;
   "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
-  "/reviewers": typeof ReviewersRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/uninstall": typeof UninstallRoute;
@@ -450,7 +441,6 @@ export interface FileRouteTypes {
     | "/marketplace"
     | "/plugin-guide"
     | "/privacy"
-    | "/reviewers"
     | "/robots.txt"
     | "/sitemap.xml"
     | "/uninstall"
@@ -498,7 +488,6 @@ export interface FileRouteTypes {
     | "/marketplace"
     | "/plugin-guide"
     | "/privacy"
-    | "/reviewers"
     | "/robots.txt"
     | "/sitemap.xml"
     | "/uninstall"
@@ -546,7 +535,6 @@ export interface FileRouteTypes {
     | "/marketplace_"
     | "/plugin-guide"
     | "/privacy"
-    | "/reviewers"
     | "/robots.txt"
     | "/sitemap.xml"
     | "/uninstall"
@@ -595,7 +583,6 @@ export interface RootRouteChildren {
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
   PluginGuideRoute: typeof PluginGuideRoute;
   PrivacyRoute: typeof PrivacyRoute;
-  ReviewersRoute: typeof ReviewersRoute;
   RobotsDottxtRoute: typeof RobotsDottxtRoute;
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute;
   UninstallRoute: typeof UninstallRoute;
@@ -652,13 +639,6 @@ declare module "@tanstack/react-router" {
       path: "/robots.txt";
       fullPath: "/robots.txt";
       preLoaderRoute: typeof RobotsDottxtRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/reviewers": {
-      id: "/reviewers";
-      path: "/reviewers";
-      fullPath: "/reviewers";
-      preLoaderRoute: typeof ReviewersRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/privacy": {
@@ -983,7 +963,6 @@ const rootRouteChildren: RootRouteChildren = {
   MarketplaceRoute: MarketplaceRouteWithChildren,
   PluginGuideRoute: PluginGuideRoute,
   PrivacyRoute: PrivacyRoute,
-  ReviewersRoute: ReviewersRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   UninstallRoute: UninstallRoute,
