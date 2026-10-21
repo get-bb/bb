@@ -122,6 +122,7 @@ export type {
 } from "./threads.js";
 
 export {
+  claimInstallTurnNumber,
   forgetPluginProviders,
   getAiServiceSelections,
   getAppKeybindingOverrides,
