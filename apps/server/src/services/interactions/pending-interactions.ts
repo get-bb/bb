@@ -1,3 +1,4 @@
+import { captureInteractionWait } from "../system/work-telemetry.js";
 import {
   createPendingInteraction,
   getActivePendingInteractionForThread,
@@ -493,6 +494,7 @@ export class PendingInteractionLifecycle {
         deps: this.deps,
         threadId: pendingInteraction.threadId,
       });
+      captureInteractionWait(this.deps.db, pendingInteraction, true);
       emitPluginInteractionPending(thread, pendingInteraction);
     }
 
@@ -573,6 +575,7 @@ export class PendingInteractionLifecycle {
       return pending;
     }
     try {
+      captureInteractionWait(this.deps.db, interaction, false);
       appendPendingInteractionTimelineEvent(this.deps, interaction);
       notifyInteractionChanged({
         deps: this.deps,
@@ -983,6 +986,7 @@ export class PendingInteractionLifecycle {
   private settleInteractionTerminalState(
     interaction: PendingInteraction,
   ): void {
+    captureInteractionWait(this.deps.db, interaction, false);
     appendPendingInteractionTimelineEvent(this.deps, interaction);
     notifyInteractionChanged({
       deps: this.deps,
@@ -995,6 +999,7 @@ export class PendingInteractionLifecycle {
     deps: PendingInteractionTransactionDeps,
     interaction: PendingInteraction,
   ): void {
+    captureInteractionWait(deps.db, interaction, false);
     appendPendingInteractionTimelineEventInTransaction(deps, interaction);
     notifyInteractionChanged({
       deps,
