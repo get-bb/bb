@@ -20,8 +20,6 @@ interface PromptEditorExtensionsOptions extends PromptDecorationExtensionOptions
 export function promptEditorExtensions({
   getPlaceholder,
   getDecorationSources,
-  getDraftObservers,
-  draftObserverDebounceMs,
   onRuleError,
 }: PromptEditorExtensionsOptions): AnyExtension[] {
   return [
@@ -38,10 +36,6 @@ export function promptEditorExtensions({
     PromptMentionExtension,
     PromptDecorationExtension.configure({
       ...(getDecorationSources !== undefined ? { getDecorationSources } : {}),
-      ...(getDraftObservers !== undefined ? { getDraftObservers } : {}),
-      ...(draftObserverDebounceMs !== undefined
-        ? { draftObserverDebounceMs }
-        : {}),
       ...(onRuleError !== undefined ? { onRuleError } : {}),
     }),
   ];

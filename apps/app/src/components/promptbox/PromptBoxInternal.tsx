@@ -142,11 +142,11 @@ import {
   type PromptBoxAction,
 } from "./PromptBoxActionsMenu";
 import type { PromptMentionLinkResolver } from "./editor/prompt-mention-link";
+import { refreshPromptDecorations } from "./editor/prompt-decoration-extension";
 import {
-  refreshPromptDecorations,
-  type PromptDecorationSource,
-  type PromptDraftObserver,
-} from "./editor/prompt-decoration-extension";
+  composerDecorationSources,
+  createDraftObserverRunner,
+} from "./composer-decorations";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
 import {
@@ -1619,8 +1619,6 @@ export function PromptBoxInternal({
     isSubmitting,
   });
   const composerView = useOptionalPluginComposerView() ?? localComposerView;
-  const composerViewRef = useRef(composerView);
-  composerViewRef.current = composerView;
   const composerScopeKey = composerScopeIdentity(composerView.scope);
   const resolvedComposerEditor = useResolvedComposerEditor(
     suppressPluginComposerCustomizations ? null : composerView.scope.kind,
@@ -1628,49 +1626,26 @@ export function PromptBoxInternal({
   useEffect(() => {
     onComposerLayoutChange?.(composerLayout);
   }, [composerLayout, onComposerLayoutChange]);
-  const pluginRichTextContributions = useMemo(() => {
-    const sources: PromptDecorationSource[] = [];
-    const observers: PromptDraftObserver[] = [];
-    for (const contribution of resolvedComposerEditor.effects) {
-      sources.push({
-        id: `${contribution.pluginId}/${contribution.customizationId}`,
-        generation: contribution.generation,
-        pluginId: contribution.pluginId,
-        effects: contribution.effects,
-      });
-    }
-    for (const contribution of resolvedComposerEditor.observers) {
-      observers.push({
-        id: `${contribution.pluginId}/${contribution.customizationId}`,
-        getView: () => composerViewRef.current,
-        onDraftChange: contribution.onDraftChange,
-      });
-    }
-    for (const effectSource of textEffects ?? []) {
-      const className = effectSource.effect.className;
-      if (className.length === 0) continue;
-      sources.push({
-        id: `plugin-imperative:${effectSource.pluginId}:${effectSource.order}`,
-        generation: effectSource.order,
-        pluginId: effectSource.pluginId,
-        effects: [
-          {
-            id: "whole-draft",
-            className,
-            match: (text) =>
-              text.length === 0 ? [] : [{ from: 0, to: text.length }],
-          },
-        ],
-      });
-    }
-    return { sources, observers };
-  }, [resolvedComposerEditor, textEffects]);
-  const pluginDecorationSourcesRef = useRef(
-    pluginRichTextContributions.sources,
+  const decorationSources = useMemo(
+    () =>
+      composerDecorationSources(
+        resolvedComposerEditor.effects,
+        textEffects ?? [],
+      ),
+    [resolvedComposerEditor.effects, textEffects],
   );
-  pluginDecorationSourcesRef.current = pluginRichTextContributions.sources;
-  const pluginDraftObserversRef = useRef(pluginRichTextContributions.observers);
-  pluginDraftObserversRef.current = pluginRichTextContributions.observers;
+  const decorationSourcesRef = useRef(decorationSources);
+  decorationSourcesRef.current = decorationSources;
+  const [draftObserverRunner] = useState(createDraftObserverRunner);
+  useEffect(() => {
+    draftObserverRunner.update({
+      text: value,
+      mentions: mentionRanges,
+      view: composerView,
+      observers: resolvedComposerEditor.observers,
+    });
+  });
+  useEffect(() => () => draftObserverRunner.dispose(), [draftObserverRunner]);
   const focusScopeKey = history?.resetKey;
   const onChangeRef = useRef(onChange);
 
@@ -1990,8 +1965,7 @@ export function PromptBoxInternal({
     () => [
       ...promptEditorExtensions({
         getPlaceholder: () => placeholderRef.current,
-        getDecorationSources: () => pluginDecorationSourcesRef.current,
-        getDraftObservers: () => pluginDraftObserversRef.current,
+        getDecorationSources: () => decorationSourcesRef.current,
       }),
       createPromptThreadLinkPasteExtension({
         getOrigin: () => window.location.origin,
@@ -2396,7 +2370,7 @@ export function PromptBoxInternal({
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     refreshPromptDecorations(editor);
-  }, [composerScopeKey, editor, pluginRichTextContributions]);
+  }, [composerScopeKey, decorationSources, editor]);
 
   useLayoutEffect(() => {
     if (!pendingFocusEndRef.current) return;
