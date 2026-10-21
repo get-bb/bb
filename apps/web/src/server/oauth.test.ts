@@ -43,10 +43,12 @@ const ENV: OAuthEnv = {
   APP_URL: "https://getbb.app/",
   BASE_DOMAIN: "getbb.app",
   BETTER_AUTH_SECRET: "test-secret",
+  NEXT_BASE_DOMAIN: "next.getbb.app",
 };
 const CLIENT_ID = "https://claude.example/oauth/client.json";
 const REDIRECT_URI = "https://claude.example/callback?tenant=1";
 const RESOURCE = "https://alice.getbb.app/mcp";
+const NEXT_RESOURCE = "https://alice.next.getbb.app/mcp";
 const VERIFIER = "v".repeat(64);
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -555,6 +557,10 @@ describe("authorization requests", () => {
     ["invalid_target", { resource: "https://nobody.getbb.app/mcp" }],
     ["invalid_target", { resource: "https://alice.getbb.app/other" }],
     ["invalid_target", { resource: "http://alice.getbb.app/mcp" }],
+    ["invalid_target", { resource: "https://bob.next.getbb.app/mcp" }],
+    ["invalid_target", { resource: "https://alice.next.getbb.app/other" }],
+    ["invalid_target", { resource: "https://alice--8000.next.getbb.app/mcp" }],
+    ["invalid_target", { resource: "https://alice.other.getbb.app/mcp" }],
     ["invalid_scope", { scope: "admin offline_access" }],
   ])("shows an error page naming %s for %o", async (error, over) => {
     for (const result of [
@@ -766,6 +772,64 @@ describe("token endpoint: authorization_code", () => {
       T0 + OAUTH_REFRESH_TOKEN_TTL_MS,
     );
     expect(auditActions()).toEqual(["mcp.oauth.grant"]);
+  });
+
+  it("binds a grant and its tokens to the next address it was issued for", async () => {
+    const code = await authorize({ resource: NEXT_RESOURCE });
+    await expectTokenError(
+      await tokenRequest(codeBody(code, { resource: RESOURCE })),
+      "invalid_grant",
+    );
+    const body = await tokens(
+      await tokenRequest(
+        codeBody(await authorize({ resource: NEXT_RESOURCE }), {
+          resource: NEXT_RESOURCE,
+        }),
+      ),
+    );
+    expect(grantRows()).toHaveLength(1);
+    expect(grantRows()[0]?.resource).toBe(NEXT_RESOURCE);
+    expect(
+      (
+        await verifyMcpAccessToken(
+          body.access_token,
+          ENV.BETTER_AUTH_SECRET,
+          T0,
+        )
+      )?.resource,
+    ).toBe(NEXT_RESOURCE);
+    await expectTokenError(
+      await refresh(body.refresh_token, CLIENT_ID, { resource: RESOURCE }),
+      "invalid_grant",
+    );
+    const refreshed = await tokens(
+      await refresh(body.refresh_token, CLIENT_ID, { resource: NEXT_RESOURCE }),
+    );
+    expect(
+      (
+        await verifyMcpAccessToken(
+          refreshed.access_token,
+          ENV.BETTER_AUTH_SECRET,
+          T0,
+        )
+      )?.resource,
+    ).toBe(NEXT_RESOURCE);
+  });
+
+  it("refuses the next address when NEXT_BASE_DOMAIN is unset", async () => {
+    const { NEXT_BASE_DOMAIN: _unset, ...withoutNext } = ENV;
+    expect(
+      await prepareOAuthAuthorization(
+        withoutNext,
+        db,
+        "alice",
+        authorizeParams({ resource: NEXT_RESOURCE }),
+        deps(),
+      ),
+    ).toEqual({
+      kind: "error-page",
+      message: expect.stringContaining("invalid_target"),
+    });
   });
 
   it("rejects a replayed code", async () => {

@@ -8,6 +8,11 @@
       "source": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./next": {
+      "source": "./src/next.ts",
+      "types": "./src/next.ts",
+      "default": "./src/next.ts"
     }
   },
   "scripts": {

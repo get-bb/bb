@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import {
   SERVER_OFFLINE_AFTER_MS,
   isLive,
+  nextTunnelConnected,
   schema,
   server,
   sha256Hex,
@@ -130,6 +131,8 @@ export async function listAccountServers(
       lastSeenAt: server.lastSeenAt,
       credentialHash: server.credentialHash,
       revokedAt: server.revokedAt,
+      nextTunnelGate: server.nextTunnelGate,
+      nextTunnelAt: server.nextTunnelAt,
     })
     .from(server)
     .where(eq(server.userId, userId))
@@ -143,13 +146,14 @@ export async function listAccountServers(
       const connected = row.credentialHash != null && row.revokedAt == null;
       const live =
         connected &&
-        isLive({
-          lastSeenMs: row.lastSeenAt?.getTime() ?? null,
-          now,
-          offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
-          tunnelConnected:
-            tunnelConnected === null ? null : await tunnelConnected(handle),
-        });
+        (nextTunnelConnected(row, now) ||
+          isLive({
+            lastSeenMs: row.lastSeenAt?.getTime() ?? null,
+            now,
+            offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+            tunnelConnected:
+              tunnelConnected === null ? null : await tunnelConnected(handle),
+          }));
       return { handle, name, live };
     }),
   );

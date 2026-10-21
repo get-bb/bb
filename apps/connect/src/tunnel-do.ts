@@ -41,6 +41,8 @@ export interface Env {
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
   WORKER_HELD_RESPONSES?: string;
   PRESENCE_WRITES?: string;
+  GATE_SECRET?: string;
+  NEXT_BASE_DOMAIN?: string;
 }
 
 const TUNNEL_TAG = "tunnel";

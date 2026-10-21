@@ -480,6 +480,25 @@ describe("account session refresh", () => {
     expect(setCookies?.[0]).toContain("Secure");
   });
 
+  it("stops reporting needsRefresh as soon as the session was renewed", async () => {
+    const refreshAt = Date.now();
+    const token = `session-${crypto.randomUUID()}`;
+    seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
+    const cookie = await signedSessionCookie(token, secret);
+
+    await expect(
+      verifySessionCookieDetails(cookie, secret, db),
+    ).resolves.toMatchObject({ needsRefresh: true });
+    await refreshAccountSessionCookies(
+      `__Secure-better-auth.session_token=${cookie}`,
+      "https://getbb.app",
+      createAuthFetch("https://getbb.app", "getbb.app"),
+    );
+    await expect(
+      verifySessionCookieDetails(cookie, secret, db),
+    ).resolves.toMatchObject({ needsRefresh: false });
+  });
+
   it("leaves a fresh session unchanged before the update-age boundary", async () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
@@ -610,6 +629,7 @@ function gatedDb(target: typeof db, gate: Promise<void>): typeof db {
 async function seedSignedSession(
   userId: string,
   secret: string,
+  expiresAt = Date.now() + 60_000,
 ): Promise<string> {
   seedUser(userId);
   const token = `sess_${crypto.randomUUID()}`;
@@ -630,7 +650,7 @@ async function seedSignedSession(
     .values({
       id: `sess-${token}`,
       token,
-      expiresAt: new Date(Date.now() + 60_000),
+      expiresAt: new Date(expiresAt),
       userId,
       createdAt: now,
       updatedAt: now,
@@ -773,13 +793,28 @@ describe("gate lookup caches", () => {
 
   it("serves later session verifications from the cache", async () => {
     const secret = "cached-secret";
-    const cookieValue = await seedSignedSession("acct-cached-cookie", secret);
+    const cookieValue = await seedSignedSession(
+      "acct-cached-cookie",
+      secret,
+      Date.now() + CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000,
+    );
     const counted = countingDb(db);
 
     await verifySessionCookieDetails(cookieValue, secret, counted.db);
     await verifySessionCookieDetails(cookieValue, secret, counted.db);
 
     expect(counted.counts.select).toBe(1);
+  });
+
+  it("rereads a cached session that is due for a refresh", async () => {
+    const secret = "due-secret";
+    const cookieValue = await seedSignedSession("acct-due-cookie", secret);
+    const counted = countingDb(db);
+
+    await verifySessionCookieDetails(cookieValue, secret, counted.db);
+    expect(counted.counts.select).toBe(1);
+    await verifySessionCookieDetails(cookieValue, secret, counted.db);
+    expect(counted.counts.select).toBe(2);
   });
 
   it("does not cache a lookup that was in flight when its cookie was invalidated", async () => {

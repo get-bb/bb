@@ -10,6 +10,13 @@
 // Secret: wrangler secret put BETTER_AUTH_SECRET [--env staging]
 //         (must equal bb-web's BETTER_AUTH_SECRET — the gate verifies the
 //         session cookie's HMAC with it)
+// Secret: wrangler secret put GATE_SECRET [--env staging]
+//         (bearer token of the bb connect next Fly gate for
+//         POST https://connect.getbb.app/api/gate/resolve and /api/gate/presence;
+//         must equal the Fly app's GATE_SECRET. Unset = both answer 404.)
+// Var: NEXT_BASE_DOMAIN — the bb connect next domain (next.getbb.app); MCP
+//         OAuth tokens for https://<label>.<NEXT_BASE_DOMAIN>/mcp resolve only
+//         through /api/gate/resolve.
 // Optional var: ASSETLINKS_SHA256_FINGERPRINTS — comma-separated Android
 //         signing-cert fingerprints for /.well-known/assetlinks.json (bb
 //         mobile app links). Unset until the Android app is signed.
@@ -23,15 +30,16 @@
   "observability": { "enabled": true },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
   "durable_objects": {
-    "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
+    "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }],
   },
   // Production: every *.getbb.app subdomain hits the gate via the wildcard
   // zone route (backed by a proxied `*` DNS record). The apex + www are
   // custom domains on bb-web and take precedence over this route.
   "vars": {
     "BASE_DOMAIN": "getbb.app",
+    "NEXT_BASE_DOMAIN": "next.getbb.app",
     "PRESENCE_WRITES": "on-change",
-    "WORKER_HELD_RESPONSES": "on"
+    "WORKER_HELD_RESPONSES": "on",
   },
   "d1_databases": [
     {
@@ -42,23 +50,24 @@
       // apply DB --remote` from this config before every deploy (the
       // d1_migrations tracking tables were seeded with the hand-applied
       // 0000-000N chain on 2026-07-08).
-      "migrations_dir": "../../packages/connect-db/migrations"
-    }
+      "migrations_dir": "../../packages/connect-db/migrations",
+    },
   ],
   "analytics_engine_datasets": [
-    { "binding": "GATE_EVENTS", "dataset": "bb_connect_gate_events" }
+    { "binding": "GATE_EVENTS", "dataset": "bb_connect_gate_events" },
   ],
   "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
   "env": {
     "staging": {
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
       "durable_objects": {
-        "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
+        "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }],
       },
       "vars": {
         "BASE_DOMAIN": "vibecodethis.site",
+        "NEXT_BASE_DOMAIN": "next.vibecodethis.site",
         "WORKER_HELD_RESPONSES": "on",
-        "PRESENCE_WRITES": "on-change"
+        "PRESENCE_WRITES": "on-change",
       },
       // Staging now has a dashboard-managed wildcard (`*.vibecodethis.site`
       // proxied DNS + zone route to this worker, added 2026-07-08), matching
@@ -72,22 +81,22 @@
       "routes": [
         { "pattern": "sawyer.vibecodethis.site", "custom_domain": true },
         { "pattern": "sawyer--8000.vibecodethis.site", "custom_domain": true },
-        { "pattern": "sawyer--8099.vibecodethis.site", "custom_domain": true }
+        { "pattern": "sawyer--8099.vibecodethis.site", "custom_domain": true },
       ],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "bb-connect-staging",
           "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
-          "migrations_dir": "../../packages/connect-db/migrations"
-        }
+          "migrations_dir": "../../packages/connect-db/migrations",
+        },
       ],
       "analytics_engine_datasets": [
         {
           "binding": "GATE_EVENTS",
-          "dataset": "bb_connect_gate_events_staging"
-        }
-      ]
-    }
-  }
+          "dataset": "bb_connect_gate_events_staging",
+        },
+      ],
+    },
+  },
 }

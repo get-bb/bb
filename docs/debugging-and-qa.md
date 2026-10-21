@@ -449,6 +449,14 @@ Local machine enrollment follows the same origin: local `http:` server URLs
 produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
 enrollment remains HTTPS-only.
 
+For bb connect next, `pnpm cloud:dev` sets the Connect worker's and bb-web's
+`NEXT_BASE_DOMAIN` to `next.bb.localhost`. `BB_CLOUD_DEV_GATE_SECRET` sets the
+worker's `GATE_SECRET` (the account API answers 404 without it),
+`BB_CLOUD_DEV_GATE_PUBLIC_KEYS` sets bb-web's `GATE_PUBLIC_KEYS`, and
+`BB_CLOUD_DEV_STATE_DIR` moves the local D1 and Durable Object state away from
+`.wrangler/cloud-dev`. `apps/connect-next/scripts/e2e-local.sh` uses all three;
+see [connect-next.md](connect-next.md#local-end-to-end-run).
+
 The AI gateway answers `503 unavailable` until an OpenRouter key is present.
 Export `OPENROUTER_API_KEY` in the shell before `pnpm cloud:dev` to pass it
 through to the local worker; the startup banner says which mode is active.

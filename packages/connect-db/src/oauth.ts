@@ -74,7 +74,11 @@ export interface ParsedMcpResource {
 
 export function parseMcpResource(
   value: string,
-  options: { baseDomain: string; allowHttp: boolean },
+  options: {
+    baseDomain: string;
+    nextBaseDomain: string | null;
+    allowHttp: boolean;
+  },
 ): ParsedMcpResource | null {
   let url: URL;
   try {
@@ -90,7 +94,11 @@ export function parseMcpResource(
   }
   if (url.username || url.password || url.search || url.hash) return null;
   if (url.pathname !== MCP_PUBLIC_PATH) return null;
-  const parsed = parseVisitorHost(url.hostname, options.baseDomain);
+  const parsed =
+    parseVisitorHost(url.hostname, options.baseDomain) ??
+    (options.nextBaseDomain === null
+      ? null
+      : parseVisitorHost(url.hostname, options.nextBaseDomain));
   if (parsed === null || parsed.target !== null) return null;
   return {
     handle: parsed.handle,
