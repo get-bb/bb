@@ -99,7 +99,7 @@ function GuideHero({ guide }: { guide: Guide }) {
   return (
     <header className="hero cmp-hero gd-hero">
       {guide.heroTop}
-      <h1>{brandProse(guide.title)}</h1>
+      <h1>{brandProse(guide.headline ?? guide.title)}</h1>
       <p className="sub">{brandProse(guide.description)}</p>
       <div className="gd-hero-actions">
         <CopyForAgent

@@ -135,6 +135,17 @@ export const guide: Guide = {
     },
     ...TEAM_FAQ,
     {
+      question: "Where can I check usage before starting the other agent?",
+      answer: (
+        <p>
+          <a href="/guides/codex-claude-code-usage-limits">
+            Check Codex and Claude Code usage limits
+          </a>{" "}
+          for reported windows, reset times and the Provider usage card in bb.
+        </p>
+      ),
+    },
+    {
       question: "Can Codex build and Claude Code review?",
       answer: (
         <p>

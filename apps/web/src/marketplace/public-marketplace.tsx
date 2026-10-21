@@ -1080,6 +1080,13 @@ export function PublicMarketplaceDetailPage({
             )}
             <section className="marketplace-detail-section marketplace-overview-section">
               <p className="marketplace-overview-lead">{entry.description}</p>
+              {entry.id === "usage-limits" ? (
+                <p>
+                  <a href="/guides/codex-claude-code-usage-limits">
+                    Check Codex and Claude Code usage limits and reset times
+                  </a>.
+                </p>
+              ) : null}
               <hr className="marketplace-overview-rule" />
               <div className="marketplace-overview-heading">
                 <h2>Overview</h2>
