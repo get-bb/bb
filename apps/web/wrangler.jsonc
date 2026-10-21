@@ -18,9 +18,9 @@
 //   served at /.well-known/bb-connect-gate-keys.json. Unset = 404. It is
 //   public, so it lives in "vars" here (not the dashboard: a deploy replaces
 //   dashboard vars). Staging holds the staging gate's key (kid
-//   staging-2026-10-20). Production is deliberately unset: its key pair is
-//   generated when the production gate is set up (docs/connect-next.md), and
-//   only then is its public half added to env.production.vars.
+//   staging-2026-10-20), production the production gate's (kid
+//   prod-2026-10-21); the private halves are the gates' GATE_SIGNING_KEY
+//   Fly secrets.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-web-staging",
@@ -108,6 +108,7 @@
         "APP_URL": "https://getbb.app",
         "PRESENCE_WRITES": "on-change",
         "NEXT_BASE_DOMAIN": "next.getbb.app",
+        "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"prod-2026-10-21\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"sSHHgGnUQNXtsJ2_4EDXj4ZpIq9y45fZDvMGkKsWnGU\"}]}",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
       "d1_databases": [

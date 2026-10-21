@@ -52,11 +52,10 @@ The server fetches gate public keys from `https://getbb.app/.well-known/bb-conne
 `GATE_PUBLIC_KEYS` is public and lives in `apps/web/wrangler.jsonc` `vars`, not the dashboard (a
 deploy replaces dashboard vars). Staging (`bb-web-staging`, served at
 `https://vibecodethis.site/.well-known/bb-connect-gate-keys.json`) holds the staging gate's key,
-`kid` `staging-2026-10-20`. Production (`env.production.vars`) is deliberately unset, so getbb.app
-answers 404 and no server trusts any gate yet: the production key pair is generated with
-`generateGateKeyPair(kid)` when the production gate is set up, its private JWK goes to the gate's
-`GATE_SIGNING_KEY` Fly secret and its public half into `env.production.vars.GATE_PUBLIC_KEYS`, which
-must be deployed before the gate signs with it.
+`kid` `staging-2026-10-20`. Production (`env.production.vars`, served at
+`https://getbb.app/.well-known/bb-connect-gate-keys.json`) holds `kid` `prod-2026-10-21`, made with
+`generateGateKeyPair(kid)`; its private JWK is the `GATE_SIGNING_KEY` Fly secret of `bb-connect-next`.
+A new key's public half must be deployed here before the gate signs with it.
 
 ## Account API
 
