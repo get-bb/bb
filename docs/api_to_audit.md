@@ -2105,6 +2105,29 @@ Docs: `frontend-registration.md`.
    focus order, and the mobile close behavior when a plugin owns the markup;
    `onNavigate` is currently the plugin's responsibility to call.
 
+## `app.slots.experimental_threadConversationPane` (`@get-bb/plugin-sdk/app`)
+
+An exclusive slot that draws the thread page's conversation pane. The
+component receives `threadId`, `isCompactViewport`, and the conversation as
+`Original`, so a plugin can place it beside its own content or switch away
+from it. With no registration bb renders the conversation directly, with no
+wrapper element. The first registration in slot order is active, and a
+crashing component falls back to `Original`. The thread header, right panel
+and sidebar stay host-rendered.
+
+Docs: Plugin Guide conversation pane surface.
+
+**Audit before stabilizing.**
+
+1. **Arbitration.** Decide whether this needs a provider preference like
+   `sidebar.threadListProvider` once more than one plugin registers.
+2. **Remount.** The conversation remounts once when a registration appears or
+   disappears. Confirm draft and scroll restoration cover that.
+3. **Region boundary.** Confirm the header and right panel should stay outside
+   the replaced region.
+4. **Compact layouts.** Confirm plugins should own their phone layout, or
+   whether bb should render the conversation directly on compact viewports.
+
 ## AI services (`bb.experimental_aiServices.register`)
 
 Registers `{ id, displayName, complete?, transcribe?, status? }`. `complete`

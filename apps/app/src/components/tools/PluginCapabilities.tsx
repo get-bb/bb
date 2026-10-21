@@ -231,6 +231,12 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadConversationPanes,
+      "thread-conversation-pane",
+      "Can draw the thread page's conversation pane.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.experimentalSidebarNavigations,
       "sidebar-navigation",
       "Can draw the sidebar navigation; configured in Appearance.",

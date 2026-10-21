@@ -35,6 +35,7 @@ import type {
   ExperimentalSidebarHeaderProps,
   ExperimentalSidebarNavigationPlacement,
   ExperimentalSidebarNavigationRegistration,
+  ExperimentalThreadConversationPaneRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
@@ -379,6 +380,7 @@ export interface CollectedPluginAppRegistrations {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
+  threadConversationPanes: ExperimentalThreadConversationPaneRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -509,6 +511,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions: [],
     experimentalSidebarFooterItems: [],
     threadLists: [],
+    threadConversationPanes: [],
     experimentalSidebarNavigations: [],
     threadHeaderActions: [],
     threadActions: [],
@@ -540,6 +543,7 @@ export function collectPluginAppRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
     threadList: new Set<string>(),
+    threadConversationPane: new Set<string>(),
     sidebarNavigation: new Set<string>(),
     sidebarHeader: new Set<string>(),
     threadHeaderAction: new Set<string>(),
@@ -852,6 +856,15 @@ export function collectPluginAppRegistrations(
           collectTitledComponent(
             "slots.experimental_threadList",
             seenIds.threadList,
+            registration,
+          ),
+        );
+      },
+      experimental_threadConversationPane(registration) {
+        collected.threadConversationPanes.push(
+          collectTitledComponent(
+            "slots.experimental_threadConversationPane",
+            seenIds.threadConversationPane,
             registration,
           ),
         );

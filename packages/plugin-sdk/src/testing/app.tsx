@@ -96,6 +96,7 @@ import {
   type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
   type PluginThreadListRegistration,
+  type ExperimentalThreadConversationPaneRegistration,
   type PluginThreadPanelActionRegistration,
   type PluginRpcContract,
   type StandardSchemaV1,
@@ -1441,9 +1442,8 @@ const testPluginSdkApp = {
     _options,
   ): ExperimentalSidebarNavigationSplit {
     const env = useSlotEnv("experimental_useSidebarNavigationSplit");
-    const kind = env.sidebarNavigation.items.find(
-      (item) => item.id === itemId,
-    )?.action.kind;
+    const kind = env.sidebarNavigation.items.find((item) => item.id === itemId)
+      ?.action.kind;
     const isAvailable = kind === "new-thread" || kind === "open-plugin-panel";
     return useMemo(
       () => ({
@@ -1586,6 +1586,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
+  threadConversationPanes: ExperimentalThreadConversationPaneRegistration[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];

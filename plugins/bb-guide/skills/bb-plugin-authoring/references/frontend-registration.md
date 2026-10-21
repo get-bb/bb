@@ -285,7 +285,7 @@ frontend-sidebar-navigation.md.
 
 ### Replacing the sidebar thread list
 
-`app.slots.experimental_threadList` is the one **exclusive** slot: only one
+`app.slots.experimental_threadList` is **exclusive**: only one
 list fills the sidebar's scroll area. Registering activates the replacement
 while the plugin is enabled. If multiple plugins register one, the first in
 deterministic slot order is active by default; removing it reveals the next.
@@ -443,6 +443,34 @@ silently stop working:
 ```tsx
 <a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
 ```
+
+### Replacing the thread conversation pane
+
+`app.slots.experimental_threadConversationPane` draws the thread page's conversation
+pane. It is exclusive: the first registration in deterministic slot order is
+active. With none, bb renders the conversation directly and nothing changes.
+
+Your component receives BB's conversation (timeline and composer) as
+`Original`. Render it beside your own content, wrap it, or switch away from it,
+for example to tabs that show other threads with `ThreadChat`. Render
+`Original` at most once: each copy mounts its own timeline and composer. The
+conversation remounts when your registration appears or disappears. The thread
+header, right panel and sidebar stay host-rendered. If your component throws,
+bb renders `Original` in its place.
+
+```tsx
+app.slots.experimental_threadConversationPane({
+  id: "workspace",
+  title: "Workspace",
+  component: ({ threadId, isCompactViewport, Original }) => (
+    <WorkspaceTabs threadId={threadId} conversation={<Original />} />
+  ),
+});
+```
+
+`ExperimentalThreadConversationPaneRegistration` is `{ id, title, description?,
+component }`; the component gets `{ threadId, isCompactViewport, Original }`.
+Experimental: see `docs/api_to_audit.md`.
 
 ### The provider directory
 

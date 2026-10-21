@@ -293,6 +293,58 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_threadConversationPane", () => {
+  it("collects a conversation pane with its optional fields", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadConversationPane({
+        id: "workspace",
+        title: "Workspace",
+        description: "Agent tabs beside the conversation.",
+        component: Component,
+      });
+    });
+
+    expect(
+      collectPluginAppRegistrations(definition).threadConversationPanes,
+    ).toEqual([
+      {
+        id: "workspace",
+        title: "Workspace",
+        description: "Agent tabs beside the conversation.",
+        component: Component,
+      },
+    ]);
+  });
+
+  it("rejects two conversation panes with the same id", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadConversationPane({
+        id: "workspace",
+        title: "One",
+        component: Component,
+      });
+      app.slots.experimental_threadConversationPane({
+        id: "workspace",
+        title: "Two",
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(
+      /workspace/,
+    );
+  });
+
+  it("rejects a missing component", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadConversationPane({
+        id: "workspace",
+        title: "Workspace",
+      } as never);
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow();
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
   it("collects actions and disclosures with live disclosure controls", () => {
     let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;

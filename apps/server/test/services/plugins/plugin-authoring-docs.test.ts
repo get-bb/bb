@@ -38,6 +38,7 @@ import {
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
+  type ExperimentalThreadConversationPaneProps,
   type ExperimentalSidebarNavigationProps,
   type ExperimentalSidebarNavigationRegistration,
   type ExperimentalSidebarHeaderProps,
@@ -276,6 +277,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
+  experimental_threadConversationPane: ExperimentalThreadConversationPaneProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -360,6 +362,11 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
+  ],
+  experimental_threadConversationPane: [
+    "threadId",
+    "isCompactViewport",
+    "Original",
   ],
   experimental_threadHeaderAction: [
     "threadId",

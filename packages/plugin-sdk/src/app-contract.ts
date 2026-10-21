@@ -2097,6 +2097,40 @@ export interface PluginThreadListRegistration {
 }
 
 /**
+ * Props passed to an `experimental_threadConversationPane` component, drawn in place of
+ * the thread page's conversation pane.
+ */
+export interface ExperimentalThreadConversationPaneProps {
+  /** The thread the page shows. */
+  threadId: string;
+  /** True on phone-width viewports and coarse pointers. */
+  isCompactViewport: boolean;
+  /**
+   * BB's conversation pane for this thread: timeline and composer. Render it
+   * at most once, wherever the conversation belongs; render nothing to hide it.
+   */
+  Original: ComponentType;
+}
+
+/**
+ * Draw the thread page's conversation pane. Exclusive: the first registration
+ * from an enabled plugin, in deterministic slot order, is active; with none,
+ * bb renders the conversation unchanged. The component receives the
+ * conversation as `Original`, so it can wrap it, place it beside its own
+ * content, or switch between them. The right panel, thread header and
+ * sidebar stay host-rendered. A crashing component is replaced by `Original`.
+ */
+export interface ExperimentalThreadConversationPaneRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in capability details. */
+  title: string;
+  /** Optional one-line description shown in capability details. */
+  description?: string;
+  component: ComponentType<ExperimentalThreadConversationPaneProps>;
+}
+
+/**
  * Draw the sidebar's navigation: New thread, Plugins, Skills, Automations,
  * plugin panels, and More, plus optional controls in the sidebar header.
  * Exclusive: bb's bundled Navigation plugin registers Rail
@@ -2632,6 +2666,14 @@ export interface PluginAppSlots {
    */
   experimental_sidebarNavigation(
     registration: ExperimentalSidebarNavigationRegistration,
+  ): void;
+  /**
+   * Draw the thread page's conversation pane (see
+   * {@link ExperimentalThreadConversationPaneRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadConversationPane(
+    registration: ExperimentalThreadConversationPaneRegistration,
   ): void;
   /**
    * Render a component in the thread header's action row (see

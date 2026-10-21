@@ -16,6 +16,7 @@ import {
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
+import { ThreadConversationPane } from "./ThreadConversationPane";
 import { useOptionalPaneContext } from "./PaneContext";
 
 type ThreadTimelinePaneProps = Omit<
@@ -127,7 +128,11 @@ function ThreadDetailSecondaryContentBody({
         drawerFallback={<ThreadMetadataLoadingSkeleton />}
         mainPanelId="thread-detail-timeline-panel"
         mainHeader={header}
-        main={<ThreadTimelinePane {...timeline} footer={footer} />}
+        main={
+          <ThreadConversationPane threadId={timeline.threadId}>
+            <ThreadTimelinePane {...timeline} footer={footer} />
+          </ThreadConversationPane>
+        }
         collapse={{
           active: isConversationCollapsed,
           onToggle: onToggleConversationCollapse,

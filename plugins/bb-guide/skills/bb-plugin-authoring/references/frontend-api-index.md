@@ -109,6 +109,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
 - `PluginThreadListProps`
+- `ExperimentalThreadConversationPaneProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
 - `ExperimentalPluginBrowserPage`
@@ -202,6 +203,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
+- `ExperimentalThreadConversationPaneRegistration`
 - `ExperimentalSidebarNavigationShortcut`
 - `ExperimentalSidebarNavigationAction`
 - `ExperimentalSidebarNavigationIcon`

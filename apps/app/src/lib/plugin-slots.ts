@@ -22,6 +22,7 @@ import type {
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
+  ExperimentalThreadConversationPaneRegistration,
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
@@ -48,6 +49,7 @@ export interface PluginRegistrationSet {
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems?: readonly CollectedExperimentalSidebarFooterItem[];
   threadLists?: readonly PluginThreadListRegistration[];
+  threadConversationPanes?: readonly ExperimentalThreadConversationPaneRegistration[];
   experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
@@ -91,6 +93,8 @@ export type PluginSidebarFooterItemSlot = CollectedSidebarFooterItem &
   PluginSlotBase;
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
+export interface ExperimentalThreadConversationPaneSlot
+  extends ExperimentalThreadConversationPaneRegistration, PluginSlotBase {}
 export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
@@ -134,6 +138,7 @@ export interface PluginSlotSnapshot {
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterItems: readonly PluginSidebarFooterItemSlot[];
   threadLists: readonly PluginThreadListSlot[];
+  threadConversationPanes: readonly ExperimentalThreadConversationPaneSlot[];
   experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
@@ -163,6 +168,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   pendingInteractions: [],
   sidebarFooterItems: [],
   threadLists: [],
+  threadConversationPanes: [],
   experimentalSidebarNavigations: [],
   threadHeaderActions: [],
   threadActions: [],
@@ -199,6 +205,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "pendingInteractions",
   "sidebarFooterItems",
   "threadLists",
+  "threadConversationPanes",
   "experimentalSidebarNavigations",
   "threadHeaderActions",
   "threadActions",
@@ -259,6 +266,7 @@ function flattenRegistrations(
     pendingInteractions: stamp(set.pendingInteractions),
     sidebarFooterItems: stamp<CollectedSidebarFooterItem>(sidebarFooterItems),
     threadLists: stamp(set.threadLists),
+    threadConversationPanes: stamp(set.threadConversationPanes),
     experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadHeaderActions: stamp(set.threadHeaderActions),
     threadActions: stamp(set.threadActions),
