@@ -526,9 +526,13 @@ function ThreadRowComponent({
   const childActivity =
     parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
   const hasChildren = childCount > 0;
+  const overlayProjectLabel =
+    crossProjectLabel !== null &&
+    !shortcut &&
+    !isEditing &&
+    !isCustomizingActions;
   const reserveActionSpace =
-    crossProjectLabel !== null ||
-    (isParentRow && hasChildren && thread.archivedAt !== null);
+    isParentRow && hasChildren && thread.archivedAt !== null;
   const overlayActionsBesideDisclosure =
     isParentRow && hasChildren && !reserveActionSpace;
   const disclosureActions = useDisclosureActionsClearance(
@@ -673,13 +677,16 @@ function ThreadRowComponent({
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
+          overlayProjectLabel &&
+            !hasChildren &&
+            SIDEBAR_HOVER_ACTIONS_MASK_CLASS,
           !shortcut &&
             !isEditing &&
             !isCustomizingActions &&
             !overlayActionsBesideDisclosure &&
             (reserveActionSpace
               ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
-              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
+              : crossProjectLabel === null && SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
         style={getHoverActionsInsetStyle(quickActions.length)}
       >
@@ -768,26 +775,6 @@ function ThreadRowComponent({
             </span>
           )}
         </span>
-        {crossProjectLabel !== null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                data-sidebar-thread-cross-project=""
-                role="img"
-                aria-label={crossProjectLabel}
-                className="relative z-[31] flex size-5 shrink-0 items-center justify-center text-muted-foreground"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  rowLinkRef.current?.click();
-                }}
-              >
-                <Icon name="FolderExport" className="size-3.5" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
-          </Tooltip>
-        ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             disabled={isEditing}
@@ -798,6 +785,24 @@ function ThreadRowComponent({
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
             revealOnHover={!isParentCollapsed}
           />
+        ) : null}
+        {crossProjectLabel !== null ? (
+          <span
+            data-sidebar-thread-cross-project=""
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            title={crossProjectLabel}
+            className={cn(
+              "relative ml-auto max-w-[min(4rem,25%)] shrink-0 truncate pe-0.5 text-2xs font-normal text-muted-foreground italic",
+              overlayProjectLabel && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+            )}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              rowLinkRef.current?.click();
+            }}
+          >
+            {crossProjectName || "Another project"}
+          </span>
         ) : null}
       </span>
       {rowDragBindings && !rowDragBindings.disabled && !isActionsOpen ? (

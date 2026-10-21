@@ -962,12 +962,10 @@ describe("ThreadRow", () => {
     const marker = container.querySelector(
       "[data-sidebar-thread-cross-project]",
     );
-    expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
-    expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
+    expect(marker?.textContent).toBe("Web App");
+    expect(marker?.getAttribute("title")).toBe("In project Web App");
     expect(
-      marker?.parentElement?.previousElementSibling?.querySelector(
-        ".bb-thread-title",
-      ),
+      marker?.previousElementSibling?.querySelector(".bb-thread-title"),
     ).not.toBeNull();
     expect(
       marker?.closest("[data-sidebar-thread-trailing-indicator]"),
@@ -989,8 +987,8 @@ describe("ThreadRow", () => {
     expect(
       container
         .querySelector("[data-sidebar-thread-cross-project]")
-        ?.getAttribute("aria-label"),
-    ).toBe("In another project");
+        ?.textContent,
+    ).toBe("Another project");
   });
 
   it("opens the thread when the cross-project marker is clicked", () => {
