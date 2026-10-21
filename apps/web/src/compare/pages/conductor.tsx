@@ -79,11 +79,14 @@ export const comparison: Comparison = {
         { ...BB_ROWS.macos, competitor: cell("yes", "Mac app") },
         {
           ...BB_ROWS.mobile,
-          competitor: linkedCell(
-            "partial",
-            "iOS: cloud and experimental Mac remote control",
-            "https://www.conductor.build/docs/reference/remote-control",
-          ),
+          competitor: {
+            ...linkedCell(
+              "partial",
+              "iOS: cloud and experimental Mac remote control",
+              "https://www.conductor.build/docs/reference/remote-control",
+            ),
+            pro: true,
+          },
         },
       ],
     },
@@ -112,7 +115,7 @@ export const comparison: Comparison = {
           ...BB_ROWS.handoff,
           competitor: {
             ...linkedCell(
-              "yes",
+              "partial",
               "Hosted MCP and API for cloud workspaces (beta)",
               "https://www.conductor.build/docs/api/mcp",
             ),
@@ -193,14 +196,15 @@ export const comparison: Comparison = {
           answer: (
             <>
               <p>
-                Two comments in a public Conductor discussion describe the
+                Two comments in a public r/conductorbuild thread that asked
+                users for their favourite thing in Conductor describe the
                 appeal of keeping the work together:
               </p>
               <blockquote>
                 <p>“I like that it fits my workflow. Everything I need is right there.”</p>
                 <p>
                   <a href="https://www.reddit.com/r/conductorbuild/comments/1wp7deq/favourite_thing_in_conductor/pbuil6i/">
-                    u/vassyz, September 24, 2026
+                    A Reddit user in r/conductorbuild, September 24, 2026
                   </a>
                 </p>
               </blockquote>
@@ -212,7 +216,7 @@ export const comparison: Comparison = {
                 </p>
                 <p>
                   <a href="https://www.reddit.com/r/conductorbuild/comments/1wp7deq/favourite_thing_in_conductor/pbxng4x/">
-                    u/NSEGmc, September 25, 2026
+                    A Reddit user in r/conductorbuild, September 25, 2026
                   </a>
                 </p>
               </blockquote>
@@ -233,7 +237,7 @@ export const comparison: Comparison = {
               Git worktrees. bb is free for any team size, open source, and runs
               on Mac, Windows, and Linux. Conductor is a closed-source Mac app
               that’s free locally, with cloud workspaces, scheduled routines,
-              and multiplayer on the Pro plan, at $50 a month. Its iOS app
+              multiplayer, and its mobile app on the Pro plan, at $50 a month. Its iOS app
               also supports experimental remote control of local Mac workspaces.{" "}
               <a href="https://www.conductor.build/docs/reference/remote-control">
                 Conductor’s remote-control guide
@@ -368,6 +372,8 @@ export const comparison: Comparison = {
               experimental remote control of local Mac workspaces
             </a>
             . The Mac must stay awake, online, and running Conductor.
+            Conductor’s <a href="https://www.conductor.build/pricing">pricing</a>
+            {" "}lists the mobile app under Pro.
           </>,
         ),
         faqSchedule("Conductor’s routines run only in its cloud, on Pro."),
@@ -419,7 +425,7 @@ export const comparison: Comparison = {
       title: "Price, platforms, and privacy",
       items: [
         faqFree(
-          ", while Conductor’s Pro plan includes cloud workspaces and routines at $50 a month",
+          ", while Conductor’s Pro plan includes cloud workspaces, routines, and its mobile app at $50 a month",
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(null),
