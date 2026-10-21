@@ -42,8 +42,9 @@ Reply with the machine, each reported window and reset time, any missing informa
 
 export const guide: Guide = {
   ...meta,
-  headline: "Hit a Usage Limit? Use Both",
-  description: "See each agent’s usage and switch agents.",
+  headline: "Hit a usage limit? Keep going with your other agent",
+  description:
+    "See each agent’s reported usage, then hand work to the other agent in a new thread.",
   heroTop: null,
   requirement: null,
   concept: (
@@ -86,8 +87,8 @@ export const guide: Guide = {
       </table>
       <p>
         Use Codex and Claude Code in bb on your own plans. If one reaches its
-        limit, start a thread with the other when it has allowance left.
-        Switching agents does not reset either provider’s limits.
+        limit, start a thread with the other when it has allowance left. Using
+        the other agent doesn’t reset either provider’s limits.
       </p>
       <p className="gd-usage-note">
         Plans and windows can change. API-key accounts follow their own billing
@@ -114,7 +115,7 @@ export const guide: Guide = {
             </li>
             <li>
               Compare the reported windows for Codex and Claude Code. Missing
-              usage does not mean an account has unlimited allowance.
+              usage doesn’t mean an account has unlimited allowance.
             </li>
           </Substeps>
           <p>
@@ -127,7 +128,7 @@ export const guide: Guide = {
       ),
       shot: {
         src: "/guides/codex-claude-code-usage-limits/provider-usage.png",
-        alt: "Provider usage in bb, with separate usage windows and reset times for the selected machine’s accounts.",
+        alt: "Provider usage in bb, with separate usage windows and reset times for the selected machine’s accounts (demo values).",
         width: 2048,
         height: 1280,
       },
@@ -146,7 +147,7 @@ export const guide: Guide = {
             </li>
             <li>
               Give it the task, relevant files, what is already done and the
-              next step. A new thread does not inherit the other agent’s
+              next step. A new thread doesn’t inherit the other agent’s
               conversation.
             </li>
             <li>
@@ -176,7 +177,7 @@ export const guide: Guide = {
         <p>
           Some plans do not report usage windows. That is different from a
           failed refresh or an expired sign-in. Check the message in Provider
-          usage and the provider’s own usage page. bb does not show unavailable
+          usage and the provider’s own usage page. bb doesn’t show unavailable
           usage as zero.
         </p>
       ),
@@ -220,12 +221,12 @@ export const guide: Guide = {
     FAQ_SUBSCRIPTIONS,
     {
       question:
-        "Does switching agents give me more Codex or Claude Code usage?",
+        "Does using both agents give me more Codex or Claude Code usage?",
       answer: (
         <p>
-          No. Each provider keeps its own limits. Switching means starting work
-          with another agent on an account you already have, if that account has
-          allowance available. bb does not increase or reset either limit.
+          No. Each provider keeps its own limits. That means starting work with
+          another agent on an account you already have, if that account has
+          allowance available. bb doesn’t increase or reset either limit.
         </p>
       ),
     },
