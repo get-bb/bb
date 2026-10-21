@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { z } from "zod";
 import type {
+  ExperimentalThreadFixedTabDeclaration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
   ExperimentalCodeFenceRendererRegistration,
@@ -29,6 +30,7 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
+  ExperimentalThreadContextSegmentRegistration,
   PluginThreadHeaderActionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -372,6 +374,8 @@ export interface CollectedPluginAppRegistrations {
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
+  threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
+  threadFixedTabs: ExperimentalThreadFixedTabDeclaration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   newThreadPanelActions: PluginNewThreadPanelActionRegistration[];
   composerCustomizations: ComposerCustomization[];
@@ -502,6 +506,8 @@ export function collectPluginAppRegistrations(
     settingsSections: [],
     appOverlays: [],
     navPanels: [],
+    threadContextSegments: [],
+    threadFixedTabs: [],
     threadPanelActions: [],
     newThreadPanelActions: [],
     composerCustomizations: [],
@@ -533,6 +539,7 @@ export function collectPluginAppRegistrations(
     settingsSection: new Set<string>(),
     appOverlay: new Set<string>(),
     navPanel: new Set<string>(),
+    threadFixedTab: new Set<string>(),
     threadPanelAction: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
@@ -543,6 +550,7 @@ export function collectPluginAppRegistrations(
     sidebarNavigation: new Set<string>(),
     sidebarHeader: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    threadContextSegment: new Set<string>(),
     threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -804,6 +812,51 @@ export function collectPluginAppRegistrations(
             : {}),
         });
       },
+      experimental_threadFixedTab(registration) {
+        const kind = "slots.experimental_threadFixedTab";
+        if (
+          registration.useVisible !== undefined &&
+          typeof registration.useVisible !== "function"
+        ) {
+          throw new Error(`${kind}: "useVisible" must be a function when set`);
+        }
+        const target = registration.experimental_target;
+        if (
+          target !== undefined &&
+          (target === null ||
+            typeof target !== "object" ||
+            typeof target.validate !== "function")
+        )
+          throw new Error(
+            `${kind}: "experimental_target.validate" must be a function when set`,
+          );
+        collected.threadFixedTabs.push({
+          ...collectPanelAction(kind, seenIds.threadFixedTab, registration),
+          ...(target === undefined ? {} : { experimental_target: target }),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          ...(registration.experimental_shortcutCommandId === undefined
+            ? {}
+            : {
+                experimental_shortcutCommandId: requireNonEmptyString(
+                  kind,
+                  "experimental_shortcutCommandId",
+                  registration.experimental_shortcutCommandId,
+                ),
+              }),
+          ...(registration.tooltip === undefined
+            ? {}
+            : {
+                tooltip: requireNonEmptyString(
+                  kind,
+                  "tooltip",
+                  registration.tooltip,
+                ),
+              }),
+          ...(registration.useVisible !== undefined
+            ? { useVisible: registration.useVisible }
+            : {}),
+        });
+      },
       threadPanelAction(registration) {
         collected.threadPanelActions.push(
           collectPanelAction(
@@ -886,11 +939,53 @@ export function collectPluginAppRegistrations(
           ...(headerComponent !== undefined ? { headerComponent } : {}),
         });
       },
+      experimental_threadContextSegment(registration) {
+        const kind = "slots.experimental_threadContextSegment";
+        const result = collectTitledComponent(
+          kind,
+          seenIds.threadContextSegment,
+          registration,
+        );
+        if (
+          registration.placement !== undefined &&
+          registration.placement !== "inline" &&
+          registration.placement !== "before"
+        ) {
+          throw new Error(`${kind}: invalid placement`);
+        }
+        if (
+          registration.useVisible !== undefined &&
+          typeof registration.useVisible !== "function"
+        ) {
+          throw new Error(`${kind}: useVisible must be a function`);
+        }
+        collected.threadContextSegments.push({
+          ...result,
+          placement: registration.placement ?? "inline",
+          ...(registration.useVisible
+            ? { useVisible: registration.useVisible }
+            : {}),
+        });
+      },
       experimental_threadHeaderAction(registration) {
         const kind = "slots.experimental_threadHeaderAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadHeaderAction, id);
+        if (
+          registration.experimental_useOverflowActions !== undefined &&
+          typeof registration.experimental_useOverflowActions !== "function"
+        ) {
+          throw new Error(
+            `${kind}: experimental_useOverflowActions must be a function`,
+          );
+        }
         collected.threadHeaderActions.push({
+          ...(registration.experimental_useOverflowActions
+            ? {
+                experimental_useOverflowActions:
+                  registration.experimental_useOverflowActions,
+              }
+            : {}),
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),

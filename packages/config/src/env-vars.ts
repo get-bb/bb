@@ -310,6 +310,13 @@ export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_FF_INITIATOR_TELEMETRY_ENV = defineEnvVar<boolean>({
+  description:
+    "Adds a fixed initiator value (user, agent, automation, plugin or system) to anonymous thread_created and user_message_sent telemetry. On by default; set false to omit it.",
+  name: "BB_FF_INITIATOR_TELEMETRY",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
   description:
     "Max events one thread-timeline window may span. Raise far above the default to restore unbounded windows.",
@@ -414,5 +421,7 @@ export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_MARKETPLACE_URL =
   "https://getbb.app/marketplace/v2/marketplace.json";
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
+export const DEFAULT_BB_FF_INITIATOR_TELEMETRY =
+  defaultFeatureFlags.initiatorTelemetry;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;

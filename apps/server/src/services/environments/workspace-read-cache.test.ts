@@ -164,38 +164,26 @@ describe("EnvironmentReadCache", () => {
 });
 
 describe("WorkspaceReadCaches", () => {
-  const statusResult = {
-    outcome: "unavailable" as const,
-    failure: {
-      code: "unknown" as const,
-      workspacePath: "/tmp/env-1",
-      message: "no git",
-    },
-  };
   const pullRequestResult = { outcome: "absent" as const };
 
-  async function primeBoth(caches: WorkspaceReadCaches) {
-    const status = createCounter([statusResult, statusResult, statusResult]);
+  async function primePullRequest(caches: WorkspaceReadCaches) {
     const pullRequest = createCounter([
       pullRequestResult,
       pullRequestResult,
       pullRequestResult,
     ]);
-    await caches.status.read({ ...READ, load: status.load });
     await caches.pullRequest.read({ ...READ, load: pullRequest.load });
     return {
-      async readBoth() {
-        await caches.status.read({ ...READ, load: status.load });
+      async readPullRequest() {
         await caches.pullRequest.read({ ...READ, load: pullRequest.load });
         return {
-          status: status.loads.length,
           pullRequest: pullRequest.loads.length,
         };
       },
     };
   }
 
-  it("refreshes local status on file edits and refreshes pull requests only on ref or lifecycle changes", async () => {
+  it("refreshes pull requests only on ref or lifecycle changes", async () => {
     for (const { changes, expectedPullRequestLoads } of [
       { changes: ["work-status-changed"], expectedPullRequestLoads: 1 },
       { changes: ["git-refs-changed"], expectedPullRequestLoads: 2 },
@@ -212,7 +200,7 @@ describe("WorkspaceReadCaches", () => {
       const hub = createFakeHub();
       const clock = createClock();
       const caches = new WorkspaceReadCaches({ hub, now: clock.now });
-      const primed = await primeBoth(caches);
+      const primed = await primePullRequest(caches);
 
       hub.emit({
         type: "changed",
@@ -220,7 +208,7 @@ describe("WorkspaceReadCaches", () => {
         id: "env-2",
         changes: [...changes],
       });
-      expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
+      expect(await primed.readPullRequest()).toEqual({ pullRequest: 1 });
 
       hub.emit({
         type: "changed",
@@ -228,14 +216,12 @@ describe("WorkspaceReadCaches", () => {
         id: "env-1",
         changes: [...changes],
       });
-      expect(await primed.readBoth()).toEqual({
-        status: 2,
+      expect(await primed.readPullRequest()).toEqual({
         pullRequest: expectedPullRequestLoads,
       });
 
       clock.advance(10_000);
-      expect(await primed.readBoth()).toEqual({
-        status: 3,
+      expect(await primed.readPullRequest()).toEqual({
         pullRequest: expectedPullRequestLoads + 1,
       });
     }
@@ -244,7 +230,7 @@ describe("WorkspaceReadCaches", () => {
   it("keeps cached reads across record-only environment changes", async () => {
     const hub = createFakeHub();
     const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
-    const primed = await primeBoth(caches);
+    const primed = await primePullRequest(caches);
 
     hub.emit({
       type: "changed",
@@ -256,13 +242,13 @@ describe("WorkspaceReadCaches", () => {
         "diff-viewed-changed",
       ],
     });
-    expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 1 });
   });
 
   it("drops cached reads for a host when that host connects or disconnects", async () => {
     const hub = createFakeHub();
     const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
-    const primed = await primeBoth(caches);
+    const primed = await primePullRequest(caches);
 
     hub.emit({
       type: "changed",
@@ -270,7 +256,7 @@ describe("WorkspaceReadCaches", () => {
       id: "host-2",
       changes: ["host-connected"],
     });
-    expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 1 });
 
     hub.emit({
       type: "changed",
@@ -278,13 +264,13 @@ describe("WorkspaceReadCaches", () => {
       id: "host-1",
       changes: ["host-connected"],
     });
-    expect(await primed.readBoth()).toEqual({ status: 2, pullRequest: 2 });
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 2 });
   });
 
   it("keeps a host's cached reads when only its provider model catalog changed", async () => {
     const hub = createFakeHub();
     const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
-    const primed = await primeBoth(caches);
+    const primed = await primePullRequest(caches);
 
     hub.emit({
       type: "changed",
@@ -292,57 +278,22 @@ describe("WorkspaceReadCaches", () => {
       id: "host-1",
       changes: ["provider-model-catalog-changed"],
     });
-    expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 1 });
   });
 
-  it("drops both caches when a server-side mutation invalidates the environment or host", async () => {
+  it("drops the pull request cache when a server-side mutation invalidates the environment or host", async () => {
     const hub = createFakeHub();
     const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
-    const primed = await primeBoth(caches);
+    const primed = await primePullRequest(caches);
 
     caches.invalidateEnvironment("env-2");
     caches.invalidateHost("host-2");
-    expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 1 });
 
     caches.invalidateEnvironment("env-1");
-    expect(await primed.readBoth()).toEqual({ status: 2, pullRequest: 2 });
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 2 });
 
     caches.invalidateHost("host-1");
-    expect(await primed.readBoth()).toEqual({ status: 3, pullRequest: 3 });
-  });
-});
-
-describe("diff-file in-flight reads", () => {
-  it("shares concurrent requests, but never reuses a completed result or joins work invalidated by an edit", async () => {
-    const hub = createFakeHub();
-    const caches = new WorkspaceReadCaches({ hub });
-    const result = {
-      outcome: "available" as const,
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-      truncated: false,
-    };
-    const counter = createCounter([result]);
-    const first = caches.diffFiles.read({ ...READ, load: counter.load });
-    const same = caches.diffFiles.read({ ...READ, load: counter.load });
-    expect(counter.loads).toHaveLength(1);
-    await Promise.all([first, same]);
-    const second = caches.diffFiles.read({ ...READ, load: counter.load });
-    expect(counter.loads).toHaveLength(2);
-    hub.emit({
-      type: "changed",
-      entity: "environment",
-      id: READ.environmentId,
-      changes: ["work-status-changed"],
-    });
-    const afterEdit = caches.diffFiles.read({ ...READ, load: counter.load });
-    expect(counter.loads).toHaveLength(3);
-    counter.loads[1]?.resolve(result);
-    await second;
-    const stillPending = caches.diffFiles.read({ ...READ, load: counter.load });
-    expect(counter.loads).toHaveLength(3);
-    counter.loads[2]?.resolve(result);
-    await Promise.all([afterEdit, stillPending]);
+    expect(await primed.readPullRequest()).toEqual({ pullRequest: 3 });
   });
 });

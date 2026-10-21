@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_PANES, countPanes, listPanes } from "@/lib/split-layout";
 import {
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
-  createGitDiffFixedPanelTab,
+  createPluginFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
 } from "@/lib/fixed-panel-tabs-state";
@@ -32,7 +32,10 @@ import {
   type SidebarSplitStorage,
 } from "./sidebarSplitLayout";
 
-const SIDEBAR_DIFF_TAB_ID = createGitDiffFixedPanelTab().id;
+const SIDEBAR_DIFF_TAB_ID = createPluginFixedPanelTab({
+  pluginId: "bb--git",
+  tabId: "diff",
+}).id;
 const TABS = [SIDEBAR_FIXED_INFO_TAB_ID, SIDEBAR_DIFF_TAB_ID, "file-a"];
 
 function createMemoryStorage(

@@ -3,7 +3,7 @@ import {
   REWRITE_LOCALHOST_LINKS_DEFAULT,
   REWRITE_LOCALHOST_LINKS_STORAGE_KEY,
 } from "@bb/client-core";
-import { createBooleanPreferenceAtom } from "./browser-storage";
+import { createBooleanPreferenceAtom } from "@bb/shared-ui/lib/browser-storage";
 
 export { rewriteLocalhostLinkHref } from "@bb/client-core";
 

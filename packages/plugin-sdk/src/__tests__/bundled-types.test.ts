@@ -22,9 +22,7 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).toContain(
       "upload(args: ProjectAttachmentUploadArgs): Promise<ProjectAttachmentUploadResult>;",
     );
-    expect(declarations).toContain(
-      "type EnvironmentStatusResult = EnvironmentStatusResponse;",
-    );
+    expect(declarations).toContain("type EnvironmentGetResult = Environment;");
     expect(declarations).toContain("interface PluginCatalogArea");
     expect(declarations).toContain("catalog: PluginCatalogArea;");
     expect(declarations).toContain("getSource(args: PluginGetSourceArgs)");

@@ -3,7 +3,12 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PanelStage } from "../ThreadMetadataContent.fixtures";
 import { ThreadMetadataCard } from "../ThreadMetadataContent";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
-import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
+import {
+  InfoList,
+  InfoListRow,
+  InfoRowTime,
+  InfoSection,
+} from "@/components/secondary-panel/info/info-list";
 
 export default {
   title: "right-panel/Info/List primitives",

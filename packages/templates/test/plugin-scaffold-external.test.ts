@@ -195,13 +195,12 @@ async function verifyFullSdk(bb: BbPluginApi) {
   });
   const attachmentPath: string = attachment.path;
 
-  const environment = await bb.sdk.environments.status({
+  const environment = await bb.sdk.environments.get({
     environmentId: "env_fixture",
   });
-  const outcome: "available" | "not_applicable" | "unavailable" =
-    environment.outcome;
+  const environmentId: string = environment.id;
 
-  return { attachmentPath, outcome, projectName, sha256, sourceId, threadId };
+  return { attachmentPath, environmentId, projectName, sha256, sourceId, threadId };
 }
 
 export default function plugin(bb: BbPluginApi) {

@@ -3,7 +3,7 @@ import {
   getAbsoluteGitDir,
   getGitCommonDir,
   type GitProcessOptions,
-} from "./git.js";
+} from "bb-git-host/git";
 
 function isSamePathOrNestedUnder(
   childPath: string,

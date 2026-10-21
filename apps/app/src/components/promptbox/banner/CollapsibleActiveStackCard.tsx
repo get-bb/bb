@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@bb/shared-ui/prompt-stack-body";
 import {
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-} from "@/components/promptbox/banner/PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 import {
   activityIconClass,
   activityRowClass,

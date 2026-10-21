@@ -48,12 +48,7 @@ export const READ_ONLY_COMMAND_PATHS: ReadonlySet<string> = new Set([
   "thread interactions show",
   "environment list",
   "environment show",
-  "environment status",
   "environment paths",
-  "environment diff",
-  "environment diff-files",
-  "environment diff-file",
-  "environment diff-patch",
   "environment providers",
   "environment pull-request show",
   "file read",
@@ -152,6 +147,7 @@ export function evaluateCliAccess(
   argv: readonly string[],
   mode: McpToolMode,
   knownPaths: ReadonlySet<string>,
+  pluginReadPaths: ReadonlySet<string> = new Set(),
 ): CliAccessDecision {
   if (argv.length === 0) return deny("Pass at least one argument.");
   if (argv.length > MAX_CLI_ARGUMENTS) {
@@ -186,13 +182,20 @@ export function evaluateCliAccess(
   if (mode === "write") return { allowed: true };
 
   if (argv.length === 1 && argv[0] === "--version") return { allowed: true };
-  if (isHelpRequest(argv, knownPaths)) return { allowed: true };
-  const path = longestKnownPath(words, knownPaths);
-  if (path !== null && READ_ONLY_COMMAND_PATHS.has(path)) {
+  if (isHelpRequest(argv, new Set([...knownPaths, ...pluginReadPaths])))
+    return { allowed: true };
+  const path = longestKnownPath(
+    words,
+    new Set([...knownPaths, ...pluginReadPaths]),
+  );
+  if (
+    path !== null &&
+    (READ_ONLY_COMMAND_PATHS.has(path) || pluginReadPaths.has(path))
+  ) {
     return { allowed: true };
   }
   const shown = path ?? words.slice(0, 3).join(" ");
   return deny(
-    `\`bb ${shown}\` is not on the read-only list. The \`read\` tool accepts only the canonical command names that inspect bb (no aliases, no plugin commands). Use the \`run\` tool for anything else.`,
+    `\`bb ${shown}\` is not on the read-only list. The \`read\` tool accepts only the canonical command names that inspect bb (core commands and plugin commands declared read-only). Use the \`run\` tool for anything else.`,
   );
 }

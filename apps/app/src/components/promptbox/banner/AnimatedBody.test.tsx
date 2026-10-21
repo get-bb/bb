@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
-import { AnimatedBody } from "./AnimatedBody";
+import { AnimatedBody } from "@bb/shared-ui/prompt-stack-body";
 import { ThreadBackgroundCommandsCard } from "./ThreadBackgroundCommandsCard";
 
 afterEach(() => {

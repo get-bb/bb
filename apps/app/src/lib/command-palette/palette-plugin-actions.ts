@@ -1,3 +1,7 @@
+import {
+  createPluginFixedTabOpener,
+  getActiveFixedTabOpener,
+} from "@/lib/app-fixed-tab-navigation";
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
 import type { PluginCommandContext } from "@get-bb/plugin-sdk";
 import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
@@ -29,7 +33,13 @@ function actionContext(
   slot: AppCommandSlot,
   args: BuildPluginPaletteActionsArgs,
 ): PluginCommandContext {
+  const openFixedTab = createPluginFixedTabOpener(
+    slot.pluginId,
+    (intent) => getActiveFixedTabOpener()?.(intent) ?? false,
+  );
   return {
+    experimental_openThreadFixedTab: (options) =>
+      openFixedTab({ ...options, surface: { kind: "current" } }),
     threadId: args.threadId,
     projectId: args.projectId,
     openPanel: (options) => {

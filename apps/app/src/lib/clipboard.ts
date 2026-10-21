@@ -1,15 +1,13 @@
+import {
+  createClipboardCopyWithToast,
+  type CopyToClipboardOptions,
+} from "@bb/shared-ui/clipboard";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { appToast } from "@/components/ui/app-toast";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { getNativeShell } from "@/lib/native-shell/native-shell";
 import { buildMessageClipboardHtml } from "./message-clipboard";
-
-interface CopyToClipboardOptions {
-  successMessage?: string | null;
-  errorMessage?: string | null;
-  imageUrl?: string;
-}
 
 async function convertImageBlobToPng(blob: Blob): Promise<Blob> {
   if (blob.type.toLowerCase() === "image/png") {
@@ -196,28 +194,11 @@ async function copyTextAndImageToClipboard(
   }
 }
 
-export async function copyToClipboardWithToast(
-  text: string,
-  {
-    successMessage = "Copied",
-    errorMessage = "Failed to copy",
-    imageUrl,
-  }: CopyToClipboardOptions = {},
-): Promise<boolean> {
-  const copied = imageUrl
-    ? await copyTextAndImageToClipboard(text, imageUrl)
-    : await copyToClipboard({ text });
-  if (copied) {
-    if (successMessage) appToast.success(successMessage);
-    return true;
-  }
-  if (imageUrl && text && (await copyToClipboard({ text }))) {
-    appToast.success("Copied text; image could not be copied");
-    return true;
-  }
-  if (errorMessage) appToast.error(errorMessage);
-  return false;
-}
+export const copyToClipboardWithToast = createClipboardCopyWithToast({
+  copyText: copyToClipboard,
+  copyTextAndImage: copyTextAndImageToClipboard,
+  toast: appToast,
+});
 
 export interface ClipboardCopyOptions extends CopyToClipboardOptions {
   text: string;

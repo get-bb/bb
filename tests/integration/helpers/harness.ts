@@ -323,6 +323,7 @@ async function startIntegrationServer(
   pluginService.bindSdk({ baseUrl });
   const builtinPlugins = new Set([
     PROJECT_CHECKOUT_BUILTIN_PLUGIN,
+    "git",
     ...(options.builtinPlugins ?? []),
   ]);
   for (const name of builtinPlugins) {

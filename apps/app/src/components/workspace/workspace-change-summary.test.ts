@@ -1,4 +1,7 @@
-import type { WorkspaceCommitSummary, WorkspaceFileStatus } from "@bb/domain";
+import type {
+  WorkspaceCommitSummary,
+  WorkspaceFileStatus,
+} from "bb-git-contract";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
@@ -11,7 +14,7 @@ import {
   selectWorkspaceAheadCommits,
   selectWorkspaceChangedFilesSection,
   selectWorkspaceChangedFilesSections,
-} from "./workspace-change-summary";
+} from "bb-plugin-bb--git/workspace-change-summary";
 
 function makeWorkspaceFileStatus(
   status: WorkspaceFileStatus["status"],

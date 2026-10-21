@@ -28,7 +28,6 @@ export const FIXED_PANEL_TABS_IDLE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000;
 
 const SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE = "none";
 const THREAD_INFO_TAB_ID = "thread-info:thread-info:none";
-const GIT_DIFF_TAB_ID = "git-diff:git-diff:none";
 const NEW_TAB_TAB_ID = "new-tab:new-tab:none";
 
 const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource> =
@@ -65,10 +64,22 @@ const threadInfoFixedPanelTabSchema = z
     kind: z.literal("thread-info"),
   })
   .strict();
-const gitDiffFixedPanelTabSchema = z
+const legacyGitDiffFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
     kind: z.literal("git-diff"),
+  })
+  .strict()
+  .transform((tab) => ({
+    ...createPluginFixedPanelTab({ pluginId: "bb--git", tabId: "diff" }),
+    id: tab.id,
+  }));
+const pluginFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("plugin-fixed"),
+    pluginId: z.string().min(1),
+    tabId: z.string().min(1),
   })
   .strict();
 const pluginPageFixedPanelTabSchema = z
@@ -164,7 +175,8 @@ const pluginPanelFixedPanelTabSchema = z
   .strict();
 const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
-  gitDiffFixedPanelTabSchema,
+  legacyGitDiffFixedPanelTabSchema,
+  pluginFixedPanelTabSchema,
   pluginPageFixedPanelTabSchema,
   pluginPanelFixedPanelTabSchema,
   workspaceFilePreviewFixedPanelTabSchema,
@@ -209,9 +221,11 @@ interface ThreadInfoFixedPanelTab {
   kind: "thread-info";
 }
 
-interface GitDiffFixedPanelTab {
+export interface PluginFixedPanelTab {
   id: string;
-  kind: "git-diff";
+  kind: "plugin-fixed";
+  pluginId: string;
+  tabId: string;
 }
 
 export interface PluginPageFixedPanelTab {
@@ -224,8 +238,8 @@ export interface PluginPageFixedPanelTab {
 
 export type FixedPanelViewTab =
   | ThreadInfoFixedPanelTab
-  | GitDiffFixedPanelTab
-  | PluginPageFixedPanelTab;
+  | PluginPageFixedPanelTab
+  | PluginFixedPanelTab;
 
 export interface PluginPanelFixedPanelTab {
   actionId: string;
@@ -299,8 +313,8 @@ export interface TerminalFixedPanelTab {
 
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
-  | GitDiffFixedPanelTab
   | PluginPageFixedPanelTab
+  | PluginFixedPanelTab
   | PluginPanelFixedPanelTab
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
@@ -546,10 +560,18 @@ export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
   };
 }
 
-export function createGitDiffFixedPanelTab(): GitDiffFixedPanelTab {
+export function createPluginFixedPanelTab({
+  pluginId,
+  tabId,
+}: {
+  pluginId: string;
+  tabId: string;
+}): PluginFixedPanelTab {
   return {
-    id: GIT_DIFF_TAB_ID,
-    kind: "git-diff",
+    id: `plugin-fixed:${encodeURIComponent(pluginId)}:${encodeURIComponent(tabId)}`,
+    kind: "plugin-fixed",
+    pluginId,
+    tabId,
   };
 }
 
@@ -735,13 +757,10 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
             ...tab,
             id: THREAD_INFO_TAB_ID,
           };
-    case "git-diff":
-      return tab.id === GIT_DIFF_TAB_ID
-        ? tab
-        : {
-            ...tab,
-            id: GIT_DIFF_TAB_ID,
-          };
+    case "plugin-fixed": {
+      const id = createPluginFixedPanelTab(tab).id;
+      return tab.id === id ? tab : { ...tab, id };
+    }
     case "plugin-page-fixed": {
       const id = createPluginPageFixedPanelTab({
         fixedTabId: tab.fixedTabId,
@@ -879,7 +898,7 @@ function stripTransientFixedPanelTabForStorage(
         lineRange: null,
       };
     case "thread-info":
-    case "git-diff":
+    case "plugin-fixed":
     case "plugin-page-fixed":
     case "attachment-file-preview":
     case "browser":
@@ -1087,9 +1106,14 @@ export function areFixedPanelTabsEquivalent(
   }
   switch (a.kind) {
     case "thread-info":
-    case "git-diff":
     case "new-tab":
       return true;
+    case "plugin-fixed":
+      return (
+        b.kind === "plugin-fixed" &&
+        a.pluginId === b.pluginId &&
+        a.tabId === b.tabId
+      );
     case "plugin-page-fixed":
       return (
         b.kind === "plugin-page-fixed" &&

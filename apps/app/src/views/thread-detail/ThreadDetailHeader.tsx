@@ -70,11 +70,10 @@ interface ThreadDetailHeaderProps {
   onClosePane?: () => void;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
-  pluginActions?: ReactNode;
+  pluginActions?: (overflow: boolean) => ReactNode;
   threadHeaderGitActions: ThreadHeaderGitAction[];
   threadId: string;
   threadTitle: string;
-  workspaceOpenButton?: ReactNode;
 }
 
 export function ThreadDetailHeader({
@@ -87,7 +86,6 @@ export function ThreadDetailHeader({
   threadHeaderGitActions,
   threadId,
   threadTitle,
-  workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
@@ -239,12 +237,7 @@ export function ThreadDetailHeader({
         className="flex items-center gap-1"
         data-thread-header-workflow-actions=""
       >
-        {pluginActions}
-        {!usesResponsiveActionOverflow && workspaceOpenButton ? (
-          <span className="inline-flex" data-thread-header-responsive-action="">
-            {workspaceOpenButton}
-          </span>
-        ) : null}
+        {pluginActions?.(usesResponsiveActionOverflow)}
         {!usesResponsiveActionOverflow && primaryAction ? (
           <span className="inline-flex" data-thread-header-responsive-action="">
             {secondaryActions.length > 0 ? (

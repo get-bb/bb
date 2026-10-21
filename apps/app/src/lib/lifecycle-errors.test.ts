@@ -7,7 +7,7 @@ import {
   parseLifecycleError,
   type LifecycleErrorDescription,
   type LifecycleErrorOperation,
-} from "./lifecycle-errors";
+} from "@bb/core-ui/lifecycle-errors";
 
 interface DescriptionCase {
   body: LifecycleApiError;

@@ -1,3 +1,21 @@
+import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
+import { ThreadTimelineLoadingSkeleton } from "@/components/thread/timeline/ThreadTimelineLoadingSkeleton";
+import {
+  usePublishFixedTabOpener,
+  useThreadFixedTabTargetLifetime,
+} from "@/lib/app-fixed-tab-navigation";
+import { useStore } from "jotai";
+import {
+  fixedTabTargetAtomFamily,
+  threadFixedTabTargetKey,
+} from "@/lib/app-fixed-tab-navigation";
+import {
+  createThreadFixedTabDestination,
+  useThreadFixedTabs,
+  buildThreadFixedPanelViewTabs,
+  createThreadFixedTabDescriptor,
+  type ThreadFixedTabEntry,
+} from "@/components/plugin/PluginThreadFixedTabs";
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
@@ -44,7 +62,6 @@ import type {
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   PluginDetailPanelContext,
   usePluginDetailPanelState,
@@ -66,8 +83,8 @@ import {
   useEnvironment,
   getEnvironmentPullRequestFromResponse,
   useEnvironmentPullRequest,
-  useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
+import { useEnvironmentWorkStatus } from "../../hooks/queries/environment-work-status";
 import {
   useChildThreadPendingAttention,
   type ChildThreadPendingAttentionSource,
@@ -87,8 +104,6 @@ import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
-import { ThreadTimelineLoadingSkeleton } from "@/components/thread/timeline/ThreadTimelineLoadingSkeleton";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import type { PluginThreadActionsInlineItem } from "@get-bb/plugin-sdk";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
@@ -97,7 +112,7 @@ import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
-import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
+import { CoreWorkspaceHeaderContext } from "@/components/thread/core-thread-header-actions";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -121,17 +136,14 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "bb-plugin-bb--git/workspace-checkout-display";
 import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
   resolveAbsoluteFilePath,
-} from "@/lib/absolute-file-path";
-import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
-import {
-  selectWorkspaceChangedFilesSection,
-  type WorkspaceChangedFileSelection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/lib/absolute-file-path";
+import { getGitStatusDisplay } from "bb-plugin-bb--git/workspace-status";
+import { selectWorkspaceChangedFilesSection } from "bb-plugin-bb--git/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
 import {
@@ -143,28 +155,20 @@ import {
   type PromptDraftAttachment,
   type PromptDraftState,
 } from "@bb/client-core";
-import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
+import { createLocalStorageEnumStorage } from "@bb/shared-ui/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
-import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
-import {
-  createGitDiffFixedTabDestination,
-  GIT_DIFF_FIXED_TAB_REFERENCE,
-} from "@/components/secondary-panel/git-diff/git-diff-fixed-tab-navigation";
-import {
-  createThreadInfoFixedTabDestination,
-  THREAD_INFO_FIXED_TAB_REFERENCE,
-} from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
+import { GIT_DIFF_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/git-diff/git-diff-fixed-tab-navigation";
+import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 import {
-  type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
@@ -237,7 +241,6 @@ import type {
   SecondaryPanelFixedTab,
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
@@ -249,7 +252,6 @@ import { usePendingTerminalIds } from "@/components/thread/terminal/pending-term
 import {
   buildOpenInEditorHandler,
   resolveEnvironmentOpenContext,
-  resolveWorkspaceChangedFileOpenTarget,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
 import {
@@ -269,11 +271,7 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import {
-  createGitDiffFixedPanelTab,
-  createThreadInfoFixedPanelTab,
-  type SecondaryFileFixedPanelTab,
-} from "@/lib/fixed-panel-tabs-state";
+import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -311,15 +309,6 @@ const pullRequestMergeMethodAtom = atomWithStorage<PullRequestMergeMethod>(
   ),
   { getOnInit: true },
 );
-
-type MergeBasePickerOpenChangeHandler = NonNullable<
-  ContextBannerMergeBaseConfig["onPickerOpenChange"]
->;
-type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
-type OpenInEditorHandler = NonNullable<
-  ReturnType<typeof buildOpenInEditorHandler>
->;
-type OpenFilePreviewHandler = (relativePath: string) => void;
 
 interface SentMessageEditSession {
   draft: PromptDraftState;
@@ -484,6 +473,10 @@ function RoutedThreadDetailView() {
 
 queueSplitDownload("queued-messages-list");
 
+type OpenInEditorHandler = NonNullable<
+  ReturnType<typeof buildOpenInEditorHandler>
+>;
+
 export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
@@ -540,19 +533,19 @@ function ThreadDetailViewInternal(
     hasResolvedThread: thread !== undefined,
     threadArchived: thread?.archivedAt != null || executionUnavailable,
   });
+  const threadFixedTabs = useThreadFixedTabs({ threadId: thread?.id ?? null });
   const threadFixedViewTabs = useMemo(
-    () => [
-      createThreadInfoFixedPanelTab(),
-      ...(gitDiffTabStatus === "ineligible"
-        ? []
-        : [createGitDiffFixedPanelTab()]),
-    ],
-    [gitDiffTabStatus],
+    () =>
+      buildThreadFixedPanelViewTabs({
+        entries: threadFixedTabs.entries,
+      }),
+    [threadFixedTabs.entries],
   );
   const fixedPanelTabsState = useReconciledFixedPanelTabsState({
     fixedTabs: threadFixedViewTabs,
     isAuthoritative:
-      gitDiffTabStatus === "eligible" || gitDiffTabStatus === "ineligible",
+      threadFixedTabs.isReady &&
+      (gitDiffTabStatus === "eligible" || gitDiffTabStatus === "ineligible"),
     panelStateId: threadId,
     syncThreadId: threadId,
   });
@@ -560,9 +553,6 @@ function ThreadDetailViewInternal(
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
-  const openFixedSecondaryTab = isPersistedSecondaryPanelOpen
-    ? activeFixedSecondaryTab
-    : null;
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
   const secondaryPanelDrawerVisibility =
@@ -622,8 +612,6 @@ function ThreadDetailViewInternal(
     routeThreadId: threadId,
     thread,
   });
-  const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
-    useState(false);
   const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
   const handleNewTabAutoFocusHandled = useCallback(
     () => setShouldAutoFocusNewTab(false),
@@ -1131,7 +1119,13 @@ function ThreadDetailViewInternal(
     },
     [composerActions, dismissCompactKeyboard],
   );
-  const canUseGitUi = !executionUnavailable && gitDiffTabStatus === "eligible";
+  const gitPluginAvailable = threadFixedTabs.entries.some(
+    (entry) => entry.slot.pluginId === "bb--git" && entry.slot.id === "diff",
+  );
+  const canUseGitUi =
+    gitPluginAvailable &&
+    !executionUnavailable &&
+    gitDiffTabStatus === "eligible";
   const canCreateTerminal =
     !executionUnavailable &&
     thread?.environmentId !== null &&
@@ -1150,51 +1144,17 @@ function ThreadDetailViewInternal(
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
   const {
-    clearPendingGitDiffIntent,
-    closeThreadSecondaryPanel,
-    isLoadingMergeBaseBranchOptions,
-    mergeBaseBranchOptions,
-    mergeBaseRemoteBranchOptions,
-    openCommitDiff: openPersistedCommitDiff,
-    openDiffFile: openPersistedDiffFile,
-    openThreadDiffPanel: openPersistedDiffPanel,
-    pendingGitDiffCommitSha,
-    pendingGitDiffScrollPath,
-    requestedMergeBaseBranch,
-    selectedMergeBaseBranch,
-    selectedMergeBaseBranchRef,
-    setMergeBaseBranchSearchQuery,
-    setSelectedMergeBaseBranch,
-  } = useGitDiffPanel({
-    activeSecondaryTab: openFixedSecondaryTab,
-    clearActiveFileTabs,
-    defaultMergeBaseBranch: environmentMergeBaseBranch,
-    environmentId: canUseGitUi
-      ? (thread?.environmentId ?? undefined)
-      : undefined,
-    mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
-    setThreadSecondaryPanel,
-    threadId,
-  });
-  const {
     closePanel: closeWorkspacePanel,
-    openCommitDiff: openGitDiffCommitDestination,
     openCompactDrawer,
-    openDiffFile: openGitDiffFileDestination,
-    openDiffPanel: openGitDiffDestination,
     openHostFile,
-    openPanel: openFixedViewDestination,
     openStorageFile,
     openWorkspaceFile,
     togglePanel: toggleWorkspacePanel,
   } = useThreadSecondaryPanelVisibility({
-    closePersistedPanel: closeThreadSecondaryPanel,
+    closePersistedPanel: () => setThreadSecondaryPanel(null),
     drawerVisibility: secondaryPanelDrawerVisibility,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     isCompactViewport: renderSecondaryPanelAsDrawer,
-    openPersistedCommitDiff,
-    openPersistedDiffFile,
-    openPersistedDiffPanel,
     openPersistedHostFile: panelFiles.openHostFile,
     openPersistedPanel: setThreadSecondaryPanel,
     openPersistedStorageFile: panelFiles.openStorageFile,
@@ -1210,28 +1170,64 @@ function ThreadDetailViewInternal(
     if (pluginDetails.activePluginId !== null) closeSecondaryPanel();
     else toggleWorkspacePanel();
   }, [pluginDetails.activePluginId, closeSecondaryPanel, toggleWorkspacePanel]);
-  const openThreadInfo = useCallback(
-    () => openFixedViewDestination("thread-info"),
-    [openFixedViewDestination],
+  const openRegisteredFixedTab = useCallback(
+    (entry: ThreadFixedTabEntry, toggle = false) => {
+      if (
+        toggle &&
+        isSecondaryPanelOpen &&
+        activeFixedSecondaryTab?.id === entry.tab.id
+      ) {
+        closeSecondaryPanel();
+        return;
+      }
+      dismissPluginDetails();
+      clearActiveFileTabs();
+      updateFixedPanelTabsState((current) => ({
+        ...current,
+        secondary: {
+          ...current.secondary,
+          isOpen: true,
+          activeTabId: entry.tab.id,
+          tabs: current.secondary.tabs.some((tab) => tab.id === entry.tab.id)
+            ? current.secondary.tabs
+            : [...current.secondary.tabs, entry.tab],
+        },
+      }));
+      openCompactDrawer();
+    },
+    [
+      dismissPluginDetails,
+      clearActiveFileTabs,
+      isSecondaryPanelOpen,
+      activeFixedSecondaryTab?.id,
+      closeSecondaryPanel,
+      updateFixedPanelTabsState,
+      openCompactDrawer,
+    ],
   );
+  const fixedTabTargetStore = useStore();
   const fixedTabDestinations = useMemo(
     () => [
-      createThreadInfoFixedTabDestination(() =>
-        openFixedViewDestination("thread-info"),
+      ...threadFixedTabs.entries.map((entry) =>
+        createThreadFixedTabDestination(
+          entry,
+          openRegisteredFixedTab,
+          (target) => {
+            fixedTabTargetStore.set(
+              fixedTabTargetAtomFamily(
+                threadFixedTabTargetKey(threadId, entry.reference),
+              ),
+              (current) => ({ sequence: (current?.sequence ?? 0) + 1, target }),
+            );
+          },
+        ),
       ),
-      createGitDiffFixedTabDestination({
-        eligible: canUseGitUi,
-        openCommit: openGitDiffCommitDestination,
-        openFile: openGitDiffFileDestination,
-        openOrdinary: openGitDiffDestination,
-      }),
     ],
     [
-      canUseGitUi,
-      openFixedViewDestination,
-      openGitDiffCommitDestination,
-      openGitDiffDestination,
-      openGitDiffFileDestination,
+      threadFixedTabs.entries,
+      fixedTabTargetStore,
+      threadId,
+      openRegisteredFixedTab,
     ],
   );
   const openFixedTab = useCallback(
@@ -1239,22 +1235,13 @@ function ThreadDetailViewInternal(
       openAppFixedTabFromDestinations(fixedTabDestinations, intent),
     [fixedTabDestinations],
   );
-  const openSecondaryPanel = useCallback(
-    (panel: ThreadSecondaryPanelTab) =>
-      openFixedTab({
-        surface: { kind: "current" },
-        tab:
-          panel === "git-diff"
-            ? GIT_DIFF_FIXED_TAB_REFERENCE
-            : THREAD_INFO_FIXED_TAB_REFERENCE,
-      }),
-    [openFixedTab],
-  );
-  const openSecondaryPanelDiffPanel = useCallback(
+  usePublishFixedTabOpener(openFixedTab, isFocused);
+  useThreadFixedTabTargetLifetime(threadId);
+  const openThreadInfo = useCallback(
     () =>
       openFixedTab({
         surface: { kind: "current" },
-        tab: GIT_DIFF_FIXED_TAB_REFERENCE,
+        tab: THREAD_INFO_FIXED_TAB_REFERENCE,
       }),
     [openFixedTab],
   );
@@ -1264,15 +1251,6 @@ function ThreadDetailViewInternal(
         surface: { kind: "current" },
         tab: GIT_DIFF_FIXED_TAB_REFERENCE,
         target: { kind: "file", path },
-      }),
-    [openFixedTab],
-  );
-  const openSecondaryPanelCommitDiff = useCallback(
-    (sha: string) =>
-      openFixedTab({
-        surface: { kind: "current" },
-        tab: GIT_DIFF_FIXED_TAB_REFERENCE,
-        target: { kind: "commit", sha },
       }),
     [openFixedTab],
   );
@@ -1327,44 +1305,32 @@ function ThreadDetailViewInternal(
   const toggleConversationCollapse = useCallback(() => {
     setStoredConversationCollapsed((collapsed) => !collapsed);
   }, [setStoredConversationCollapsed]);
-  useEffect(() => {
-    setHasRequestedMergeBaseOptions(false);
-  }, [thread?.environmentId]);
-  const handleMergeBasePickerOpenChange =
-    useCallback<MergeBasePickerOpenChangeHandler>((open) => {
-      if (open) {
-        setHasRequestedMergeBaseOptions(true);
-      }
-    }, []);
-  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      clearActiveFileTabs();
-      openSecondaryPanel(panel);
-    },
-    [clearActiveFileTabs, openSecondaryPanel],
-  );
+  const orderedThreadFixedViewTabs = useMemo(() => {
+    const order = new Map(
+      fixedPanelTabsState.secondary.tabs.map((tab, index) => [tab.id, index]),
+    );
+    return [...threadFixedViewTabs].sort(
+      (left, right) =>
+        (order.get(left.id) ?? Infinity) - (order.get(right.id) ?? Infinity),
+    );
+  }, [fixedPanelTabsState.secondary.tabs, threadFixedViewTabs]);
   const secondaryPanelFixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
-      threadFixedViewTabs.map((tab) =>
-        tab.kind === "thread-info"
-          ? {
-              ariaLabel: "Show thread info panel",
-              label: "Info",
-              leadingVisual: <Icon name="Info" />,
-              onSelect: () => handleSecondaryPanelChange("thread-info"),
-              tab,
-              title: "Thread info",
-            }
-          : {
-              ariaLabel: "Show diff panel",
-              label: "Diff",
-              leadingVisual: <Icon name="FileDiff" />,
-              onSelect: () => handleSecondaryPanelChange("git-diff"),
-              tab,
-              title: "Diff",
-            },
-      ),
-    [handleSecondaryPanelChange, threadFixedViewTabs],
+      orderedThreadFixedViewTabs.flatMap((tab) => {
+        const entry = threadFixedTabs.entries.find(
+          (entry) => entry.tab.id === tab.id,
+        );
+        if (entry !== undefined) {
+          if (thread === undefined) return [];
+          return [
+            createThreadFixedTabDescriptor(entry, thread.id, (reference) => {
+              openFixedTab({ surface: { kind: "current" }, tab: reference });
+            }),
+          ];
+        }
+        return [];
+      }),
+    [orderedThreadFixedViewTabs, threadFixedTabs.entries, openFixedTab, thread],
   );
   const openAttachment = useCallback(
     (attachment: OpenAttachmentRequest) => {
@@ -1485,14 +1451,6 @@ function ThreadDetailViewInternal(
     reveal: openCompactDrawer,
     onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
   });
-  const appNavigationCapabilities = useMemo(
-    () => ({
-      openFilePreview: openLiveFilePreview,
-      openFixedTab,
-      openTerminal: terminals.open,
-    }),
-    [openLiveFilePreview, openFixedTab, terminals.open],
-  );
   const handleCloseWindowRequest = useCallback(() => {
     if (pluginDetails.activePluginId !== null) {
       pluginDetails.close(pluginDetails.activePluginId);
@@ -1543,17 +1501,6 @@ function ThreadDetailViewInternal(
     if (!isFocused) return false;
     return handleCloseWindowRequest();
   });
-  useAppCommandHandler("diff.toggle", () => {
-    if (!isFocused || !canUseGitUi) {
-      return false;
-    }
-    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "git-diff") {
-      closeSecondaryPanel();
-    } else {
-      openSecondaryPanelDiffPanel();
-    }
-    return true;
-  });
   useEffect(() => {
     if (!isFocused) {
       return;
@@ -1567,25 +1514,9 @@ function ThreadDetailViewInternal(
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
   }, [handleCloseWindowRequest, isFocused]);
-  const handleChangedFileClick = useCallback(
-    (selection: WorkspaceChangedFileSelection) => {
-      const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
-      if (openTarget.kind === "preview") {
-        openWorkspaceFile({
-          lineRange: null,
-          path: selection.file.path,
-          source: openTarget.source,
-          statusLabel: openTarget.statusLabel,
-        });
-        return;
-      }
-      openSecondaryPanelDiffFile(selection.file.path);
-    },
-    [openSecondaryPanelDiffFile, openWorkspaceFile],
-  );
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
-    requestedMergeBaseBranch,
+    environmentMergeBaseBranch,
     {
       enabled: canUseGitUi && environment !== undefined,
     },
@@ -1597,11 +1528,15 @@ function ThreadDetailViewInternal(
       ? workStatusResponse.workspace
       : undefined;
   const workspaceUnavailable =
-    workStatusResponse?.outcome === "unavailable"
+    workStatusResponse?.outcome === "unavailable" &&
+    !("error" in workStatusResponse.failure)
       ? workStatusResponse.failure
       : undefined;
   const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
-    enabled: canUseGitUi && environment !== undefined,
+    enabled:
+      !executionUnavailable &&
+      gitDiffTabStatus === "eligible" &&
+      environment !== undefined,
   });
   const pullRequest = getEnvironmentPullRequestFromResponse(
     pullRequestQuery.data,
@@ -1850,19 +1785,13 @@ function ThreadDetailViewInternal(
     markThreadRead,
     thread: timelineEnabled ? thread : undefined,
   });
-  const {
-    effectiveMergeBaseBranch,
-    handleMergeBaseBranchChange,
-    showBranchComparisonUi,
-    showMergeBase,
-  } = useEnvironmentMergeBase({
-    environment,
-    selectedMergeBaseBranch,
-    setSelectedMergeBaseBranch,
-    thread,
-    updateEnvironment,
-    workspaceStatus,
-  });
+  const effectiveMergeBaseBranch =
+    environmentMergeBaseBranch ??
+    workspaceStatus?.mergeBase?.mergeBaseBranch ??
+    workspaceStatus?.branch.defaultBranch;
+  const showBranchComparisonUi = Boolean(
+    effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
+  );
   const gitActions = useThreadGitActions({
     environment,
     requestEnvironmentAction,
@@ -2059,6 +1988,22 @@ function ThreadDetailViewInternal(
     canOpenPreferredFileTarget,
     openPathInPreferredFileTarget,
   ]);
+  const canOpenFileExternally = useCallback(
+    (intent: import("@get-bb/plugin-sdk").ExperimentalFileOpenOptions) =>
+      intent.target.kind === "workspace" &&
+      intent.target.environmentId === environment?.id &&
+      handleOpenFileInEditor !== undefined,
+    [environment?.id, handleOpenFileInEditor],
+  );
+  const appNavigationCapabilities = useMemo(
+    () => ({
+      openFilePreview: openLiveFilePreview,
+      openFixedTab,
+      openTerminal: terminals.open,
+      canOpenFileExternally,
+    }),
+    [openLiveFilePreview, openFixedTab, terminals.open, canOpenFileExternally],
+  );
   const workspaceOpenPath = executionUnavailable
     ? null
     : resolveThreadWorkspaceOpenPath({
@@ -2179,25 +2124,6 @@ function ThreadDetailViewInternal(
       pluginFileOpeners,
     ],
   );
-  const handleOpenFilePreview = useCallback<OpenFilePreviewHandler>(
-    (relativePath) => {
-      if (
-        thread?.environmentId === null ||
-        thread?.environmentId === undefined
-      ) {
-        return;
-      }
-      openLiveFilePreview({
-        target: {
-          kind: "workspace",
-          environmentId: thread.environmentId,
-          path: relativePath,
-        },
-        location: null,
-      });
-    },
-    [openLiveFilePreview, thread?.environmentId],
-  );
 
   if (threadQueryState.status === "loading") {
     return (
@@ -2250,7 +2176,6 @@ function ThreadDetailViewInternal(
     isThreadOnReusableEnvironment && projectId && thread.environmentId !== null
       ? createThreadInEnvironment
       : undefined;
-  const promptBannerMergeBaseBranch = effectiveMergeBaseBranch;
   const threadBranchName = workspaceBranch?.currentBranch ?? undefined;
   const threadCheckoutDisplay = workspaceStatus
     ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
@@ -2267,41 +2192,8 @@ function ThreadDetailViewInternal(
     workspaceDeleted: isWorkspaceDeleted,
   });
   const threadTitle = getThreadDisplayTitle(thread);
-  const responsiveWorkspaceActions: PluginThreadActionsInlineItem[] =
-    workspaceOpenPath && preferredDirectoryTarget
-      ? [
-          preferredDirectoryTarget,
-          ...directoryOpenTargets.filter(
-            (target) => target.id !== preferredDirectoryTarget.id,
-          ),
-        ].map((target) => ({
-          key: `workspace/${target.id}`,
-          group: THREAD_HEADER_ACTIONS_GROUP,
-          action: {
-            icon: "FolderOpen",
-            label: `Open workspace in ${target.label}`,
-            run: async () => {
-              if (target.id === preferredDirectoryTarget.id) {
-                await openPathInPreferredDirectoryTarget({
-                  lineNumber: null,
-                  path: workspaceOpenPath,
-                });
-                return;
-              }
-              await openPathInDirectoryTarget({
-                lineNumber: null,
-                path: workspaceOpenPath,
-                rememberTarget: true,
-                targetId: target.id,
-              });
-            },
-          },
-        }))
-      : [];
-  const showGitChanges =
-    systemConfigQuery.data?.generalSettings.showGitChanges ?? false;
   const threadHeaderGitActions =
-    executionUnavailable || !showGitChanges
+    executionUnavailable || !gitPluginAvailable
       ? []
       : gitActions.threadHeaderGitActions;
   const responsiveGitActions: PluginThreadActionsInlineItem[] =
@@ -2322,88 +2214,90 @@ function ThreadDetailViewInternal(
       ? { id: thread.environmentId, path: environment.path }
       : null,
   );
-  const responsiveHeaderActions = [
-    ...responsiveWorkspaceActions,
-    ...responsiveGitActions,
-  ];
-  const workspaceOpenButton =
-    workspaceOpenPath && preferredDirectoryTarget ? (
-      <ThreadWorkspaceOpenButton
-        preferredTarget={preferredDirectoryTarget}
-        targets={directoryOpenTargets}
-        onOpenPreferredTarget={async () => {
-          await openPathInPreferredDirectoryTarget({
-            lineNumber: null,
-            path: workspaceOpenPath,
-          });
-        }}
-        onOpenTarget={async (targetId) => {
-          await openPathInDirectoryTarget({
-            lineNumber: null,
-            path: workspaceOpenPath,
-            rememberTarget: true,
-            targetId,
-          });
-        }}
-      />
-    ) : undefined;
+  const workspaceHeader =
+    workspaceOpenPath && preferredDirectoryTarget
+      ? {
+          preferredTarget: preferredDirectoryTarget,
+          targets: directoryOpenTargets,
+          onOpenPreferredTarget: async () => {
+            await openPathInPreferredDirectoryTarget({
+              lineNumber: null,
+              path: workspaceOpenPath,
+            });
+          },
+          onOpenTarget: async (targetId: string) => {
+            await openPathInDirectoryTarget({
+              lineNumber: null,
+              path: workspaceOpenPath,
+              rememberTarget: true,
+              targetId,
+            });
+          },
+        }
+      : null;
   const timelineHeader = (
-    <ThreadDetailHeader
-      actionsMenu={({
-        includeResponsiveActions,
-        requestRename,
-        onCloseAutoFocus,
-      }) => (
-        <ThreadActionsMenu
-          thread={threadActionTarget}
-          trigger={(triggerProps) => (
-            <Button
-              {...triggerProps}
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                triggerProps.className,
-                "rounded-md p-0",
-                "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-                HEADER_ICON_BUTTON_CLASS,
-              )}
-              aria-label="Thread actions"
-              onClick={(event) => {
-                triggerProps.onClick?.(event);
-                event.stopPropagation();
-              }}
-            >
-              <Icon
-                name="MoreHorizontal"
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
+    <CoreWorkspaceHeaderContext.Provider value={workspaceHeader}>
+      <PluginThreadHeaderActions
+        threadId={thread.id}
+        projectId={thread.projectId}
+      >
+        {({ actions: overflowActions, controls }) => (
+          <ThreadDetailHeader
+            actionsMenu={({
+              includeResponsiveActions,
+              requestRename,
+              onCloseAutoFocus,
+            }) => (
+              <ThreadActionsMenu
+                thread={threadActionTarget}
+                trigger={(triggerProps) => (
+                  <Button
+                    {...triggerProps}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      triggerProps.className,
+                      "rounded-md p-0",
+                      "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+                      HEADER_ICON_BUTTON_CLASS,
+                    )}
+                    aria-label="Thread actions"
+                    onClick={(event) => {
+                      triggerProps.onClick?.(event);
+                      event.stopPropagation();
+                    }}
+                  >
+                    <Icon
+                      name="MoreHorizontal"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </Button>
+                )}
+                inline={
+                  includeResponsiveActions
+                    ? [...overflowActions, ...responsiveGitActions]
+                    : []
+                }
+                requestRename={requestRename}
+                onCloseAutoFocus={onCloseAutoFocus}
               />
-            </Button>
-          )}
-          inline={includeResponsiveActions ? responsiveHeaderActions : []}
-          requestRename={requestRename}
-          onCloseAutoFocus={onCloseAutoFocus}
-        />
-      )}
-      isSecondaryPanelOpen={isSecondaryPanelOpen}
-      onClosePane={onRequestClose ?? undefined}
-      onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
-      onToggleSecondaryPanel={toggleSecondaryPanel}
-      pluginActions={
-        <PluginThreadHeaderActions
-          threadId={thread.id}
-          projectId={thread.projectId}
-        />
-      }
-      threadHeaderGitActions={threadHeaderGitActions}
-      threadId={thread.id}
-      threadTitle={threadTitle}
-      workspaceOpenButton={workspaceOpenButton}
-    />
+            )}
+            isSecondaryPanelOpen={isSecondaryPanelOpen}
+            onClosePane={onRequestClose ?? undefined}
+            onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
+            onToggleSecondaryPanel={toggleSecondaryPanel}
+            pluginActions={controls}
+            threadHeaderGitActions={threadHeaderGitActions}
+            threadId={thread.id}
+            threadTitle={threadTitle}
+          />
+        )}
+      </PluginThreadHeaderActions>
+    </CoreWorkspaceHeaderContext.Provider>
   );
   const composerFooter = (
     <ThreadDetailPromptArea
-      canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
       environmentCompactLabel={
@@ -2428,30 +2322,8 @@ function ThreadDetailViewInternal(
       onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
       pullRequestMergeMethod={pullRequestMergeMethod}
-      onChangedFileClick={handleChangedFileClick}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
-      showGitChanges={showGitChanges}
-      workspaceChangedFilesSection={
-        canUseGitUi ? workspaceChangedFilesSection : null
-      }
-      workspaceStatusPending={
-        canUseGitUi && (environmentQuery.isLoading || workStatusQuery.isLoading)
-      }
-      contextBannerMergeBase={
-        canUseGitUi && showMergeBase && promptBannerMergeBaseBranch
-          ? {
-              branch: promptBannerMergeBaseBranch,
-              branchRef: selectedMergeBaseBranchRef,
-              options: mergeBaseBranchOptions,
-              remoteOptions: mergeBaseRemoteBranchOptions,
-              optionsLoading: isLoadingMergeBaseBranchOptions,
-              onChange: handleMergeBaseBranchChange,
-              onPickerOpenChange: handleMergeBasePickerOpenChange,
-              onSearchQueryChange: setMergeBaseBranchSearchQuery,
-            }
-          : null
-      }
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       sentMessageEdit={sentMessageEdit}
@@ -2767,6 +2639,7 @@ function ThreadDetailViewInternal(
       />
       <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
         <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+          {threadFixedTabs.observers}
           <ThreadDetailSecondaryContent
             footer={composerFooter}
             header={timelineHeader}
@@ -2804,41 +2677,17 @@ function ThreadDetailViewInternal(
               environment: environment ?? null,
               environmentProvisioningFailure,
               environmentDisplayHost: environmentDisplayHostContext,
-              workspaceStatus,
-              workspaceStatusError: workspaceStatusError ?? null,
-              workspaceUnavailable,
               pullRequest,
-              selectedMergeBaseBranch,
-              mergeBaseBranchRef: selectedMergeBaseBranchRef,
-              mergeBaseBranchOptions,
-              mergeBaseRemoteBranchOptions,
-              isLoadingMergeBaseBranchOptions,
               updateThreadPending:
                 updateThread.isPending || updateEnvironment.isPending,
               storage: metadataStorage,
               onAssignParent: handleAssignParent,
               onParentSelectorOpenChange: handleParentSelectorOpenChange,
               onRetryParentThreads: handleRetryParentThreads,
-              onMergeBaseBranchChange: handleMergeBaseBranchChange,
-              onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
-              onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
-              onChangedFileClick: canUseGitUi
-                ? handleChangedFileClick
-                : undefined,
-              onCommitClick: canUseGitUi
-                ? openSecondaryPanelCommitDiff
-                : undefined,
-              onOpenChangedFile: canUseGitUi
-                ? handleOpenFilePreview
-                : undefined,
             }}
             secondaryPanel={{
               canNavigateTabs: isFocused,
               activeTab: activeFixedSecondaryTab,
-              canUseGitUi,
-              gitDiffTabStatus,
-              environmentId: thread.environmentId ?? undefined,
-              workspaceRootPath: environment?.path,
               tabs: panelTabs,
               fixedTabs: secondaryPanelFixedTabs,
               splitPanelStateId: thread.id,
@@ -2847,18 +2696,8 @@ function ThreadDetailViewInternal(
               showFullScreenShortcut: true,
               onClose: closeSecondaryPanel,
               onCollapse: closeSecondaryPanel,
-              onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
-              onOpenFileInEditor: handleOpenFileInEditor,
               onTabReorder: reorderTab,
               onOpenNewTab: handleOpenNewTab,
-              onRetryGitDiffEligibility: () => {
-                void environmentQuery.refetch();
-              },
-              onOpenFilePreview: handleOpenFilePreview,
-              onSelectionAddToChat: handleSelectionAddToChat,
-              pendingGitDiffCommitSha,
-              pendingGitDiffScrollPath,
-              requestedMergeBaseBranch,
               onPanelFocus: touchFixedPanelTabsState,
             }}
             timeline={{

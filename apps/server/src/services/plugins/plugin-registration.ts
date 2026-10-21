@@ -1,3 +1,4 @@
+import { getPluginKvValue, deletePluginKvValue } from "@bb/db";
 import { findProviderEnvironmentContainingPath } from "@bb/db";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -690,11 +691,23 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       if (!bundled.autoInstall && existing === undefined) {
         continue;
       }
+      const migratedEnabledKey = `migrated-plugin-enabled/${manifest.id}`;
+      const migratedEnabled = getPluginKvValue(
+        deps.db,
+        "core",
+        migratedEnabledKey,
+      );
+      const hasMigratedEnabled =
+        migratedEnabled === "true" || migratedEnabled === "false";
       const enabledFollowsDefault =
-        existing === undefined || existing.enabledFollowsDefault;
-      const enabled = enabledFollowsDefault
-        ? bundled.defaultEnabled
-        : existing.enabled;
+        !hasMigratedEnabled &&
+        (existing === undefined || existing.enabledFollowsDefault);
+      const enabled =
+        existing !== undefined && !existing.enabledFollowsDefault
+          ? existing.enabled
+          : hasMigratedEnabled
+            ? migratedEnabled === "true"
+            : bundled.defaultEnabled;
       const sameBundledSource =
         existing?.sourceKind === "builtin" &&
         existing.sourceBuiltinName === bundled.name;
@@ -719,7 +732,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         }) ||
         existing.version !== manifest.version ||
         existing.rootDir !== bundled.rootDir ||
-        existing.enabled !== enabled
+        existing.enabled !== enabled ||
+        existing.enabledFollowsDefault !== enabledFollowsDefault
       ) {
         upsertInstalledPlugin(deps.db, {
           id: manifest.id,
@@ -735,6 +749,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           enabledFollowsDefault,
         });
       }
+      if (hasMigratedEnabled)
+        deletePluginKvValue(deps.db, "core", migratedEnabledKey);
     }
   }
 

@@ -4,7 +4,6 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
-import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import { patchCachedQueryData } from "./cache-effect-utils";
 import { readCachedSidebarBootstrap } from "@/lib/sidebar-bootstrap-cache";
 import type {
@@ -15,12 +14,8 @@ import type {
 } from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
-  environmentDiffFilesQueryKeyPrefix,
-  environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentMergeBaseBranchesQueryKeyPrefix,
   environmentPullRequestQueryKey,
-  environmentWorkStatusQueryKeyPrefix,
   SIDEBAR_NAVIGATION_QUERY_KEY,
   sidebarNavigationQueryKey,
   THREADS_QUERY_KEY,
@@ -46,11 +41,6 @@ interface UpdateCachedTimelineRowsArgs {
 
 interface EnvironmentInvalidationParams {
   environmentId: string;
-}
-
-interface EnvironmentDiffPatchRemovalParams {
-  environmentId: string;
-  queryClient: QueryClient;
 }
 
 interface ProjectThreadListInvalidationParams {
@@ -310,27 +300,9 @@ export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [
-    environmentWorkStatusQueryKeyPrefix(environmentId),
     environmentPullRequestQueryKey(environmentId),
-    environmentDiffFilesQueryKeyPrefix(environmentId),
     environmentFilePreviewQueryKeyPrefix(environmentId),
   ];
-}
-
-export function removeEnvironmentDiffPatchQueries({
-  environmentId,
-  queryClient,
-}: EnvironmentDiffPatchRemovalParams): void {
-  bumpDiffPatchEvictionGeneration(environmentId);
-  queryClient.removeQueries({
-    queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
-  });
-}
-
-export function getEnvironmentBranchListInvalidationQueryKeys({
-  environmentId,
-}: EnvironmentInvalidationParams): QueryKey[] {
-  return [environmentMergeBaseBranchesQueryKeyPrefix(environmentId)];
 }
 
 export function getEnvironmentActionInvalidationQueryKeys({
@@ -338,7 +310,6 @@ export function getEnvironmentActionInvalidationQueryKeys({
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [
     ...getEnvironmentWorkspaceStateInvalidationQueryKeys({ environmentId }),
-    ...getEnvironmentBranchListInvalidationQueryKeys({ environmentId }),
     threadsQueryKey(),
   ];
 }

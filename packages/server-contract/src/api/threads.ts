@@ -112,6 +112,7 @@ export const createThreadRequestSchema = z
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
+    senderThreadId: z.string().min(1).optional(),
     /**
      * Which turn outcomes wake the parent: `auto` (all, the default), `stuck`
      * (failed, interrupted, or blocked on an approval or question), or `off`.
@@ -252,6 +253,7 @@ const sendMessageRequestFieldsSchema = z.object({
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
+  originPluginId: pluginIdSchema.optional(),
   pluginSubmission: z
     .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
     .optional(),

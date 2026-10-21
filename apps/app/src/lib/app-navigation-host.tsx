@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type {
   ExperimentalAppPanelSurface,
   ExperimentalFileOpenOptions,
+  ExperimentalFilePreviewOptions,
   JsonValue,
 } from "@get-bb/plugin-sdk";
 import type { TerminalSession } from "@bb/server-contract";
@@ -11,7 +12,7 @@ interface AppUrlOpenIntent {
   url: string;
 }
 
-export interface AppFilePreviewIntent extends ExperimentalFileOpenOptions {
+export interface AppFilePreviewIntent extends ExperimentalFilePreviewOptions {
   viewer?: FileOpenerOverride;
 }
 
@@ -24,9 +25,11 @@ export interface AppFixedTabOpenIntent {
   surface: ExperimentalAppPanelSurface;
   tab: AppFixedTabReference;
   target?: JsonValue;
+  toggle?: boolean;
 }
 
 interface AppNavigationHostCapabilities {
+  canOpenFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;
@@ -35,6 +38,7 @@ interface AppNavigationHostCapabilities {
 }
 
 interface ResolvedAppNavigationHostCapabilities {
+  canOpenFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab: (intent: AppFixedTabOpenIntent) => boolean;
@@ -44,6 +48,7 @@ interface ResolvedAppNavigationHostCapabilities {
 
 const rejectNavigationIntent = () => false;
 const DEFAULT_APP_NAVIGATION_HOST: ResolvedAppNavigationHostCapabilities = {
+  canOpenFileExternally: rejectNavigationIntent,
   openFileExternally: rejectNavigationIntent,
   openFilePreview: rejectNavigationIntent,
   openFixedTab: rejectNavigationIntent,
@@ -66,6 +71,8 @@ export function AppNavigationHostProvider({
   const parent = useContext(AppNavigationHostContext);
   const value = useMemo<ResolvedAppNavigationHostCapabilities>(
     () => ({
+      canOpenFileExternally:
+        capabilities.canOpenFileExternally ?? parent.canOpenFileExternally,
       openFileExternally:
         capabilities.openFileExternally ?? parent.openFileExternally,
       openFilePreview: capabilities.openFilePreview ?? parent.openFilePreview,
@@ -74,11 +81,13 @@ export function AppNavigationHostProvider({
       openUrl: capabilities.openUrl ?? parent.openUrl,
     }),
     [
+      capabilities.canOpenFileExternally,
       capabilities.openFileExternally,
       capabilities.openFilePreview,
       capabilities.openFixedTab,
       capabilities.openTerminal,
       capabilities.openUrl,
+      parent.canOpenFileExternally,
       parent.openFileExternally,
       parent.openFilePreview,
       parent.openFixedTab,

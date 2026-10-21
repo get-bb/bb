@@ -1,15 +1,21 @@
+import {
+  installGitBannerFixture,
+  ThreadPromptContextBanner,
+  type ThreadPromptGitSection,
+} from "./ThreadPromptContextBanner.git-fixture";
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+
+const renderBannerMarkup = (node: ReactNode) =>
+  render(node).container.innerHTML;
 import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isThreadDisplayStatusBannerActive,
-  ThreadPromptContextBanner,
   type ChildThreadQuestion,
-  type ThreadPromptGitSection,
 } from "./ThreadPromptContextBanner";
 
 const noop = () => {};
@@ -73,6 +79,7 @@ function makeGitSection(
   };
 }
 
+beforeEach(installGitBannerFixture);
 afterEach(cleanup);
 
 function childThreadItem(
@@ -122,8 +129,9 @@ function childQuestion(
 
 describe("ThreadPromptContextBanner", () => {
   it("renders the archived read-only status without an action", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={{ archivedAt: 1_731_456_000_000 }}
@@ -152,6 +160,7 @@ describe("ThreadPromptContextBanner", () => {
       const toggled: string[] = [];
       render(
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={null}
           gitSectionPending={false}
           archivedSection={null}
@@ -175,6 +184,7 @@ describe("ThreadPromptContextBanner", () => {
   it("shows the machine removal explanation once the status is expanded", () => {
     render(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -214,9 +224,10 @@ describe("ThreadPromptContextBanner", () => {
   ])(
     "keeps the $label read-only status visible in compact mode",
     ({ archivedSection, environmentGoneSection, expectedLabel }) => {
-      const markup = renderToStaticMarkup(
+      const markup = renderBannerMarkup(
         <MemoryRouter>
           <ThreadPromptContextBanner
+            threadId="thread-banner-fixture"
             gitSection={null}
             gitSectionPending={false}
             archivedSection={archivedSection}
@@ -242,8 +253,9 @@ describe("ThreadPromptContextBanner", () => {
   );
 
   it("offers unarchiving first when an archived thread also lost its environment", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={{
@@ -266,8 +278,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("offers restoring the workspace once the thread is live again", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -285,8 +298,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("shows the restore action as pending while it runs", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -309,8 +323,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("keeps ready-to-merge status out of standalone visible labels", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -330,8 +345,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("uses the selected pull request merge method as the action label", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -363,8 +379,9 @@ describe("ThreadPromptContextBanner", () => {
   ] as const)(
     "shows the next step and an auto-merge icon for %s with auto-merge %s",
     (attention, autoMerge, label) => {
-      const markup = renderToStaticMarkup(
+      const markup = renderBannerMarkup(
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={null}
           gitSectionPending={false}
           archivedSection={null}
@@ -413,8 +430,9 @@ describe("ThreadPromptContextBanner", () => {
   );
 
   it("keeps useful standalone terminal pull request state labels", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -437,9 +455,10 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("summarizes child threads with a header and total count", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={null}
           gitSectionPending={false}
           archivedSection={null}
@@ -466,9 +485,10 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("lists child threads with needs-input and working glyphs when expanded", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={null}
           gitSectionPending={false}
           archivedSection={null}
@@ -501,6 +521,7 @@ describe("ThreadPromptContextBanner", () => {
     render(
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={makeGitSection("uncommitted")}
           gitSectionPending={false}
           archivedSection={null}
@@ -527,8 +548,10 @@ describe("ThreadPromptContextBanner", () => {
       name: "Thread context before sending",
     });
 
-    expect(childCard.parentElement).toBe(contextCard.parentElement);
-    expect(childCard.parentElement?.classList.contains("min-w-0")).toBe(true);
+    expect(childCard.closest(".space-y-2")).toBe(contextCard.parentElement);
+    expect(childCard.closest(".space-y-2")?.classList.contains("min-w-0")).toBe(
+      true,
+    );
   });
 
   it("counts a child waiting for a host as active banner work", () => {
@@ -539,6 +562,7 @@ describe("ThreadPromptContextBanner", () => {
     const renderBanner = (expandedSection: "childThreads" | null) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={null}
           gitSectionPending={false}
           archivedSection={null}
@@ -566,14 +590,14 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>
     );
 
-    const collapsed = renderToStaticMarkup(renderBanner(null));
+    const collapsed = renderBannerMarkup(renderBanner(null));
     expect(collapsed).toContain(">Which color should the badge use?<");
     expect(collapsed).toContain(
       'aria-label="2 active child threads, needs input: Install workspace tools: Which color should the badge use?"',
     );
     expect(collapsed).not.toContain("Active child threads");
 
-    const expanded = renderToStaticMarkup(renderBanner("childThreads"));
+    const expanded = renderBannerMarkup(renderBanner("childThreads"));
     expect(expanded).toContain("Active child threads");
     expect(expanded).toContain('aria-label="2 active child threads"');
   });
@@ -592,6 +616,7 @@ describe("ThreadPromptContextBanner", () => {
     ) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={gitSection}
           gitSectionPending={gitSectionPending}
           archivedSection={null}
@@ -649,6 +674,7 @@ describe("ThreadPromptContextBanner", () => {
     } = {}) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={makeGitSection("uncommitted")}
           gitSectionPending={gitSectionPending}
           archivedSection={archived ? { archivedAt: 1_731_456_000_000 } : null}
@@ -700,6 +726,7 @@ describe("ThreadPromptContextBanner", () => {
     ) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={makeGitSection("uncommitted")}
           gitSectionPending={false}
           archivedSection={null}
@@ -723,14 +750,16 @@ describe("ThreadPromptContextBanner", () => {
       pending: true,
     });
     const { rerender } = render(renderBanner([working], "git"));
+    fireEvent.click(screen.getByRole("button", { name: /Uncommitted/ }));
     rerender(renderBanner([blocked, working], "git"));
     rerender(renderBanner([blocked, working], null));
     expect(onToggleSection).not.toHaveBeenCalled();
   });
 
   it("keeps failed-check detail accessible without a redundant label", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
@@ -762,8 +791,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("shows pull request and diff labels together when only PR and git context are visible", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={makeGitSection("uncommitted")}
         gitSectionPending={false}
         archivedSection={null}
@@ -784,8 +814,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("keeps the pull request action visible beside other context segments", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={makeGitSection("uncommitted")}
         gitSectionPending={false}
         archivedSection={null}
@@ -810,8 +841,9 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("uses the shared committed git label beside pull request context", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderBannerMarkup(
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={makeGitSection("committed")}
         gitSectionPending={false}
         archivedSection={null}
@@ -859,6 +891,7 @@ describe("ThreadPromptContextBanner", () => {
       render(
         <MemoryRouter>
           <ThreadPromptContextBanner
+            threadId="thread-banner-fixture"
             gitSection={makeGitSection("committed")}
             gitSectionPending={false}
             archivedSection={null}
@@ -889,6 +922,7 @@ describe("ThreadPromptContextBanner git section body", () => {
     return (
       <MemoryRouter>
         <ThreadPromptContextBanner
+          threadId="thread-banner-fixture"
           gitSection={makeGitSection("uncommitted")}
           gitSectionPending={false}
           archivedSection={null}

@@ -11,6 +11,10 @@ export const hostFileReadRequestSchema = z
     hostId: z.string().min(1).optional(),
     path: z.string().min(1),
     rootPath: z.string().min(1).optional(),
+    ref: z
+      .string()
+      .regex(/^(?:HEAD|[0-9a-f]{4,40})(?:\^)?$/iu)
+      .optional(),
   })
   .strict();
 export type HostFileReadRequest = z.infer<typeof hostFileReadRequestSchema>;

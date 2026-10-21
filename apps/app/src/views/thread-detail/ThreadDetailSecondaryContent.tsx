@@ -13,7 +13,7 @@ import {
   hasAnyThreadMetadata,
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
-import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
+import { DETAIL_GRID_CLASS } from "@bb/shared-ui/detail-card";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { useOptionalPaneContext } from "./PaneContext";

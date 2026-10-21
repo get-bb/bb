@@ -432,3 +432,8 @@ Read the installed declarations for exact current signatures.
 
 The keyed method and row types are inferred from the `contract` option.
 Read-state and error behavior is documented in [Frontend hooks and UI](frontend-hooks-and-ui.md).
+
+For `experimental_execPortableFile`, `ExperimentalExecPortableFileOptions`,
+`experimental_spawnManagedProcess`, `ExperimentalManagedProcessRequest`,
+`ExperimentalManagedProcess`, `PluginCliCommand.experimental_readOnly`, and
+`PluginCliCommandInfo.experimental_readOnlyCommandPath`, open the Plugin Guide.

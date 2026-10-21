@@ -1073,7 +1073,7 @@
       }
     },
     {
-      "command": "diff.toggle",
+      "command": "plugin:git/toggle-diff",
       "desktopOnly": false,
       "shortcut": {
         "key": "d",
@@ -2704,7 +2704,7 @@
       }
     },
     {
-      "command": "diff.toggle",
+      "command": "plugin:git/toggle-diff",
       "desktopOnly": false,
       "shortcut": {
         "key": "d",

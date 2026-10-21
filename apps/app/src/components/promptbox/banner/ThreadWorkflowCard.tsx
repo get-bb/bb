@@ -1,12 +1,12 @@
 import { useId } from "react";
 import { isSettledWorkflowAgentState } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@bb/shared-ui/prompt-stack-body";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-} from "@/components/promptbox/banner/PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
 import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
 import { activityIconClass } from "@bb/shared-ui/activity-row-styles";

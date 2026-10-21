@@ -6,7 +6,7 @@ import {
   type ProcessStopResult,
 } from "./process-group.js";
 
-interface ManagedProcessRequest {
+export interface ManagedProcessRequest {
   command: string;
   args: string[];
   cwd?: string;

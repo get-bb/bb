@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
-import { buildFileDiffPatchText } from "@/components/git-diff/git-diff-patch-text";
+import type { ParsedGitDiffFile } from "@bb/shared-ui/git-diff/parsing";
+import { buildFileDiffPatchText } from "@bb/shared-ui/git-diff/patch-text";
 import { BbDiffSplit } from "./BbDiffSplit";
 import { useDiffRendererReplacement } from "./codeRendererProvider";
 import {

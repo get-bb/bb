@@ -15,7 +15,6 @@ import type {
   PromptInput,
 } from "@bb/domain";
 import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import type {
   HostWorkspace,
   ProvisionWorkspaceArgs,
@@ -78,22 +77,14 @@ interface RunGitCommandOptions {
   cwd: string;
 }
 
-type FakeWorkspaceDiffTarget =
-  | { type: "uncommitted" }
-  | { type: "branch_committed"; mergeBaseBranch: string }
-  | { type: "all"; mergeBaseBranch: string }
-  | { type: "commit"; sha: string };
-
 interface FakeWorkspaceState {
   destroyed: boolean;
   lastCommitMessage: string | undefined;
-  lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
   lastPullRequestAction: PullRequestActionOptions | undefined;
   pullRequestActionShellPath: string | undefined;
   pullRequest: GitHostPullRequest | null;
   pullRequestLookupError: string | null;
   pullRequestLookupShellPath: string | undefined;
-  statusReads: number;
 }
 
 interface FakeRuntimeThreadControls {
@@ -143,8 +134,6 @@ type FakeHostWorkspace = {
 
 export function createFakeWorkspace(pathname: string) {
   const state: FakeWorkspaceState = {
-    statusReads: 0,
-    lastDiffTarget: undefined,
     lastCommitMessage: undefined,
     destroyed: false,
     lastPullRequestAction: undefined,
@@ -186,44 +175,6 @@ export function createFakeWorkspace(pathname: string) {
       });
     },
     async getAdditionalWorkspaceWriteRoots() {
-      return [];
-    },
-    async getStatus(options?: { mergeBaseBranch?: string }) {
-      state.statusReads += 1;
-      return makeWorkspaceStatus({
-        mergeBase: options?.mergeBaseBranch
-          ? makeWorkspaceMergeBase({
-              mergeBaseBranch: options.mergeBaseBranch,
-              baseRef: options.mergeBaseBranch,
-            })
-          : null,
-      });
-    },
-    async getDiff(options?: {
-      target?:
-        | { type: "uncommitted" }
-        | { type: "branch_committed"; mergeBaseBranch: string }
-        | { type: "all"; mergeBaseBranch: string }
-        | { type: "commit"; sha: string };
-    }) {
-      state.lastDiffTarget = options?.target;
-      return {
-        diff: "",
-        truncated: false,
-        shortstat: "",
-        files: "",
-        mergeBaseRef: null,
-      };
-    },
-    async diffFiles() {
-      return {
-        files: [],
-        shortstat: "",
-        mergeBaseRef: null,
-        truncated: false,
-      };
-    },
-    async diffPatch() {
       return [];
     },
     async getPullRequest(options) {

@@ -5,18 +5,14 @@ import {
   type ThreadTimelineTextFormat,
 } from "@bb/thread-view";
 import {
-  resolveEnvironmentMergeBaseBranch,
   type Environment,
   type Thread,
   type ThreadEventRow,
-  type ThreadGitDiffResponse,
   type ThreadPullRequest,
   type ThreadTimelinePendingTodos,
-  type WorkspaceStatus,
 } from "@bb/domain";
 import { BbHttpError, type BbSdk } from "@bb/sdk";
 import type {
-  EnvironmentDiffQuery,
   ThreadTimelineResponse,
   TimelineConversationRow,
 } from "@bb/server-contract";
@@ -40,11 +36,6 @@ import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
 
 interface ThreadShowCommandOptions {
   self?: boolean;
-  workStatus?: boolean;
-  gitDiff?: boolean;
-  diffTarget?: string;
-  diffSha?: string;
-  diffMergeBase?: string;
   json?: boolean;
 }
 
@@ -78,8 +69,6 @@ type ThreadShowEnvironmentJsonPayload = Environment & {
 interface ThreadShowJsonPayload extends ThreadStatusPayload {
   environment: ThreadShowEnvironmentJsonPayload | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
-  workStatus?: WorkspaceStatus | null;
-  gitDiff?: ThreadGitDiffResponse | null;
 }
 
 interface ThreadShowPullRequestPayload {
@@ -88,62 +77,10 @@ interface ThreadShowPullRequestPayload {
   message?: string;
 }
 
-type FetchedWorkStatus =
-  | { available: true; status: WorkspaceStatus }
-  | { available: false; message: string };
-
-type FetchedGitDiff =
-  | { available: true; diff: ThreadGitDiffResponse }
-  | { available: false; message: string };
-
-type FetchedPullRequest = ThreadShowPullRequestPayload;
-
-type CliEnvironmentDiffQuery =
-  | { target: "uncommitted" }
-  | { mergeBaseBranch?: string; target: "branch_committed" }
-  | { mergeBaseBranch?: string; target: "all" }
-  | { sha: string; target: "commit" };
-
-async function fetchWorkStatus(args: {
-  environmentId: string;
-  mergeBaseBranch: string;
-  sdk: BbSdk;
-}): Promise<FetchedWorkStatus> {
-  const environmentStatus = await args.sdk.environments.status({
-    environmentId: args.environmentId,
-    mergeBaseBranch: args.mergeBaseBranch,
-  });
-  if (environmentStatus.outcome === "available") {
-    return { available: true, status: environmentStatus.workspace };
-  }
-  if (environmentStatus.outcome === "not_applicable") {
-    return { available: false, message: environmentStatus.message };
-  }
-  return { available: false, message: environmentStatus.failure.message };
-}
-
-async function fetchGitDiff(args: {
-  environmentId: string;
-  query: EnvironmentDiffQuery;
-  sdk: BbSdk;
-}): Promise<FetchedGitDiff> {
-  const environmentDiff = await args.sdk.environments.diff({
-    environmentId: args.environmentId,
-    ...args.query,
-  });
-  if (environmentDiff.outcome === "available") {
-    return { available: true, diff: environmentDiff.diff };
-  }
-  if (environmentDiff.outcome === "not_applicable") {
-    return { available: false, message: environmentDiff.message };
-  }
-  return { available: false, message: environmentDiff.failure.message };
-}
-
 async function fetchPullRequest(args: {
   environmentId: string;
   sdk: BbSdk;
-}): Promise<FetchedPullRequest> {
+}): Promise<ThreadShowPullRequestPayload> {
   try {
     const response = await args.sdk.environments.pullRequest({
       environmentId: args.environmentId,
@@ -176,7 +113,7 @@ async function fetchPullRequest(args: {
 
 function threadShowEnvironmentJson(
   environment: Environment | null,
-  pullRequest: FetchedPullRequest | null,
+  pullRequest: ThreadShowPullRequestPayload | null,
 ): ThreadShowEnvironmentJsonPayload | null {
   if (!environment) {
     return null;
@@ -201,18 +138,6 @@ export function registerShowCommand(
     .description("Show thread details and pull request status")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
-    .option("--work-status", "Include work status (git state) in output")
-    .option("--git-diff", "Include git diff in output")
-    .option(
-      "--diff-target <type>",
-      "Diff target: uncommitted, branch_committed, all, or commit (used with --git-diff)",
-      "all",
-    )
-    .option("--diff-sha <sha>", "Commit SHA for --diff-target commit")
-    .option(
-      "--diff-merge-base <branch>",
-      "Merge base branch for --diff-target branch_committed or all",
-    )
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
@@ -233,77 +158,6 @@ export function registerShowCommand(
           });
           return environment;
         };
-        const requireMergeBaseBranch = async (override?: string) => {
-          const environment = await getEnvironment();
-          const mergeBaseBranch =
-            override ?? resolveEnvironmentMergeBaseBranch(environment);
-          if (!mergeBaseBranch) {
-            throw new Error(
-              "Thread environment does not have a merge base branch",
-            );
-          }
-          return mergeBaseBranch;
-        };
-
-        let fetchedWorkStatus: FetchedWorkStatus | undefined;
-        if (opts.workStatus && thread.environmentId) {
-          const mergeBaseBranch = await requireMergeBaseBranch();
-          fetchedWorkStatus = await fetchWorkStatus({
-            environmentId: thread.environmentId,
-            mergeBaseBranch,
-            sdk,
-          });
-        }
-
-        let fetchedGitDiff: FetchedGitDiff | undefined;
-        if (opts.gitDiff && thread.environmentId) {
-          const diffTarget = (opts.diffTarget ?? "all").trim();
-          const query: CliEnvironmentDiffQuery = (() => {
-            switch (diffTarget) {
-              case "uncommitted":
-                return { target: "uncommitted" };
-              case "branch_committed":
-                return {
-                  target: "branch_committed",
-                  mergeBaseBranch: opts.diffMergeBase,
-                };
-              case "all":
-                return {
-                  target: "all",
-                  mergeBaseBranch: opts.diffMergeBase,
-                };
-              case "commit":
-                if (!opts.diffSha) {
-                  throw new Error(
-                    "--diff-sha is required when --diff-target commit is used",
-                  );
-                }
-                return {
-                  target: "commit",
-                  sha: opts.diffSha,
-                };
-              default:
-                throw new Error(
-                  "Unsupported --diff-target. Use uncommitted, branch_committed, all, or commit.",
-                );
-            }
-          })();
-          const resolvedQuery: EnvironmentDiffQuery =
-            query.target === "branch_committed" || query.target === "all"
-              ? {
-                  target: query.target,
-                  mergeBaseBranch: await requireMergeBaseBranch(
-                    query.mergeBaseBranch,
-                  ),
-                }
-              : query;
-          fetchedGitDiff = await fetchGitDiff({
-            environmentId: thread.environmentId,
-            query: resolvedQuery,
-            sdk,
-          });
-        }
-
         const fetchedPullRequest = thread.environmentId
           ? await fetchPullRequest({
               environmentId: thread.environmentId,
@@ -333,16 +187,6 @@ export function registerShowCommand(
             ),
             pendingTodos,
           };
-          if (fetchedWorkStatus !== undefined) {
-            jsonPayload.workStatus = fetchedWorkStatus.available
-              ? fetchedWorkStatus.status
-              : null;
-          }
-          if (fetchedGitDiff !== undefined) {
-            jsonPayload.gitDiff = fetchedGitDiff.available
-              ? fetchedGitDiff.diff
-              : null;
-          }
           outputJson(opts, jsonPayload);
           return;
         }
@@ -350,57 +194,6 @@ export function registerShowCommand(
         printThreadStatus(statusPayload, environmentInfo, fetchedPullRequest);
 
         printPendingTodos(pendingTodos);
-
-        if (fetchedWorkStatus !== undefined) {
-          if (fetchedWorkStatus.available) {
-            const ws = fetchedWorkStatus.status;
-            console.log("");
-            console.log("Work status:");
-            console.log(`  State:    ${ws.workingTree.state}`);
-            if (ws.branch.currentBranch) {
-              console.log(`  Branch:   ${ws.branch.currentBranch}`);
-            }
-            console.log(`  Changed files: ${ws.workingTree.fileCount}`);
-            if (ws.workingTree.lineStatsComplete) {
-              console.log(`  Insertions:    +${ws.workingTree.insertions}`);
-              console.log(`  Deletions:     -${ws.workingTree.deletions}`);
-            } else {
-              console.log("  Line stats: unavailable for untracked files");
-            }
-            if (ws.mergeBase) {
-              console.log(`  Merge base:   ${ws.mergeBase.mergeBaseBranch}`);
-              console.log(
-                `  Ahead: ${ws.mergeBase.aheadCount}  Behind: ${ws.mergeBase.behindCount}`,
-              );
-            }
-          } else {
-            console.log("");
-            console.log(`Work status: ${fetchedWorkStatus.message}`);
-          }
-        }
-
-        if (fetchedGitDiff) {
-          console.log("");
-          if (fetchedGitDiff.available) {
-            const gitDiff = fetchedGitDiff.diff;
-            console.log("Git diff:");
-            if (gitDiff.files.trim().length > 0) {
-              console.log(`  Files:\n${gitDiff.files.trimEnd()}`);
-            }
-            if (gitDiff.shortstat.trim().length > 0) {
-              console.log(`  Summary: ${gitDiff.shortstat.trim()}`);
-            }
-            if (gitDiff.diff) {
-              console.log("");
-              console.log(gitDiff.diff);
-            }
-            if (gitDiff.truncated) {
-              console.log("  (diff truncated)");
-            }
-          } else {
-            console.log(`Git diff: ${fetchedGitDiff.message}`);
-          }
-        }
       }),
     );
 
@@ -556,7 +349,7 @@ export function registerShowCommand(
 function printThreadStatus(
   payload: ThreadStatusPayload,
   environmentInfo: ThreadEnvironmentInfo | null,
-  pullRequest: FetchedPullRequest | null,
+  pullRequest: ThreadShowPullRequestPayload | null,
 ): void {
   const { thread } = payload;
   console.log(`Thread: ${thread.id}`);
@@ -587,7 +380,7 @@ function printThreadStatus(
 }
 
 function printEnvironmentPullRequest(
-  pullRequest: FetchedPullRequest | null,
+  pullRequest: ThreadShowPullRequestPayload | null,
 ): void {
   if (!pullRequest) {
     return;

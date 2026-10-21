@@ -103,7 +103,7 @@ import {
   useSystemProviders,
 } from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
-import { rawStringLocalStorage } from "@/lib/browser-storage";
+import { rawStringLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const CHANGELOG_URL = "https://getbb.app/changelog";
 const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
@@ -2147,7 +2147,9 @@ export function UpdatesSettingsSection({
     <BbAppUpdateRows
       name="Server"
       systemVersion={inventory.systemVersion}
-      appUpdate={useServerUpdate || desktopInfo === null ? appUpdate : undefined}
+      appUpdate={
+        useServerUpdate || desktopInfo === null ? appUpdate : undefined
+      }
       applyPending={applyAppUpdate.isPending}
       desktopInfo={useServerUpdate ? null : desktopInfo}
       isDesktop={!useServerUpdate && isDesktop}

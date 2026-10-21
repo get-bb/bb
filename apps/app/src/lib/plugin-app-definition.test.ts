@@ -135,6 +135,31 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   });
 });
 
+describe("thread context segment validation", () => {
+  it.each([
+    [{ placement: "elsewhere" }, /placement/],
+    [{ useVisible: true }, /useVisible/],
+  ] as const)("rejects malformed options %j", (options, message) => {
+    expect(() =>
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          const registration: unknown = {
+            id: "context",
+            title: "Context",
+            component: Component,
+            ...options,
+          };
+          app.slots.experimental_threadContextSegment(
+            registration as Parameters<
+              typeof app.slots.experimental_threadContextSegment
+            >[0],
+          );
+        }),
+      ),
+    ).toThrow(message);
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
   it("collects a header action", () => {
     const definition = definePluginApp((app) => {

@@ -373,6 +373,151 @@
       "source": "./src/components/ui/split-pane-mini-map.tsx",
       "types": "./src/components/ui/split-pane-mini-map.tsx",
       "default": "./src/components/ui/split-pane-mini-map.tsx"
+    },
+    "./truncate-start": {
+      "source": "./src/components/ui/truncate-start.tsx",
+      "types": "./src/components/ui/truncate-start.tsx",
+      "default": "./src/components/ui/truncate-start.tsx"
+    },
+    "./file-path-link": {
+      "source": "./src/components/ui/file-path-link.tsx",
+      "types": "./src/components/ui/file-path-link.tsx",
+      "default": "./src/components/ui/file-path-link.tsx"
+    },
+    "./diff-stats-tally": {
+      "source": "./src/components/ui/diff-stats-tally.tsx",
+      "types": "./src/components/ui/diff-stats-tally.tsx",
+      "default": "./src/components/ui/diff-stats-tally.tsx"
+    },
+    "./prompt-stack-body": {
+      "source": "./src/components/ui/prompt-stack-body.tsx",
+      "types": "./src/components/ui/prompt-stack-body.tsx",
+      "default": "./src/components/ui/prompt-stack-body.tsx"
+    },
+    "./prompt-stack-card": {
+      "source": "./src/components/ui/prompt-stack-card.tsx",
+      "types": "./src/components/ui/prompt-stack-card.tsx",
+      "default": "./src/components/ui/prompt-stack-card.tsx"
+    },
+    "./prompt-banner-actions": {
+      "source": "./src/components/ui/prompt-banner-actions.tsx",
+      "types": "./src/components/ui/prompt-banner-actions.tsx",
+      "default": "./src/components/ui/prompt-banner-actions.tsx"
+    },
+    "./prompt-stack-section-toggle": {
+      "source": "./src/components/ui/prompt-stack-section-toggle.tsx",
+      "types": "./src/components/ui/prompt-stack-section-toggle.tsx",
+      "default": "./src/components/ui/prompt-stack-section-toggle.tsx"
+    },
+    "./git-diff/parsing": {
+      "source": "./src/components/git-diff/git-diff-parsing.ts",
+      "types": "./src/components/git-diff/git-diff-parsing.ts",
+      "default": "./src/components/git-diff/git-diff-parsing.ts"
+    },
+    "./git-diff/patch-text": {
+      "source": "./src/components/git-diff/git-diff-patch-text.ts",
+      "types": "./src/components/git-diff/git-diff-patch-text.ts",
+      "default": "./src/components/git-diff/git-diff-patch-text.ts"
+    },
+    "./git-diff/card-body": {
+      "source": "./src/components/git-diff/GitDiffCardBody.tsx",
+      "types": "./src/components/git-diff/GitDiffCardBody.tsx",
+      "default": "./src/components/git-diff/GitDiffCardBody.tsx"
+    },
+    "./git-diff/card-header": {
+      "source": "./src/components/git-diff/GitDiffCardHeader.tsx",
+      "types": "./src/components/git-diff/GitDiffCardHeader.tsx",
+      "default": "./src/components/git-diff/GitDiffCardHeader.tsx"
+    },
+    "./open-in-editor-button": {
+      "source": "./src/components/ui/open-in-editor-button.tsx",
+      "types": "./src/components/ui/open-in-editor-button.tsx",
+      "default": "./src/components/ui/open-in-editor-button.tsx"
+    },
+    "./code-loading-skeletons": {
+      "source": "./src/components/ui/code-loading-skeletons.tsx",
+      "types": "./src/components/ui/code-loading-skeletons.tsx",
+      "default": "./src/components/ui/code-loading-skeletons.tsx"
+    },
+    "./lib/absolute-file-path": {
+      "source": "./src/lib/absolute-file-path.ts",
+      "types": "./src/lib/absolute-file-path.ts",
+      "default": "./src/lib/absolute-file-path.ts"
+    },
+    "./lib/format-byte-size": {
+      "source": "./src/lib/format-byte-size.ts",
+      "types": "./src/lib/format-byte-size.ts",
+      "default": "./src/lib/format-byte-size.ts"
+    },
+    "./lib/image-preview": {
+      "source": "./src/lib/image-preview.ts",
+      "types": "./src/lib/image-preview.ts",
+      "default": "./src/lib/image-preview.ts"
+    },
+    "./git-diff/renderer-context": {
+      "source": "./src/components/git-diff/renderer-context.tsx",
+      "types": "./src/components/git-diff/renderer-context.tsx",
+      "default": "./src/components/git-diff/renderer-context.tsx"
+    },
+    "./branch-picker": {
+      "source": "./src/components/pickers/BranchPicker.tsx",
+      "types": "./src/components/pickers/BranchPicker.tsx",
+      "default": "./src/components/pickers/BranchPicker.tsx"
+    },
+    "./lib/picker-layout": {
+      "source": "./src/components/pickers/picker-layout.ts",
+      "types": "./src/components/pickers/picker-layout.ts",
+      "default": "./src/components/pickers/picker-layout.ts"
+    },
+    "./lib/picker-search": {
+      "source": "./src/components/pickers/picker-search.ts",
+      "types": "./src/components/pickers/picker-search.ts",
+      "default": "./src/components/pickers/picker-search.ts"
+    },
+    "./hooks/use-reset-picker-scroll": {
+      "source": "./src/hooks/use-reset-picker-scroll.ts",
+      "types": "./src/hooks/use-reset-picker-scroll.ts",
+      "default": "./src/hooks/use-reset-picker-scroll.ts"
+    },
+    "./list-loading-placeholder": {
+      "source": "./src/components/ui/list-loading-placeholder.tsx",
+      "types": "./src/components/ui/list-loading-placeholder.tsx",
+      "default": "./src/components/ui/list-loading-placeholder.tsx"
+    },
+    "./detail-card": {
+      "source": "./src/components/ui/detail-card.tsx",
+      "types": "./src/components/ui/detail-card.tsx",
+      "default": "./src/components/ui/detail-card.tsx"
+    },
+    "./lib/relative-time": {
+      "source": "./src/lib/relative-time.ts",
+      "types": "./src/lib/relative-time.ts",
+      "default": "./src/lib/relative-time.ts"
+    },
+    "./info-list": {
+      "source": "./src/components/ui/info-list.tsx",
+      "types": "./src/components/ui/info-list.tsx",
+      "default": "./src/components/ui/info-list.tsx"
+    },
+    "./lib/file-visuals": {
+      "source": "./src/lib/file-visuals.ts",
+      "types": "./src/lib/file-visuals.ts",
+      "default": "./src/lib/file-visuals.ts"
+    },
+    "./lib/browser-storage": {
+      "source": "./src/lib/browser-storage.ts",
+      "types": "./src/lib/browser-storage.ts",
+      "default": "./src/lib/browser-storage.ts"
+    },
+    "./clipboard": {
+      "source": "./src/lib/clipboard.ts",
+      "types": "./src/lib/clipboard.ts",
+      "default": "./src/lib/clipboard.ts"
+    },
+    "./hooks/use-section-collapse": {
+      "source": "./src/hooks/use-section-collapse.ts",
+      "types": "./src/hooks/use-section-collapse.ts",
+      "default": "./src/hooks/use-section-collapse.ts"
     }
   },
   "scripts": {
@@ -389,7 +534,13 @@
     "@hugeicons/react": "^1.1.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "@bb/thread-view": "workspace:*",
+    "@pierre/diffs": "^1.2.9",
+    "usehooks-ts": "^3.1.1",
+    "@bb/domain": "workspace:*",
+    "@bb/fuzzy-match": "workspace:*",
+    "jotai": "^2.19.0"
   },
   "peerDependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -446,6 +597,8 @@
     "recharts": "^2.15.4",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vaul": "^1.1.2"
+    "vaul": "^1.1.2",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@bb/server-contract": "workspace:*"
   }
 }

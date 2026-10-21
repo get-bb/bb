@@ -7,50 +7,16 @@ import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "../../src/command-dispatch.js";
-import {
-  createFakeWorkspace,
-  createHarness,
-  runGitCommand,
-} from "./dispatch-helpers.js";
+import { createHarness } from "./dispatch-helpers.js";
 
 describe("workspace command dispatch", () => {
-  it("covers workspace git commands", async () => {
+  it("covers workspace.commit", async () => {
     const harness = createHarness();
     await harness.manager.ensureEnvironment({
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
 
-    const statusResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.status",
-        maxFiles: 200,
-        environmentId: "env-1",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-        mergeBaseBranch: "main",
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    const diffResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.diff",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-        target: { type: "all", mergeBaseBranch: "main" },
-        maxDiffBytes: 2 * 1024 * 1024,
-        maxFileListBytes: 256 * 1024,
-        maxUntrackedFiles: 5000,
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
     const commitResult = await dispatchCommand(
       {
         type: "workspace.commit",
@@ -62,54 +28,11 @@ describe("workspace command dispatch", () => {
       },
       harness.dispatchOptions(),
     );
-    expect(statusResult.outcome).toBe("available");
-    expect(diffResult.outcome).toBe("available");
-    if (statusResult.outcome !== "available") {
-      throw new Error("Expected workspace status to be available");
-    }
-    if (diffResult.outcome !== "available") {
-      throw new Error("Expected workspace diff to be available");
-    }
-    expect(statusResult.workspaceStatus.workingTree.state).toBe("clean");
-    expect(diffResult.diff.diff).toBe("");
     expect(commitResult).toEqual({
       commitSha: "commit-1",
       commitSubject: "Commit message",
     });
-    expect(harness.workspaceState.statusReads).toBe(1);
     expect(harness.workspaceState.lastCommitMessage).toBe("Commit message");
-  });
-
-  it("uses a repository added after the runtime cached a plain workspace", async () => {
-    const workspacePath = await makeTempDir("bb-runtime-late-git-");
-    const harness = createHarness({ workspacePath });
-    harness.workspace.isGitRepo = false;
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-late-git",
-      workspacePath,
-    });
-    await runGitCommand(["init", "-b", "main"], { cwd: workspacePath });
-    const refreshed = createFakeWorkspace(workspacePath);
-    harness.setProvisionedWorkspace(refreshed.workspace);
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.status",
-        maxFiles: 200,
-        environmentId: "env-late-git",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath,
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result.outcome).toBe("available");
-    expect(refreshed.state.statusReads).toBe(1);
-    expect(harness.manager.get("env-late-git")?.workspace.isGitRepo).toBe(true);
   });
 
   it("covers workspace.pull_request", async () => {
@@ -295,88 +218,6 @@ describe("workspace command dispatch", () => {
       operation: "merge",
       method: "rebase",
     });
-  });
-
-  it("rehydrates a missing workspace runtime from workspaceContext", async () => {
-    const harness = createHarness({ workspacePath: "/tmp/env-rehydrate" });
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.status",
-        maxFiles: 200,
-        environmentId: "env-rehydrate",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/env-rehydrate",
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result.outcome).toBe("available");
-    if (result.outcome !== "available") {
-      throw new Error("Expected workspace status to be available");
-    }
-    expect(result.workspaceStatus.workingTree.state).toBe("clean");
-    expect(harness.provisions).toEqual([
-      expect.objectContaining({
-        path: "/tmp/env-rehydrate",
-        signal: expect.any(AbortSignal),
-      }),
-    ]);
-  });
-
-  it("returns unavailable workspace reads for non-git workspaces", async () => {
-    const harness = createHarness({ workspacePath: "/tmp/non-git-env" });
-    harness.workspace.isGitRepo = false;
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-non-git",
-      workspacePath: "/tmp/non-git-env",
-    });
-
-    const statusResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.status",
-        maxFiles: 200,
-        environmentId: "env-non-git",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/non-git-env",
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    const diffResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.diff",
-        environmentId: "env-non-git",
-        workspaceContext: {
-          workspacePath: "/tmp/non-git-env",
-        },
-        target: { type: "uncommitted" },
-        maxDiffBytes: 2 * 1024 * 1024,
-        maxFileListBytes: 256 * 1024,
-        maxUntrackedFiles: 5000,
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(statusResult).toEqual({
-      outcome: "unavailable",
-      failure: {
-        code: "not_git_repo",
-        workspacePath: "/tmp/non-git-env",
-        message: "Path is not a git repository: /tmp/non-git-env",
-      },
-    });
-    expect(diffResult).toEqual(statusResult);
-    expect(harness.workspaceState.statusReads).toBe(0);
-    expect(harness.workspaceState.lastDiffTarget).toBeUndefined();
   });
 
   it("covers host.list_files", async () => {

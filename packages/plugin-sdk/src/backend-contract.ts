@@ -945,6 +945,8 @@ export interface PluginBackground {
 // ---------------------------------------------------------------------------
 
 export interface PluginCliCommandInfo {
+  /** Exact subcommand words that inspect state without changing it; honoured by MCP read. */
+  experimental_readOnlyCommandPath?: string[];
   name: string;
   summary: string;
   usage: string;

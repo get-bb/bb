@@ -3,10 +3,10 @@ import {
   DetailCard,
   DetailRow,
   DetailRowIconLabel,
-} from "@/components/ui/detail-card.js";
-import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
+} from "@bb/shared-ui/detail-card";
+import type { ThreadGitStatusDisplay } from "bb-plugin-bb--git/workspace-status";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
-import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+import type { WorkspaceChangedFilesSection } from "bb-plugin-bb--git/workspace-change-summary";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,

@@ -147,26 +147,10 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
         "The held-open fixture keeps the real message-role tabs and popover surface.",
     },
     {
-      file: "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-      mustContain: [
-        'label: "Info"',
-        'label: "Diff"',
-        '<Icon name="Info" />',
-        '<Icon name="FileDiff" />',
-      ],
-      because:
-        "The thread projection exposes the same fixed secondary-panel tabs as BB.",
-    },
-    {
       file: "apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx",
-      mustContain: [
-        'appearance="flat"',
-        "<EnvironmentRow",
-        "<BranchRow",
-        "<PullRequestRow",
-      ],
+      mustContain: ['appearance="flat"', "<EnvironmentRow", "<PullRequestRow"],
       because:
-        "The open Info panel projects BB's flat metadata card and representative environment, branch, and pull-request rows.",
+        "The open Info panel projects BB's flat metadata card and representative environment and pull-request rows.",
     },
     {
       file: "apps/app/src/components/promptbox/follow-up-placeholder.ts",

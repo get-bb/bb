@@ -779,6 +779,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     permissionMode: args.permissionMode,
     reasoningLevel: args.reasoningLevel,
     senderThreadId: args.senderThreadId,
+    originPluginId: args.originPluginId,
     serviceTier: args.serviceTier,
     pluginSubmission: args.pluginSubmission,
     executionInputSources: args.executionInputSources,

@@ -527,12 +527,3 @@ export {
 export * from "./project-attachments.js";
 
 export * from "./project-attachment-backfill.js";
-export {
-  clearDiffViewedFiles,
-  listDiffViewedFiles,
-  markDiffViewedFile,
-} from "./diff-viewed-files.js";
-export type {
-  DiffViewedFileRecord,
-  DiffViewedFileScope,
-} from "./diff-viewed-files.js";

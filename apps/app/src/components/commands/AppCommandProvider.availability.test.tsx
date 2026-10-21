@@ -64,7 +64,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         defaultBinding("thread.rename", { unassigned: true }),
         defaultBinding("pane.close", { all: ["mainSurface", "splitActive"] }),
         defaultBinding("window.new", { desktopOnly: true }),
-        defaultBinding("diff.toggle", {
+        defaultBinding("panel.fullScreen.toggle", {
           none: ["modalOpen", "editableFocus", "terminalFocus"],
         }),
       ],
@@ -73,9 +73,12 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => (testState.isDesktop ? {
-    setSplitNavigationEnabled: testState.setSplitNavigationEnabled,
-  } : null),
+  getBbDesktopInfo: () =>
+    testState.isDesktop
+      ? {
+          setSplitNavigationEnabled: testState.setSplitNavigationEnabled,
+        }
+      : null,
 }));
 
 function Handler({ command }: { command: AppCommandId }) {
@@ -172,14 +175,14 @@ describe("isCommandAvailable", () => {
       <>
         <div aria-modal="true" />
         <input aria-label="query" />
-        <Handler command="diff.toggle" />
+        <Handler command="panel.fullScreen.toggle" />
         <Availability
-          command="diff.toggle"
+          command="panel.fullScreen.toggle"
           target={document.createElement("input")}
         />
       </>,
     );
-    expect(availabilityOf("diff.toggle")).toBe("yes");
+    expect(availabilityOf("panel.fullScreen.toggle")).toBe("yes");
   });
 
   it("is true for a command the user left unbound", () => {
@@ -217,12 +220,17 @@ describe("isCommandAvailable", () => {
 it("keeps native split availability until the last registered split unmounts", () => {
   testState.isDesktop = true;
   const { rerender, unmount } = renderProvider(
-    <><SplitContext key="first" /><SplitContext key="second" /></>,
+    <>
+      <SplitContext key="first" />
+      <SplitContext key="second" />
+    </>,
   );
   expect(testState.setSplitNavigationEnabled).toHaveBeenLastCalledWith(true);
   rerender(
     <MemoryRouter>
-      <AppCommandProvider><SplitContext key="first" /></AppCommandProvider>
+      <AppCommandProvider>
+        <SplitContext key="first" />
+      </AppCommandProvider>
     </MemoryRouter>,
   );
   expect(testState.setSplitNavigationEnabled).toHaveBeenLastCalledWith(true);

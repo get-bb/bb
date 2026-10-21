@@ -2797,6 +2797,7 @@ describe("public thread data routes", () => {
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
         properties: {
+          initiator: "user",
           is_child_thread: false,
           message_source: "queued_message",
           provider: "codex",

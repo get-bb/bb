@@ -4,7 +4,7 @@ import {
   type ProcessLocalQueuedLockSpec,
   type ProcessLocalQueuedLockWork,
 } from "bb-environment-provider-host/process-local-lock";
-import { getAbsoluteGitDir, type GitProcessOptions } from "./git.js";
+import { getAbsoluteGitDir, type GitProcessOptions } from "bb-git-host/git";
 
 type CheckoutMutationLockWork<T> = ProcessLocalQueuedLockWork<T>;
 

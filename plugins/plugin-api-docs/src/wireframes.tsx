@@ -1603,6 +1603,7 @@ export function RealComposerAnnotated({
   mobile?: boolean;
 }) {
   const banners = useEngagement("composer-banners");
+  const [contextExpanded, setContextExpanded] = useState(false);
   return (
     <div className={cn("relative pb-2 pt-4", mobile ? "px-6" : "px-7")}>
       <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
@@ -1612,7 +1613,7 @@ export function RealComposerAnnotated({
         >
           <MeasuredBadge
             id="composer-banners"
-            label="Plugin composer banners, above the prompt box"
+            label="Plugin banners and thread-context segments, above the prompt box"
             anchor='[data-guide-target="composer-banners"]'
             at="end"
           />
@@ -1680,16 +1681,38 @@ export function RealComposerAnnotated({
             <div className="px-4 pb-4">
               <Mark
                 id="composer-banners"
-                label="Plugin composer banners, above the prompt box"
+                label="Plugin banners and thread-context segments, above the prompt box"
                 showChip={false}
                 target
                 className={cn(
-                  "relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
+                  "relative mb-2.5 block space-y-2 text-sm",
                   engagedRingClass(banners.outlined),
                 )}
+                onActivate={() => setContextExpanded((value) => !value)}
               >
-                <PluginGlyph className="size-3.5" />
-                <span className="text-foreground">Your banner</span>
+                <span className="flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3">
+                  <PluginGlyph className="size-3.5" />
+                  <span className="text-foreground">Your banner</span>
+                </span>
+                <span
+                  data-guide-fixture="thread-context-segment"
+                  className="block overflow-hidden rounded-lg border border-border-hairline bg-surface-raised text-xs"
+                >
+                  <span className="flex items-center gap-2 px-3 py-2">
+                    <MiniIcon icon="UserRound" className="size-3.5" />
+                    <span>Parent thread</span>
+                    <span className="flex items-center gap-1.5 text-foreground">
+                      <PluginGlyph className="size-3.5" />
+                      Your context
+                    </span>
+                    <MiniIcon icon="ChevronDown" className="ml-auto size-3.5" />
+                  </span>
+                  {contextExpanded ? (
+                    <span className="block border-t border-border-hairline px-3 py-2">
+                      Context details
+                    </span>
+                  ) : null}
+                </span>
               </Mark>
 
               <StaticEmbeddedComposer mobile={mobile} />

@@ -2,12 +2,15 @@ import { memo, useMemo } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { DiffPresentation } from "@/components/code/code-rendering";
-import { GitDiffCardBody, useGitDiffCardBody } from "./GitDiffCardBody";
+import {
+  GitDiffCardBody,
+  useGitDiffCardBody,
+} from "@/components/git-diff/GitDiffCardBody";
 import {
   GitDiffCardHeader,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
-} from "./GitDiffCardHeader";
+} from "@/components/git-diff/GitDiffCardHeader";
 import {
   formatGitDiffFileLabel,
   getGitDiffFileChangeKind,
@@ -15,7 +18,7 @@ import {
   normalizeGitDiffPath,
   summarizeGitDiffFile,
   type ParsedGitDiffFile,
-} from "./git-diff-parsing";
+} from "@bb/shared-ui/git-diff/parsing";
 
 interface GitDiffCardProps {
   fileDiff: ParsedGitDiffFile;

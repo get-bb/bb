@@ -12,7 +12,7 @@ import type {
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import type { LifecycleErrorOperation } from "@/lib/lifecycle-errors";
+import type { LifecycleErrorOperation } from "@bb/core-ui/lifecycle-errors";
 import {
   applyThreadReadStateResult,
   applyThreadUpdateResult,

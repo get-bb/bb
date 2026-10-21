@@ -33,7 +33,7 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "bb-plugin-bb--git/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
 import { ThreadChatLoadingBody } from "@/components/thread/timeline/ThreadChatLoading";
 import {
@@ -255,7 +255,10 @@ function PluginThreadChatBody({
   }
   if (thread === undefined) {
     return (
-      <ThreadChatLoadingBody leadingContent={leadingContent} variant={variant} />
+      <ThreadChatLoadingBody
+        leadingContent={leadingContent}
+        variant={variant}
+      />
     );
   }
 

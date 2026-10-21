@@ -6,7 +6,7 @@ import type {
 } from "@bb/client-core";
 import type { AppFilePreviewIntent } from "@/lib/app-navigation-host";
 import {
-  normalizeExperimentalFileOpenOptions,
+  normalizeExperimentalFilePreviewOptions,
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
@@ -52,7 +52,8 @@ function livePreviewRequest(
   intent: AppFilePreviewIntent,
   scope: PanelFileScope | null,
 ): OpenSecondaryPanelTabRequest | null {
-  const normalized = normalizeExperimentalFileOpenOptions(intent);
+  const { viewer: _viewer, ...publicIntent } = intent;
+  const normalized = normalizeExperimentalFilePreviewOptions(publicIntent);
   if (normalized === null) return null;
   const { target } = normalized;
   const lineRange = toFilePreviewLineRange(normalized.location);
@@ -67,8 +68,17 @@ function livePreviewRequest(
         tab: {
           lineRange,
           path: target.path,
-          source: { kind: "working-tree" },
-          statusLabel: null,
+          source: normalized.experimental_revision
+            ? normalized.experimental_revision.ref === "HEAD"
+              ? { kind: "head" }
+              : {
+                  kind: "merge-base",
+                  ref: normalized.experimental_revision.ref,
+                }
+            : { kind: "working-tree" },
+          statusLabel: normalized.experimental_revision?.deleted
+            ? "deleted"
+            : null,
         },
       };
     case "host":

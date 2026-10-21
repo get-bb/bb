@@ -1,4 +1,4 @@
-import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { SourceLoadingSkeleton } from "@bb/shared-ui/code-loading-skeletons";
 import {
   type CSSProperties,
   type ReactNode,
@@ -31,7 +31,7 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
-import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
+import { OpenInEditorButton } from "@bb/shared-ui/open-in-editor-button";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -44,7 +44,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { formatByteSize } from "@/lib/format-byte-size";
+import { formatByteSize } from "@bb/shared-ui/lib/format-byte-size";
 import { saveFile } from "@/lib/save-file";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type {
@@ -232,7 +232,6 @@ const CSV_PREVIEW_MAX_COLUMNS = 100;
 const CSV_PREVIEW_MAX_ROWS = 500;
 const CSV_PREVIEW_ROW_HEIGHT_PX = 29;
 const CSV_PREVIEW_OVERSCAN_ROWS = 8;
-
 
 const HTML_FILE_PREVIEW_IFRAME_STYLE = {
   width: "100%",
@@ -694,270 +693,270 @@ function FilePreviewHeader({
 
   return (
     <FilePreviewHeaderFrame headerRef={headerRef}>
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {previewIcon}
-          <FilePreviewPath path={path} copyPath={copyPath} />
-          {statusLabel === null ? null : (
-            <span
-              className={cn(
-                "shrink-0 leading-5 text-muted-foreground",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-            >
-              ({statusLabel})
-            </span>
-          )}
-          {!isNarrow ? (
-            <TooltipProvider delayDuration={300}>
-              {onRefresh ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
-                        "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
-                      )}
-                      onClick={onRefresh}
-                      disabled={isRefreshing}
-                      aria-label={
-                        isRefreshing ? "Refreshing file" : "Refresh file"
-                      }
-                    >
-                      <Icon name="RotateCcw" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {isRefreshing ? "Refreshing file" : "Refresh file"}
-                  </TooltipContent>
-                </Tooltip>
-              ) : null}
-              {download !== null ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
-                      onClick={() => void saveFile(download)}
-                      aria-label="Download"
-                    >
-                      <Icon name="Download" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Download</TooltipContent>
-                </Tooltip>
-              ) : null}
-              {rawContents === null ? null : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <CopyButton
-                      text={rawContents}
-                      label={copyFileContentsLabel}
-                      className={cn(
-                        FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
-                        "shrink-0 rounded-md hover:bg-state-hover hover:text-foreground",
-                      )}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {copyFileContentsLabel}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {externalUrl === null ? null : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
-                        "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
-                      )}
-                      onClick={() => {
-                        openUrlInExternalBrowser(
-                          toAbsolutePreviewUrl(externalUrl),
-                        );
-                      }}
-                      aria-label="Open in external browser"
-                    >
-                      <Icon name="Globe" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    Open in external browser
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {onOpenInEditor ? (
-                <>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <OpenInEditorButton
-                        onClick={() => onOpenInEditor(path)}
-                        className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
-                        label={
-                          openShortcut
-                            ? `Open in editor (${openShortcut.label})`
-                            : "Open in editor"
-                        }
-                        aria-keyshortcuts={openShortcut?.ariaKeyshortcuts}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {openShortcut
-                        ? `Open in editor (${openShortcut.label})`
-                        : "Open in editor"}
-                    </TooltipContent>
-                  </Tooltip>
-                  <AppCommandShortcutHint shortcut={openShortcut} />
-                </>
-              ) : null}
-            </TooltipProvider>
-          ) : null}
-        </div>
-        {showHeaderControls || isNarrow ? (
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <FilePreviewLineWrapButton
-              showLineOverflowToggle={showLineOverflowToggle && !isNarrow}
-              lineOverflowMode={lineOverflowMode}
-              onLineOverflowModeChange={onLineOverflowModeChange}
-            />
-            {toggleKind !== null ? (
-              <div
-                className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5"
-                role="tablist"
-                aria-label={getToggleAriaLabel(toggleKind)}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
-                    COARSE_POINTER_TEXT_SM_CLASS,
-                  )}
-                  onClick={() => onViewModeChange("preview")}
-                  aria-pressed={viewMode === "preview"}
-                >
-                  Preview
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
-                    COARSE_POINTER_TEXT_SM_CLASS,
-                  )}
-                  onClick={() => onViewModeChange("source")}
-                  aria-pressed={viewMode === "source"}
-                >
-                  Raw
-                </Button>
-              </div>
-            ) : null}
-            {isNarrow ? (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {previewIcon}
+        <FilePreviewPath path={path} copyPath={copyPath} />
+        {statusLabel === null ? null : (
+          <span
+            className={cn(
+              "shrink-0 leading-5 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+          >
+            ({statusLabel})
+          </span>
+        )}
+        {!isNarrow ? (
+          <TooltipProvider delayDuration={300}>
+            {onRefresh ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button
+                    type="button"
                     variant="ghost"
                     size="icon"
                     className={cn(
                       FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
-                      "shrink-0 max-md:pointer-coarse:size-10",
+                      "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
                     )}
-                    aria-label="File actions"
+                    onClick={onRefresh}
+                    disabled={isRefreshing}
+                    aria-label={
+                      isRefreshing ? "Refreshing file" : "Refresh file"
+                    }
                   >
-                    <Icon name="MoreHorizontal" aria-hidden />
+                    <Icon name="RotateCcw" aria-hidden />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  mobileTitle="File actions"
-                  className="max-md:pointer-coarse:[&_[role=menuitem]]:min-h-11 max-md:pointer-coarse:[&_[role=menuitem]]:text-sm max-md:pointer-coarse:[&_[role=menuitemcheckbox]]:min-h-11 max-md:pointer-coarse:[&_[role=menuitemcheckbox]]:text-sm"
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isRefreshing ? "Refreshing file" : "Refresh file"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {download !== null ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
+                    onClick={() => void saveFile(download)}
+                    aria-label="Download"
+                  >
+                    <Icon name="Download" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Download</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {rawContents === null ? null : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <CopyButton
+                    text={rawContents}
+                    label={copyFileContentsLabel}
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 rounded-md hover:bg-state-hover hover:text-foreground",
+                    )}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {copyFileContentsLabel}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {externalUrl === null ? null : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                    )}
+                    onClick={() => {
+                      openUrlInExternalBrowser(
+                        toAbsolutePreviewUrl(externalUrl),
+                      );
+                    }}
+                    aria-label="Open in external browser"
+                  >
+                    <Icon name="Globe" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Open in external browser
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {onOpenInEditor ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <OpenInEditorButton
+                      onClick={() => onOpenInEditor(path)}
+                      className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
+                      label={
+                        openShortcut
+                          ? `Open in editor (${openShortcut.label})`
+                          : "Open in editor"
+                      }
+                      aria-keyshortcuts={openShortcut?.ariaKeyshortcuts}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {openShortcut
+                      ? `Open in editor (${openShortcut.label})`
+                      : "Open in editor"}
+                  </TooltipContent>
+                </Tooltip>
+                <AppCommandShortcutHint shortcut={openShortcut} />
+              </>
+            ) : null}
+          </TooltipProvider>
+        ) : null}
+      </div>
+      {showHeaderControls || isNarrow ? (
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <FilePreviewLineWrapButton
+            showLineOverflowToggle={showLineOverflowToggle && !isNarrow}
+            lineOverflowMode={lineOverflowMode}
+            onLineOverflowModeChange={onLineOverflowModeChange}
+          />
+          {toggleKind !== null ? (
+            <div
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5"
+              role="tablist"
+              aria-label={getToggleAriaLabel(toggleKind)}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
+                  COARSE_POINTER_TEXT_SM_CLASS,
+                )}
+                onClick={() => onViewModeChange("preview")}
+                aria-pressed={viewMode === "preview"}
+              >
+                Preview
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
+                  COARSE_POINTER_TEXT_SM_CLASS,
+                )}
+                onClick={() => onViewModeChange("source")}
+                aria-pressed={viewMode === "source"}
+              >
+                Raw
+              </Button>
+            </div>
+          ) : null}
+          {isNarrow ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                    "shrink-0 max-md:pointer-coarse:size-10",
+                  )}
+                  aria-label="File actions"
                 >
-                  <DropdownMenuLabel className="max-w-80 break-all font-mono">
-                    {path}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
+                  <Icon name="MoreHorizontal" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                mobileTitle="File actions"
+                className="max-md:pointer-coarse:[&_[role=menuitem]]:min-h-11 max-md:pointer-coarse:[&_[role=menuitem]]:text-sm max-md:pointer-coarse:[&_[role=menuitemcheckbox]]:min-h-11 max-md:pointer-coarse:[&_[role=menuitemcheckbox]]:text-sm"
+              >
+                <DropdownMenuLabel className="max-w-80 break-all font-mono">
+                  {path}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void copyToClipboardWithToast(copyPath ?? path, {
+                      successMessage: "File path copied",
+                      errorMessage: "Failed to copy file path",
+                    });
+                  }}
+                >
+                  <Icon name="Copy" aria-hidden /> Copy file path
+                </DropdownMenuItem>
+                {rawContents !== null ? (
                   <DropdownMenuItem
                     onSelect={() => {
-                      void copyToClipboardWithToast(copyPath ?? path, {
-                        successMessage: "File path copied",
-                        errorMessage: "Failed to copy file path",
+                      void copyToClipboardWithToast(rawContents, {
+                        successMessage: "Copied to clipboard",
+                        errorMessage: "Failed to copy file contents",
                       });
                     }}
                   >
-                    <Icon name="Copy" aria-hidden /> Copy file path
+                    <Icon name="Copy" aria-hidden /> {copyFileContentsLabel}
                   </DropdownMenuItem>
-                  {rawContents !== null ? (
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        void copyToClipboardWithToast(rawContents, {
-                          successMessage: "Copied to clipboard",
-                          errorMessage: "Failed to copy file contents",
-                        });
-                      }}
-                    >
-                      <Icon name="Copy" aria-hidden /> {copyFileContentsLabel}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {download !== null ? (
-                    <DropdownMenuItem onSelect={() => void saveFile(download)}>
-                      <Icon name="Download" aria-hidden /> Download
-                    </DropdownMenuItem>
-                  ) : null}
-                  {onRefresh ? (
-                    <DropdownMenuItem
-                      disabled={isRefreshing}
-                      onSelect={onRefresh}
-                    >
-                      <Icon name="RotateCcw" aria-hidden />{" "}
-                      {isRefreshing ? "Refreshing file" : "Refresh file"}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {externalUrl !== null ? (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        openUrlInExternalBrowser(
-                          toAbsolutePreviewUrl(externalUrl),
-                        )
+                ) : null}
+                {download !== null ? (
+                  <DropdownMenuItem onSelect={() => void saveFile(download)}>
+                    <Icon name="Download" aria-hidden /> Download
+                  </DropdownMenuItem>
+                ) : null}
+                {onRefresh ? (
+                  <DropdownMenuItem
+                    disabled={isRefreshing}
+                    onSelect={onRefresh}
+                  >
+                    <Icon name="RotateCcw" aria-hidden />{" "}
+                    {isRefreshing ? "Refreshing file" : "Refresh file"}
+                  </DropdownMenuItem>
+                ) : null}
+                {externalUrl !== null ? (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openUrlInExternalBrowser(
+                        toAbsolutePreviewUrl(externalUrl),
+                      )
+                    }
+                  >
+                    <Icon name="Globe" aria-hidden /> Open in external browser
+                  </DropdownMenuItem>
+                ) : null}
+                {onOpenInEditor ? (
+                  <DropdownMenuItem onSelect={() => onOpenInEditor(path)}>
+                    <Icon name="ExternalLink" aria-hidden /> Open in editor
+                  </DropdownMenuItem>
+                ) : null}
+                {showLineOverflowToggle ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem
+                      className="gap-2 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0"
+                      checked={lineOverflowMode === "wrap"}
+                      onCheckedChange={(checked) =>
+                        onLineOverflowModeChange(checked ? "wrap" : "scroll")
                       }
                     >
-                      <Icon name="Globe" aria-hidden /> Open in external browser
-                    </DropdownMenuItem>
-                  ) : null}
-                  {onOpenInEditor ? (
-                    <DropdownMenuItem onSelect={() => onOpenInEditor(path)}>
-                      <Icon name="ExternalLink" aria-hidden /> Open in editor
-                    </DropdownMenuItem>
-                  ) : null}
-                  {showLineOverflowToggle ? (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuCheckboxItem
-                        className="gap-2 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0"
-                        checked={lineOverflowMode === "wrap"}
-                        onCheckedChange={(checked) =>
-                          onLineOverflowModeChange(checked ? "wrap" : "scroll")
-                        }
-                      >
-                        <Icon name="TextWrap" aria-hidden />
-                        {LINE_WRAP_LABEL}
-                      </DropdownMenuCheckboxItem>
-                    </>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-          </div>
-        ) : null}
+                      <Icon name="TextWrap" aria-hidden />
+                      {LINE_WRAP_LABEL}
+                    </DropdownMenuCheckboxItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+      ) : null}
     </FilePreviewHeaderFrame>
   );
 }
@@ -1052,10 +1051,7 @@ function MarkdownFilePreview({
     return () => container.removeEventListener("scroll", savePosition);
   }, [scrollPosition, file.name, file.contents]);
   return (
-    <SecondaryPanelSelectionActions
-      markdown
-      onSelectionAddToChat={onSelectionAddToChat}
-    >
+    <SecondaryPanelSelectionActions markdown>
       <div ref={contentRef} className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
@@ -1099,7 +1095,7 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
       : totalRowsHeight - lastVirtualRow.end;
 
   return (
-    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
+    <SecondaryPanelSelectionActions>
       <div className="flex min-h-0 flex-auto flex-col bg-surface-raised px-4 py-4">
         <div
           ref={scrollRef}

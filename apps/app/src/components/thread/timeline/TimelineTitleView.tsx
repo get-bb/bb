@@ -13,7 +13,7 @@ import {
 } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
+import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { LiveDurationText } from "./LiveDurationText.js";
 import {

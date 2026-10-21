@@ -2593,3 +2593,41 @@ describe("environment targets", () => {
     expect(seen).toEqual(["qm_1"]);
   });
 });
+
+describe("watched RPC producers", () => {
+  it("shares canonical reads until the last release and aborts independent reads on disposal", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.rpc.register(
+      defineRpcContract({
+        read: {
+          input: z.object({ a: z.number(), b: z.number() }),
+          output: z.number(),
+        },
+      }),
+      { read: () => 1 },
+    );
+    const signals: AbortSignal[] = [];
+    bb.rpc.experimental_whileWatched("read", (_read, signal) => {
+      signals.push(signal);
+    });
+    const first = await harness.behavior.experimental_watchRpc("read", {
+      input: { a: 1, b: 2 },
+    });
+    const second = await harness.behavior.experimental_watchRpc("read", {
+      input: { b: 2, a: 1 },
+    });
+    await harness.behavior.experimental_watchRpc("read", {
+      input: { a: 3, b: 4 },
+    });
+    await Promise.resolve();
+    expect(signals).toHaveLength(2);
+    first();
+    expect(signals[0]?.aborted).toBe(false);
+    second();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    first();
+    await harness.lifecycle.dispose();
+    expect(signals[1]?.aborted).toBe(true);
+  });
+});

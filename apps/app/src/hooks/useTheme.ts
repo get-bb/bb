@@ -6,7 +6,7 @@ import {
   getMediaQuerySnapshot,
   subscribeMediaQuery,
 } from "@bb/shared-ui/hooks/use-media-query";
-import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
+import { createLocalStorageEnumStorage } from "@bb/shared-ui/lib/browser-storage";
 
 export const THEME_STORAGE_KEY = "bb.theme";
 

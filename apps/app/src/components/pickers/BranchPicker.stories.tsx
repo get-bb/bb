@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { BranchPicker, type BranchPickerProps } from "./BranchPicker";
+import {
+  BranchPicker,
+  type BranchPickerProps,
+} from "@bb/shared-ui/branch-picker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {

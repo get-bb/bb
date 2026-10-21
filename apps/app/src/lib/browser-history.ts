@@ -3,7 +3,7 @@ import { atom, useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { z } from "zod";
-import { createLocalStorageSyncStorage } from "./browser-storage";
+import { createLocalStorageSyncStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const BROWSER_HISTORY_STORAGE_PREFIX = "bb.thread.browserHistory";
 const BROWSER_HISTORY_STORAGE_VERSION = "1";

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   WorkspaceChangesList,
   type WorkspaceChangedFile,
-} from "./WorkspaceChangesList";
+} from "bb-plugin-bb--git/WorkspaceChangesList";
 
 function makeFiles(count: number): WorkspaceChangedFile[] {
   return Array.from({ length: count }, (_, index) => ({

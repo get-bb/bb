@@ -6,8 +6,8 @@ import type {
   ProviderInfo,
   ReasoningLevel,
   Thread,
-  WorkspaceStatus,
 } from "@bb/domain";
+import type { WorkspaceStatus } from "bb-git-contract";
 import type {
   ProviderCliKey,
   ProviderCliStatus,

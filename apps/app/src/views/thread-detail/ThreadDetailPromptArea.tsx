@@ -63,7 +63,6 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import {
   ThreadPromptContextBanner,
-  type ContextBannerMergeBaseConfig,
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
@@ -85,10 +84,6 @@ import {
   type SessionOptionChoices,
 } from "@/components/pickers/SessionOptionsMenu";
 import { useThreadSessionOptionChoices } from "./useThreadSessionOptionChoices";
-import type {
-  WorkspaceChangedFileSelection,
-  WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
 import {
   LazyQueuedMessagesList,
   QueuedMessagesPendingCard,
@@ -100,7 +95,7 @@ import {
 } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { MachineLabelHost } from "@/components/machines/MachineLabel";
 import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
-import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import type { WorkspaceCheckoutDisplay } from "bb-plugin-bb--git/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -171,7 +166,6 @@ import {
   type FollowUpExecutionSelection,
 } from "@bb/client-core";
 
-const ignorePromptBannerFileClick = () => {};
 const ignoreToastedCreateThreadError = () => {};
 
 export interface ThreadDetailSentMessageEdit {
@@ -196,7 +190,6 @@ const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
 
 interface ThreadDetailPromptAreaProps {
   canRestoreEnvironment: boolean;
-  canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
@@ -216,13 +209,8 @@ interface ThreadDetailPromptAreaProps {
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   queuedMessageCount: number;
-  onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
   projectId: string;
   resolveMentionLink: PromptMentionLinkResolver;
-  workspaceChangedFilesSection: WorkspaceChangedFilesSection | null;
-  showGitChanges: boolean;
-  workspaceStatusPending: boolean;
-  contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   activePromptMode: ThreadTimelineActivePromptMode | null;
   goal: ThreadTimelineGoal | null;
@@ -411,7 +399,6 @@ async function runWhileFollowUpShortcutSending(
 
 export function ThreadDetailPromptArea({
   canRestoreEnvironment,
-  canUseGitUi,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
@@ -431,13 +418,8 @@ export function ThreadDetailPromptArea({
   isEnvironmentActionPending,
   pendingInteractions,
   queuedMessageCount,
-  onChangedFileClick,
   projectId,
   resolveMentionLink,
-  workspaceChangedFilesSection,
-  showGitChanges,
-  workspaceStatusPending,
-  contextBannerMergeBase,
   pendingTodos,
   activePromptMode,
   goal,
@@ -2214,6 +2196,7 @@ export function ThreadDetailPromptArea({
           <ThreadMachineStatus hostId={environmentHostId} />
         ) : null}
         <ThreadPromptContextBanner
+          threadId={thread.id}
           key={contextBannerKey}
           archivedSection={
             thread.archivedAt !== null
@@ -2239,19 +2222,7 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
-          pullRequestSection={showGitChanges ? pullRequestSection : null}
-          gitSection={
-            workspaceChangedFilesSection && showGitChanges
-              ? {
-                  changedFiles: workspaceChangedFilesSection,
-                  mergeBase: contextBannerMergeBase,
-                  onPromptBannerFileClick: canUseGitUi
-                    ? onChangedFileClick
-                    : ignorePromptBannerFileClick,
-                }
-              : null
-          }
-          gitSectionPending={workspaceStatusPending && showGitChanges}
+          pullRequestSection={pullRequestSection}
           expandedSection={expandedBannerSection}
           onToggleSection={handleToggleBannerSection}
         />
@@ -2294,14 +2265,11 @@ export function ThreadDetailPromptArea({
     [
       queueExpanded,
       setQueueExpanded,
-      canUseGitUi,
       contextBannerKey,
-      contextBannerMergeBase,
       environmentHostId,
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
-      onChangedFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,
       handleSetQueuedMessageGroupBoundary,
@@ -2340,9 +2308,6 @@ export function ThreadDetailPromptArea({
       submitMode.kind,
       thread.archivedAt,
       thread.id,
-      workspaceChangedFilesSection,
-      showGitChanges,
-      workspaceStatusPending,
     ],
   );
 
@@ -2366,14 +2331,13 @@ export function ThreadDetailPromptArea({
     () => (
       <>
         <ThreadPromptContextBanner
+          threadId={thread.id}
           key={contextBannerKey}
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
           childThreadsSection={childThreadsSection}
           pullRequestSection={null}
-          gitSection={null}
-          gitSectionPending={false}
           expandedSection={expandedBannerSection}
           onToggleSection={handleToggleBannerSection}
         />
@@ -2390,6 +2354,7 @@ export function ThreadDetailPromptArea({
       goal,
       handleToggleBannerSection,
       contextBannerKey,
+      thread.id,
     ],
   );
 

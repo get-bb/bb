@@ -14,6 +14,7 @@ export interface FileReadArgs {
   hostId?: string;
   path: string;
   rootPath?: string;
+  ref?: string;
   signal?: AbortSignal;
 }
 
@@ -102,6 +103,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               hostId: input.hostId,
               path: input.path,
               rootPath: input.rootPath,
+              ref: input.ref,
             },
           },
           ...signalRequestArgs(input.signal),

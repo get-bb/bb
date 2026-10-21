@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import type { ComposerView } from "@get-bb/plugin-sdk";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { PromptStackCard } from "@bb/shared-ui/prompt-stack-card";
 import { useResolvedComposerBanners } from "./composer-slot-hooks";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {

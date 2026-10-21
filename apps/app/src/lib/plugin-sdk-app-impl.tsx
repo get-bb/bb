@@ -1,3 +1,5 @@
+import { ImageLightbox } from "@/components/ui/image-lightbox";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   useRpc,
   experimental_useRpcQuery,
@@ -126,6 +128,8 @@ export const pluginSdkAppImplementation = {
   experimental_useCheckoutState: usePluginCheckoutState,
   experimental_SourceCode: PluginSourceCode,
   experimental_Diff: PluginDiff,
+  experimental_ImageLightbox: ImageLightbox,
+  experimental_CopyButton: CopyButton,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,

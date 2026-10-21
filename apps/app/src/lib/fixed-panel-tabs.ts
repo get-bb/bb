@@ -11,7 +11,7 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import type { TerminalCreateTarget } from "@bb/server-contract";
-import { createLocalStorageSyncStorage } from "./browser-storage";
+import { createLocalStorageSyncStorage } from "@bb/shared-ui/lib/browser-storage";
 import { hasThreadId } from "./thread-id";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import {
@@ -21,7 +21,7 @@ import {
 } from "@bb/client-core";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
-  createGitDiffFixedPanelTab,
+  createPluginFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   ensureOpenFixedPanelHasActiveTab,
@@ -120,7 +120,8 @@ function getFixedPanelTabsStateAtom(threadId: string | null | undefined) {
 }
 
 function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
-  if (panel === "git-diff") return createGitDiffFixedPanelTab();
+  if (panel === "git-diff")
+    return createPluginFixedPanelTab({ pluginId: "bb--git", tabId: "diff" });
   return createThreadInfoFixedPanelTab();
 }
 

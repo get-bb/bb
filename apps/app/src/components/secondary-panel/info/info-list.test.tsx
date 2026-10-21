@@ -3,7 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { InfoList, InfoSection } from "./info-list";
+import {
+  InfoList,
+  InfoSection,
+} from "@/components/secondary-panel/info/info-list";
 
 function renderList(count: number, revealIndex: number | null = null) {
   const items = Array.from({ length: count }, (_, index) => `item-${index}`);

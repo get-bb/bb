@@ -15,6 +15,7 @@ interface CopyButtonProps
     Omit<ComponentPropsWithoutRef<"button">, "type" | "onClick" | "title"> {
   iconClassName?: string;
   label?: string;
+  experimental_inlineLabel?: { title?: string };
 }
 
 export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
@@ -27,6 +28,8 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
       successMessage,
       errorMessage,
       imageUrl,
+      children,
+      experimental_inlineLabel,
       ...rest
     },
     ref,
@@ -37,6 +40,39 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
       errorMessage,
       imageUrl,
     });
+
+    if (experimental_inlineLabel !== undefined)
+      return (
+        <button
+          ref={ref}
+          {...rest}
+          type="button"
+          className={cn(
+            `group/copy inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`,
+            className,
+          )}
+          onClick={() => {
+            void copy();
+          }}
+          aria-label={label}
+        >
+          <span
+            className="min-w-0 truncate"
+            title={experimental_inlineLabel.title ?? text}
+          >
+            {children ?? text}
+          </span>
+          <Icon
+            name={copied ? "Check" : "Copy"}
+            className={cn(
+              "size-3 shrink-0 text-subtle-foreground transition-opacity group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100",
+              HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+              copied ? "opacity-100" : "opacity-0",
+              iconClassName,
+            )}
+          />
+        </button>
+      );
 
     return (
       <button
@@ -76,32 +112,15 @@ export function CopyableInlineLabel({
   errorMessage,
   children,
 }: CopyableInlineLabelProps) {
-  const { copied, copy } = useClipboardCopy({
-    text,
-    successMessage,
-    errorMessage,
-  });
-
   return (
-    <button
-      type="button"
-      className={`group/copy inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`}
-      onClick={() => {
-        void copy();
-      }}
-      aria-label={label}
+    <CopyButton
+      text={text}
+      label={label}
+      successMessage={successMessage}
+      errorMessage={errorMessage}
+      experimental_inlineLabel={{ title }}
     >
-      <span className="min-w-0 truncate" title={title ?? text}>
-        {children ?? text}
-      </span>
-      <Icon
-        name={copied ? "Check" : "Copy"}
-        className={cn(
-          "size-3 shrink-0 text-subtle-foreground transition-opacity group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100",
-          HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
-          copied ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </button>
+      {children}
+    </CopyButton>
   );
 }

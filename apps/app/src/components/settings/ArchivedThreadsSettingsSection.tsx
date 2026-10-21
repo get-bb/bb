@@ -24,7 +24,7 @@ import {
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   ThreadTitle,

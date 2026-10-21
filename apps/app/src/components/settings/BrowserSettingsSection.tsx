@@ -16,7 +16,7 @@ import {
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { BrowserImportDialog } from "./BrowserImportDialog";
 import { BrowserSourceIcon } from "./BrowserSourceIcon";
 import {

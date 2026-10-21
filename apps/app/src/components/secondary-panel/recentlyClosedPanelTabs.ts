@@ -7,7 +7,14 @@ export interface ClosedPanelContentTab {
   index: number;
   tab: Exclude<
     FixedPanelTab,
-    { kind: "thread-info" | "git-diff" | "plugin-page-fixed" | "terminal" }
+    {
+      kind:
+        | "thread-info"
+        | "git-diff"
+        | "plugin-fixed"
+        | "plugin-page-fixed"
+        | "terminal";
+    }
   >;
 }
 

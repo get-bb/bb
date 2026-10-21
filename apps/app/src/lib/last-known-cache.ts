@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { createJsonLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 
 interface LastKnownCache<T> {
   key(...scope: ReadonlyArray<string | null>): string;

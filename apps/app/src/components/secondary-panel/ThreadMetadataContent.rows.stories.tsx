@@ -1,3 +1,8 @@
+import {
+  BranchRow,
+  MergeBaseRow,
+  GitStatusRow,
+} from "bb-plugin-bb--git/MetadataRows";
 import type { ReactNode } from "react";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
@@ -5,15 +10,12 @@ import {
   ParentNotificationsRow,
   EnvironmentRow,
   WorkspacePathRow,
-  BranchRow,
-  MergeBaseRow,
   PullRequestRow,
-  GitStatusRow,
   ArchivedRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
-import { UncommittedChangesSection } from "./info/ChangesSection";
-import { CommitsSection } from "./info/CommitsSection";
+import { UncommittedChangesSection } from "bb-plugin-bb--git/ChangesSection";
+import { CommitsSection } from "bb-plugin-bb--git/CommitsSection";
 import {
   PanelStage,
   baseProps,

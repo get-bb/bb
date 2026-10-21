@@ -1,16 +1,10 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type {
-  EnvironmentDiffBranchesResponse,
-  EnvironmentDiffFilesResponse,
-  EnvironmentStatusResponse,
   ProjectBranchesResponse,
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
-  ENVIRONMENT_DIFF_FILES_QUERY_KEY,
-  ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-  ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   THREAD_QUERY_KEY,
   THREAD_TIMELINE_QUERY_KEY,
@@ -18,8 +12,6 @@ import {
 
 type ThreadScopedQueryKeyPrefix =
   | typeof THREAD_QUERY_KEY
-  | typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY
-  | typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY
   | typeof THREAD_TIMELINE_QUERY_KEY;
 
 interface ResolveProjectSourceBranchesPlaceholderArgs {
@@ -27,14 +19,6 @@ interface ResolveProjectSourceBranchesPlaceholderArgs {
   previousQueryKey: QueryKey | undefined;
   projectId: string;
   hostId: string;
-  limit: number;
-  selectedBranch: string;
-}
-
-interface ResolveEnvironmentMergeBaseBranchesPlaceholderArgs {
-  previousData: EnvironmentDiffBranchesResponse | undefined;
-  previousQueryKey: QueryKey | undefined;
-  environmentId: string;
   limit: number;
   selectedBranch: string;
 }
@@ -69,32 +53,6 @@ function resolveThreadScopedPlaceholder<TData>(
     : undefined;
 }
 
-export function resolveEnvironmentWorkStatusPlaceholder(
-  previousData: EnvironmentStatusResponse | undefined,
-  previousQueryKey: QueryKey | undefined,
-  nextEnvironmentId: string,
-): EnvironmentStatusResponse | undefined {
-  return resolveThreadScopedPlaceholder(
-    previousData,
-    previousQueryKey,
-    nextEnvironmentId,
-    ENVIRONMENT_WORK_STATUS_QUERY_KEY,
-  );
-}
-
-export function resolveEnvironmentDiffFilesPlaceholder(
-  previousData: EnvironmentDiffFilesResponse | undefined,
-  previousQueryKey: QueryKey | undefined,
-  nextEnvironmentId: string,
-): EnvironmentDiffFilesResponse | undefined {
-  return resolveThreadScopedPlaceholder(
-    previousData,
-    previousQueryKey,
-    nextEnvironmentId,
-    ENVIRONMENT_DIFF_FILES_QUERY_KEY,
-  );
-}
-
 export function resolveProjectSourceBranchesPlaceholder({
   previousData,
   previousQueryKey,
@@ -120,34 +78,6 @@ export function resolveProjectSourceBranchesPlaceholder({
 
   return previousProjectId === projectId &&
     previousHostId === hostId &&
-    previousLimit === limit &&
-    previousSelectedBranch === selectedBranch
-    ? previousData
-    : undefined;
-}
-
-export function resolveEnvironmentMergeBaseBranchesPlaceholder({
-  previousData,
-  previousQueryKey,
-  environmentId,
-  limit,
-  selectedBranch,
-}: ResolveEnvironmentMergeBaseBranchesPlaceholderArgs):
-  | EnvironmentDiffBranchesResponse
-  | undefined {
-  if (
-    previousData === undefined ||
-    !previousQueryKey ||
-    previousQueryKey[0] !== ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY
-  ) {
-    return undefined;
-  }
-
-  const previousEnvironmentId = previousQueryKey[1];
-  const previousLimit = previousQueryKey[3];
-  const previousSelectedBranch = previousQueryKey[4];
-
-  return previousEnvironmentId === environmentId &&
     previousLimit === limit &&
     previousSelectedBranch === selectedBranch
     ? previousData

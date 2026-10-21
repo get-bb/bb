@@ -1,19 +1,14 @@
 // @vitest-environment jsdom
 
-import { DEFAULT_DIFF_FILE_FILTERS } from "./git-diff/diff-file-filters";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { EnvironmentDiffFilesResponse } from "@bb/server-contract";
+import type {} from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   hostFilePreviewQueryKey,
 } from "@/hooks/queries/query-keys";
-import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
-  GitDiffTabContent,
   HostScopedFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "./ThreadSecondaryPanelTabContent";
@@ -34,16 +29,6 @@ vi.mock("@pierre/diffs/react", async () => {
 });
 
 const ENVIRONMENT_ID = "env-1";
-const TARGET: WorkspaceDiffTarget = { type: "all", mergeBaseBranch: "main" };
-
-const emptyDiff: EnvironmentDiffFilesResponse = {
-  outcome: "available",
-  files: [],
-  truncated: false,
-  shortstat: "",
-  mergeBaseRef: null,
-  initialPatches: [],
-};
 
 const PREVIEW_PATH = "src/index.ts";
 const fetchMock = vi.fn(
@@ -61,51 +46,6 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
-});
-
-describe("GitDiffTabContent panel gating", () => {
-  it("fetches the diff TOC only while the panel is open, and refetches once on reopen", async () => {
-    vi.mocked(sdk.environments.diffFiles).mockResolvedValue(emptyDiff);
-    const { queryClient, wrapper: Wrapper } = createQueryClientTestHarness();
-    const renderTab = (isPanelOpen: boolean) => (
-      <Wrapper>
-        <GitDiffTabContent
-          environmentId={ENVIRONMENT_ID}
-          target={TARGET}
-          isPanelOpen={isPanelOpen}
-          gitDiffPresentation={{
-            view: "unified",
-            overflow: "scroll",
-            showLineNumbers: true,
-          }}
-          ignoreWhitespace={false}
-          filters={DEFAULT_DIFF_FILE_FILTERS}
-          fileFilter=""
-        />
-      </Wrapper>
-    );
-
-    const view = render(renderTab(false));
-    expect(sdk.environments.diffFiles).not.toHaveBeenCalled();
-
-    view.rerender(renderTab(true));
-    await waitFor(() => {
-      expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(1);
-    });
-
-    view.rerender(renderTab(false));
-    await act(async () => {
-      await queryClient.invalidateQueries({
-        queryKey: environmentDiffFilesQueryKeyPrefix(ENVIRONMENT_ID),
-      });
-    });
-    expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(1);
-
-    view.rerender(renderTab(true));
-    await waitFor(() => {
-      expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(2);
-    });
-  });
 });
 
 describe("WorkspaceFilePreviewTabContent panel gating", () => {

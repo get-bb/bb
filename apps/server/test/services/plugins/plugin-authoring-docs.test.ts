@@ -43,6 +43,8 @@ import {
   type ExperimentalSidebarHeaderProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
+  type ExperimentalThreadFixedTabProps,
+  type ExperimentalThreadContextSegmentProps,
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
   type ThreadChatProps,
@@ -271,6 +273,8 @@ type SlotPropsByName = {
   settingsSection: PluginSettingsSectionProps;
   experimental_appOverlay: ExperimentalAppOverlayProps;
   navPanel: PluginNavPanelProps;
+  experimental_threadFixedTab: ExperimentalThreadFixedTabProps;
+  experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
   threadPanelAction: PluginThreadPanelProps;
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
@@ -350,6 +354,15 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   settingsSection: [],
   experimental_appOverlay: [],
   navPanel: ["subPath"],
+  experimental_threadFixedTab: ["threadId"],
+  experimental_threadContextSegment: [
+    "experimental_instanceId",
+    "threadId",
+    "part",
+    "segmentCount",
+    "isExpanded",
+    "onToggle",
+  ],
   threadPanelAction: ["threadId", "params"],
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
@@ -407,7 +420,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "openPanel",
     "composer",
   ],
-  commandPaletteAction: ["threadId", "projectId", "openPanel"],
+  commandPaletteAction: [
+    "threadId",
+    "projectId",
+    "openPanel",
+    "experimental_openThreadFixedTab",
+  ],
   experimental_providerIcon: ["providerKind", "providerId", "icon"],
   experimental_timelineRenderer: [
     "row",

@@ -6,7 +6,7 @@ import {
   getOpenableGitDiffPath,
   parseGitDiffFiles,
   summarizeGitDiffFile,
-} from "./git-diff-parsing";
+} from "@bb/shared-ui/git-diff/parsing";
 
 const SAMPLE_DIFF = [
   "diff --git a/src/old.ts b/src/new.ts",

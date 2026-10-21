@@ -886,7 +886,7 @@ export function createApp(
   registerHostRoutes(publicApi, deps, pluginService);
   registerDesktopBrowserRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);
-  registerEnvironmentRoutes(publicApi, deps);
+  registerEnvironmentRoutes(publicApi, deps, pluginService);
   registerThreadRoutes(publicApi, deps);
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);

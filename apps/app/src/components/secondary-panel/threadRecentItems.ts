@@ -3,7 +3,7 @@ import { atom, useAtomValue, useSetAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { z } from "zod";
-import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import { createLocalStorageSyncStorage } from "@bb/shared-ui/lib/browser-storage";
 import { hasThreadId } from "@/lib/thread-id";
 
 const THREAD_RECENT_ITEMS_STORAGE_PREFIX = "bb.thread.recentItems";

@@ -13,7 +13,7 @@ import {
   execPortableFile,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
-import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
+import { runGit, type GitCommandResult, WorkspaceError } from "bb-git-host/git";
 
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 const GIT_UPSTREAM_LOOKUP_TIMEOUT_MS = 10_000;

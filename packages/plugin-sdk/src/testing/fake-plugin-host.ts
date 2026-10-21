@@ -1,4 +1,9 @@
-import { readChangeSchema, type ReadChange } from "@bb/domain";
+import {
+  pluginReadSubscriptionTargetSchema,
+  realtimeSubscriptionTargetKey,
+  readChangeSchema,
+  type ReadChange,
+} from "@bb/domain";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import { rpcResponseChanges } from "../internal/rpc-changes.js";
 import type { ContractChangeDeclarations } from "@bb/domain";
@@ -385,6 +390,11 @@ export interface FakePluginBehaviorDrivers {
    * "client" }` by default; pass `{ kind: "plugin", pluginId }` to act as
    * another plugin calling through `bb.sdk.plugins.callRpc`.
    */
+  /** Subscribe to a real watched producer; release the returned subscription after use. */
+  experimental_watchRpc(
+    method: string,
+    read: { input: JsonValue } | { key: string },
+  ): Promise<() => void>;
   callRpc(
     method: string,
     input?: unknown,
@@ -859,12 +869,24 @@ function createFakePluginHostInternal(
   // --- rpc ---
   const rpcHandlers = new Map<string, FakeRpcRecord>();
   const rpcChanges: ReadChange[] = [];
+  const rpcProducers = new Map<
+    string,
+    Parameters<PluginRpc["experimental_whileWatched"]>[1]
+  >();
+  const rpcWatches = new Map<
+    string,
+    { controller: AbortController; subscribers: number }
+  >();
+
   const changeListeners = new Set<() => void>();
   const rpc: PluginRpc = {
-    experimental_whileWatched(method) {
+    experimental_whileWatched(method, handler) {
       assertLive();
       if (!rpcHandlers.has(method))
         throw new Error(`Unknown RPC method: ${method}`);
+      if (rpcProducers.has(method))
+        throw new Error(`RPC producer already registered: ${method}`);
+      rpcProducers.set(method, handler);
     },
     experimental_publishChange(change) {
       assertLive();
@@ -1571,6 +1593,8 @@ function createFakePluginHostInternal(
   async function disposeHost(cleanupStorage: boolean): Promise<void> {
     if (disposed) return;
     disposed = true;
+    for (const watch of rpcWatches.values()) watch.controller.abort();
+    rpcWatches.clear();
     for (const [id, pending] of pendingInteractions) {
       clearTimeout(pending.timer);
       pendingInteractions.delete(id);
@@ -1800,6 +1824,48 @@ function createFakePluginHostInternal(
 
     async setSettings(values) {
       await setSettingsValues(values);
+    },
+
+    async experimental_watchRpc(method, read) {
+      assertLive();
+      const record = rpcHandlers.get(method);
+      const producer = rpcProducers.get(method);
+      if (!record || !producer)
+        throw new Error(`No watched RPC producer: ${method}`);
+      const target = pluginReadSubscriptionTargetSchema.parse({
+        kind: "plugin-read",
+        pluginId,
+        method,
+        read,
+      });
+      const normalized = target.read;
+      const key = realtimeSubscriptionTargetKey(target);
+      let watch = rpcWatches.get(key);
+      if (!watch) {
+        watch = { controller: new AbortController(), subscribers: 0 };
+        rpcWatches.set(key, watch);
+        const signal = watch.controller.signal;
+        void Promise.resolve()
+          .then(() => {
+            if (!signal.aborted) return producer(normalized, signal);
+          })
+          .catch((error) => {
+            if (!signal.aborted)
+              emitLog("warn", `watched RPC failed: ${errorMessage(error)}`);
+          });
+      }
+      watch.subscribers += 1;
+      const subscription = watch;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        subscription.subscribers -= 1;
+        if (subscription.subscribers === 0) {
+          subscription.controller.abort();
+          if (rpcWatches.get(key) === subscription) rpcWatches.delete(key);
+        }
+      };
     },
 
     async callRpc(method, input, options = {}) {

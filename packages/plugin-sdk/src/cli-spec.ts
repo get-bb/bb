@@ -187,6 +187,8 @@ interface ErasedRunInput {
  * is inert data: help and usage render from it without running the command.
  */
 export interface PluginCliCommand {
+  /** Declare that this command only inspects state, including every accepted option. */
+  experimental_readOnly?: boolean;
   summary: string;
   description?: string;
   /** Extra invocation paths that run this command, hidden from help. */
@@ -253,6 +255,7 @@ export function cliCommand<
   const TOptions extends CliOptions = Record<string, never>,
   const TPositionals extends CliPositionals = readonly [],
 >(command: {
+  experimental_readOnly?: boolean;
   summary: string;
   description?: string;
   aliases?: readonly string[];
@@ -1178,6 +1181,9 @@ export function defineCli(spec: PluginCliSpec): PluginCliRegistration {
       name: path.replaceAll(" ", "-"),
       summary: command.summary,
       usage: usageLine(spec.name, path, command),
+      ...(command.experimental_readOnly
+        ? { experimental_readOnlyCommandPath: path.split(" ") }
+        : {}),
     }),
   );
 

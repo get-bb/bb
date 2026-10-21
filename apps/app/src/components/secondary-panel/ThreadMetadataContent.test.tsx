@@ -1,3 +1,7 @@
+import {
+  formatBranchComparison,
+  GitStatusRow,
+} from "bb-plugin-bb--git/MetadataRows";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Host, Thread } from "@bb/domain";
@@ -24,8 +28,6 @@ import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
-  formatBranchComparison,
-  GitStatusRow,
 } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local", identity: null } as const;

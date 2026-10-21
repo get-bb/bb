@@ -29,6 +29,8 @@ const LOCAL_WORKSPACE_WATCH_CHANGE_KINDS: readonly WorkspaceStatusWatchChangeKin
   ];
 
 interface WorkspaceWatchState {
+  lastBranchName: string | null | undefined;
+  lastDefaultBranch: string | null | undefined;
   lastLocalFingerprint: string | null;
   lastSharedRefsFingerprint: string | null;
   pendingKinds: Set<WorkspaceStatusWatchChangeKind>;
@@ -227,6 +229,8 @@ export class WatchManager {
         stopWatchingStatus: STOP_WATCHING,
         target,
         watchState: {
+          lastBranchName: undefined,
+          lastDefaultBranch: undefined,
           lastLocalFingerprint: null,
           lastSharedRefsFingerprint: null,
           pendingKinds: new Set(),
@@ -378,16 +382,54 @@ export class WatchManager {
           changeKinds.push("git-refs-changed");
         }
       }
-      if (changeKinds.length === 0) {
+      if (
+        this.workspaceEntries.get(args.entry.target.environmentId) !==
+        args.entry
+      )
         return;
+      if (changeKinds.length > 0) {
+        this.options.onWorkspaceStatusChanged?.({
+          changeKinds,
+          environmentId: args.entry.target.environmentId,
+        });
       }
-      this.options.onWorkspaceStatusChanged?.({
-        changeKinds,
-        environmentId: args.entry.target.environmentId,
-      });
+      if (
+        args.entry.workspace.isGitRepo &&
+        (args.entry.watchState.lastBranchName === undefined ||
+          pendingKinds.includes("workspace-git-changed") ||
+          pendingKinds.includes("shared-git-refs-changed"))
+      ) {
+        await this.reportCurrentBranch(args.entry);
+      }
     } catch (error) {
       this.reportWorkspaceWatchError(args.entry, error);
     }
+  }
+
+  private async reportCurrentBranch(entry: WorkspaceWatchEntry): Promise<void> {
+    const [branchName, resolvedDefaultBranch] = await Promise.all([
+      entry.workspace.getCurrentBranch(),
+      entry.workspace.getDefaultBranch(),
+    ]);
+    const defaultBranch = resolvedDefaultBranch ?? branchName;
+    if (
+      this.workspaceEntries.get(entry.target.environmentId) !== entry ||
+      (entry.watchState.lastBranchName === branchName &&
+        entry.watchState.lastDefaultBranch === defaultBranch)
+    )
+      return;
+    entry.watchState.lastBranchName = branchName;
+    entry.watchState.lastDefaultBranch = defaultBranch;
+    this.options.onWorkspaceMetadataChanged?.({
+      environmentId: entry.target.environmentId,
+      workspace: {
+        path: entry.workspace.path,
+        isGitRepo: true,
+        isWorktree: entry.workspace.isWorktree,
+        branchName,
+        defaultBranch,
+      },
+    });
   }
 
   private reportWorkspaceWatchError(
@@ -429,7 +471,10 @@ export class WatchManager {
         workspace.getDefaultBranch(),
         workspace.getSharedGitRefsFingerprint(),
       ]);
+    if (this.workspaceEntries.get(entry.target.environmentId) !== entry) return;
     entry.workspace = workspace;
+    entry.watchState.lastBranchName = branchName;
+    entry.watchState.lastDefaultBranch = resolvedDefaultBranch ?? branchName;
     entry.watchState.lastSharedRefsFingerprint = sharedRefsFingerprint;
     this.options.onWorkspaceMetadataChanged?.({
       environmentId: entry.target.environmentId,

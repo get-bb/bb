@@ -18,7 +18,6 @@ import {
   isArchivedThreadListQueryKey,
   updateCachedThreadListPendingInteractionState,
 } from "./query-cache";
-import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
 
 import { markThreadTimelineUnseenEvents } from "./thread-timeline-unseen-events";
 import {
@@ -27,7 +26,6 @@ import {
 } from "./thread-list-cache-data";
 import {
   environmentPullRequestQueryKey,
-  environmentWorkStatusQueryKeyPrefix,
   sidebarNavigationQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -87,8 +85,6 @@ interface ThrottledActiveRefetchArgs {
   queryClient: QueryClient;
   queryKey: QueryKey;
 }
-
-const WORK_STATUS_REFETCH_MIN_INTERVAL_MS = 1_000;
 
 const THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS = 1_000;
 
@@ -379,26 +375,22 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
 
 export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY: EnvironmentChangeRegistry = {
   "environment-created": {
-    dirty: [dirtyEnvironmentWorkspaceStateQueries],
+    dirty: [],
   },
   "environment-deleted": {
-    dirty: [dirtyEnvironmentWorkspaceStateQueries],
+    dirty: [],
   },
   "metadata-changed": {
-    dirty: [
-      dirtyEnvironmentWorkspaceStateQueries,
-      dirtyEnvironmentThreadListQueries,
-      dirtyThreadSearchQueries,
-    ],
+    dirty: [dirtyEnvironmentThreadListQueries, dirtyThreadSearchQueries],
   },
   "status-changed": {
-    dirty: [dirtyEnvironmentWorkspaceStateQueries],
+    dirty: [],
   },
   "work-status-changed": {
-    dirty: [dirtyEnvironmentLiveWorkspaceStateQueries],
+    dirty: [],
   },
   "git-refs-changed": {
-    dirty: [dirtyEnvironmentWorkspaceStateQueries],
+    dirty: [],
   },
 };
 
@@ -855,25 +847,6 @@ function refreshThreadListStatusState(
       queryKeys: [threadSearchQueryKeyPrefix()],
     });
   }
-}
-
-function dirtyEnvironmentWorkspaceStateQueries(
-  context: EnvironmentRealtimeDirtyContext,
-): void {
-  bumpDiffPatchFreshnessGeneration(context.environmentId);
-}
-
-function dirtyEnvironmentLiveWorkspaceStateQueries({
-  environmentId,
-  queryClient,
-}: EnvironmentRealtimeDirtyContext): void {
-  bumpDiffPatchFreshnessGeneration(environmentId);
-  invalidateQueryKeyWithThrottledActiveRefetch({
-    exact: false,
-    minIntervalMs: WORK_STATUS_REFETCH_MIN_INTERVAL_MS,
-    queryClient,
-    queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
-  });
 }
 
 function dirtyEnvironmentThreadListQueries({

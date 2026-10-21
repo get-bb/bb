@@ -169,8 +169,6 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
-  showGitChanges: boolean;
-  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   keepHistoryAfterContextClear: boolean;
@@ -860,8 +858,6 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
-  showGitChanges,
-  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   keepHistoryAfterContextClear,
@@ -898,18 +894,6 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-            />
-          </SettingsWithControl>
-
-          <SettingsWithControl
-            label="Show Git changes and Commit button"
-            description="Show Git and PR controls above the composer, and Commit in the header."
-          >
-            <Switch
-              checked={showGitChanges}
-              disabled={generalSettingsDisabled}
-              onCheckedChange={onShowGitChangesChange}
-              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -1424,12 +1408,6 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
-          showGitChanges={generalSettings.showGitChanges}
-          onShowGitChangesChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              showGitChanges: enabled,
-            })
-          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

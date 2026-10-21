@@ -11,7 +11,7 @@ import {
   pluginAttentionLabel,
   pluginsNeedingAttention,
 } from "@/hooks/usePluginAttention";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { createJsonLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const acknowledgedAttentionKeyAtom = atomWithStorage<string | null>(
   "bb.sidebar.pluginAttentionAcknowledged",

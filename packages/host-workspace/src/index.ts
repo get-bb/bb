@@ -18,5 +18,10 @@ export {
   readDefaultBranchRefs,
   readGitBlob,
   runGit,
-} from "./git.js";
-export type { GitProcessOptions } from "./git.js";
+} from "bb-git-host/git";
+export type { GitProcessOptions } from "bb-git-host/git";
+
+export {
+  listWorkspaceBranchOptions,
+  inspectWorkspaceGitSource,
+} from "bb-git-host/branch-options";

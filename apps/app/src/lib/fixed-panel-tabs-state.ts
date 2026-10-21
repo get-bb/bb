@@ -5,14 +5,14 @@ import {
   shouldPruneStoredFixedPanelTabsState,
   type BrowserFixedPanelTab,
 } from "@bb/client-core";
-import { getLocalStorage } from "./browser-storage";
+import { getLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 
 export {
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   buildFixedPanelTabId,
   createThreadInfoFixedPanelTab,
-  createGitDiffFixedPanelTab,
+  createPluginFixedPanelTab,
   createPluginPageFixedPanelTab,
   createPluginPanelFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
@@ -31,6 +31,7 @@ export {
   areFixedPanelTabsEquivalent,
 } from "@bb/client-core";
 export type {
+  PluginFixedPanelTab,
   PluginPageFixedPanelTab,
   FixedPanelViewTab,
   PluginPanelFixedPanelTab,

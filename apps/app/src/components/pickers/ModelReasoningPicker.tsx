@@ -55,8 +55,8 @@ import {
   splitModelLabelTag,
 } from "./model-picker-menu";
 import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
-import { searchPickerOptions } from "./picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { searchPickerOptions } from "@bb/shared-ui/lib/picker-search";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 import { formatModelLoadErrorText } from "./model-load-error-message";
 import {
   useAppCommandContext,

@@ -1,12 +1,13 @@
+import { type DiffFileEntry } from "bb-plugin-bb--git/read-contract";
 import { useCallback, useState } from "react";
-import type { DiffFileEntry } from "@bb/server-contract";
+import type {} from "@bb/server-contract";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import { DEFAULT_CODE_OVERFLOW_MODE } from "@/lib/code-overflow-mode";
-import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
+import type { DiffPatchState } from "bb-plugin-bb--git/use-diff-patches";
 import { appToast } from "@/components/ui/app-toast";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
-import { DiffFileCard } from "./DiffFileCard";
+import { DiffFileCard } from "bb-plugin-bb--git/DiffFileCard";
 import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
 
 export default {

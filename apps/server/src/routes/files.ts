@@ -246,6 +246,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         command: {
           type: "host.read_file",
           path: payload.path,
+          ...(payload.ref !== undefined ? { ref: payload.ref } : {}),
           ...(payload.rootPath !== undefined
             ? { rootPath: payload.rootPath }
             : {}),

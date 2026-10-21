@@ -67,7 +67,7 @@ import {
   showMutationErrorToast,
 } from "@/lib/mutation-errors";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import {

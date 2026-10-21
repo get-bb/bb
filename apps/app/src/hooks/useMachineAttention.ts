@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import type { Host } from "@bb/domain";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { createJsonLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const acknowledgedIssuesAtom = atomWithStorage<string[]>(
   "bb.sidebar.machineAttentionAcknowledged",
@@ -61,14 +61,13 @@ export function useMachineAttention(hosts: Host[], isLoading: boolean) {
   }, [acknowledged, hosts.length, isLoading, issues, setAcknowledged]);
 
   return {
-    label:
-      issues.every((issue) => acknowledged.includes(issue.key))
-        ? null
-        : issues.length === 1
-          ? issues[0]!.label
-          : issues.every((issue) => issue.offline)
-            ? "Machines offline"
-            : `${issues.length} machines need attention`,
+    label: issues.every((issue) => acknowledged.includes(issue.key))
+      ? null
+      : issues.length === 1
+        ? issues[0]!.label
+        : issues.every((issue) => issue.offline)
+          ? "Machines offline"
+          : `${issues.length} machines need attention`,
     acknowledge: () => setAcknowledged(issues.map((issue) => issue.key)),
   };
 }

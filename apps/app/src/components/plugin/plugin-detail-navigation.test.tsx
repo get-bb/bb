@@ -24,7 +24,6 @@ const closePanel = vi.fn();
 const existingTab = { id: "new-tab:existing", kind: "new-tab" as const };
 const baseProps: ThreadSecondaryPanelProps = {
   activeTab: existingTab,
-  canUseGitUi: false,
   metadataContent: null,
   tabs: [
     {

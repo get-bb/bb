@@ -1,6 +1,6 @@
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { defineSplit } from "@/lib/define-split";
-import { SourceLoadingSkeleton } from "./code-loading-skeletons";
+import { SourceLoadingSkeleton } from "@bb/shared-ui/code-loading-skeletons";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,

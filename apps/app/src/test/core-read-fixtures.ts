@@ -102,25 +102,8 @@ export function registerReadOwner(client: QueryClient, key: QueryKey): void {
     environment: function useRead() {
       return environment.useEnvironment(id, disabled);
     },
-    environmentWorkStatus: function useRead() {
-      return environment.useEnvironmentWorkStatus(
-        id,
-        nullable(2) ?? undefined,
-        disabled,
-      );
-    },
     environmentPullRequest: function useRead() {
       return environment.useEnvironmentPullRequest(id, disabled);
-    },
-    environmentMergeBaseBranches: function useRead() {
-      return environment.useEnvironmentMergeBaseBranches(id, disabled);
-    },
-    environmentDiffFiles: function useRead() {
-      return environment.useEnvironmentDiffFiles(id, {
-        target: { type: "uncommitted" },
-        ignoreWhitespace: false,
-        enabled: false,
-      });
     },
     threadTabs: function useRead() {
       return useThreadTabs(id, disabled);

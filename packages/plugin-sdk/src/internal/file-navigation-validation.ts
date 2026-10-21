@@ -1,3 +1,4 @@
+import type { ExperimentalFilePreviewOptions } from "../app-contract.js";
 import type {
   ExperimentalFileLocation,
   ExperimentalFileOpenOptions,
@@ -203,4 +204,32 @@ export function normalizeExperimentalFileOpenOptions(
   const location = normalizeExperimentalFileLocation(value.location);
   if (target === null || location === undefined) return null;
   return { target, location };
+}
+
+export function normalizeExperimentalFilePreviewOptions(
+  value: unknown,
+): ExperimentalFilePreviewOptions | null {
+  if (!isJsonObject(value)) return null;
+  if (!("experimental_revision" in value))
+    return normalizeExperimentalFileOpenOptions(value);
+  if (!hasExactKeys(value, ["target", "location", "experimental_revision"]))
+    return null;
+  const base = normalizeExperimentalFileOpenOptions({
+    target: value.target,
+    location: value.location,
+  });
+  const revision = value.experimental_revision;
+  if (
+    base?.target.kind !== "workspace" ||
+    !isJsonObject(revision) ||
+    !hasExactKeys(revision, ["ref", "deleted"]) ||
+    typeof revision.ref !== "string" ||
+    !/^(?:HEAD|[0-9a-f]{4,40})$/iu.test(revision.ref) ||
+    typeof revision.deleted !== "boolean"
+  )
+    return null;
+  return {
+    ...base,
+    experimental_revision: { ref: revision.ref, deleted: revision.deleted },
+  };
 }

@@ -29,7 +29,7 @@ import {
 } from "@/lib/split-resize-snap";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
-import { withLocalStorage } from "@/lib/browser-storage";
+import { withLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 import {
   PaneContext,
   type PaneContextValue,
@@ -375,7 +375,9 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.previousNewTabItem", () =>
+    navigateNewTabItem(-1),
+  );
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(

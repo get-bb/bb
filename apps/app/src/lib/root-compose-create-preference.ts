@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { createBooleanPreferenceAtom } from "./browser-storage";
+import { createBooleanPreferenceAtom } from "@bb/shared-ui/lib/browser-storage";
 
 const NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY =
   "bb.root-compose.navigate-after-create";

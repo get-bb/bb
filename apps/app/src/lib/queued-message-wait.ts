@@ -1,6 +1,6 @@
 import type { QueuedMessagePayload, QueuedMessageWaitingOn } from "@bb/domain";
 import type { IconName } from "@bb/shared-ui/icon";
-import { formatScheduledTime } from "@/lib/relative-time";
+import { formatScheduledTime } from "@bb/shared-ui/lib/relative-time";
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;

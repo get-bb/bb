@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
-import { DEFAULT_DIFF_FILE_FILTERS } from "./git-diff/diff-file-filters";
+import { DEFAULT_DIFF_FILE_FILTERS } from "bb-plugin-bb--git/diff-file-filters";
 import type { ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { GitDiffToolbar } from "./GitDiffToolbar";
+import { GitDiffToolbar } from "bb-plugin-bb--git/GitDiffToolbar";
 
 afterEach(cleanup);
 

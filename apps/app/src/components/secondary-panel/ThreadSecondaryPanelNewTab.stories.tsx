@@ -31,7 +31,7 @@ import {
 import {
   getFileNameFromPath,
   resolveRightPanelFileIconName,
-} from "./rightPanelFileVisuals";
+} from "@bb/shared-ui/lib/file-visuals";
 import {
   resolveTerminalHost,
   TerminalHostSelector,
@@ -559,9 +559,6 @@ function NewTabPanelStory({
     <PanelStage presentation={presentation}>
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi
-        requestedMergeBaseBranch="main"
-        environmentId={ENVIRONMENT_ID}
         tabs={[panelTab]}
         fixedTabs={[]}
         isOpen

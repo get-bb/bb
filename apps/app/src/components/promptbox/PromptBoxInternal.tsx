@@ -127,7 +127,7 @@ import {
   type PromptDraftState,
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
+import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "@bb/shared-ui/prompt-stack-card";
 import { AttachmentPreview, isImageAttachment } from "./AttachmentPreview";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import { isProjectAttachmentPath } from "@/lib/file-content-urls";
@@ -2637,14 +2637,12 @@ export function PromptBoxInternal({
     () =>
       attachments
         .filter((attachment) => !isImageAttachment(attachment))
-        .map(
-          (attachment): AttachmentMentionSuggestion => ({
-            kind: "attachment",
-            path: attachment.path,
-            name: attachment.name,
-            replacement: `@${attachment.name}`,
-          }),
-        ),
+        .map((attachment): AttachmentMentionSuggestion => ({
+          kind: "attachment",
+          path: attachment.path,
+          name: attachment.name,
+          replacement: `@${attachment.name}`,
+        })),
     [attachments],
   );
   const composerMentionResults = useMemo(

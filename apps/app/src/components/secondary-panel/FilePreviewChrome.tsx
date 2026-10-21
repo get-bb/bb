@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
-import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { SourceLoadingSkeleton } from "@bb/shared-ui/code-loading-skeletons";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 
 export const FILE_PREVIEW_WRAPPER_STYLE = {
@@ -95,15 +95,15 @@ export function FilePreviewLoading({
       {showHeader ? (
         <FilePreviewHeaderFrame>
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span
-            className={cn(
-              "flex items-center justify-center text-subtle-foreground",
-              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-            )}
-          >
-            <Icon name="File" className="size-full" aria-hidden />
-          </span>
-          <FilePreviewPath path={path} copyPath={copyPath} />
+            <span
+              className={cn(
+                "flex items-center justify-center text-subtle-foreground",
+                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+              )}
+            >
+              <Icon name="File" className="size-full" aria-hidden />
+            </span>
+            <FilePreviewPath path={path} copyPath={copyPath} />
           </div>
         </FilePreviewHeaderFrame>
       ) : null}

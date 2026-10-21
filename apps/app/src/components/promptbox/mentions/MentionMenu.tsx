@@ -18,7 +18,7 @@ import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/me
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { Pill } from "@bb/shared-ui/pill";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   ThreadTitle,

@@ -51,6 +51,10 @@ it("selects only each composer control's own annotation when clicked", () => {
       expect(target, id).not.toBeNull();
       act(() => target!.click());
       expect(select.mock.calls, id).toEqual([[id]]);
+      if (id === "composer-banners") {
+        expect(container.textContent).toContain("Your context");
+        expect(container.textContent).toContain("Context details");
+      }
     }
   } finally {
     act(() => root.unmount());

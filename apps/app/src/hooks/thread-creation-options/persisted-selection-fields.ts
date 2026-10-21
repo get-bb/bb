@@ -9,7 +9,7 @@ import {
   type ServiceTier,
   type SessionOptionSelections,
 } from "@bb/domain";
-import { createTabScopedStorage } from "@/lib/browser-storage";
+import { createTabScopedStorage } from "@bb/shared-ui/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
 const MODEL_STORAGE_KEY = "bb.promptbox.model";

@@ -4,7 +4,7 @@ import { atomFamily } from "jotai-family";
 import {
   booleanLocalStorage,
   createLocalStorageSyncStorage,
-} from "@/lib/browser-storage";
+} from "@bb/shared-ui/lib/browser-storage";
 import { hasThreadId } from "@/lib/thread-id";
 
 export const threadSecondaryPanelResizingAtom = atom(false);

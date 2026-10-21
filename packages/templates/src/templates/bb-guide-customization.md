@@ -97,11 +97,8 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   install with saved settings or work keeps false): when on, Enter steers a
   running thread and Command+Enter queues a follow-up; when off, those are
   reversed. Shift+Enter inserts a newline.
-- `showGitChanges` (default true; Settings → General → Show Git changes and
-  Commit button): false hides the git summary, expanded file list,
-  pull-request status and actions above the composer, and Commit action in the
-  thread header and overflow menu for every thread and connected client. Thread
-  relationships and workspace warnings remain visible.
+- Disable the bundled Git plugin in Plugins to hide Git summaries, Diff and Commit.
+  Existing disabled Show Git changes settings migrate to a disabled Git plugin.
 - `keepHistoryAfterContextClear` (default false; Settings → General → Show
   messages from before a context clear): true keeps a cleared thread's earlier
   messages above the `Context cleared` boundary in the timeline, outline, and

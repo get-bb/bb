@@ -135,7 +135,7 @@ export function useRpc<
 }
 
 export const {
-  experimental_useRpcQuery,
+  experimental_useRpcQuery: usePluginRpcQuery,
   experimental_useRpcKeyedQuery,
   experimental_useRpcMutation,
   experimental_useRpcRefresh,
@@ -175,3 +175,5 @@ export const {
     [pluginId, queryClient],
   );
 });
+
+export { usePluginRpcQuery as experimental_useRpcQuery };

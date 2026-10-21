@@ -1,3 +1,10 @@
+import { z } from "zod";
+import { gitRpcContract } from "bb-plugin-bb--git/contract";
+import {
+  environmentDiffResponseSchema,
+  environmentStatusResponseSchema,
+  environmentDiffFilesResponseSchema,
+} from "bb-plugin-bb--git/read-contract";
 import type {
   AvailableModel,
   Environment,
@@ -6,8 +13,8 @@ import type {
   Thread,
   ThreadExecutionOptions,
   ThreadEventRow,
-  ThreadGitDiffResponse,
 } from "@bb/domain";
+import type { ThreadGitDiffResponse } from "bb-git-contract";
 import {
   environmentSchema,
   hostSchema,
@@ -22,10 +29,6 @@ import type {
   CreateThreadRequest,
   EnvironmentActionRequest,
   EnvironmentActionResponse,
-  EnvironmentDiffBranchesResponse,
-  EnvironmentDiffFilesResponse,
-  EnvironmentDiffPatchResponse,
-  EnvironmentStatusResponse,
   ProjectResponse,
   ResolvePendingInteractionRequest,
   SendMessageRequest,
@@ -39,11 +42,6 @@ import type {
 import {
   createPublicApiClient,
   environmentActionResponseSchema,
-  environmentDiffBranchesResponseSchema,
-  environmentDiffFilesResponseSchema,
-  environmentDiffPatchResponseSchema,
-  environmentDiffResponseSchema,
-  environmentStatusResponseSchema,
   projectResponseSchema,
   systemExecutionOptionsResponseSchema,
   threadPendingInteractionsResponseSchema,
@@ -255,91 +253,107 @@ export async function getEnvironment(
   return environmentSchema.parse(await response.json());
 }
 
-export async function getEnvironmentBranches(
+async function readGitRpc<T>(
   api: PublicApiClient,
   environmentId: string,
-): Promise<EnvironmentDiffBranchesResponse> {
-  const response = await api.environments[":id"].diff.branches.$get({
+  method: string,
+  input: Record<string, unknown>,
+  output: z.ZodType<T>,
+): Promise<T> {
+  const origin = api.environments[":id"].$url({
     param: { id: environmentId },
-    query: {},
-  });
-  await expectStatus(
-    response,
-    200,
-    `get environment branches ${environmentId}`,
+  }).origin;
+  const response = await fetch(
+    `${origin}/api/v1/plugins/bb--git/rpc/${method}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    },
   );
-  return environmentDiffBranchesResponseSchema.parse(await response.json());
+  await expectStatus(response, 200, `Git ${method} ${environmentId}`);
+  return z
+    .object({ ok: z.literal(true), result: output })
+    .parse(await response.json()).result;
 }
 
-export async function getEnvironmentDiff(
+export function getGitBranches(api: PublicApiClient, environmentId: string) {
+  return readGitRpc(
+    api,
+    environmentId,
+    "branches",
+    { environmentId, query: "", selectedBranch: null, limit: 100 },
+    gitRpcContract.branches.output,
+  );
+}
+
+export async function getGitDiff(
   api: PublicApiClient,
   environmentId: string,
 ): Promise<ThreadGitDiffResponse> {
   const mergeBaseBranch = await requireMergeBaseBranch(api, environmentId);
-  const response = await api.environments[":id"].diff.$get({
-    param: { id: environmentId },
-    query: {
-      mergeBaseBranch,
-      target: "all",
+  const result = await readGitRpc(
+    api,
+    environmentId,
+    "diff",
+    {
+      environmentId,
+      target: { type: "all", mergeBaseBranch },
+      purpose: "display",
     },
-  });
-  await expectStatus(response, 200, `get environment diff ${environmentId}`);
-  const diffResponse = environmentDiffResponseSchema.parse(
-    await response.json(),
+    environmentDiffResponseSchema,
   );
-  if (diffResponse.outcome === "available") {
-    return diffResponse.diff;
-  }
-  if (diffResponse.outcome === "not_applicable") {
-    throw new Error(diffResponse.message);
-  }
-  throw new Error(diffResponse.failure.message);
+  if (result.outcome === "available") return result.diff;
+  throw new Error(
+    result.outcome === "unavailable" ? result.failure.message : result.message,
+  );
 }
 
-export async function getEnvironmentDiffFiles(
-  api: PublicApiClient,
-  environmentId: string,
-): Promise<EnvironmentDiffFilesResponse> {
-  const response = await api.environments[":id"].diff.files.$get({
-    param: { id: environmentId },
-    query: { target: "uncommitted" },
-  });
-  await expectStatus(
-    response,
-    200,
-    `get environment diff files ${environmentId}`,
+export function getGitDiffFiles(api: PublicApiClient, environmentId: string) {
+  return readGitRpc(
+    api,
+    environmentId,
+    "files",
+    { environmentId, target: { type: "uncommitted" }, ignoreWhitespace: false },
+    environmentDiffFilesResponseSchema,
   );
-  return environmentDiffFilesResponseSchema.parse(await response.json());
 }
 
-export async function getEnvironmentDiffPatch(
+export async function getGitDiffPatch(
   api: PublicApiClient,
   environmentId: string,
   paths: string[],
-): Promise<EnvironmentDiffPatchResponse> {
-  const response = await api.environments[":id"].diff.patch.$post({
-    param: { id: environmentId },
-    json: { target: { type: "uncommitted" }, paths },
-  });
-  await expectStatus(
-    response,
-    200,
-    `get environment diff patch ${environmentId}`,
+) {
+  const keys = paths.map((path) =>
+    JSON.stringify({
+      environmentId,
+      target: { type: "uncommitted" },
+      path,
+      ignoreWhitespace: false,
+    }),
   );
-  return environmentDiffPatchResponseSchema.parse(await response.json());
+  const result = await readGitRpc(
+    api,
+    environmentId,
+    "patches",
+    { keys },
+    gitRpcContract.patches.output,
+  );
+  return Object.values(result);
 }
 
-export async function getEnvironmentStatus(
+export async function getGitStatus(
   api: PublicApiClient,
   environmentId: string,
-): Promise<EnvironmentStatusResponse> {
+) {
   const mergeBaseBranch = await requireMergeBaseBranch(api, environmentId);
-  const response = await api.environments[":id"].status.$get({
-    param: { id: environmentId },
-    query: { mergeBaseBranch },
-  });
-  await expectStatus(response, 200, `get environment status ${environmentId}`);
-  return environmentStatusResponseSchema.parse(await response.json());
+  return readGitRpc(
+    api,
+    environmentId,
+    "status",
+    { environmentId, mergeBaseBranch },
+    environmentStatusResponseSchema,
+  );
 }
 
 export async function getAvailableModels(

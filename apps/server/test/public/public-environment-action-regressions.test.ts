@@ -1,3 +1,4 @@
+import { installTestBuiltinPlugin } from "../helpers/test-app.js";
 import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
 import type { GitHostPullRequest } from "@bb/domain";
@@ -11,7 +12,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withRunningTestHarness } from "../helpers/test-app.js";
 
 function rawPullRequest(
   overrides: Partial<GitHostPullRequest> = {},
@@ -38,7 +39,7 @@ function rawPullRequest(
 
 describe("public environment action regressions", () => {
   it("rejects the removed squash-merge action with a 400", async () => {
-    await withTestHarness(async (harness) => {
+    await withRunningTestHarness(async (harness) => {
       const squashMergeResponse = await harness.app.request(
         "/api/v1/environments/env_missing/actions",
         {
@@ -58,7 +59,7 @@ describe("public environment action regressions", () => {
   });
 
   it("rejects legacy environment action payloads that still send threadId", async () => {
-    await withTestHarness(async (harness) => {
+    await withRunningTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-target",
       });
@@ -90,8 +91,8 @@ describe("public environment action regressions", () => {
     });
   });
 
-  it("records the daemon-observed branch during commit action status preflight", async () => {
-    await withTestHarness(async (harness) => {
+  it("preserves daemon branch metadata during commit action status preflight", async () => {
+    await withRunningTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-commit-observed-branch",
       });
@@ -101,11 +102,12 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        branchName: "bb/stale",
+        branchName: "feature/observed",
         defaultBranch: "main",
         path: "/tmp/commit-observed-branch-env",
       });
 
+      await installTestBuiltinPlugin(harness, "git");
       const responsePromise = harness.app.request(
         `/api/v1/environments/${environment.id}/actions`,
         {
@@ -118,12 +120,12 @@ describe("public environment action regressions", () => {
       const statusCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "workspace.status" &&
-          command.environmentId === environment.id,
+          command.type === "plugin.host.call" &&
+          command.pluginId === "bb--git" &&
+          command.method === "status",
       );
       await reportQueuedCommandSuccess(harness, statusCommand, {
-        outcome: "available",
-        workspaceStatus: {
+        output: {
           workingTree: {
             insertions: 0,
             deletions: 0,
@@ -149,12 +151,12 @@ describe("public environment action regressions", () => {
       const diffCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "workspace.diff" &&
-          command.environmentId === environment.id,
+          command.type === "plugin.host.call" &&
+          command.pluginId === "bb--git" &&
+          command.method === "diff",
       );
       await reportQueuedCommandSuccess(harness, diffCommand, {
-        outcome: "available",
-        diff: {
+        output: {
           diff: "",
           files: "",
           mergeBaseRef: null,
@@ -169,14 +171,14 @@ describe("public environment action regressions", () => {
         code: "no_changes",
       });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        branchName: "feature/current",
-        defaultBranch: "trunk",
+        branchName: "feature/observed",
+        defaultBranch: "main",
       });
     });
   });
 
   it("marks draft pull requests ready through the environment action route", async () => {
-    await withTestHarness(async (harness) => {
+    await withRunningTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pr-ready",
       });
@@ -233,7 +235,7 @@ describe("public environment action regressions", () => {
   });
 
   it("converts open pull requests back to draft through the environment action route", async () => {
-    await withTestHarness(async (harness) => {
+    await withRunningTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pr-draft",
       });
@@ -290,7 +292,7 @@ describe("public environment action regressions", () => {
   });
 
   it("rejects blocked pull request merges before dispatching a merge command", async () => {
-    await withTestHarness(async (harness) => {
+    await withRunningTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pr-blocked",
       });
@@ -339,7 +341,7 @@ describe("public environment action regressions", () => {
   });
 
   it("merges open pull requests through the selected merge method", async () => {
-    await withTestHarness(async (harness) => {
+    await withRunningTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pr-merge",
       });

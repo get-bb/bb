@@ -1,7 +1,11 @@
+import {
+  useSectionCollapse,
+  setCollapsedSectionIds,
+} from "@bb/shared-ui/hooks/use-section-collapse";
 import { useCallback } from "react";
 import { useAtom } from "jotai";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
-import type { InfoSectionCollapse } from "./info-list";
+import type { InfoSectionCollapse } from "@/components/secondary-panel/info/info-list";
 
 const collapsedInfoSectionIdsAtom = createSyncedPreferenceAtom(
   "infoPanel.collapsedSections",
@@ -9,15 +13,11 @@ const collapsedInfoSectionIdsAtom = createSyncedPreferenceAtom(
 
 export function useInfoSectionCollapse(sectionId: string): InfoSectionCollapse {
   const [collapsedIds, setCollapsedIds] = useAtom(collapsedInfoSectionIdsAtom);
-  const collapsed = collapsedIds.includes(sectionId);
-  const setCollapsed = useCallback(
-    (nextCollapsed: boolean) => {
-      setCollapsedIds((ids) => {
-        const without = ids.filter((id) => id !== sectionId);
-        return nextCollapsed ? [...without, sectionId] : without;
-      });
+  const onChange = useCallback(
+    (id: string, collapsed: boolean) => {
+      setCollapsedIds((ids) => setCollapsedSectionIds(ids, id, collapsed));
     },
-    [sectionId, setCollapsedIds],
+    [setCollapsedIds],
   );
-  return { collapsed, setCollapsed };
+  return useSectionCollapse(sectionId, collapsedIds, onChange);
 }

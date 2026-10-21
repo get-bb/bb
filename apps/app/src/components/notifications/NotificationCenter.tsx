@@ -12,7 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { appToast, iconForTone } from "@/components/ui/app-toast";
 import { copyToClipboard } from "@/lib/clipboard";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import {
   clearNotifications,
   closeNotificationCenter,

@@ -2618,39 +2618,6 @@ machine re-enrollment, and cleanup retry behavior across unavailable
 providers, concurrent attempts, and environments shared by archived and live
 threads.
 
-## Workspace diff Viewed state (`bb.sdk.environments.experimental_diffViewed`, `experimental_markDiffViewed`, `experimental_clearDiffViewed`)
-
-`GET /environments/:id/diff/viewed` (diff target in the query) lists
-`{ files: { path, revision }[] }` for one environment and diff target.
-`PUT` with `{ target, path, revision }` marks a file Viewed at a revision, and
-`DELETE` with `{ target, path? }` clears one file or the whole target; both
-return `{ ok: true }` and emit the `diff-viewed-changed` environment change.
-`POST` accepts the diff query fields and `paths` (up to 500) for a bounded
-lookup; an empty list returns no records. The SDK selects this path when
-`experimental_diffViewed` receives `paths`. Core uses the loaded diff paths,
-independent of display filters, so marking Viewed cannot hide its own query.
-Records live in `diff_viewed_files`, keyed by environment, target
-(`uncommitted`, `commit:<sha>`, `branch_committed:<branch>`, `all:<branch>`)
-and path. Revisions come from the `revision` field that `diffFiles` now
-returns for every file: `<oldMode>:<oldBlob>:<newMode>:<newBlob>` from
-`git diff --raw`, with the worktree side hashed by `git hash-object`. A file
-counts as Viewed only while the stored revision equals the current one.
-`diffFiles` and `diffPatch` also accept `ignoreWhitespace` (git `-w`).
-
-Core callers: the workspace diff panel's Viewed checkbox
-(`DiffFilesPanel` through `useSetDiffFileViewed` and
-`useEnvironmentDiffViewed`) and `bb environment diff-viewed list|mark|unmark|clear`.
-
-**Audit before stabilizing.**
-
-1. **Revision cost.** Every file list hashes each changed worktree file; check
-   latency on large diffs and very large files, and whether git's index stat
-   cache can supply unchanged blobs.
-2. **Retention.** Records for destroyed environments stay until the row is
-   deleted; decide whether destroy should clear them.
-3. **Shape.** Decide whether the file list should carry `viewed` itself so
-   callers do not join two reads.
-
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
 `experimental_spawnPortableOutputProcess` spawns an output-only child process,
@@ -3258,6 +3225,13 @@ back/forward navigation, crash/reload recovery, links and overflow.
 
 ## Plugin watched reads
 
+`FakePluginBehaviorDrivers.experimental_watchRpc(method, read)` drives the
+registered producer with validated inputs, canonical read identity, shared
+subscriptions, and cancellation on last release or disposal. Git status is the
+first host-backed caller: core's current status and changed-file readers use
+Git RPCs and the same watched-read path as plugin UI. Audit fake-host parity
+for cancellation, failed startup, reload, and keyed reads before stabilization.
+
 `bb.rpc.experimental_whileWatched(method, handler)` starts one producer for each distinct subscribed `{input}` or `{key}` read, and aborts it when its last client leaves or the plugin unloads. An app tab hidden for five seconds stops counting as a client until it is visible again. Register after the RPC method. Read identity uses canonical JSON and the encoded read is capped at 16 KiB. The server drops an oversized target from a subscribe message and keeps the rest, and the app doesn't send one. App query hooks and SDK watchers retain the same server subscription path. Producers start and stop through the hub's watched-target registry, the path core uses for daemon git and thread-storage watching, thread timeline pushes and environment pull request checks.
 
 `bb.sdk.plugins.experimental_watchRpc` reads immediately, reacts to matching structured changes and after reconnect, and returns a callable stop handle with `refresh()` and `done`. Optional asynchronous `prepare(value)` completes before `onChange` and skips unchanged JSON snapshots until an error resets preparation; failed preparation retries a fresh read, invalidated preparation cannot publish stale status, and `done` drains preparation on stop. Connect uses this to synchronize its credential copy before publishing account status, without a plugin timer or ordering guard. SDK RPC watches recover from 404/503; CLI watch aborts on permanent 4xx except 408/429. `experimental_watchDiscovery` observes plugin lifecycle changes and emits distinct method lists. Plugin signals now require a plugin subscription; core `useRealtime` retains it.
@@ -3275,3 +3249,98 @@ requires additional bundled and marketplace consumers, partial row patches under
 pending writes, schema failures, reconnect and version-skew coverage. Per-path patch
 receipts are removed; keyed read epochs and plain full-read receipts retain the
 combined base's optimistic ordering. Legacy `bb.sdk.subscribe` events are unchanged.
+
+## Thread fixed tabs (`experimental_threadFixedTab`)
+
+- **Surface:** `app.slots.experimental_threadFixedTab`, `ExperimentalThreadFixedTabRegistration`, `ExperimentalThreadFixedTabProps`, and `ExperimentalThreadFixedTabReference`; untargeted thread references in `experimental_useAppPanel().openFixedTab` omit `panelId`.
+- **Behavior:** registers a pinned, non-closable tab scoped by plugin id and tab id. `component` and optional `useVisible({threadId})` run inside the plugin scope with crash isolation. `layout` follows panel actions. Optional `tooltip` supplies hover text and the lowercased phrase in the `Show … panel` accessible name; it defaults to `title`, which remains the tab label. Hidden, disabled, or temporarily unloaded registrations retain their saved identity and order; only available tabs can be selected. Typed targets follow the shared thread and navigation tab contract described below.
+- **Persistence and automation:** the `plugin-fixed` thread tab kind stores `{id, pluginId, tabId}` in `thread_tabs.tabs_json`, through `sdk.threads.tabs.get/update` and `bb thread tabs show/set` with revision checks. Selection remains client-local, as for existing tabs.
+- **Core caller:** the thread Info registration uses the same registry, content host, destination resolution, and selection path as plugin fixed tabs. Its existing `thread-info` wire kind/id is retained for saved-selection compatibility. Diff remains the pinned core tab until its plugin migration.
+- **Info host dependency:** Info still receives rendered metadata through its core host context. It needs `ThreadMetadataContentProps` from `ThreadDetailView`: thread/project and parent candidates/permissions/loading state, environment/host/workspace/PR snapshots and errors, the pane's merge-base selection/ref/options/search/change handlers, the thread-storage browser controller, and parent/file/commit navigation callbacks. `ThreadDetailSecondaryContent` also supplies metadata loading state and gates fork reads on panel visibility. These pane-local controllers and callbacks cannot be reconstructed from `threadId` alone without moving their ownership or duplicating state; the fixed-tab API does not expose this core-only context.
+- **Stabilization:** exercise visibility changes, plugin reload/disable/re-enable, split panels, compact drawers, independent threads, persistence/conflicts, and untargeted navigation. Audit the reference distinction from nav-panel tabs, then rename project-wide and remove this entry.
+
+## Thread context segments and header overflow (SDK 0.6.68)
+
+`app.slots.experimental_threadContextSegment` registers an integrated context
+contribution for an existing thread. `ExperimentalThreadContextSegmentRegistration`
+uses `placement: "inline"` by default: the host mounts its component separately
+for `part: "summary"` in the context row and `part: "details"` below that row.
+`ExperimentalThreadContextSegmentProps` supplies the thread id, inline segment
+count, and shared per-registration disclosure state (`isExpanded`, `onToggle`).
+Before cards receive only the summary part and own their chrome. The optional
+`useVisible` hook runs in plugin scope; false hides the contribution and excludes
+it from the count. Registrations are ordered by plugin id and registration order,
+after core. Generation and thread changes remount their content. Crashes are
+contained to the contribution. Read-only history retains core's parent context;
+plugin segments appear on the writable context surface.
+
+Core's parent-thread summary and disclosure (including read-only history) and
+active-child-thread card register through the same collector and mounts. They
+consume typed pane-local relationship and disclosure data in React contexts;
+no rendered ReactNode is passed into their implementation. Existing git and PR
+segments remain in core until PR 4. D3 moves their Info rows into Diff in that
+PR, so this change intentionally adds no Info-section API without a core caller.
+
+`PluginThreadHeaderActionRegistration.experimental_useOverflowActions` is a hook
+returning ordered `PluginThreadAction` values for the current thread/project.
+The same registration's control is shown in a wide header; compact and narrow
+split headers replace it with these actions in the existing thread menu. Omit
+the hook to retain the previous always-inline behavior. Hooks run independently
+of viewport and controls, so their state survives the responsive transition.
+Actions use the existing menu's choice handling, rename binding and error
+containment. Core's Open workspace button and its ordered target actions use
+this registration, including preferred-target behavior and target persistence.
+
+Stabilization requires auditing count/visibility changes, independent summary
+and details mounts, disclosure accessibility/focus, reload and disable cleanup,
+plugin crashes, multi-pane isolation, responsive overflow and ordering with
+core actions. Verify core and third-party registrations against the same
+contracts before removing the experimental names.
+
+## Targets on thread fixed tabs
+
+`ExperimentalThreadFixedTabReference<Target>` and
+`ExperimentalThreadFixedTabRegistration<Target>` accept `experimental_target`
+with the same validator contract as navigation fixed tabs. The existing
+`experimental_useAppPanel().openFixedTab` and `experimental_useFixedTabTarget`
+accept either reference. Untargeted registrations reject targets. Targets remain
+in memory per thread and owner, survive content remounts, and clear only if the consumed
+sequence is still current. Leaving a thread view clears unconsumed thread targets. Navigation and thread hosts share validation and
+session storage. Core Info uses their untargeted path; Git uses file and commit
+targets. Stabilize after validating malformed targets, stale clears, remounts,
+thread and split isolation, plugin reload, and both host surfaces.
+
+## Shared controls for plugin diffs
+
+`experimental_CopyButton` renders core’s clipboard button, including transient
+success state and failure feedback. Core’s diff, file and message controls use
+the same component. `experimental_ImageLightbox` renders core’s persistent image
+viewer, including keyboard navigation and browser dimming; core’s file and
+attachment previews use the same component. Git uses both in its diff cards.
+`DiffProps.experimental_onSelectionAddToChat` forwards selected lines through
+core’s diff renderer to the owning composer. Core message diffs and Git diffs
+share that renderer. Audit image navigation, dismissal, keyboard and compact
+layouts, copy failures, and selection ownership across split panes before
+stabilizing these controls.
+
+`ExperimentalThreadContextSegmentProps.experimental_instanceId` identifies one
+mounted contribution across its summary and details mounts. The host includes
+the banner instance, thread, owner, registration and generation; separate panes
+remain independent. Git shares disclosure focus refs across its two mounts.
+Core parent/child contributions receive the same identity. Audit reload,
+visibility transitions, strict-mode cleanup and split isolation before
+stabilizing the field.
+
+## Git plugin integration controls (SDK 0.6.70)
+
+- `ExperimentalThreadFixedTabRegistration.experimental_shortcutCommandId` names a command owned by the registering plugin. The host derives the bound command id and renders its current shortcut in the tab tooltip, accessible name, and `aria-keyshortcuts`. Git's pinned Diff tab uses its `toggle-diff` command. Core panel controls use the same shortcut lookup and presentation. Audit absent, rebound and disabled commands, platform overrides and plugin reload before stabilization.
+- `PluginCommandContext.experimental_openThreadFixedTab` opens a registered thread tab through the same validated destination used by core Info, plugin panel controls and navigation actions. `ExperimentalOpenFixedTabOptions.experimental_toggle` closes an already active thread tab; targets and toggle cannot be combined. Git's Mod+D command is the first plugin caller. Audit focused split ownership, absent threads, hidden tabs, malformed targets and older hosts before stabilization.
+- `ExperimentalFilePreviewOptions.experimental_revision` previews `HEAD` or a commit SHA and carries a deleted-file label. Core changed-file links previously selected these viewer sources directly; Git links now use the generic file-preview host that also opens core file previews. `FileReadArgs.ref` reads HEAD or a commit SHA, optionally its first parent, through the existing bounded host file reader. Core revision previews and Git full-file diffs use that host reader. Audit root confinement, missing and unborn revisions, binary limits, cancellation and older hosts before stabilization.
+- `ExperimentalCopyButtonProps.experimental_inlineLabel` uses core's copyable inline-label presentation. Core metadata labels delegate to that same button implementation; Git branch and merge-base rows use it. Audit keyboard and compact layout, copy failures and transient success feedback before stabilization.
+- `PluginCliCommand.experimental_readOnly` lets `defineCli` emit an exact `PluginCliCommandInfo.experimental_readOnlyCommandPath`. Hand-written parsers may declare exact paths directly, promising every accepted flag only reads state. Registration validates and copies these paths. MCP's read policy consumes enabled plugin contributions, permits explicit plugin invocations and unshadowed top-level paths, and keeps core command precedence. Git status, files, diff, patch, file and Viewed list are real callers; Viewed mutations and branch listing remain write-only because branch listing refreshes remote refs. Audit mixed command groups, aliases, core collisions, lifecycle changes and malformed declarations before stabilization.
+
+## Portable bounded and managed host processes (SDK 0.6.70)
+
+`experimental_execPortableFile` uses the same bounded portable execution implementation as core's Git commands, including sanitized environment supplied by the caller, input, stderr callbacks, cancellation, timeout and shared VCS admission. `experimental_spawnManagedProcess` uses the same portable piped child and process-group stop implementation as core's bounded Git record readers. Git's host entry is their first plugin caller; core continues to call those identical exported implementations in `@bb/process-utils`. Audit Windows command resolution, signals, buffer limits, process-tree teardown, queued cancellation and plugin worker exit before stabilization.
+
+`BbNavigate.experimental_canOpenFileExternally` reports availability known to the current surface and returns false when it is unknown. The thread host derives it from the exact optional editor handler used by core's preview controls; Git uses it to preserve the conditional editor button. Audit remote hosts, missing preferences, invalid targets, surface changes and older hosts before stabilization.

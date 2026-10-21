@@ -1,0 +1,109 @@
+{
+  "name": "bb-plugin-bb--git",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Git status and diffs for thread workspaces",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.70"
+  },
+  "bb": {
+    "name": "Git",
+    "description": "Git status and diffs for thread workspaces",
+    "branding": {
+      "icon": "GitBranch"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsrs --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@bb/domain": "workspace:*",
+    "@bb/server-contract": "workspace:*",
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.3.6",
+    "@bb/thread-view": "workspace:*",
+    "jotai": "^2.19.0",
+    "jotai-family": "^1.0.1",
+    "@tanstack/react-virtual": "^3.14.2",
+    "usehooks-ts": "^3.1.1",
+    "picomatch": "^4.0.5",
+    "@bb/core-ui": "workspace:*",
+    "sonner": "^1.7.4",
+    "@bb/client-core": "workspace:*",
+    "bb-git-contract": "workspace:*",
+    "bb-environment-provider-host": "workspace:*",
+    "bb-git-host": "workspace:*"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "@types/picomatch": "^4.0.3",
+    "@bb/test-helpers": "workspace:*"
+  },
+  "exports": {
+    "./contract": "./contract.ts",
+    "./workspace-change-summary": "./workspace-change-summary.tsx",
+    "./WorkspaceChangesList": "./WorkspaceChangesList.tsx",
+    "./DiffFileCard": "./DiffFileCard.tsx",
+    "./DiffFilesPanel": "./DiffFilesPanel.tsx",
+    "./diffFilesStore": "./diffFilesStore.ts",
+    "./diff-file-filters": "./diff-file-filters.ts",
+    "./gitDiffPanelHelpers": "./gitDiffPanelHelpers.ts",
+    "./GitDiffToolbar": "./GitDiffToolbar.tsx",
+    "./workspace-checkout-display": {
+      "source": "./workspace-checkout-display.ts",
+      "types": "./workspace-checkout-display.ts",
+      "default": "./workspace-checkout-display.ts"
+    },
+    "./workspace-status": {
+      "source": "./workspace-status.tsx",
+      "types": "./workspace-status.tsx",
+      "default": "./workspace-status.tsx"
+    },
+    "./MetadataRows": "./MetadataRows.tsx",
+    "./ChangesSection": {
+      "source": "./ChangesSection.tsx",
+      "types": "./ChangesSection.tsx",
+      "default": "./ChangesSection.tsx"
+    },
+    "./CommitsSection": {
+      "source": "./CommitsSection.tsx",
+      "types": "./CommitsSection.tsx",
+      "default": "./CommitsSection.tsx"
+    },
+    "./file-status-glyphs": {
+      "source": "./file-status-glyphs.ts",
+      "types": "./file-status-glyphs.ts",
+      "default": "./file-status-glyphs.ts"
+    },
+    "./view-preferences": "./view-preferences.ts",
+    "./ComposerSegment": "./ComposerSegment.tsx",
+    "./read-contract": "./read-contract.ts",
+    "./use-diff-patches": "./use-diff-patches.ts",
+    "./tab-reference": "./tab-reference.ts",
+    "./read-error": "./read-error.ts"
+  }
+}

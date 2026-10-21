@@ -4,7 +4,7 @@ import {
   createBooleanPreferenceAtom,
   createTabScopedStorage,
   type SyncStorage,
-} from "@/lib/browser-storage";
+} from "@bb/shared-ui/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { findPane, listPanes, removePane } from "./ops";
 import {

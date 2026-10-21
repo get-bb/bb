@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTabScopedStorage } from "./browser-storage";
+import { createTabScopedStorage } from "@bb/shared-ui/lib/browser-storage";
 
 beforeEach(() => {
   window.localStorage.clear();

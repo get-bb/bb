@@ -1,6 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { createLocalStorageSyncStorage } from "./browser-storage";
+import { createLocalStorageSyncStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const AUDIO_INPUT_DEVICE_STORAGE_KEY = "bb.voiceInput.audioInputDeviceId";
 

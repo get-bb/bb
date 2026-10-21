@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
-import { PromptStackCard } from "./PromptStackCard";
+import { PromptStackCard } from "@bb/shared-ui/prompt-stack-card";
 
 export function ProviderRequirementBanner({
   title,

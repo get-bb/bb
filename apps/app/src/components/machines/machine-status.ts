@@ -1,5 +1,5 @@
 import type { Host, MachineLifecycle } from "@bb/domain";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 
 export type MachineStatusTone = "online" | "attention" | "failed" | "offline";
 

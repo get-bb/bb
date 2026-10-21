@@ -1,13 +1,13 @@
+import {
+  installGitBannerFixture,
+  ThreadPromptContextBanner,
+  type ThreadPromptGitSection,
+} from "./ThreadPromptContextBanner.git-fixture";
 import { useState, type ReactNode } from "react";
-import type {
-  ThreadPullRequest,
-  WorkspaceFileStatus,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ThreadPullRequest } from "@bb/domain";
+import type { WorkspaceFileStatus, WorkspaceStatus } from "bb-git-contract";
 import type { PullRequestMergeMethod } from "@bb/server-contract";
 import {
-  ThreadPromptContextBanner,
-  type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptEnvironmentGoneSection,
@@ -17,7 +17,7 @@ import {
 import {
   selectWorkspaceChangedFilesSection,
   type WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
+} from "bb-plugin-bb--git/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -53,7 +53,7 @@ const promptboxBannerFiles: WorkspaceFileStatus[] = [
     deletions: 18,
   },
   {
-    path: "apps/app/src/components/promptbox/banner/PromptStackCard.tsx",
+    path: "@bb/shared-ui/prompt-stack-card",
     status: "A",
     insertions: 96,
     deletions: 0,
@@ -108,7 +108,7 @@ const dirtyUncommittedManyFiles: WorkspaceFileStatus[] = [
     deletions: 18,
   },
   {
-    path: "apps/app/src/components/promptbox/banner/PromptStackCard.tsx",
+    path: "@bb/shared-ui/prompt-stack-card",
     status: "A",
     insertions: 96,
     deletions: 0,
@@ -132,7 +132,7 @@ const dirtyUncommittedManyFiles: WorkspaceFileStatus[] = [
     deletions: 7,
   },
   {
-    path: "apps/app/src/components/thread/WorkspaceChangesList.tsx",
+    path: "bb-plugin-bb--git/WorkspaceChangesList",
     status: "M",
     insertions: 16,
     deletions: 4,
@@ -338,11 +338,12 @@ const committedManySection: WorkspaceChangedFilesSection = {
   },
 };
 
-const featureBranchMergeBase: ContextBannerMergeBaseConfig = {
-  branch: "main",
-  options: ["main", "develop", "release/2026-05"] as const,
-  onChange: noop,
-};
+const featureBranchMergeBase: NonNullable<ThreadPromptGitSection["mergeBase"]> =
+  {
+    branch: "main",
+    options: ["main", "develop", "release/2026-05"] as const,
+    onChange: noop,
+  };
 
 const parentThreadFixture: ThreadPromptParentThreadSection = {
   parentThreadTitle: "Parent thread",
@@ -725,7 +726,7 @@ const pullRequestStateRows: readonly {
 
 interface RowConfig {
   section?: WorkspaceChangedFilesSection;
-  mergeBase?: ContextBannerMergeBaseConfig | null;
+  mergeBase?: ThreadPromptGitSection["mergeBase"];
   archived?: ThreadPromptArchivedSection | null;
   environmentGone?: ThreadPromptEnvironmentGoneSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
@@ -733,7 +734,10 @@ interface RowConfig {
   pullRequest?: ThreadPullRequest | null;
   pullRequestActions?: boolean;
   pullRequestMergeMethod?: PullRequestMergeMethod;
-  initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
+  initiallyExpandedSection?:
+    | ThreadPromptContextBannerExpandedSection
+    | "git"
+    | null;
 }
 
 function ContextBannerPreview({
@@ -749,13 +753,13 @@ function ContextBannerPreview({
   initiallyExpandedSection = null,
   size,
 }: RowConfig & { size: PromptStageSize }) {
-  const [expandedSection, setExpandedSection] =
-    useState<ThreadPromptContextBannerExpandedSection | null>(
-      initiallyExpandedSection,
-    );
+  const [expandedSection, setExpandedSection] = useState<
+    ThreadPromptContextBannerExpandedSection | "git" | null
+  >(initiallyExpandedSection);
   return (
     <PromptStage size={size}>
       <ThreadPromptContextBanner
+        threadId="thread-banner-fixture"
         gitSection={
           section
             ? {
@@ -1035,3 +1039,5 @@ export const MachineRemovalHistory = () => (
     </StoryRow>
   </StoryCard>
 );
+
+installGitBannerFixture(false);

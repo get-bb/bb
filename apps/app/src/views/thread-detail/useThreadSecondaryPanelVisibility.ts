@@ -10,8 +10,6 @@ import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 type ThreadSecondaryPanelThreadId = string | undefined;
 
 type ThreadSecondaryPanelOpenHandler = (panel: ThreadSecondaryPanel) => void;
-type ThreadSecondaryPanelDiffFileOpenHandler = (path: string) => void;
-type ThreadSecondaryPanelCommitDiffOpenHandler = (sha: string) => void;
 export interface ThreadSecondaryPanelFileOpenOptions {
   viewer?: FileOpenerOverride;
 }
@@ -33,9 +31,6 @@ export interface UseThreadSecondaryPanelVisibilityArgs {
   drawerVisibility: ThreadSecondaryPanelDrawerVisibility;
   isCompactViewport: boolean;
   isPersistedOpen: boolean;
-  openPersistedCommitDiff: ThreadSecondaryPanelCommitDiffOpenHandler;
-  openPersistedDiffFile: ThreadSecondaryPanelDiffFileOpenHandler;
-  openPersistedDiffPanel: () => void;
   openPersistedHostFile: ThreadSecondaryPanelHostFileOpenHandler;
   openPersistedPanel: ThreadSecondaryPanelOpenHandler;
   openPersistedStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
@@ -58,10 +53,7 @@ interface ThreadSecondaryPanelDrawerVisibility {
 interface ThreadSecondaryPanelVisibility {
   closePanel: () => void;
   isOpen: boolean;
-  openCommitDiff: ThreadSecondaryPanelCommitDiffOpenHandler;
   openCompactDrawer: () => void;
-  openDiffFile: ThreadSecondaryPanelDiffFileOpenHandler;
-  openDiffPanel: () => void;
   openHostFile: ThreadSecondaryPanelHostFileOpenHandler;
   openPanel: ThreadSecondaryPanelOpenHandler;
   openStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
@@ -150,9 +142,6 @@ export function useThreadSecondaryPanelVisibility({
   drawerVisibility,
   isCompactViewport,
   isPersistedOpen,
-  openPersistedCommitDiff,
-  openPersistedDiffFile,
-  openPersistedDiffPanel,
   openPersistedHostFile,
   openPersistedPanel,
   openPersistedStorageFile,
@@ -173,27 +162,6 @@ export function useThreadSecondaryPanelVisibility({
       openCompactDrawer();
     },
     [openCompactDrawer, openPersistedPanel],
-  );
-
-  const openDiffPanel = useCallback(() => {
-    openPersistedDiffPanel();
-    openCompactDrawer();
-  }, [openCompactDrawer, openPersistedDiffPanel]);
-
-  const openDiffFile = useCallback<ThreadSecondaryPanelDiffFileOpenHandler>(
-    (path) => {
-      openPersistedDiffFile(path);
-      openCompactDrawer();
-    },
-    [openCompactDrawer, openPersistedDiffFile],
-  );
-
-  const openCommitDiff = useCallback<ThreadSecondaryPanelCommitDiffOpenHandler>(
-    (sha) => {
-      openPersistedCommitDiff(sha);
-      openCompactDrawer();
-    },
-    [openCompactDrawer, openPersistedCommitDiff],
   );
 
   const openWorkspaceFile =
@@ -245,10 +213,7 @@ export function useThreadSecondaryPanelVisibility({
     () => ({
       closePanel,
       isOpen,
-      openCommitDiff,
       openCompactDrawer,
-      openDiffFile,
-      openDiffPanel,
       openHostFile,
       openPanel,
       openStorageFile,
@@ -258,10 +223,7 @@ export function useThreadSecondaryPanelVisibility({
     [
       closePanel,
       isOpen,
-      openCommitDiff,
       openCompactDrawer,
-      openDiffFile,
-      openDiffPanel,
       openHostFile,
       openPanel,
       openStorageFile,

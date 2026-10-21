@@ -1,9 +1,9 @@
+import type { Environment } from "@bb/domain";
 import type {
-  Environment,
   WorkspaceFileStatus,
   WorkspaceFileStatusKind,
-} from "@bb/domain";
-import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+} from "bb-git-contract";
+import type { WorkspaceChangedFilesSection } from "bb-plugin-bb--git/workspace-change-summary";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {

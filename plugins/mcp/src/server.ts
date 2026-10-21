@@ -1,3 +1,4 @@
+import { loadPluginReadPaths } from "./plugin-read-paths.js";
 import {
   PluginCliError,
   cliCommand,
@@ -82,7 +83,12 @@ export default async function mcpPlugin(bb: BbPluginApi): Promise<void> {
     serverUrl: () => bb.server.loopbackBaseUrl,
   });
   const handler = createBbMcpHttpHandler(
-    { runCli, loadCommandIndex: createCommandIndexLoader(runCli) },
+    {
+      runCli,
+      loadCommandIndex: createCommandIndexLoader(runCli),
+      loadPluginReadPaths: (knownPaths, signal) =>
+        loadPluginReadPaths(bb.server.loopbackBaseUrl, knownPaths, signal),
+    },
     MCP_SERVER_VERSION,
     (error) => bb.log.warn(`MCP request failed: ${error.message}`),
   );

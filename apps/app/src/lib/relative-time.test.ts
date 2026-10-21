@@ -3,7 +3,7 @@ import {
   formatCompactRelativeTime,
   formatRelativeTime,
   formatScheduledTime,
-} from "./relative-time";
+} from "@bb/shared-ui/lib/relative-time";
 
 const NOW = 1_700_000_000_000;
 const MINUTE = 60 * 1000;

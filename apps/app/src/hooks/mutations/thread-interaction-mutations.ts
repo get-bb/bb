@@ -7,7 +7,7 @@ import {
 import type { Host, PendingInteraction } from "@bb/domain";
 import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import { isHostDisconnectedError } from "@/lib/lifecycle-errors";
+import { isHostDisconnectedError } from "@bb/core-ui/lifecycle-errors";
 import { useEnvironment } from "../queries/environment-queries";
 import { useHosts } from "../queries/host-queries";
 import { useThread } from "../queries/thread-queries";

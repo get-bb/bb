@@ -11,7 +11,7 @@ import {
   type ProcessStopResult,
 } from "./process-group.js";
 
-interface ExecPortableFileOptions {
+export interface ExecPortableFileOptions {
   priority?: VcsProcessPriority;
   cwd: string;
   env: NodeJS.ProcessEnv;

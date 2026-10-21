@@ -1,3 +1,4 @@
+import { installTestBuiltinPlugin } from "../helpers/test-app.js";
 import { describe, expect, it } from "vitest";
 import { registerFakeAiService } from "../helpers/ai-services.js";
 import { generateCommitMessage } from "../../src/services/ai/commit-message.js";
@@ -11,7 +12,10 @@ import {
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  withRunningTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const commitMessageArgs = {
   diffDescription: "uncommitted changes",
@@ -43,6 +47,7 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
     projectId: project.id,
   });
 
+  await installTestBuiltinPlugin(harness, "git");
   const responsePromise = harness.app.request(
     `/api/v1/environments/${environment.id}/actions`,
     {
@@ -55,12 +60,12 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
   const statusCommand = await waitForQueuedCommand(
     harness,
     ({ command }) =>
-      command.type === "workspace.status" &&
-      command.environmentId === environment.id,
+      command.type === "plugin.host.call" &&
+      command.pluginId === "bb--git" &&
+      command.method === "status",
   );
   await reportQueuedCommandSuccess(harness, statusCommand, {
-    outcome: "available",
-    workspaceStatus: {
+    output: {
       branch: { currentBranch: "feature", defaultBranch: "main" },
       checkout: { kind: "branch", branchName: "feature", headSha: null },
       mergeBase: null,
@@ -79,12 +84,12 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
   const diffCommand = await waitForQueuedCommand(
     harness,
     ({ command }) =>
-      command.type === "workspace.diff" &&
-      command.environmentId === environment.id,
+      command.type === "plugin.host.call" &&
+      command.pluginId === "bb--git" &&
+      command.method === "diff",
   );
   await reportQueuedCommandSuccess(harness, diffCommand, {
-    outcome: "available",
-    diff: {
+    output: {
       diff: commitMessageArgs.patch,
       files: commitMessageArgs.files,
       mergeBaseRef: null,
@@ -120,7 +125,7 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
 
 describe("commit message generation", () => {
   it("sends the diff prompt and returns the cleaned subject line", async () => {
-    await withTestHarness({}, async (harness) => {
+    await withRunningTestHarness({}, async (harness) => {
       const codex = registerCodex(
         harness,
         async () => '"fix: export the changed flag"\n\nLonger body',
@@ -137,7 +142,7 @@ describe("commit message generation", () => {
   });
 
   it("keeps the subject within 72 columns", async () => {
-    await withTestHarness({}, async (harness) => {
+    await withRunningTestHarness({}, async (harness) => {
       registerCodex(
         harness,
         async () =>
@@ -154,7 +159,7 @@ describe("commit message generation", () => {
   });
 
   it("returns null when no AI service answers", async () => {
-    await withTestHarness({}, async (harness) => {
+    await withRunningTestHarness({}, async (harness) => {
       await expect(
         generateCommitMessage(harness.deps, commitMessageArgs),
       ).resolves.toBeNull();
@@ -168,7 +173,7 @@ describe("commit message generation", () => {
   });
 
   it("commits with the generated message through the environment action", async () => {
-    await withTestHarness({}, async (harness) => {
+    await withRunningTestHarness({}, async (harness) => {
       registerCodex(harness, async () => "fix: export the changed flag");
       await expect(commitThroughRoute(harness)).resolves.toBe(
         "fix: export the changed flag",
@@ -177,7 +182,7 @@ describe("commit message generation", () => {
   });
 
   it("commits with the fallback message when generation fails", async () => {
-    await withTestHarness({}, async (harness) => {
+    await withRunningTestHarness({}, async (harness) => {
       registerCodex(harness, async () => {
         throw new Error("Codex request failed");
       });

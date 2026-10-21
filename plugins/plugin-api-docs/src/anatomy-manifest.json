@@ -27,6 +27,44 @@
     ]
   },
   "surfaceFixtures": {
+    "composer-banners": {
+      "groupId": "composer",
+      "fidelity": "flow",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": [
+        "anchor",
+        "triggered"
+      ],
+      "labels": {
+        "anchor": [
+          "Your banner",
+          "Parent thread",
+          "Your context"
+        ],
+        "triggered": [
+          "Context details"
+        ]
+      },
+      "fixtureClassAnchors": ["overflow-hidden", "rounded-lg"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx",
+          "anchors": [
+            "ParentContextSegment",
+            "ChildContextSegment",
+            "inlineSegments.map",
+            "beforeSegments.map"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadContextSegments.tsx",
+          "anchors": [
+            "props.part",
+            "onVisible(slot, threadId, visible)"
+          ]
+        }
+      ]
+    },
     "composer-actions": {
       "groupId": "composer",
       "fidelity": "flow",

@@ -5,7 +5,7 @@ import type { WorkspaceOpenTargetId } from "@bb/host-daemon-contract";
 import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
-} from "./absolute-file-path";
+} from "@bb/shared-ui/lib/absolute-file-path";
 import { isRoutePath } from "./route-paths";
 
 const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =

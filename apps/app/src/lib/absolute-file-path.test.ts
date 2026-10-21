@@ -4,7 +4,7 @@ import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
-} from "./absolute-file-path";
+} from "@bb/shared-ui/lib/absolute-file-path";
 
 describe("getAbsoluteDirname", () => {
   it.each([

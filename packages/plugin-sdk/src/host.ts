@@ -59,3 +59,11 @@ export type {
   VcsProcessOptions as ExperimentalVcsProcessOptions,
   VcsProcessPriority as ExperimentalVcsProcessPriority,
 } from "@bb/process-utils";
+
+export { execPortableFile as experimental_execPortableFile } from "@bb/process-utils";
+export type { ExecPortableFileOptions as ExperimentalExecPortableFileOptions } from "@bb/process-utils";
+export { spawnManagedProcess as experimental_spawnManagedProcess } from "@bb/process-utils";
+export type {
+  ManagedProcessRequest as ExperimentalManagedProcessRequest,
+  ManagedProcess as ExperimentalManagedProcess,
+} from "@bb/process-utils";

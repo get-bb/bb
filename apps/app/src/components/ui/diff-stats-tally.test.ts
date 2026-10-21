@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDiffSizeBarBlocks } from "./diff-stats-tally";
+import { getDiffSizeBarBlocks } from "@bb/shared-ui/diff-stats-tally";
 
 describe("getDiffSizeBarBlocks", () => {
   it("leaves the bar empty when nothing changed", () => {

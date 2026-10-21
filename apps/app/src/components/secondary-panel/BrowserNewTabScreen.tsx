@@ -5,7 +5,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getBrowserUrlHost } from "@/lib/browser-url";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import type { BrowserHistoryEntry } from "@/lib/browser-history";
 import {
   LAUNCHER_ROW_BASE_CLASS,

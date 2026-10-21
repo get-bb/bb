@@ -4,7 +4,7 @@ import type {
   ExperimentalDiffFullFileContents,
   SourceCodeLineRange,
 } from "@get-bb/plugin-sdk";
-import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
+import type { ParsedGitDiffFile } from "@bb/shared-ui/git-diff/parsing";
 
 export const DEFAULT_CODE_OVERFLOW: CodeOverflowMode = "scroll";
 export const DEFAULT_DIFF_VIEW: DiffViewMode = "unified";

@@ -45,8 +45,6 @@ describe("evaluateCliAccess in read mode", () => {
     [["thread", "list", "--project", "prj_1", "--json"]],
     [["thread", "show", "thr_1", "--json"]],
     [["thread", "queue", "list"]],
-    [["environment", "diff", "env_1", "--target", "head"]],
-    [["environment", "diff-file", "env_1", "--path", "src/a.ts"]],
     [["file", "read", "/etc/hostname"]],
     [["terminal", "output", "term_1"]],
     [["machine", "env", "list"]],
@@ -114,16 +112,11 @@ describe("evaluateCliAccess in read mode", () => {
 describe("READ_ONLY_COMMAND_PATHS", () => {
   it("lists exactly the commands reviewed as changing nothing", () => {
     expect([...READ_ONLY_COMMAND_PATHS].sort()).toEqual([
-      "environment diff",
-      "environment diff-file",
-      "environment diff-files",
-      "environment diff-patch",
       "environment list",
       "environment paths",
       "environment providers",
       "environment pull-request show",
       "environment show",
-      "environment status",
       "file list",
       "file paths",
       "file read",

@@ -9,7 +9,12 @@ import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useChildThreads, useThreads } from "@/hooks/queries/thread-queries";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
+import {
+  InfoList,
+  InfoListRow,
+  InfoRowTime,
+  InfoSection,
+} from "@/components/secondary-panel/info/info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface RelatedThreadsSectionProps {

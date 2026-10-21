@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { atom, useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { createTabScopedStorage } from "./browser-storage";
+import { createTabScopedStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
 

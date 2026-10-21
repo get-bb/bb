@@ -3,7 +3,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { PromptStackCard } from "@bb/shared-ui/prompt-stack-card";
 
 interface InlineMessageEditorFrameProps {
   cancelLabel: string;

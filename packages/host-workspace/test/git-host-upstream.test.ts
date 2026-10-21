@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runGit } from "../src/git.js";
+import { runGit } from "bb-git-host/git";
 import { Workspace } from "../src/workspace.js";
 
 const execFileAsync = promisify(execFile);

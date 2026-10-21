@@ -1,5 +1,5 @@
 import { atomWithStorage } from "jotai/utils";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { createJsonLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const NEW_TAB_ACTION_ORDER_STORAGE_KEY = "bb.newTab.actionOrder";
 

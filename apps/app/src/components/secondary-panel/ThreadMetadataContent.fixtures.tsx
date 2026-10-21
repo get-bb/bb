@@ -1,10 +1,6 @@
 import type { ReactNode } from "react";
-import type {
-  ThreadListEntry,
-  ThreadPullRequest,
-  WorkspaceMergeBase,
-  WorkspaceWorkingTree,
-} from "@bb/domain";
+import type { ThreadListEntry, ThreadPullRequest } from "@bb/domain";
+import type { WorkspaceMergeBase, WorkspaceWorkingTree } from "bb-git-contract";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
@@ -91,18 +87,11 @@ export const baseProps: ThreadMetadataContentProps = {
   environment: makeEnvironment(),
   environmentProvisioningFailure: false,
   environmentDisplayHost: localEnvironmentDisplayHost,
-  workspaceStatus: makeWorkspaceStatus(),
-  workspaceStatusError: null,
   pullRequest: null,
-  selectedMergeBaseBranch: undefined,
-  mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
-  isLoadingMergeBaseBranchOptions: false,
   updateThreadPending: false,
   onAssignParent: noop,
   onParentSelectorOpenChange: noop,
   onRetryParentThreads: noop,
-  onMergeBaseBranchChange: noop,
-  onChangedFileClick: noop,
 };
 
 export const STORY_DIRTY_WORKING_TREE: Omit<WorkspaceWorkingTree, "state"> = {

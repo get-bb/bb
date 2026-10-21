@@ -36,7 +36,7 @@ import {
   ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import {
   findEnvironmentDisplayProvider,
   getEnvironmentDisplayIconName,

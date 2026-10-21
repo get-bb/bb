@@ -10,12 +10,11 @@ import {
 } from "@/lib/bb-desktop";
 
 describe("getSecondaryPanelChromeStackClassName", () => {
-  it("reserves the combined navigation and active Diff toolbar height", () => {
-    const className = getSecondaryPanelChromeStackClassName(true);
+  it("keeps panel chrome separate from registered content", () => {
+    const className = getSecondaryPanelChromeStackClassName();
 
-    expect(className).toContain("flex");
-    expect(className).toContain("flex-col");
     expect(className).toContain("shrink-0");
+    expect(className).toContain("select-none");
     expect(className).not.toContain(CHROME_ROW_HEIGHT_CLASS);
   });
 });

@@ -13,7 +13,7 @@ import {
   isAbsoluteLocalPath,
   isProjectAttachmentPath,
 } from "@/lib/file-content-urls";
-import { formatByteSize } from "@/lib/format-byte-size";
+import { formatByteSize } from "@bb/shared-ui/lib/format-byte-size";
 import { canSaveFileNatively, saveFile } from "@/lib/save-file";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import type {

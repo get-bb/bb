@@ -62,7 +62,7 @@ import {
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import {
   getSettingsMachineRoutePath,
   getSettingsRoutePath,

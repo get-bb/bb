@@ -1,5 +1,6 @@
-import type { WorkspaceCommitSummary } from "@bb/domain";
-import type { DiffFileEntry } from "@bb/server-contract";
+import { type DiffFileEntry } from "bb-plugin-bb--git/read-contract";
+import type { WorkspaceCommitSummary } from "bb-git-contract";
+import type {} from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildGitDiffSelectionOptions,
@@ -11,7 +12,7 @@ import {
   shouldResetSelectedGitDiffSelection,
   UNCOMMITTED_GIT_DIFF_SELECTION,
   type PendingGitDiffIntent,
-} from "./gitDiffPanelHelpers";
+} from "bb-plugin-bb--git/gitDiffPanelHelpers";
 
 function makeCommit(
   overrides: Partial<WorkspaceCommitSummary> = {},

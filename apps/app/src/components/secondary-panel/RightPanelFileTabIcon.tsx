@@ -1,6 +1,6 @@
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
-import { resolveRightPanelFileIconName } from "./rightPanelFileVisuals";
+import { resolveRightPanelFileIconName } from "@bb/shared-ui/lib/file-visuals";
 
 interface RightPanelFileTabIconProps {
   path: string;

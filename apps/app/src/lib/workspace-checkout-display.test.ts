@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatWorkspaceCheckoutDisplay } from "./workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "bb-plugin-bb--git/workspace-checkout-display";
 
 describe("formatWorkspaceCheckoutDisplay", () => {
   it("formats a branch checkout as a copyable branch label", () => {

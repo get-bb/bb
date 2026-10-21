@@ -18,7 +18,7 @@ import {
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { selectHosts, selectPrimaryHost } from "@/hooks/queries/host-queries";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import {
@@ -36,7 +36,7 @@ import {
   MACHINE_SEARCH_MIN_OPTIONS,
   searchMachineHosts,
 } from "./machine-picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 export const MACHINE_BADGE_CLASS_NAME =
   "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";

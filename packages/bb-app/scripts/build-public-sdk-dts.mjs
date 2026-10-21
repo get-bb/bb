@@ -9,6 +9,8 @@ const packageRoot = path.resolve(here, "..");
 const packagesRoot = path.resolve(packageRoot, "..");
 
 function resolveWorkspaceSource(id) {
+  if (id === "bb-git-contract")
+    return path.join(packagesRoot, "git-contract/src/index.ts");
   const match = /^@bb\/([^/]+)(\/.*)?$/u.exec(id);
   if (!match) return null;
   const packageDirectory = path.join(packagesRoot, match[1]);

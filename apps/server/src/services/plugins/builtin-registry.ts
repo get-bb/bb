@@ -35,6 +35,7 @@ export function accountPoolDefaultEnabled(
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
+  { name: "git", pluginId: "bb--git", defaultEnabled: true },
   {
     name: "storage-retention",
     pluginId: "bb--storage-retention",

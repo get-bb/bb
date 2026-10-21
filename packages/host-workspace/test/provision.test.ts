@@ -2,7 +2,7 @@ import path from "node:path";
 import { initRepo, makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import { provisionWorkspace } from "../src/index.js";
-import { runGit } from "../src/git.js";
+import { runGit } from "bb-git-host/git";
 
 describe("provisionWorkspace", () => {
   describe("unmanaged", () => {

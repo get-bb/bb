@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   BranchPicker,
   type BranchPickerProps,
-} from "@/components/pickers/BranchPicker";
+} from "@bb/shared-ui/branch-picker";
 import {
   EnvironmentPickerUI,
   type EnvironmentPickerUIProps,

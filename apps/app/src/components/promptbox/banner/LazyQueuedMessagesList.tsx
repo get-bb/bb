@@ -6,7 +6,7 @@ import { queuedMessageFallbackTitle } from "@/lib/queued-message-wait";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PromptStackCard,
-} from "@/components/promptbox/banner/PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
 import {
   getQueuedMessagesDrawerHeight,

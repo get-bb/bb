@@ -1,6 +1,6 @@
 import { atomWithStorage } from "jotai/utils";
 import { z } from "zod";
-import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import { createLocalStorageSyncStorage } from "@bb/shared-ui/lib/browser-storage";
 
 const pluginWorkspaceSchema = z.object({
   tabs: z.array(z.string().min(1)).max(100),

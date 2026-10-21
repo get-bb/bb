@@ -537,11 +537,11 @@ export function useAppCommandContext(
 }
 
 export function useAppCommandShortcut(
-  command: KeyboardCommandId,
+  command: KeyboardCommandId | undefined,
 ): AppShortcutPresentation | null {
   const value = useContext(AppCommandContextValue);
   return useMemo(() => {
-    const shortcut = value?.getShortcut(command);
+    const shortcut = command === undefined ? null : value?.getShortcut(command);
     if (!shortcut) return null;
     return presentAppShortcut(shortcut, browserPlatform());
   }, [command, value]);
@@ -559,7 +559,8 @@ export function useAppCommandShortcuts<Command extends KeyboardCommandId>(
     const presentations = new Map<Command, AppShortcutPresentation>();
     const platform = browserPlatform();
     for (const command of commands) {
-      const shortcut = value?.getShortcut(command);
+      const shortcut =
+        command === undefined ? null : value?.getShortcut(command);
       if (!shortcut) continue;
       presentations.set(command, presentAppShortcut(shortcut, platform));
     }

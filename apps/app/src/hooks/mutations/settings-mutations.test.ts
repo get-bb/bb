@@ -198,17 +198,20 @@ describe("general settings mutation", () => {
       .mockReturnValueOnce(secondWrite.promise);
     const save = generalSettingsSave(queryClient);
 
-    const firstSave = save.mutate({ showGitChanges: false });
+    const firstSave = save.mutate({ terminalCopyOnSelect: false });
     const secondSave = save.mutate({ confirmThreadArchive: false });
     await vi.waitFor(() =>
       expect(
         queryClient.getQueryData<SystemConfigResponse>(configKey)
           ?.generalSettings,
-      ).toMatchObject({ showGitChanges: false, confirmThreadArchive: false }),
+      ).toMatchObject({
+        terminalCopyOnSelect: false,
+        confirmThreadArchive: false,
+      }),
     );
     expect(sdk.system.updateGeneralSettings).toHaveBeenCalledOnce();
 
-    firstWrite.resolve({ ...defaultAppSettings, showGitChanges: false });
+    firstWrite.resolve({ ...defaultAppSettings, terminalCopyOnSelect: false });
     await firstSave;
     await vi.waitFor(() =>
       expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(2),
@@ -216,11 +219,14 @@ describe("general settings mutation", () => {
     expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
     expect(
       vi.mocked(sdk.system.updateGeneralSettings).mock.calls[1]?.[0],
-    ).toMatchObject({ showGitChanges: false, confirmThreadArchive: false });
+    ).toMatchObject({
+      terminalCopyOnSelect: false,
+      confirmThreadArchive: false,
+    });
 
     secondWrite.resolve({
       ...defaultAppSettings,
-      showGitChanges: false,
+      terminalCopyOnSelect: false,
       confirmThreadArchive: false,
     });
     await secondSave;
@@ -237,7 +243,7 @@ describe("general settings mutation", () => {
       .mockReturnValueOnce(new Promise(() => {}));
     const save = generalSettingsSave(queryClient);
 
-    const firstSave = save.mutate({ showGitChanges: false });
+    const firstSave = save.mutate({ terminalCopyOnSelect: false });
     void save.mutate({ confirmThreadArchive: false });
     await vi.waitFor(() =>
       expect(
@@ -254,10 +260,16 @@ describe("general settings mutation", () => {
     expect(
       queryClient.getQueryData<SystemConfigResponse>(configKey)
         ?.generalSettings,
-    ).toMatchObject({ showGitChanges: true, confirmThreadArchive: false });
+    ).toMatchObject({
+      terminalCopyOnSelect: true,
+      confirmThreadArchive: false,
+    });
     expect(
       vi.mocked(sdk.system.updateGeneralSettings).mock.calls[1]?.[0],
-    ).toMatchObject({ showGitChanges: true, confirmThreadArchive: false });
+    ).toMatchObject({
+      terminalCopyOnSelect: true,
+      confirmThreadArchive: false,
+    });
   });
 
   it("drops cached model catalogs when streamer mode flips", async () => {

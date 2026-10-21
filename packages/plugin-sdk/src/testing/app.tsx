@@ -37,6 +37,8 @@ import {
   type ComposerSelection,
   type ComposerSubmitOptions,
   type ComposerView,
+  type ExperimentalThreadContextSegmentRegistration,
+  type ExperimentalThreadFixedTabDeclaration,
   type ExperimentalAppOverlayRegistration,
   type ExperimentalSidebarNavigationActions,
   type ExperimentalSidebarNavigationTarget,
@@ -112,6 +114,7 @@ import {
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
+  type ExperimentalThreadFixedTabReference,
   type NewThreadComposerProps,
   type BranchPickerProps,
   type CheckoutState,
@@ -122,6 +125,8 @@ import {
   type PluginMachineProviderInputsRegistration,
   type ThreadChatProps,
   type DiffProps,
+  type ExperimentalImageLightboxProps,
+  type ExperimentalCopyButtonProps,
   type SourceCodeProps,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
@@ -133,7 +138,10 @@ import {
   type ComposerHandleTarget,
 } from "../internal/composer-handle.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
-import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
+import {
+  normalizeExperimentalFileOpenOptions,
+  normalizeExperimentalFilePreviewOptions,
+} from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import {
   collectPluginAppRegistrations,
@@ -215,7 +223,7 @@ export type NavigateCall =
   | { method: "openUrl"; url: string }
   | {
       method: "experimental_openFilePreview";
-      options: ExperimentalFileOpenOptions;
+      options: import("../app-contract.js").ExperimentalFilePreviewOptions;
     }
   | {
       method: "experimental_openFileExternally";
@@ -228,9 +236,10 @@ export type NavigateCall =
 
 export interface ExperimentalFixedTabOpenCall {
   surface: ExperimentalOpenFixedTabOptions<JsonValue>["surface"];
-  panelId: string;
+  panelId?: string;
   tabId: string;
   target?: JsonValue;
+  experimental_toggle?: boolean;
 }
 
 export interface ComposerLog {
@@ -328,7 +337,7 @@ interface SlotEnv {
 interface TestFixedTabTargetStore {
   clear(sequence: number): void;
   getSnapshot(): {
-    panelId: string;
+    panelId?: string;
     sequence: number;
     tabId: string;
     target: JsonValue;
@@ -1222,6 +1231,70 @@ function TestDiff({
   );
 }
 
+function TestImageLightbox({
+  imageSrc,
+  isOpen = true,
+  title,
+  imageAlt,
+  onClose,
+  onNext,
+  onPrevious,
+  nextDisabled,
+  previousDisabled,
+}: ExperimentalImageLightboxProps) {
+  return isOpen && imageSrc !== null ? (
+    <div role="dialog" aria-label={title}>
+      <img src={imageSrc} alt={imageAlt} />
+      <button aria-label="Close image preview" onClick={onClose}>
+        Close
+      </button>
+      {onPrevious ? (
+        <button
+          aria-label="Previous image"
+          disabled={previousDisabled}
+          onClick={onPrevious}
+        >
+          Previous
+        </button>
+      ) : null}
+      {onNext ? (
+        <button
+          aria-label="Next image"
+          disabled={nextDisabled}
+          onClick={onNext}
+        >
+          Next
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+}
+function TestCopyButton({
+  text,
+  label = "Copy to clipboard",
+  iconClassName: _iconClassName,
+  successMessage: _successMessage,
+  errorMessage: _errorMessage,
+  imageUrl: _imageUrl,
+  experimental_inlineLabel: _inlineLabel,
+  ...props
+}: ExperimentalCopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      {...props}
+      type="button"
+      aria-label={label}
+      onClick={async () => {
+        if (await (activeClipboard?.({ text }) ?? Promise.resolve(true)))
+          setCopied(true);
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 type TestClipboard = (
   content: ExperimentalClipboardContent,
 ) => Promise<boolean>;
@@ -1296,7 +1369,9 @@ const testPluginSdkApp = {
     return useSlotEnv("experimental_useAppPanel").appPanel;
   },
   experimental_useFixedTabTarget<Target extends JsonValue>(
-    tab: ExperimentalPluginFixedTabReference<Target>,
+    tab:
+      | ExperimentalPluginFixedTabReference<Target>
+      | ExperimentalThreadFixedTabReference<Target>,
   ): ExperimentalFixedTabTargetState<Target> | null {
     const store = useSlotEnv("experimental_useFixedTabTarget").fixedTabTarget;
     const state = useSyncExternalStore(
@@ -1385,6 +1460,8 @@ const testPluginSdkApp = {
   },
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
+  experimental_ImageLightbox: TestImageLightbox,
+  experimental_CopyButton: TestCopyButton,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
   },
@@ -1581,6 +1658,8 @@ export interface CapturedPluginApp {
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
+  threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
+  threadFixedTabs: ExperimentalThreadFixedTabDeclaration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   newThreadPanelActions: PluginNewThreadPanelActionRegistration[];
   composerCustomizations: ComposerCustomization[];
@@ -1922,8 +2001,13 @@ export interface RenderSlotOptions<
   /** Host acceptance for URL intents from the hook or `UrlLink`. */
   openUrl?: (url: string) => boolean;
   /** Host acceptance for preview intents from the hook or file link. */
-  openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
+  openFilePreview?: (
+    options: import("../app-contract.js").ExperimentalFilePreviewOptions,
+  ) => boolean;
   /** Host acceptance for preferred-external file intents. */
+  canOpenFileExternally?: (
+    options: import("../app-contract.js").ExperimentalFileOpenOptions,
+  ) => boolean;
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
   openTerminal?: (
@@ -1933,7 +2017,7 @@ export interface RenderSlotOptions<
   experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
   /** Initial session target visible to `experimental_useFixedTabTarget`. */
   experimental_fixedTabTarget?: {
-    panelId: string;
+    panelId?: string;
     tabId: string;
     target: JsonValue;
   };
@@ -2175,6 +2259,12 @@ export function renderSlot<
   };
   const appPanel: ExperimentalAppPanel = {
     openFixedTab(panelOptions) {
+      if (
+        "experimental_toggle" in panelOptions &&
+        panelOptions.experimental_toggle &&
+        panelOptions.target !== undefined
+      )
+        return false;
       let target: JsonValue | undefined;
       if (panelOptions.target !== undefined) {
         try {
@@ -2196,9 +2286,14 @@ export function renderSlot<
       }
       const call: ExperimentalFixedTabOpenCall = {
         surface: panelOptions.surface,
-        panelId: panelOptions.tab.panelId,
+        ...(panelOptions.tab.panelId === undefined
+          ? {}
+          : { panelId: panelOptions.tab.panelId }),
         tabId: panelOptions.tab.id,
         ...(target === undefined ? {} : { target }),
+        ...("experimental_toggle" in panelOptions
+          ? { experimental_toggle: panelOptions.experimental_toggle }
+          : {}),
       };
       experimental_fixedTabOpenCalls.push(call);
       const accepted = options.experimental_openFixedTab?.(call) ?? false;
@@ -2372,11 +2467,20 @@ export function renderSlot<
       return options.openUrl?.(url) ?? false;
     },
     experimental_openFilePreview(fileOptions) {
+      const normalized = normalizeExperimentalFilePreviewOptions(fileOptions);
+      if (!normalized) return false;
       navigateCalls.push({
         method: "experimental_openFilePreview",
-        options: fileOptions,
+        options: normalized,
       });
-      return options.openFilePreview?.(fileOptions) ?? false;
+      return options.openFilePreview?.(normalized) ?? false;
+    },
+    experimental_canOpenFileExternally(fileOptions) {
+      const normalized = normalizeExperimentalFileOpenOptions(fileOptions);
+      return (
+        normalized !== null &&
+        (options.canOpenFileExternally?.(normalized) ?? false)
+      );
     },
     experimental_openFileExternally(fileOptions) {
       navigateCalls.push({

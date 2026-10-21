@@ -1,4 +1,10 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import {
+  createRef,
+  useEffect,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { CONTEXT_CARD_CLASS } from "./chrome-style-tokens";
 import { Icon } from "./icon";
 import { cn } from "../../lib/utils";
@@ -15,13 +21,29 @@ const PEEK_LAYER_CLASSES: Record<number, readonly string[]> = {
 };
 const PEEK_PADDING_CLASS: Record<number, string> = { 1: "pb-1", 2: "pb-2" };
 
+export function createDisclosureFocusRefs(): {
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  collapseRef: RefObject<HTMLButtonElement | null>;
+  pendingFocus: { current: "trigger" | "collapse" | null };
+} {
+  return {
+    triggerRef: createRef<HTMLButtonElement>(),
+    collapseRef: createRef<HTMLButtonElement>(),
+    pendingFocus: { current: null },
+  };
+}
+
 export function useDisclosureFocusHandoff(
   isExpanded: boolean,
   toggle: () => void,
+  shared?: ReturnType<typeof createDisclosureFocusRefs>,
 ) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const collapseRef = useRef<HTMLButtonElement>(null);
-  const pendingFocus = useRef<"trigger" | "collapse" | null>(null);
+  const localTriggerRef = useRef<HTMLButtonElement>(null);
+  const localCollapseRef = useRef<HTMLButtonElement>(null);
+  const localPendingFocus = useRef<"trigger" | "collapse" | null>(null);
+  const triggerRef = shared?.triggerRef ?? localTriggerRef;
+  const collapseRef = shared?.collapseRef ?? localCollapseRef;
+  const pendingFocus = shared?.pendingFocus ?? localPendingFocus;
   useEffect(() => {
     const target =
       pendingFocus.current === "collapse"
@@ -31,7 +53,7 @@ export function useDisclosureFocusHandoff(
           : null;
     pendingFocus.current = null;
     target?.focus();
-  }, [isExpanded]);
+  }, [isExpanded, triggerRef, collapseRef, pendingFocus]);
   return {
     triggerRef,
     collapseRef,

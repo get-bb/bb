@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalStorageEnumStorage,
   createNullableLocalStorageEnumStorage,
-} from "./browser-storage";
+} from "@bb/shared-ui/lib/browser-storage";
 
 type DisplayMode = "unified" | "split";
 type OverflowMode = "wrap" | "scroll";

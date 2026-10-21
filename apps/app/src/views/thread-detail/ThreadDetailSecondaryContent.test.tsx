@@ -278,7 +278,6 @@ function createProps(
     renderHostedPanel: (panel) => panel,
     secondaryPanel: {
       activeTab: null,
-      canUseGitUi: false,
       tabs: [],
       fixedTabs: [],
       isOpen: true,

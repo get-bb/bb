@@ -1,13 +1,9 @@
-import {
-  collectOptionalFieldPaths,
-  makeWorkspaceStatus,
-} from "@bb/test-helpers";
+import { collectOptionalFieldPaths } from "@bb/test-helpers";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import {
-  gitBranchSelectionSchema,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
@@ -23,7 +19,6 @@ import {
   createPublicApiClient,
   createThreadRequestSchema,
   environmentActionRequestSchema,
-  gitBranchNameSchema,
   reorderPinnedThreadRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
@@ -41,7 +36,6 @@ import {
   timelineTurnSummaryDetailsResponseSchema,
   updateQueuedMessageRequestSchema,
   updateEnvironmentRequestSchema,
-  unmanagedBranchSpecSchema,
 } from "../src/index.js";
 
 interface OptionalServerFieldGroup {
@@ -465,10 +459,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Queued and follow-up messages omit senderThreadId unless the request originates from another thread.",
+      "Thread creation, queued messages, and follow-up messages omit their sender unless the request originates from another thread or, for sends, a plugin.",
     fields: [
       "createQueuedMessageRequestSchema.senderThreadId",
       "sendMessageRequestSchema.senderThreadId",
+      "createThreadRequestSchema.senderThreadId",
+      "sendMessageRequestSchema.originPluginId",
     ],
   },
   {
@@ -686,68 +682,6 @@ const WORKSPACE_RESOLUTION_FAILURE: WorkspaceResolutionFailure = {
 };
 
 describe("environment workspace response contract", () => {
-  it("uses explicit status outcomes instead of nullable parallel fields", () => {
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        outcome: "available",
-        workspace: makeWorkspaceStatus(),
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace status is not available for non-git environments",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        outcome: "unavailable",
-        failure: WORKSPACE_RESOLUTION_FAILURE,
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        workspace: null,
-        workspaceUnavailable: null,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("uses explicit diff outcomes instead of nullable parallel fields", () => {
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        outcome: "available",
-        diff: {
-          diff: "",
-          files: "",
-          mergeBaseRef: null,
-          shortstat: "",
-          truncated: false,
-        },
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace diff is not available for non-git environments",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        outcome: "unavailable",
-        failure: WORKSPACE_RESOLUTION_FAILURE,
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        diff: null,
-        workspaceUnavailable: WORKSPACE_RESOLUTION_FAILURE,
-      }).success,
-    ).toBe(false);
-  });
-
   it("types workspace unavailable environment action errors", () => {
     expect(
       contract.environmentActionApiErrorSchema.safeParse({
@@ -759,168 +693,6 @@ describe("environment workspace response contract", () => {
         },
       }).success,
     ).toBe(true);
-  });
-});
-
-describe("git branch name contract", () => {
-  it("accepts valid branch names", () => {
-    const validNames = [
-      "main",
-      "release/1.2",
-      "feature.foo",
-      "user_name",
-      "bb/thread-123",
-    ];
-
-    for (const name of validNames) {
-      expect(gitBranchNameSchema.safeParse(name).success).toBe(true);
-    }
-  });
-
-  it("rejects names git may parse ambiguously or refuses as refs", () => {
-    const invalidNames = [
-      "",
-      "   ",
-      "-release",
-      "/release",
-      ".release",
-      "bar/.hidden",
-      "bad\nbranch",
-      "bad\u007fbranch",
-      "bad branch",
-      "bad\tbranch",
-      "bad..branch",
-      "bad@{branch",
-      "bad\\branch",
-      "bad:branch",
-      "bad~branch",
-      "bad^branch",
-      "bad?branch",
-      "bad*branch",
-      "bad[branch",
-      "bad/",
-      "bad.lock",
-      "bad.lock/branch",
-      "bad//branch",
-      "bad.",
-      "@",
-      "HEAD",
-      "FETCH_HEAD",
-    ];
-
-    for (const name of invalidNames) {
-      expect(gitBranchNameSchema.safeParse(name).success).toBe(false);
-    }
-  });
-
-  it("uses the shared validator for managed and unmanaged branch specs", () => {
-    expect(
-      gitBranchSelectionSchema.safeParse({
-        kind: "named",
-        name: "release/1.2",
-      }).success,
-    ).toBe(true);
-    expect(
-      gitBranchSelectionSchema.safeParse({ kind: "named", name: "-release" })
-        .success,
-    ).toBe(false);
-    expect(
-      unmanagedBranchSpecSchema.safeParse({
-        kind: "existing",
-        name: "release/1.2",
-      }).success,
-    ).toBe(true);
-    expect(
-      unmanagedBranchSpecSchema.safeParse({
-        kind: "existing",
-        name: "release/1.2",
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(false);
-    expect(
-      unmanagedBranchSpecSchema.safeParse({
-        kind: "new",
-        baseBranch: "release/1.2",
-      }).success,
-    ).toBe(true);
-    expect(
-      unmanagedBranchSpecSchema.safeParse({
-        kind: "existing",
-        name: "release 1.2",
-      }).success,
-    ).toBe(false);
-    expect(
-      unmanagedBranchSpecSchema.safeParse({
-        kind: "new",
-        baseBranch: "release 1.2",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.environmentDiffBranchesQuerySchema.safeParse({
-        selectedBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffBranchesQuerySchema.safeParse({
-        selectedBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.projectBranchesQuerySchema.safeParse({
-        hostId: "host_123",
-        selectedBranch: "upstream/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.projectBranchesQuerySchema.safeParse({
-        hostId: "host_123",
-        refresh: "blocking",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.projectBranchesQuerySchema.safeParse({
-        hostId: "host_123",
-        selectedBranch: "upstream/main lock",
-      }).success,
-    ).toBe(false);
-    expect(
-      updateEnvironmentRequestSchema.safeParse({
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      updateEnvironmentRequestSchema.safeParse({
-        name: "Review workspace",
-      }).success,
-    ).toBe(true);
-    expect(
-      updateEnvironmentRequestSchema.safeParse({
-        mergeBaseBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
-    expect(updateEnvironmentRequestSchema.safeParse({}).success).toBe(false);
-    expect(
-      contract.environmentStatusQuerySchema.safeParse({
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusQuerySchema.safeParse({
-        mergeBaseBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.environmentDiffQuerySchema.safeParse({
-        target: "all",
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffQuerySchema.safeParse({
-        target: "all",
-        mergeBaseBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
   });
 });
 
@@ -2207,7 +1979,6 @@ describe("server-contract clients", () => {
       queuedMessageListQuerySchema: contract.queuedMessageListQuerySchema,
       forkThreadRequestSchema: contract.forkThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
-      environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
       threadStorageFilesQuerySchema: contract.threadStorageFilesQuerySchema,
       projectFilesQuerySchema: contract.projectFilesQuerySchema,
       reorderPinnedThreadRequestSchema:

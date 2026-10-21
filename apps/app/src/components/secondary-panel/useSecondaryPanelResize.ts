@@ -16,7 +16,7 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
-  onPanelWidthChange: SecondaryPanelWidthChangeHandler;
+  onPanelWidthChange?: SecondaryPanelWidthChangeHandler;
   panelId: string;
   renderAsDrawer: boolean;
 }
@@ -67,7 +67,7 @@ export function useSecondaryPanelResize({
 
     if (isSecondaryPanelOpen) {
       panel.expand(lastSecondaryPanelSizeRef.current);
-      onPanelWidthChange(
+      onPanelWidthChange?.(
         secondaryPanelRef.current?.getBoundingClientRect().width,
       );
     } else {
@@ -78,7 +78,7 @@ export function useSecondaryPanelResize({
   useResizeObserver({
     ref: secondaryPanelRef,
     onResize: ({ width }) => {
-      onPanelWidthChange(
+      onPanelWidthChange?.(
         width ?? secondaryPanelRef.current?.getBoundingClientRect().width,
       );
     },
@@ -104,7 +104,12 @@ export function useSecondaryPanelResize({
       secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
     const size = Number.parseFloat(panel?.style.flexGrow ?? "");
     if (Number.isFinite(size)) handleSecondaryPanelResize(size);
-  }, [handleSecondaryPanelResize, isSecondaryPanelOpen, panelId, renderAsDrawer]);
+  }, [
+    handleSecondaryPanelResize,
+    isSecondaryPanelOpen,
+    panelId,
+    renderAsDrawer,
+  ]);
 
   return {
     handleSecondaryPanelResize,

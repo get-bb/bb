@@ -74,12 +74,12 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PromptStackCard,
-} from "@/components/promptbox/banner/PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 import {
   PromptStackCollapseRow,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
-import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@/components/promptbox/banner/prompt-banner-actions";
+import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@bb/shared-ui/prompt-banner-actions";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";

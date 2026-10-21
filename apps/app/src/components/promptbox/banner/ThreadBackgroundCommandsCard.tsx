@@ -2,12 +2,12 @@ import { useRef, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { useResizeObserver } from "usehooks-ts";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@bb/shared-ui/prompt-stack-body";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-} from "@/components/promptbox/banner/PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -292,9 +292,7 @@ export function ThreadBackgroundCommandsCard({
                   <span
                     className={cn(
                       "min-w-0 flex-1 text-muted-foreground",
-                      useCompactSummary
-                        ? "line-clamp-2 break-all"
-                        : "truncate",
+                      useCompactSummary ? "line-clamp-2 break-all" : "truncate",
                     )}
                     title={row.description}
                   >

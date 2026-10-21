@@ -4,7 +4,7 @@ import {
   DEFAULT_DIFF_FILE_FILTERS,
   diffExtensionCounts,
   filterDiffFiles,
-} from "./diff-file-filters";
+} from "bb-plugin-bb--git/diff-file-filters";
 
 const files = [
   makeDiffFileEntry({ path: "src/a.ts", revision: "reviewed" }),

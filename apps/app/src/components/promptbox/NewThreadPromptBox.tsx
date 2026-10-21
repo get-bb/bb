@@ -16,7 +16,7 @@ import type {
 import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
-import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
+import { PROMPT_STACK_TRACK_CLASS } from "@bb/shared-ui/prompt-stack-card";
 import {
   composerScopeIdentity,
   type PluginComposerHost,

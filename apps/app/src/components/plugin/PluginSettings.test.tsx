@@ -120,8 +120,10 @@ describe("PluginSettingsForm", () => {
       values: { greeting: "hi there" },
     });
     expect(screen.queryByRole("status")).toBeNull();
-    expect((screen.getByLabelText("Greeting") as HTMLInputElement).value).toBe(
-      "hi there",
+    await vi.waitFor(() =>
+      expect(
+        (screen.getByLabelText("Greeting") as HTMLInputElement).value,
+      ).toBe("hi there"),
     );
   });
 

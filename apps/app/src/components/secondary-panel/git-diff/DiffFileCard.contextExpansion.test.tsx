@@ -1,3 +1,6 @@
+import { CoreGitDiffRendering } from "@/components/git-diff/CoreGitDiffRendering";
+import type { ComponentProps } from "react";
+import { type DiffFileEntry } from "bb-plugin-bb--git/read-contract";
 // @vitest-environment jsdom
 import {
   act,
@@ -8,13 +11,13 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiffFileEntry } from "@bb/server-contract";
+import type {} from "@bb/server-contract";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
-import { DiffFileCard } from "./DiffFileCard";
+import { DiffFileCard as PluginDiffFileCard } from "bb-plugin-bb--git/DiffFileCard";
 import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
 
 const diffViewMock = vi.hoisted(() => ({
@@ -299,3 +302,11 @@ describe("DiffFileCard context expansion", () => {
     expect(screen.queryByRole("button", { name: "Expand context" })).toBeNull();
   });
 });
+
+function DiffFileCard(props: ComponentProps<typeof PluginDiffFileCard>) {
+  return (
+    <CoreGitDiffRendering>
+      <PluginDiffFileCard {...props} />
+    </CoreGitDiffRendering>
+  );
+}

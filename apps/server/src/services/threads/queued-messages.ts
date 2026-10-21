@@ -289,6 +289,7 @@ export async function createQueuedMessageForThread(
       isChildThread: thread.parentThreadId !== null,
       messageSource: "queued_message",
       providerId: thread.providerId,
+      initiator: "user",
     });
   }
   if (

@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   archiveThread,
   deleteThread,
-  getEnvironmentBranches,
-  getEnvironmentDiff,
-  getEnvironmentDiffFiles,
-  getEnvironmentDiffPatch,
-  getEnvironmentStatus,
+  getGitBranches,
+  getGitDiff,
+  getGitDiffFiles,
+  getGitDiffPatch,
+  getGitStatus,
   getThread,
   getThreadOutput,
   runEnvironmentAction,
@@ -39,12 +39,9 @@ describe.sequential("fake provider smoke environment integration", () => {
         },
       });
 
-      const status = await getEnvironmentStatus(harness.api, environment.id);
-      const diff = await getEnvironmentDiff(harness.api, environment.id);
-      const branches = await getEnvironmentBranches(
-        harness.api,
-        environment.id,
-      );
+      const status = await getGitStatus(harness.api, environment.id);
+      const diff = await getGitDiff(harness.api, environment.id);
+      const branches = await getGitBranches(harness.api, environment.id);
 
       expect(status.outcome).toBe("available");
       if (status.outcome !== "available") {
@@ -82,7 +79,7 @@ describe.sequential("fake provider smoke environment integration", () => {
         filePath: path.join(workspacePath, "feature.ts"),
       });
 
-      const files = await getEnvironmentDiffFiles(harness.api, environment.id);
+      const files = await getGitDiffFiles(harness.api, environment.id);
       expect(files.outcome).toBe("available");
       if (files.outcome !== "available") {
         throw new Error(`Expected diff files, received ${files.outcome}`);
@@ -94,18 +91,12 @@ describe.sequential("fake provider smoke environment integration", () => {
         true,
       );
 
-      const patch = await getEnvironmentDiffPatch(harness.api, environment.id, [
+      const patch = await getGitDiffPatch(harness.api, environment.id, [
         "feature.ts",
       ]);
-      expect(patch.outcome).toBe("available");
-      if (patch.outcome !== "available") {
-        throw new Error(`Expected diff patch, received ${patch.outcome}`);
-      }
-      expect(patch.patches).toHaveLength(1);
-      expect(patch.patches[0]?.path).toBe("feature.ts");
-      expect(patch.patches[0]?.patch).toContain(
-        "export const paginated = true;",
-      );
+      expect(patch).toHaveLength(1);
+      expect(patch[0]?.path).toBe("feature.ts");
+      expect(patch[0]?.patch).toContain("export const paginated = true;");
     }));
 
   it("commits dirty workspace changes through the environment actions route", () =>
@@ -132,10 +123,7 @@ describe.sequential("fake provider smoke environment integration", () => {
         filePath: path.join(workspacePath, "committed.txt"),
       });
 
-      const dirtyStatus = await getEnvironmentStatus(
-        harness.api,
-        environment.id,
-      );
+      const dirtyStatus = await getGitStatus(harness.api, environment.id);
       expect(dirtyStatus.outcome).toBe("available");
       if (dirtyStatus.outcome !== "available") {
         throw new Error(
@@ -157,10 +145,7 @@ describe.sequential("fake provider smoke environment integration", () => {
       }
       expect(result.commitSha).toBeTruthy();
 
-      const cleanStatus = await getEnvironmentStatus(
-        harness.api,
-        environment.id,
-      );
+      const cleanStatus = await getGitStatus(harness.api, environment.id);
       expect(cleanStatus.outcome).toBe("available");
       if (cleanStatus.outcome !== "available") {
         throw new Error(

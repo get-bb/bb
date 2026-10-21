@@ -24,6 +24,7 @@ import type {
   SidebarBootstrapResponse,
   TerminalSession,
 } from "@bb/server-contract";
+import { ComposerStarterRows } from "@/components/promptbox/ComposerStarterRows";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
@@ -932,24 +933,18 @@ function RootComposeSurface({
     }
     openTab({ kind: "new-tab" });
   }, [closeRootSecondaryPanel, isPersistedSecondaryPanelOpen, openTab]);
-  const {
-    closePanel: closeWorkspacePanel,
-    openCompactDrawer,
-    openWorkspaceFile,
-  } = useThreadSecondaryPanelVisibility({
-    closePersistedPanel: closeRootSecondaryPanel,
-    drawerVisibility: secondaryPanelDrawerVisibility,
-    isCompactViewport,
-    isPersistedOpen: isPersistedSecondaryPanelOpen,
-    openPersistedCommitDiff: () => undefined,
-    openPersistedDiffFile: () => undefined,
-    openPersistedDiffPanel: () => undefined,
-    openPersistedHostFile: panelFiles.openHostFile,
-    openPersistedPanel: setRootSecondaryPanel,
-    openPersistedStorageFile: panelFiles.openStorageFile,
-    openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
-    togglePersistedPanel: toggleRootPersistedSecondaryPanel,
-  });
+  const { closePanel: closeWorkspacePanel, openCompactDrawer } =
+    useThreadSecondaryPanelVisibility({
+      closePersistedPanel: closeRootSecondaryPanel,
+      drawerVisibility: secondaryPanelDrawerVisibility,
+      isCompactViewport,
+      isPersistedOpen: isPersistedSecondaryPanelOpen,
+      openPersistedHostFile: panelFiles.openHostFile,
+      openPersistedPanel: setRootSecondaryPanel,
+      openPersistedStorageFile: panelFiles.openStorageFile,
+      openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
+      togglePersistedPanel: toggleRootPersistedSecondaryPanel,
+    });
   const dismissPluginDetails = pluginDetails.dismiss;
   const handleOpenPluginPanel = usePanelPluginPanels({
     actions: rootPanelNewThreadPanelActions,
@@ -1380,17 +1375,6 @@ function RootComposeSurface({
     ),
     [],
   );
-  const handleOpenFilePreview = useCallback(
-    (relativePath: string) => {
-      openWorkspaceFile({
-        lineRange: null,
-        path: relativePath,
-        source: { kind: "working-tree" },
-        statusLabel: null,
-      });
-    },
-    [openWorkspaceFile],
-  );
   const pinnedPanelToggleBoxClassName =
     useRootComposePinnedPanelToggleBoxClassName();
   const showPinnedToggle =
@@ -1519,6 +1503,16 @@ function RootComposeSurface({
     },
     onRequestMachineSetup: handleRequestMachineSetup,
   });
+  const starterRows = (
+    <ComposerStarterRows
+      promptDraft={promptDraft}
+      focus={pluginComposerHost.focus}
+      isProjectless={isProjectless}
+      isSubmitting={isSubmitting}
+      sidebarNavigation={sidebarNavigation}
+      className={isCompactViewport ? "pb-2" : "mt-3"}
+    />
+  );
 
   return (
     <PluginDetailPanelContext.Provider value={pluginDetails}>
@@ -1543,26 +1537,22 @@ function RootComposeSurface({
                   }
                   isCompactHomeLayout={isCompactViewport}
                   compactScrollContent={
-                    <RootComposeMobileRecents
-                      highlightedThreadId={lastCreatedThreadId}
-                      projectNamesById={mobileRecentProjectNamesById}
-                      providersById={mobileRecentProvidersById}
-                      showCreatingRow={isSubmitting}
-                      threads={mobileRecentThreads}
-                    />
+                    <>
+                      <RootComposeMobileRecents
+                        highlightedThreadId={lastCreatedThreadId}
+                        projectNamesById={mobileRecentProjectNamesById}
+                        providersById={mobileRecentProvidersById}
+                        showCreatingRow={isSubmitting}
+                        threads={mobileRecentThreads}
+                      />
+                      {starterRows}
+                    </>
                   }
                   isSecondaryPanelOpen={isSecondaryPanelOpen}
                   onToggleSecondaryPanel={handleToggleSecondaryPanel}
                   secondaryPanel={{
                     activeTab: activeFixedSecondaryTab,
-                    canUseGitUi: false,
-                    environmentId: rootPanelEnvironmentId ?? undefined,
                     metadataContent: rootPanelMetadataContent,
-                    workspaceRootPath:
-                      rootPanelEnvironment?.path ??
-                      (rootPanelTerminalTarget?.kind === "host_path"
-                        ? (rootPanelTerminalTarget.cwd ?? undefined)
-                        : undefined),
                     tabs: panelTabs,
                     splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
                     renderBrowserDeck,
@@ -1573,12 +1563,11 @@ function RootComposeSurface({
                     onCollapse: closeSecondaryPanel,
                     onTabReorder: reorderTab,
                     onOpenNewTab: handleOpenNewTab,
-                    onOpenFilePreview: handleOpenFilePreview,
-                    onSelectionAddToChat: handleRootPanelSelectionAddToChat,
                     onPanelFocus: touchFixedPanelTabsState,
                   }}
                 >
                   {promptBox}
+                  {isCompactViewport ? null : starterRows}
                 </RootComposeSecondaryContent>
               </PluginThreadPanelNavigationProvider>
             </AppNavigationHostProvider>

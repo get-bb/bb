@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { createBooleanPreferenceAtom } from "./browser-storage";
+import { createBooleanPreferenceAtom } from "@bb/shared-ui/lib/browser-storage";
 
 const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
 

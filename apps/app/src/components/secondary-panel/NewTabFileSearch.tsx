@@ -20,7 +20,7 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import {
   useFileSearchSuggestions,
   type FilePathSearchSuggestion,
@@ -34,11 +34,11 @@ import {
 import {
   getFileNameFromPath,
   resolveRightPanelFileIconName,
-} from "./rightPanelFileVisuals";
+} from "@bb/shared-ui/lib/file-visuals";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import {
   LAUNCHER_ROW_BASE_CLASS,
   LAUNCHER_ROW_ICON_CLASS,

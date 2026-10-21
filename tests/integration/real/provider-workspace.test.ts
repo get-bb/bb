@@ -3,9 +3,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getEnvironment,
-  getEnvironmentBranches,
-  getEnvironmentDiff,
-  getEnvironmentStatus,
+  getGitBranches,
+  getGitDiff,
+  getGitStatus,
   getThreadOutput,
   sendTextMessage,
 } from "../helpers/api.js";
@@ -37,14 +37,8 @@ describe("real provider workspace integration", () => {
             harness,
             providerId,
           });
-          const initialStatus = await getEnvironmentStatus(
-            harness.api,
-            environment.id,
-          );
-          const branches = await getEnvironmentBranches(
-            harness.api,
-            environment.id,
-          );
+          const initialStatus = await getGitStatus(harness.api, environment.id);
+          const branches = await getGitBranches(harness.api, environment.id);
           expect(initialStatus.outcome).toBe("available");
           if (initialStatus.outcome !== "available") {
             throw new Error(
@@ -69,11 +63,11 @@ describe("real provider workspace integration", () => {
             harness.api,
             environment.id,
           );
-          const refreshedStatus = await getEnvironmentStatus(
+          const refreshedStatus = await getGitStatus(
             harness.api,
             environment.id,
           );
-          const diff = await getEnvironmentDiff(harness.api, environment.id);
+          const diff = await getGitDiff(harness.api, environment.id);
           expect(refreshedStatus.outcome).toBe("available");
           if (refreshedStatus.outcome !== "available") {
             throw new Error(

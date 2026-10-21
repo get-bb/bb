@@ -1,18 +1,21 @@
+import { CoreGitDiffRendering } from "@/components/git-diff/CoreGitDiffRendering";
+import type { ComponentProps } from "react";
+import { type DiffFileEntry } from "bb-plugin-bb--git/read-contract";
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
-import type { DiffFileEntry } from "@bb/server-contract";
+import type {} from "@bb/server-contract";
 import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
-import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
+import type { DiffPatchState } from "bb-plugin-bb--git/use-diff-patches";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { DiffFileCard } from "./DiffFileCard";
+import { DiffFileCard as PluginDiffFileCard } from "bb-plugin-bb--git/DiffFileCard";
 import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
@@ -256,3 +259,11 @@ describe("DiffFileCard", () => {
     expect(onLoadPatch).not.toHaveBeenCalled();
   });
 });
+
+function DiffFileCard(props: ComponentProps<typeof PluginDiffFileCard>) {
+  return (
+    <CoreGitDiffRendering>
+      <PluginDiffFileCard {...props} />
+    </CoreGitDiffRendering>
+  );
+}

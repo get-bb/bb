@@ -1,13 +1,10 @@
-import {
-  PERSONAL_PROJECT_ID,
-  type ThreadListEntry,
-} from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { fuzzyMatchText } from "@bb/fuzzy-match";
 import type {
   ThreadSearchMatch,
   ThreadSearchResponse,
 } from "@bb/server-contract";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   normalizeThreadLifecycleFilter,
@@ -123,7 +120,10 @@ function serverRow(
           },
     projectName: projectMetadata(thread.projectId, projectNamesById),
     projectHighlightRanges: [],
-    relativeTime: formatRelativeTime({ timestamp: sortDate(thread, sort), now }),
+    relativeTime: formatRelativeTime({
+      timestamp: sortDate(thread, sort),
+      now,
+    }),
     projectId: thread.projectId,
     threadId: thread.id,
     thread,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { searchPickerOptions } from "./picker-search";
+import { searchPickerOptions } from "@bb/shared-ui/lib/picker-search";
 
 interface TestOption {
   label: string;

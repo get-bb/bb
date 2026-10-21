@@ -63,6 +63,10 @@ export interface ToolTextResult {
 export interface ToolDependencies {
   runCli: CliRunner;
   loadCommandIndex: () => Promise<CommandIndex>;
+  loadPluginReadPaths?: (
+    knownPaths: ReadonlySet<string>,
+    signal: AbortSignal,
+  ) => Promise<ReadonlySet<string>>;
   sandboxLimits?: Partial<SandboxLimits>;
 }
 
@@ -116,7 +120,11 @@ function createHostFunctions(
         mode === "write"
           ? NO_KNOWN_PATHS
           : (await dependencies.loadCommandIndex()).paths;
-      const decision = evaluateCliAccess(argv, mode, knownPaths);
+      const pluginPaths =
+        mode === "read"
+          ? await dependencies.loadPluginReadPaths?.(knownPaths, signal)
+          : undefined;
+      const decision = evaluateCliAccess(argv, mode, knownPaths, pluginPaths);
       if (!decision.allowed) throw new Error(decision.reason);
       const result = await limiter.run(
         () =>
@@ -225,7 +233,7 @@ export async function runSearchTool(
             "Every command in a group on one page: bb.cli(['guide', 'commands', '<group>']).",
             "Concepts and workflows: bb.cli(['guide']) lists the chapters; bb.cli(['guide', '<chapter>']) prints one.",
             "JSON output shapes: bb.cli(['guide', 'json']).",
-            "Commands added by plugins are not in this index: bb.cli(['plugin', 'list', '--json']) lists plugins, and `bb <plugin-command> --help` (run tool) shows a plugin's commands.",
+            "Commands added by plugins are not in this index: bb.cli(['plugin', 'list', '--json']) lists plugins, and `bb <plugin-command> --help` shows a plugin's commands.",
           ],
         },
         null,

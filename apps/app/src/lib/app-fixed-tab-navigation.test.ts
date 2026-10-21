@@ -21,7 +21,7 @@ describe("openAppFixedTabFromDestinations", () => {
         },
       ),
     ).toBe(true);
-    expect(open).toHaveBeenCalledWith(target);
+    expect(open).toHaveBeenCalledWith(target, false);
   });
 
   it("leaves destinations untouched when owner or tab is ineligible", () => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AnimatedDisclosureBody } from "./AnimatedBody";
+import { AnimatedDisclosureBody } from "@bb/shared-ui/prompt-stack-body";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useResumeHost } from "@/hooks/mutations/host-mutations";
 import type { SystemMachineProvider } from "@bb/server-contract";
@@ -17,13 +17,13 @@ import {
 import {
   BannerActionSlot,
   PromptBannerActionButton,
-} from "./prompt-banner-actions";
+} from "@bb/shared-ui/prompt-banner-actions";
 import {
   PromptStackCard,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PROMPT_STACK_INLAY_INSET_CLASS,
   PROMPT_STACK_INLAY_SEGMENT_CLASS,
-} from "./PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 const MACHINE_STATUS_TOGGLE_ID = "machine-status-toggle";

@@ -125,14 +125,11 @@ function buildPromptArea({
       <ShellProbe />
       <PublishedHostDraftProbe />
       <ThreadDetailPromptArea
-        showGitChanges={true}
         activeBackgroundCommands={[]}
         activePromptMode={null}
         activeWorkflows={[]}
-        canUseGitUi={false}
         childThreadsSection={null}
         composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
         canRestoreEnvironment={false}
         environmentGoneStatus={null}
         goal={null}
@@ -140,7 +137,6 @@ function buildPromptArea({
         sessionOptions={null}
         modelFallback={null}
         isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={0}
@@ -155,8 +151,6 @@ function buildPromptArea({
         }}
         steerActiveThreadOnEnter={false}
         thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
       />
     </PluginComposerHostScopeProvider>
   );

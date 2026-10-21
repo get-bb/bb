@@ -17,7 +17,6 @@ import {
   type HostDaemonOnlineRpcResult,
   type HostDaemonSettledCommandType,
   type ProviderCliInstallEvent,
-  type WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import semver from "semver";
@@ -79,7 +78,7 @@ import {
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
-import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
+import { WorkspaceError } from "@bb/host-workspace";
 import {
   cloneProject,
   inspectProjectPath,
@@ -88,7 +87,6 @@ import {
 import {
   requireResolvedWorkspaceForCommand,
   resolveWorkspaceForCommand,
-  workspaceResolutionFailureFromError,
 } from "./workspace-resolution.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 import type { ServerMoveService } from "./server-move/service.js";
@@ -408,44 +406,6 @@ async function withResolvedBridgeLaunch<TResult>(
   });
 }
 
-async function readAvailableWorkspace<TAvailable extends object>(
-  command: CommandOf<
-    | "workspace.status"
-    | "workspace.diff"
-    | "workspace.diffFiles"
-    | "workspace.diffPatch"
-  >,
-  options: CommandDispatchOptions,
-  read: (workspace: HostWorkspace) => Promise<TAvailable>,
-): Promise<
-  | ({ outcome: "available" } & TAvailable)
-  | { outcome: "unavailable"; failure: WorkspaceResolutionFailure }
-> {
-  const resolution = await resolveWorkspaceForCommand({
-    environmentId: command.environmentId,
-    requireGit: true,
-    runtimeManager: options.runtimeManager,
-    workspaceContext: command.workspaceContext,
-  });
-  if (!resolution.ok) {
-    return { outcome: "unavailable", failure: resolution.failure };
-  }
-  try {
-    return {
-      outcome: "available",
-      ...(await read(resolution.entry.workspace)),
-    };
-  } catch (error) {
-    return {
-      outcome: "unavailable",
-      failure: workspaceResolutionFailureFromError({
-        error,
-        workspacePath: command.workspaceContext.workspacePath,
-      }),
-    };
-  }
-}
-
 const commandHandlers: CommandHandlerMap = {
   "thread.rewind.discard": (command, options) =>
     withRetainedThreadEnvironment(command, options, () =>
@@ -713,41 +673,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     });
   },
   "provider.installation.run": runProviderInstallationOnHost,
-  "workspace.status": (command, options) =>
-    readAvailableWorkspace(command, options, async (workspace) => ({
-      workspaceStatus: await workspace.getStatus({
-        mergeBaseBranch: command.mergeBaseBranch,
-        maxFiles: command.maxFiles,
-        maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
-        maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
-      }),
-    })),
-  "workspace.diff": (command, options) =>
-    readAvailableWorkspace(command, options, async (workspace) => ({
-      diff: await workspace.getDiff({
-        target: command.target,
-        maxDiffBytes: command.maxDiffBytes,
-        maxFileListBytes: command.maxFileListBytes,
-        maxUntrackedFiles: command.maxUntrackedFiles,
-      }),
-    })),
-  "workspace.diffFiles": (command, options) =>
-    readAvailableWorkspace(command, options, (workspace) =>
-      workspace.diffFiles({
-        target: command.target,
-        maxFiles: command.maxFiles,
-        ignoreWhitespace: command.ignoreWhitespace,
-      }),
-    ),
-  "workspace.diffPatch": (command, options) =>
-    readAvailableWorkspace(command, options, async (workspace) => ({
-      patches: await workspace.diffPatch({
-        target: command.target,
-        paths: command.paths,
-        maxBytesPerFile: command.maxBytesPerFile,
-        ignoreWhitespace: command.ignoreWhitespace,
-      }),
-    })),
   "workspace.pull_request": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       environmentId: command.environmentId,
@@ -810,11 +735,7 @@ export async function dispatchOnlineRpcCommand<
 ): Promise<HostDaemonOnlineRpcResult<TType>> {
   try {
     return await withVcsProcessPriority(
-      command.type === "workspace.pull_request"
-        ? "background"
-        : command.type === "workspace.status"
-          ? "status"
-          : "interactive",
+      command.type === "workspace.pull_request" ? "background" : "interactive",
       () => onlineRpcHandlers[command.type](command, options, signal),
     );
   } catch (error) {

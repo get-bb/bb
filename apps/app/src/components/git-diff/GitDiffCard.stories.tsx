@@ -9,7 +9,7 @@ import { Button } from "@bb/shared-ui/button";
 import { resolveAppThemeCss } from "@/lib/themes";
 import { GitDiffCard } from "@/components/git-diff/GitDiffCard";
 import type { DiffPresentation } from "@/components/code/code-rendering";
-import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
+import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 
 export default {
   title: "Git Diff / Themed Panel",

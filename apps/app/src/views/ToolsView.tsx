@@ -611,7 +611,6 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     }: SecondaryPanelRenderArgs) => (
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi={false}
         metadataContent={null}
         tabs={panelTabs}
         fixedTabs={[]}

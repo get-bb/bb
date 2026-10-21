@@ -152,6 +152,22 @@ function assertHostActiveForRead(
   }
 }
 
+export async function prepareHostSessionForWork(
+  deps: WorkSessionDeps,
+  args: { hostId: string },
+): Promise<void> {
+  await waitForReconnectingDaemon(deps, args.hostId);
+  await ensureHostSessionReadyForWork(deps, args).catch(async (error) => {
+    if (!isHostUnavailableApiError(error)) throw error;
+    if (!deps.hub.hasDaemonForHost(args.hostId))
+      await deps.hub.waitForDaemonForHost(
+        args.hostId,
+        HOST_DAEMON_REGISTRATION_WAIT_MS,
+      );
+    await ensureHostSessionReadyForWork(deps, args);
+  });
+}
+
 async function prepareHostForWork(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
@@ -175,14 +191,9 @@ async function prepareHostForWork(
       "Host command requested machine wake",
     );
   }
-  await ensureHostSessionReadyForWork(deps, { hostId: args.hostId }).catch(
-    async (error) => {
-      if (!retryOnTransportFailure || !isHostUnavailableApiError(error)) {
-        throw error;
-      }
-      await waitForRetryableHostRpcTransport(deps, args);
-    },
-  );
+  if (retryOnTransportFailure)
+    await prepareHostSessionForWork(deps, { hostId: args.hostId });
+  else await ensureHostSessionReadyForWork(deps, { hostId: args.hostId });
   assertMachineLifecycleAdmission(deps, args.hostId);
   if (
     (args.command.type === "thread.start" ||

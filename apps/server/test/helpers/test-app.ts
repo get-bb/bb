@@ -79,7 +79,7 @@ export interface RunningTestServer extends TestAppHarness {
 
 export async function installTestBuiltinPlugin(
   harness: Pick<TestAppHarness, "pluginService">,
-  name: "keep-awake",
+  name: "keep-awake" | "git",
 ): Promise<void> {
   const entry = await harness.pluginService.install(`builtin:${name}`, {
     kind: "root",
@@ -438,4 +438,22 @@ export async function startTestServer(
       await harness.cleanup();
     },
   };
+}
+
+export async function withRunningTestHarness<T>(
+  overridesOrRun:
+    | TestAppHarnessConfigOverrides
+    | ((harness: RunningTestServer) => Promise<T>),
+  maybeRun?: (harness: RunningTestServer) => Promise<T>,
+): Promise<T> {
+  const overrides = typeof overridesOrRun === "function" ? {} : overridesOrRun;
+  const run = typeof overridesOrRun === "function" ? overridesOrRun : maybeRun;
+  if (!run) throw new Error("withRunningTestHarness requires a callback");
+  const server = await startTestServer(overrides);
+  server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+  try {
+    return await run(server);
+  } finally {
+    await server.close();
+  }
 }

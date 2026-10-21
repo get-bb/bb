@@ -273,15 +273,6 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   unassignedBinding("panel.fullScreen.toggle", mainWithoutModal),
   binding("file.quickOpen", "p", { mod: true }, mainWithoutModal),
   binding(
-    "diff.toggle",
-    "d",
-    { mod: true },
-    {
-      ...mainWithoutModal,
-      none: ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"],
-    },
-  ),
-  binding(
     "terminal.open",
     "Enter",
     { mod: true, shift: true },

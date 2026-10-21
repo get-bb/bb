@@ -7,9 +7,9 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
-} from "@/lib/lifecycle-errors";
+} from "@bb/core-ui/lifecycle-errors";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { resolveRightPanelFileIconName } from "../rightPanelFileVisuals";
+import { resolveRightPanelFileIconName } from "@bb/shared-ui/lib/file-visuals";
 import type { ThreadStorageBrowserController } from "../useThreadStorageBrowser";
 import {
   INFO_LIST_CARET_CLASS,
@@ -18,7 +18,7 @@ import {
   InfoListMoreRow,
   InfoListRow,
   InfoSection,
-} from "./info-list";
+} from "@/components/secondary-panel/info/info-list";
 import {
   buildThreadStorageTree,
   flattenThreadStorageNode,

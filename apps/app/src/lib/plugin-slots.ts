@@ -1,6 +1,9 @@
+import { coreThreadFixedTabs } from "@/components/secondary-panel/thread-info-registration";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useSyncExternalStore } from "react";
 import type {
+  ExperimentalThreadContextSegmentRegistration,
+  ExperimentalThreadFixedTabDeclaration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
   ExperimentalCodeFenceRendererRegistration,
@@ -41,6 +44,8 @@ export interface PluginRegistrationSet {
   settingsSections: readonly PluginSettingsSectionRegistration[];
   appOverlays?: readonly ExperimentalAppOverlayRegistration[];
   navPanels: readonly PluginNavPanelRegistration[];
+  threadContextSegments?: readonly ExperimentalThreadContextSegmentRegistration[];
+  threadFixedTabs?: readonly ExperimentalThreadFixedTabDeclaration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   newThreadPanelActions?: readonly PluginNewThreadPanelActionRegistration[];
   composerCustomizations?: readonly ComposerCustomization[];
@@ -79,6 +84,10 @@ export interface ExperimentalAppOverlaySlot
   extends ExperimentalAppOverlayRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
+export interface PluginThreadContextSegmentSlot
+  extends ExperimentalThreadContextSegmentRegistration, PluginSlotBase {}
+export type PluginThreadFixedTabSlot = ExperimentalThreadFixedTabDeclaration &
+  PluginSlotBase;
 export interface PluginThreadPanelActionSlot
   extends PluginThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginNewThreadPanelActionSlot
@@ -93,7 +102,7 @@ export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
 export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
-interface PluginThreadHeaderActionSlot
+export interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
@@ -128,6 +137,8 @@ export interface PluginSlotSnapshot {
   settingsSections: readonly PluginSettingsSectionSlot[];
   appOverlays: readonly ExperimentalAppOverlaySlot[];
   navPanels: readonly PluginNavPanelSlot[];
+  threadContextSegments: readonly PluginThreadContextSegmentSlot[];
+  threadFixedTabs: readonly PluginThreadFixedTabSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   newThreadPanelActions: readonly PluginNewThreadPanelActionSlot[];
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
@@ -157,6 +168,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   settingsSections: [],
   appOverlays: [],
   navPanels: [],
+  threadContextSegments: [],
+  threadFixedTabs: coreThreadFixedTabs,
   threadPanelActions: [],
   newThreadPanelActions: [],
   composerCustomizations: [],
@@ -193,6 +206,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "settingsSections",
   "appOverlays",
   "navPanels",
+  "threadContextSegments",
+  "threadFixedTabs",
   "threadPanelActions",
   "newThreadPanelActions",
   "composerCustomizations",
@@ -253,6 +268,8 @@ function flattenRegistrations(
     settingsSections: stamp(set.settingsSections),
     appOverlays: stamp(set.appOverlays),
     navPanels: stamp(set.navPanels),
+    threadContextSegments: stamp(set.threadContextSegments),
+    threadFixedTabs: stamp(set.threadFixedTabs),
     threadPanelActions: stamp(set.threadPanelActions),
     newThreadPanelActions: stamp(set.newThreadPanelActions),
     composerCustomizations: stamp(set.composerCustomizations),
@@ -294,6 +311,9 @@ function collectKind<K extends SlotKind>(
   pluginIds: readonly string[],
 ): PluginSlotSnapshot[K][number][] {
   const collected: PluginSlotSnapshot[K][number][] = [];
+  if (kind === "threadFixedTabs") {
+    for (const slot of coreThreadFixedTabs) collected.push(slot);
+  }
   for (const pluginId of pluginIds) {
     const flattened = flattenedByPluginId.get(pluginId);
     if (flattened === undefined) continue;
@@ -481,7 +501,11 @@ export function getPluginSlotSnapshot(): PluginSlotSnapshot {
 }
 
 export function usePluginSlots(): PluginSlotSnapshot {
-  return useSyncExternalStore(subscribePluginSlots, getPluginSlotSnapshot);
+  return useSyncExternalStore(
+    subscribePluginSlots,
+    getPluginSlotSnapshot,
+    getPluginSlotSnapshot,
+  );
 }
 
 let builtinPluginIds: ReadonlySet<string> = new Set();

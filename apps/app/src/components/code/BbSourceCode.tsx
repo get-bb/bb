@@ -1,4 +1,4 @@
-import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { SourceLoadingSkeleton } from "@bb/shared-ui/code-loading-skeletons";
 import {
   type CSSProperties,
   type ReactNode,
@@ -18,7 +18,7 @@ import {
   type VirtualFileMetrics,
 } from "@pierre/diffs";
 import { Button } from "@bb/shared-ui/button";
-import { getDiffShadowRoots } from "@/components/git-diff/git-diff-patch-text";
+import { getDiffShadowRoots } from "@bb/shared-ui/git-diff/patch-text";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";

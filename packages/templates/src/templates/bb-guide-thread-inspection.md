@@ -62,11 +62,6 @@ Inspecting:
     --clear <option>                       Drop a choice that has not been applied yet (repeatable)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
-    --work-status                          Include git working-tree status
-    --git-diff                             Include git diff
-    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit
-    --diff-sha <sha>                       Commit SHA (for --diff-target commit)
-    --diff-merge-base <branch>             Override merge-base branch for diff
 
   Shows pull request status for the attached environment branch when available.
 
@@ -146,3 +141,11 @@ Persisted panel tabs:
 
   bb thread tabs show <thread-id>
   bb thread tabs set <thread-id> --expected-revision <n> --tabs-json '<json>'
+
+Pinned plugin tabs use `{ "id": "plugin-fixed:<plugin-id>:<tab-id>", "kind": "plugin-fixed", "pluginId": "<plugin-id>", "tabId": "<tab-id>" }`.
+The id encodes each plugin/tab id with percent escapes. The app shows registered,
+visible tabs and retains saved identities while plugins are hidden or disabled.
+The SDK uses `threads.tabs.get({ threadId })` and
+`threads.tabs.update({ threadId, expectedRevision, tabs })` for the same state.
+Selection stays local to each client. Plugin authors can find registration and
+navigation details in the Plugin Guide's Thread side-panel tabs surface.

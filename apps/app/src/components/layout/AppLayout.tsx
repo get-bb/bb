@@ -74,7 +74,7 @@ import {
   type PluginNavPanelChrome,
 } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
-import { createTabScopedStorage } from "@/lib/browser-storage";
+import { createTabScopedStorage } from "@bb/shared-ui/lib/browser-storage";
 import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
   CHROME_ROW_CLASS,

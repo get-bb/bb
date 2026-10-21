@@ -77,6 +77,8 @@ const EXTERNAL = [
 
 /** Resolve any `@bb/<pkg>[/<sub>]` to its `source` export target on disk. */
 function resolveBbSource(id) {
+  if (id === "bb-git-contract")
+    return path.join(pkgsDir, "git-contract/src/index.ts");
   const match = /^@bb\/([^/]+)(\/.*)?$/.exec(id);
   if (!match) return null;
   const pkgDir = path.join(pkgsDir, match[1]);

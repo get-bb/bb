@@ -148,6 +148,12 @@ export const experimental_SourceCode = runtimeComponent(
   "experimental_SourceCode",
 );
 export const experimental_Diff = runtimeComponent("experimental_Diff");
+export const experimental_ImageLightbox = runtimeComponent(
+  "experimental_ImageLightbox",
+);
+export const experimental_CopyButton = runtimeComponent(
+  "experimental_CopyButton",
+);
 export const experimental_useRpcQuery = runtimeFunction(
   "experimental_useRpcQuery",
 );

@@ -21,7 +21,9 @@
     "@bb/test-helpers": "workspace:*",
     "@hono/node-server": "^1.19.11",
     "drizzle-orm": "^0.38.4",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "bb-plugin-bb--git": "workspace:*",
+    "bb-git-contract": "workspace:*"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

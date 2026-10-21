@@ -1,14 +1,10 @@
 import {
   getEnvironmentActionInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
-  removeEnvironmentDiffPatchQueries,
 } from "./query-cache";
 import {
-  environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentMergeBaseBranchesQueryKeyPrefix,
   environmentPathsQueryKeyPrefix,
-  environmentWorkStatusQueryKeyPrefix,
   systemExecutionOptionsEnvironmentQueryKeyPrefix,
 } from "../queries/query-keys";
 import type {
@@ -24,22 +20,11 @@ export function removeEnvironmentScopedQueries({
   if (!environmentId) {
     return;
   }
-
-  queryClient.removeQueries({
-    queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
-  });
-  queryClient.removeQueries({
-    queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
-  });
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
   queryClient.removeQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
   queryClient.removeQueries({
     queryKey: environmentPathsQueryKeyPrefix(environmentId),
-  });
-  queryClient.removeQueries({
-    queryKey: environmentMergeBaseBranchesQueryKeyPrefix(environmentId),
   });
   queryClient.removeQueries({
     queryKey: systemExecutionOptionsEnvironmentQueryKeyPrefix(environmentId),
@@ -54,7 +39,6 @@ export function invalidateEnvironmentActionQueries({
     queryClient,
     queryKeys: getEnvironmentActionInvalidationQueryKeys({ environmentId }),
   });
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 export function invalidateEnvironmentWorkspaceStateQueries({
@@ -67,5 +51,4 @@ export function invalidateEnvironmentWorkspaceStateQueries({
       environmentId,
     }),
   });
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }

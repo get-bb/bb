@@ -3070,10 +3070,26 @@ export function normalizeCliRegistration(
         `cli command "${name}" commands[${index}] must be { name: [a-z0-9-]+, summary, usage }`,
       );
     }
+    const readPath = command.experimental_readOnlyCommandPath;
+    if (
+      readPath !== undefined &&
+      (!Array.isArray(readPath) ||
+        readPath.length === 0 ||
+        !readPath.every(
+          (word) =>
+            typeof word === "string" && CLI_COMMAND_NAME_PATTERN.test(word),
+        ))
+    )
+      throw new Error(
+        `cli command "${name}" commands[${index}] has an invalid experimental_readOnlyCommandPath`,
+      );
     return {
       name: command.name,
       summary: command.summary,
       usage: command.usage,
+      ...(readPath === undefined
+        ? {}
+        : { experimental_readOnlyCommandPath: [...readPath] }),
     };
   });
   if (typeof registration.run !== "function") {

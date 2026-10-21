@@ -1,4 +1,4 @@
-import { PICKER_MOBILE_CLASS_NAME } from "./picker-layout";
+import { PICKER_MOBILE_CLASS_NAME } from "@bb/shared-ui/lib/picker-layout";
 import { EnvironmentProviderIcon } from "@/components/plugin/EnvironmentProviderIcon";
 import { useMemo, useRef, useState } from "react";
 import type { Host, ProjectSource } from "@bb/domain";
@@ -26,7 +26,7 @@ import {
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { REUSE_ENVIRONMENT_ICON_NAME } from "@/lib/environment-workspace-display";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -42,10 +42,10 @@ import {
 import { selectHosts } from "@/hooks/queries/host-queries";
 import { providerInputsControlRequired } from "./environment-provider-inputs";
 import { MACHINE_BADGE_CLASS_NAME, orderLocalHostFirst } from "./MachinePicker";
-import { ListLoadingPlaceholder } from "@/components/ui/ListLoadingPlaceholder";
+import { ListLoadingPlaceholder } from "@bb/shared-ui/list-loading-placeholder";
 import { MachineIcon } from "@/components/machines/MachineLabel";
 import { searchMachineHosts } from "./machine-picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 interface SelectedEnvironment {
   modeLabel: string;

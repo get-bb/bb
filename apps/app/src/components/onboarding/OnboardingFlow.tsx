@@ -60,7 +60,7 @@ import {
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { sdk } from "@/lib/sdk";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime } from "@bb/shared-ui/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   AgentSignInGuide,

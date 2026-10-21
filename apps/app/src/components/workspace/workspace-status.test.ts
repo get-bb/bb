@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceStatus } from "@bb/domain";
+import type { WorkspaceStatus } from "bb-git-contract";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
   makeWorkspaceWorkingTree,
 } from "@bb/test-helpers";
 import { BbHttpError } from "@bb/sdk/browser";
-import { getGitStatusDisplay } from "./workspace-status";
+import { getGitStatusDisplay } from "bb-plugin-bb--git/workspace-status";
 
 interface MakeStatusOptions {
   aheadCount?: number;

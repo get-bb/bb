@@ -68,7 +68,7 @@ import {
 import {
   PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_TRACK_CLASS,
-} from "@/components/promptbox/banner/PromptStackCard";
+} from "@bb/shared-ui/prompt-stack-card";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<
   typeof PromptBoxInternal

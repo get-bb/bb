@@ -5,7 +5,7 @@ import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
   type LifecycleErrorOperation,
-} from "./lifecycle-errors";
+} from "@bb/core-ui/lifecycle-errors";
 
 const NETWORK_TRANSPORT_ERROR_MESSAGE =
   "Could not reach the server. Check that it is running and try again.";

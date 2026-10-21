@@ -255,7 +255,9 @@ describe("ThreadDetailHeader", () => {
           ]}
           threadId={THREAD_ID}
           threadTitle="Narrow split"
-          workspaceOpenButton={<button>Open workspace</button>}
+          pluginActions={(overflow) =>
+            overflow ? null : <button>Open workspace</button>
+          }
         />
       </PaneContext.Provider>,
     );
@@ -313,7 +315,9 @@ describe("ThreadDetailHeader", () => {
           ]}
           threadId={THREAD_ID}
           threadTitle="Wide split"
-          workspaceOpenButton={<button>Open workspace</button>}
+          pluginActions={(overflow) =>
+            overflow ? null : <button>Open workspace</button>
+          }
         />
       </PaneContext.Provider>,
     );
@@ -628,7 +632,9 @@ describe("ThreadDetailHeader", () => {
       </MemoryRouter>,
     );
 
-    const slot = container.querySelector("span[aria-hidden].header-icon-button");
+    const slot = container.querySelector(
+      "span[aria-hidden].header-icon-button",
+    );
     expect(slot).not.toBeNull();
     const classes = slot?.className.split(" ") ?? [];
     for (const token of MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS.split(" ")) {

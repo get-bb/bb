@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBranchPickerOptionGroups,
   orderBranchPickerOptions,
-} from "./BranchPicker";
+} from "@bb/shared-ui/branch-picker";
 
 describe("buildBranchPickerOptionGroups", () => {
   it("deduplicates exact remote refs without collapsing local and origin refs", () => {

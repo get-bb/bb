@@ -1,10 +1,10 @@
-import { DetailRow } from "@/components/ui/detail-card.js";
-import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
+import { DetailRow } from "@bb/shared-ui/detail-card";
+import { WorkspaceChangesList } from "bb-plugin-bb--git/WorkspaceChangesList";
 import {
   renderChangeSummary,
   toChangeTally,
   type WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
+} from "bb-plugin-bb--git/workspace-change-summary";
 
 interface ChangedFilesDetailRowProps {
   section: WorkspaceChangedFilesSection;

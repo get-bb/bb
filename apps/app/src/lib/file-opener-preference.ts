@@ -1,6 +1,6 @@
 import { atomWithStorage } from "jotai/utils";
 import { useAtom, useAtomValue } from "jotai";
-import { createJsonLocalStorage } from "./browser-storage";
+import { createJsonLocalStorage } from "@bb/shared-ui/lib/browser-storage";
 import {
   BUILT_IN_FILE_OPENER_PREFERENCE,
   buildFileOpenerRef,

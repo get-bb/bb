@@ -4,7 +4,7 @@ import { useGitDiffDisplayModePreference } from "@/lib/git-diff-view-preferences
 import type {
   GitDiffDisplayMode,
   GitDiffDisplayModeChangeHandler,
-} from "../GitDiffToolbar";
+} from "bb-plugin-bb--git/GitDiffToolbar";
 import type { SecondaryPanelWidthChangeHandler } from "../useSecondaryPanelResize";
 
 const GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX = 760;
