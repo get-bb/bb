@@ -9,10 +9,10 @@ selected Windows job is blocking, not advisory.
 ## Host packages
 
 The `Windows host packages (Node 22.x)` job runs lint, typecheck, and the full
-test suite for nine packages:
+test suite for eight packages:
 
 - `@bb/process-utils`, `@bb/host-workspace`, and `@bb/host-watcher`
-- `@bb/agent-runtime`, `@bb/provider-bridge-protocol`, and `@bb/provider-bridge-acp`
+- `@bb/agent-runtime`, `@bb/provider-bridge-protocol`
 - `@bb/host-daemon-contract`, `@bb/config`, and `@bb/db`
 
 Turbo reuses results from Windows-only cache keys; Linux and macOS entries
@@ -24,7 +24,7 @@ Reproduce from the repository root in PowerShell:
 ```powershell
 npm install --global pnpm@9.15.0 --ignore-scripts
 pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
-pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --continue --concurrency=2 --output-logs=new-only --summarize
+pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --continue --concurrency=2 --output-logs=new-only --summarize
 ```
 
 The filtered install adds the provider plugins used by runtime and
@@ -36,7 +36,7 @@ product; Turbo runs the required generators and native-module preparation.
 ## Full test suite
 
 The `Windows tests (<shard>, Node 22.x)` jobs run the test suite of every
-package outside the nine above, on the same runner image. A failure fails the
+package outside the eight above, on the same runner image. A failure fails the
 job. The thirteen shards cover each
 suite exactly once:
 
@@ -48,12 +48,12 @@ suite exactly once:
   installs Bun, which the Pi plugin's runtime regression requires in CI.
 - `plugins-2`: every other `bb-plugin-*` package. Its negative filters exclude
   `plugins-1`, so a new plugin lands here without a workflow change.
-- `packages-host`: host daemon and CLI, one suite at a time.
+- `packages-host`: host daemon, CLI, and ACP (`@bb/provider-bridge-acp`, formerly ACP-next), one suite at a time.
 - `integration`: the integration tests, alone.
 - `packages-build`: templates, bb-app, demo server, desktop, and plugin build,
   the same group as the Linux `packages-build` shard.
 - `packages-other`: every remaining package, including provider parity. Its
-  negative filters exclude the groups above and the nine host packages, so a
+  negative filters exclude the groups above and the eight host packages, so a
   new package lands here without a workflow change.
 
 The shards are sized so that each finishes with the slowest Linux job instead
@@ -79,7 +79,7 @@ The test step differs from the Linux one in three ways:
   suites that run `tar` then get GNU tar, which reads `C:\...` as a remote host.
 - `TEMP` and `TMP` point at the runner's temp directory. The runner's default
   is an 8.3 short path inside the user profile
-  (`C:\Users\RUNNER~1\AppData\Local\Temp`). Suites outside the nine host
+  (`C:\Users\RUNNER~1\AppData\Local\Temp`). Suites outside the eight host
   packages compare temp paths against their long names, and the plugin install
   tests clone Git repositories into paths that pass 260 characters under it.
 - `packages-host` and `integration` run one Turbo task at a time, and the
@@ -91,7 +91,10 @@ The test step differs from the Linux one in three ways:
   closing. In later runs beside other suites only the host daemon and
   integration suites failed, so those two never share a runner with a suite
   that runs at the same time. Provider parity passed all 35 such runs and now
-  runs in `packages-other`.
+  runs in `packages-other`. ACP (`@bb/provider-bridge-acp`, formerly ACP-next) runs in the sequential `packages-host`
+  shard: its repeated agent startup, replacement, and shutdown tests exceeded
+  five seconds when run alongside provider parity on Windows. Its assertions
+  and timeouts remain the same.
 
 App and server shards, on Linux and Windows, select their Vitest shard with
 the internal `BB_CI_TEST_SHARD` variable (for example `1/3`). Vitest validates
@@ -182,7 +185,7 @@ Native Windows is an alpha host (see [platform-support.md](platform-support.md))
 - A Windows machine enrolled in another server runs its daemon from the user's
   `Run` registry key, so it stops when the user signs out. No CI job covers
   that installer.
-- Lint and typecheck run on Windows only for the nine host packages. POSIX-only
+- Lint and typecheck run on Windows only for the eight host packages. POSIX-only
   tests skip themselves. Suites outside the host packages are not verified
   under an 8.3 short `TEMP` path or paths longer than 260 characters; the
   plugin server build skips its "import escapes the plugin directory" check
