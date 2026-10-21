@@ -96,7 +96,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           value={composer.message}
           onChange={(event) => composer.onChangeMessage(event.target.value, [])}
         />
-        <button type="button" onClick={composer.onSubmit}>
+        <button type="button" onClick={() => composer.onSubmit()}>
           Send
         </button>
         <BottomHostDraftProbe host={pluginComposerHost ?? null} />

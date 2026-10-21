@@ -185,3 +185,10 @@ export function showMutationErrorToast({
     message === title ? undefined : { description: message },
   );
 }
+
+export function reportMutationError(
+  options: MutationErrorMessageOptions,
+): Error {
+  showMutationErrorToast(options);
+  return new Error(getMutationErrorMessage(options));
+}

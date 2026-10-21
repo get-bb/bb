@@ -3287,29 +3287,41 @@ export interface PluginComposerApi {
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
   /**
-   * Submit this composer's draft exactly as pressing Enter would: the same
-   * checks and the same action (send, or queue while the thread is busy; a
-   * provider handoff creates a new thread). The draft's attachments and
+   * Submit this composer's draft through the composer's own send and steer
+   * handlers, the ones Enter and modifier+Enter run, including a
+   * provider handoff that creates a new thread. The draft's attachments and
    * @-mentions, and — in the new-thread composer — the provider, model,
    * reasoning level, service tier, permission mode and environment the user
    * has selected on screen, all travel with it.
    *
-   * While attachments are uploading it waits for them, then checks again; it
-   * rejects if an upload fails. Otherwise, when submitting is blocked it
-   * rejects with `submittingBlockedReason`, a message safe to show to the
-   * user. The queued-message and sent-message editors save edits and reject.
+   * It submits only the draft, so it rejects an empty one, even where the
+   * shortcut would steer the next queued message instead. Otherwise it runs
+   * only when the matching shortcut would. While attachments are uploading it
+   * waits for them, then checks again; it rejects if an upload fails. When
+   * the shortcut could not submit, it rejects with the reason, a message safe
+   * to show to the user. The composer must be on screen. The queued-message
+   * and sent-message editors reject.
    *
-   * `sendAt` queues the submission until that time. `experimental_data` is
-   * opaque JSON delivered to dispatch hooks together with the calling plugin's
-   * id on this initial attempt. Hooks run before operational core waits. If a
-   * hook queues the message, its existing plugin wait identifies the owner on
-   * later attempts; core does not persist or interpret the opaque data.
+   * Every option combines with the others. `experimental_mode` uses the
+   * names `bb.sdk.threads.send` uses. Without it, submit does what Enter
+   * does for this user, which may be to queue or to steer.
+   * `"queue-if-active"` queues behind the running turn, or starts a turn.
+   * `"steer-if-active"` adds the message to the running turn. Where nothing
+   * can be steered, such as on an idle thread, it starts a turn.
+   * `sendAt` makes the chosen action wait until the given time; a scheduled
+   * steer steers whatever turn is running then. `experimental_data` is
+   * opaque JSON delivered to dispatch hooks together with the calling
+   * plugin's id on this initial attempt. Hooks run before operational core
+   * waits. If a hook queues the message, its existing plugin wait identifies
+   * the owner on later attempts; core does not persist or interpret the
+   * opaque data.
    *
-   * Resolves once the host has accepted the submission and cleared the draft.
-   * Failures of the underlying request are reported by bb's own submit error
-   * handling and restore the draft, exactly as an interactive failure does.
+   * Resolves once the composer has accepted the submission and cleared the
+   * draft. Failures of the underlying request show bb's usual error toast
+   * and restore the draft, exactly as an interactive failure does, and then
+   * reject with the toast's message.
    */
-  submit(options: ComposerSubmitOptions): Promise<void>;
+  submit(options?: ComposerSubmitOptions): Promise<void>;
   /**
    * Set this composer's pickers as if each value had been picked by hand.
    *
@@ -3400,16 +3412,22 @@ export interface ComposerSelection {
   permissionMode?: PermissionMode;
 }
 
-/**
- * What `submit` does differently from pressing Enter.
- *
- * `experimental_data` is opaque JSON delivered to dispatch hooks. The runtime
- * associates it with the calling plugin automatically for the initial
- * dispatch attempt.
- */
-export type ComposerSubmitOptions =
-  | { sendAt: number; experimental_data?: JsonValue }
-  | { experimental_data: JsonValue; sendAt?: never };
+/** What `submit` adds to pressing Enter. Every field combines with the others. */
+export interface ComposerSubmitOptions {
+  /**
+   * `"queue-if-active"` queues behind the running turn and
+   * `"steer-if-active"` adds to it; both start a turn when none is running.
+   * Omitted, it does what Enter does for this user.
+   */
+  experimental_mode?: "queue-if-active" | "steer-if-active";
+  /** Epoch ms in the future; the action waits until then. */
+  sendAt?: number;
+  /**
+   * Opaque JSON delivered to dispatch hooks with the calling plugin's id on
+   * the initial dispatch attempt.
+   */
+  experimental_data?: JsonValue;
+}
 
 /** @internal Old name of {@link ComposerSelection}. */
 export type ExperimentalComposerSelection = ComposerSelection;

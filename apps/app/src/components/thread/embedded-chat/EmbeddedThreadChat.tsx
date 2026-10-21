@@ -16,11 +16,8 @@ import {
   type ThreadQueuedMessage,
 } from "@bb/domain";
 import type { SendMessageDelivery } from "@bb/server-contract";
-import type {
-  ComposerSelection,
-  ComposerSubmitOptions,
-  JsonValue,
-} from "@get-bb/plugin-sdk";
+import type { ComposerSelection } from "@get-bb/plugin-sdk";
+import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { readExecutionSelection } from "@/components/promptbox/composer-selection-settle";
 import type {
   AttachmentsConfig,
@@ -77,7 +74,7 @@ import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import {
   getMutationErrorMessage,
-  showMutationErrorToast,
+  reportMutationError,
 } from "@/lib/mutation-errors";
 import { type PromptDraftState, promptDraftToInput } from "@bb/client-core";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
@@ -99,6 +96,7 @@ import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
 
 const NO_QUEUED_EDITOR_SELECTION: ComposerSelection = {};
+const ignoreReportedSubmitError = () => {};
 
 function reportQueuedSendDelivery(delivery: SendMessageDelivery): void {
   if (delivery !== "queued") {
@@ -442,8 +440,15 @@ function EmbeddedThreadChatWithComposer({
   );
 
   const defaultSendOrQueueInput = useCallback(
-    async (input: PromptInput[]) => {
-      if (shouldQueueFollowUpMessage(displayStatus)) {
+    async (
+      input: PromptInput[],
+      { sendAt, pluginSubmission }: ComposerSubmitExtras,
+    ) => {
+      if (
+        shouldQueueFollowUpMessage(displayStatus) &&
+        sendAt === undefined &&
+        pluginSubmission === undefined
+      ) {
         await createQueuedMessage.mutateAsync({
           id: threadId,
           input,
@@ -456,6 +461,8 @@ function EmbeddedThreadChatWithComposer({
         input,
         mode: "queue-if-active",
         ...executionRequestFields,
+        ...(sendAt === undefined ? {} : { sendAt }),
+        ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
       });
       reportQueuedSendDelivery(result.delivery);
     },
@@ -467,41 +474,34 @@ function EmbeddedThreadChatWithComposer({
       threadId,
     ],
   );
-  const submitProgrammatically = useCallback(
-    async (
-      options: ComposerSubmitOptions,
-      pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
-    ) => {
+  const handleSubmit = useCallback(
+    async (extras: ComposerSubmitExtras = {}) => {
       const submittedDraft = promptDraft.getCurrent();
-      const input = promptDraftToInput(submittedDraft);
-      if (input.length === 0) {
+      const submittedInput = promptDraftToInput(submittedDraft);
+      if (submittedInput.length === 0) {
         throw new Error("Type a message before submitting it.");
       }
-      const clearedSubmittedDraft =
-        promptDraft.clearIfCurrentMatches(submittedDraft);
+      if (isTurnSubmitting) {
+        throw new Error("A message is already being sent.");
+      }
+      promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
       setIsTurnSubmitting(true);
       try {
-        const result = await sendThreadMessage.mutateAsync({
-          id: threadId,
-          input,
-          mode: "queue-if-active",
-          ...executionRequestFields,
-          ...(options.sendAt === undefined ? {} : { sendAt: options.sendAt }),
-          ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
-        });
-        reportQueuedSendDelivery(result.delivery);
+        await defaultSendOrQueueInput(submittedInput, extras);
       } catch (error) {
-        if (clearedSubmittedDraft) {
-          promptDraft.restoreIfEmpty(submittedDraft);
+        const options = {
+          error,
+          fallbackMessage: "Failed to send message",
+          lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
+            ? ("queue_message" as const)
+            : ("send_message" as const),
+        };
+        if (!isMountedRef.current) {
+          throw new Error(getMutationErrorMessage(options));
         }
-        throw new Error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: "Failed to submit message",
-            lifecycleOperation: "send_message",
-          }),
-        );
+        promptDraft.restoreIfEmpty(submittedDraft);
+        throw reportMutationError(options);
       } finally {
         if (isMountedRef.current) {
           setIsTurnSubmitting(false);
@@ -509,61 +509,23 @@ function EmbeddedThreadChatWithComposer({
       }
     },
     [
-      executionRequestFields,
+      defaultSendOrQueueInput,
+      displayStatus,
+      isTurnSubmitting,
       promptDraft,
-      sendThreadMessage,
       setBottomAttachmentError,
-      threadId,
     ],
   );
-  const submitProgrammaticallyRef = useLatestRef(submitProgrammatically);
-  const handleSubmit = useCallback(() => {
-    const submittedDraft = currentPromptDraft;
-    const submittedInput = currentPromptDraftInput;
-    if (submittedInput.length === 0 || isTurnSubmitting) {
-      return;
-    }
-    promptDraft.clearIfCurrentMatches(submittedDraft);
-    setBottomAttachmentError(null);
-    setIsTurnSubmitting(true);
-    void defaultSendOrQueueInput(submittedInput)
-      .catch((error) => {
-        if (!isMountedRef.current) {
-          return;
-        }
-        promptDraft.restoreIfEmpty(submittedDraft);
-        showMutationErrorToast({
-          error,
-          fallbackMessage: "Failed to send message",
-          lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
-            ? "queue_message"
-            : "send_message",
-        });
-      })
-      .finally(() => {
-        if (isMountedRef.current) {
-          setIsTurnSubmitting(false);
-        }
-      });
-  }, [
-    currentPromptDraft,
-    currentPromptDraftInput,
-    defaultSendOrQueueInput,
-    displayStatus,
-    isTurnSubmitting,
-    promptDraft,
-    setBottomAttachmentError,
-  ]);
 
   const isQueueMutationPending =
     queuedMessageActionPending || createQueuedMessage.isPending;
   const handleSendQueuedMessage = useCallback(
     (queuedMessageId: string) => {
-      void sendQueuedMessageById({
+      sendQueuedMessageById({
         guard: "exists",
         messageId: queuedMessageId,
         mode: isProvisioning ? "steer" : "auto",
-      });
+      }).catch(ignoreReportedSubmitError);
     },
     [isProvisioning, sendQueuedMessageById],
   );
@@ -576,66 +538,73 @@ function EmbeddedThreadChatWithComposer({
     runtimeDisplayStatus: displayStatus,
     submitModeKind: submitMode.kind,
   });
-  const handleModifierSubmit = useCallback(() => {
-    if (!canSubmitModifierShortcut) {
-      return;
-    }
+  const handleModifierSubmit = useCallback(
+    async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
+      if (!canSubmitModifierShortcut) {
+        throw new Error("There is nothing to send right now.");
+      }
 
-    const submittedDraft = currentPromptDraft;
-    const submittedInput = currentPromptDraftInput;
-    if (submittedInput.length === 0) {
-      const nextQueuedMessage = queuedMessages[0];
-      if (nextQueuedMessage) {
-        void sendQueuedMessageById({
+      const submittedDraft = promptDraft.getCurrent();
+      const submittedInput = promptDraftToInput(submittedDraft);
+      if (submittedInput.length === 0) {
+        const nextQueuedMessage = queuedMessages[0];
+        if (!nextQueuedMessage) {
+          throw new Error("There is nothing to send right now.");
+        }
+        if (sendAt !== undefined || pluginSubmission !== undefined) {
+          throw new Error(
+            "There is no new message to schedule or attach data to.",
+          );
+        }
+        await sendQueuedMessageById({
           guard: "current-head",
           messageId: nextQueuedMessage.id,
           mode: "steer",
         });
+        return;
       }
-      return;
-    }
 
-    promptDraft.clearIfCurrentMatches(submittedDraft);
-    setBottomAttachmentError(null);
-    setIsTurnSubmitting(true);
-    void sendThreadMessage
-      .mutateAsync({
-        id: threadId,
-        input: submittedInput,
-        mode: "steer-if-active",
-        ...executionRequestFields,
-      })
-      .then((result) => {
+      promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      setIsTurnSubmitting(true);
+      try {
+        const result = await sendThreadMessage.mutateAsync({
+          id: threadId,
+          input: submittedInput,
+          mode: "steer-if-active",
+          ...executionRequestFields,
+          ...(sendAt === undefined ? {} : { sendAt }),
+          ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
+        });
         reportQueuedSendDelivery(result.delivery);
-      })
-      .catch((error) => {
-        if (!isMountedRef.current) {
-          return;
-        }
-        promptDraft.restoreIfEmpty(submittedDraft);
-        showMutationErrorToast({
+      } catch (error) {
+        const options = {
           error,
           fallbackMessage: "Failed to send message",
-          lifecycleOperation: "send_message",
-        });
-      })
-      .finally(() => {
+          lifecycleOperation: "send_message" as const,
+        };
+        if (!isMountedRef.current) {
+          throw new Error(getMutationErrorMessage(options));
+        }
+        promptDraft.restoreIfEmpty(submittedDraft);
+        throw reportMutationError(options);
+      } finally {
         if (isMountedRef.current) {
           setIsTurnSubmitting(false);
         }
-      });
-  }, [
-    canSubmitModifierShortcut,
-    currentPromptDraft,
-    currentPromptDraftInput,
-    executionRequestFields,
-    promptDraft,
-    queuedMessages,
-    sendQueuedMessageById,
-    sendThreadMessage,
-    setBottomAttachmentError,
-    threadId,
-  ]);
+      }
+    },
+    [
+      canSubmitModifierShortcut,
+      executionRequestFields,
+      promptDraft,
+      queuedMessages,
+      sendQueuedMessageById,
+      sendThreadMessage,
+      setBottomAttachmentError,
+      threadId,
+    ],
+  );
 
   const handleInlineComposerSubmit = useCallback(() => {
     void handleSaveInlineQueuedMessage();
@@ -788,8 +757,7 @@ function EmbeddedThreadChatWithComposer({
       getSelection,
       subscribeSelection,
       setDraft: setStoredPromptDraft,
-      submit: (options, pluginSubmission) =>
-        submitProgrammaticallyRef.current(options, pluginSubmission),
+      sendsOnEnter: true,
       focus: () => {
         if (activeBottomComposerIdentityRef.current === identity) {
           setComposerFocusNonce((nonce) => nonce + 1);
@@ -803,7 +771,6 @@ function EmbeddedThreadChatWithComposer({
     getSelection,
     setStoredPromptDraft,
     storedPromptDraftKey,
-    submitProgrammaticallyRef,
     subscribeBottomDraft,
     subscribeSelection,
   ]);

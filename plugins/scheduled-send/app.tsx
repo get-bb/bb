@@ -195,7 +195,10 @@ function SendLaterPicker() {
     setBusy(true);
     setError(null);
     try {
-      await composer.submit({ sendAt: at });
+      await composer.submit({
+        experimental_mode: "queue-if-active",
+        sendAt: at,
+      });
       closeSendLater();
       toast.success(`Sending ${formatScheduleTime(at, Date.now())}`);
     } catch (scheduleError: unknown) {

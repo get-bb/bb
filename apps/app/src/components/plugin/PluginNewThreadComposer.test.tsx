@@ -679,9 +679,17 @@ const STORED_REQUEST: NewThreadRequest = {
   input: [{ type: "text", text: "review every PR for slop", mentions: [] }],
 };
 
+const ignoreReportedSubmitError = () => {};
+
+function pressSubmit(): void {
+  void Promise.resolve(latestPromptBoxProps().onSubmit()).catch(
+    ignoreReportedSubmitError,
+  );
+}
+
 async function submit(): Promise<void> {
   await act(async () => {
-    latestPromptBoxProps().onSubmit();
+    pressSubmit();
   });
 }
 
@@ -1119,10 +1127,11 @@ describe("PluginNewThreadComposer seeding", () => {
       );
     });
     const host = latestPromptBoxProps().pluginComposerHost;
+    const submitAsEnter = latestPromptBoxProps().onSubmit;
     view.unmount();
     host.setDraft({ ...host.getCurrent(), text: "Background transcript" });
     await act(async () => {
-      await host.submit({ experimental_data: null }, undefined);
+      await submitAsEnter();
     });
     expect(submitted).toEqual([
       {
@@ -1172,10 +1181,7 @@ describe("PluginNewThreadComposer seeding", () => {
       data: { kind: "draft" } as const,
     };
     await act(async () => {
-      await latestPromptBoxProps().pluginComposerHost.submit(
-        { experimental_data: pluginSubmission.data },
-        pluginSubmission,
-      );
+      await latestPromptBoxProps().onSubmit({ pluginSubmission });
     });
 
     expect(submitted).toHaveLength(1);
@@ -2015,8 +2021,8 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     act(() => {
-      latestPromptBoxProps().onSubmit();
-      latestPromptBoxProps().onSubmit();
+      pressSubmit();
+      pressSubmit();
     });
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(latestPromptBoxProps().value).toBe("");
@@ -2039,7 +2045,9 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
 
-    act(() => latestPromptBoxProps().onSubmit());
+    act(() => {
+      pressSubmit();
+    });
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(latestPromptBoxProps().value).toBe("");
     await act(async () => {
@@ -2064,7 +2072,9 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
 
-    act(() => latestPromptBoxProps().onSubmit());
+    act(() => {
+      pressSubmit();
+    });
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(latestPromptBoxProps().value).toBe("");
     act(() => latestPromptBoxProps().onChange("next thread", []));

@@ -138,7 +138,11 @@ import {
   publishComposerEditorBridge,
   type ComposerEditorBridge,
 } from "@/lib/composer-editor-registry";
-import type { ComposerEditorState } from "@get-bb/plugin-sdk/internal/composer-handle";
+import type {
+  ComposerEditorState,
+  ComposerEditorSubmission,
+  ComposerSubmitExtras,
+} from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
@@ -317,6 +321,8 @@ function withUniqueAttachmentNames(
 }
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
+const ignoreReportedSubmitError = () => {};
+
 export const DEFAULT_COMPOSER_SCOPE = {
   kind: "new-thread",
   projectId: null,
@@ -338,7 +344,7 @@ export interface PromptBoxSubmissionConfig {
   title?: string;
   isRunning?: boolean;
   onStop?: () => void;
-  onModifierSubmit?: () => void;
+  onModifierSubmit?: (extras?: ComposerSubmitExtras) => void | Promise<void>;
   swapSubmitActions?: boolean;
   showModifierSubmitAction?: boolean;
 }
@@ -641,7 +647,7 @@ interface PromptBoxInternalProps {
   value: string;
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
-  onSubmit: () => void;
+  onSubmit: (extras?: ComposerSubmitExtras) => void | Promise<void>;
   onEscape?: () => void;
   blurOnPointerSubmit?: boolean;
   placeholder?: string;
@@ -3155,6 +3161,8 @@ export function PromptBoxInternal({
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
   const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
+  const canSendSubmit = canSubmitAction(draftSubmitAction);
+  const canSteerSubmit = canSubmitAction(immediateSubmitAction);
   const composerEditorKey = pluginComposerHost?.textEffectKey ?? null;
   const submittingBlockedReason = canSubmit
     ? null
@@ -3206,6 +3214,36 @@ export function PromptBoxInternal({
     },
     [isPointerCoarse, scheduleRevealEditorSelection],
   );
+  const submitLikeEnter = useCallback(
+    async ({ mode, ...extras }: ComposerEditorSubmission) => {
+      if (pluginComposerHost?.sendsOnEnter !== true) {
+        throw new Error("This composer cannot submit programmatically.");
+      }
+      if (!hasSubmittableInput) throw new Error("Type a message first.");
+      const runsSteer =
+        mode === "steer-if-active"
+          ? onDefaultModifierSubmit !== undefined
+          : mode === "enter" && swapSubmitActions;
+      const run = runsSteer ? onDefaultModifierSubmit : onDefaultSubmit;
+      const canRun = runsSteer ? canSteerSubmit : canSendSubmit;
+      if (run === undefined || !canRun) {
+        throw new Error(
+          submittingBlockedReason ?? "This composer can't submit right now.",
+        );
+      }
+      await run(extras);
+    },
+    [
+      canSendSubmit,
+      canSteerSubmit,
+      hasSubmittableInput,
+      onDefaultModifierSubmit,
+      onDefaultSubmit,
+      pluginComposerHost,
+      submittingBlockedReason,
+      swapSubmitActions,
+    ],
+  );
   const composerEditorBridge = useMemo<ComposerEditorBridge | null>(
     () =>
       pluginComposerHost === null
@@ -3225,6 +3263,7 @@ export function PromptBoxInternal({
                 popups.some((popup) => popup.key === current.key)
               );
             },
+            submit: submitLikeEnter,
           },
     [
       composerEditorState,
@@ -3233,6 +3272,7 @@ export function PromptBoxInternal({
       closePopupForPlugin,
       popups,
       pluginComposerHost,
+      submitLikeEnter,
       suppressPluginComposerCustomizations,
     ],
   );
@@ -3312,7 +3352,7 @@ export function PromptBoxInternal({
 
   const dispatchSubmit = useCallback(() => {
     if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
-    onSubmit?.();
+    void Promise.resolve(onSubmit?.()).catch(ignoreReportedSubmitError);
   }, [onSubmit]);
 
   const submitPrompt = useCallback(() => {
@@ -3378,7 +3418,7 @@ export function PromptBoxInternal({
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
-    onModifierSubmit();
+    void Promise.resolve(onModifierSubmit()).catch(ignoreReportedSubmitError);
   }, [canModifierSubmit, onModifierSubmit]);
 
   const applyHistoryDraft = useCallback(

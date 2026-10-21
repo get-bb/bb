@@ -107,12 +107,18 @@ experimental_openTerminal({ terminalId }) }`.
   - Save `composer.draft`, then restore it with `composer.replace(saved)`.
     For an LLM rewrite, map preserved mention placeholders to explicit ranges
     in the resulting text and replace text and mentions together.
-  - `submit({ sendAt? , experimental_data? })` submits exactly as pressing
-    Enter would (send, or queue while the thread is busy). It waits for
-    uploads in progress, then rejects with `submittingBlockedReason` when the
-    send button would refuse. `experimental_data` reaches dispatch hooks on
-    the initial attempt, namespaced with your plugin id. The queued-message
-    and sent-message editors reject.
+  - `submit({ experimental_mode?, sendAt?, experimental_data? })` submits the
+    draft through the on-screen composer's own queue or steer handler. Omit
+    `experimental_mode` to do what Enter does for this user; pass
+    `"queue-if-active"` or `"steer-if-active"`, the `bb.sdk.threads.send`
+    modes, to queue behind or add to the running turn (both start a turn when
+    none is running). `sendAt` makes that action wait until the given time,
+    and `experimental_data` reaches dispatch hooks on the initial attempt,
+    namespaced with your plugin id. The options combine freely. It rejects an
+    empty draft, waits for uploads in progress, then rejects with the reason
+    when the shortcut could not run; it rejects when the send fails, after bb
+    shows its usual error toast. The queued-message and sent-message editors
+    reject.
   - `setSelection({ projectId?, environment?, providerId?, model?,
 reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
     picked by hand and resolves with the settled selection; omitted fields keep
@@ -308,7 +314,6 @@ literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
 
-
 ## Optimistic RPC updates
 
 `experimental_useRpcMutation({ contract, method, optimistic(input, cache) { ... } })`
@@ -322,7 +327,6 @@ rolls back. Return a new value without mutating cached data or captured inputs,
 performing side effects, or generating IDs, timestamps, or random values.
 Generate any such values once before calling `mutate` and include them in the
 mutation input so every replay uses the same values.
-
 
 ## Live RPC reads and write acknowledgement
 

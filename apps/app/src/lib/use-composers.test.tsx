@@ -56,6 +56,7 @@ function mountEditor(host: TestHost, pluginCustomizable = true) {
       attachmentError: null,
     },
     insertAtCursor: () => true,
+    submit: async () => {},
   };
   act(() => publishComposerEditorBridge(host.textEffectKey, bridge));
   published.push([host.textEffectKey, bridge]);

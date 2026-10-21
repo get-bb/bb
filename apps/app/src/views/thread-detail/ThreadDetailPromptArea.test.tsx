@@ -221,6 +221,8 @@ beforeEach(() => {
   mocks.defaultExecutionOptions = null;
   mocks.executionInputSources = {};
   mocks.pluginComposerHost = null;
+  mocks.composerSubmit = null;
+  mocks.composerModifierSubmit = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
   mocks.promptDraft.attachments = [];
@@ -390,6 +392,81 @@ describe("agent session options", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("sends plugin data through the send endpoint while Enter queues", async () => {
+    mocks.promptDraft.text = "Queue this with data";
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "active" },
+        status: "active",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const pluginSubmission = { pluginId: "drafts", data: { kind: "draft" } };
+
+    await act(async () => {
+      await mocks.composerSubmit?.({ pluginSubmission });
+    });
+
+    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "queue-if-active",
+        pluginSubmission,
+      }),
+    );
+  });
+
+  it("steers with sendAt and plugin data from the modifier action", async () => {
+    mocks.promptDraft.text = "Steer this later";
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "active" },
+        status: "active",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const pluginSubmission = { pluginId: "drafts", data: { kind: "note" } };
+
+    await act(async () => {
+      await mocks.composerModifierSubmit?.({
+        sendAt: 1234567890,
+        pluginSubmission,
+      });
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "steer-if-active",
+        sendAt: 1234567890,
+        pluginSubmission,
+      }),
+    );
+  });
+
+  it("refuses sendAt when the modifier action would steer the next queued message", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "idle" },
+        status: "idle",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    await expect(
+      mocks.composerModifierSubmit?.({ sendAt: 1234567890 }),
+    ).rejects.toThrow("There is no new message to schedule or attach data to.");
+    expect(mocks.sendQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
   it("preserves plugin submission data through a follow-up composer", async () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
@@ -409,10 +486,7 @@ describe("ThreadDetailPromptArea", () => {
     };
 
     await act(async () => {
-      await mocks.pluginComposerHost?.submit?.(
-        { experimental_data: pluginSubmission.data },
-        pluginSubmission,
-      );
+      await mocks.composerSubmit?.({ pluginSubmission });
     });
 
     expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
@@ -1806,10 +1880,7 @@ describe("ThreadDetailPromptArea", () => {
           screen.getByRole("button", { name: "Capture plugin host" }),
         );
         await act(async () => {
-          await mocks.pluginComposerHost?.submit?.(
-            { sendAt: 1234567890 },
-            undefined,
-          );
+          await mocks.composerSubmit?.({ sendAt: 1234567890 });
         });
       } else {
         fireEvent.click(

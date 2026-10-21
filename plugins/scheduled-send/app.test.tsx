@@ -123,7 +123,8 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    const { sendAt } = slot.inspection.composer.submits[0]!;
+    const { experimental_mode, sendAt } = slot.inspection.composer.submits[0]!;
+    expect(experimental_mode).toBe("queue-if-active");
     expect(sendAt).toBeGreaterThanOrEqual(before + HOUR_MS);
     expect(sendAt).toBeLessThanOrEqual(Date.now() + HOUR_MS);
 

@@ -2574,12 +2574,31 @@ mention rebasing, and callback failure isolation across every composer host.
 
 ## `useComposer().submit` and dispatch `experimental_submission`
 
-`submit({ sendAt?, experimental_data? })` submits the on-screen draft exactly
-as pressing Enter would, and rejects with a user-presentable reason when it
-cannot. `experimental_data` reaches every `message.dispatch` hook on the
-initial attempt as an `experimental_submission` envelope carrying the
-submitting plugin's id. Core validates the data as JSON but neither persists
-nor interprets it.
+`submit({ experimental_mode?, sendAt?, experimental_data? })` submits the
+draft through the on-screen composer's own queue or steer handler and rejects
+with a user-presentable reason when it cannot. It requires a draft: where the
+shortcut would steer the next queued message from an empty draft, `submit`
+rejects instead. Without a mode it runs whichever one
+Enter runs for this user; `"queue-if-active"` and `"steer-if-active"`, the
+names `bb.sdk.threads.send` uses, pick one explicitly, and
+`"steer-if-active"` starts a turn where the composer has nothing to steer. The
+options combine: `sendAt` and the plugin data travel into the same send,
+queue or steer request the shortcuts build, so a scheduled steer steers the
+turn running at its time. `experimental_data` reaches every `message.dispatch`
+hook on the initial attempt as an `experimental_submission` envelope carrying
+the submitting plugin's id. Core validates the data as JSON but neither
+persists nor interprets it.
+
+There is one implementation. `PromptBoxInternal` publishes `submit` on the
+composer editor bridge; it picks Enter's handler, the queue handler or the
+steer handler and gates it exactly as the matching shortcut is gated, then
+calls the same `onSubmit` or `onModifierSubmit` the shortcuts and the send
+button call, passing `sendAt` and the plugin submission. Only hosts that set
+`sendsOnEnter` (the thread, embedded thread chat and New thread composers)
+accept it. Off-screen voice sends run
+the same Enter action. Every form rejects when the send fails; the Enter
+action still shows its toast, and Enter and the send button ignore the
+rejection.
 
 Docs: `frontend-hooks-and-ui.md`, `backend-events.md`.
 
@@ -2589,9 +2608,10 @@ Docs: `frontend-hooks-and-ui.md`, `backend-events.md`.
    submission without `sendAt`. Confirm which composer customizations should
    receive that authority before stabilization.
 2. **Editors that save instead of send.** The queued-message and sent-message
-   editors and the route-draft fallback reject with "cannot submit
-   programmatically". `isSubmittingBlocked` lets a row disable itself before a
-   click; confirm whether those surfaces also need a distinct capability flag.
+   editors reject with "cannot submit programmatically". `isSubmittingBlocked`
+   lets a row disable itself before a click; confirm whether those surfaces
+   should run their own Enter action (save the edit) instead, and whether a
+   plugin needs a capability flag to tell them apart.
 3. **Data visibility.** Every dispatch hook sees the envelope and its owner id,
    not only the plugin that submitted it. Confirm that dispatch hooks remain
    the right trust boundary for plugin-owned submission data.
@@ -2607,6 +2627,18 @@ Docs: `frontend-hooks-and-ui.md`, `backend-events.md`.
    of `NewThreadRequest`, so another plugin's `experimental_data` can be lost
    there. Decide whether to expose a forwardable experimental field or reject
    data-bearing submissions there.
+7. **Two queue routes.** While Enter queues, a plain submit creates the queued
+   row directly, as Enter does, so dispatch hooks first see it when the row
+   drains. With `sendAt` or `experimental_data` it sends with
+   `queue-if-active`, so the hooks run at submit time and again on the drain;
+   only that inline pass carries the data. Both routes deliver into a running
+   turn once its main run is idle. Decide whether Enter itself should queue
+   through `queue-if-active`.
+8. **Steering a queued message.** `submit` never steers the next queued
+   message. Add an explicit operation for it when a plugin needs one.
+9. **Scheduled submits without a mode.** `submit({ sendAt })` follows
+   Enter, so it schedules a steer for users whose Enter steers. Confirm a
+   caller that schedules should be required to pick a mode.
 
 ## `useComposer().setSelection`
 

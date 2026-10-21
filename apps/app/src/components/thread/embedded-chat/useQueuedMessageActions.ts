@@ -12,7 +12,10 @@ import {
   useSetThreadQueuedMessageGroupBoundary,
   useUpdateThreadQueuedMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { showMutationErrorToast } from "@/lib/mutation-errors";
+import {
+  reportMutationError,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { BbHttpError } from "@/lib/sdk";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
@@ -120,14 +123,14 @@ export function useQueuedMessageActions({
           );
         }
       } catch (error) {
-        showMutationErrorToast({
+        setProcessingQueuedMessage((current) =>
+          current?.id === messageId ? null : current,
+        );
+        throw reportMutationError({
           error,
           fallbackMessage: "Failed to send queued message",
           lifecycleOperation: "send_queued_message",
         });
-        setProcessingQueuedMessage((current) =>
-          current?.id === messageId ? null : current,
-        );
       }
     },
     [onSendSuccess, sendProcessingPersistence, sendQueuedMessage, threadId],

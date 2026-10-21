@@ -32,6 +32,15 @@ export interface ComposerEditorState {
   attachmentError: string | null;
 }
 
+export interface ComposerSubmitExtras {
+  sendAt?: number;
+  pluginSubmission?: { pluginId: string; data: JsonValue };
+}
+
+export interface ComposerEditorSubmission extends ComposerSubmitExtras {
+  mode: "enter" | "queue-if-active" | "steer-if-active";
+}
+
 export interface ComposerHandleTarget {
   key: string;
   scope: PluginComposerScope;
@@ -47,10 +56,11 @@ export interface ComposerHandleTarget {
   focus(): void;
   openPopup?(pluginId: string, popupId: string): boolean;
   closePopup?(pluginId: string): boolean;
-  submit?(
-    options: ComposerSubmitOptions,
-    pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
-  ): Promise<void>;
+  /**
+   * Runs the on-screen composer's own Enter, queue or steer handler with the
+   * submission's extras, or returns null when no composer box is mounted.
+   */
+  editorSubmit(submission: ComposerEditorSubmission): Promise<void> | null;
   setSelection?(selection: ComposerSelection): Promise<ComposerSelection>;
 }
 
@@ -294,12 +304,8 @@ export function createComposerHandleBinding(
     }
     target().setDraft(appendComposerDraft(target().getDraft(), value, block));
   };
-  const submit = async (options: ComposerSubmitOptions) => {
+  const submit = async (options: ComposerSubmitOptions = {}) => {
     requireAvailable();
-    const hostSubmit = target().submit;
-    if (hostSubmit === undefined) {
-      throw new Error("This composer cannot submit programmatically.");
-    }
     if (
       options.sendAt !== undefined &&
       (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
@@ -315,18 +321,20 @@ export function createComposerHandleBinding(
     ) {
       throw new Error(state.attachmentError);
     }
-    if (state.isSubmittingBlocked) {
-      throw new Error(
-        state.submittingBlockedReason ??
-          "This composer can't submit right now.",
-      );
-    }
-    await hostSubmit(
-      options,
-      options.experimental_data === undefined
-        ? undefined
-        : { pluginId: controller.pluginId, data: options.experimental_data },
-    );
+    const submission = target().editorSubmit({
+      mode: options.experimental_mode ?? "enter",
+      ...(options.sendAt === undefined ? {} : { sendAt: options.sendAt }),
+      ...(options.experimental_data === undefined
+        ? {}
+        : {
+            pluginSubmission: {
+              pluginId: controller.pluginId,
+              data: options.experimental_data,
+            },
+          }),
+    });
+    if (submission === null) throw new Error(OFF_SCREEN_MESSAGE);
+    await submission;
   };
   const setSelection = async (selection: ComposerSelection) => {
     requireAvailable();

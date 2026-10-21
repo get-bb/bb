@@ -16,6 +16,6 @@ Write a message now and let bb send it when you choose. The draft keeps its atta
 
 The **When** choice is remembered across composers and page reloads in this browser while it resolves to a future time. Expired custom times and unavailable presets reset to **In 1 hour**. Relative presets count from confirmation.
 
-bb submits the draft through the normal send path, so the scheduled message is the same message you would send with Enter. In the new-thread screen, the thread starts at the chosen time with the provider and environment you selected. The entry is disabled when the draft is empty or a send is in progress.
+bb submits the draft through the normal send path, so the scheduled message is the same message you would send with Enter. At the chosen time it starts a turn, or waits behind the one running, even if Enter steers. In the new-thread screen, the thread starts at the chosen time with the provider and environment you selected. The entry is disabled when the draft is empty or a send is in progress.
 
 The plugin adds no agent tools or CLI commands.

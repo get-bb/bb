@@ -14,6 +14,7 @@ import type {
   SystemMachineProvider,
 } from "@bb/server-contract";
 import type { ComposerView } from "@get-bb/plugin-sdk";
+import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
@@ -125,7 +126,7 @@ interface NewThreadPromptBoxUIProps {
   value: string;
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
-  onSubmit: () => void;
+  onSubmit: (extras?: ComposerSubmitExtras) => void | Promise<void>;
   focusRequest?: string;
   isSubmitting: boolean;
   disabled: boolean;
@@ -187,7 +188,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   }, []);
   const voice = usePromptVoice(
     promptBoxRef,
-    pluginComposerHost ?? undefined,
+    pluginComposerHost
+      ? { ...pluginComposerHost, submit: () => onSubmit() }
+      : undefined,
     pluginComposerHost ? composerScopeIdentity(pluginComposerHost.scope) : null,
   );
   const attachmentCount = attachments.items?.length ?? 0;

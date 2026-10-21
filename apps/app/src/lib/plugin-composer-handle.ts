@@ -44,7 +44,6 @@ export type ComposerSource = Pick<
   | "setDraft"
   | "isAvailable"
   | "focus"
-  | "submit"
   | "setSelection"
   | "getSelection"
   | "subscribeSelection"
@@ -178,6 +177,8 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
     },
     getEditorState: () =>
       getComposerEditorBridge(key)?.state ?? OFF_SCREEN_EDITOR_STATE,
+    editorSubmit: (submission) =>
+      getComposerEditorBridge(key)?.submit(submission) ?? null,
     subscribeEditorState: (listener) =>
       subscribeComposerEditorBridge(key, listener),
     insertAtCursor: (value, block) => {
@@ -190,7 +191,6 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
         );
       return true;
     },
-    ...(source.submit !== undefined ? { submit: source.submit } : {}),
     ...(hostSetSelection !== undefined
       ? {
           setSelection: (selection: ComposerSelection) =>

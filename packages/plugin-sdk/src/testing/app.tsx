@@ -1441,9 +1441,8 @@ const testPluginSdkApp = {
     _options,
   ): ExperimentalSidebarNavigationSplit {
     const env = useSlotEnv("experimental_useSidebarNavigationSplit");
-    const kind = env.sidebarNavigation.items.find(
-      (item) => item.id === itemId,
-    )?.action.kind;
+    const kind = env.sidebarNavigation.items.find((item) => item.id === itemId)
+      ?.action.kind;
     const isAvailable = kind === "new-thread" || kind === "open-plugin-panel";
     return useMemo(
       () => ({
@@ -2530,6 +2529,19 @@ export function renderSlot<
       };
     },
     subscribeEditorState: () => () => {},
+    async editorSubmit({ mode, sendAt, pluginSubmission }) {
+      const reason = composerBlockedReason();
+      if (reason !== null) throw new Error(reason);
+      composerLog.submits.push({
+        ...(mode === "enter" ? {} : { experimental_mode: mode }),
+        ...(sendAt === undefined ? {} : { sendAt }),
+        ...(pluginSubmission === undefined
+          ? {}
+          : { experimental_data: pluginSubmission.data }),
+      });
+      commitComposerDraft("", []);
+      for (const listener of submissionListeners) listener();
+    },
     insertAtCursor(value, block) {
       composerTarget.setDraft(
         appendComposerDraft(composerDraft(), value, block),
@@ -2539,11 +2551,6 @@ export function renderSlot<
     isAvailable: composerIsAvailable,
     focus() {
       composerLog.focusCount += 1;
-    },
-    async submit(submitOptions) {
-      composerLog.submits.push(submitOptions);
-      commitComposerDraft("", []);
-      for (const listener of submissionListeners) listener();
     },
     async setSelection(selection) {
       if (composerScope.kind === "queued-message") {
