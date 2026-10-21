@@ -30,6 +30,11 @@ import {
   PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
+import { PluginDetailRollback } from "@/components/plugin/management/RollbackPluginDialog";
+import {
+  PluginTrackingRangeControl,
+  pluginTrackingSpec,
+} from "@/components/plugin/management/ChangeTrackingRangeDialog";
 import {
   CatalogEntryIconChip,
   formatAbsoluteDate,
@@ -438,10 +443,13 @@ export function PluginDetail({
     hasUpdateManagement &&
     (plugin.updateState.availableVersion !== null ||
       plugin.updateState.blockedVersion !== null ||
-      plugin.updateState.lastFailure !== null);
+      plugin.updateState.lastFailure !== null ||
+      plugin.updateState.outsideRange !== null ||
+      plugin.updateState.detail !== null);
   const hasConfiguration =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
+  const tracking = pluginTrackingSpec(plugin, sourceQuery.data);
 
   const pluginName = plugin.name ?? plugin.id;
   const pluginTitle = splitPluginDisplayName(pluginName);
@@ -574,6 +582,14 @@ export function PluginDetail({
             <PluginDetailMetadataItem label="Version">
               <span className="font-mono">{plugin.version}</span>
             </PluginDetailMetadataItem>
+            {tracking === undefined ? null : (
+              <PluginDetailMetadataItem label="Update range">
+                <PluginTrackingRangeControl
+                  plugin={plugin}
+                  tracking={tracking}
+                />
+              </PluginDetailMetadataItem>
+            )}
           </PluginDetailMetadata>
           {hasReleaseUpdate ? (
             <div className="space-y-1">
@@ -583,6 +599,14 @@ export function PluginDetail({
               <PluginDetailReleaseStatus plugin={plugin} />
             </div>
           ) : null}
+          {plugin.updateState.rollback === null ? null : (
+            <div className="space-y-1">
+              <p className="text-2xs font-medium text-subtle-foreground">
+                Rollback
+              </p>
+              <PluginDetailRollback plugin={plugin} />
+            </div>
+          )}
         </ResourceDetailReleaseSection>
         <PluginIncludes plugin={plugin} configurationPath={configurationPath} />
         {plugin.services.length > 0 ? (

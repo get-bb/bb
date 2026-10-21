@@ -279,6 +279,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb plugin outdated`
 - `bb plugin update`
 - `bb plugin update-jobs`
+- `bb plugin track`
+- `bb plugin rollback`
 - `bb plugin new`
 - `bb plugin types`
 - `bb plugin migrate`

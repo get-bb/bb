@@ -86,6 +86,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       now: 100,
       retainedUntil: 200,
       previousRegistration,
+      operation: "update",
     });
 
     const mutate = async () => {
@@ -101,20 +102,16 @@ describe("plugin activation snapshots and garbage collection", () => {
       await writeFile(secretPath, "changed-secret");
     };
     await mutate();
-    await restorePluginStateSnapshot({
-      db,
-      dataDir,
-      snapshotId: snapshot.id,
-      now: 110,
-    });
+    await expect(
+      restorePluginStateSnapshot({ db, dataDir, snapshotId: snapshot.id }),
+    ).rejects.toThrow(
+      `plugin state snapshot ${snapshot.id} is not being restored (ready)`,
+    );
+    expect(await readFile(secretPath, "utf8")).toBe("changed-secret");
+    setPluginStateSnapshotStatus(db, snapshot.id, "restoring", 110);
+    await restorePluginStateSnapshot({ db, dataDir, snapshotId: snapshot.id });
     await mutate();
-    setPluginStateSnapshotStatus(db, snapshot.id, "restoring", 120);
-    await restorePluginStateSnapshot({
-      db,
-      dataDir,
-      snapshotId: snapshot.id,
-      now: 130,
-    });
+    await restorePluginStateSnapshot({ db, dataDir, snapshotId: snapshot.id });
 
     const restored = new Database(databasePath, { readonly: true });
     expect(restored.prepare("SELECT value FROM state").pluck().get()).toBe(
@@ -169,6 +166,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       now: 100,
       retainedUntil: 200,
       previousRegistration: registration,
+      operation: "update",
     });
     if (snapshot.registrationPath === null) {
       throw new Error("missing snapshot registration path");
@@ -228,6 +226,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       now: 100,
       retainedUntil: 200,
       previousRegistration: registration,
+      operation: "update",
     });
     if (snapshot.registrationPath === null) {
       throw new Error("missing snapshot registration path");
@@ -631,11 +630,13 @@ describe("plugin activation snapshots and garbage collection", () => {
       secretsPath: null,
       registrationPath: null,
       status: "rollback-pending",
+      operation: "update",
       rollbackCandidateVersion: "candidate",
       rollbackSourceFingerprint: "source",
       rollbackBbVersion: "1.0.0",
       rollbackSdkVersion: "0.2.0",
       rollbackDetail: "failed",
+      failureDetail: null,
       createdAt: 1,
       retainedUntil: 1,
       updatedAt: 1,

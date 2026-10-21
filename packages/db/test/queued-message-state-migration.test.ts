@@ -8,6 +8,7 @@ import {
   type DbConnection,
 } from "../src/index.js";
 import {
+  dropPluginSnapshotRecoveryColumns,
   dropThreadParentNotificationsColumn,
   rewindQueuedMessageStateMigration,
 } from "./helpers/rewind.js";
@@ -57,6 +58,7 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   });
   rewindQueuedMessageStateMigration(db);
   dropThreadParentNotificationsColumn(db);
+  dropPluginSnapshotRecoveryColumns(db);
   return { db, threadId: thread.id };
 }
 

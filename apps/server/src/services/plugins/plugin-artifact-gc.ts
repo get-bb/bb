@@ -9,6 +9,7 @@ import {
   listPluginArtifactsAtOrUnderPath,
   listPluginArtifactsInGitCheckout,
   listPluginArtifactsUnderPath,
+  listPluginStateSnapshots,
   type DbConnection,
   type PluginArtifactRow,
 } from "@bb/db";
@@ -186,7 +187,8 @@ export async function garbageCollectPluginArtifacts(args: {
     }
   }
   const artifacts = listGarbageCollectablePluginArtifacts(args.db, {
-    retention: { now: args.now, cutoff: args.now - args.retentionMs },
+    now: args.now,
+    retentionCutoff: args.now - args.retentionMs,
     pluginId: null,
   });
   await executeArtifactRemovals({
@@ -199,10 +201,12 @@ export async function removeUnusedPluginArtifacts(args: {
   db: DbConnection;
   dataDir: string;
   pluginId: string;
+  now: number;
   warn: (message: string) => void;
 }): Promise<void> {
   const artifacts = listGarbageCollectablePluginArtifacts(args.db, {
-    retention: null,
+    now: args.now,
+    retentionCutoff: null,
     pluginId: args.pluginId,
   });
   await executeArtifactRemovals({
@@ -266,15 +270,34 @@ async function listNpmCacheEntries(npmRoot: string): Promise<string[]> {
   return entries;
 }
 
+export async function removePluginStateSnapshots(args: {
+  db: DbConnection;
+  pluginId: string;
+  warn: (message: string) => void;
+}): Promise<void> {
+  for (const snapshot of listPluginStateSnapshots(args.db, args.pluginId)) {
+    try {
+      await rm(snapshot.snapshotPath, { recursive: true, force: true });
+      deletePluginStateSnapshot(args.db, snapshot.id);
+    } catch (error) {
+      args.warn(
+        `plugin snapshot removal failed for ${snapshot.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
 export async function prunePluginCache(args: {
   db: DbConnection;
   dataDir: string;
   dryRun: boolean;
+  now: number;
   warn: (message: string) => void;
 }): Promise<PluginCachePruneResponse> {
   const cacheRoot = pluginCacheRoot(args.dataDir);
   const artifacts = listGarbageCollectablePluginArtifacts(args.db, {
-    retention: null,
+    now: args.now,
+    retentionCutoff: null,
     pluginId: null,
   });
   const removals = planArtifactRemovals({ ...args, artifacts });

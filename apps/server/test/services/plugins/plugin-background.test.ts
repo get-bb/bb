@@ -339,6 +339,7 @@ describe("plugin background services", () => {
       ok: false,
       error: 'plugin "stubborn" reload failed: service socket did not stop',
       plugins: service.list(),
+      warnings: [],
     });
 
     const again = await service.reload("stubborn");

@@ -54,11 +54,15 @@ import {
   pluginUpdateCheckEntrySchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
+  type PluginApplyUpdateRequest,
   type PluginCapabilitySummary,
   type PluginCachePruneResponse,
+  type PluginRollbackPointResponse,
+  type PluginRollbackRequest,
   type PluginSafeModeUpdateResponse,
   type PluginSourceDetail,
   type PluginSourceSelection,
+  type PluginTrackingRangeRequest,
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import {
@@ -118,6 +122,7 @@ import {
 } from "./install-sources.js";
 import {
   prunePluginCache,
+  removePluginStateSnapshots,
   removeUnusedPluginArtifacts,
 } from "./plugin-artifact-gc.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
@@ -151,6 +156,11 @@ import {
   type PluginSettingsView,
 } from "./plugin-settings.js";
 import { createPluginActivation } from "./plugin-activation.js";
+import { pluginRestoreHold } from "./plugin-state-snapshot.js";
+import {
+  createPluginRollback,
+  createPluginRollbackPoints,
+} from "./plugin-rollback.js";
 import {
   createManagedPluginArtifacts,
   type InstallContext,
@@ -174,11 +184,13 @@ import {
   settledWithin,
 } from "./plugin-time-box.js";
 import { createPluginUpdates } from "./plugin-updates.js";
+import type { PluginTrackingRangeOutcome } from "./plugin-tracking-range.js";
 
 import type {
   LoadedPlugin,
   PluginAgentToolContribution,
   PluginApplyUpdateOutcome,
+  PluginRollbackOutcome,
   PluginInstructionContribution,
   PluginMentionProviderContribution,
   PluginMentionResolveResult,
@@ -207,8 +219,13 @@ export interface PluginSkillRootContribution {
 }
 
 export type PluginReloadOutcome =
-  | { ok: true; plugins: InstalledPlugin[] }
-  | { ok: false; error: string; plugins: InstalledPlugin[] };
+  | { ok: true; plugins: InstalledPlugin[]; warnings: string[] }
+  | {
+      ok: false;
+      error: string;
+      plugins: InstalledPlugin[];
+      warnings: string[];
+    };
 
 export function dispatchPluginSourceWatchChange(
   handleChange: (relativePath: string) => void,
@@ -296,9 +313,21 @@ export interface PluginService {
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceDetail | undefined>;
-  applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
+  applyUpdate(
+    id: string,
+    request?: PluginApplyUpdateRequest,
+  ): Promise<PluginApplyUpdateOutcome>;
+  setTrackingRange(
+    id: string,
+    request: PluginTrackingRangeRequest,
+  ): Promise<PluginTrackingRangeOutcome>;
   remove(id: string): Promise<boolean>;
   pruneCache(args: { dryRun: boolean }): Promise<PluginCachePruneResponse>;
+  getRollbackPoint(id: string): Promise<PluginRollbackPointResponse>;
+  rollbackUpdate(
+    id: string,
+    request?: PluginRollbackRequest,
+  ): Promise<PluginRollbackOutcome>;
   setEnabled(
     id: string,
     enabled: boolean,
@@ -674,6 +703,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
+    loadIgnoringRestoreHold,
     loadOne,
     brandingAssets,
     safeModeActivationRefusal,
@@ -706,6 +736,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     assertInstallRegistrationAvailable,
     backfillNormalizedPluginRegistrations,
     emptyPluginUpdateState,
+    exactResolutionForRow,
     installBuiltinSource,
     installPathSource,
     installedUpdateVersion,
@@ -715,8 +746,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     registerInstalled,
     registrationMatchesForActivation,
     refuseBuiltinShadow,
+    registrationRestoreProblem,
     restoreRegistration,
     sourceFingerprint,
+    sourceIntentForRow,
   } = createPluginRegistration({
     runInstallHandlers,
     safeModeActivationRefusal,
@@ -734,9 +767,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     list,
   });
 
+  const rollbackPoints = createPluginRollbackPoints({
+    deps,
+    now,
+    installedUpdateVersion,
+  });
+
   const {
     activateManagedUpdate,
     recoverIncompletePluginRollbacks,
+    retryPluginRestore,
     runArtifactGc,
   } = createPluginActivation({
     deps,
@@ -751,14 +791,37 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withLifecycleLock,
     disposeOne,
     loadOne,
+    loadIgnoringRestoreHold,
     restoreRegistration,
+    registrationProblem: registrationRestoreProblem,
     provenanceForRow,
     registrationMatchesForActivation,
     emptyPluginUpdateState,
     sourceFingerprint,
+    rememberRollbackPoint: rollbackPoints.remember,
+    pruneRollbackPoints: rollbackPoints.prune,
     syncCliSkill,
     notifyPluginsChanged,
   });
+
+  async function retryRestore(
+    id: string,
+  ): Promise<{ problem: string | null; warnings: string[] }> {
+    try {
+      const recovery = await withPluginOperationLock(
+        REGISTRATION_MUTATION_KEY,
+        () => retryPluginRestore(id),
+      );
+      return { problem: recovery.problem, warnings: recovery.warnings };
+    } catch (error) {
+      return {
+        problem:
+          pluginRestoreHold(deps.db, id) ??
+          (error instanceof Error ? error.message : String(error)),
+        warnings: [],
+      };
+    }
+  }
 
   const managedPluginArtifacts = createManagedPluginArtifacts({
     deps,
@@ -786,6 +849,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     npmIntentForRow,
     managedArtifacts: managedPluginArtifacts,
     runArtifactGc,
+  });
+
+  const pluginRollback = createPluginRollback({
+    deps,
+    now,
+    registrationMutationKey: REGISTRATION_MUTATION_KEY,
+    withPluginOperationLock,
+    withArtifactLock,
+    safeModeActivationRefusal,
+    installedUpdateVersion,
+    sourceIntentForRow,
+    exactResolutionForRow,
+    rollbackPoints,
+    activateManagedUpdate,
+    runArtifactGc,
+    checkInBackground: pluginUpdates.checkInBackground,
   });
 
   function resolveAgentToolPresentation(
@@ -947,6 +1026,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return `git · ${row.sourceGitUrl ?? row.source}${range} · ${updateTrackingForRow(row)}`;
   }
 
+  function installedReleaseId(row: InstalledPluginRow): string | null {
+    if (row.sourceKind === "npm") return row.npmResolvedVersion;
+    if (row.sourceKind === "git") return row.gitResolvedCommit;
+    return row.version;
+  }
+
   function updateStateForRow(
     row: InstalledPluginRow,
   ): InstalledPlugin["updateState"] {
@@ -968,16 +1053,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             version: row.lastFailureVersion,
             at: row.lastFailureAt,
             detail: row.lastFailureDetail,
+            restored: row.lastFailureVersion !== installedReleaseId(row),
           }
         : undefined;
+    const held = pluginRestoreHold(deps.db, row.id) !== null;
+    const rollback = held ? undefined : rollbackPoints.find(row);
     return {
       ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
-      ...(persisted?.outcome === "unavailable"
+      ...(persisted?.outcome === "unavailable" ||
+      (persisted?.outcome === "current" && persisted.detail !== undefined)
         ? { detail: persisted.detail }
         : {}),
-      ...(row.availableCompatibleVersion === null
+      ...(held || row.availableCompatibleVersion === null
         ? {}
         : { availableVersion: row.availableCompatibleVersion }),
+      ...(held || persisted?.candidate === undefined
+        ? {}
+        : { availableDisplay: persisted.candidate.display }),
+      ...(held || persisted?.candidateBreaking === undefined
+        ? {}
+        : { availableBreaking: persisted.candidateBreaking }),
+      ...(held || persisted?.outsideRange === undefined
+        ? {}
+        : { outsideRange: persisted.outsideRange }),
       ...(row.newestIncompatibleVersion === null
         ? {}
         : { blockedVersion: row.newestIncompatibleVersion }),
@@ -988,6 +1086,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         ? {}
         : { lastCheckAt: row.lastUpdateCheckAt }),
       ...(failure === undefined ? {} : { lastFailure: failure }),
+      ...(rollback === undefined ? {} : { rollback }),
     };
   }
 
@@ -1505,6 +1604,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             );
           }
           await recoverIncompletePluginRollbacks();
+          await rollbackPoints.load();
         });
         await handOverRetiredBuiltins();
         await reconcileBundled();
@@ -1611,6 +1711,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async stop() {
       for (const watcher of builtinSourceWatchers.splice(0)) watcher.close();
+      await pluginUpdates.stopBackgroundChecks();
       await disposeAll();
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1756,10 +1857,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           if (managedDir !== undefined) {
             await rm(managedDir, { recursive: true, force: true });
           }
+          await removePluginStateSnapshots({
+            db: deps.db,
+            pluginId: id,
+            warn: (message) => logger.warn(message),
+          });
+          rollbackPoints.prune();
           await removeUnusedPluginArtifacts({
             db: deps.db,
             dataDir: deps.dataDir,
             pluginId: id,
+            now: now(),
             warn: (message) => logger.warn(message),
           });
         }
@@ -1775,10 +1883,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           db: deps.db,
           dataDir: deps.dataDir,
           dryRun,
+          now: now(),
           warn: (message) => logger.warn(message),
         }),
       );
     },
+
+    getRollbackPoint: pluginRollback.getRollbackPoint,
+    rollbackUpdate: pluginRollback.rollbackUpdate,
 
     async setEnabled(id, enabled) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
@@ -1856,8 +1968,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         (row) => id === undefined || row.id === id,
       );
       const failures: string[] = [];
+      const warnings: string[] = [];
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        const problem = await withLifecycleLock(row.id, () => loadOne(row));
+        let problem: string | null;
+        if (pluginRestoreHold(deps.db, row.id) === null) {
+          problem = await withLifecycleLock(row.id, () => loadOne(row));
+        } else {
+          const retried = await retryRestore(row.id);
+          problem = retried.problem;
+          for (const warning of retried.warnings) {
+            warnings.push(`plugin "${row.id}": ${warning}`);
+          }
+        }
         if (problem !== null) {
           failures.push(`plugin "${row.id}" reload failed: ${problem}`);
         } else if (isSuppressedBySafeMode(row)) {
@@ -1870,8 +1992,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       notifyPluginsChanged();
       const plugins = list();
       return failures.length === 0
-        ? { ok: true, plugins }
-        : { ok: false, error: failures.join("; "), plugins };
+        ? { ok: true, plugins, warnings }
+        : { ok: false, error: failures.join("; "), plugins, warnings };
     },
 
     getApi(id) {

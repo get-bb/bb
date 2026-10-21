@@ -1335,7 +1335,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads, send messages, and manage projects and machines",
           "Have the threads it creates attributed to the plugin",
-          "Start plugin updates in the background and follow their progress or rollback",
+          "Update plugins and roll back updates in the background, follow progress, and change release ranges",
           "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
         ],
         apiSymbols: [
@@ -1351,8 +1351,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.plugins.experimental_getSafeMode",
           "PluginBbSdk.plugins.experimental_setSafeMode",
           "PluginBbSdk.plugins.experimental_pruneCache",
+          "PluginBbSdk.plugins.experimental_setTrackingRange",
           "PluginBbSdk.plugins.experimental_startUpdate",
           "PluginBbSdk.plugins.experimental_updateJobs",
+          "PluginBbSdk.plugins.experimental_getRollbackPoint",
+          "PluginBbSdk.plugins.experimental_rollbackUpdate",
+          "PluginBbSdk.plugins.experimental_startRollbackUpdate",
           "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
           "PluginBbSdk.threads.experimental_listDescendants",

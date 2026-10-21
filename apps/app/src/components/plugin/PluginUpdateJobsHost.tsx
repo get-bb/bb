@@ -13,6 +13,25 @@ import {
 import { appToast } from "@/components/ui/app-toast";
 import { usePluginNotificationAction } from "./PluginNotificationDescription";
 
+const JOB_TOASTS = {
+  update: {
+    queued: "Plugin update queued",
+    running: "Updating plugin…",
+    failed: "Plugin update failed",
+    restored: "Previous version and data restored.",
+    applied: "Plugin updated",
+    unchanged: "Plugin is up to date",
+  },
+  rollback: {
+    queued: "Plugin rollback queued",
+    running: "Rolling back plugin…",
+    failed: "Plugin rollback failed",
+    restored: "Updated version and data restored.",
+    applied: "Plugin rolled back",
+    unchanged: "Plugin rolled back",
+  },
+} as const;
+
 export function reportPluginUpdateJobs({
   jobs,
   seen,
@@ -30,10 +49,11 @@ export function reportPluginUpdateJobs({
     if (previous === state) continue;
     seen.set(job.id, state);
     const id = `plugin-update:${job.id}`;
+    const toasts = JOB_TOASTS[job.kind];
     if (job.state === "queued" || job.state === "running") {
       trackPluginUpdate(job.id, true);
       appToast.loading(
-        job.state === "queued" ? "Plugin update queued" : "Updating plugin…",
+        job.state === "queued" ? toasts.queued : toasts.running,
         {
           id,
           description: job.displayName,
@@ -46,26 +66,24 @@ export function reportPluginUpdateJobs({
     void invalidatePluginList({ queryClient });
     invalidatePluginCatalogSearch({ queryClient });
     if (job.state === "failed") {
-      appToast.error("Plugin update failed", {
+      appToast.error(toasts.failed, {
         id,
         description: `${job.displayName} — ${job.error}`,
         action: action(job.pluginId, "installed"),
       });
     } else if (job.result.outcome === "rolled-back") {
-      appToast.error("Plugin update failed", {
+      const reason = job.kind === "rollback" ? job.result.detail : undefined;
+      appToast.error(toasts.failed, {
         id,
-        description: `${job.displayName} — Previous version and data restored.`,
+        description: `${job.displayName} — ${reason ?? toasts.restored}`,
         action: action(job.pluginId, "installed"),
       });
     } else {
-      appToast.success(
-        job.result.applied ? "Plugin updated" : "Plugin is up to date",
-        {
-          id,
-          description: job.displayName,
-          action: action(job.pluginId, "app"),
-        },
-      );
+      appToast.success(job.result.applied ? toasts.applied : toasts.unchanged, {
+        id,
+        description: job.displayName,
+        action: action(job.pluginId, "app"),
+      });
     }
   }
 }
