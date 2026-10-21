@@ -8,8 +8,10 @@ import {
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
 } from "./prompt-editor-serialization";
-import { findActiveTrigger } from "@bb/client-core";
-import type { TypeaheadTrigger } from "@bb/client-core";
+import {
+  findActiveTrigger,
+  type TypeaheadTrigger,
+} from "../mentions/find-active-trigger";
 import { serializePromptDraftStorage } from "@bb/client-core";
 import { generateMinifiedJsFixture } from "@/test/fixtures/minified-js-paste-fixture";
 

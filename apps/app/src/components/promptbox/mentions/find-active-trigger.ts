@@ -1,4 +1,25 @@
-import type { ActiveTrigger, TypeaheadTrigger } from "./types.js";
+import type { PromptMentionCommandTrigger } from "@bb/domain";
+import type { PluginMentionTrigger } from "@bb/client-core";
+
+export type TypeaheadTrigger =
+  | { char: PluginMentionTrigger; kind: "mention" }
+  | { char: PromptMentionCommandTrigger; kind: "command" };
+
+export type ActiveTrigger = TypeaheadTrigger & {
+  query: string;
+  from: number;
+  to: number;
+};
+
+export function commandPillDismissedRangeEnd({
+  triggerPosition,
+  trailingText,
+}: {
+  triggerPosition: number;
+  trailingText: string;
+}): number {
+  return triggerPosition + 1 + trailingText.length;
+}
 
 export interface ActiveTriggerEditor {
   state: {

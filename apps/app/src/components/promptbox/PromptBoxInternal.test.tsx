@@ -93,6 +93,7 @@ import {
 } from "./mentions/prompt-mention-clipboard";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
+  ComposerMentionShape,
   PromptDraftAttachment,
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -1035,35 +1036,27 @@ describe("PromptBoxInternal composer popups", () => {
 
 describe("PromptBoxInternal controlled value sync", () => {
   it("compares cloned mention values without serializing the prompt text", () => {
-    const resource = {
-      kind: "path" as const,
-      source: "workspace" as const,
-      entryKind: "file" as const,
+    const mention: ComposerMentionShape = {
+      from: 4,
+      to: 10,
+      kind: "path",
+      source: "workspace",
+      entryKind: "file",
       path: "src/a.ts",
       label: "a.ts",
-    };
-    const mention: PromptTextMention = {
-      start: 4,
-      end: 10,
-      resource,
     };
     const left = { text: "see @a.ts", mentions: [mention] };
 
     expect(
       arePromptEditorValuesEqual(left, {
         text: left.text,
-        mentions: [{ ...mention, resource: { ...resource } }],
+        mentions: [{ ...mention }],
       }),
     ).toBe(true);
     expect(
       arePromptEditorValuesEqual(left, {
         text: left.text,
-        mentions: [
-          {
-            ...mention,
-            resource: { ...resource, path: "src/b.ts" },
-          },
-        ],
+        mentions: [{ ...mention, path: "src/b.ts" }],
       }),
     ).toBe(false);
   });

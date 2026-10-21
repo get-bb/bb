@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { findActiveTrigger } from "../src/prompt/mentions/find-active-trigger.js";
+import {
+  commandPillDismissedRangeEnd,
+  findActiveTrigger,
+} from "./find-active-trigger";
 
 function editorWithText(
   text: string,
@@ -153,5 +156,25 @@ describe("findActiveTrigger", () => {
     expect(
       findActiveTrigger(editorWithText(text), [{ char: "@", kind: "mention" }]),
     ).toBeNull();
+  });
+});
+
+describe("commandPillDismissedRangeEnd", () => {
+  it("counts the command pill as a one-position editor atom", () => {
+    expect(
+      commandPillDismissedRangeEnd({
+        triggerPosition: 5,
+        trailingText: " ",
+      }),
+    ).toBe(7);
+  });
+
+  it("does not include serialized command name length", () => {
+    expect(
+      commandPillDismissedRangeEnd({
+        triggerPosition: 5,
+        trailingText: "",
+      }),
+    ).toBe(6);
   });
 });

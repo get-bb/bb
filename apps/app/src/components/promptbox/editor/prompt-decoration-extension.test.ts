@@ -108,10 +108,11 @@ describe("PromptDecorationExtension", () => {
               {
                 type: "mention",
                 attrs: {
-                  resource: {
+                  mention: {
                     kind: "plugin",
                     pluginId: "sample",
-                    itemId: "people:alice",
+                    provider: "people",
+                    id: "alice",
                     label: "@alice",
                   },
                   serializedText: "@alice",
