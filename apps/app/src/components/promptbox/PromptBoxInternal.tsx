@@ -2871,8 +2871,9 @@ export function PromptBoxInternal({
   );
 
   useEffect(() => {
-    const element = formRef.current;
-    if (!element || !editor) return;
+    const form = formRef.current;
+    if (!form || !editor) return;
+    const element = form.closest<HTMLElement>("[data-promptbox-shell]") ?? form;
     return registerThreadMentionDropTarget(element, {
       accepts: () => editor.isEditable && !editor.isDestroyed,
       insert: (thread, x, y) => {

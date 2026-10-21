@@ -5313,36 +5313,56 @@ describe("PromptBoxInternal prompt actions", () => {
     },
   );
 
-  it("inserts a dropped sidebar thread as a serialized mention pill", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("Review ");
-    await focusPromptEnd(promptBoxRef);
-    const editorElement = getPromptEditorElement();
-    const previous = document.elementsFromPoint;
-    document.elementsFromPoint = () => [editorElement];
-    const position = vi
-      .spyOn(EditorView.prototype, "posAtCoords")
-      .mockReturnValue(null);
-    try {
-      const target = resolveThreadMentionDropTarget(100, 100, {
-        threadId: "thr_dropped",
-        label: "Dropped thread",
-      });
-      expect(target).not.toBeNull();
-      act(() => target?.drop());
-      await waitFor(() =>
-        expect(latestValue(changes)).toBe("Review @thread:thr_dropped "),
+  it.each(["editor", "footer"])(
+    "inserts a sidebar thread dropped on the %s as a serialized mention pill",
+    async (dropArea) => {
+      const changes: PromptChange[] = [];
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      const { container } = render(
+        <div data-promptbox-shell="">
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "Review ",
+              onChange: (value, mentions) => changes.push({ value, mentions }),
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+          <div data-new-thread-footer="">Composer footer</div>
+        </div>,
       );
-      expect(latestChange(changes)?.mentions[0]?.resource).toEqual({
-        kind: "thread",
-        threadId: "thr_dropped",
-        label: "Dropped thread",
-      });
-      expect(editorElement.textContent).toContain("Dropped thread");
-    } finally {
-      document.elementsFromPoint = previous;
-      position.mockRestore();
-    }
-  });
+      await focusPromptEnd(promptBoxRef);
+      const editorElement = getPromptEditorElement();
+      const previous = document.elementsFromPoint;
+      const hit =
+        dropArea === "editor"
+          ? editorElement
+          : container.querySelector<HTMLElement>("[data-new-thread-footer]")!;
+      document.elementsFromPoint = () => [hit];
+      const position = vi
+        .spyOn(EditorView.prototype, "posAtCoords")
+        .mockReturnValue(null);
+      try {
+        const target = resolveThreadMentionDropTarget(100, 100, {
+          threadId: "thr_dropped",
+          label: "Dropped thread",
+        });
+        expect(target).not.toBeNull();
+        act(() => target?.drop());
+        await waitFor(() =>
+          expect(latestValue(changes)).toBe("Review @thread:thr_dropped "),
+        );
+        expect(latestChange(changes)?.mentions[0]?.resource).toEqual({
+          kind: "thread",
+          threadId: "thr_dropped",
+          label: "Dropped thread",
+        });
+        expect(editorElement.textContent).toContain("Dropped thread");
+      } finally {
+        document.elementsFromPoint = previous;
+        position.mockRestore();
+      }
+    },
+  );
 
   it("keeps list markers attached to their item text when pasting mentioned list html", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
