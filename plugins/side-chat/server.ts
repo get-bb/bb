@@ -67,6 +67,7 @@ function isOwnLiveHiddenFork(
 
 export const sideChatRpcContract = defineRpcContract({
   createSideChat: {
+    experimental_usage: "action",
     input: z
       .object({
         sourceThreadId: z.string().trim().min(1),

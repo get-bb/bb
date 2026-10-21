@@ -1,3 +1,5 @@
+import { resolvePluginTelemetrySource } from "./plugin-feature-telemetry.js";
+import type { TelemetryPluginSource } from "@bb/server-contract";
 import { findProviderEnvironmentContainingPath } from "@bb/db";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -62,6 +64,7 @@ export function pluginInstalledTelemetryEvent(
   pluginId: string,
   provenance: PluginProvenance,
   sourceIntent: PluginSourceIntent,
+  pluginSource: TelemetryPluginSource,
 ): Extract<TelemetryEvent, { name: "plugin_installed" }> {
   const isPublic =
     provenance.kind === "builtin" ||
@@ -78,6 +81,7 @@ export function pluginInstalledTelemetryEvent(
           ? provenance.marketplace
           : null,
       source_kind: sourceIntent.kind,
+      plugin_source: pluginSource,
     },
   };
 }
@@ -424,6 +428,14 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         manifest.id,
         args.provenance,
         args.sourceIntent,
+        resolvePluginTelemetrySource(deps, {
+          sourceKind: args.sourceIntent.kind,
+          provenance: args.provenance.kind,
+          catalogMarketplaceName:
+            args.provenance.kind === "catalog"
+              ? args.provenance.marketplace
+              : null,
+        }),
       ),
     );
     return entry;

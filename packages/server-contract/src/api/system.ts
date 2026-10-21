@@ -327,6 +327,17 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .strict(),
   z
     .object({
+      name: z.literal("browser_session_started"),
+      properties: z
+        .object({
+          kind: z.enum(["headless", "desktop"]),
+          initiator: telemetryInitiatorSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("split_view_opened"),
       properties: z.object({ panes: z.number().int().min(2).max(8) }).strict(),
     })

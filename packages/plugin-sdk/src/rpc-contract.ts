@@ -188,6 +188,7 @@ export interface PluginRpcMethodContract<
   StandardSchemaV1InferOutput<OutputSchema>
 > {
   readonly experimental_description?: string;
+  readonly experimental_usage?: "action" | "query";
   readonly input: InputSchema;
   readonly output: OutputSchema;
 }

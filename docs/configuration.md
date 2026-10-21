@@ -316,7 +316,7 @@ never PostHog person IDs and are not accepted as bb API routing keys.
 
 `thread_lifecycle_changed` reports applied turn starts, explicit user-blocking waits and
 clears, settled stops, archives, unarchives, deletion and parent changes.
-`turn_finished` reports `completed`, `failed` or `stopped`, the bundled provider
+`turn_finished` reports `succeeded`, `failed` or `stopped`, the bundled provider
 (or `other`), a coarse error category and original message linkage. Explicit
 retries retain the original message identities and carry `attempt_kind=retry`;
 steering cannot replace a turn's initiating messages. Missing origin records
@@ -329,6 +329,8 @@ encode content or replace the anonymous install ID. The local database contains
 the mapping; PostHog does not receive it. Opt-out prevents future capture and
 backfill, but does not erase prior events. Forked/recreated threads get fresh
 identities; copying a whole database can copy analytics identities as well.
+
+Plugin capability usage passes through shared CLI, agent-tool, classified RPC action and explicit panel-open boundaries. Plugin RPC contracts may set `experimental_usage: "action"` or `"query"`; unclassified methods are excluded rather than guessed from names. `bb.experimental_withFeatureUse({ initiator }, run)` covers actual background work outside those boundaries, including scheduled automations. Polling, load, registration and restored panels do not count. Nested plugin RPC and core SDK calls are attributed to the outer plugin invocation. The server derives `builtin`, `public_catalog`, `private_marketplace`, `local` or `unknown` from installed provenance, including development overrides; the new event contains no plugin identifiers, names or URLs.
 
 ## AI services
 
@@ -1254,3 +1256,7 @@ backup before rolling back to a build predating the tolerant-reader fix #5286.
 Core capability and work telemetry are behind `BB_FF_WORK_TELEMETRY` (default `false`). The flag gates new work events; the telemetry setting gates all sends.
 
 `automation_created` accepts `kind=schedule/once`, `mode=agent/script`, and the canonical `initiator`. `split_view_opened` accepts `panes` from 2 to 8.
+
+`device_paired` accepts `kind=mobile_ios/mobile_android/machine` and `is_first_of_kind`. `browser_session_started` accepts `kind=headless/desktop` and canonical `initiator`. These are validated client-event contracts; this stack does not add their producers.
+
+`plugin_installed` also sends `plugin_source` using the same trust classification as plugin `feature_used`: `builtin`, `public_catalog`, `private_marketplace`, `local`, or `unknown`. Existing `provenance` and `source_kind` properties retain their install-origin and package-transport meanings. The reserved `plugin_enabled` event uses the same source vocabulary; it currently has no producer.

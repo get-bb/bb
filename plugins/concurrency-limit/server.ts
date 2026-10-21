@@ -88,6 +88,7 @@ export const concurrencyLimitRpcContract = defineRpcContract({
     output: hostConfigurationSchema,
   },
   setConfiguration: {
+    experimental_usage: "action",
     input: configurationSchema,
     output: hostConfigurationSchema,
   },

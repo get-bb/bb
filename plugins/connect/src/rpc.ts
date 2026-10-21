@@ -87,11 +87,17 @@ const machineCodeSchema: z.ZodType<MachineCode> = z
 export const connectRpcContract = defineRpcContract({
   status: { input: z.null(), output: connectStatusSchema },
   setRemoteAccess: {
+    experimental_usage: "action",
     input: z.object({ enabled: z.boolean() }).strict(),
     output: connectStatusSchema,
   },
-  expose: { input: portInputSchema, output: shareListingSchema },
+  expose: {
+    experimental_usage: "action",
+    input: portInputSchema,
+    output: shareListingSchema,
+  },
   unexpose: {
+    experimental_usage: "action",
     input: portInputSchema,
     output: z
       .object({
@@ -103,6 +109,7 @@ export const connectRpcContract = defineRpcContract({
       .strict(),
   },
   unexposeAll: {
+    experimental_usage: "action",
     input: z.object({ hostId: z.string().min(1) }).strict(),
     output: z.object({ removed: z.number().int().nonnegative() }).strict(),
   },
@@ -111,9 +118,18 @@ export const connectRpcContract = defineRpcContract({
     input: z.null(),
     output: listAccountServersResultSchema,
   },
-  createDesktopSession: { input: z.null(), output: desktopSessionSchema },
-  createMachineCode: { input: z.null(), output: machineCodeSchema },
+  createDesktopSession: {
+    experimental_usage: "action",
+    input: z.null(),
+    output: desktopSessionSchema,
+  },
+  createMachineCode: {
+    experimental_usage: "action",
+    input: z.null(),
+    output: machineCodeSchema,
+  },
   revokeMachine: {
+    experimental_usage: "action",
     input: revokeMachineInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },

@@ -15,6 +15,11 @@ Read the installed declarations for exact current signatures.
 - `BbContext`
 - `BbNavigate`
 - `BbPluginApi`
+- `bb.experimental_withFeatureUse({ trigger }, run)` — wrap an actual background
+  operation in anonymous capability measurement. Trigger is `person`, `agent`,
+  `schedule`, `system`, or `unknown`. Nested operations count once; core derives
+  plugin source and respects the telemetry setting. See Plugin Guide's
+  "Anonymous usage" card for the shared RPC, tool, CLI, and panel boundaries.
 - `CodeOverflowMode`
 - `ComposerCustomization`
 - `ComposerPlusMenuItem`

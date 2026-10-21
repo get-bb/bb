@@ -1713,10 +1713,15 @@ function readRpcMethodContract(
       Reflect.set(declarations, name, declaration);
     }
   }
+  const usage = z
+    .enum(["action", "query"])
+    .optional()
+    .parse(Reflect.get(value, "experimental_usage"));
   return {
     input,
     output,
     ...declarations,
+    ...(usage === undefined ? {} : { experimental_usage: usage }),
     ...(description === null ? {} : { experimental_description: description }),
   };
 }
@@ -2884,6 +2889,7 @@ export function normalizeWebSocketRouteRegistration(
 
 type RpcRegistrationRecord = {
   declarations: ContractTagDeclarations<unknown, unknown>;
+  usage: "action" | "query" | null;
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -2943,6 +2949,7 @@ export function normalizeRpcRegistration(
       {
         publication: publishRpcMethod(name, methodContract, publicationOptions),
         declarations: methodContract,
+        usage: methodContract.experimental_usage ?? null,
         inputSchema: methodContract.input,
         outputSchema: methodContract.output,
         handler,

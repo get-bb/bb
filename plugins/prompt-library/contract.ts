@@ -168,6 +168,7 @@ export const promptLibraryRpcContract = defineRpcContract({
       .strict(),
   },
   star: {
+    experimental_usage: "action",
     input: z
       .object({
         title: promptTitleSchema.optional().default(null),
@@ -186,10 +187,12 @@ export const promptLibraryRpcContract = defineRpcContract({
     output: z.object({ id: z.string(), title: z.string().nullable() }).strict(),
   },
   unstar: {
+    experimental_usage: "action",
     input: z.object({ id: z.string().min(1) }).strict(),
     output: z.object({ unstarred: z.boolean() }).strict(),
   },
   markUsed: {
+    experimental_usage: "action",
     input: z.object({ id: z.string().min(1) }).strict(),
     output: z.null(),
   },

@@ -37,6 +37,7 @@ export type Preview = z.infer<typeof previewSchema>;
 const machineInput = z.object({ hostId: z.string().min(1) }).strict();
 export const storageRpc = defineRpcContract({
   startCleanup: {
+    experimental_usage: "action",
     input: z
       .object({
         hostId: z.string().min(1),
@@ -47,21 +48,33 @@ export const storageRpc = defineRpcContract({
   },
   hosts: { input: z.null(), output: hostStorageListResponseSchema },
   host: { input: machineInput, output: hostStorageResponseSchema },
-  scanHost: { input: machineInput, output: hostStorageResponseSchema },
-  scanAll: { input: z.null(), output: hostStorageListResponseSchema },
+  scanHost: {
+    experimental_usage: "action",
+    input: machineInput,
+    output: hostStorageResponseSchema,
+  },
+  scanAll: {
+    experimental_usage: "action",
+    input: z.null(),
+    output: hostStorageListResponseSchema,
+  },
   removeOrphans: {
+    experimental_usage: "action",
     input: machineInput,
     output: hostStorageRemoveOrphansResponseSchema,
   },
   retryWorktreeCleanup: {
+    experimental_usage: "action",
     input: machineInput,
     output: hostStorageRetryWorktreeCleanupResponseSchema,
   },
   startClearLargeFiles: {
+    experimental_usage: "action",
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
     output: z.null(),
   },
   clearLargeFiles: {
+    experimental_usage: "action",
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
     output: z.object({
       clearedFiles: z.number().int().nonnegative(),
@@ -69,11 +82,17 @@ export const storageRpc = defineRpcContract({
     }),
   },
   clearThread: {
+    experimental_usage: "action",
     input: z.object({ threadId: z.string().min(1) }).strict(),
     output: z.object({ ok: z.literal(true) }),
   },
-  startClearArchivedFiles: { input: machineInput, output: z.null() },
+  startClearArchivedFiles: {
+    experimental_usage: "action",
+    input: machineInput,
+    output: z.null(),
+  },
   clearArchivedFiles: {
+    experimental_usage: "action",
     input: machineInput,
     output: z.object({
       clearedThreads: z.number().int().nonnegative(),
@@ -81,6 +100,7 @@ export const storageRpc = defineRpcContract({
     }),
   },
   removeDevInstances: {
+    experimental_usage: "action",
     input: z.union([
       z.object({ hostId: z.string().min(1), names: z.null() }).strict(),
       z
@@ -101,5 +121,9 @@ export const storageRpc = defineRpcContract({
   },
   state: { input: z.null(), output: stateSchema },
   preview: { input: policySchema, output: previewSchema },
-  configure: { input: policySchema, output: stateSchema },
+  configure: {
+    experimental_usage: "action",
+    input: policySchema,
+    output: stateSchema,
+  },
 });

@@ -31,26 +31,32 @@ export const automationRpcContract = defineRpcContract({
     output: automationDetailReadResultSchema,
   },
   automations_create: {
+    experimental_usage: "action",
     input: createAutomationInputSchema,
     output: automationDetailResponseSchema,
   },
   automations_update: {
+    experimental_usage: "action",
     input: updateAutomationInputSchema,
     output: automationDetailResponseSchema,
   },
   automations_delete: {
+    experimental_usage: "action",
     input: projectAutomationInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },
   automations_pause: {
+    experimental_usage: "action",
     input: projectAutomationInputSchema,
     output: automationResponseSchema,
   },
   automations_resume: {
+    experimental_usage: "action",
     input: projectAutomationInputSchema,
     output: automationResponseSchema,
   },
   automations_run: {
+    experimental_usage: "action",
     input: runAutomationInputSchema,
     output: automationRunRpcResponseSchema,
   },

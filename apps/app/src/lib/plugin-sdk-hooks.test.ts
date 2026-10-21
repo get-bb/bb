@@ -45,11 +45,13 @@ describe("callPluginRpc", () => {
       q: "open",
     });
     expect(result).toEqual({ count: 3 });
+    const headers = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-bb-app-surface")).toBe("web");
+    expect(headers.get("content-type")).toBe("application/json");
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/v1/plugins/my%20plugin/rpc/listIssues",
       expect.objectContaining({
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({ q: "open" }),
       }),
     );

@@ -54,6 +54,7 @@ export const keepAwakeRpcContract = defineRpcContract({
     output: hostConfigurationSchema,
   },
   setConfiguration: {
+    experimental_usage: "action",
     input: keepAwakeConfigurationSchema,
     output: hostConfigurationSchema,
   },

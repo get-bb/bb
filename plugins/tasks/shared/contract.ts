@@ -392,6 +392,7 @@ const updatePresetInputSchema = z
 
 export const tasksRpcContract = defineRpcContract({
   createFolder: {
+    experimental_usage: "action",
     input: z
       .object({
         name: nonBlankStringSchema,
@@ -401,18 +402,21 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ folder: folderSchema }).strict(),
   },
   renameFolder: {
+    experimental_usage: "action",
     input: z
       .object({ folderId: idSchema, name: nonBlankStringSchema })
       .strict(),
     output: z.object({ folder: folderSchema }).strict(),
   },
   moveFolder: {
+    experimental_usage: "action",
     input: z
       .object({ folderId: idSchema, parentFolderId: idSchema.nullable() })
       .strict(),
     output: z.object({ folder: folderSchema }).strict(),
   },
   deleteFolder: {
+    experimental_usage: "action",
     input: z.object({ folderId: idSchema }).strict(),
     output: z
       .object({
@@ -427,6 +431,7 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ folders: z.array(folderSchema) }).strict(),
   },
   createProject: {
+    experimental_usage: "action",
     input: z
       .object({
         name: nonBlankStringSchema,
@@ -443,16 +448,19 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ project: projectSchema }).strict(),
   },
   updateProject: {
+    experimental_usage: "action",
     input: updateProjectInputSchema,
     output: z.object({ project: projectSchema }).strict(),
   },
   renameProjectPrefix: {
+    experimental_usage: "action",
     input: z
       .object({ projectId: idSchema, prefix: projectPrefixSchema })
       .strict(),
     output: projectMutationResultSchema,
   },
   deleteProject: {
+    experimental_usage: "action",
     input: z
       .object({ projectId: idSchema, force: z.boolean().default(false) })
       .strict(),
@@ -463,6 +471,7 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ projects: z.array(projectSchema) }).strict(),
   },
   createTask: {
+    experimental_usage: "action",
     input: z
       .object({
         projectId: idSchema,
@@ -486,10 +495,12 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ task: taskSchema.nullable() }).strict(),
   },
   updateTask: {
+    experimental_usage: "action",
     input: updateTaskInputSchema,
     output: taskMutationResultSchema,
   },
   deleteTask: {
+    experimental_usage: "action",
     input: z.object({ taskId: idSchema }).strict(),
     output: z.object({ deleted: z.boolean() }).strict(),
   },
@@ -521,6 +532,7 @@ export const tasksRpcContract = defineRpcContract({
       .strict(),
   },
   boardMove: {
+    experimental_usage: "action",
     input: z
       .object({
         taskId: idSchema,
@@ -533,6 +545,7 @@ export const tasksRpcContract = defineRpcContract({
     output: taskMutationResultSchema,
   },
   moveTaskToProject: {
+    experimental_usage: "action",
     input: z
       .object({
         taskId: idSchema,
@@ -543,6 +556,7 @@ export const tasksRpcContract = defineRpcContract({
     output: taskMutationResultSchema,
   },
   createLabel: {
+    experimental_usage: "action",
     input: z
       .object({
         projectId: idSchema,
@@ -553,10 +567,12 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ label: labelSchema }).strict(),
   },
   updateLabel: {
+    experimental_usage: "action",
     input: updateLabelInputSchema,
     output: z.object({ label: labelSchema }).strict(),
   },
   deleteLabel: {
+    experimental_usage: "action",
     input: z.object({ labelId: idSchema }).strict(),
     output: z.object({ deleted: z.boolean() }).strict(),
   },
@@ -565,6 +581,7 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ labels: z.array(labelSchema) }).strict(),
   },
   createComment: {
+    experimental_usage: "action",
     input: z
       .object({
         taskId: idSchema,
@@ -592,6 +609,7 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
   },
   deleteAttachment: {
+    experimental_usage: "action",
     input: z
       .object({
         attachmentId: idSchema,
@@ -614,6 +632,7 @@ export const tasksRpcContract = defineRpcContract({
       .strict(),
   },
   createPreset: {
+    experimental_usage: "action",
     input: z
       .object({
         name: nonBlankStringSchema,
@@ -653,10 +672,12 @@ export const tasksRpcContract = defineRpcContract({
     output: z.object({ preset: presetSchema }).strict(),
   },
   updatePreset: {
+    experimental_usage: "action",
     input: updatePresetInputSchema,
     output: z.object({ preset: presetSchema }).strict(),
   },
   deletePreset: {
+    experimental_usage: "action",
     input: z.object({ presetId: idSchema }).strict(),
     output: z.object({ deleted: z.boolean() }).strict(),
   },

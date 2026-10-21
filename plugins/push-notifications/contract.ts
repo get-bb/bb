@@ -61,6 +61,7 @@ export const listPushSubscriptionsOutputSchema = z
 
 export const pushNotificationsRpcContract = defineRpcContract({
   "notifications.test": {
+    experimental_usage: "action",
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
   },
@@ -69,10 +70,12 @@ export const pushNotificationsRpcContract = defineRpcContract({
     output: listPushSubscriptionsOutputSchema,
   },
   "pushSubscriptions.add": {
+    experimental_usage: "action",
     input: addPushSubscriptionInputSchema,
     output: z.object({ id: z.string().min(1), created: z.boolean() }).strict(),
   },
   "pushSubscriptions.remove": {
+    experimental_usage: "action",
     input: removePushSubscriptionInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },
@@ -105,6 +108,7 @@ export const pushNotificationsRpcContract = defineRpcContract({
   },
   "threadNotifications.set": {
     invalidates: ({ threadId }) => [`thread:${threadId}`],
+    experimental_usage: "action",
     input: z
       .object({
         threadId: z.string().min(1),

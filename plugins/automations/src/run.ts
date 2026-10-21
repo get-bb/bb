@@ -33,10 +33,16 @@ type AgentThreadsSdk = {
     args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
   ): Promise<unknown>;
 };
-export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+export type AgentRunApi = Pick<
+  BbPluginApi,
+  "realtime" | "log" | "experimental_withFeatureUse"
+> & {
   sdk: { threads: AgentThreadsSdk };
 };
-export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+export type ScriptRunApi = Pick<
+  BbPluginApi,
+  "realtime" | "log" | "experimental_withFeatureUse"
+> & {
   sdk: { projects: ProjectsSdk };
 };
 
@@ -109,47 +115,52 @@ export async function executeAgentRun(
   db: Db,
   args: AgentRunArgs,
 ): Promise<void> {
-  try {
-    if (args.automation.targetThreadId !== null) {
-      await reuseTargetThreadForRun(bb, db, {
-        ...args,
-        targetThreadId: args.automation.targetThreadId,
-      });
-      return;
-    }
-    const thread = sdkThreadSchema.parse(
-      await bb.sdk.threads.spawn({
-        projectId: args.automation.projectId,
-        environment: args.execution.environment,
-        prompt: renderAutomationDueMessage({
+  return bb.experimental_withFeatureUse(
+    { initiator: args.run.trigger === "manual" ? "user" : "automation" },
+    async () => {
+      try {
+        if (args.automation.targetThreadId !== null) {
+          await reuseTargetThreadForRun(bb, db, {
+            ...args,
+            targetThreadId: args.automation.targetThreadId,
+          });
+          return;
+        }
+        const thread = sdkThreadSchema.parse(
+          await bb.sdk.threads.spawn({
+            projectId: args.automation.projectId,
+            environment: args.execution.environment,
+            prompt: renderAutomationDueMessage({
+              automationId: args.automation.id,
+              prompt: args.execution.prompt,
+            }),
+            title: args.automation.name,
+            providerId: args.execution.providerId,
+            model: args.execution.model,
+            reasoningLevel: args.execution.reasoningLevel,
+            ...(args.execution.serviceTier === undefined
+              ? {}
+              : { serviceTier: args.execution.serviceTier }),
+            permissionMode: args.execution.permissionMode,
+          }),
+        );
+        setAutomationRunThread(db, { runId: args.run.id, threadId: thread.id });
+        markAutomationThread(db, {
           automationId: args.automation.id,
-          prompt: args.execution.prompt,
-        }),
-        title: args.automation.name,
-        providerId: args.execution.providerId,
-        model: args.execution.model,
-        reasoningLevel: args.execution.reasoningLevel,
-        ...(args.execution.serviceTier === undefined
-          ? {}
-          : { serviceTier: args.execution.serviceTier }),
-        permissionMode: args.execution.permissionMode,
-      }),
-    );
-    setAutomationRunThread(db, { runId: args.run.id, threadId: thread.id });
-    markAutomationThread(db, {
-      automationId: args.automation.id,
-      runId: args.run.id,
-      threadId: thread.id,
-      now: Date.now(),
-    });
-  } catch (error) {
-    settleDispatchFailure(bb, db, args, error);
-  } finally {
-    publishAutomationChange(bb, args.automation.projectId, [
-      "automations-changed",
-      "automation-runs-changed",
-    ]);
-  }
+          runId: args.run.id,
+          threadId: thread.id,
+          now: Date.now(),
+        });
+      } catch (error) {
+        settleDispatchFailure(bb, db, args, error);
+      } finally {
+        publishAutomationChange(bb, args.automation.projectId, [
+          "automations-changed",
+          "automation-runs-changed",
+        ]);
+      }
+    },
+  );
 }
 
 function settleDispatchFailure(
@@ -269,59 +280,64 @@ export async function executeScriptRun(
     resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
   },
 ): Promise<void> {
-  try {
-    const scriptFile = args.execution.scriptFile;
-    if (scriptFile === undefined) {
-      closeAutomationRun(db, {
-        runId: args.run.id,
-        status: "failed",
-        error: "Script automation is missing a stored script file",
-        now: Date.now(),
-      });
-      return;
-    }
-    const workingDir = await args.resolveWorkingDirectory(
-      args.automation.projectId,
-      args.execution.workingDirectory,
-    );
-    if (workingDir === null) {
-      throw new Error(
-        `Project ${args.automation.projectId} has no source on the bb server host`,
-      );
-    }
-    const result = await executeStoredScript({
-      pluginDataDir: args.pluginDataDir,
-      automationId: args.automation.id,
-      runId: args.run.id,
-      projectId: args.automation.projectId,
-      scriptFile,
-      interpreter: args.execution.interpreter,
-      timeoutMs: args.execution.timeoutMs,
-      env: args.execution.env,
-      serverUrl: args.serverUrl,
-      workingDir,
-    });
-    const mapped = mapScriptResultToRun(result);
-    closeAutomationRun(db, {
-      runId: args.run.id,
-      status: mapped.status,
-      skipReason: mapped.skipReason,
-      output: mapped.output,
-      exitCode: mapped.exitCode,
-      error: mapped.error,
-      now: Date.now(),
-    });
-  } catch (error) {
-    args.onFailure(error);
-    bb.log.error(
-      `Failed to run script for automation ${args.automation.id}: ${errorMessage(error)}`,
-    );
-  } finally {
-    publishAutomationChange(bb, args.automation.projectId, [
-      "automations-changed",
-      "automation-runs-changed",
-    ]);
-  }
+  return bb.experimental_withFeatureUse(
+    { initiator: args.run.trigger === "manual" ? "user" : "automation" },
+    async () => {
+      try {
+        const scriptFile = args.execution.scriptFile;
+        if (scriptFile === undefined) {
+          closeAutomationRun(db, {
+            runId: args.run.id,
+            status: "failed",
+            error: "Script automation is missing a stored script file",
+            now: Date.now(),
+          });
+          return;
+        }
+        const workingDir = await args.resolveWorkingDirectory(
+          args.automation.projectId,
+          args.execution.workingDirectory,
+        );
+        if (workingDir === null) {
+          throw new Error(
+            `Project ${args.automation.projectId} has no source on the bb server host`,
+          );
+        }
+        const result = await executeStoredScript({
+          pluginDataDir: args.pluginDataDir,
+          automationId: args.automation.id,
+          runId: args.run.id,
+          projectId: args.automation.projectId,
+          scriptFile,
+          interpreter: args.execution.interpreter,
+          timeoutMs: args.execution.timeoutMs,
+          env: args.execution.env,
+          serverUrl: args.serverUrl,
+          workingDir,
+        });
+        const mapped = mapScriptResultToRun(result);
+        closeAutomationRun(db, {
+          runId: args.run.id,
+          status: mapped.status,
+          skipReason: mapped.skipReason,
+          output: mapped.output,
+          exitCode: mapped.exitCode,
+          error: mapped.error,
+          now: Date.now(),
+        });
+      } catch (error) {
+        args.onFailure(error);
+        bb.log.error(
+          `Failed to run script for automation ${args.automation.id}: ${errorMessage(error)}`,
+        );
+      } finally {
+        publishAutomationChange(bb, args.automation.projectId, [
+          "automations-changed",
+          "automation-runs-changed",
+        ]);
+      }
+    },
+  );
 }
 
 export function closeAutomationRunForSettledThread(

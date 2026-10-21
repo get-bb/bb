@@ -85,9 +85,17 @@ export const rpcContract = defineRpcContract({
   },
   run: { input: runSchema, output: outputSchema },
   pages: { input: ownedSchema, output: outputSchema },
-  screenshot: { input: screenshotSchema, output: outputSchema },
+  screenshot: {
+    experimental_usage: "action",
+    input: screenshotSchema,
+    output: outputSchema,
+  },
   preview: { input: previewSchema, output: previewOutputSchema },
-  stop: { input: ownedSchema, output: sessionSchema },
+  stop: {
+    experimental_usage: "action",
+    input: ownedSchema,
+    output: sessionSchema,
+  },
   close: { input: ownedSchema, output: sessionSchema },
 });
 export const runtimeStateSchema = z.discriminatedUnion("status", [
@@ -104,6 +112,7 @@ export type RuntimeState = z.infer<typeof runtimeStateSchema>;
 export const hostContract = defineRpcContract({
   prepare: { input: z.object({}).strict(), output: runtimeStateSchema },
   open: {
+    experimental_usage: "action",
     input: z
       .object({
         sessionId: sessionIdSchema,
@@ -115,6 +124,7 @@ export const hostContract = defineRpcContract({
     output: z.null(),
   },
   run: {
+    experimental_usage: "action",
     input: z
       .object({
         sessionId: sessionIdSchema,
@@ -136,6 +146,7 @@ export const hostContract = defineRpcContract({
     output: z.object({ frame: previewFrameSchema.nullable() }).strict(),
   },
   close: {
+    experimental_usage: "action",
     input: z.object({ sessionId: sessionIdSchema }).strict(),
     output: z.null(),
   },

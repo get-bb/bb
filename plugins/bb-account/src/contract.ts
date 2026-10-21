@@ -153,6 +153,7 @@ export const accountPrivateRpcContract = defineRpcContract({
     output: accountStatusSchema,
   },
   "login.start": {
+    experimental_usage: "action",
     input: z.object({ baseUrl: baseUrlOverrideSchema }).strict(),
     output: loginViewSchema,
   },
@@ -163,10 +164,12 @@ export const accountPrivateRpcContract = defineRpcContract({
     output: loginPollOutputSchema,
   },
   "login.cancel": {
+    experimental_usage: "action",
     input: z.object({ loginId: z.string().min(1) }).strict(),
     output: z.object({ login: loginViewSchema.nullable() }).strict(),
   },
   redeemCode: {
+    experimental_usage: "action",
     input: z
       .object({
         code: z.string().trim().min(1).max(64),
@@ -176,6 +179,7 @@ export const accountPrivateRpcContract = defineRpcContract({
     output: accountStatusSchema,
   },
   signOut: {
+    experimental_usage: "action",
     input: emptyInputSchema,
     output: signOutResultSchema,
   },

@@ -1,6 +1,7 @@
 import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
 import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-host";
 import { subscribeComposerSubmitted } from "./composer-submissions";
+import { appSurfaceRequestInit } from "./app-surface";
 import {
   useCallback,
   useContext,
@@ -176,7 +177,9 @@ export async function callPluginRpc(
       `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: appSurfaceRequestInit({
+          headers: { "content-type": "application/json" },
+        }).headers,
         body: serializedInput,
       },
     );

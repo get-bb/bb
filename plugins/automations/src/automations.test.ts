@@ -230,6 +230,8 @@ function createAutomationServiceBb() {
         },
       },
     },
+    experimental_withFeatureUse: <T>(_options: unknown, run: () => T): T =>
+      run(),
     realtime: { publish: () => undefined },
     log: {
       debug: () => undefined,
@@ -364,6 +366,8 @@ describe("startup reconciliation", () => {
             },
           },
         },
+        experimental_withFeatureUse: <T>(_options: unknown, run: () => T): T =>
+          run(),
         realtime: {
           publish: (...args: unknown[]) => void published.push(args),
         },
@@ -856,6 +860,8 @@ describe("automation data access", () => {
             },
           },
         },
+        experimental_withFeatureUse: <T>(_options: unknown, run: () => T): T =>
+          run(),
         realtime: { publish: () => undefined },
         log: {
           debug: () => undefined,
@@ -1290,6 +1296,8 @@ describe("automation service", () => {
           },
         },
       },
+      experimental_withFeatureUse: <T>(_options: unknown, run: () => T): T =>
+        run(),
       realtime: { publish: () => undefined },
       log: {
         debug: () => undefined,
@@ -2232,6 +2240,8 @@ describe("script project context", () => {
           }),
         },
       },
+      experimental_withFeatureUse: <T>(_options: unknown, run: () => T): T =>
+        run(),
       realtime: { publish: () => undefined },
       log: {
         debug: () => undefined,

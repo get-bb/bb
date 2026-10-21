@@ -77,10 +77,12 @@ export const memoryRpcContract = defineRpcContract({
     output: z.object({ memories: z.array(memoryRecordSchema) }).strict(),
   },
   updateMemory: {
+    experimental_usage: "action",
     input: memoryUpdateInputSchema,
     output: z.object({ memory: memoryRecordSchema }).strict(),
   },
   deleteMemory: {
+    experimental_usage: "action",
     input: z
       .object({
         id: z.string(),

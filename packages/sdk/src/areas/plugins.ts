@@ -288,6 +288,7 @@ export interface PluginUpdateJobsArea {
 }
 
 export interface PluginsArea {
+  experimental_recordPanelOpen(args: PluginIdArgs): Promise<void>;
   experimental_discoverRpc(
     args?: PluginRpcDiscoveryArgs,
   ): Promise<PublishedPluginRpcMethod[]>;
@@ -610,6 +611,13 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         `/api/v1/plugins/rpc?${params}`,
         pluginRpcDiscoveryResponseSchema,
         { signal: input.signal },
+      );
+    },
+    async experimental_recordPanelOpen(input) {
+      await requestParsed(
+        pluginPath(input.pluginId, "/usage"),
+        z.object({ ok: z.literal(true) }),
+        jsonInit("POST", {}),
       );
     },
     async callRpc(input) {

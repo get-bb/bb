@@ -29,6 +29,7 @@ import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 export const accountPoolRpcContract = defineRpcContract({
   "account.add": {
+    experimental_usage: "action",
     input: accountAddInputSchema,
     output: accountSchema,
   },
@@ -37,30 +38,37 @@ export const accountPoolRpcContract = defineRpcContract({
     output: z.array(accountSummarySchema),
   },
   "account.remove": {
+    experimental_usage: "action",
     input: accountIdInputSchema,
     output: z.object({ removed: z.boolean() }).strict(),
   },
   "account.enable": {
+    experimental_usage: "action",
     input: accountIdInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
   "account.disable": {
+    experimental_usage: "action",
     input: accountIdInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
   "account.setPriority": {
+    experimental_usage: "action",
     input: accountPriorityInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
   },
   "account.reorder": {
+    experimental_usage: "action",
     input: accountReorderInputSchema,
     output: z.null(),
   },
   "account.refreshUsage": {
+    experimental_usage: "action",
     input: z.object({ accountId: z.string().uuid() }).strict(),
     output: z.object({ account: accountSummarySchema.nullable() }).strict(),
   },
   "routing.set": {
+    experimental_usage: "action",
     input: routingSetInputSchema,
     output: z
       .object({ provider: z.enum(["claude", "codex"]), enabled: z.boolean() })
@@ -71,18 +79,22 @@ export const accountPoolRpcContract = defineRpcContract({
     output: accountPoolConfigSchema,
   },
   "config.set": {
+    experimental_usage: "action",
     input: accountPoolConfigSetInputSchema,
     output: accountPoolConfigSchema,
   },
   "login.start": {
+    experimental_usage: "action",
     input: z.null(),
     output: loginStartSchema,
   },
   "login.complete": {
+    experimental_usage: "action",
     input: loginCompleteInputSchema,
     output: accountSchema,
   },
   "codexLogin.start": {
+    experimental_usage: "action",
     input: z.null(),
     output: codexLoginStartSchema,
   },
@@ -91,6 +103,7 @@ export const accountPoolRpcContract = defineRpcContract({
     output: codexLoginPollSchema,
   },
   "codexLogin.cancel": {
+    experimental_usage: "action",
     input: codexLoginPollInputSchema,
     output: codexLoginCancelSchema,
   },
@@ -103,10 +116,12 @@ export const accountPoolRpcContract = defineRpcContract({
     output: routedThreadStatusListSchema,
   },
   "token.rotate": {
+    experimental_usage: "action",
     input: tokenRotateInputSchema,
     output: hubTokenSummarySchema,
   },
   "bypass.set": {
+    experimental_usage: "action",
     input: bypassInputSchema,
     output: bypassInputSchema,
   },

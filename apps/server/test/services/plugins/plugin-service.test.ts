@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import {
   cp,
   mkdtemp,
@@ -16,6 +17,7 @@ import {
   createEnvironment,
   createProject,
   getInstalledPlugin,
+  installedPlugins,
   noopNotifier,
   upsertHost,
   upsertInstalledPlugin,
@@ -34,7 +36,10 @@ import {
 import { testLogger } from "../../helpers/test-app.js";
 import { pluginInstalledTelemetryEvent } from "../../../src/services/plugins/plugin-registration.js";
 import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
-import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import {
+  createNoopTelemetryService,
+  withTelemetryInitiator,
+} from "../../../src/services/system/telemetry.js";
 import { createProviderRegistryService } from "../../../src/services/providers/provider-registry.js";
 
 const logger = testLogger as unknown as Logger;
@@ -852,6 +857,7 @@ describe("plugin service", () => {
           provenance: "direct",
           marketplace: null,
           source_kind: "path",
+          plugin_source: "local",
         },
       },
     ]);
@@ -865,6 +871,164 @@ describe("plugin service", () => {
     expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
     await tracked.stop();
+  });
+
+  it("counts plugin actions once and classifies installed provenance without exporting identifiers", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-private-work",
+      serverSource: `export default function plugin(bb) {
+        const schema = { "~standard": { version: 1, vendor: "fixture", validate: (value) =>
+          value === null ? { value } : { issues: [{ message: "Expected null" }] } } };
+        bb.cli.register({ name: "private-work", summary: "Work", run() {
+          bb.experimental_withFeatureUse({ initiator: "automation" }, () => undefined);
+          return { exitCode: 0, stdout: "done" };
+        }});
+        bb.rpc.register({
+          read: { input: schema, output: schema },
+          act: { experimental_usage: "action", input: schema, output: schema }
+        }, { read: () => null, act: () => { bb.experimental_withFeatureUse({ initiator: "automation" }, () => undefined); return null; } });
+      }`,
+    });
+    try {
+      const installed = await tracked.installPath(rootDir);
+      expect(installed.status, installed.statusDetail ?? undefined).toBe(
+        "running",
+      );
+      captured.length = 0;
+      const read = tracked.getRpcHandler("private-work", "read");
+      const act = tracked.getRpcHandler("private-work", "act");
+      if (read.outcome !== "found" || act.outcome !== "found")
+        throw new Error("RPC fixture not loaded");
+      await tracked.invokeRpcHandler("private-work", "read", read.value, null, {
+        kind: "client",
+      });
+      expect(captured).toEqual([]);
+      await tracked.runCliCommand("private-work", [], {});
+      await tracked.invokeRpcHandler("private-work", "act", act.value, null, {
+        kind: "client",
+      });
+      await tracked.invokeRpcHandler("private-work", "act", act.value, null, {
+        kind: "plugin",
+        pluginId: "private-caller",
+      });
+      expect(captured).toHaveLength(2);
+      expect(captured[0]).toEqual({
+        name: "feature_used",
+        properties: {
+          kind: "plugin",
+          feature_scope: "plugin",
+          interaction: "invoked",
+          initiator: "user",
+          plugin_source: "local",
+        },
+      });
+      const marketplace = {
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        manifestJson: "{}",
+        statsJson: null,
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: null,
+        lastAttemptedRefreshAt: null,
+        lastError: null,
+      };
+      upsertPluginMarketplace(db, {
+        ...marketplace,
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: "https://getbb.app/marketplace/v2/marketplace.json",
+      });
+      upsertPluginMarketplace(db, {
+        ...marketplace,
+        name: "private-team",
+        sourceKind: "git",
+        manifestUrl: "https://github.com/private-team/marketplace.git",
+      });
+      const sources = [
+        {
+          sourceKind: "builtin",
+          provenance: "builtin",
+          catalogMarketplaceName: null,
+          expected: "builtin",
+        },
+        {
+          sourceKind: "git",
+          provenance: "catalog",
+          catalogMarketplaceName: "bb-community",
+          expected: "public_catalog",
+        },
+        {
+          sourceKind: "git",
+          provenance: "catalog",
+          catalogMarketplaceName: "private-team",
+          expected: "private_marketplace",
+        },
+        {
+          sourceKind: "path",
+          provenance: "catalog",
+          catalogMarketplaceName: "bb-community",
+          expected: "local",
+        },
+        {
+          sourceKind: "git",
+          provenance: "direct",
+          catalogMarketplaceName: null,
+          expected: "unknown",
+        },
+      ] as const;
+      for (const { expected, ...source } of sources) {
+        db.update(installedPlugins)
+          .set(source)
+          .where(eq(installedPlugins.id, "private-work"))
+          .run();
+        captured.length = 0;
+        expect(
+          withTelemetryInitiator("user", () =>
+            tracked.recordPanelOpen("private-work"),
+          ),
+        ).toBe(true);
+        expect(captured).toEqual([
+          {
+            name: "feature_used",
+            properties: {
+              kind: "plugin",
+              feature_scope: "plugin",
+              interaction: "opened",
+              initiator: "user",
+              plugin_source: expected,
+            },
+          },
+        ]);
+        expect(JSON.stringify(captured)).not.toMatch(
+          /private-work|private-team|github|marketplace.json/,
+        );
+      }
+      upsertPluginMarketplace(db, {
+        ...marketplace,
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: "https://private.example/marketplace.json",
+      });
+      db.update(installedPlugins)
+        .set({
+          sourceKind: "git",
+          provenance: "catalog",
+          catalogMarketplaceName: "bb-community",
+        })
+        .where(eq(installedPlugins.id, "private-work"))
+        .run();
+      captured.length = 0;
+      tracked.recordPanelOpen("private-work");
+      expect(captured[0]).toMatchObject({
+        properties: { plugin_source: "unknown" },
+      });
+    } finally {
+      await tracked.stop();
+    }
   });
 
   it("does not report plugin_installed during boot-time reconcile", async () => {
@@ -901,18 +1065,21 @@ describe("plugin service", () => {
         subdirectory: null,
         selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
+      "private_marketplace",
     ).properties;
     expect(properties).toEqual({
       plugin_id: null,
       provenance: "catalog",
       marketplace: null,
       source_kind: "git",
+      plugin_source: "private_marketplace",
     });
     expect(
       pluginInstalledTelemetryEvent(
         "tasks",
         { kind: "builtin" },
         { kind: "builtin", name: "tasks" },
+        "builtin",
       ).properties.plugin_id,
     ).toBe("tasks");
   });
@@ -929,12 +1096,14 @@ describe("plugin service", () => {
           requestedSpec: "^1",
           specKind: "range",
         },
+        "public_catalog",
       ).properties,
     ).toEqual({
       plugin_id: "tasks",
       provenance: "catalog",
       marketplace: "bb-community",
       source_kind: "npm",
+      plugin_source: "public_catalog",
     });
   });
 

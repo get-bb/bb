@@ -1,3 +1,4 @@
+import type { TelemetryPluginSource } from "@bb/server-contract";
 import { reportedProviderId } from "./provider-telemetry.js";
 import { validWorkTelemetry } from "./work-telemetry-schema.js";
 import type {
@@ -91,8 +92,18 @@ export type TelemetryEvent =
         };
     }
   | {
+      name: "plugin_enabled";
+      properties: {
+        plugin_source: TelemetryPluginSource;
+        plugin_id: string | null;
+        provenance: "builtin" | "catalog" | "direct";
+        marketplace: string | null;
+      };
+    }
+  | {
       name: "plugin_installed";
       properties: {
+        plugin_source: TelemetryPluginSource;
         plugin_id: string | null;
         provenance: "builtin" | "catalog" | "direct";
         marketplace: string | null;
@@ -165,10 +176,18 @@ function appInstallProperties(install: AppInstall | null) {
   return { install_kind: "source", source_origin: install.origin };
 }
 
+const initiatorStorage = new AsyncLocalStorage<TelemetryInitiator>();
+export function withTelemetryInitiator<T>(
+  initiator: TelemetryInitiator,
+  run: () => T,
+): T {
+  return initiatorStorage.run(initiator, run);
+}
 export function currentTelemetryInitiator(): TelemetryInitiator {
-  return telemetryAppSurfaceStorage.getStore() === undefined
-    ? "system"
-    : "user";
+  return (
+    initiatorStorage.getStore() ??
+    (telemetryAppSurfaceStorage.getStore() === undefined ? "system" : "user")
+  );
 }
 
 export function runWithTelemetryAppSurface<T>(
@@ -222,6 +241,7 @@ export async function createTelemetryService(
           "thread_lifecycle_changed",
           "turn_finished",
           "device_paired",
+          "browser_session_started",
         ].includes(event.name) &&
         !args.workTelemetry
       )

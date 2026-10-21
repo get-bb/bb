@@ -264,6 +264,7 @@ export const docsRpcContract = defineRpcContract({
     output: proposalSchema.nullable(),
   },
   proposeNote: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -276,6 +277,7 @@ export const docsRpcContract = defineRpcContract({
     output: proposalSchema,
   },
   updateProposal: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -287,6 +289,7 @@ export const docsRpcContract = defineRpcContract({
     output: proposalSchema,
   },
   resolveProposal: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -311,6 +314,7 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   syncApply: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -379,6 +383,7 @@ export const docsRpcContract = defineRpcContract({
     output: fileReadSchema,
   },
   saveNote: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -390,6 +395,7 @@ export const docsRpcContract = defineRpcContract({
     output: fileWriteSchema,
   },
   createNote: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -401,6 +407,7 @@ export const docsRpcContract = defineRpcContract({
     output: pathResultSchema,
   },
   deletePath: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -411,10 +418,12 @@ export const docsRpcContract = defineRpcContract({
     output: okResultSchema,
   },
   createFolder: {
+    experimental_usage: "action",
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: pathResultSchema,
   },
   reorderFiles: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -425,6 +434,7 @@ export const docsRpcContract = defineRpcContract({
     output: z.object({ paths: z.array(vaultPathSchema) }).strict(),
   },
   movePath: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -435,10 +445,12 @@ export const docsRpcContract = defineRpcContract({
     output: pathResultSchema,
   },
   renameToTitle: {
+    experimental_usage: "action",
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: pathResultSchema,
   },
   createVault: {
+    experimental_usage: "action",
     input: z
       .object({
         name: z.string().min(1),
@@ -449,10 +461,12 @@ export const docsRpcContract = defineRpcContract({
     output: vaultSchema,
   },
   removeVault: {
+    experimental_usage: "action",
     input: z.object({ vaultId: z.string().min(1) }).strict(),
     output: okResultSchema,
   },
   uploadAttachment: {
+    experimental_usage: "action",
     input: z
       .object({
         vaultId: vaultIdSchema,
@@ -474,6 +488,7 @@ export const docsRpcContract = defineRpcContract({
     output: previewSchema,
   },
   openFile: {
+    experimental_usage: "action",
     input: z
       .object({ source: openerSourceSchema, path: z.string().min(1) })
       .strict(),
@@ -486,6 +501,7 @@ export const docsRpcContract = defineRpcContract({
       .strict(),
   },
   saveOpenedFile: {
+    experimental_usage: "action",
     input: z
       .object({
         source: openerSourceSchema,

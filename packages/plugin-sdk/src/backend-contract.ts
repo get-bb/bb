@@ -2097,6 +2097,13 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Wrap one background work invocation; core resolves anonymous provenance, initiator context, nested calls and opt-out. Excludes timers, polling and startup. */
+  experimental_withFeatureUse<T>(
+    options: {
+      initiator: "user" | "agent" | "automation" | "plugin" | "system";
+    },
+    run: () => T,
+  ): T;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

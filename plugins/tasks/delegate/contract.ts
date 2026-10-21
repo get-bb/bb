@@ -6,6 +6,7 @@ const threadIdSchema = z.string().startsWith("thr_");
 
 export const delegationRpcContract = defineRpcContract({
   delegate: {
+    experimental_usage: "action",
     input: z
       .object({
         taskId: idSchema,
@@ -16,10 +17,12 @@ export const delegationRpcContract = defineRpcContract({
     output: z.object({ threadId: threadIdSchema }).strict(),
   },
   taskThreadsAttach: {
+    experimental_usage: "action",
     input: z.object({ taskId: idSchema, threadId: threadIdSchema }).strict(),
     output: z.object({ threadId: threadIdSchema }).strict(),
   },
   taskThreadsDetach: {
+    experimental_usage: "action",
     input: z.object({ taskId: idSchema, threadId: threadIdSchema }).strict(),
     output: z.object({ threadId: threadIdSchema }).strict(),
   },
