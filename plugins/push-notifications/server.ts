@@ -245,6 +245,14 @@ export function createPushNotificationsPlugin(
     }
 
     bb.rpc.register(pushNotificationsRpcContract, {
+      experimental_day2AppOpened: async () => {
+        await sender.onAppOpened();
+        return { ok: true as const };
+      },
+      experimental_cancelDay2Result: async ({ automationId }) => {
+        await sender.cancelDay2Result(automationId);
+        return { ok: true as const };
+      },
       "notifications.test": ({ channel }) => sendTest(channel),
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
@@ -279,6 +287,19 @@ export function createPushNotificationsPlugin(
         description:
           "Mobile devices receive Expo push messages; web and desktop clients receive system notifications while they are open.",
         commands: {
+          opened: cliCommand({
+            summary: "Deliver ready result reminders when returning to bb",
+            options: { json: JSON_OPTION },
+            async run(input) {
+              await sender.onAppOpened();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ ok: true })
+                  : "Ready result reminders checked",
+              };
+            },
+          }),
           test: cliCommand({
             summary:
               "Send a test to connected web or desktop clients with permission",

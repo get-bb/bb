@@ -41,6 +41,31 @@ export const removePushSubscriptionInputSchema = z
 
 export const clientChannelSchema = z.enum(["web", "desktop"]);
 export const CLIENT_NOTIFICATION_CHANNEL = "notification";
+export const attentionNotificationKindSchema = z.enum([
+  "needs_input",
+  "failed",
+  "finished",
+  "day2_result",
+]);
+export type AttentionNotificationKind = z.infer<
+  typeof attentionNotificationKindSchema
+>;
+export const DAY2_RESULT_METADATA_KEY = "day2Result";
+export const heldDay2ResultMarkerSchema = z
+  .object({
+    pending: z.literal(true),
+    automationId: z.string().min(1),
+    acceptedAt: z.number().int().nonnegative(),
+    deliverAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export type HeldDay2ResultMarker = z.infer<typeof heldDay2ResultMarkerSchema>;
+export const pendingDay2ResultMetadataSchema = z.object({
+  [DAY2_RESULT_METADATA_KEY]: z.union([
+    heldDay2ResultMarkerSchema,
+    z.object({ pending: z.literal(true) }).strict(),
+  ]),
+});
 export const clientNotificationSchema = z
   .object({
     id: z.string().min(1),
@@ -48,6 +73,7 @@ export const clientNotificationSchema = z
     body: z.string(),
     threadId: z.string().nullable(),
     channels: z.array(clientChannelSchema),
+    kind: attentionNotificationKindSchema.optional(),
   })
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;
@@ -60,6 +86,14 @@ export const listPushSubscriptionsOutputSchema = z
   .strict();
 
 export const pushNotificationsRpcContract = defineRpcContract({
+  experimental_day2AppOpened: {
+    input: emptyInputSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
+  experimental_cancelDay2Result: {
+    input: z.object({ automationId: z.string().min(1) }).strict(),
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
   "notifications.test": {
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),

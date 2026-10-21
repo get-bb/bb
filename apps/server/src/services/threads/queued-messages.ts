@@ -1,3 +1,4 @@
+import { noteNextStepUserMessage } from "./next-step.js";
 import {
   getLatestThreadSequence,
   claimNextQueuedThreadMessageGroup,
@@ -285,6 +286,7 @@ export async function createQueuedMessageForThread(
     );
   deps.hub.notifyThread(thread.id, ["queue-changed"]);
   if (senderThreadId === null && payload.input.length > 0) {
+    noteNextStepUserMessage(deps.db, { threadId: thread.id });
     captureUserMessageSentTelemetry(deps, {
       isChildThread: thread.parentThreadId !== null,
       messageSource: "queued_message",

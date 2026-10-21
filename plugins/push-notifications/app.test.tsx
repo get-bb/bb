@@ -14,6 +14,7 @@ const app = await loadPluginApp(() => import("./app.js"));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("device notification settings", () => {
@@ -275,5 +276,36 @@ describe("thread notifications action", () => {
       hint: "Limited by a parent thread",
     });
     expect(summary()?.selected).toBe("muted");
+  });
+});
+
+describe("day-2 result app openings", () => {
+  it("signals a visible opening after connection and a later return, but not reconnects", async () => {
+    let visibility: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => visibility,
+    );
+    const opened = vi.fn(() => ({ ok: true as const }));
+    const slot = renderSlot(
+      app.appOverlays[0]!,
+      {},
+      {
+        settings: { webEnabled: true },
+        realtimeConnectionState: "connecting",
+        rpc: { experimental_day2AppOpened: opened },
+      },
+    );
+    expect(opened).not.toHaveBeenCalled();
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.behavior.setRealtimeConnectionState("connected");
+    expect(opened).toHaveBeenCalledTimes(1);
+    visibility = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    expect(opened).toHaveBeenCalledTimes(1);
+    visibility = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
   });
 });

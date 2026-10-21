@@ -1,3 +1,4 @@
+import { completeNextStepTurn } from "../services/threads/next-step.js";
 import { getThread, hasRootStoredTurnStarted } from "@bb/db";
 import {
   requireThreadEventScopeTurnId,
@@ -51,6 +52,12 @@ export function applyTurnCompletedEvent(
     return { isRootTurnCompletion, nextStatus: null, thread };
   }
 
+  completeNextStepTurn(deps.db, {
+    threadId: payload.threadId,
+    turnId,
+    successful: payload.status === "completed",
+    completedAt: Date.now(),
+  });
   const outcome = applyLoggedThreadLifecycleEvent(deps, {
     event: lifecycleEventForTurnCompletion(payload.status),
     threadId: payload.threadId,

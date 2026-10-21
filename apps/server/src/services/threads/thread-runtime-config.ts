@@ -1,3 +1,4 @@
+import { PROPOSE_NEXT_STEP_TOOL } from "./propose-next-step-tool.js";
 import {
   resolveHostEnvironment,
   mergeHostAndProviderEnvironment,
@@ -97,6 +98,7 @@ function resolveDynamicTools(
       instructions: UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS,
       pluginId: null,
     },
+    { tool: PROPOSE_NEXT_STEP_TOOL, instructions: null, pluginId: null },
     ...pluginTools.map((contribution) => ({
       tool: contribution.tool,
       instructions: contribution.instructions,

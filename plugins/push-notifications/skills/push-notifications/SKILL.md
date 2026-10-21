@@ -13,6 +13,7 @@ the plugin settings.
 
 ```sh
 bb push-notifications status [--json]
+bb push-notifications opened [--json]
 bb push-notifications list [--json]
 bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-name> [--json]
 bb push-notifications remove <id> [--json]
@@ -28,6 +29,12 @@ bb plugin config push-notifications set expoPushUrl <url>
   and keeps its id. Expo tokens that are no longer registered are removed after
   a failed delivery.
 - `list` shows token suffixes only.
+- `opened` records a return to bb using server time and releases ready result
+  reminders. Accepted Next steps hold completed results until their reminder
+  time or the next app opening after acceptance, whichever comes first. An
+  opening before completion releases the reminder as soon as work finishes.
+  Held reminders and cancellations survive server restart. Cancel reminder
+  suppresses the reminder; work may already have finished.
 - The three channel switches default to `true` and apply immediately to this
   server. `bb plugin disable push-notifications` stops all delivery.
 - `test` broadcasts to every connected, permitted client of that type and

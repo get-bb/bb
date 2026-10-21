@@ -1,4 +1,8 @@
 import {
+  handleProposeNextStepToolCall,
+  PROPOSE_NEXT_STEP_TOOL,
+} from "../services/threads/propose-next-step-tool.js";
+import {
   hostDaemonToolCallRequestSchema,
   typedRoutes,
   type HostDaemonInternalSchema,
@@ -75,6 +79,15 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
         );
       }
 
+      if (payload.tool === PROPOSE_NEXT_STEP_TOOL.name) {
+        return context.json(
+          await handleProposeNextStepToolCall(deps, {
+            threadId: thread.id,
+            turnId: payload.turnId,
+            input: payload.arguments,
+          }),
+        );
+      }
       if (payload.tool === UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME) {
         return context.json(
           await handleUpdateEnvironmentDirectoryToolCall(deps, {

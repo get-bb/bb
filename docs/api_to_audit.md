@@ -3100,8 +3100,10 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide and new-thread-submit events; anything else is a 400. Core
-callers, all through `recordTelemetryEvent` in
+setup-guide, new-thread-submit, and notification events; anything else is a 400. `notification_sent` accepts only fixed `kind` and `channel` enums.
+Push notifications calls this same path after phone relay acceptance or
+browser/desktop notification display. Core setup callers, through
+`recordTelemetryEvent` in
 `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 (`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
 
@@ -3255,3 +3257,21 @@ current result as `RenderedSlotInspectionState.experimental_pageTitle`;
 audit test-host lifecycle parity before stabilization.
 Before stabilization, audit focus changes, same-plugin splits, loading,
 back/forward navigation, crash/reload recovery, links and overflow.
+
+## Grounded Next steps
+
+`ThreadsArea.experimental_nextStep`, `experimental_proposeNextStep`,
+`experimental_showNextStep`, `experimental_acceptNextStep`,
+`experimental_dismissNextStep`, and `experimental_undoNextStep` use the same
+server routes as the finished-turn row and `bb thread next-step`. Proposals
+are typed turn records with verified evidence. Task acceptance starts a child;
+automation acceptance creates a disabled one-shot automation and starts it
+immediately through Automations’ idempotent manual-run path. The result is held
+until the next weekday at 9:00 in the proposed timezone or the next app open.
+Undo cancels the reminder without reversing completed work. Only
+desktop/web impressions count; acceptance and dismissal are recorded server-side.
+
+Docs: Plugin Guide, `grounded-next-steps`. Before stabilization, audit evidence
+resolution across hosts, one-per-thread concurrency, dismissal suppression,
+first-day timing, creation recovery, and real notification delivery. Plugin and
+skill actions are reserved, not implemented.

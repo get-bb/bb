@@ -1,3 +1,4 @@
+import type { NextStep, NextStepInput } from "@bb/domain";
 import {
   parseThreadEventRow,
   type PromptInput,
@@ -599,6 +600,16 @@ export interface ThreadQueueArea {
 }
 
 export interface ThreadsArea {
+  experimental_nextStep(threadId: string): Promise<NextStep | null>;
+  experimental_proposeNextStep(
+    threadId: string,
+    turnId: string,
+    input: NextStepInput,
+  ): Promise<NextStep>;
+  experimental_showNextStep(threadId: string): Promise<NextStep | null>;
+  experimental_acceptNextStep(threadId: string): Promise<NextStep | null>;
+  experimental_dismissNextStep(threadId: string): Promise<NextStep | null>;
+  experimental_undoNextStep(threadId: string): Promise<NextStep | null>;
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
@@ -1213,6 +1224,49 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   return {
+    async experimental_nextStep(threadId) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["next-step"].$get({
+          param: { id: threadId },
+        }),
+      );
+    },
+    async experimental_proposeNextStep(threadId, turnId, input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["next-step"].propose.$post({
+          param: { id: threadId },
+          json: { turnId, input },
+        }),
+      );
+    },
+    async experimental_showNextStep(threadId) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["next-step"].shown.$post({
+          param: { id: threadId },
+        }),
+      );
+    },
+    async experimental_acceptNextStep(threadId) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["next-step"].accept.$post({
+          param: { id: threadId },
+        }),
+      );
+    },
+    async experimental_dismissNextStep(threadId) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["next-step"].dismiss.$post({
+          param: { id: threadId },
+        }),
+      );
+    },
+    async experimental_undoNextStep(threadId) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["next-step"].undo.$post({
+          param: { id: threadId },
+        }),
+      );
+    },
     archive: archiveAll,
     archiveAll,
     async childSummary(input) {

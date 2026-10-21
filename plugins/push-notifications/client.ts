@@ -1,6 +1,7 @@
 import {
   clientNotificationSchema,
   type ClientNotification,
+  type AttentionNotificationKind,
 } from "./contract.js";
 
 export type ClientChannel = "web" | "desktop";
@@ -25,7 +26,13 @@ export function notificationPermission():
     : Notification.permission;
 }
 
-export function createClientDelivery(navigate: (threadId: string) => void) {
+export function createClientDelivery(
+  navigate: (threadId: string) => void,
+  onShown: (
+    kind: AttentionNotificationKind,
+    channel: "browser" | "desktop",
+  ) => void = () => {},
+) {
   const active = new Set<Notification>();
   let disposed = false;
 
@@ -45,6 +52,19 @@ export function createClientDelivery(navigate: (threadId: string) => void) {
       tag: `bb-${message.threadId ?? message.id}`,
     });
     active.add(notification);
+    let reported = false;
+    notification.onshow = () => {
+      const channel = clientChannel();
+      if (
+        reported ||
+        disposed ||
+        channel === null ||
+        message.kind === undefined
+      )
+        return;
+      reported = true;
+      onShown(message.kind, channel === "web" ? "browser" : "desktop");
+    };
     notification.onclose = () => active.delete(notification);
     notification.onclick = () => {
       if (disposed) return;

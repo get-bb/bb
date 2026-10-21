@@ -1,3 +1,4 @@
+import { registerNextStepCommands } from "./next-step.js";
 import { registerContextCommand } from "./context.js";
 import { registerSessionStateCommands } from "./session-state.js";
 import { Command } from "commander";
@@ -31,4 +32,5 @@ export function registerThreadCommands(
   registerOrganizationCommands(thread, getUrl);
   registerActionsCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
+  registerNextStepCommands(thread, getUrl);
 }

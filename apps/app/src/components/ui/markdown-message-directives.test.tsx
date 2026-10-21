@@ -814,22 +814,24 @@ describe("ThreadTimelineRows message directive subscription", () => {
       );
 
       render(
-        <MemoryRouter>
-          <ThreadTimelineRows
-            threadId="thr_main"
-            projectId="proj_main"
-            timelineRows={[
-              conversationRow({
-                id: "asst_1",
-                role: "assistant",
-                text: `::inline-vis{file="collide.html"}${tail}`,
-                threadId: "thr_main",
-              }),
-            ]}
-            threadRuntimeDisplayStatus="idle"
-            workspaceRootPath={undefined}
-          />
-        </MemoryRouter>,
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <ThreadTimelineRows
+              threadId="thr_main"
+              projectId="proj_main"
+              timelineRows={[
+                conversationRow({
+                  id: "asst_1",
+                  role: "assistant",
+                  text: `::inline-vis{file="collide.html"}${tail}`,
+                  threadId: "thr_main",
+                }),
+              ]}
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>,
       );
 
       expect(screen.queryByTestId("inline-vis")).toBeNull();

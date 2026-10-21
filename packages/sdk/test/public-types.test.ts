@@ -409,6 +409,12 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "experimental_nextStep"
+  | "experimental_proposeNextStep"
+  | "experimental_showNextStep"
+  | "experimental_acceptNextStep"
+  | "experimental_dismissNextStep"
+  | "experimental_undoNextStep"
   | "experimental_listAncestors"
   | "experimental_listDescendants"
   | "experimental_listPluginMetadata"

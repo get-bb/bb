@@ -95,6 +95,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
 
     expect(command.dynamicTools.map((tool) => tool.name)).toEqual([
       UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
+      "propose_next_step",
       "docs_search",
     ]);
     const docsSearch = command.dynamicTools.find(

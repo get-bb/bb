@@ -1,3 +1,4 @@
+import { noteNextStepUserMessage } from "./next-step.js";
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
@@ -862,6 +863,8 @@ export async function createThreadFromRequest(
     startedOnBehalfOf: request.startedOnBehalfOf,
   });
   if (initiator === "user" && request.input.length > 0) {
+    if (request.origin !== "plugin" && request.pluginSubmission === undefined)
+      noteNextStepUserMessage(deps.db, { threadId: thread.id });
     captureUserMessageSentTelemetry(deps, {
       isChildThread: parentThread !== null,
       messageSource: "thread_create",

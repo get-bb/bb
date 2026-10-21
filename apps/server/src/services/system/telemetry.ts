@@ -13,7 +13,27 @@ const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 
 const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
+type SuggestionTelemetryProperties = {
+  surface: "next_step";
+  kind: "task" | "automation";
+  suggestion_analytics_id: string;
+};
+
 export type TelemetryEvent =
+  | {
+      name: "suggestion_shown";
+      properties: SuggestionTelemetryProperties & { trigger: "agent" };
+    }
+  | {
+      name: "suggestion_accepted";
+      properties: SuggestionTelemetryProperties & {
+        thread_analytics_id?: string;
+      };
+    }
+  | {
+      name: "suggestion_dismissed";
+      properties: SuggestionTelemetryProperties & { dismiss: "this_thread" };
+    }
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
   | {

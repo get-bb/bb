@@ -97,6 +97,7 @@ export function pluginCliCollisionWarning(
  */
 export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
   "update_environment_directory",
+  "propose_next_step",
 ];
 
 /** JSON values ≤256KB; larger writes are rejected with a clear error. */

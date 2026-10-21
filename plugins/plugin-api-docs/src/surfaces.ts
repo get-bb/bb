@@ -785,7 +785,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
     sections: [
       {
         title: "Commands & agent capabilities",
-        surfaceIds: ["cli", "agent-tools"],
+        surfaceIds: ["cli", "agent-tools", "grounded-next-steps"],
       },
       {
         title: "Running & reacting",
@@ -906,6 +906,27 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Thread list",
           "Workflows",
         ],
+      },
+      {
+        id: "grounded-next-steps",
+        title: "Grounded next steps",
+        summary:
+          "Use the finished-turn Next step path for evidence-backed work. With this, a plugin can:",
+        bullets: [
+          "Propose one task or day-2 result with verified conversation or repository references",
+          "Read eligibility and record a visible desktop or web impression",
+          "Accept, dismiss, or undo through the same path as the finished-turn row",
+          "Start a child task or run work now with a result reminder at the next workday’s 9:00 or next open",
+        ],
+        apiSymbols: [
+          "ThreadsArea.experimental_nextStep",
+          "ThreadsArea.experimental_proposeNextStep",
+          "ThreadsArea.experimental_showNextStep",
+          "ThreadsArea.experimental_acceptNextStep",
+          "ThreadsArea.experimental_dismissNextStep",
+          "ThreadsArea.experimental_undoNextStep",
+        ],
+        experimental: true,
       },
       {
         id: "background",

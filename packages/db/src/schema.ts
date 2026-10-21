@@ -20,6 +20,8 @@ import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
   EnvironmentProviderSelection,
   JsonValue,
+  NextStep,
+  NextStepEvidence,
   EnvironmentStatus,
   FaviconColorPreference,
   PendingInteractionStatus,
@@ -1367,3 +1369,35 @@ export const projectAttachmentBackfills = sqliteTable(
     error: text("error"),
   },
 );
+
+export const nextSteps = sqliteTable(
+  "next_steps",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    turnId: text("turn_id").notNull(),
+    kind: text("kind").$type<NextStep["action"]["kind"]>().notNull(),
+    status: text("status").$type<NextStep["status"]>().notNull(),
+    suggestion: text("suggestion", { mode: "json" })
+      .$type<NextStep>()
+      .notNull(),
+    completedAt: integer("completed_at"),
+  },
+  (table) => [index("next_steps_status_idx").on(table.status)],
+);
+
+export const nextStepDismissals = sqliteTable("next_step_dismissals", {
+  kind: text("kind").$type<NextStep["action"]["kind"]>().primaryKey(),
+  sources: text("sources", { mode: "json" })
+    .$type<NextStepEvidence["source"][]>()
+    .notNull(),
+});
+
+export const nextStepInstallState = sqliteTable("next_step_install_state", {
+  id: integer("id").primaryKey(),
+  lastUserMessageAt: integer("last_user_message_at").notNull(),
+  lastSuccessfulThreadId: text("last_successful_thread_id"),
+  lastSuccessfulTurnId: text("last_successful_turn_id"),
+  day2ShownAt: integer("day2_shown_at"),
+});

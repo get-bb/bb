@@ -13,6 +13,7 @@ import {
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { TimelineImageGallery } from "./TimelineImageGallery";
+import { NextStepRow, nextStepRowId, useThreadNextStep } from "./NextStepRow";
 import type { PromptInput, ThreadRuntimeDisplayStatus } from "@bb/domain";
 import type {
   TimelineParentChange,
@@ -2061,6 +2062,14 @@ function TimelineRowsList({
   unreadDividerPlacement,
 }: TimelineRowsListProps) {
   const { threadId } = useTimelineRendererStaticContext();
+  const nextStep = useThreadNextStep(
+    spacing === "top-level" ? threadId : undefined,
+    scopeActive,
+  );
+  const nextStepAfterRowId =
+    spacing === "top-level" && !scopeActive
+      ? nextStepRowId(rows, nextStep.data)
+      : null;
   const bottomAnchor = useBottomAnchoredScroll();
   const scrollRestoreRowId = useContext(TimelineScrollRestoreRowIdContext);
   const detailScrollRoot = useContext(TimelineWindowingScrollRootContext);
@@ -2205,6 +2214,13 @@ function TimelineRowsList({
                     spacing={spacing}
                     compactActivityIntents={compactActivityIntents}
                   />
+                  {item.row.id === nextStepAfterRowId &&
+                  nextStep.data != null ? (
+                    <NextStepRow
+                      key={nextStep.data.id}
+                      suggestion={nextStep.data}
+                    />
+                  ) : null}
                 </TimelineRowItemWrapper>
               );
             }}

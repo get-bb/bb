@@ -1,3 +1,9 @@
+import { z } from "zod";
+import {
+  nextStepInputSchema,
+  type NextStep,
+  type NextStepInput,
+} from "@bb/domain";
 import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
@@ -1530,6 +1536,46 @@ export const publicApiRoutes = {
      * attempt. `turnRequestId` null means the thread's most recent turn, whose
      * failure is what put the thread in `error`.
      */
+    nextStep: defineRoute({
+      path: "/threads/:id/next-step",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<NextStep | null>(),
+    }),
+    proposeNextStep: defineRoute({
+      path: "/threads/:id/next-step/propose",
+      method: "post",
+      request: jsonRequest<PathId, { turnId: string; input: NextStepInput }>(
+        z
+          .object({ turnId: z.string().min(1), input: nextStepInputSchema })
+          .strict(),
+      ),
+      response: jsonResponse<NextStep>(),
+    }),
+    showNextStep: defineRoute({
+      path: "/threads/:id/next-step/shown",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<NextStep | null>(),
+    }),
+    acceptNextStep: defineRoute({
+      path: "/threads/:id/next-step/accept",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<NextStep | null>(),
+    }),
+    dismissNextStep: defineRoute({
+      path: "/threads/:id/next-step/dismiss",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<NextStep | null>(),
+    }),
+    undoNextStep: defineRoute({
+      path: "/threads/:id/next-step/undo",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<NextStep | null>(),
+    }),
     retry: defineRoute({
       path: "/threads/:id/retry",
       method: "post",

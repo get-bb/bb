@@ -352,3 +352,10 @@ This index lists every command path that the core CLI registers, including alias
 - `bb browser watch`
 - `bb browser import-sources`
 - `bb browser import-cookies`
+
+- `bb thread next-step`
+- `bb thread next-step show`
+- `bb thread next-step propose`
+- `bb thread next-step accept`
+- `bb thread next-step dismiss`
+- `bb thread next-step undo`

@@ -56,3 +56,5 @@ read [references/updates.md](references/updates.md). Every command supports `--j
 accepted values, and rules. Unknown commands, unknown options, and stray
 arguments are rejected rather than ignored, and a failure under `--json` also
 prints a `{"ok":false,"error":{"code","message","hint"}}` envelope on stdout.
+
+Core Next step acceptance starts its work immediately through an idempotent manual run on a disabled one-shot automation. The trigger time is its result-notification time, not another work run. Use `bb thread next-step accept` and `bb thread next-step undo` for that workflow; Undo cancels pending result delivery and removes the automation without reversing work already performed.

@@ -9,7 +9,16 @@ export function dropPluginEnabledFollowsDefaultColumn(db: DbConnection): void {
   }
 }
 
+function dropNextStepTables(db: DbConnection): void {
+  db.$client.exec(`
+    DROP TABLE IF EXISTS next_steps;
+    DROP TABLE IF EXISTS next_step_dismissals;
+    DROP TABLE IF EXISTS next_step_install_state;
+  `);
+}
+
 export function rewindThreadPruningWork(db: DbConnection): void {
+  dropNextStepTables(db);
   db.$client.exec(`
     DROP TABLE IF EXISTS thread_pruning_work;
     DELETE FROM __drizzle_migrations WHERE created_at >= 1791399370294;
@@ -80,6 +89,7 @@ export function rewindQueuedMessageStateMigration(db: DbConnection): void {
     .prepare<[], QueuedTableColumn>("PRAGMA table_info(queued_thread_messages)")
     .all();
   if (!columns.some((column) => column.name === "state")) return;
+  dropNextStepTables(db);
   const keptColumns = columns.filter((column) => column.name !== "state");
   const definitions = keptColumns
     .map((column) =>

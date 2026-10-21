@@ -1,3 +1,4 @@
+import { noteNextStepUserMessage } from "./next-step.js";
 import {
   isStandaloneBuiltinClearCommand,
   isStandaloneBuiltinCompactCommand,
@@ -37,6 +38,11 @@ export async function acceptThreadSendRequest(
       thread: args.thread,
       trigger: "user",
     });
+    if (
+      request.senderThreadId === undefined &&
+      request.pluginSubmission === undefined
+    )
+      noteNextStepUserMessage(deps.db, { threadId: args.thread.id });
     return { ok: true, delivery: "sent" };
   }
 
@@ -71,6 +77,11 @@ export async function acceptThreadSendRequest(
         trigger: "user",
       }),
   );
+  if (
+    payload.senderThreadId === undefined &&
+    payload.pluginSubmission === undefined
+  )
+    noteNextStepUserMessage(deps.db, { threadId: args.thread.id });
   if (outcome.kind === "dispatched") {
     return { ok: true, delivery: "sent" };
   }

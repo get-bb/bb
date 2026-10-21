@@ -219,6 +219,17 @@ const onboardingStepTelemetryPropertiesSchema = z
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
+      name: z.literal("notification_sent"),
+      properties: z
+        .object({
+          kind: z.enum(["needs_input", "failed", "finished", "day2_result"]),
+          channel: z.enum(["desktop", "browser", "phone"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("onboarding_agent_state"),
       properties: z
         .object({

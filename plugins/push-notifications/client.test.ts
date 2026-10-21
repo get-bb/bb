@@ -7,6 +7,7 @@ class TestNotification {
   static instances: TestNotification[] = [];
   onclick: (() => void) | null = null;
   onclose: (() => void) | null = null;
+  onshow: (() => void) | null = null;
   close = vi.fn();
   constructor(
     readonly title: string,
@@ -37,6 +38,31 @@ afterEach(() => {
 });
 
 describe("client system notifications", () => {
+  it.each(["web", "desktop"] as const)(
+    "records anonymous notification telemetry once when %s actually shows it",
+    async (channel) => {
+      if (channel === "desktop") {
+        vi.stubGlobal("bbDesktop", { platform: "linux" });
+      }
+      const onShown = vi.fn();
+      const delivery = createClientDelivery(vi.fn(), onShown);
+      const result = { ...message, channels: [channel], kind: "day2_result" };
+      await delivery.deliver(result, false);
+      expect(onShown).not.toHaveBeenCalled();
+      await delivery.deliver(result, true);
+      await delivery.deliver(result, true);
+      expect(TestNotification.instances).toHaveLength(1);
+      expect(onShown).not.toHaveBeenCalled();
+      TestNotification.instances[0]?.onshow?.();
+      TestNotification.instances[0]?.onshow?.();
+      expect(onShown).toHaveBeenCalledExactlyOnceWith(
+        "day2_result",
+        channel === "web" ? "browser" : "desktop",
+      );
+      delivery.dispose();
+    },
+  );
+
   it.each([
     { platform: "macos", icon: undefined },
     { platform: "linux", icon: "http://localhost:3000/icon-192.png" },

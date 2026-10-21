@@ -18,6 +18,10 @@ describe("client telemetry events", () => {
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
       const events = [
         {
+          name: "notification_sent",
+          properties: { kind: "day2_result", channel: "phone" },
+        },
+        {
           name: "onboarding_step_skipped",
           properties: { step: "projects", entry: "first_run" },
         },
@@ -73,6 +77,22 @@ describe("client telemetry events", () => {
       expect(unknown.status).toBe(400);
       expect(extra.status).toBe(400);
       for (const event of [
+        {
+          name: "notification_sent",
+          properties: {
+            kind: "day2_result",
+            channel: "phone",
+            title: "Private",
+          },
+        },
+        {
+          name: "notification_sent",
+          properties: { kind: "reminder", channel: "phone" },
+        },
+        {
+          name: "notification_sent",
+          properties: { kind: "day2_result", channel: "email" },
+        },
         {
           name: "onboarding_agent_state",
           properties: {
