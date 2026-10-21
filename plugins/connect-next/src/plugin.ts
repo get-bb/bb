@@ -40,7 +40,7 @@ export function createConnectNextPlugin(
         label: "Reach this bb at its next address (beta)",
         description:
           "Also make this bb reachable at https://<label>.next.<your bb account's domain> through bb's new Fly gate while it is signed in to your bb account. Your bb connect address keeps working.",
-        default: false,
+        default: true,
       },
     });
     const initial = await settings.get();

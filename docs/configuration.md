@@ -1091,7 +1091,7 @@ every enrolled machine's daemon also serves the ports shared from it with
 
 | Connect next setting | Default | Effect                                                                      |
 | -------------------- | ------- | --------------------------------------------------------------------------- |
-| `enabled`            | `false` | "Reach this bb at its next address (beta)". Also `bb connect-next on\|off`. |
+| `enabled`            | `true`  | "Reach this bb at its next address (beta)". Also `bb connect-next on\|off`. |
 
 | Variable                 | Effect                                                                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |

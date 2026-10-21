@@ -3,7 +3,7 @@ Beta. Reach this bb at `https://<label>.next.getbb.app` through bb's new Fly gat
 ## What you get
 
 - A second address for this bb, served from the region nearest you.
-- A switch in Settings, "Reach this bb at its next address (beta)", with the connection state and the address.
+- On as soon as you enable this plugin and this bb is signed in to your bb account. A switch in Settings, "Reach this bb at its next address (beta)", turns the address off and on again, with the connection state and the address.
 - `bb connect-next status`, `bb connect-next on`, and `bb connect-next off`. Add `--json` for machine-readable output.
 - Port shares from this bb's machine (`bb connect expose <port>`) at `https://<label>--<port>.next.getbb.app` too, listed in Settings and in `bb connect-next status`.
 - Port shares from your other enrolled machines (`bb connect expose <port> --host <machine>`) at `https://<machine-label>--<port>.next.getbb.app`, with each machine's tunnel state in Settings and in `bb connect-next status`.

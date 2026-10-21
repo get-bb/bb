@@ -172,9 +172,10 @@ is unchanged and still trusts local callers.
 
 ## Plugin
 
-`plugins/connect-next` ships as a builtin plugin that is disabled by default. Once enabled, it does
-nothing until its `enabled` setting ("Reach this bb at its next address (beta)", default `false`)
-is on and bb account is signed in.
+`plugins/connect-next` ships as a builtin plugin that is disabled by default. Enabling it is the
+opt-in: its `enabled` setting ("Reach this bb at its next address (beta)") defaults to `true`, so the
+tunnel starts as soon as bb account is signed in. The setting (or `bb connect-next off`) turns the
+next address off without disabling the plugin.
 
 - **Identity.** It follows bb account (`bb-account.v1.status` / `waitForStatusChange`) for
   `serverId`, `serverLabel` and `baseUrl`, and reads the link credential with `bb-account.v1.connectCredential`,
@@ -486,8 +487,8 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
 4. Starts a bb server from source in development mode on a data dir in the work dir, signs it in
    with `bb account login --code` (the real redeem), then restarts it in production mode so it serves
    `apps/app/dist`, with `BB_CONNECT_GATE_KEYS_URL` at local bb-web, `BB_CONNECT_NEXT_SERVER` at the
-   gate and `BB_CONNECT_FRPC` at the cached frpc. It enables `bb--connect-next` and runs
-   `bb connect-next on`. No host daemon runs on the server machine, so host-backed API calls for it
+   gate and `BB_CONNECT_FRPC` at the cached frpc. It enables `bb--connect-next`, which turns
+   the next address on (`bb connect-next on` is then a no-op the script still checks). No host daemon runs on the server machine, so host-backed API calls for it
    answer 502; before the production start it writes a host row and `host-id` into the data dir so
    the server has a server machine to share ports from. Other machines' daemons start later (see
    Machines below).

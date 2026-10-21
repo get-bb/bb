@@ -144,11 +144,11 @@ describe("connect-next plugin wiring", () => {
     expect((await status(host)).machines).toEqual([]);
   });
 
-  it("is off by default and only reports the address once signed in", async () => {
+  it("is on once the plugin is enabled and only reports the address once signed in", async () => {
     const { host, account } = await load();
     expect(await status(host)).toMatchObject({
-      enabled: false,
-      state: "off",
+      enabled: true,
+      state: "signed-out",
       label: null,
       url: null,
       server: null,
@@ -162,6 +162,7 @@ describe("connect-next plugin wiring", () => {
       url: "https://sawyer.next.getbb.app",
       server: "wss://tunnel.next.getbb.app/~!frp",
     });
+    await host.harness.runCli(["off"]);
     const text = await host.harness.runCli(["status"]);
     expect(text.stdout).toContain("connect next is off");
     expect(text.stdout).toContain("https://sawyer.next.getbb.app");

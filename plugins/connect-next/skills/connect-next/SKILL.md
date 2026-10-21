@@ -9,8 +9,9 @@ The connect-next plugin makes this bb reachable at
 `https://<label>.next.getbb.app` through bb's Fly gate, in addition to its
 bb connect address `https://<label>.getbb.app`. The domain follows the bb
 account it is signed in to (`next.<account domain>`); `status` prints the
-exact address. It is off by default and
-needs this bb signed in to its bb account (`bb account status`).
+exact address. It is on as soon as the
+plugin is enabled and needs this bb signed in to its bb account
+(`bb account status`).
 
 - `bb connect-next status [--json]` prints the label, the address, and the
   state: `off`, `signed-out`, `connecting`, `connected`, `refused` (the gate
