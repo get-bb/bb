@@ -308,6 +308,11 @@ export function TimelineWindowedItems({
     });
   }, [positionKeeper, virtualizer]);
 
+  useLayoutEffect(() => {
+    if (positionKeeper === null || snapAutoHeight === null) return;
+    return positionKeeper.registerScrollExtentSync(snapAutoHeight);
+  }, [positionKeeper, snapAutoHeight]);
+
   useLayoutEffect(reconcileScrollPosition);
 
   const updateScrollGeometry = useCallback(() => {

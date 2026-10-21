@@ -515,6 +515,39 @@ describe("TimelineWindowedItems", () => {
     expect(scrollElement.scrollTop).toBe(3_404);
   });
 
+  it("settles the enclosing auto-height wrapper before the position keeper's correction", async () => {
+    let contentHeight = 0;
+    let wrapperHeight = 0;
+    clampScrollTopToContentHeight(() => wrapperHeight);
+    const positionKeeper = new ScrollPositionKeeper({
+      deferWritesWhileScrolling: false,
+      getDeferredOffsetElement: () => null,
+      getScrollElement: () => scrollElement,
+      getTopLevelRows: () => [],
+      isActive: () => true,
+    });
+    renderWindowedItems({
+      positionKeeper,
+      snapAutoHeight: () => {
+        wrapperHeight = contentHeight;
+      },
+    });
+    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
+    contentHeight = readSpacerHeight();
+    wrapperHeight = contentHeight;
+    scrollElement.scrollTop = 1_600;
+    fireEvent.scroll(scrollElement);
+    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
+    positionKeeper.hold(screen.getByTestId("wrapper-50"), "top", 10_000);
+
+    renderedShift = -3_000;
+    contentHeight += 3_000;
+    positionKeeper.reconcile();
+
+    expect(wrapperHeight).toBe(6_200);
+    expect(scrollElement.scrollTop).toBe(4_600);
+  });
+
   it("keeps the end in place when a visible row grows while pinned to the end", async () => {
     clampScrollTopToContentHeight(readSpacerHeight);
     renderWindowedItems({ pinnedToEnd: true });

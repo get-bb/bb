@@ -20,7 +20,7 @@ function translatedOffset(element: HTMLElement): number {
 
 function createTimeline(
   initialRows: LaidOutRow[],
-  { deferWritesWhileScrolling = false } = {},
+  { deferWritesWhileScrolling = false, lagScrollExtent = false } = {},
 ) {
   const scrollElement = document.createElement("div");
   const list = document.createElement("div");
@@ -29,12 +29,23 @@ function createTimeline(
   let scrollTop = 0;
   let rows = initialRows;
   const offsets = new Map<string, { top: number; height: number }>();
+  const contentHeight = () =>
+    Math.max(
+      VIEWPORT_HEIGHT,
+      rows.reduce((total, row) => total + row.height, 0),
+    );
+  let settledExtent = contentHeight();
+  const scrollHeight = () =>
+    lagScrollExtent ? settledExtent : contentHeight();
 
   Object.defineProperty(scrollElement, "scrollTop", {
     configurable: true,
     get: () => scrollTop,
     set: (value: number) => {
-      scrollTop = Math.max(0, value);
+      const max = lagScrollExtent
+        ? scrollHeight() - VIEWPORT_HEIGHT
+        : Number.POSITIVE_INFINITY;
+      scrollTop = Math.min(Math.max(0, value), max);
     },
   });
   Object.defineProperty(scrollElement, "clientHeight", {
@@ -43,11 +54,7 @@ function createTimeline(
   });
   Object.defineProperty(scrollElement, "scrollHeight", {
     configurable: true,
-    get: () =>
-      Math.max(
-        VIEWPORT_HEIGHT,
-        rows.reduce((total, row) => total + row.height, 0),
-      ),
+    get: scrollHeight,
   });
   vi.spyOn(scrollElement, "getBoundingClientRect").mockReturnValue(
     new DOMRect(0, 0, 100, VIEWPORT_HEIGHT),
@@ -125,6 +132,9 @@ function createTimeline(
       rows = next;
       layout();
     },
+    settleScrollExtent() {
+      settledExtent = contentHeight();
+    },
     viewportTopOf(id: string) {
       const offset = offsets.get(id);
       if (offset === undefined) throw new Error(`No row ${id}`);
@@ -175,6 +185,22 @@ describe("ScrollPositionKeeper", () => {
     timeline.keeper.reconcile();
 
     expect(timeline.scrollTop).toBe(1_150);
+    expect(timeline.viewportTopOf("row-1")).toBe(before);
+  });
+
+  it("settles a lagging scroll extent before a correction it cannot hold", () => {
+    const timeline = createTimeline(rowsOf(10), { lagScrollExtent: true });
+    timeline.scrollTo(100);
+    timeline.keeper.handleScroll();
+    const before = timeline.viewportTopOf("row-1");
+    timeline.keeper.registerScrollExtentSync(() =>
+      timeline.settleScrollExtent(),
+    );
+
+    timeline.setRows([...rowsOf(30, 200, "older"), ...rowsOf(10)]);
+    timeline.keeper.reconcile();
+
+    expect(timeline.scrollTop).toBe(6_100);
     expect(timeline.viewportTopOf("row-1")).toBe(before);
   });
 

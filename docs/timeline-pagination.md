@@ -218,6 +218,13 @@ it applies the change above that row as a relative `scrollTop` adjustment.
 TanStack's own scroll adjustments and native CSS scroll anchoring stay off while
 the keeper holds a row. Stuck-to-bottom following is unchanged.
 
+The timeline list sits in an auto-height wrapper whose height follows its
+content one resize-observer tick late. Before the keeper writes a correction
+past the current scroll extent, for example after an older page prepends rows,
+it snaps that wrapper to its content height. Otherwise the browser clamps the
+write to the old bottom, the reader loses their place, and the shell reads the
+clamped position as a return to the bottom and reattaches.
+
 iOS WebKit overrides a scroll write made while a finger is down, during
 momentum, or during an edge bounce, and the content then sags and snaps back.
 On iOS the keeper waits during those phases instead. It keeps the correction as

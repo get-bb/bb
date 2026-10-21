@@ -57,6 +57,7 @@ export class ScrollPositionKeeper {
   private anchor: KeptAnchor | null = null;
   private holdUntil = 0;
   private readonly rowOffsetSources = new Set<ScrollRowOffsetSource>();
+  private readonly scrollExtentSyncs = new Set<() => void>();
   private readonly writeListeners = new Set<() => void>();
   private overflowAnchorDisabled = false;
   private deferredOffset = 0;
@@ -113,6 +114,13 @@ export class ScrollPositionKeeper {
     this.rowOffsetSources.add(source);
     return () => {
       this.rowOffsetSources.delete(source);
+    };
+  }
+
+  registerScrollExtentSync(sync: () => void): () => void {
+    this.scrollExtentSyncs.add(sync);
+    return () => {
+      this.scrollExtentSyncs.delete(sync);
     };
   }
 
@@ -201,8 +209,7 @@ export class ScrollPositionKeeper {
       this.scheduleDeferredWrite();
     } else {
       anchor.offset = current;
-      scrollElement.scrollTop += delta;
-      this.observedScrollTop = scrollElement.scrollTop;
+      this.scrollBy(scrollElement, delta);
     }
     this.notifyScrollWrite();
   }
@@ -250,9 +257,17 @@ export class ScrollPositionKeeper {
     if (offset === 0) return;
     this.setDeferredOffset(0);
     if (this.anchor !== null) this.anchor.offset += offset;
-    scrollElement.scrollTop += offset;
-    this.observedScrollTop = scrollElement.scrollTop;
+    this.scrollBy(scrollElement, offset);
     this.notifyScrollWrite();
+  }
+
+  private scrollBy(scrollElement: HTMLElement, delta: number): void {
+    const target = scrollElement.scrollTop + delta;
+    if (target > scrollElement.scrollHeight - scrollElement.clientHeight) {
+      for (const sync of this.scrollExtentSyncs) sync();
+    }
+    scrollElement.scrollTop = target;
+    this.observedScrollTop = scrollElement.scrollTop;
   }
 
   private setDeferredOffset(offset: number): void {
