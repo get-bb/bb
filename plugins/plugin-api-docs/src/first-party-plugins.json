@@ -15,6 +15,11 @@
     "icon": "Repeat"
   },
   {
+    "id": "bb--composer",
+    "name": "Composer",
+    "icon": "MessageSquare"
+  },
+  {
     "id": "bb-ai",
     "name": "bb cloud AI",
     "icon": "AiBrain01"

@@ -313,7 +313,7 @@ export function createComposerHandleBinding(
       throw new Error("Pick a time in the future.");
     }
     const errorBefore = editorState().attachmentError;
-    await waitForUploads(target());
+    if (editorState().isAttaching) await waitForUploads(target());
     const state = editorState();
     if (
       state.attachmentError !== null &&

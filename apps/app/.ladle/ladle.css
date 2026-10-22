@@ -10,6 +10,7 @@
 @source "../../../plugins/provider-usage";
 @source "../../../plugins/secrets";
 @source "../../../plugins/provider-codex";
+@source "../../../plugins/composer/src";
 
 .ladle-main {
   padding: 0;

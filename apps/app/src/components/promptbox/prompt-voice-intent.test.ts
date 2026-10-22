@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PromptDraftState } from "@bb/client-core";
-import type { PromptBoxHandle } from "./PromptBoxInternal";
+import type { PromptBoxHandle } from "./ComposerBox";
 import { deliverPromptVoiceTranscript } from "./prompt-voice-intent";
 
 function createPromptBox() {
@@ -9,11 +9,7 @@ function createPromptBox() {
     deliverTranscript: vi.fn(),
     playCompletionTransition: vi.fn(async () => {}),
   };
-  return {
-    captureHeightForLayoutChange: vi.fn(),
-    focusEnd: vi.fn(),
-    voice,
-  } satisfies PromptBoxHandle;
+  return { focusEnd: vi.fn(), voice } satisfies PromptBoxHandle;
 }
 
 describe("deliverPromptVoiceTranscript", () => {

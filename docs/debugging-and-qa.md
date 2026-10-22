@@ -545,10 +545,11 @@ payloads. Use it to reproduce performance problems that only appear at scale.
 task is uncached, and each package's `bench` script turns its benchmark on:
 
 - `@bb/app`: the sidebar thread list mount and update benchmark
-  (`sidebar.bench.test.tsx`) and the composer large-paste benchmark
-  (`prompt-paste-performance.test.ts`). `BB_SIDEBAR_BENCH_THREADS` sets the
-  thread count (default 3000), `BB_SIDEBAR_BENCH_OUT` writes the results as
-  JSON, and `PROMPTBOX_PERF_FIXTURE_OUT` saves the paste fixture.
+  (`sidebar.bench.test.tsx`). `BB_SIDEBAR_BENCH_THREADS` sets the thread
+  count (default 3000) and `BB_SIDEBAR_BENCH_OUT` writes the results as JSON.
+- `bb-plugin-bb--composer`: the composer large-paste benchmark
+  (`prompt-paste-performance.test.ts`). `PROMPTBOX_PERF_FIXTURE_OUT` saves the
+  paste fixture.
 - `@bb/host-watcher`: the root watcher recovery benchmark
   (`root-recovery-benchmark.test.ts`). `BB_WATCHER_BENCHMARK_OUTPUT` writes its
   report.

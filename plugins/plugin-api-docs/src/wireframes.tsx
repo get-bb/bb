@@ -1720,6 +1720,12 @@ export function RealComposerAnnotated({
             at="end"
           />
           <MeasuredBadge
+            id="composer-replacement"
+            label="The composer box, replaceable by one plugin"
+            anchor='[data-guide-region="composer-replacement"]'
+            at="start"
+          />
+          <MeasuredBadge
             id="composer-state"
             label="The draft prompt a plugin can read and lock"
             anchor='[data-guide-target="composer-state"]'
@@ -1812,173 +1818,184 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div
+      <RegionMark
+        id="composer-replacement"
+        label="The composer box, replaceable by one plugin"
+        showChip={false}
         className={cn(
-          "relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift",
-          mobile ? "min-h-48 gap-7" : "h-36",
+          "flex flex-col rounded-xl border border-border bg-background shadow-lift",
+          mobile ? "min-h-48" : "h-36",
         )}
       >
         <div
+          data-guide-layer="composer-content"
           className={cn(
-            "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
-            mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
-            engagedRingClass(draft.outlined),
+            "pointer-events-none relative z-[2] flex flex-1 flex-col px-2 pb-2 pt-7 [&_a]:pointer-events-auto",
+            mobile && "gap-7",
           )}
         >
-          <Mark
-            id="composer-state"
-            label="The draft prompt a plugin can read and lock"
-            showChip={false}
-            target
-            className="whitespace-pre"
+          <div
+            className={cn(
+              "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
+              mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
+              engagedRingClass(draft.outlined),
+            )}
           >
-            Summarize{" "}
-          </Mark>
-          <span className="relative">
-            {mention.outlined ? (
-              <span
-                aria-hidden
-                data-guide-transient-for="mention-provider"
-                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
+            <Mark
+              id="composer-state"
+              label="The draft prompt a plugin can read and lock"
+              showChip={false}
+              target
+              className="whitespace-pre"
+            >
+              Summarize{" "}
+            </Mark>
+            <span className="relative">
+              {mention.outlined ? (
+                <span
+                  aria-hidden
+                  data-guide-transient-for="mention-provider"
+                  className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
+                >
+                  <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
+                    Your plugin
+                  </span>
+                  <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
+                    <PluginGlyph className="size-3.5" />
+                    release-notes
+                  </span>
+                  <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
+                    <PluginGlyph className="size-3.5 opacity-60" />
+                    roadmap
+                  </span>
+                </span>
+              ) : null}
+              <RegionMark
+                id="mention-provider"
+                label="Plugin mention results in the @ typeahead"
+                className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+                chip="outside-above"
+                showChip={!plus.outlined}
               >
-                <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
-                  Your plugin
-                </span>
-                <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
-                  <PluginGlyph className="size-3.5" />
-                  release-notes
-                </span>
-                <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
-                  <PluginGlyph className="size-3.5 opacity-60" />
-                  roadmap
-                </span>
-              </span>
-            ) : null}
+                <span aria-hidden>@release-notes</span>
+              </RegionMark>
+            </span>
+            <span aria-hidden className="whitespace-pre">
+              {" "}
+              and fix the{" "}
+            </span>
             <RegionMark
-              id="mention-provider"
-              label="Plugin mention results in the @ typeahead"
-              className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+              id="composer-rich-text"
+              label="Plugin highlighting, painted over the draft prompt"
+              className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
               chip="outside-above"
               showChip={!plus.outlined}
             >
-              <span aria-hidden>@release-notes</span>
+              <span aria-hidden>TODO</span>
             </RegionMark>
-          </span>
-          <span aria-hidden className="whitespace-pre">
-            {" "}
-            and fix the{" "}
-          </span>
-          <RegionMark
-            id="composer-rich-text"
-            label="Plugin highlighting, painted over the draft prompt"
-            className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
-            chip="outside-above"
-            showChip={!plus.outlined}
-          >
-            <span aria-hidden>TODO</span>
-          </RegionMark>
-          <span aria-hidden className="whitespace-pre">
-            {" "}
-            in checkout.
-          </span>
-        </div>
+            <span aria-hidden className="whitespace-pre">
+              {" "}
+              in checkout.
+            </span>
+          </div>
 
-        <div className="mt-auto flex h-10 items-center gap-1">
-          <span className="relative">
-            {plus.outlined ? (
-              <span
-                aria-hidden
-                data-guide-transient-for="composer-plus-menu"
-                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+          <div className="mt-auto flex h-10 items-center gap-1">
+            <span className="relative">
+              {plus.outlined ? (
+                <span
+                  aria-hidden
+                  data-guide-transient-for="composer-plus-menu"
+                  className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+                >
+                  <span className="flex h-6 items-center gap-1.5 px-1.5">
+                    <MiniIcon icon="Paperclip" className="size-3.5" />
+                    Attach files
+                  </span>
+                  <span className="flex h-6 items-center gap-1.5 px-1.5">
+                    <MiniIcon icon="Zap" className="size-3.5" />
+                    Skills
+                  </span>
+                  <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+                    <PluginGlyph className="size-3.5" />
+                    Your action
+                  </span>
+                </span>
+              ) : null}
+              <Mark
+                id="composer-plus-menu"
+                label="Plugin rows in the composer's + menu"
+                showChip={false}
+                target
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-md",
+                  engagedRingClass(plus.outlined),
+                )}
               >
-                <span className="flex h-6 items-center gap-1.5 px-1.5">
-                  <MiniIcon icon="Paperclip" className="size-3.5" />
-                  Attach files
+                <MiniIcon icon="Plus" className="size-4" />
+              </Mark>
+            </span>
+            <Mark
+              id="provider-picker"
+              label="Your agent provider and its mark, in the model picker"
+              showChip={false}
+              target
+              className={cn(
+                "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-foreground",
+                engagedRingClass(picker.outlined),
+              )}
+            >
+              <ProviderGlyph />
+              Fable 5
+              {mobile ? null : (
+                <span className="text-subtle-foreground">High</span>
+              )}
+            </Mark>
+            <span className="flex-1" />
+            <span className="relative">
+              {actions.outlined ? (
+                <span
+                  aria-hidden
+                  data-guide-transient-for="composer-actions"
+                  className="pointer-events-none absolute bottom-full right-0 z-[60] mb-7 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
+                >
+                  <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
+                    Search saved prompts
+                  </span>
+                  <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
+                    Review this change
+                  </span>
                 </span>
-                <span className="flex h-6 items-center gap-1.5 px-1.5">
-                  <MiniIcon icon="Zap" className="size-3.5" />
-                  Skills
-                </span>
-                <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+              ) : null}
+              <Mark
+                id="composer-actions"
+                label="Plugin composer actions, before voice and send"
+                showChip={false}
+                target
+                className={cn(
+                  "flex size-9 items-center justify-center rounded-md bg-state-hover",
+                  engagedRingClass(actions.outlined),
+                )}
+              >
+                <span data-guide-fixture="plugin-composer-action">
                   <PluginGlyph className="size-3.5" />
-                  Your action
                 </span>
-              </span>
-            ) : null}
-            <Mark
-              id="composer-plus-menu"
-              label="Plugin rows in the composer's + menu"
-              showChip={false}
-              target
-              className={cn(
-                "flex size-10 items-center justify-center rounded-md",
-                engagedRingClass(plus.outlined),
-              )}
+              </Mark>
+            </span>
+            <span className="flex size-9 items-center justify-center">
+              <MiniIcon icon="Mic" className="size-4" />
+            </span>
+            <span
+              data-guide-icon="CornerDownLeft"
+              className="flex size-9 items-center justify-center rounded-md bg-foreground"
             >
-              <MiniIcon icon="Plus" className="size-4" />
-            </Mark>
-          </span>
-          <Mark
-            id="provider-picker"
-            label="Your agent provider and its mark, in the model picker"
-            showChip={false}
-            target
-            className={cn(
-              "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-foreground",
-              engagedRingClass(picker.outlined),
-            )}
-          >
-            <ProviderGlyph />
-            Fable 5
-            {mobile ? null : (
-              <span className="text-subtle-foreground">High</span>
-            )}
-          </Mark>
-          <span className="flex-1" />
-          <span className="relative">
-            {actions.outlined ? (
-              <span
-                aria-hidden
-                data-guide-transient-for="composer-actions"
-                className="pointer-events-none absolute bottom-full right-0 z-[60] mb-7 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
-              >
-                <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
-                  Search saved prompts
-                </span>
-                <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
-                  Review this change
-                </span>
-              </span>
-            ) : null}
-            <Mark
-              id="composer-actions"
-              label="Plugin composer actions, before voice and send"
-              showChip={false}
-              target
-              className={cn(
-                "flex size-9 items-center justify-center rounded-md bg-state-hover",
-                engagedRingClass(actions.outlined),
-              )}
-            >
-              <span data-guide-fixture="plugin-composer-action">
-                <PluginGlyph className="size-3.5" />
-              </span>
-            </Mark>
-          </span>
-          <span className="flex size-9 items-center justify-center">
-            <MiniIcon icon="Mic" className="size-4" />
-          </span>
-          <span
-            data-guide-icon="CornerDownLeft"
-            className="flex size-9 items-center justify-center rounded-md bg-foreground"
-          >
-            <MiniIcon
-              icon="CornerDownLeft"
-              className="size-3.5 text-background"
-            />
-          </span>
+              <MiniIcon
+                icon="CornerDownLeft"
+                className="size-3.5 text-background"
+              />
+            </span>
+          </div>
         </div>
-      </div>
+      </RegionMark>
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">
           <MiniIcon icon="Folder" className="size-3.5" />

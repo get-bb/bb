@@ -9,6 +9,7 @@ import type {
   ComponentType,
   CSSProperties,
   ReactNode,
+  RefObject,
 } from "react";
 import type {
   PermissionMode,
@@ -36,6 +37,7 @@ import type {
   ThreadPluginMetadataUpdateArgs,
 } from "@bb/sdk";
 import type { JsonValue } from "./json-value.js";
+import type { PluginMentionTrigger } from "./backend-contract.js";
 import type {
   PluginRpcCallArgs,
   PluginRpcContract,
@@ -2263,6 +2265,672 @@ export interface PluginDiffRendererRegistration {
 }
 
 /**
+ * Props passed to an `experimental_composer` component. Deliberately empty:
+ * the component reads everything through `experimental_useComposerRenderer()`
+ * and `useComposer()`.
+ */
+export interface ExperimentalComposerProps {}
+
+/**
+ * Draw bb's composer input box: the editor, its @-mention and slash-command
+ * menus, attachments, voice input, the `+` and send menus and the send and
+ * stop controls. It renders everywhere bb shows a composer (a thread's
+ * composer, the New thread screen, queued and sent message editors). The
+ * banners, approval cards and queued messages above the box stay bb's.
+ *
+ * Exclusive, like `experimental_threadList`: a composer from a plugin the
+ * user installed wins over the bundled one, then the first in slot order.
+ * Users choose under Settings → Appearance → Composer (`composer.provider`).
+ * bb ships its own composer as the bundled Composer plugin; with no composer
+ * plugin enabled, no composer is shown.
+ *
+ * The host keeps the draft, uploads, history, pickers and submission; the
+ * component draws over them with `experimental_useComposerRenderer()`.
+ */
+export interface ExperimentalComposerRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in the provider choice and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalComposerProps>;
+}
+
+/**
+ * One way the box submits, worked out by the host for this surface and the
+ * user's settings: what it does now, whether it needs a draft, and its key.
+ */
+export interface ExperimentalComposerAction {
+  /**
+   * `"send"` sends the draft, `"queue"` queues it behind the running turn,
+   * `"steer"` adds it to the running turn.
+   */
+  kind: "send" | "queue" | "steer";
+  /**
+   * The action needs a non-empty draft. A steer does not: with an empty
+   * draft it steers the next queued message.
+   */
+  requiresInput: boolean;
+  /** The key that runs it, formatted for display. */
+  shortcut: ExperimentalShortcutPresentation;
+  /**
+   * Run it without the checks `useComposer().submit()` applies: the box has
+   * already decided it may. A failed send shows bb's error toast and restores
+   * the draft.
+   */
+  run(): void;
+}
+
+/** Submit-button state and actions the host computes for a composer. */
+export interface ExperimentalComposerSubmission {
+  isSubmitting?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  label?: string;
+  icon?: BbIconName;
+  title?: string;
+  isRunning?: boolean;
+  onStop?: () => void;
+  /** What Enter (and the send button) does. */
+  enter: ExperimentalComposerAction;
+  /** What modifier+Enter does, or null where the surface has one action. */
+  modifier: ExperimentalComposerAction | null;
+  /** Offer `modifier` in the send button's menu too, not only on its shortcut. */
+  showModifierInMenu: boolean;
+}
+
+/** The characters that open the slash-command and skill menus. */
+export type ExperimentalComposerCommandTrigger = "/" | "$";
+
+/** The text typed after an @-mention or command trigger while its menu is open. */
+export interface ExperimentalComposerSearchQuery<Trigger extends string> {
+  text: string;
+  trigger: Trigger;
+}
+
+/** How a suggested thread relates to the thread being composed in. */
+export type ExperimentalComposerThreadRelation =
+  | "parent"
+  | "child"
+  | "same-parent"
+  | "same-environment";
+
+type MentionTargetOf<Kind extends ExperimentalComposerMentionTarget["kind"]> =
+  Extract<ExperimentalComposerMentionTarget, { kind: Kind }>;
+
+/**
+ * One @-mention result. `mention` is the pill choosing it inserts; `text` is
+ * what the pill stands for after the trigger, such as `src/app.ts` or
+ * `thread:thr_1`. `key` is stable across result updates.
+ */
+export type ExperimentalComposerMentionSuggestion = {
+  key: string;
+  text: string;
+} & (
+  | { kind: "path"; mention: MentionTargetOf<"path"> }
+  | {
+      kind: "thread";
+      mention: MentionTargetOf<"thread"> & { projectId: string };
+      /** The thread's own title; null when it has none and the pill shows its id. */
+      title: string | null;
+      /** The thread's project, when it differs from the composer's. */
+      projectName: string | null;
+      relation: ExperimentalComposerThreadRelation | null;
+    }
+  | { kind: "project"; mention: MentionTargetOf<"project"> }
+  | { kind: "section"; mention: MentionTargetOf<"section"> }
+  | {
+      kind: "plugin";
+      mention: MentionTargetOf<"plugin">;
+      /** The mention provider's name, such as "Issues". */
+      providerLabel: string;
+      subtitle: string | null;
+    }
+);
+
+/** Mention results under one heading, in display order. */
+export interface ExperimentalComposerMentionSuggestionGroup {
+  key: string;
+  label: string;
+  suggestions: readonly ExperimentalComposerMentionSuggestion[];
+}
+
+/** What `experimental_useComposerMentionSearch` returns. */
+export interface ExperimentalComposerMentionSearch {
+  /** `"idle"` without a query. */
+  status: "idle" | "loading" | "error" | "ready";
+  /** Earlier results are showing while newer ones load. */
+  refreshing: boolean;
+  groups: readonly ExperimentalComposerMentionSuggestionGroup[];
+  /**
+   * Set the open mention menu's query, or null when it closes. Call it from
+   * the event that changes the menu, next to the composer's own state update,
+   * so the results arrive in the same render.
+   */
+  search(
+    query: ExperimentalComposerSearchQuery<PluginMentionTrigger> | null,
+  ): void;
+}
+
+/** One slash-command or skill result. */
+export interface ExperimentalComposerCommandSuggestion {
+  kind: "command";
+  name: string;
+  source: "skill" | "command";
+  origin: "builtin" | "project" | "user";
+  description: string | null;
+  argumentHint: string | null;
+  /** The plugin that contributed the command; absent for the provider's own. */
+  pluginId?: string;
+}
+
+/** Command results under one heading, such as "Skills", in display order. */
+export interface ExperimentalComposerCommandSuggestionGroup {
+  key: string;
+  label: string;
+  suggestions: readonly ExperimentalComposerCommandSuggestion[];
+}
+
+/** What `experimental_useComposerCommandSearch` returns. */
+export interface ExperimentalComposerCommandSearch {
+  /** `"idle"` without a query. */
+  status: "idle" | "loading" | "error" | "ready";
+  /** Earlier results are showing while newer ones load. */
+  refreshing: boolean;
+  /** Ranked for the query, under their headings. */
+  groups: readonly ExperimentalComposerCommandSuggestionGroup[];
+  /**
+   * Set the open command menu's query, or null when it closes. Call it from
+   * the event that changes the menu, next to the composer's own state update,
+   * so the results arrive in the same render.
+   */
+  search(
+    query: ExperimentalComposerSearchQuery<ExperimentalComposerCommandTrigger> | null,
+  ): void;
+}
+
+/** An attachment upload that has not finished yet. */
+export interface ExperimentalComposerPendingUpload {
+  id: string;
+  file: File;
+}
+
+/** The draft's attachments and bb's upload pipeline for them. */
+export interface ExperimentalComposerAttachments {
+  items?: readonly ComposerAttachment[];
+  pendingUploads?: readonly ExperimentalComposerPendingUpload[];
+  isAttaching?: boolean;
+  error?: string | null;
+  /** Upload files and add them to the draft; resolves with the added attachments. */
+  onAttachFiles?(files: File[]): Promise<readonly ComposerAttachment[]>;
+  onUpdate?(
+    update: (
+      attachments: readonly ComposerAttachment[],
+    ) => readonly ComposerAttachment[],
+  ): void;
+  projectId?: string;
+}
+
+/** Up-arrow prompt history for the composer. */
+export interface ExperimentalComposerHistory {
+  currentDraft: ComposerDraftSnapshot;
+  entries: readonly ComposerDraftSnapshot[];
+  onSelectEntry(draft: ComposerDraftSnapshot): void;
+  resetKey?: string | number;
+}
+
+export type ExperimentalVoiceDelivery = "insert" | "send";
+
+/** A voice recording whose transcription failed, kept for retry. */
+export interface ExperimentalFailedVoiceRecording {
+  id: string;
+  key: string;
+  file: File;
+  promptContext: string | undefined;
+  delivery: ExperimentalVoiceDelivery;
+  createdAt: number;
+  errorMessage: string | null;
+  retrying: boolean;
+}
+
+/** bb's voice input for the composer. */
+export interface ExperimentalComposerVoice {
+  state: "idle" | "recording" | "transcribing" | "error";
+  delivery: ExperimentalVoiceDelivery;
+  microphoneWarning: string | null;
+  isSupported: boolean;
+  /** Why voice input is unavailable, as a message safe to show; read it only while `isSupported` is false. */
+  unsupportedMessage: string;
+  stream: MediaStream | null;
+  failedRecordings: readonly ExperimentalFailedVoiceRecording[];
+  start(): void | Promise<void>;
+  stop(): void;
+  send(): void;
+  retry(recording: ExperimentalFailedVoiceRecording): void;
+  discard(recording: ExperimentalFailedVoiceRecording): void;
+  download(recording: ExperimentalFailedVoiceRecording): void;
+  cancel(): void;
+}
+
+/** A host shortcut prompt action in the composer's `+` menu. */
+export interface ExperimentalComposerPromptAction {
+  kind: "skills" | "plan" | "goal";
+  text: string;
+  /** The command the action puts at the start of the draft, if any. */
+  command?: {
+    trigger: ExperimentalComposerCommandTrigger;
+    name: string;
+    trailingText: string;
+  };
+}
+
+/**
+ * Everything the host passes to a composer box for one surface. Read and
+ * write the draft with `useComposer().draft` and `replace`, and submit with
+ * `useComposer().submit()`; inside a composer box they are bound to this box.
+ * The box decides where bb's controls (`executionControls`, `handoff`,
+ * `compactBeforeSend`) go, or whether to show them.
+ */
+export interface ExperimentalComposerInput {
+  id?: string;
+  /**
+   * Where the box sits: a thread's composer (including queued and sent
+   * message editors) or the New thread screen.
+   */
+  surface: "thread" | "new-thread";
+  onEscape?(): void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  /** bb's model, reasoning effort and mode controls for this composer. */
+  executionControls?: ReactNode;
+  /** The "Handoff to new thread" banner, while a handoff is active. */
+  handoff?: ReactNode;
+  /** bb's chip offering to compact the context before sending. */
+  compactBeforeSend?: ReactNode;
+  submission: ExperimentalComposerSubmission;
+  /** The editor's minimum height, from the space the host leaves above the box. */
+  minHeight?: number;
+  /** The most height the whole box may take; the editor scrolls inside it. */
+  maxHeight?: number;
+  /** Characters that open the @-mention menu; search with `experimental_useComposerMentionSearch`. */
+  mentionTriggers: readonly PluginMentionTrigger[];
+  /**
+   * Characters that open the command menu; search with
+   * `experimental_useComposerCommandSearch`. Never repeats a mention trigger:
+   * when a plugin mention provider claims `$`, `$` opens the mention menu.
+   */
+  commandTriggers: readonly ExperimentalComposerCommandTrigger[];
+  /**
+   * What clicking a pill for `mention` does, or null when it is not a link.
+   * An attachment mention opens the draft's attachment at that path, so an
+   * attachment tile can ask with `{ kind: "attachment", path, label }`.
+   */
+  resolveMentionLink(
+    mention: ExperimentalComposerMentionTarget,
+  ): (() => void) | null;
+  /** Whether menus fit above or below the box where the host placed it. */
+  mentionMenuPlacement: "top" | "bottom";
+  attachments?: ExperimentalComposerAttachments;
+  promptActions?: readonly ExperimentalComposerPromptAction[];
+  /** Collapse the box at the user's request; absent where it cannot collapse. */
+  onCollapse?(): void;
+  /**
+   * When to show the box's one-line compact form, with `placeholder`;
+   * absent, never. `"always"`: the host collapsed the box, on compact
+   * viewports or after `onCollapse`. `"narrow"`: only while the thread pane
+   * is short or its column narrow, which bb signals in CSS so it applies
+   * without a render; style that form under
+   * `@container follow-up-composer style(--follow-up-composer-container-compact: true)`.
+   * Report the form the box shows in `editor.state.layout`.
+   */
+  compact?: { when: "always" | "narrow"; placeholder: string };
+  history?: ExperimentalComposerHistory;
+  voice?: ExperimentalComposerVoice;
+}
+
+/** A composer's scope, layout, draft summary and run state. */
+export interface ExperimentalComposerView {
+  scope: PluginComposerScope;
+  layout: "expanded" | "compact" | "zen";
+  draft: { text: string; isEmpty: boolean; attachmentCount: number };
+  run: { isRunning: boolean; isSubmitting: boolean };
+}
+
+/** A contribution another plugin registered with `app.composer.customize`. */
+export interface ExperimentalComposerContribution {
+  /** Stable across renders; use it as the React key. */
+  key: string;
+  pluginId: string;
+  customizationId: string;
+  generation: number;
+}
+
+export interface ExperimentalComposerPlusMenuContribution extends ExperimentalComposerContribution {
+  item: ComposerPlusMenuItem;
+}
+
+export interface ExperimentalComposerSendMenuContribution extends ExperimentalComposerContribution {
+  item: ComposerSendMenuItem;
+}
+
+export interface ExperimentalComposerPopupContribution extends ExperimentalComposerContribution {
+  popup: ExperimentalComposerPopupRegistration;
+}
+
+/**
+ * Highlight rules to paint over the draft: bb's built-in highlights, other
+ * plugins' `richText.effects` and `useComposer().setTextEffect` effects, in
+ * paint order.
+ */
+export interface ExperimentalComposerDecorationSource {
+  id: string;
+  generation: string | number;
+  pluginId?: string;
+  effects: readonly NonNullable<ComposerRichTextSpec["effects"]>[number][];
+}
+
+/** Editor state a composer box reports so other plugins' `useComposer()` sees it. */
+export interface ExperimentalComposerEditorState {
+  layout: "expanded" | "compact";
+  isRunning: boolean;
+  isSubmitting: boolean;
+  isSubmittingBlocked: boolean;
+  submittingBlockedReason: string | null;
+  isAttaching: boolean;
+  attachmentError: string | null;
+}
+
+/**
+ * What only the composer's editor can do, handed to
+ * `experimental_ComposerRoot`: report its state, insert at its caret, take
+ * focus, accept a dropped thread, run other plugins' popups and take voice
+ * input. bb reaches the composer only through this.
+ */
+export interface ExperimentalComposerEditor {
+  state: ExperimentalComposerEditorState;
+  /** Mention ranges are relative to `value.text`. Return false without a caret. */
+  insertAtCursor(value: ComposerDraft, block: boolean): boolean;
+  /** Focus the editor, keeping its selection; false when it cannot take focus. */
+  focus(): boolean;
+  /** Focus the editor with the caret at the end of the draft. */
+  focusEnd(): void;
+  /** Whether a thread dragged from the sidebar can be dropped now. */
+  acceptsThreadDrop(): boolean;
+  /** Insert a dropped thread at the viewport point `x`, `y`. */
+  insertDroppedThread(
+    thread: ExperimentalDroppedThreadMention,
+    x: number,
+    y: number,
+  ): void;
+  openPopup(pluginId: string, popupId: string): boolean;
+  closePopup(pluginId: string): boolean;
+  isPopupOpen(): boolean;
+  /** How the composer takes bb's voice input; omit when it has none. */
+  voice?: ExperimentalComposerEditorVoice;
+}
+
+/** What a composer does with bb's voice input; recording and transcription stay bb's. */
+export interface ExperimentalComposerEditorVoice {
+  /** The draft before the caret, sent with a recording to help transcription; null when empty. */
+  textBeforeCursor(): string | null;
+  /** Put a finished transcript at the caret; with `"send"`, submit the draft after. */
+  deliverTranscript(text: string, delivery: ExperimentalVoiceDelivery): void;
+  /** Animate leaving voice mode; resolves when the composer is ready for the transcript. */
+  playCompletionTransition(): Promise<void>;
+}
+
+/** Props of `experimental_ComposerRoot`. */
+export interface ExperimentalComposerRootProps {
+  /** The composer's outermost element. */
+  rootRef: RefObject<HTMLElement | null>;
+  editor: ExperimentalComposerEditor;
+  /**
+   * The composer's @-mention and command menu, and whether it is open, so
+   * hosts that make room for it can measure it.
+   */
+  menuRef?: RefObject<HTMLElement | null>;
+  menuOpen?: boolean;
+}
+
+/** The thread a bb thread link names, before it is resolved. */
+export interface ExperimentalComposerThreadLinkTarget {
+  threadId: string;
+  projectId: string;
+}
+
+/** A thread a pasted bb thread link resolved to. */
+export interface ExperimentalComposerThreadLink extends ExperimentalComposerThreadLinkTarget {
+  label: string;
+}
+
+/** The thread an app drag dropped onto the composer. */
+export interface ExperimentalDroppedThreadMention {
+  threadId: string;
+  label: string;
+}
+
+/** A keyboard shortcut formatted for display. */
+export interface ExperimentalShortcutPresentation {
+  ariaKeyshortcuts: string;
+  label: string;
+}
+
+/** A bb message copied to the clipboard, read back on paste. */
+export interface ExperimentalMessageClipboardPayload {
+  text: string;
+  imageUrl: string;
+}
+
+/** bb thread links in the composer, from `experimental_useComposerRenderer().threadLinks`. */
+export interface ExperimentalComposerThreadLinks {
+  /**
+   * The thread `url` links to when it is a thread link of this bb, or null.
+   * `projectId` is the project the link names, or the personal project for
+   * a link without one; a thread outside that project is not this link.
+   */
+  parse(url: string): ExperimentalComposerThreadLinkTarget | null;
+  /** A linked thread from bb's caches, without a request. */
+  cached(threadId: string): ExperimentalComposerThreadLink | null;
+  /**
+   * Fetch linked threads in batches, calling `onBatch` as each batch lands
+   * so a deadline can keep the batches that finished. Threads that do not
+   * exist are left out. Resolves once every batch has settled.
+   */
+  resolve(
+    threadIds: readonly string[],
+    signal: AbortSignal,
+    onBatch: (threads: readonly ExperimentalComposerThreadLink[]) => void,
+  ): Promise<void>;
+}
+
+/** bb messages copied to the clipboard, from `experimental_useComposerRenderer().clipboard`. */
+export interface ExperimentalComposerClipboard {
+  /** Read a bb message copied as HTML, or null. */
+  readMessage(html: string): ExperimentalMessageClipboardPayload | null;
+  /** Fetch a copied bb message's image as a file; rejects when it is unavailable. */
+  readMessageImage(imageUrl: string, signal: AbortSignal): Promise<File>;
+}
+
+/**
+ * Inputs, host state and host services for one composer box. Only available
+ * inside an `experimental_composer` component; it throws elsewhere.
+ */
+export interface ExperimentalComposerRendererApi {
+  readonly input: ExperimentalComposerInput;
+  /** The composer this box draws: scope, layout, draft and run state. */
+  readonly view: ExperimentalComposerView;
+  /** Stable identity of this composer's draft (`useComposer().key`). */
+  readonly key: string;
+  /** A plugin locked editing through `useComposer().setInputLock(true)`. */
+  readonly inputLocked: boolean;
+  /** The shortcut of bb's "Focus composer" command, or null when unbound. */
+  readonly focusComposerShortcut: ExperimentalShortcutPresentation | null;
+  /**
+   * Every highlight rule to paint over the draft, in paint order. The host
+   * runs other plugins' draft observers itself.
+   */
+  readonly decorationSources: readonly ExperimentalComposerDecorationSource[];
+  readonly threadLinks: ExperimentalComposerThreadLinks;
+  readonly clipboard: ExperimentalComposerClipboard;
+  /**
+   * Run bb's app keyboard command for `event`, if any; returns whether one
+   * ran. Call it from the editor's key handler before handling the key
+   * itself, skipping IME composition: editors swallow keys before bb's
+   * window-level shortcuts see them.
+   */
+  dispatchAppCommandKey(event: KeyboardEvent): boolean;
+  /** Show an error toast. */
+  showError(message: string): void;
+  /**
+   * Image URL for an attachment: the local preview while it is still
+   * uploading, else the uploaded file, resolved through the project when
+   * given. bb releases local previews when attachments leave the draft.
+   */
+  attachmentSrc(path: string, projectId?: string): string;
+}
+
+/**
+ * Other plugins' contributions to this composer, from
+ * `experimental_useComposerContributions()`, with a host renderer for each
+ * kind. Surfaces that hide plugin customizations return no popups, send
+ * menu items or actions.
+ */
+export interface ExperimentalComposerContributions {
+  /** Popups other plugins open with `useComposer().openPopup`; render the open one with `Popup`. */
+  readonly popups: readonly ExperimentalComposerPopupContribution[];
+  /** Render each with `MenuEntry` and `kind: "plus"`. */
+  readonly plusMenuItems: readonly ExperimentalComposerPlusMenuContribution[];
+  /** Render each with `MenuEntry` and `kind: "send"`. */
+  readonly sendMenuItems: readonly ExperimentalComposerSendMenuContribution[];
+  /** Other plugins' inline actions, for the composer's action row. */
+  readonly Actions: ComponentType;
+  readonly Popup: ComponentType<ExperimentalComposerPopupProps>;
+  readonly MenuEntry: ComponentType<ExperimentalComposerMenuEntryProps>;
+}
+
+/** Props of `ExperimentalComposerContributions.Popup`. */
+export interface ExperimentalComposerPopupProps {
+  contribution: ExperimentalComposerPopupContribution;
+  onClose(): void;
+}
+
+/** What a selected `+` or send menu entry hands back to the menu. */
+export interface ExperimentalComposerMenuSelection {
+  restoreComposerFocus(): void;
+  selectedElement: Element | null;
+}
+
+/** Props of `ExperimentalComposerContributions.MenuEntry`. */
+export type ExperimentalComposerMenuEntryProps =
+  | {
+      kind: "plus";
+      contribution: ExperimentalComposerPlusMenuContribution;
+      onSelected?(selection: ExperimentalComposerMenuSelection): void;
+    }
+  | {
+      kind: "send";
+      contribution: ExperimentalComposerSendMenuContribution;
+      onSelected?(selection: ExperimentalComposerMenuSelection): void;
+    };
+
+/** Props of `experimental_VoiceInputButton`: bb's button with a microphone warning tooltip. */
+export interface ExperimentalVoiceInputButtonProps extends ComponentPropsWithRef<"button"> {
+  warning: string | null;
+  variant?:
+    | "default"
+    | "destructive"
+    | "outline"
+    | "secondary"
+    | "ghost"
+    | "link";
+  size?: "default" | "sm" | "lg" | "icon";
+  "data-promptbox-expanded-only"?: string;
+  "data-promptbox-submit-action"?: string;
+}
+
+/** Props of `experimental_VoiceRecordingBar`. */
+export interface ExperimentalVoiceRecordingBarProps {
+  isCompact: boolean;
+  state: "recording" | "transcribing";
+  delivery: ExperimentalVoiceDelivery;
+  stream: MediaStream | null;
+  microphoneWarning: string | null;
+  submitIcon: BbIconName;
+  onConfirm(): void;
+  onSend(): void;
+  onCancel(): void;
+}
+
+/** Props of `experimental_FailedVoiceRecordings`. */
+export interface ExperimentalFailedVoiceRecordingsProps {
+  recordings: readonly ExperimentalFailedVoiceRecording[];
+  className: string;
+  retryDisabled: boolean;
+  onRetry(recording: ExperimentalFailedVoiceRecording): void;
+  onDownload(recording: ExperimentalFailedVoiceRecording): void;
+  onDiscard(recording: ExperimentalFailedVoiceRecording): void;
+}
+
+/** Props of `experimental_ShortcutHint`. */
+export interface ExperimentalShortcutHintProps {
+  shortcut: ExperimentalShortcutPresentation | null;
+  className?: string;
+}
+
+/** Props of `experimental_ImageLightbox`. */
+export interface ExperimentalImageLightboxProps {
+  hasMultipleImages?: boolean;
+  previousDisabled?: boolean;
+  nextDisabled?: boolean;
+  navigationStatus?: string;
+  mediaType?: "image" | "video";
+  imageAlt: string;
+  imageSrc: string | null;
+  isOpen?: boolean;
+  onClose(): void;
+  onNext?(): void;
+  onPrevious?(): void;
+  title: string;
+}
+
+/** How bb draws an @-mention pill, from `experimental_describePromptMention`. */
+export interface ExperimentalPromptMentionPresentation {
+  /** bb's pill classes; add your own after them. */
+  className: string;
+  /** The pill's tooltip, such as `src/app.ts` or `/review <files>`. */
+  title: string;
+  /** The pill as text, naming its kind: `Thread: Fix login`. */
+  text: string;
+}
+
+/** A pill read back from pasted HTML by `experimental_readPromptMentionClipboard`. */
+export interface ExperimentalPromptMentionClipboardPill {
+  mention: ExperimentalComposerMentionTarget;
+  /** The draft text the pill covers, such as `@src/app.ts`. */
+  text: string;
+}
+
+/** Props of `experimental_PromptMentionIcon`. */
+export interface ExperimentalPromptMentionIconProps {
+  mention: ExperimentalComposerMentionTarget;
+  className?: string;
+}
+
+/** Props of `experimental_PluginIcon`: a plugin's branding icon. */
+export interface ExperimentalPluginIconProps {
+  pluginId: string;
+  icon: string | null;
+  className?: string;
+}
+
+/** Props of `experimental_ThreadTitleText`: a raw thread title with its @-mentions resolved. */
+export interface ExperimentalThreadTitleTextProps {
+  title: string;
+  className?: string;
+}
+
+/**
  * Register a leaf message directive rendered inside assistant (and nested
  * agent) message Markdown. `id` is the directive name: `inline-vis` matches
  * `::inline-vis{file="demo.html"}`.
@@ -2747,6 +3415,12 @@ export interface PluginAppSlots {
    * docs/api_to_audit.md.
    */
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
+  /**
+   * Replace the input box of bb's thread composer (see
+   * {@link ExperimentalComposerRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_composer(registration: ExperimentalComposerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   /**
    * Render fenced code blocks of chosen languages in assistant messages (see
@@ -3182,6 +3856,13 @@ export type ComposerInsertPart =
   | string
   | ComposerMention
   | PluginComposerMention;
+
+/** What an @-mention pill points at: a {@link ComposerMention} without its place in the text. */
+export type ExperimentalComposerMentionTarget = ComposerMention extends infer M
+  ? M extends ComposerMention
+    ? Omit<M, "from" | "to">
+    : never
+  : never;
 
 /** Where `insert` puts its content. */
 export interface ComposerInsertOptions {
@@ -4645,6 +5326,81 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_InfoListRow: ComponentType<ExperimentalInfoListRowProps>;
+  /**
+   * Host-owned inputs and actions for an `experimental_composer` replacement
+   * (see {@link ExperimentalComposerRendererApi}). Throws outside an
+   * `experimental_composer` component. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useComposerRenderer(): ExperimentalComposerRendererApi;
+  /**
+   * A raw thread title with its @-mentions replaced by the threads' current
+   * titles. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadTitleDisplayText(title: string): string;
+  /**
+   * Other plugins' popups, `+` and send menu items and inline actions for
+   * this composer, with their host renderers. Throws outside an
+   * `experimental_composer` component. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useComposerContributions(): ExperimentalComposerContributions;
+  /**
+   * Search bb's @-mention sources for this composer: files, threads,
+   * projects, sections and plugin mention providers. Report the open menu's
+   * query with `search()`; the results are for the last query reported, and a
+   * composer has one mention search. Throws outside an
+   * `experimental_composer` component. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useComposerMentionSearch(): ExperimentalComposerMentionSearch;
+  /**
+   * Search the slash commands and skills for this composer's provider.
+   * Report the open menu's query with `search()`; the results are for the
+   * last query reported, and a composer has one command search. Throws
+   * outside an `experimental_composer` component. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useComposerCommandSearch(): ExperimentalComposerCommandSearch;
+  /**
+   * Connect a composer to bb: render it inside the composer's root element.
+   * It publishes `editor` to other plugins' `useComposer()`, routes bb's and
+   * other plugins' composer commands to keys inside `rootRef`, and makes the
+   * root the target of pane focus and thread drops. Renders no DOM.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ComposerRoot: ComponentType<ExperimentalComposerRootProps>;
+  /** Composer host components; see docs/api_to_audit.md. */
+  experimental_VoiceInputButton: ComponentType<ExperimentalVoiceInputButtonProps>;
+  experimental_VoiceRecordingBar: ComponentType<ExperimentalVoiceRecordingBarProps>;
+  experimental_FailedVoiceRecordings: ComponentType<ExperimentalFailedVoiceRecordingsProps>;
+  experimental_ShortcutHint: ComponentType<ExperimentalShortcutHintProps>;
+  experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
+  experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
+  /**
+   * The classes, tooltip and text bb gives a pill for `mention`, so pills look
+   * the same in a composer and in bb's messages. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_describePromptMention(
+    mention: ExperimentalComposerMentionTarget,
+  ): ExperimentalPromptMentionPresentation;
+  /**
+   * Attributes to spread onto a pill element so that copying it and pasting
+   * into any bb composer recreates the pill; `text` is the draft text the pill
+   * covers. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_promptMentionClipboardAttributes(
+    mention: ExperimentalComposerMentionTarget,
+    text: string,
+  ): Readonly<Record<string, string>>;
+  /**
+   * The pill a pasted element stands for, when it was copied from a bb
+   * composer or message; null for any other element. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_readPromptMentionClipboard(
+    element: Element,
+  ): ExperimentalPromptMentionClipboardPill | null;
+  experimental_PluginIcon: ComponentType<ExperimentalPluginIconProps>;
+  experimental_ThreadTitleText: ComponentType<ExperimentalThreadTitleTextProps>;
   /** @internal Superseded by `useComposer()`; kept for plugins built against older SDKs. */
   useComposerView(): ComposerView;
 }

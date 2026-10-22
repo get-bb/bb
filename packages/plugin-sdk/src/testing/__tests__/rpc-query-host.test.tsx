@@ -24,7 +24,10 @@ import {
 } from "../../rpc-contract.js";
 import { renderSlot } from "../app.js";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 it("updates selected load state without rendering unchanged rows again", async () => {
   const rendered = vi.fn();
@@ -218,9 +221,12 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
     expect(slot.getByText("two:2/2")).toBeTruthy();
     await slot.experimental_invalidateRpc(["row:a"]);
     expect(slot.getByText("one:2/2")).toBeTruthy();
+    if (outcome === "read-failure") vi.useFakeTimers();
     await act(async () => {
       release();
+      if (outcome === "read-failure") await vi.advanceTimersByTimeAsync(10_000);
     });
+    vi.useRealTimers();
     if (outcome === "success") {
       await slot.findByText("acknowledged:idle:0");
       expect(slot.getByText("one:2/2")).toBeTruthy();
@@ -311,12 +317,17 @@ it(
         issues: [{ path: ["id"], message: "Missing" }],
       });
     };
+    vi.useFakeTimers();
     const slot = renderSlot(
       { component: Probe },
       {},
       { rpc: { detail: refuse, rows: refuse } },
     );
     fireEvent.click(slot.getByText("Read"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    vi.useRealTimers();
     for (const index of [0, 1, 2]) {
       await slot.findByText(
         `${index}:not_found:Gone:Missing:id`,

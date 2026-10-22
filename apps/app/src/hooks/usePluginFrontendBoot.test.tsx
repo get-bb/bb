@@ -24,6 +24,7 @@ vi.mock("@/lib/split-prefetch", () => ({
 
 vi.mock("@/lib/plugin-frontend-lazy", () => ({
   bootPluginFrontends: mocks.bootPluginFrontends,
+  whenPriorityPluginFrontendsLoaded: () => new Promise(() => {}),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({

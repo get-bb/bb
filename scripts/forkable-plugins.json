@@ -7,6 +7,7 @@
     "plugins/automations",
     "plugins/bb-guide",
     "plugins/browser-automation",
+    "plugins/composer",
     "plugins/concurrency-limit",
     "plugins/custom-instructions",
     "plugins/docs",

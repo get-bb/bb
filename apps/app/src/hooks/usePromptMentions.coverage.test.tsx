@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -108,14 +108,20 @@ function setup(
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClients.push(queryClient);
   queryClient.setQueryData(sidebarNavigationQueryKey(), initial);
-  const hook = renderHook(() => usePromptMentions("proj_picker", options), {
-    wrapper,
-  });
+  const initialProps: { query: string | null } = { query: null };
+  const hook = renderHook(
+    ({ query }: { query: string | null }) =>
+      usePromptMentions(
+        { projectId: "proj_picker", ...options },
+        query === null ? null : { text: query, trigger: "@" },
+      ),
+    { wrapper, initialProps },
+  );
   return {
     ...hook,
     requests,
     search(query: string) {
-      act(() => hook.result.current.setQuery(query, "@"));
+      hook.rerender({ query });
     },
   };
 }

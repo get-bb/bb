@@ -5,6 +5,7 @@ summary: Command reference for the bb app theme, server-backed settings, keyboar
 intent: Explain the CLI theme surface, server-backed app settings, and the remaining app-wide customization commands.
 editingNotes: Keep flags accurate against the CLI implementation. Theme details live in the bb-cli skill's references/theming.md. Bundled plugins document their settings in the plugins chapter and their skills, not here.
 ---
+
 Customization commands
 
 Bundled plugins such as Keep Awake, Concurrency limit, Thread list, and Push
@@ -19,18 +20,18 @@ Custom themes live on
 disk, one folder per theme, at <bb-data-dir>/theme/<name>/theme.css (the packaged
 app uses ~/.bb/theme/…). The folder name is the theme id.
 
-  bb theme list                  Built-in and custom themes; shows the active one
-  bb theme dir                   Print the custom-theme directory (where to author)
-  bb theme set <id> [--favicon-color <color>]
-                                 Activate a theme (built-ins: default, nord,
-                                 dracula, solarized, gruvbox, catppuccin),
-                                 preserving the favicon color unless the flag
-                                 supplies the complete selection
-  bb theme show [id] [--css]     Print the active palette, or resolve <id> without
-                                 activating it; --css dumps the CSS
-  bb theme reset                 Back to the default theme; preserve favicon color
-  bb theme favicon set <color>   Set favicon color; preserve the active theme
-  bb theme favicon reset         Reset favicon color; preserve the active theme
+bb theme list Built-in and custom themes; shows the active one
+bb theme dir Print the custom-theme directory (where to author)
+bb theme set <id> [--favicon-color <color>]
+Activate a theme (built-ins: default, nord,
+dracula, solarized, gruvbox, catppuccin),
+preserving the favicon color unless the flag
+supplies the complete selection
+bb theme show [id] [--css] Print the active palette, or resolve <id> without
+activating it; --css dumps the CSS
+bb theme reset Back to the default theme; preserve favicon color
+bb theme favicon set <color> Set favicon color; preserve the active theme
+bb theme favicon reset Reset favicon color; preserve the active theme
 
 To author a custom theme, run `bb theme dir`, write <that-dir>/<name>/theme.css,
 then `bb theme set <name>`. A name has at most 64 characters, starts with a
@@ -57,18 +58,18 @@ Server-backed settings
 
 Settings stored server-side apply to every window and survive restarts.
 
-  bb settings show
-  bb settings ai-services
-  bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
-  bb settings ai-services test <thread-title|commit-message>
-  bb settings general <key> <value>
-  bb settings replay-onboarding
-  bb settings completed-turns [provider-id] [collapse|flat|default]
-  bb settings experiment <key> <value>
-  bb settings usage [--machine <id-or-name>] [--refresh]
-  bb settings cli-command [install|remove]
-  bb settings version [--force]
-  bb settings reload              Reload bb-managed configuration
+bb settings show
+bb settings ai-services
+bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
+bb settings ai-services test <thread-title|commit-message>
+bb settings general <key> <value>
+bb settings replay-onboarding
+bb settings completed-turns [provider-id] [collapse|flat|default]
+bb settings experiment <key> <value>
+bb settings usage [--machine <id-or-name>] [--refresh]
+bb settings cli-command [install|remove]
+bb settings version [--force]
+bb settings reload Reload bb-managed configuration
 
 AI services: `bb settings ai-services` shows which AI service writes thread
 titles (and so branch names), commit messages, and voice transcripts, plus
@@ -213,10 +214,10 @@ accelerators. Reset removes an override and returns to bb's current default;
 `disabled` explicitly unbinds a command. `Mod` means Command on macOS and
 Control on Windows/Linux. The complete default table is in docs/configuration.md.
 
-  bb settings keyboard list
-  bb settings keyboard hints <true|false>
-  bb settings keyboard set <command> <shortcut|disabled> [--platform mac|windows|linux]
-  bb settings keyboard reset [command] [--platform mac|windows|linux]
+bb settings keyboard list
+bb settings keyboard hints <true|false>
+bb settings keyboard set <command> <shortcut|disabled> [--platform mac|windows|linux]
+bb settings keyboard reset [command] [--platform mac|windows|linux]
 
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
@@ -251,10 +252,10 @@ Sidebar preferences
 every window, device, and the CLI. The same registry stores which thread Info
 panel sections are collapsed (`infoPanel.collapsedSections`).
 
-  bb settings ui list [--json]
-  bb settings ui get <key> [--json]
-  bb settings ui set <key> <value> [--json]
-  bb settings ui reset <key> [--json]
+bb settings ui list [--json]
+bb settings ui get <key> [--json]
+bb settings ui set <key> <value> [--json]
+bb settings ui reset <key> [--json]
 
 `list` prints every key with its value, revision, and a short description.
 `set` takes plain strings for enum and provider keys and JSON for lists and
@@ -271,6 +272,12 @@ reset to restore Automatic. The bundled Thread list plugin keeps its own
 layout (organization mode, sort, grouping, hidden and collapsed groups) and
 copies the legacy `sidebar.*` layout keys from here only once; change its
 layout with `bb thread-list prefs` (see `bb guide plugins`).
+
+The composer's input box is drawn by `composer.provider`, which defaults to
+`__automatic__`: the first composer plugin you installed, or the bundled
+Composer plugin (`bb--composer/composer`) when there is none. Pick one with
+`bb settings ui set composer.provider <plugin-id>/<slot-id>`, or reset to
+restore Automatic. With no composer plugin enabled, no composer is shown.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
@@ -294,8 +301,8 @@ the thread list), another navigation plugin as `<plugin-id>/<slot-id>`, or
 `__automatic__` (the default: the first navigation from another plugin, else
 `navigation/rail`). Pick one in Settings → Appearance → Navigation, or:
 
-  bb settings ui set sidebar.navigationProvider navigation/top-list
-  bb settings ui reset sidebar.navigationProvider
+bb settings ui set sidebar.navigationProvider navigation/top-list
+bb settings ui reset sidebar.navigationProvider
 
 The top list puts the visible destinations, New thread among them, and More
 above the thread list, moves Settings into the footer, and adds a Back to app
@@ -312,8 +319,8 @@ string lists of `builtin:settings` (top list only), `builtin:mobile`,
 `plugin:<encoded pluginId>/<encoded registrationId>`. They survive plugin
 reloads and temporarily unavailable plugins; new items are visible by default.
 
-  bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'
-  bb settings ui reset sidebar.hiddenFooterItems
+bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'
+bb settings ui reset sidebar.hiddenFooterItems
 
 In the app, the sidebar footer's More menu holds hidden actions and actions
 that don't fit; Settings → Appearance → Sidebar footer, or right-clicking an
@@ -328,9 +335,9 @@ Sidebar width and open state are per window and stay local to the browser.
 
 Host files and voice transcription
 
-  bb file read|write|list|paths|mkdir|move|remove ...
-  bb voice transcribe <audio-file> [--type <mime>] [--prompt <context>]
-                                   --type defaults to audio/webm
+bb file read|write|list|paths|mkdir|move|remove ...
+bb voice transcribe <audio-file> [--type <mime>] [--prompt <context>]
+--type defaults to audio/webm
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file write`

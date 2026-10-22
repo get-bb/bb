@@ -7,6 +7,7 @@
    overlay, icon sizing — get purged from the app's CSS. */
 @source "../../../../../packages/shared-ui/src";
 @source "../../../../../plugins/thread-list/app";
+@source "../../../../../plugins/composer/src";
 
 @custom-variant dark (&:is(.dark *));
 

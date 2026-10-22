@@ -4,15 +4,11 @@ import {
   isRawThreadId,
   PERSONAL_PROJECT_ID,
 } from "@bb/domain";
+import type { ExperimentalComposerThreadLinkTarget } from "@get-bb/plugin-sdk";
 import {
   THREAD_MENTION_RESOLVE_MAX_IDS,
   type ResolveThreadMentionsResponse,
 } from "@bb/server-contract";
-
-export interface ThreadLinkTarget {
-  threadId: string;
-  projectId: string;
-}
 
 const threadPathPattern = new RegExp(
   `^/(?:projects/(proj_[${GENERATED_ID_ALPHABET}]{${GENERATED_ID_SUFFIX_LENGTH}})/)?threads/([^/]+)/?$`,
@@ -22,7 +18,7 @@ const threadPathPattern = new RegExp(
 export function parseThreadLink(
   url: string,
   origin: string,
-): ThreadLinkTarget | null {
+): ExperimentalComposerThreadLinkTarget | null {
   const parts = /^https?:\/\/([^/]+)(\/[^?#]*)$/iu.exec(url);
   if (parts === null || /[@\\]/u.test(parts[1]!)) return null;
   const path = threadPathPattern.exec(parts[2]!);

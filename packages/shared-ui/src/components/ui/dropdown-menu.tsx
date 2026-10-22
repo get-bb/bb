@@ -34,12 +34,35 @@ const MENU_ITEM_DESTRUCTIVE_STATE_CLASS =
 const MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS =
   "text-destructive focus:bg-destructive/15 focus:text-destructive active:bg-destructive/20 active:text-destructive";
 
-const ResponsiveMenuContext =
-  React.createContext<ResponsiveOverlayContextValue>({
+const RESPONSIVE_MENU_CONTEXT_KEY = Symbol.for("bb.responsive-menu-context.v1");
+
+function isReactContext(
+  value: unknown,
+): value is React.Context<ResponsiveOverlayContextValue> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "Provider" in value &&
+    "Consumer" in value
+  );
+}
+
+function sharedResponsiveMenuContext(): React.Context<ResponsiveOverlayContextValue> {
+  const existing: unknown = Reflect.get(
+    globalThis,
+    RESPONSIVE_MENU_CONTEXT_KEY,
+  );
+  if (isReactContext(existing)) return existing;
+  const context = React.createContext<ResponsiveOverlayContextValue>({
     isCompactViewport: false,
     open: false,
     onOpenChange: () => {},
   });
+  Reflect.set(globalThis, RESPONSIVE_MENU_CONTEXT_KEY, context);
+  return context;
+}
+
+const ResponsiveMenuContext = sharedResponsiveMenuContext();
 
 function useResponsiveMenu() {
   return React.useContext(ResponsiveMenuContext);

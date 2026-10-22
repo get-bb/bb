@@ -40,6 +40,7 @@ export function makePluginRegistrationSet(
     fileOpeners: [],
     sourceCodeRenderers: [],
     diffRenderers: [],
+    composers: [],
     messageDirectives: [],
     codeFenceRenderers: [],
     messageActions: [],

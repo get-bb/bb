@@ -225,6 +225,11 @@ export const BUILTIN_PLUGINS = [
     pluginId: "workflows",
     defaultEnabled: false,
   },
+  {
+    name: "composer",
+    pluginId: "bb--composer",
+    defaultEnabled: true,
+  },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: true,

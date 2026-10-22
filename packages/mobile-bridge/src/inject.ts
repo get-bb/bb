@@ -69,7 +69,7 @@ export function buildBridgeInjectionScript(
       __installed: true,
       __beginImagePaste: function (id, url) {
         var target = document.activeElement;
-        if (!target || !target.isContentEditable || !target.closest("[data-promptbox]")) return false;
+        if (!target || !target.isContentEditable || !target.closest("[data-composer-box], [data-promptbox]")) return false;
         var controller = new AbortController();
         var timer = setTimeout(function () { discardImagePaste(id); }, 30000);
         imagePastes[id] = { target: target, timer: timer, href: window.location.href, controller: controller };

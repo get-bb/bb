@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 
 import { Suspense, useState } from "react";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderWithoutHost,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { VideoThumbnail } from "@bb/shared-ui/video-thumbnail";
-import { AttachmentPreview } from "../promptbox/AttachmentPreview";
+import { loadAttachmentPreview } from "@/test/fixtures/composer-plugin-modules";
+import { ComposerRendererTestHost } from "@/test/fixtures/composer-renderer";
 import {
   clearLocalAttachmentPreviews,
   registerLocalAttachmentPreview,
@@ -13,6 +19,22 @@ import {
   buildAttachmentItems,
   ConversationAttachments,
 } from "../thread/timeline/ConversationAttachments";
+
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
+vi.mock("@/hooks/useCommandSuggestions", async () =>
+  (
+    await import("@/test/fixtures/composer-search")
+  ).fakeCommandSuggestionsModule(),
+);
+
+const AttachmentPreview = await loadAttachmentPreview();
+
+const render = (
+  ui: Parameters<typeof renderWithoutHost>[0],
+  options?: Parameters<typeof renderWithoutHost>[1],
+) => renderWithoutHost(ui, { wrapper: ComposerRendererTestHost, ...options });
 
 const videoPath = "uploads/Screen Recording.MOV";
 

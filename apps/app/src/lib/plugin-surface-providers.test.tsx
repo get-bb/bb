@@ -26,11 +26,16 @@ afterEach(() => {
 });
 
 describe("expectedSurfaceProviderIds", () => {
-  it("expects bb's own thread list and navigation before anything is remembered", () => {
-    expect(expectedSurfaceProviderIds()).toEqual(["thread-list", "navigation"]);
+  it("expects bb's own composer, thread list and navigation before anything is remembered", () => {
+    expect(expectedSurfaceProviderIds()).toEqual([
+      "bb--composer",
+      "thread-list",
+      "navigation",
+    ]);
   });
 
   it("lists each remembered provider once in place of the default", () => {
+    renderProvider("composer", "lists");
     renderProvider("thread-list", "lists");
     renderProvider("sidebar-navigation", "lists");
 
@@ -43,11 +48,15 @@ describe("expectedSurfaceProviderIds", () => {
 
     renderProvider("thread-list", null);
     expect(expectedSurfaceProviderIds()).toEqual([
+      "bb--composer",
       "my-thread-list",
       "navigation",
     ]);
 
     act(() => markPluginFrontendsSettled());
-    expect(expectedSurfaceProviderIds()).toEqual(["navigation"]);
+    expect(expectedSurfaceProviderIds()).toEqual([
+      "bb--composer",
+      "navigation",
+    ]);
   });
 });

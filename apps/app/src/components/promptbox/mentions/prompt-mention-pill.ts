@@ -45,11 +45,13 @@ export function describePromptMention(
 export function promptMentionClipboardAttributes(
   mention: ComposerMentionTargetShape,
   text: string,
-) {
-  return promptMentionClipboardDataAttributes({
-    resource: composerMentionResource(mention),
-    serializedText: text,
-  });
+): Readonly<Record<string, string>> {
+  return {
+    ...promptMentionClipboardDataAttributes({
+      resource: composerMentionResource(mention),
+      serializedText: text,
+    }),
+  };
 }
 
 export function readPromptMentionClipboard(

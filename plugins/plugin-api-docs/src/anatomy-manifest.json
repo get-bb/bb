@@ -39,7 +39,7 @@
       "fixtureClassAnchors": ["bottom-full", "bg-popover"],
       "sources": [
         {
-          "path": "apps/app/src/components/promptbox/ComposerPopupHost.tsx",
+          "path": "plugins/composer/src/ComposerPopupHost.tsx",
           "anchors": [
             "data-promptbox-typeahead-menu",
             "bottom-full mb-2",

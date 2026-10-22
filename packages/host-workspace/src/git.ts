@@ -592,6 +592,62 @@ async function findWorkspaceGitOperationMarker(
 
 export type GitRepoKind = "work-tree" | "bare" | "none";
 
+export async function inspectGitRepository(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<{ isGitRepo: boolean; isWorktree: boolean }> {
+  const result = await runGit(
+    [
+      "rev-parse",
+      "--is-inside-work-tree",
+      "--is-bare-repository",
+      "--git-dir",
+      "--git-common-dir",
+    ],
+    { cwd, ...options, allowFailure: true },
+  );
+  if (result.exitCode !== 0) return { isGitRepo: false, isWorktree: false };
+  const [insideWorkTree, bare, ...directoryLines] = result.stdout
+    .replace(/\n$/u, "")
+    .split("\n");
+  let gitDir: string | undefined = directoryLines[0];
+  let commonDir: string | undefined = directoryLines[1];
+  if (directoryLines.length > 2) {
+    gitDir = undefined;
+    commonDir = undefined;
+    for (let index = 1; index < directoryLines.length; index += 1) {
+      const candidateGitDir = directoryLines.slice(0, index).join("\n");
+      const candidateCommonDir = directoryLines.slice(index).join("\n");
+      const directoriesExist = await Promise.all([
+        pathExists(path.resolve(cwd, candidateGitDir)),
+        pathExists(path.resolve(cwd, candidateCommonDir)),
+      ]);
+      if (directoriesExist.every(Boolean)) {
+        gitDir = candidateGitDir;
+        commonDir = candidateCommonDir;
+        break;
+      }
+    }
+  }
+  if (
+    (insideWorkTree !== "true" && insideWorkTree !== "false") ||
+    (bare !== "true" && bare !== "false") ||
+    !gitDir ||
+    !commonDir
+  ) {
+    throw new WorkspaceError(
+      "git_command_failed",
+      "Invalid repository inspection output",
+    );
+  }
+  const isGitRepo = insideWorkTree === "true";
+  return {
+    isGitRepo,
+    isWorktree:
+      isGitRepo && path.resolve(cwd, gitDir) !== path.resolve(cwd, commonDir),
+  };
+}
+
 export async function detectGitRepoKind(
   cwd: string,
   options: GitTimeoutOptions = {},
@@ -1128,29 +1184,43 @@ export interface SharedGitRefsSnapshot {
 export async function readSharedGitRefsSnapshot(
   cwd: string,
   options: GitProcessOptions = {},
+  repositoryKnown = false,
 ): Promise<SharedGitRefsSnapshot> {
-  await ensureGitRepo(cwd, options);
-  const [refs, remoteHead] = await Promise.all([
-    runGit(
-      [
-        "for-each-ref",
-        "--format=%(refname)%00%(objectname)%00%(refname:short)",
-        "refs/heads",
-        "refs/remotes",
-      ],
-      { cwd, ...options },
-    ),
-    runGit(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], {
-      cwd,
-      ...options,
-      allowFailure: true,
-    }),
-  ]);
-  const refLines = refs.stdout.split("\n").filter((line) => line.length > 0);
-  const originHead = remoteHead.exitCode === 0 ? remoteHead.stdout.trim() : "";
-  const localBranches = refLines
-    .filter((line) => line.startsWith("refs/heads/"))
-    .map((line) => line.split("\0")[2] ?? "");
+  if (!repositoryKnown) await ensureGitRepo(cwd, options);
+  const refs = await runGit(
+    [
+      "for-each-ref",
+      "--format=%(refname)%00%(objectname)%00%(refname:short)%00%(symref)",
+      "refs/heads",
+      "refs/remotes",
+    ],
+    { cwd, ...options },
+  );
+  const refRecords = refs.stdout
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const [name = "", oid = "", shortName = "", symref = ""] =
+        line.split("\0");
+      return { name, oid, shortName, symref };
+    });
+  const listedOriginHead = refRecords.find(
+    (ref) => ref.name === "refs/remotes/origin/HEAD",
+  );
+  let originHead = listedOriginHead?.symref;
+  if (originHead === undefined) {
+    const remoteHead = await runGit(
+      ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
+      { cwd, ...options, allowFailure: true },
+    );
+    originHead = remoteHead.exitCode === 0 ? remoteHead.stdout.trim() : "";
+  }
+  const refLines = refRecords.map(
+    (ref) => `${ref.name}\0${ref.oid}\0${ref.shortName}`,
+  );
+  const localBranches = refRecords
+    .filter((ref) => ref.name.startsWith("refs/heads/"))
+    .map((ref) => ref.shortName);
   return {
     fingerprint: JSON.stringify({ refs: refLines, remoteHead: originHead }),
     defaultBranch:

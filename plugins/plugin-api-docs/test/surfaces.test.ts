@@ -42,8 +42,9 @@ describe("product-map surfaces", () => {
     expect(surfaceIds("command-palette")).toEqual(["command-palette-actions"]);
   });
 
-  it("reads composer annotations from the banner through the draft and action row", () => {
+  it("reads composer annotations from the box, then the banner through the draft and action row", () => {
     const ordered = [
+      "composer-replacement",
       "composer-banners",
       "composer-state",
       "mention-provider",

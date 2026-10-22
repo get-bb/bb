@@ -14,8 +14,7 @@ import type {
 } from "./workspace.js";
 import { Workspace } from "./workspace.js";
 import {
-  detectGitRepo,
-  detectLinkedWorktree,
+  inspectGitRepository,
   readDefaultBranch,
   WorkspaceError,
   type SharedGitRefsSnapshot,
@@ -92,7 +91,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     this.gitProcessOptions = {
       ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
     };
-    this.ws = new Workspace(opts.path, this.gitProcessOptions);
+    this.ws = new Workspace(opts.path, this.gitProcessOptions, opts.isGitRepo);
   }
 
   async getCurrentBranch(): Promise<string | null> {
@@ -170,14 +169,9 @@ async function provisionUnmanaged(
       `Unmanaged workspace path does not exist: ${opts.path}`,
     );
   }
-  const isGitRepo = await detectGitRepo(opts.path, {
+  const { isGitRepo, isWorktree } = await inspectGitRepository(opts.path, {
     ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
   });
-  const gitProcessOptions =
-    opts.shellPath === undefined ? {} : { shellPath: opts.shellPath };
-  const isWorktree = isGitRepo
-    ? await detectLinkedWorktree(opts.path, gitProcessOptions)
-    : false;
 
   return new ProvisionedHostWorkspace({
     path: opts.path,

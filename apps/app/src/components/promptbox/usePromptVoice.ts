@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { transcribeVoiceInput } from "@/lib/api";
 import type { VoiceDelivery } from "@/lib/voice-recording-store";
-import type { PromptBoxHandle, PromptVoiceConfig } from "./PromptBoxInternal";
+import type { PromptBoxHandle, PromptVoiceConfig } from "./ComposerBox";
 import {
   deliverPromptVoiceTranscript,
   type PromptVoiceDraftTarget,
@@ -45,12 +45,12 @@ export function usePromptVoice(
   );
 
   const getPromptContext = useCallback(
-    () => promptBoxRef.current?.voice.textBeforeCursor() ?? undefined,
+    () => promptBoxRef.current?.voice?.textBeforeCursor() ?? undefined,
     [promptBoxRef],
   );
 
   const playCompletionTransition = useCallback(
-    () => promptBoxRef.current?.voice.playCompletionTransition(),
+    () => promptBoxRef.current?.voice?.playCompletionTransition(),
     [promptBoxRef],
   );
 

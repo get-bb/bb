@@ -28,6 +28,125 @@ reload and crash recovery, scope suppression, and compact Safari
 keyboard/drawer behavior. Verify multiple popups in one customization and
 popup-id uniqueness across customizations.
 
+## `app.slots.experimental_composer`, `experimental_useComposerRenderer`, `experimental_ComposerRoot`, `experimental_useComposerContributions`, the composer search hooks, the prompt mention pill functions and the composer host components (`@get-bb/plugin-sdk/app`)
+
+`experimental_composer({ id, title, description?, component })` draws bb's
+composer input box everywhere bb shows a composer. It is exclusive, chosen by
+the synced `composer.provider` UI preference (Settings → Appearance →
+Composer), and with no composer plugin enabled no composer is shown. bb's own
+composer is the bundled `plugins/composer` plugin (`bb--composer`), built on
+this slot: core renders every composer through `ComposerBox`
+(`apps/app/src/components/promptbox/ComposerBox.tsx`), which resolves the
+slot and provides the hooks below.
+
+The composer reads and writes the draft through `useComposer()`, the same
+path other plugins use: inside the box it is bound to the box's host, and
+`submit()` runs the box's own Enter, queue or steer handler (the host picks
+it from `experimental_mode` exactly as the box's shortcuts do), so a plugin's
+submit steers a running thread exactly as Enter does. The host runs other plugins' draft observers and assembles every
+highlight rule into `decorationSources`.
+
+`experimental_useComposerRenderer()` carries `input` (the surface, submission,
+typeahead, attachments, history, voice, sizing and collapse state, and bb's
+execution controls, handoff banner and compact-before-send chip, named so the
+composer chooses where they go), the composer `view`, and host services
+(`threadLinks`, `clipboard`, `attachmentSrc`, app key dispatch, toasts).
+`input.submission.enter` and `.modifier` are the box's two actions, worked
+out by the host from the surface and the user's "Enter steers" setting: each
+says what it does now (`send`, `queue` or `steer`), whether it needs a
+draft, and its shortcut, and `run()` runs it. The box only gates and draws
+them; which key queues and which steers, and that an empty steer sends the
+next queued message, stay with the host. `input.resolveMentionLink` says what clicking a
+pill does, opening attachment mentions and tiles in bb's viewer; core's
+timeline, the thread view's attachment opener and the composer share that
+opener. `input.maxHeight` caps the box where the host has limited room (the
+compact New thread home), so the host no longer measures the composer's DOM. `experimental_ComposerRoot` takes the composer's
+root element and its editor and does the wiring core used to ask each
+composer for: it publishes the editor to `useComposer()`, routes bb's and
+other plugins' composer commands, and registers pane focus and thread drops.
+`experimental_useComposerContributions()` returns other plugins' popups, `+`
+and send menu items and inline actions with their host renderers, applying
+the surface's suppression. Host components cover the voice button, recording
+bar and failed recordings, shortcut hints, the image lightbox, mention and
+plugin icons and thread-title text.
+
+Docs: `frontend-renderer-slots.md`.
+
+`experimental_useComposerMentionSearch()` and
+`experimental_useComposerCommandSearch()` search bb's @-mention sources and
+the provider's commands for the composer's open menu, and both return ranked
+groups under their headings, so relevance and grouping stay with bb. The
+composer reports the menu's query with `search(query)` from the event that
+changed it. Each composer box runs its searches in its own memoized provider,
+which the surface configures with what to search (project, environment,
+provider, triggers): a keystroke in an open menu renders the provider and the
+composer once, and plain typing never runs the search. A query passed during
+render would have to reach the provider from an effect, a second render.
+Both report `refreshing` while earlier results show. The command search has
+no paging, since bb returns every match, and no prefetch call:
+`experimental_ComposerRoot` starts loading commands when focus enters the
+composer. A character is a mention trigger or a command trigger, never both;
+when a plugin mention provider claims `$`, `$` opens the mention menu.
+Every type in the contract is public: mentions, attachments and history use
+the `useComposer()` shapes, and suggestions carry the mention to insert plus
+per-kind display fields. bb's composer works in these types throughout. bb
+reaches a composer only through the editor it hands to
+`experimental_ComposerRoot`.
+
+`experimental_describePromptMention(mention)`,
+`experimental_promptMentionClipboardAttributes(mention, text)` and
+`experimental_readPromptMentionClipboard(element)` give a composer's pills
+bb's classes, tooltip and text and its copy format, so pills copied between
+any composer and bb's messages paste back as pills. The timeline's pills use
+the same implementation. `threadLinks.parse`, `.cached` and `.resolve` turn
+pasted bb thread links into thread pills; bb owns
+its route shapes, id format and lookup batching, and core's initial-draft
+mention resolution shares the batching.
+
+The bundled composer is on the forkable list (`scripts/forkable-plugins.json`):
+it imports only `@get-bb/plugin-sdk`, npm packages and registry UI, and
+`pnpm check:plugin-forks plugins/composer` builds a copy outside this
+repository.
+
+Decided and kept: collapse state (`compact`, `onCollapse`, `minHeight`,
+`maxHeight`, `mentionMenuPlacement`) is host state, because the controls outside the box
+collapse with it; the attachment, clipboard, toast and thread-link services
+stay composer-scoped until another caller needs them; voice keeps its config
+and host components; `+` menu items show on surfaces that hide other plugin
+customizations, as before the move; @-mentions of the draft's own
+attachments are the composer's, since it holds the draft, so bb's mention
+search returns none.
+
+`apps/app/src/components/promptbox/composer-contract.test.tsx` is the
+contract table: bb's composer and a minimal textarea composer
+(`apps/app/src/test/fixtures/minimal-composer.tsx`, public SDK only) each run
+on the thread composer, a running thread that steers on Enter, embedded
+thread chat, the queued and sent message editors and the New thread
+composer, mounted through the real surface components. It covers drafts,
+Enter, pane focus, thread drops, voice transcripts, other plugins' insert,
+submit and popups, and which surfaces stay out of `useComposers()`.
+`experimental_ComposerRoot` publishes stable functions that call the latest
+editor and republishes only when the editor's state changes, so a composer
+can build its editor inline on every render.
+
+Styling the composer needs lives in the plugin (`plugins/composer/src/composer.css`).
+bb keeps the pill surface its timeline shares and the highlight classes of
+its own decorations. bb's controls inside the box size their labels against
+bb's own `[data-composer-box]` wrapper, so a composer declares no CSS
+container. `input.compact` says when to show the one-line form: `"always"`
+when the host collapsed the box, `"narrow"` when bb's CSS container signal
+says the pane is short or the column narrow. The box reports the form it
+shows in `editor.state.layout`, which becomes `view.layout`; the host asks
+for the caret at the end with `editor.focusEnd()`, and measures the menu
+`experimental_ComposerRoot` is given on surfaces that make room for it, so
+the input carries no change counters or layout callbacks. bb releases
+local attachment previews when attachments leave the draft.
+
+Before stabilization:
+
+- a composer has one mention search and one command search; confirm no
+  composer needs two at once;
+
 ## Composer commands
 
 `PluginAppComposer.experimental_registerCommand({ id, title, defaultShortcut?, run })`

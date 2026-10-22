@@ -275,7 +275,7 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     expect(visiblePage()).toBe("Command palette");
     act(() => next.click());
     expect(visiblePage()).toBe("The composer");
-    expect(current().querySelectorAll("[data-guide-badge]")).toHaveLength(7);
+    expect(current().querySelectorAll("[data-guide-badge]")).toHaveLength(8);
     const navigation = container.querySelector(
       "[data-guide-page-list-scroll]",
     )!;

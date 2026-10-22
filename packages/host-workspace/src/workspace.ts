@@ -528,7 +528,11 @@ export class Workspace {
   readonly path: string;
   private readonly gitProcessOptions: GitProcessOptions;
 
-  constructor(path: string, gitProcessOptions: GitProcessOptions = {}) {
+  constructor(
+    path: string,
+    gitProcessOptions: GitProcessOptions = {},
+    private readonly gitRepositoryKnown = false,
+  ) {
     this.path = path;
     this.gitProcessOptions = { ...gitProcessOptions };
   }
@@ -748,10 +752,11 @@ export class Workspace {
   }
 
   async getLocalStateSnapshot(): Promise<LocalStateSnapshot> {
-    await ensureGitRepo(this.path, {
-      timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-      ...this.gitProcessOptions,
-    });
+    if (!this.gitRepositoryKnown)
+      await ensureGitRepo(this.path, {
+        timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+        ...this.gitProcessOptions,
+      });
     const status = await this.runGit(
       [
         "--no-optional-locks",
@@ -771,7 +776,11 @@ export class Workspace {
   }
 
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {
-    return readSharedGitRefsSnapshot(this.path, this.gitProcessOptions);
+    return readSharedGitRefsSnapshot(
+      this.path,
+      this.gitProcessOptions,
+      this.gitRepositoryKnown,
+    );
   }
 
   async getDiff(options: DiffOptions = {}): Promise<DiffResult> {

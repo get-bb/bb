@@ -2,11 +2,11 @@ import type {
   ComposerRichTextSpec,
   ComposerStructuredDraft,
   ComposerView,
+  ExperimentalComposerDecorationSource,
 } from "@get-bb/plugin-sdk";
 import type { PromptTextMention } from "@bb/domain";
 import { composerScopeIdentity } from "@/components/plugin/plugin-composer-host";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
-import type { PromptDecorationSource } from "./editor/prompt-decoration-extension";
 
 export const ULTRACODE_HIGHLIGHT_CLASS = "prompt-ultracode-highlight";
 
@@ -27,7 +27,7 @@ export function findUltracodeRanges(text: string): DecorationRange[] {
   return ranges;
 }
 
-const ULTRACODE_DECORATION_SOURCE: PromptDecorationSource = {
+const ULTRACODE_DECORATION_SOURCE: ExperimentalComposerDecorationSource = {
   id: "host:ultracode",
   generation: 0,
   effects: [
@@ -49,8 +49,10 @@ interface PluginDecorationContribution {
 export function composerDecorationSources(
   pluginEffects: readonly PluginDecorationContribution[],
   textEffects: readonly ComposerTextEffectSource[],
-): PromptDecorationSource[] {
-  const sources: PromptDecorationSource[] = [ULTRACODE_DECORATION_SOURCE];
+): ExperimentalComposerDecorationSource[] {
+  const sources: ExperimentalComposerDecorationSource[] = [
+    ULTRACODE_DECORATION_SOURCE,
+  ];
   for (const contribution of pluginEffects) {
     sources.push({
       id: `${contribution.pluginId}/${contribution.customizationId}`,

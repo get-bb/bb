@@ -1,3 +1,4 @@
+import "../../../.ladle/composer-plugin";
 import { useEffect, useState, type ComponentType } from "react";
 import type { PluginComposerScope } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
@@ -7,7 +8,7 @@ import {
   makeAttachmentsConfig,
   makeTypeaheadConfig,
 } from "../../../.ladle/story-fixtures";
-import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
+import { ComposerBox } from "@/components/promptbox/ComposerBox";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -85,7 +86,8 @@ function OverflowFixture() {
         />
       ))}
       <div className="w-full max-w-xl">
-        <PromptBoxInternal
+        <ComposerBox
+          surface="thread"
           value={value}
           mentionRanges={[]}
           onChange={(nextValue) => setValue(nextValue)}
@@ -147,7 +149,8 @@ export function NarrowUsageActions() {
           actions={variant === "wide" ? WIDE_ACTIONS : USAGE_ACTIONS}
         />
       ) : null}
-      <PromptBoxInternal
+      <ComposerBox
+        surface="thread"
         value={value}
         mentionRanges={[]}
         onChange={(nextValue) => setValue(nextValue)}

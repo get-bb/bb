@@ -250,6 +250,13 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.composers,
+      "composer",
+      "Can replace the thread composer; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadPanelActions,
       "thread-panel",
       "Adds an action that opens a panel beside a thread.",

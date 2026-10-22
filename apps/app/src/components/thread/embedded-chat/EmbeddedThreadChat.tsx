@@ -22,7 +22,7 @@ import { readExecutionSelection } from "@/components/promptbox/composer-selectio
 import type {
   AttachmentsConfig,
   HistoryConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+} from "@/components/promptbox/ComposerBox";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";

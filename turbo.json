@@ -972,6 +972,21 @@
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
+    "bb-plugin-bb--composer#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--composer#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
     "bb-plugin-composer-customization#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },

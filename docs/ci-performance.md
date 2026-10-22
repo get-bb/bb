@@ -42,14 +42,14 @@ An empty test matrix skips its runners before dependency installation. This
 reduces routine PR work; broad changes and cold builds do not have a guaranteed
 two-minute completion time.
 
-Before the matrix starts, dependency changes run a full frozen install with
+Alongside the matrix, dependency changes run a full frozen install with
 lifecycle scripts disabled. This catches missing lockfile snapshots as well as
 outdated manifest entries; `--lockfile-only --frozen-lockfile` does not catch
 missing snapshots. The check covers manifests, the lockfile, workspace and pnpm
 configuration, and patches. PRs compare with the resolved comparison base; pushes
 compare with the event's previous SHA. Manual runs and unavailable history always
 validate. Source-only changes skip the extra install. The install has a
-five-minute limit inside the planning job's ten-minute budget.
+five-minute limit inside the separate validation job's ten-minute budget.
 
 The plugin SDK version check in `version-lockstep.yml` checks out with
 `filter: blob:none`, keeping commit history without historical file contents. PR
@@ -341,3 +341,85 @@ jsdom itself, not by the tests. Two alternatives were rejected:
 Merging small files removes only the per-file environment cost. Reusing jsdom
 workers across files would remove it for every file, but reverses the rule that
 DOM tests run isolated.
+
+## React Compiler cache measurements
+
+App-building jobs preserve `.git/bb-cache/react-compiler` independently of
+Turbo task outputs. A changed app build can reuse content-addressed transforms
+for unchanged modules. The compiler validates source, configuration, toolchain,
+and environment identity and rebuilds corrupt entries. Cache restoration is
+optional and bounded to one minute.
+
+[Benchmark run 39842305719](https://github.com/get-bb/bb/actions/runs/39842305719)
+used the same source, Node 22, pnpm 9.15, and four-vCPU runners for three
+cold/warm pairs per platform, alternating order. Prerequisites were prepared
+once; every timed app build ran through Turbo with `--only --force` to prevent
+a task-output cache hit. Cold samples cleared compiler entries; warm samples
+restored them through Actions cache. All output files matched byte-for-byte
+within each platform: 1,751 on Linux and 1,752 on Windows.
+
+| Platform | Cold build seconds | Warm build seconds | Restore seconds | Cache save seconds |
+| --- | --- | --- | --- | --- |
+| Linux | 43.0, 36.0, 28.8 | 5.5, 5.6, 4.7 | 1, 1, 0 | 2 |
+| Windows | 39.6, 35.1, 40.7 | 6.3, 6.8, 7.0 | 2, 1, 2 | 2 |
+
+Charging each warm sample the measured cache-save cost gives median paired
+savings of 27 seconds on Linux and 29 seconds on Windows. These are app-rebuild
+measurements on one runner per platform, not total CI savings. They represent
+reuse of all compiler transforms; source or toolchain changes can reduce hits.
+A first build has no reuse, and a full Turbo build-cache hit already avoids
+compilation. Shard counts and selected coverage are unchanged by this fix.
+
+## Dependency validation measurements
+
+Frozen dependency validation runs as a separate `Validate dependencies` job
+alongside the matrix when dependency inputs change or the comparison is
+unavailable. Planning still determines affected checks, checks source integrity,
+and runs the provider-literal ratchet. The install command, frozen-lockfile
+requirement, and dependency-change detector are unchanged.
+
+[Benchmark run 39844281314](https://github.com/get-bb/bb/actions/runs/39844281314)
+ran three copies of each arrangement against identical source on four-vCPU
+Linux runners:
+
+| Replica | Serial planning and validation | Parallel planning | Earlier release |
+| --- | --- | --- | --- |
+| 1 | 39s | 13s | 26s |
+| 2 | 35s | 12s | 23s |
+| 3 | 40s | 13s | 27s |
+
+Every frozen install passed, including the three separate validation jobs
+(34–46 seconds each, including their setup). Median planning time fell from
+39 seconds to 13 seconds. These durations start when the job starts; they
+exclude runner queue time and do not establish an equal end-to-end CI saving.
+The separate job adds runner setup and can itself gate completion. Runs that
+already skip dependency validation do not gain this time.
+
+## Rejected resolver filter experiment
+
+[Benchmark run 39843306967](https://github.com/get-bb/bb/actions/runs/39843306967)
+compared six alternating before/after pairs per platform with both compiler
+cache namespaces warmed and every app build forced through Turbo. All output
+files matched. Median paired improvement was only 0.17 seconds on Linux and
+0.43 seconds on Windows; two of six pairs on each platform regressed. The
+native resolver filter was not retained because the measured benefit was too
+small and variable.
+
+## Rejected declaration-bundler cache experiment
+
+[Benchmark run 39845431047](https://github.com/get-bb/bb/actions/runs/39845431047)
+tried passing Rollup's module cache between the SDK's declaration bundles. Four
+Linux before/after pairs saved a median 4.4 seconds, with one regression. The
+first two Windows pairs both regressed by about eight seconds (48 to 56 seconds
+and 52 to 60 seconds, rounded from Actions step timings). The remaining Windows
+rounds were canceled after those regressions, and the candidate was discarded.
+Every completed pair produced identical declarations; all 396 SDK tests also
+passed locally. Correctness alone did not justify retaining this optimization.
+
+## Verification of retained changes
+
+[Full CI run 39844633490](https://github.com/get-bb/bb/actions/runs/39844633490)
+passed all 45 jobs with compiler caching and parallel validation retained, and
+no shard or coverage changes. Workflow creation to last completion was six
+minutes. This is an integration result, not a controlled end-to-end speedup
+measurement, and the three-minute target remains unmet.

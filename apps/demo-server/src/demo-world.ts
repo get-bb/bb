@@ -185,6 +185,7 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
     ),
+    "composer.provider": uiPreferenceEntry("composer.provider"),
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",
     ),

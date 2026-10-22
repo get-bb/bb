@@ -1,3 +1,4 @@
+import "../../../.ladle/composer-plugin";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Environment,
@@ -13,7 +14,6 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import type {
   SystemExecutionOptionsModelLoadError,
   ThreadContextWindowUsage,
@@ -30,12 +30,10 @@ import {
   findEnvironmentDisplayProvider,
   getEnvironmentSummaryChrome,
 } from "@/lib/environment-workspace-display";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  type AttachmentsConfig,
-  type PromptBoxAction,
-  type TypeaheadConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+import type {
+  AttachmentsConfig,
+  PromptBoxAction,
+} from "@/components/promptbox/ComposerBox";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   QueuedMessageEditRequest,
@@ -55,6 +53,7 @@ import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-quer
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  makeTypeaheadConfig,
   useInteractiveExecutionControls,
   STORY_ENVIRONMENT_PROVIDERS,
   PROJECT_NAMES,
@@ -282,16 +281,7 @@ const usage: ThreadContextWindowUsage = {
   estimated: false,
 };
 
-const typeaheadBase: TypeaheadConfig = {
-  mention: {
-    results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-    isLoading: false,
-    isRefreshing: false,
-    isError: false,
-    onQueryChange: noop,
-  },
-  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-};
+const typeaheadBase = makeTypeaheadConfig();
 
 const attachmentsBase: AttachmentsConfig = {
   items: [],

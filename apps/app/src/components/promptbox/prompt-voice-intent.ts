@@ -1,6 +1,6 @@
 import type { PromptDraftState } from "@bb/client-core";
 import type { VoiceDelivery } from "@/lib/voice-recording-store";
-import type { PromptBoxHandle } from "./PromptBoxInternal";
+import type { PromptBoxHandle } from "./ComposerBox";
 
 export interface PromptVoiceDraftTarget {
   getCurrent: () => PromptDraftState;
@@ -20,8 +20,9 @@ export function deliverPromptVoiceTranscript(
   { mounted, promptBox, draft }: PromptVoiceTranscriptTarget,
 ): Promise<void> | undefined {
   const send = delivery === "send";
-  if (mounted && promptBox) {
-    promptBox.voice.deliverTranscript(text, delivery);
+  const voice = mounted ? promptBox?.voice : null;
+  if (voice) {
+    voice.deliverTranscript(text, delivery);
     return;
   }
   if (!draft) return;

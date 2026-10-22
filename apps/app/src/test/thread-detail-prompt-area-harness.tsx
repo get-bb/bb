@@ -15,7 +15,7 @@ import type {
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 import type { PromptDraftAttachment } from "@bb/client-core";
-import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
+import type { TypeaheadConfig } from "@/components/promptbox/ComposerBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 
 export const promptAreaMocks = {
@@ -218,9 +218,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           {execution.providerRouting.environmentId}
         </div>
         <div data-testid="command-suggestions">
-          {typeahead.command?.suggestions
-            .map((command) => command.name)
-            .join(",")}
+          {`${typeahead.command.source.providerId}:${typeahead.command.source.commandScope}`}
         </div>
         <div data-testid="selected-model">{execution.model.active?.model}</div>
         <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
@@ -575,29 +573,9 @@ vi.mock("@/components/ui/app-toast", () => ({
   appToast: { error: promptAreaMocks.toastError },
 }));
 
-vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: ({
-    providerId,
-    commandScope,
-  }: {
-    providerId: string;
-    commandScope: string;
-  }) => ({
-    isError: false,
-    isLoading: false,
-    suggestions: [{ name: `${providerId}:${commandScope}` }],
-    triggers: [],
-  }),
-}));
-
-vi.mock("@/hooks/usePromptMentions", () => ({
-  usePromptMentions: () => ({
-    isError: false,
-    isLoading: false,
-    setQuery: vi.fn(),
-    suggestions: [],
-  }),
-}));
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
 
 vi.mock("@/hooks/useThreadCreationOptions", async () => {
   const { useState } = await import("react");

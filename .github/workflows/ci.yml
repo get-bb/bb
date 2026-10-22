@@ -25,6 +25,7 @@ jobs:
     outputs:
       selection: ${{ steps.select.outputs.selection }}
       base: ${{ steps.comparison.outputs.base }}
+      dependencies: ${{ steps.dependencies.outputs.required }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -61,24 +62,30 @@ jobs:
           BASE_SHA: ${{ steps.comparison.outputs.base }}
         run: echo "required=$(node scripts/ci-dependencies-changed.mjs "$BASE_SHA")" >> "$GITHUB_OUTPUT"
 
-      - name: Setup dependency validation tools
-        if: steps.dependencies.outputs.required == 'true'
-        uses: ./.github/actions/setup-workspace-tools
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
-
-      - name: Validate frozen dependency installation
-        if: steps.dependencies.outputs.required == 'true'
-        timeout-minutes: 5
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
-
       - name: Check provider-literal ratchet
         env:
           BASE_BRANCH: ${{ github.base_ref || github.event.repository.default_branch }}
         run: |
           git fetch --no-tags --depth=1 origin "$BASE_BRANCH" || true
           node scripts/check-provider-literal-ratchet.mjs --base "origin/$BASE_BRANCH"
+
+  dependencies:
+    name: Validate dependencies
+    needs: plan
+    if: ${{ needs.plan.outputs.dependencies == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+      - name: Validate frozen dependency installation
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
 
   windows-foundation:
     needs: plan
@@ -149,6 +156,11 @@ jobs:
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+
       - name: Restore workspace caches
         id: cache
         timeout-minutes: 1
@@ -206,6 +218,11 @@ jobs:
 
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
 
       - name: Restore workspace caches
         id: cache
@@ -271,6 +288,12 @@ jobs:
 
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+
+      - name: Restore React Compiler cache
+        if: ${{ contains(matrix.filter, '--filter=@bb/demo-server') }}
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
 
       - name: Restore workspace caches
         id: cache
@@ -415,6 +438,11 @@ jobs:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+
       - name: Restore workspace caches
         id: cache
         timeout-minutes: 1
@@ -510,6 +538,12 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore React Compiler cache
+        if: ${{ contains(matrix.filter, '--filter=@bb/demo-server') }}
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
 
       - name: Restore workspace caches
         id: cache
@@ -780,6 +814,11 @@ jobs:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+
       - name: Restore workspace caches
         id: cache
         timeout-minutes: 1
@@ -852,6 +891,11 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
 
       - name: Restore workspace caches
         id: cache

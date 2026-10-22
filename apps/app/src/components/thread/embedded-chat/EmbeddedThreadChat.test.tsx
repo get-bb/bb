@@ -212,24 +212,15 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
   }),
 }));
 
-vi.mock("@/hooks/usePromptMentions", () => ({
-  usePromptMentions: () => ({
-    triggers: [],
-    results: { groups: [], suggestions: [] },
-    isLoading: false,
-    isError: false,
-    setQuery: vi.fn(),
-  }),
-}));
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
 
-vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: () => ({
-    triggers: [],
-    suggestions: [],
-    isLoading: false,
-    isError: false,
-  }),
-}));
+vi.mock("@/hooks/useCommandSuggestions", async () =>
+  (
+    await import("@/test/fixtures/composer-search")
+  ).fakeCommandSuggestionsModule(),
+);
 
 vi.mock("@/hooks/queries/thread-panel-queries", () => ({
   useThreadQueuedMessages: () => ({ data: mocks.queuedMessages }),

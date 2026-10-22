@@ -171,16 +171,6 @@
 
 @layer components {
   /*
-   * Tint the prompt editor's text selection with the app's selected-surface
-   * color so it matches the background that mention pills paint on themselves
-   * when selected (mention icons are SVG and never take the native highlight,
-   * so pills can't rely on `::selection` — see PromptMentionPillNodeView).
-   */
-  .ProseMirror ::selection {
-    background-color: var(--surface-selected);
-  }
-
-  /*
    * Mention-pill surface. PROMPT_MENTION_PILL_CLASS owns layout, radius, and
    * border width; this paints the theme-specific face, border, and soft shadow.
    * The --selected modifier tints the same chip for the editor's drag-select
@@ -198,76 +188,6 @@
    * dark), with no fill. */
   .prompt-mention-pill svg {
     color: var(--pill-icon);
-  }
-
-  .prompt-mention-pill--selected {
-    background: var(--pill-surface-selected);
-    border-color: var(--pill-surface-selected-border);
-  }
-
-  /*
-   * The compact mobile composer is a single-line preview of a rich editor,
-   * not a separate plain-text field. Flatten every Markdown block and hard
-   * break into one clipped line. The editor expands before it can be edited, so
-   * the compact state only needs to preserve the real document and present its
-   * leading text. Mention pills remain inline-flex so their own labels can
-   * truncate without breaking the line. `!important` beats ProseMirror's
-   * unlayered `white-space: break-spaces` rule.
-   */
-  [data-promptbox-compact-content] .ProseMirror[contenteditable] {
-    width: 100%;
-    min-height: 0 !important;
-    max-height: 1.7em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap !important;
-  }
-
-  [data-promptbox-compact-content] .ProseMirror[contenteditable] > *,
-  [data-promptbox-compact-content]
-    .ProseMirror[contenteditable]
-    :where(blockquote, p) {
-    display: inline;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    color: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    line-height: inherit;
-    list-style: none;
-    white-space: inherit;
-  }
-
-  [data-promptbox-compact-content]
-    .ProseMirror[contenteditable]
-    > *
-    + *::before,
-  [data-promptbox-compact-content]
-    .ProseMirror[contenteditable]
-    :where(blockquote)
-    > *
-    + *::before {
-    content: " ";
-  }
-
-  [data-promptbox-compact-content] .ProseMirror[contenteditable] br {
-    display: inline;
-    content: " ";
-  }
-
-  [data-promptbox-compact-content] .ProseMirror[contenteditable] br::after {
-    content: " ";
-  }
-
-  [data-promptbox-compact-content] .prompt-mention-pill > span:last-child {
-    min-width: 0;
-  }
-
-  [data-promptbox-editor-content]
-    .ProseMirror
-    p.is-editor-empty:first-child::before {
-    content: attr(data-placeholder);
   }
 
   /*
@@ -335,7 +255,7 @@
     }
   }
 
-  [data-promptbox] {
+  [data-composer-box] {
     container: promptbox / inline-size;
   }
 
@@ -380,21 +300,21 @@
   }
 
   @container promptbox (max-width: 30rem) {
-    [data-promptbox] [data-promptbox-full-label],
-    [data-promptbox] [data-promptbox-hide-compact] {
+    [data-composer-box] [data-promptbox-full-label],
+    [data-composer-box] [data-promptbox-hide-compact] {
       display: none !important;
     }
 
-    [data-promptbox] [data-promptbox-compact-label] {
+    [data-composer-box] [data-promptbox-compact-label] {
       display: block;
       flex: 1 1 auto;
     }
 
-    [data-promptbox] [data-promptbox-icon-only-control] {
+    [data-composer-box] [data-promptbox-icon-only-control] {
       flex-shrink: 0;
     }
 
-    [data-promptbox] [data-promptbox-shrinkable-control] {
+    [data-composer-box] [data-promptbox-shrinkable-control] {
       flex-shrink: 1 !important;
     }
   }
@@ -502,29 +422,6 @@
 }
 
 @container follow-up-composer style(--follow-up-composer-container-compact: true) {
-  [data-follow-up-composer] [data-promptbox-layout] {
-    height: 100%;
-  }
-
-  [data-follow-up-composer] [data-promptbox-main] {
-    position: static;
-  }
-
-  [data-follow-up-composer] [data-promptbox-submit-group] {
-    position: static;
-    z-index: 1;
-  }
-
-  [data-follow-up-composer] [data-promptbox-submit-action] {
-    width: auto;
-    aspect-ratio: 1;
-    margin-left: 0;
-  }
-
-  [data-follow-up-composer] [data-promptbox-submit-label] {
-    display: none;
-  }
-
   [data-follow-up-composer]:not([data-follow-up-composer-footer-visible])
     [data-follow-up-composer-footer] {
     min-height: 0;
@@ -532,143 +429,6 @@
     margin-top: 0;
     opacity: 0;
     pointer-events: none;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active]) {
-    overflow: hidden;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-action-row] {
-    flex-wrap: nowrap;
-    gap: 0;
-    padding: 0 0.5rem 0 0;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-main] {
-    display: flex;
-    align-items: center;
-    height: 3rem;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-input-region] {
-    flex: 1 1 0%;
-    min-width: 0;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-expanded-only] {
-    display: none !important;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-scroll] {
-    height: 3rem !important;
-    min-height: 3rem !important;
-    max-height: 3rem !important;
-    overflow: hidden;
-    padding-top: 0;
-    padding-bottom: 0;
-    padding-right: 0.5rem;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content] {
-    display: flex;
-    align-items: center;
-    height: 100%;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable] {
-    width: 100%;
-    min-height: 0 !important;
-    max-height: 1.7em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap !important;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    > *,
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    :where(blockquote, p) {
-    display: inline;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    color: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    line-height: inherit;
-    list-style: none;
-    white-space: inherit;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    > *
-    + *::before,
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    :where(blockquote)
-    > *
-    + *::before {
-    content: " ";
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    br {
-    display: inline;
-    content: " ";
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    br::after {
-    content: " ";
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .prompt-mention-pill
-    > span:last-child {
-    min-width: 0;
-  }
-
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror
-    p.is-editor-empty:first-child::before {
-    content: var(--promptbox-container-compact-placeholder);
   }
 }
 

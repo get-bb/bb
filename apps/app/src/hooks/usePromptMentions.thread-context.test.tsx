@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, renderHook } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { makeThread } from "@bb/test-helpers/domain-fixtures";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePromptMentions } from "./usePromptMentions";
@@ -70,15 +70,15 @@ beforeEach(() => {
 describe("usePromptMentions thread contexts", () => {
   it("can mention the only thread in a reused worktree while searching its storage", () => {
     const { result } = renderHook(() =>
-      usePromptMentions("proj_1", {
-        environmentId: "env_worktree",
-        threadStorageThreadId: "thr_existing",
-      }),
+      usePromptMentions(
+        {
+          projectId: "proj_1",
+          environmentId: "env_worktree",
+          threadStorageThreadId: "thr_existing",
+        },
+        { text: "Only worktree", trigger: "@" },
+      ),
     );
-
-    act(() => {
-      result.current.setQuery("Only worktree", "@");
-    });
 
     expect(result.current.results.suggestions).toEqual([
       expect.objectContaining({

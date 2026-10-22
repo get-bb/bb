@@ -38,6 +38,99 @@ Original }`. `experimental_fullFileContents` is either
 
   Experimental: see `docs/api_to_audit.md`.
 
+- `experimental_composer` → `{}` — draw bb's composer input box everywhere
+  bb shows a composer (a thread's composer, the New thread screen, queued and
+  sent message editors): the editor, @-mention and slash-command menus,
+  attachments, voice, the `+` and send menus and the send and stop controls.
+  Banners, approval cards and queued messages above the box stay bb's.
+  Registration: `{ id, title, description?, component }`. Exclusive like
+  `experimental_threadList`: a composer from a plugin the user installed wins
+  over the bundled Composer plugin; users choose under **Settings → Appearance
+  → Composer** (`composer.provider`). With no composer plugin enabled, no
+  composer is shown. bb's own composer is the bundled `plugins/composer`
+  plugin, built on this slot; copy it to make your own.
+
+  Read and write the draft with `useComposer()` (`draft`, `replace`) and
+  submit with `useComposer().submit()`: inside the component they are bound
+  to this box, and submit runs the box's own Enter action, which can steer a
+  running thread. `submit({ experimental_mode })` picks queue or steer
+  explicitly.
+
+  `experimental_useComposerRenderer()` returns `input` (`surface`,
+  `submission`, `mentionTriggers`, `commandTriggers`, `resolveMentionLink`,
+  `attachments`, `history`, `voice`, sizing and
+  collapse state, and bb's `executionControls`, `handoff` and
+  `compactBeforeSend` controls to place as you like), `view`, `key`,
+  `inputLocked`, `focusComposerShortcut`, `decorationSources` (bb's and
+  other plugins' highlight rules, in paint order), and host services
+  (`threadLinks.parse`/`cached`/`resolve`, `clipboard.readMessage`/
+  `readMessageImage`, `attachmentSrc`, `dispatchAppCommandKey`,
+  `showError`). `input.submission.enter` and `.modifier` are the box's
+  actions: `kind` (`send`, `queue` or `steer`), `requiresInput`,
+  `shortcut`, and `run()`; gate each on `requiresInput` and your own
+  upload and voice state. `input.compact` (`when: "always" | "narrow"`,
+  `placeholder`) says when to show a one-line form; report the form you
+  show in `editor.state.layout`. Pass your menu element and open state to
+  `experimental_ComposerRoot` (`menuRef`, `menuOpen`). Mentions, attachments and history entries
+  use the same `ComposerMention`, `ComposerAttachment` and
+  `ComposerDraftSnapshot` shapes as `useComposer()`, and
+  `input.resolveMentionLink(mention)` says what clicking any pill or
+  attachment does. Search with `experimental_useComposerMentionSearch()`
+  and `experimental_useComposerCommandSearch()`: call `search(query)` from the
+  event that opens, changes or closes (`null`) the menu, next to your own
+  state update, and the ranked `groups` for that query arrive in the same
+  render. Each mention suggestion carries the `mention` to insert, its `text`
+  and per-kind display fields. Call `dispatchAppCommandKey(event)` from the editor's key
+  handler before handling a key, so bb's shortcuts work inside an editor that
+  swallows keys. Pills look and copy like bb's own with
+  `experimental_describePromptMention(mention)` (classes, tooltip, text) and
+  `experimental_promptMentionClipboardAttributes(mention, text)`;
+  `experimental_readPromptMentionClipboard(element)` reads a pill copied from
+  any bb composer or message back on paste.
+
+  Render `experimental_ComposerRoot` inside the composer's root element with
+  `rootRef` and an `editor` (state, caret insertion, focus, thread drops,
+  other plugins' popups and, optionally, voice transcript delivery). bb
+  reaches the composer only through this editor. It publishes the editor to other plugins'
+  `useComposer()`, runs bb's and other plugins' composer commands for keys
+  inside the root, and makes the root the target of pane focus and of
+  threads dragged from the sidebar. `experimental_useComposerContributions()`
+  returns other plugins' `popups`, `plusMenuItems` and `sendMenuItems` with
+  their host renderers (`Popup`, `MenuEntry`) and an `Actions` component for
+  their inline actions; surfaces that hide plugin customizations return none.
+  Other host components: `experimental_VoiceInputButton`,
+  `experimental_VoiceRecordingBar`, `experimental_FailedVoiceRecordings`,
+  `experimental_ShortcutHint`, `experimental_ImageLightbox`,
+  `experimental_PromptMentionIcon`, `experimental_PluginIcon`,
+  `experimental_ThreadTitleText`, plus `experimental_useThreadTitleDisplayText`.
+
+  ```tsx
+  app.slots.experimental_composer({
+    id: "plain",
+    title: "Plain composer",
+    component: () => {
+      const composer = useComposer();
+      const { input } = experimental_useComposerRenderer();
+      return (
+        <textarea
+          value={composer.draft.text}
+          placeholder={input.placeholder}
+          onChange={(event) =>
+            composer.replace({ text: event.target.value, mentions: [] })
+          }
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            event.preventDefault();
+            void composer.submit();
+          }}
+        />
+      );
+    },
+  });
+  ```
+
+  Experimental: see `docs/api_to_audit.md`.
+
 - `messageDirective` → `{ attributes, source, message,
 openWorkspaceFile }` — register a leaf
   assistant-message directive. Registration:

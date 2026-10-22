@@ -195,6 +195,57 @@ export const experimental_useFixedTabTarget = runtimeFunction(
 );
 export const useComposer = runtimeFunction("useComposer");
 export const useComposers = runtimeFunction("useComposers");
+export const experimental_useComposerRenderer = runtimeFunction(
+  "experimental_useComposerRenderer",
+);
+export const experimental_useThreadTitleDisplayText = runtimeFunction(
+  "experimental_useThreadTitleDisplayText",
+);
+export const experimental_useComposerContributions = runtimeFunction(
+  "experimental_useComposerContributions",
+);
+export const experimental_useComposerMentionSearch = runtimeFunction(
+  "experimental_useComposerMentionSearch",
+);
+export const experimental_useComposerCommandSearch = runtimeFunction(
+  "experimental_useComposerCommandSearch",
+);
+export const experimental_ComposerRoot = runtimeComponent(
+  "experimental_ComposerRoot",
+);
+export const experimental_VoiceInputButton = runtimeComponent(
+  "experimental_VoiceInputButton",
+);
+export const experimental_VoiceRecordingBar = runtimeComponent(
+  "experimental_VoiceRecordingBar",
+);
+export const experimental_FailedVoiceRecordings = runtimeComponent(
+  "experimental_FailedVoiceRecordings",
+);
+export const experimental_ShortcutHint = runtimeComponent(
+  "experimental_ShortcutHint",
+);
+export const experimental_ImageLightbox = runtimeComponent(
+  "experimental_ImageLightbox",
+);
+export const experimental_PromptMentionIcon = runtimeComponent(
+  "experimental_PromptMentionIcon",
+);
+export const experimental_describePromptMention = runtimeFunction(
+  "experimental_describePromptMention",
+);
+export const experimental_promptMentionClipboardAttributes = runtimeFunction(
+  "experimental_promptMentionClipboardAttributes",
+);
+export const experimental_readPromptMentionClipboard = runtimeFunction(
+  "experimental_readPromptMentionClipboard",
+);
+export const experimental_PluginIcon = runtimeComponent(
+  "experimental_PluginIcon",
+);
+export const experimental_ThreadTitleText = runtimeComponent(
+  "experimental_ThreadTitleText",
+);
 /** @internal Superseded by `useComposer()`; kept for plugins built against older SDKs. */
 export const useComposerView = runtimeFunction("useComposerView");
 // Sidebar surfaces for plugins that replace the thread list (experimental —
