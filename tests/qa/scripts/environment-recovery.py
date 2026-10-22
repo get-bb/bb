@@ -77,6 +77,8 @@ def qa_bb(*args, check=True):
 
 def qa_preflight():
     status = json.loads(qa_bb("status", "--json").stdout)
+    if not status.get("dataDir"):
+        raise RuntimeError("QA server is not ready")
     assert Path(status["dataDir"]).resolve() == DATA.resolve(), "Unexpected QA target"
     assert status["dataDir"] != OWNER_STATUS["dataDir"], "Owner is not a QA target"
     return True
