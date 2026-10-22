@@ -6832,6 +6832,146 @@ describe("sequential pool recovery", () => {
     expect(calls).toEqual(["/usage", "/usage", "/v1/messages", "/v1/messages"]);
   });
 
+  it("reserves a machine account across existing pins, failure, recovery, and other hosts", async () => {
+    const attempts: Array<string | null> = [];
+    let rejectReserved = false;
+    let exhaustReserved = false;
+    let now = Date.now();
+    const resetAt = Math.floor(now / 1_000) + 3600;
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      apiKey: "sk-shared",
+      options: {
+        now: () => now,
+        fetch: async (_input, init) => {
+          const key = new Headers(init?.headers).get("x-api-key");
+          attempts.push(key);
+          return Response.json(
+            {},
+            {
+              status: key === "sk-reserved" && rejectReserved ? 503 : 200,
+              headers:
+                key === "sk-reserved" && exhaustReserved
+                  ? {
+                      "anthropic-ratelimit-unified-5h-utilization": "1",
+                      "anthropic-ratelimit-unified-5h-status": "rejected",
+                      "anthropic-ratelimit-unified-5h-reset": String(resetAt),
+                    }
+                  : {},
+            },
+          );
+        },
+      },
+    });
+    const reserved = await addApiAccount(fixture, "sk-reserved", 200);
+    const otherToken = await resolveToken(
+      fixture.host,
+      "host-two",
+      "other-thread",
+    );
+    const send = async (key = fixture.key) => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(key),
+          body: JSON.stringify({
+            metadata: { user_id: JSON.stringify({ session_id: "existing" }) },
+          }),
+        },
+      );
+      await response.text();
+      return response.status;
+    };
+    expect(await send()).toBe(200);
+    const assign = await fixture.host.harness.behavior.runCli([
+      "account",
+      "machine",
+      reserved.id,
+      "One",
+      "--json",
+    ]);
+    expect(assign.exitCode, assign.stderr).toBe(0);
+    expect(JSON.parse(assign.stdout).account.assignedHostId).toBe("host-one");
+    await expect(
+      fixture.host.harness.behavior.callRpc("account.setMachine", {
+        accountId: reserved.id,
+        machine: "missing",
+      }),
+    ).rejects.toThrow("exactly one");
+    expect(await send()).toBe(200);
+    expect(await send(otherToken)).toBe(200);
+    rejectReserved = true;
+    expect(await send()).toBe(200);
+    rejectReserved = false;
+    expect(await send()).toBe(200);
+    expect(attempts).toEqual([
+      "sk-shared",
+      "sk-reserved",
+      "sk-shared",
+      "sk-reserved",
+      "sk-shared",
+      "sk-reserved",
+    ]);
+    exhaustReserved = true;
+    expect(await send()).toBe(200);
+    expect(await send()).toBe(200);
+    expect(attempts.slice(-2)).toEqual(["sk-reserved", "sk-shared"]);
+    exhaustReserved = false;
+    now = (resetAt + 1) * 1_000;
+    expect(await send()).toBe(200);
+    expect(attempts.at(-1)).toBe("sk-reserved");
+    await fixture.host.harness.behavior.callRpc("account.disable", {
+      id: fixture.account.id,
+    });
+    const denied = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(otherToken), body: "{}" },
+    );
+    expect(denied.status).toBe(503);
+    await denied.text();
+    expect(
+      await fixture.host.harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "unassigned",
+        projectId: "project-one",
+        hostId: "host-two",
+      }),
+    ).toEqual([]);
+    expect(
+      await fixture.host.harness.behavior.resolveProviderEnvHealth(
+        "claude-code",
+        { hostId: "host-two" },
+      ),
+    ).toBeNull();
+    const remoteAvailability = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/availability",
+      { headers: authHeaders(otherToken) },
+    );
+    expect(await remoteAvailability.json()).toEqual({
+      claude: false,
+      codex: false,
+    });
+    const availability = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/retry-availability?provider=claude&family=other",
+      { headers: authHeaders(otherToken) },
+    );
+    expect(await availability.json()).toEqual({
+      kind: "unavailable",
+      reason: "no-enabled-account",
+    });
+    const clear = await fixture.host.harness.behavior.runCli([
+      "account",
+      "machine",
+      reserved.id,
+      "all",
+    ]);
+    expect(clear.exitCode, clear.stderr).toBe(0);
+    expect(await send(otherToken)).toBe(200);
+  });
+
   it("applies reordered failover atomically without moving current conversations", async () => {
     const attempts: Array<string | null> = [];
     let rejectFirst = false;

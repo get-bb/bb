@@ -58,7 +58,7 @@ describe("AccountStore", () => {
     });
 
     expect(await store.list()).toEqual([
-      expect.objectContaining({ accountUuid: null }),
+      expect.objectContaining({ accountUuid: null, assignedHostId: null }),
     ]);
   });
 
@@ -87,6 +87,7 @@ describe("AccountStore", () => {
       rateLimitTier: null,
       enabled: true,
       priority: 100,
+      assignedHostId: null,
     });
 
     const [first, second] = await Promise.all([

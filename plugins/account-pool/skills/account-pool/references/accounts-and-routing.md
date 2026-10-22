@@ -16,6 +16,7 @@ bb pool account remove <id>
 bb pool account enable <id>
 bb pool account disable <id>
 bb pool account priority <id> <n>
+bb pool account machine <id> <machine-id-or-name|all>
 bb pool account reorder <claude|codex> <id>...
 bb pool account refresh <id>
 bb pool status [--json]
@@ -159,3 +160,17 @@ instance.
 Provider Retry discovers Account Pooler’s `provider-retry.v1.availability` RPC. It accepts `{ threadId, requestId }` and reports `not-routed`, `ready`, `blocked` with `retryAt` in epoch milliseconds, or `unavailable` with a reason. Pool routing must have been recorded when the provider environment was prepared. The request must still be the thread’s latest request; its recorded model determines which quota windows apply. The pool uses the same recovery calculation for its HTTP 429 response and this RPC. Parent pools expose the authenticated `/retry-availability?provider=claude|codex&family=<family>` endpoint.
 
 The retry plugin remains responsible for queueing, maximum waits, and attempt limits. Inspect a skipped decision with `bb provider-retry explain <thread-id>` and pending work with `bb provider-retry status <thread-id>`.
+
+## Machine assignments
+
+Use `bb pool account machine <id> <machine-id-or-name>` to reserve an account
+for one enrolled machine. That machine prefers its reserved accounts, ordered by
+priority, before shared accounts, including for existing conversations. When the
+reserved account is exhausted, held, disabled, or fails, requests fall back to
+shared accounts. Once eligible again, the reserved account takes priority on the
+next request. Other machines cannot use it. `bb pool account machine <id> all`
+removes the assignment. Account Pooler settings exposes the same control under
+**Account routing**. The `account.setMachine` plugin remote procedure call accepts
+`{ accountId, machine }`, with a machine ID or name, or `null` to remove the
+assignment. Account and status results expose `assignedHostId` (`null` for shared
+accounts). Existing stored accounts remain shared until assigned.

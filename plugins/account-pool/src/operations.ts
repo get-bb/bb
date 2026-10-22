@@ -190,6 +190,27 @@ export class PoolOperations {
     return account;
   }
 
+  async setMachine(
+    id: string,
+    machine: string | null,
+  ): Promise<Account | null> {
+    let hostId: string | null = null;
+    if (machine !== null) {
+      const matches = (await this.listHosts()).filter(
+        (host) => host.id === machine || host.name === machine,
+      );
+      const host = matches[0];
+      if (matches.length !== 1 || host === undefined)
+        throw new Error(
+          `Machine ${machine} must match exactly one enrolled host.`,
+        );
+      hostId = host.id;
+    }
+    const account = await this.accounts.setMachine(id, hostId);
+    if (account !== null) this.onAccountsChanged();
+    return account;
+  }
+
   async reorder(provider: PoolProvider, accountIds: string[]): Promise<void> {
     await this.accounts.reorder(provider, accountIds);
     this.onAccountsChanged();
@@ -268,9 +289,17 @@ export class PoolOperations {
     return { threadId, bypassed };
   }
 
-  async hasUsableEnabledAccount(provider: PoolProvider): Promise<boolean> {
+  async hasUsableEnabledAccount(
+    provider: PoolProvider,
+    hostId: string,
+  ): Promise<boolean> {
     for (const account of await this.accounts.list()) {
-      if (!account.enabled || account.provider !== provider) continue;
+      if (
+        !account.enabled ||
+        account.provider !== provider ||
+        (account.assignedHostId !== null && account.assignedHostId !== hostId)
+      )
+        continue;
       try {
         await this.accounts.readSecret(account.id);
         return true;
@@ -281,10 +310,18 @@ export class PoolOperations {
     return false;
   }
 
-  async routesOnlyApiKeys(provider: PoolProvider): Promise<boolean> {
+  async routesOnlyApiKeys(
+    provider: PoolProvider,
+    hostId: string,
+  ): Promise<boolean> {
     let usable = false;
     for (const account of await this.accounts.list()) {
-      if (!account.enabled || account.provider !== provider) continue;
+      if (
+        !account.enabled ||
+        account.provider !== provider ||
+        (account.assignedHostId !== null && account.assignedHostId !== hostId)
+      )
+        continue;
       try {
         await this.accounts.readSecret(account.id);
       } catch {

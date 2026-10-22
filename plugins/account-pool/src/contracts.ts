@@ -143,6 +143,7 @@ export const accountSchema = z
     rateLimitTier: z.string().nullable(),
     enabled: z.boolean(),
     priority: z.number().int(),
+    assignedHostId: z.string().min(1).nullable().default(null),
     createdAt: z.number().int().nonnegative(),
     lastUsedAt: z.number().int().nonnegative().nullable().default(null),
     lastUsedHostId: z.string().min(1).nullable().default(null),
@@ -336,6 +337,13 @@ export const accountIdInputSchema = z
 
 export const accountPriorityInputSchema = z
   .object({ accountId: z.string().uuid(), priority: z.number().int() })
+  .strict();
+
+export const accountMachineInputSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    machine: z.string().min(1).nullable(),
+  })
   .strict();
 
 export const accountReorderInputSchema = z

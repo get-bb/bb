@@ -10,6 +10,7 @@ import {
   accountAddInputSchema,
   accountIdInputSchema,
   accountPriorityInputSchema,
+  accountMachineInputSchema,
   accountReorderInputSchema,
   accountPoolConfigSetInputSchema,
   bypassInputSchema,
@@ -585,6 +586,44 @@ export function registerPoolCli(
                 stdout: input.options.json
                   ? json({ ok: true, account })
                   : `Set ${account.label} priority to ${account.priority}.\n`,
+              };
+            }),
+        }),
+        "account machine": cliCommand({
+          summary:
+            "Reserve an account for a machine and prefer it there, with shared accounts as fallback",
+          positionals: [
+            ACCOUNT_ID_POSITIONAL,
+            {
+              name: "machine",
+              description:
+                "Machine ID or name, or all to remove the assignment",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const parsed = accountMachineInputSchema.parse({
+                accountId: input.positionals.id,
+                machine:
+                  input.positionals.machine === "all"
+                    ? null
+                    : input.positionals.machine,
+              });
+              const account = await operations.setMachine(
+                parsed.accountId,
+                parsed.machine,
+              );
+              if (account === null)
+                throw new PluginCliError("Account not found.", {
+                  code: "account_not_found",
+                });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Updated machine assignment for ${account.label}.\n`,
               };
             }),
         }),

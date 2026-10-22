@@ -60,6 +60,7 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
     rateLimitTier: "default_claude_max_5x",
     enabled: true,
     priority: 100,
+    assignedHostId: null,
     createdAt: 1,
     lastUsedAt: 2,
     lastUsedHostId: "host-one",

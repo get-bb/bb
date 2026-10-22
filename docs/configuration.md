@@ -905,6 +905,11 @@ such as a CI runner (mint it with `claude setup-token`). See the
 
 ### Account Pooler [Experimental]
 
+`bb pool account machine <id> <machine-id-or-name>` reserves an account for one
+machine and prefers it there before shared accounts. Other machines cannot use
+it. Use `all` to remove the assignment, or edit **Account routing** in the plugin
+settings. Existing accounts default to shared use.
+
 The builtin Account Pooler plugin pools Claude and Codex accounts behind the bb
 server. It is disabled on fresh installations (`bb plugin enable
 account-pool`), except that a nested server with `BB_ACCOUNT_POOL_PARENT_URL`

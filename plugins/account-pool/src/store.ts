@@ -77,7 +77,10 @@ export class AccountStore {
   }
 
   async add(
-    input: Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId">,
+    input: Omit<
+      Account,
+      "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId" | "assignedHostId"
+    >,
     secret: AccountSecret,
   ): Promise<Account> {
     return this.serialized(async () => {
@@ -118,6 +121,13 @@ export class AccountStore {
 
   async setPriority(id: string, priority: number): Promise<Account | null> {
     return this.update(id, (account) => ({ ...account, priority }));
+  }
+
+  async setMachine(
+    id: string,
+    assignedHostId: string | null,
+  ): Promise<Account | null> {
+    return this.update(id, (account) => ({ ...account, assignedHostId }));
   }
 
   async setSubscriptionType(
