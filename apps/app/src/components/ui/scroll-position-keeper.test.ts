@@ -295,6 +295,26 @@ describe("ScrollPositionKeeper", () => {
     expect(timeline.layout.scrollTop).toBe(1_100);
   });
 
+  it("measures a logarithmic number of rows per scroll event, however long the timeline is", () => {
+    const measuredPerScroll = (count: number) => {
+      const timeline = createTimeline(rowsOf(count, 120));
+      timeline.userScrollTo(count * 60);
+      const reads = vi.spyOn(Element.prototype, "getBoundingClientRect");
+      timeline.userScrollTo(count * 60 - 300);
+      const calls = reads.mock.calls.length;
+      reads.mockRestore();
+      restoreLayout?.();
+      restoreLayout = null;
+      document.body.replaceChildren();
+      return calls;
+    };
+
+    const short = measuredPerScroll(100);
+    const long = measuredPerScroll(1_000);
+
+    expect(long - short).toBeLessThanOrEqual(15);
+  });
+
   it("anchors the first top-level row that starts in the viewport, not a nested row above it", () => {
     const timeline = createTimeline([
       ...rowsOf(2),

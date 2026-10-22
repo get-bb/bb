@@ -29,9 +29,13 @@ function keys(count: number, prefix = "row"): string[] {
 function setup({
   attached,
   heightOf = (key: string) => 40 + ((key.length * 7) % 90),
+  viewportHeight = VIEWPORT_HEIGHT,
+  rootPending = false,
 }: {
   attached: boolean;
   heightOf?: (key: string) => number;
+  viewportHeight?: number;
+  rootPending?: boolean;
 }) {
   const scrollElement = document.createElement("div");
   const content = document.createElement("div");
@@ -40,24 +44,26 @@ function setup({
   content.append(list);
   scrollElement.append(content);
   document.body.append(scrollElement);
-  const layout = installFakeFlowLayout({
-    scrollElement,
-    viewportHeight: VIEWPORT_HEIGHT,
-  });
+  const layout = installFakeFlowLayout({ scrollElement, viewportHeight });
+  let rootReady = !rootPending;
   const keeper = new ScrollPositionKeeper({
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
     getContentElement: () => content,
     getFooterElement: () => null,
-    getScrollElement: () => scrollElement,
+    getScrollElement: () => (rootReady ? scrollElement : null),
     getTopLevelRows: () =>
       list.querySelectorAll<HTMLElement>(
         ":scope > [data-timeline-items] > [data-timeline-row-id]",
       ),
     initiallyAttached: attached,
   });
-  const disconnect = keeper.connect(scrollElement);
-  cleanups.push(layout.restore, disconnect);
+  let disconnect = rootPending ? () => undefined : keeper.connect(scrollElement);
+  cleanups.push(layout.restore, () => disconnect());
+  const connectRoot = () => {
+    rootReady = true;
+    disconnect = keeper.connect(scrollElement);
+  };
   const measurements = new Map<string, number>();
   const view = (
     itemKeys: string[],
@@ -105,6 +111,7 @@ function setup({
       return top < VIEWPORT_HEIGHT && top + heightOf(key) > 0;
     });
   return {
+    connectRoot,
     heightOf,
     keeper,
     layout,
@@ -202,6 +209,113 @@ describe("TimelineWindowedItems", () => {
     );
 
     expect(harness.visibleKeys().length).toBeGreaterThan(0);
+  });
+
+  it("never mounts the full history while the scroll root is still pending", () => {
+    const harness = setup({ attached: false, rootPending: true });
+    const { rerender } = render(harness.view(keys(400)), {
+      container: harness.list,
+    });
+    expect(harness.mounted().length).toBeLessThan(50);
+
+    act(() => harness.connectRoot());
+    act(() => harness.layout.userScrollTo(6_000));
+    act(() => rerender(harness.view(keys(400))));
+
+    expect(harness.mounted().length).toBeLessThan(50);
+    expect(harness.visibleKeys().length).toBeGreaterThan(3);
+  });
+
+  it("renders every row while the scrollport has no usable geometry, and windows once it does", () => {
+    const harness = setup({ attached: false, viewportHeight: 0 });
+    render(harness.view(keys(300)), { container: harness.list });
+    expect(harness.mounted().length).toBe(300);
+
+    harness.layout.setViewportHeight(VIEWPORT_HEIGHT);
+    act(() => harness.keeper.reconcile());
+
+    expect(harness.mounted().length).toBeLessThan(50);
+    expect(harness.visibleKeys().length).toBeGreaterThan(3);
+  });
+
+  it("starts at the end of the list when pinned to the bottom", () => {
+    const harness = setup({ attached: true });
+    const itemKeys = keys(500);
+    render(harness.view(itemKeys), { container: harness.list });
+    const last = itemKeys.at(-1) ?? "";
+
+    expect(harness.mounted()).toContain(last);
+    expect(harness.mounted()).not.toContain("row-0");
+    expect(harness.topOf(last) + harness.heightOf(last)).toBe(VIEWPORT_HEIGHT);
+  });
+
+  it("keeps the reader in place when a nested windowed list mounts above it", () => {
+    const harness = setup({ attached: false });
+    const outerKeys = keys(60);
+    const nestedKeys = keys(200, "nested");
+    const nestedMeasurements = new Map<string, number>();
+    function Outer({ showNested }: { showNested: boolean }) {
+      return (
+        <TimelineWindowedItems
+          estimateItemHeight={() => 60}
+          gap={8}
+          itemKeys={outerKeys}
+          measurements={harness.measurements}
+          positionKeeper={harness.keeper}
+          pinnedToEnd={false}
+          renderItem={(index, state) => {
+            const key = outerKeys[index] ?? "";
+            const nested = showNested && key === "row-5";
+            return (
+              <div
+                key={key}
+                ref={state.itemRef}
+                data-timeline-row-id={key}
+                data-timeline-window-key={key}
+                data-fake-height={nested ? undefined : harness.heightOf(key)}
+              >
+                {nested ? (
+                  <TimelineWindowedItems
+                    estimateItemHeight={() => 30}
+                    gap={4}
+                    itemKeys={nestedKeys}
+                    measurements={nestedMeasurements}
+                    positionKeeper={harness.keeper}
+                    pinnedToEnd={false}
+                    renderItem={(nestedIndex, nestedState) => {
+                      const nestedKey = nestedKeys[nestedIndex] ?? "";
+                      return (
+                        <div
+                          key={nestedKey}
+                          ref={nestedState.itemRef}
+                          data-timeline-row-id={nestedKey}
+                          data-timeline-window-key={nestedKey}
+                          data-fake-height={50}
+                        />
+                      );
+                    }}
+                  />
+                ) : (
+                  key
+                )}
+              </div>
+            );
+          }}
+        />
+      );
+    }
+    const { rerender } = render(<Outer showNested={false} />, {
+      container: harness.list,
+    });
+    act(() => harness.layout.userScrollTo(1_500));
+    const reader = harness.visibleKeys()[0] ?? "";
+    const before = harness.topOf(reader);
+
+    act(() => rerender(<Outer showNested />));
+    act(() => harness.layout.flushResizeObservers());
+
+    expect(harness.topOf(reader)).toBe(before);
+    expect(harness.keeper.isAttached()).toBe(false);
   });
 
   it("keeps every row mounted on iOS WebKit", () => {

@@ -266,7 +266,9 @@ list estimates is there. That estimate never moves the view: once real rows
 mount, the owner takes its position from them.
 
 Lists of 20 or more items are windowed everywhere except iOS WebKit (Safari and
-the mobile app's WKWebView), where every row stays mounted. Rows stay in normal flow between spacers whose
+the mobile app's WKWebView), where every row stays mounted. Every row also
+mounts while the scroll root has no height, for example in a hidden pane, and
+windowing resumes once it has one. Rows stay in normal flow between spacers whose
 heights come from the measurements the thread retains, so rows never overlap
 and a row resize needs no positioning pass. The thread retains the 2,000 most
 recent measurements; a spacer keeps the height it last rendered for a row whose
@@ -293,7 +295,9 @@ changes, so a reader who returns to the top after a prepend always loads the
 next page.
 
 A thread's position is saved when the reader scrolls and when the timeline
-unmounts. Returning to the thread mounts the saved row's window and restores
+unmounts. Saving on unmount first takes in a scroll the reader made whose scroll
+event has not arrived yet; a layout change alone keeps an attached reader at the
+end. Returning to the thread mounts the saved row's window and restores
 the row at its saved offset, kept on screen if the viewport is now shorter. If
 the row has not loaded yet, the timeline waits
 at the bottom for up to a second. The timeline keeps the loaded pages of the

@@ -32,8 +32,9 @@ export function setFakeHeight(element: Element, height: number): void {
 
 export function installFakeFlowLayout({
   scrollElement: scrollElementOption,
-  viewportHeight,
+  viewportHeight: initialViewportHeight,
 }: FakeFlowLayoutOptions) {
+  let viewportHeight = initialViewportHeight;
   let scrollTop = 0;
   const boxes = new Map<Element, Box>();
   const resolveScrollElement = (): HTMLElement | null =>
@@ -209,6 +210,9 @@ export function installFakeFlowLayout({
           observer.callback(entries);
         }
       }
+    },
+    setViewportHeight(height: number) {
+      viewportHeight = height;
     },
     bounceTo(value: number) {
       scrollTop = value;

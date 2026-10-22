@@ -172,6 +172,44 @@ describe("BottomAnchoredScrollBody", () => {
     expect(handles.bottomAnchor?.isAtBottom).toBe(false);
   });
 
+  it("saves the end when the timeline unmounts during a transient off-bottom layout", () => {
+    const keysA = rowKeys("thread-a", 60);
+    const first = setup("thread-a", keysA);
+    const last = keysA.at(-1) ?? "";
+    document
+      .querySelector(`[data-timeline-row-id="${last}"]`)
+      ?.setAttribute("data-fake-height", String(heightOf(last) + 300));
+
+    first.view.unmount();
+
+    expect(
+      getDefaultStore().get(threadTimelineScrollAnchorAtomFamily("thread-a")),
+    ).toEqual({ rowId: "", offsetWithinRow: 0, atBottom: true });
+  });
+
+  it("saves the row the reader scrolled to when the timeline unmounts before the scroll event lands", () => {
+    const keysA = rowKeys("thread-a", 120);
+    const first = setup("thread-a", keysA);
+    const scrollElement = document.querySelector<HTMLElement>(
+      "[data-page-scroll-viewport]",
+    );
+    if (scrollElement === null) throw new Error("no scroll element");
+    const target = first.layout.maxScrollTop() - 2_000;
+    scrollElement.dispatchEvent(new WheelEvent("wheel", { deltaY: -2_000 }));
+    first.layout.bounceTo(target);
+    const reader = first.firstVisible();
+    const before = first.topOf(reader);
+
+    first.view.unmount();
+    const saved = getDefaultStore().get(
+      threadTimelineScrollAnchorAtomFamily("thread-a"),
+    );
+    expect(saved?.atBottom).toBe(false);
+    const second = setup("thread-a", keysA);
+
+    expect(second.topOf(reader)).toBe(before);
+  });
+
   it("detaches when the reader scrolls up and re-attaches only when they scroll back down to the end", () => {
     const { layout } = setup("thread-a", rowKeys("thread-a", 60));
     const end = layout.maxScrollTop();

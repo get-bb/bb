@@ -216,9 +216,13 @@ export function TimelineWindowedItems({
   const [windowingSupported] = useState(
     () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
   );
+  const [scrollRootUsable, setScrollRootUsable] = useState<boolean | null>(
+    null,
+  );
   const windowingEnabled =
     windowingSupported &&
     positionKeeper !== null &&
+    scrollRootUsable !== false &&
     itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT;
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowState, setWindowState] = useState<WindowState>(() => {
@@ -286,6 +290,7 @@ export function TimelineWindowedItems({
     itemKeys,
     mountedIndexes,
     renderedHeights: windowState.heights,
+    scrollRootUsable,
     windowKeys: windowState.keys,
     windowingEnabled,
   });
@@ -297,6 +302,7 @@ export function TimelineWindowedItems({
       itemKeys,
       mountedIndexes,
       renderedHeights: windowState.heights,
+      scrollRootUsable,
       windowKeys: windowState.keys,
       windowingEnabled,
     };
@@ -418,6 +424,14 @@ export function TimelineWindowedItems({
   const syncWindow = useCallback(
     (urgent: boolean) => {
       const live = liveRef.current;
+      const scrollRoot = positionKeeper?.getScrollElement() ?? null;
+      if (scrollRoot !== null) {
+        const usable = scrollRoot.clientHeight > 0;
+        if (usable !== live.scrollRootUsable) {
+          live.scrollRootUsable = usable;
+          setScrollRootUsable(usable);
+        }
+      }
       if (!live.windowingEnabled || positionKeeper === null) return;
       const container = containerRef.current;
       const scrollElement = positionKeeper.getScrollElement();

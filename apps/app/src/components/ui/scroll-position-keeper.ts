@@ -371,6 +371,7 @@ export class ScrollPositionKeeper {
         atBottom: false,
       };
     }
+    this.foldPendingInputScroll();
     const position = this.position;
     if (position.kind === "bottom") {
       return { rowId: "", offsetWithinRow: 0, atBottom: true };
@@ -734,6 +735,23 @@ export class ScrollPositionKeeper {
     this.pendingRestore = null;
     this.setPosition({ kind: "bottom" });
     this.reconcile();
+  }
+
+  private foldPendingInputScroll(): void {
+    const scrollElement = this.options.getScrollElement();
+    const previous = this.ownScrollTop;
+    if (scrollElement === null || previous === null || !this.isInputSession()) {
+      return;
+    }
+    const scrollTop = scrollElement.scrollTop;
+    if (Math.abs(scrollTop - previous) < MIN_WRITE_PX) return;
+    this.ownScrollTop = scrollTop;
+    this.refreshExtent(scrollElement);
+    this.setPosition(
+      this.isAtEnd(scrollTop)
+        ? { kind: "bottom" }
+        : (this.capture(scrollElement) ?? FREE),
+    );
   }
 
   private isAtEnd(scrollTop: number): boolean {
