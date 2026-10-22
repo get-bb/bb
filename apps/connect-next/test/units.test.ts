@@ -1,5 +1,5 @@
 import { createMachineLabelProxy } from "../src/machine-label.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   GATE_PRESENCE_BATCH_MAX,
   GATE_RESOLVE_BATCH_MAX,
@@ -351,6 +351,10 @@ describe("account API client", () => {
   });
 
   it("retries transient failures with backoff inside the deadline and gives up on the rest", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     let failuresLeft = 2;
     const { calls, fetchImpl } = stubFetch(
       () => OWNED,
@@ -362,7 +366,11 @@ describe("account API client", () => {
       fetch: fetchImpl,
       random: () => 0,
     });
-    expect(await api.resolve(ASK, { deadlineMs: 5_000 })).toEqual(OWNED);
+    const recovered = expect(
+      api.resolve(ASK, { deadlineMs: 5_000 }),
+    ).resolves.toEqual(OWNED);
+    await vi.runAllTimersAsync();
+    await recovered;
     expect(calls).toHaveLength(3);
     const refused = createAccountApi({
       baseUrl: "https://connect.test",
@@ -370,7 +378,9 @@ describe("account API client", () => {
       fetch: async () => new Response("no", { status: 404 }),
     });
     const started = Date.now();
-    await expect(refused.resolve(ASK)).rejects.toThrow("HTTP 404");
+    const refusal = expect(refused.resolve(ASK)).rejects.toThrow("HTTP 404");
+    await vi.runAllTimersAsync();
+    await refusal;
     expect(Date.now() - started).toBeLessThan(1_000);
     const down = createAccountApi({
       baseUrl: "https://connect.test",
@@ -378,9 +388,11 @@ describe("account API client", () => {
       fetch: async () => new Response("no", { status: 503 }),
     });
     const tried = Date.now();
-    await expect(down.resolve(ASK, { deadlineMs: 600 })).rejects.toThrow(
-      "HTTP 503",
-    );
+    const exhausted = expect(
+      down.resolve(ASK, { deadlineMs: 600 }),
+    ).rejects.toThrow("HTTP 503");
+    await vi.runAllTimersAsync();
+    await exhausted;
     expect(Date.now() - tried).toBeLessThan(1_500);
   });
 
