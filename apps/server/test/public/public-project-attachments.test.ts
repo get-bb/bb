@@ -249,68 +249,21 @@ describe("public project attachments", () => {
     });
   });
 
-  it("converts real HEIC/HEIF uploads to portable PNG attachments", async () => {
-    const bytes = await readFile(
-      new URL("../fixtures/images/quadrants.heic", import.meta.url),
-    );
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-project-attachment-heic-png",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      for (const [name, mimeType] of [
-        ["photo.heic", "image/heic"],
-        ["photo.HEIF", "Image/HEIF; charset=binary"],
-        ["photo.heic", "image/heic-sequence"],
-        ["photo.heif", "image/heif-sequence"],
-        ["photo", "image/heic"],
-      ]) {
-        const response = await upload(
-          harness.app,
-          project.id,
-          new File([bytes], name, { type: mimeType }),
-        );
-        expect(response.status).toBe(201);
-        const uploaded = uploadedPromptAttachmentSchema.parse(
-          await readJson(response),
-        );
-        expect(uploaded).toMatchObject({
-          type: "localImage",
-          sourceProjectId: project.id,
-          name: "photo.png",
-          mimeType: "image/png",
-        });
-        expect(uploaded.path).toMatch(/\.png$/u);
-        const content = await harness.app.request(
-          `/api/v1/projects/${project.id}/attachments/content?path=${encodeURIComponent(uploaded.path)}`,
-        );
-        expect(content.status).toBe(200);
-        expect(content.headers.get("content-type")).toBe("image/png");
-        const png = Buffer.from(await content.arrayBuffer());
-        expect(png.subarray(0, 8)).toEqual(
-          Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-        );
-        expect(png.readUInt32BE(16)).toBe(64);
-        expect(png.readUInt32BE(20)).toBe(32);
-        expect(uploaded.sizeBytes).toBe(png.byteLength);
-      }
-    });
-  });
-
+  const raw = "application/octet-stream";
   it.each([
-    ["photo.heic", "", "localImage", "image/png"],
-    ["photo.HEIF", "", "localImage", "image/png"],
-    [
-      "photo.heic",
-      "application/octet-stream",
-      "localFile",
-      "application/octet-stream",
-    ],
+    ["photo.heic", "image/heic", undefined, "image/png"],
+    ["photo.HEIF", "Image/HEIF; charset=binary", undefined, "image/png"],
+    ["photo.heic", "image/heic-sequence", undefined, "image/png"],
+    ["photo.heif", "image/heif-sequence", undefined, "image/png"],
+    ["photo", "image/heic", undefined, "image/png"],
+    ["photo.HEIC", "", undefined, "image/png"],
+    ["photo.heif", "", undefined, "image/png"],
+    ["photo.heic", raw, undefined, raw],
+    ["photo.heic", "image/heic", raw, raw],
+    ["notes.txt", "", undefined, raw],
   ])(
-    "uploads %s with MIME %s through the SDK and multipart route",
-    async (name, mimeType, type, storedMimeType) => {
+    "uploads %s (%s, override %s) as %s",
+    async (name, mimeType, override, storedMimeType) => {
       const bytes = await readFile(
         new URL("../fixtures/images/quadrants.heic", import.meta.url),
       );
@@ -330,19 +283,32 @@ describe("public project attachments", () => {
         const uploaded = await sdk.projects.attachments.upload({
           projectId: project.id,
           clientFile: new File([bytes], name, { type: mimeType }),
+          ...(override === undefined ? {} : { mimeType: override }),
         });
-        expect(uploaded).toMatchObject({ type, mimeType: storedMimeType });
+        const converted = storedMimeType === "image/png";
+        expect(uploaded).toMatchObject({
+          type: converted ? "localImage" : "localFile",
+          sourceProjectId: project.id,
+          name: converted ? "photo.png" : name,
+          mimeType: storedMimeType,
+        });
         const content = await sdk.projects.attachments.read({
           projectId: project.id,
           path: uploaded.path,
         });
-        if (type === "localImage") {
-          expect(uploaded.name).toBe("photo.png");
-          expect(Buffer.from(content.bytes).subarray(0, 8)).toEqual(
+        expect(uploaded.sizeBytes).toBe(content.bytes.byteLength);
+        const stored = Buffer.from(content.bytes);
+        if (converted) {
+          expect(content.mimeType).toBe("image/png");
+          expect(uploaded.path).toMatch(/\.png$/u);
+          expect(stored.subarray(0, 8)).toEqual(
             Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
           );
+          expect([stored.readUInt32BE(16), stored.readUInt32BE(20)]).toEqual([
+            64, 32,
+          ]);
         } else {
-          expect(Buffer.from(content.bytes)).toEqual(bytes);
+          expect(stored).toEqual(bytes);
         }
       });
     },

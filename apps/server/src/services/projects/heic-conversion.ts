@@ -31,13 +31,11 @@ async function convertToPng(file: File): Promise<Uint8Array<ArrayBuffer>> {
       { retryable: true },
     );
   }
-  await new Promise<void>((resolve) => {
-    if (converting) waitingConversions.push(resolve);
-    else {
-      converting = true;
-      resolve();
-    }
-  });
+  if (converting) {
+    await new Promise<void>((resolve) => waitingConversions.push(resolve));
+  } else {
+    converting = true;
+  }
   try {
     const worker = new Worker(heicWorkerSource, {
       eval: true,

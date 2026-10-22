@@ -19,19 +19,18 @@ afterEach(() => {
 });
 
 it.each([
-  ["image/heic", "photo.heic", false],
-  ["image/png", "photo.png", true],
-  ["image/jpeg", "photo.jpg", true],
+  ["image/heic", "image/png", false],
+  ["image/png", "image/png", true],
+  ["image/jpeg", "image/jpeg", true],
 ])(
   "uses a compatible preview for %s uploads",
-  async (mimeType, name, localPreview) => {
-    const file = new File(["image bytes"], name, { type: mimeType });
+  async (inputType, outputType, localPreview) => {
+    const file = new File(["image bytes"], "photo", { type: inputType });
     const uploaded = {
       type: "localImage" as const,
-      sourceProjectId: "project-1",
-      path: `uploaded-${mimeType === "image/heic" ? "photo.png" : name}`,
-      name: mimeType === "image/heic" ? "photo.png" : name,
-      mimeType: mimeType === "image/heic" ? "image/png" : mimeType,
+      path: "stored-image",
+      name: "photo",
+      mimeType: outputType,
       sizeBytes: 10,
     };
     vi.mocked(sdk.projects.attachments.upload).mockResolvedValue(uploaded);
@@ -39,19 +38,12 @@ it.each([
     const { result } = renderHook(() => useUploadPromptAttachment(), {
       wrapper,
     });
-    await act(async () => {
-      expect(
-        await result.current.mutateAsync({ projectId: "project-1", file }),
-      ).toEqual(uploaded);
-    });
-    if (localPreview) {
-      expect(registerLocalAttachmentPreview).toHaveBeenCalledWith(
-        uploaded.path,
-        file,
-      );
-    } else {
-      expect(registerLocalAttachmentPreview).not.toHaveBeenCalled();
-    }
+    await act(() =>
+      result.current.mutateAsync({ projectId: "project-1", file }),
+    );
+    expect(vi.mocked(registerLocalAttachmentPreview).mock.calls).toEqual(
+      localPreview ? [[uploaded.path, file]] : [],
+    );
     queryClient.clear();
   },
 );
