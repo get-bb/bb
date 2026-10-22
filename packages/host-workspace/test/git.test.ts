@@ -576,52 +576,57 @@ describe("parsePorcelainV2StatusZ", () => {
       ).stdout,
     );
 
-  it("reads renames, unusual paths, and the checked-out commit", async () => {
-    const repoPath = await initConflictRepo();
-    await fs.writeFile(path.join(repoPath, "old name.txt"), "rename me\n");
-    await runGit(["add", "."], { cwd: repoPath });
-    await runGit(["commit", "-m", "Add file"], { cwd: repoPath });
-    await runGit(["mv", "old name.txt", "new -> name.txt"], { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, "README.md"), "edited\n");
-    await fs.writeFile(path.join(repoPath, "line\nbreak.txt"), "new\n");
-    const head = (
-      await runGit(["rev-parse", "HEAD"], { cwd: repoPath })
-    ).stdout.trim();
+  it.skipIf(process.platform === "win32")(
+    "reads renames, unusual paths, and the checked-out commit",
+    async () => {
+      const repoPath = await initConflictRepo();
+      await fs.writeFile(path.join(repoPath, "old name.txt"), "rename me\n");
+      await runGit(["add", "."], { cwd: repoPath });
+      await runGit(["commit", "-m", "Add file"], { cwd: repoPath });
+      await runGit(["mv", "old name.txt", "new -> name.txt"], {
+        cwd: repoPath,
+      });
+      await fs.writeFile(path.join(repoPath, "README.md"), "edited\n");
+      await fs.writeFile(path.join(repoPath, "line\nbreak.txt"), "new\n");
+      const head = (
+        await runGit(["rev-parse", "HEAD"], { cwd: repoPath })
+      ).stdout.trim();
 
-    const status = await readStatus(repoPath);
+      const status = await readStatus(repoPath);
 
-    expect(status.headOid).toBe(head);
-    expect(status.headBranch).toBe("main");
-    expect(status.entries).toEqual(
-      expect.arrayContaining([
-        {
-          path: "README.md",
-          status: "M",
-          indexStatus: " ",
-          worktreeStatus: "M",
-        },
-        {
-          path: "new -> name.txt",
-          status: "R",
-          indexStatus: "R",
-          worktreeStatus: " ",
-        },
-        {
-          path: "line\nbreak.txt",
-          status: "??",
-          indexStatus: "?",
-          worktreeStatus: "?",
-        },
-      ]),
-    );
-    expect(status.entries).toHaveLength(3);
+      expect(status.headOid).toBe(head);
+      expect(status.headBranch).toBe("main");
+      expect(status.entries).toEqual(
+        expect.arrayContaining([
+          {
+            path: "README.md",
+            status: "M",
+            indexStatus: " ",
+            worktreeStatus: "M",
+          },
+          {
+            path: "new -> name.txt",
+            status: "R",
+            indexStatus: "R",
+            worktreeStatus: " ",
+          },
+          {
+            path: "line\nbreak.txt",
+            status: "??",
+            indexStatus: "?",
+            worktreeStatus: "?",
+          },
+        ]),
+      );
+      expect(status.entries).toHaveLength(3);
 
-    await runGit(["checkout", "--detach"], { cwd: repoPath });
-    expect(await readStatus(repoPath)).toMatchObject({
-      headOid: head,
-      headBranch: null,
-    });
-  });
+      await runGit(["checkout", "--detach"], { cwd: repoPath });
+      expect(await readStatus(repoPath)).toMatchObject({
+        headOid: head,
+        headBranch: null,
+      });
+    },
+  );
 
   it("reads unmerged entries during a conflicted merge", async () => {
     const repoPath = await initConflictRepo();

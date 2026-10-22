@@ -22,8 +22,9 @@ it("reuses committed comparisons across readers while refreshing edits and moved
   const read = (maxFiles = 200) =>
     new Workspace(repo).getStatus({ mergeBaseBranch: "main", maxFiles });
   const comparisons = () =>
-    vi.mocked(runGit).mock.calls.filter(([args]) => args.includes("--left-right"))
-      .length;
+    vi
+      .mocked(runGit)
+      .mock.calls.filter(([args]) => args.includes("--left-right")).length;
 
   const [first, concurrent] = await Promise.all([read(), read()]);
   expect(first.mergeBase).toMatchObject({
@@ -168,7 +169,8 @@ it("filters irrelevant history beyond 200 commits and reports incomplete only at
     vi
       .mocked(runGit)
       .mock.calls.filter(
-        ([args, options]) => options.cwd === repo && args.includes("--left-right"),
+        ([args, options]) =>
+          options.cwd === repo && args.includes("--left-right"),
       ).length;
   const comparisonsBeforeRefresh = comparisons();
   await fs.writeFile(path.join(repo, "feature.txt"), "edited\n");
@@ -231,10 +233,9 @@ it("stops oversized patch collection without claiming the branch is merged", asy
 it.each([
   "feature.txt",
   "space name.txt",
-  "line\nname.txt",
-  'quote"name.txt',
   "café.txt",
   "0".repeat(40),
+  ...(process.platform === "win32" ? [] : ["line\nname.txt", 'quote"name.txt']),
 ])(
   "recognizes squash patches with different blobs for %j",
   async (featurePath) => {
@@ -288,35 +289,36 @@ it("proves exact squash integration without hashing even beyond the metadata lim
   ).toBe(false);
 });
 
-it.each(["rename", "binary", "mode"])(
-  "recognizes an exact squash containing a %s change",
-  async (kind) => {
-    const repo = await createDivergedRepo();
-    if (kind === "rename") {
-      await runGit(["mv", "README.md", "renamed readme.md"], { cwd: repo });
-    } else if (kind === "binary") {
-      await fs.writeFile(
-        path.join(repo, "feature.txt"),
-        Buffer.from([0, 1, 2, 255]),
-      );
-    } else {
-      await fs.chmod(path.join(repo, "feature.txt"), 0o755);
-    }
-    await runGit(["add", "."], { cwd: repo });
-    await runGit(["commit", "-m", "Second feature change"], { cwd: repo });
-    await runGit(["checkout", "main"], { cwd: repo });
-    await runGit(["merge", "--squash", "feature"], { cwd: repo });
-    await runGit(["commit", "-m", "Squashed feature"], { cwd: repo });
-    await runGit(["checkout", "feature"], { cwd: repo });
-    const status = await new Workspace(repo).getStatus({
-      mergeBaseBranch: "main",
-    });
-    expect(status.mergeBase).toMatchObject({
-      squashMergeCheckComplete: true,
-      aheadCount: 0,
-    });
-  },
-);
+it.each([
+  "rename",
+  "binary",
+  ...(process.platform === "win32" ? [] : ["mode"]),
+])("recognizes an exact squash containing a %s change", async (kind) => {
+  const repo = await createDivergedRepo();
+  if (kind === "rename") {
+    await runGit(["mv", "README.md", "renamed readme.md"], { cwd: repo });
+  } else if (kind === "binary") {
+    await fs.writeFile(
+      path.join(repo, "feature.txt"),
+      Buffer.from([0, 1, 2, 255]),
+    );
+  } else {
+    await fs.chmod(path.join(repo, "feature.txt"), 0o755);
+  }
+  await runGit(["add", "."], { cwd: repo });
+  await runGit(["commit", "-m", "Second feature change"], { cwd: repo });
+  await runGit(["checkout", "main"], { cwd: repo });
+  await runGit(["merge", "--squash", "feature"], { cwd: repo });
+  await runGit(["commit", "-m", "Squashed feature"], { cwd: repo });
+  await runGit(["checkout", "feature"], { cwd: repo });
+  const status = await new Workspace(repo).getStatus({
+    mergeBaseBranch: "main",
+  });
+  expect(status.mergeBase).toMatchObject({
+    squashMergeCheckComplete: true,
+    aheadCount: 0,
+  });
+});
 
 it("finishes a timed-out squash check on the next refresh without rehashing commits", async () => {
   const repo = await createDivergedRepo();
