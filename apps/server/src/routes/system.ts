@@ -341,6 +341,7 @@ export function registerSystemRoutes(
       deps.telemetry.capture({ name: "telemetry_disabled" });
     }
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
+    deps.terminalSessions.relay.reconcile();
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());
   });
@@ -358,6 +359,7 @@ export function registerSystemRoutes(
 
   put(routes.experiments, (context, payload) => {
     setExperiments(deps.db, payload);
+    deps.terminalSessions.relay.reconcile();
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getExperiments(deps.db));
   });

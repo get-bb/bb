@@ -12,6 +12,7 @@ import { createLogger } from "@bb/logger";
 import {
   getAppSettings,
   getDisabledProviderIds,
+  getExperiments,
   listRunningThreads,
   setAppSettings,
 } from "@bb/db";
@@ -49,7 +50,11 @@ import {
   createTelemetryService,
 } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
-import { startTerminalRelayProcess } from "./services/terminals/terminal-relay-transport.js";
+import {
+  createInProcessTerminalRelay,
+  createTerminalRelayRouter,
+  startTerminalRelayProcess,
+} from "./services/terminals/terminal-relay-transport.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerLogger, ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
@@ -208,14 +213,19 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_SERVER_LAUNCH_ID !== undefined) {
     runtimeConfig.launchId = serverConfig.BB_SERVER_LAUNCH_ID;
   }
-  const terminalRelay = startTerminalRelayProcess({
-    entryUrl: new URL(
-      import.meta.url.endsWith(".ts")
-        ? "./terminal-relay-process.ts"
-        : "./terminal-relay-process.js",
-      import.meta.url,
-    ),
-    logger,
+  const terminalRelay = createTerminalRelayRouter({
+    inProcess: createInProcessTerminalRelay(),
+    startProcess: () =>
+      startTerminalRelayProcess({
+        entryUrl: new URL(
+          import.meta.url.endsWith(".ts")
+            ? "./terminal-relay-process.ts"
+            : "./terminal-relay-process.js",
+          import.meta.url,
+        ),
+        logger,
+      }),
+    useProcess: () => getExperiments(db).terminalRelayProcess,
   });
   const terminalSessions = new TerminalSessionLifecycle({
     config: runtimeConfig,

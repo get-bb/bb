@@ -279,11 +279,7 @@ async function waitForDaemonMessage(
 }
 
 function inProcessRelay(fixture: TerminalRouteFixture): TerminalRelay {
-  const relay = fixture.harness.terminalRelay;
-  if (relay === null) {
-    throw new Error("Expected the in-process terminal relay");
-  }
-  return relay;
+  return fixture.harness.terminalRelay;
 }
 
 function browserGrant(

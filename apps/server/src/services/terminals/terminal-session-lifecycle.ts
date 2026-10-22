@@ -59,7 +59,7 @@ import {
   type TerminalRelayHost,
   type TerminalRelayTerminal,
 } from "./terminal-relay.js";
-import type { TerminalRelayEndpoint } from "./terminal-relay-transport.js";
+import type { TerminalRelayRouter } from "./terminal-relay-transport.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 const DEFAULT_TERMINAL_CLOSE_TIMEOUT_MS = 5_000;
@@ -221,7 +221,7 @@ interface TerminalSessionLifecycleOptions {
   hub: AppDeps["hub"];
   logger: ServerLogger;
   openTimeoutMs?: number;
-  relay: TerminalRelayEndpoint;
+  relay: TerminalRelayRouter;
 }
 
 interface ListTerminalsArgs {
@@ -546,7 +546,7 @@ export class TerminalSessionLifecycle implements TerminalRelayHost {
     });
   }
 
-  get relay(): TerminalRelayEndpoint {
+  get relay(): TerminalRelayRouter {
     return this.options.relay;
   }
 

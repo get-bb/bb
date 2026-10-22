@@ -6,6 +6,7 @@ export const experimentKeys = [
   "serverMove",
   "performanceDiagnostics",
   "timelinePush",
+  "terminalRelayProcess",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -25,6 +26,7 @@ export const defaultExperiments: Experiments = {
   serverMove: false,
   performanceDiagnostics: false,
   timelinePush: false,
+  terminalRelayProcess: false,
 };
 
 export const earlyAdopterExperiments: Experiments = {
@@ -33,4 +35,5 @@ export const earlyAdopterExperiments: Experiments = {
   serverMove: false,
   performanceDiagnostics: false,
   timelinePush: true,
+  terminalRelayProcess: true,
 };

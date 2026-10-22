@@ -35,6 +35,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     serverMove: false,
     performanceDiagnostics: false,
     timelinePush: false,
+    terminalRelayProcess: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

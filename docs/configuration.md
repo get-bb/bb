@@ -773,8 +773,8 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `timelinePush` and `compactExpiredCache`) turn on, and the rest stay
-off. An experiment you set yourself keeps your value either way.
+(currently `timelinePush`, `compactExpiredCache`, and `terminalRelayProcess`)
+turn on, and the rest stay off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
@@ -809,6 +809,14 @@ off. An experiment you set yourself keeps your value either way.
   client refetching the latest window after every update. A missed push falls
   back to the delta request used when it is off. Open views follow a toggle
   live.
+- `terminalRelayProcess` (on for early adopters) opens new terminals in a
+  separate relay process that carries their keystrokes and output, so typing
+  keeps echoing while the main server is busy. The host daemon keeps a second
+  connection (`/internal/ws/terminals`) to that process and sends each
+  terminal's output on the connection the terminal was attached through. The
+  setting applies to terminals opened after a change: a terminal stays in the
+  process it opened in until it exits, and the relay process stops once the
+  experiment is off and its last terminal has exited.
 
 ## Thread Timeline Window
 

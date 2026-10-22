@@ -1160,6 +1160,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Send an open thread's timeline changes over the live connection instead of reloading the latest window after each update.",
   },
+  terminalRelayProcess: {
+    label: "Terminal relay process",
+    description:
+      "Carry terminal keystrokes and output through a separate server process so typing stays responsive while the main server is busy. The setting applies to terminals you open after changing it.",
+  },
 };
 export function visibleExperimentKeys(
   performanceDiagnosticsAvailable: boolean,

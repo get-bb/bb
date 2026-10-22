@@ -79,6 +79,7 @@ const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
 interface PendingTerminalSocketPayload {
   bytes: number;
   payload: string;
+  websocket: ReconnectingWebSocketLike;
 }
 
 function recoverableMessageKey(
@@ -152,6 +153,7 @@ export class ServerConnection {
   private websocket: ReconnectingWebSocketLike | null = null;
   private terminalDataWebSocket: ReconnectingWebSocketLike | null = null;
   private readonly terminalDataRequestIds = new Set<string>();
+  private readonly terminalDataTerminalIds = new Set<string>();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastHeartbeatAcknowledgedAt: number | null = null;
   private lastHeartbeatTickAt: number | null = null;
@@ -219,7 +221,7 @@ export class ServerConnection {
       (this.pendingTerminalSocketPayloads.length > 0 ||
         (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES)
     ) {
-      return this.enqueueTerminalSocketPayload(payload);
+      return this.enqueueTerminalSocketPayload(payload, websocket);
     }
     if (
       isTerminalDaemonLifecycleMessage(parsed) &&
@@ -246,6 +248,9 @@ export class ServerConnection {
     if (recoverableKey !== null) {
       this.pendingRecoverableMessages.delete(recoverableKey);
     }
+    if (parsed.type === "terminal.exited") {
+      this.terminalDataTerminalIds.delete(parsed.terminalId);
+    }
     return true;
   }
 
@@ -256,7 +261,10 @@ export class ServerConnection {
     const dataReply =
       replyRequestId !== null &&
       this.terminalDataRequestIds.delete(replyRequestId);
-    if (dataReply || isTerminalDaemonOutputMessage(message)) {
+    const dataOutput =
+      message.type === "terminal.output" &&
+      this.terminalDataTerminalIds.has(message.terminalId);
+    if (dataReply || dataOutput) {
       return this.terminalOutputSocket();
     }
     return this.websocket;
@@ -344,6 +352,7 @@ export class ServerConnection {
     }
     if (message.data.type === "terminal.attach") {
       this.terminalDataRequestIds.add(message.data.requestId);
+      this.terminalDataTerminalIds.add(message.data.terminalId);
     }
     void Promise.resolve(this.options.onTerminalMessage?.(message.data)).catch(
       (error) => {
@@ -355,7 +364,10 @@ export class ServerConnection {
     );
   }
 
-  private enqueueTerminalSocketPayload(payload: string): boolean {
+  private enqueueTerminalSocketPayload(
+    payload: string,
+    websocket: ReconnectingWebSocketLike,
+  ): boolean {
     const bytes = Buffer.byteLength(payload, "utf8");
     if (
       this.pendingTerminalSocketBytes + bytes >
@@ -369,13 +381,10 @@ export class ServerConnection {
         "Terminal websocket output queue exceeded its limit",
       );
       this.clearTerminalSocketPayloads();
-      const websocket = this.terminalOutputSocket();
-      if (websocket) {
-        this.abortSocket(websocket, "terminal-backpressure");
-      }
+      this.abortSocket(websocket, "terminal-backpressure");
       return false;
     }
-    this.pendingTerminalSocketPayloads.push({ bytes, payload });
+    this.pendingTerminalSocketPayloads.push({ bytes, payload, websocket });
     this.pendingTerminalSocketBytes += bytes;
     this.scheduleTerminalSocketDrain();
     return true;
@@ -392,18 +401,20 @@ export class ServerConnection {
   }
 
   private flushTerminalSocketPayloads(ignoreHighWater: boolean): void {
-    const websocket = this.terminalOutputSocket();
-    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
-      this.clearTerminalSocketPayloads();
-      return;
-    }
-    while (
-      this.pendingTerminalSocketPayloads.length > 0 &&
-      (ignoreHighWater ||
-        (websocket.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES)
-    ) {
+    for (;;) {
       const pending = this.pendingTerminalSocketPayloads[0];
       if (!pending) {
+        break;
+      }
+      const { websocket } = pending;
+      if (websocket.readyState !== OPEN_READY_STATE) {
+        this.clearTerminalSocketPayloads();
+        return;
+      }
+      if (
+        !ignoreHighWater &&
+        (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES
+      ) {
         break;
       }
       try {

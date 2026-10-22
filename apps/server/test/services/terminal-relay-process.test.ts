@@ -59,7 +59,13 @@ describe("terminal relay process", () => {
   it(
     "keeps echoing keystrokes while the main server event loop is blocked",
     async () => {
-      server = await startTestServer({ terminalRelayProcess: true });
+      server = await startTestServer();
+      const enabled = await server.app.request("/api/v1/settings/experiments", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ terminalRelayProcess: true }),
+      });
+      expect(enabled.status).toBe(200);
       const { host, session } = seedHostSession(server.deps);
       const terminal = createTerminalSession(server.db, {
         cols: 80,

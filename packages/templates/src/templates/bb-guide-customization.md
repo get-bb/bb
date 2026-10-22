@@ -183,10 +183,13 @@ connection as row deltas instead of reloading the latest window after each
 update. `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`terminalRelayProcess` opens new terminals in a separate relay process so typing
+keeps echoing while the main server is busy; terminals already open stay where
+they are until they exit.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`timelinePush` and `compactExpiredCache`; an experiment you set yourself keeps
-your value.
+`timelinePush`, `compactExpiredCache`, and `terminalRelayProcess`; an
+experiment you set yourself keeps your value.
 
 Launcher settings
 

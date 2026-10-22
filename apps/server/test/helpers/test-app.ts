@@ -11,6 +11,7 @@ import {
   ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
+  getExperiments,
   listRunningThreads,
   setAppSettings,
   type DbConnection,
@@ -46,6 +47,7 @@ import { createNoopTelemetryService } from "../../src/services/system/telemetry.
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import {
   createInProcessTerminalRelay,
+  createTerminalRelayRouter,
   startTerminalRelayProcess,
 } from "../../src/services/terminals/terminal-relay-transport.js";
 import type { TerminalRelay } from "../../src/services/terminals/terminal-relay.js";
@@ -74,7 +76,7 @@ export interface TestAppHarness {
   pluginService: ReturnType<typeof createApp>["pluginService"];
   pluginCatalogService: ReturnType<typeof createApp>["pluginCatalogService"];
   serverMove: ReturnType<typeof createApp>["serverMove"];
-  terminalRelay: TerminalRelay | null;
+  terminalRelay: TerminalRelay;
   cleanup(): Promise<void>;
 }
 
@@ -104,7 +106,6 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   terminalAttachTimeoutMs?: number;
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
-  terminalRelayProcess?: boolean;
   nativeRootsClock?: () => number;
   seedFirstPartyProviders?: boolean;
   tunnelIngressNow?: () => number;
@@ -171,7 +172,6 @@ export async function createTestAppHarness(
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
-    terminalRelayProcess = false,
     nativeRootsClock,
     seedFirstPartyProviders = true,
     tunnelIngressNow: _tunnelIngressNow,
@@ -257,16 +257,19 @@ export async function createTestAppHarness(
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };
-  const inProcessTerminalRelay = terminalRelayProcess
-    ? null
-    : createInProcessTerminalRelay({ attachTimeoutMs: terminalAttachTimeoutMs });
-  const terminalRelay =
-    inProcessTerminalRelay ??
-    startTerminalRelayProcess({
-      entryUrl: new URL("../../src/terminal-relay-process.ts", import.meta.url),
-      execArgv: ["--conditions=source", "--import", "tsx"],
-      logger: testLogger,
-    });
+  const inProcessTerminalRelay = createInProcessTerminalRelay({
+    attachTimeoutMs: terminalAttachTimeoutMs,
+  });
+  const terminalRelay = createTerminalRelayRouter({
+    inProcess: inProcessTerminalRelay,
+    startProcess: () =>
+      startTerminalRelayProcess({
+        entryUrl: new URL("../../src/terminal-relay-process.ts", import.meta.url),
+        execArgv: ["--conditions=source", "--import", "tsx"],
+        logger: testLogger,
+      }),
+    useProcess: () => getExperiments(db).terminalRelayProcess,
+  });
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: terminalAttachTimeoutMs,
     ...(terminalCloseTimeoutMs === undefined
@@ -371,7 +374,7 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     serverMove,
-    terminalRelay: inProcessTerminalRelay?.relay ?? null,
+    terminalRelay: inProcessTerminalRelay.relay,
     async cleanup(): Promise<void> {
       terminalRelay.close();
       clearAllThreadProvisionSchedules();
