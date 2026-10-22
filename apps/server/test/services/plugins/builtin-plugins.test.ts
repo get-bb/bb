@@ -602,6 +602,7 @@ describe("builtin plugin reconciliation", () => {
       ),
     ).toMatchObject({
       "prompt-library": false,
+      "live-markdown": false,
       mcp: false,
       "plugin-api-tester": false,
       "monaco-editor": false,

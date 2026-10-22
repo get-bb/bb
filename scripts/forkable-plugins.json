@@ -16,6 +16,7 @@
     "plugins/github",
     "plugins/inline-vis",
     "plugins/keep-awake",
+    "plugins/live-markdown",
     "plugins/memory",
     "plugins/monaco-editor",
     "plugins/navigation",

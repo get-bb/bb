@@ -191,6 +191,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
   },
   {
+    name: "live-markdown",
+    pluginId: "bb--live-markdown",
+    defaultEnabled: false,
+  },
+  {
     name: "mcp",
     pluginId: "bb--mcp",
     defaultEnabled: false,

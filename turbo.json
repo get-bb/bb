@@ -1405,6 +1405,13 @@
         "topo"
       ]
     },
+    "bb-plugin-bb--live-markdown#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-bb--live-markdown#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"]
+    },
     "bb-plugin-bb--provider-usage#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
       "inputs": [

@@ -1,0 +1,58 @@
+.bb-live-md-marker {
+  display: none;
+}
+
+.bb-live-md-bullet {
+  position: relative;
+  display: inline-block;
+  min-width: 1.4em;
+  color: transparent;
+}
+
+.bb-live-md-bullet::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--muted-foreground);
+}
+
+.bb-live-md-ordered {
+  display: inline-block;
+  min-width: 1.4em;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.bb-live-md-h1,
+.bb-live-md-h2,
+.bb-live-md-h3 {
+  font-weight: 600;
+}
+
+.bb-live-md-h1 {
+  font-size: var(--text-lg);
+}
+
+.bb-live-md-h2 {
+  font-size: var(--text-base);
+}
+
+.bb-live-md-h3 {
+  font-size: var(--text-sm);
+}
+
+.bb-live-md-strong {
+  font-weight: 600;
+}
+
+.bb-live-md-em {
+  font-style: italic;
+}
+
+.bb-live-md-code {
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  padding: 0 0.2em;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}

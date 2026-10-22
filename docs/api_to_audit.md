@@ -42,6 +42,7 @@ bb's built-in `ultracode` highlight, runs through the same evaluator in
 `prompt-decoration-extension.ts`, which caches match results per draft and,
 on caret moves, focus, and blur, removes or restores only the decorations of
 ranges on the lines the caret left or entered.
+The bundled Live Markdown plugin is the first consumer.
 
 Before stabilization, verify Safari selection and IME behavior with hidden
 ranges, decide whether a core feature should adopt the option, and whether a
