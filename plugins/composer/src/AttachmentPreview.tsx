@@ -44,11 +44,15 @@ function isImageUpload(upload: PendingAttachmentUpload): boolean {
 
 function ImageUploadPreview({ file }: { file: File }) {
   const [previewUrl, setPreviewUrl] = useState<string>();
+  const canPreviewOriginal = !/^image\/hei[cf](?:-sequence)?(?:;|$)/iu.test(
+    file.type.trim(),
+  );
   useEffect(() => {
+    if (!canPreviewOriginal) return;
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, canPreviewOriginal]);
 
   return (
     <div
@@ -57,7 +61,7 @@ function ImageUploadPreview({ file }: { file: File }) {
       className="relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
     >
       <span className="block h-16 w-24">
-        {previewUrl ? (
+        {canPreviewOriginal && previewUrl ? (
           isVideoAttachment({ path: file.name, mimeType: file.type }) ? (
             <VideoThumbnail src={previewUrl} className="opacity-50" />
           ) : (
@@ -67,7 +71,11 @@ function ImageUploadPreview({ file }: { file: File }) {
               className="size-full object-cover opacity-50"
             />
           )
-        ) : null}
+        ) : (
+          <span className="flex h-full items-center justify-center pb-6 text-muted-foreground">
+            <Icon name="FileAttachment" className="size-5" aria-hidden="true" />
+          </span>
+        )}
       </span>
       <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
         <Icon
