@@ -25,6 +25,7 @@
     "@bb/connect-client": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/frp-client": "workspace:*",
     "@bb/fuzzy-match": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/local-open-targets": "workspace:*",

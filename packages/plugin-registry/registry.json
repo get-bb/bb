@@ -42,6 +42,7 @@
     "option-display",
     "overflow-fade",
     "pagination",
+    "pill",
     "plugin-icon",
     "popover",
     "progress",
@@ -73,10 +74,12 @@
     "toggle",
     "toggle-group",
     "tooltip",
+    "truncate-start",
     "use-dialog-state",
     "use-drag-click-suppression",
     "use-reorder-dnd",
     "use-sidebar-reorder-dnd",
+    "video-thumbnail",
     "workflow-progress"
   ],
   "pluginFlavors": {

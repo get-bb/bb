@@ -10,6 +10,7 @@ import {
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonProjectAttachmentContentQuerySchema,
+  isCompatibleHostDaemonProtocolVersion,
   hostDaemonSessionOpenRequestSchema,
   SERVER_MOVED_ERROR_CODE,
   typedRoutes,
@@ -120,7 +121,9 @@ export function registerInternalSessionRoutes(
       hostId: compatibility.data.hostId,
     });
 
-    if (compatibility.data.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
+    if (
+      !isCompatibleHostDaemonProtocolVersion(compatibility.data.protocolVersion)
+    ) {
       updateHost(deps.db, deps.hub, daemon.hostId, {
         lastRejectedProtocolVersion: compatibility.data.protocolVersion,
       });
@@ -221,6 +224,13 @@ export function registerInternalSessionRoutes(
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,
         ),
+        ...(deps.sharedPorts.hostSupportsNextTunnel(daemon.hostId)
+          ? {
+              connectNext: deps.sharedPorts.reconcileNextTunnelForHost(
+                daemon.hostId,
+              ),
+            }
+          : {}),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
         machineEnvironment: await machineEnvironment.snapshot(daemon.hostId),

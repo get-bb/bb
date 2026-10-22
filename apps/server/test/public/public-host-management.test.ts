@@ -872,9 +872,6 @@ describe("public host management", () => {
         .mockResolvedValue({
           ok: true,
           result: { ok: true },
-          tags: [],
-          keyTags: {},
-          invalidated: [],
         });
 
       const response = await harness.app.request(`${API}/hosts/${host.id}`, {

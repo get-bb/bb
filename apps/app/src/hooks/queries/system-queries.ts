@@ -49,7 +49,7 @@ import {
   systemVersionQueryKey,
   uiPreferencesQueryKey,
 } from "./query-keys";
-import { publicApiRoutes } from "@bb/server-contract";
+import { uiPreferencesRoute } from "@bb/server-contract";
 import { routeTaggedRead } from "./route-tags";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
@@ -527,7 +527,7 @@ export function uiPreferencesQueryOptions(client: QueryClient) {
     ...routeTaggedRead(
       client,
       queryKey,
-      publicApiRoutes.system.uiPreferences,
+      uiPreferencesRoute,
       { params: {}, input: undefined },
       (signal) => sdk.system.uiPreferences.list({ signal }),
     ),

@@ -7,29 +7,17 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { PromptMentionPillNodeView } from "./PromptMentionPillNodeView";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
 import {
-  PROMPT_MENTION_PILL_CLASS,
-  promptMentionDisplayLabel,
-  promptMentionTooltipLabel,
-} from "@/components/promptbox/mentions/prompt-mention-display";
-import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
+  describePromptMention,
+  promptMentionClipboardAttributes,
+} from "@/components/promptbox/mentions/prompt-mention-pill";
 
 interface MentionRenderArgs {
   node: Pick<ProseMirrorNode, "attrs">;
 }
 
-type ParsedMentionAttrs = ReturnType<typeof parsePromptEditorMentionAttrs>;
-
 function renderMentionText({ node }: MentionRenderArgs): string {
   const attrs = parsePromptEditorMentionAttrs(node.attrs);
   return attrs?.serializedText ?? "";
-}
-
-function renderMentionLabel(attrs: ParsedMentionAttrs): string {
-  return attrs ? promptMentionDisplayLabel(attrs.resource) : "@mention";
-}
-
-function renderMentionTitle(attrs: ParsedMentionAttrs): string {
-  return attrs ? promptMentionTooltipLabel(attrs.resource) : "@mention";
 }
 
 export const PromptMentionExtension = Mention.extend({
@@ -37,7 +25,7 @@ export const PromptMentionExtension = Mention.extend({
     const parentAttributes = this.parent?.() ?? {};
     return {
       ...parentAttributes,
-      resource: {
+      mention: {
         default: null,
       },
       serializedText: {
@@ -94,17 +82,28 @@ export const PromptMentionExtension = Mention.extend({
   renderText: renderMentionText,
   renderHTML({ node, options }) {
     const attrs = parsePromptEditorMentionAttrs(node.attrs);
-    const clipboardAttributes = attrs
-      ? promptMentionClipboardDataAttributes(attrs)
-      : { "data-prompt-mention": "true" };
+    if (!attrs) {
+      return [
+        "span",
+        mergeAttributes(options.HTMLAttributes, {
+          "data-prompt-mention": "true",
+          title: "@mention",
+        }),
+        "@mention",
+      ];
+    }
+    const presentation = describePromptMention(attrs.mention);
     return [
       "span",
       mergeAttributes(options.HTMLAttributes, {
-        class: PROMPT_MENTION_PILL_CLASS,
-        ...clipboardAttributes,
-        title: renderMentionTitle(attrs),
+        class: presentation.className,
+        ...promptMentionClipboardAttributes(
+          attrs.mention,
+          attrs.serializedText,
+        ),
+        title: presentation.title,
       }),
-      renderMentionLabel(attrs),
+      presentation.text,
     ];
   },
   suggestion: {

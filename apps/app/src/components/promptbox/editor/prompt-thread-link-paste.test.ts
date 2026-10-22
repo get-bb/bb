@@ -128,7 +128,9 @@ describe("pasted thread link conversion", () => {
     expect(converted.text).toBe(
       `Before 😀 (@thread:${threadId}), @thread:${secondId} and @thread:${threadId}. https://example.com after`,
     );
-    expect(converted.mentions.map((mention) => mention.resource)).toEqual([
+    expect(
+      converted.mentions.map(({ from: _from, to: _to, ...target }) => target),
+    ).toEqual([
       { kind: "thread", ...resolution() },
       { kind: "thread", ...resolution(secondId) },
       { kind: "thread", ...resolution() },
@@ -294,14 +296,12 @@ describe("pasted thread link conversion", () => {
       text: `${mismatched} @thread:${personalId} ${wrongProjectless} ${missing}`,
       mentions: [
         {
-          start: mismatched.length + 1,
-          end: mismatched.length + 1 + `@thread:${personalId}`.length,
-          resource: {
-            kind: "thread",
-            threadId: personalId,
-            projectId: PERSONAL_PROJECT_ID,
-            label: personalId,
-          },
+          from: mismatched.length + 1,
+          to: mismatched.length + 1 + `@thread:${personalId}`.length,
+          kind: "thread",
+          threadId: personalId,
+          projectId: PERSONAL_PROJECT_ID,
+          label: personalId,
         },
       ],
     });
@@ -354,9 +354,10 @@ describe("pasted thread link conversion", () => {
           text: `${copiedToken} ${url}`,
           mentions: [
             {
-              start: 0,
-              end: copiedToken.length,
-              resource: { kind: "thread", ...resolution(secondId) },
+              from: 0,
+              to: copiedToken.length,
+              kind: "thread",
+              ...resolution(secondId),
             },
           ],
         }),
@@ -366,7 +367,11 @@ describe("pasted thread link conversion", () => {
     await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(0);
     expect(value(editor).text).toBe(`${copiedToken} @thread:${threadId}`);
-    expect(value(editor).mentions.map((mention) => mention.resource)).toEqual([
+    expect(
+      value(editor).mentions.map(
+        ({ from: _from, to: _to, ...target }) => target,
+      ),
+    ).toEqual([
       { kind: "thread", ...resolution(secondId) },
       { kind: "thread", ...resolution() },
     ]);

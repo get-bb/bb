@@ -87,6 +87,23 @@ export function resolveTrustedConnectGate(
   };
 }
 
+export function isConnectNextBaseDomain(baseDomain: string): boolean {
+  return new URL(`https://${baseDomain}`).hostname.startsWith("next.");
+}
+
+function enrolledThroughConnectNext(serverUrl: string): boolean {
+  try {
+    return isConnectNextBaseDomain(
+      resolveTrustedConnectGate(serverUrl).baseDomain,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export const CONNECT_NEXT_ENROLLMENT_MESSAGE =
+  "this machine joined through a connect next address, which has no bb connect machine tunnel; its shared ports answer through connect next";
+
 export function buildMachineTunnelUrl(
   identity: HostDaemonConnectTunnelIdentity,
 ): string {
@@ -111,6 +128,7 @@ export class ConnectTunnelClient {
   private readonly fetchFn: ConnectTunnelFetch;
   private readonly backoff: ReconnectBackoff;
   private readonly machineCredential: string | undefined;
+  private readonly servedByNext: boolean;
   private generation = -1;
   private ports = new Set<number>();
   private identity: HostDaemonConnectTunnelIdentity | undefined;
@@ -136,12 +154,16 @@ export class ConnectTunnelClient {
       options.machineCredential?.trim().length === 0
         ? undefined
         : options.machineCredential;
+    this.servedByNext = enrolledThroughConnectNext(options.serverUrl);
   }
 
   status(): ConnectTunnelStatus {
     return {
       state: this.state,
-      lastError: this.lastError,
+      lastError:
+        this.servedByNext && this.ports.size > 0
+          ? CONNECT_NEXT_ENROLLMENT_MESSAGE
+          : this.lastError,
       credentialRejected: this.credentialRejected,
       generation: Math.max(this.generation, 0),
       ports: [...this.ports].sort((a, b) => a - b),
@@ -268,6 +290,7 @@ export class ConnectTunnelClient {
   private hasConnectIntent(): boolean {
     return (
       !this.stopped &&
+      !this.servedByNext &&
       this.ports.size > 0 &&
       this.machineCredential !== undefined &&
       !this.credentialRejected

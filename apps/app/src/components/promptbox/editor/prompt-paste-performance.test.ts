@@ -8,9 +8,10 @@ import {
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
 } from "./prompt-editor-serialization";
-import { findUltracodeRanges } from "./prompt-decoration-extension";
-import { findActiveTrigger } from "@bb/client-core";
-import type { TypeaheadTrigger } from "@bb/client-core";
+import {
+  findActiveTrigger,
+  type TypeaheadTrigger,
+} from "../mentions/find-active-trigger";
 import { serializePromptDraftStorage } from "@bb/client-core";
 import { generateMinifiedJsFixture } from "@/test/fixtures/minified-js-paste-fixture";
 
@@ -95,7 +96,9 @@ describe.runIf(PERF_ENABLED)("composer large minified-JS paste", () => {
         `value JSON.stringify (2×/keystroke pre-fix; now ref-compare) ${formatMs(valueKeyMs)}ms`,
       );
 
-      const decorationRegexMs = measureMs(7, () => findUltracodeRanges(text));
+      const decorationRegexMs = measureMs(7, () =>
+        Array.from(text.matchAll(/\bultracode\b/giu)),
+      );
       lines.push(
         `decoration rule regex (sync/keystroke pre-fix; now deferred on large docs) ${formatMs(decorationRegexMs)}ms`,
       );

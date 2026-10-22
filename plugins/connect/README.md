@@ -77,3 +77,27 @@ fail locally. A successful response clears the cooldown. Shares remain exposed
 so restarted servers recover automatically. The cache holds at most 1,024 origins
 and resets when the tunnel closes. The primary bb origin and other errors retain
 their existing behavior.
+
+## Shares on the next address
+
+The shares registry (`src/shares.ts`, KV key `shares`) is also served to
+`bb--connect-next` through `src/server-shares.ts`, a contract registered next
+to the client RPCs and answered only when the caller is that plugin:
+
+- `connect.internal_DO_NOT_USE.serverShares` (`null` input) answers `{ revision, ports }`: the
+  sorted ports shared from the server machine (the configured primary host,
+  plus legacy entries without a host id).
+- `connect.internal_DO_NOT_USE.waitForServerSharesChange({ afterRevision })` long-polls: it
+  answers once `revision` passes `afterRevision`, or after 25 s with the
+  current value. `revision` increases on every expose, unexpose and prune.
+
+Connect asks `bb--connect-next`'s `status` RPC (2 s timeout; a disabled
+plugin counts as off) whenever it builds a share listing. While that status is
+`enabled` with a `url`, server-machine listings carry
+`nextUrl = <scheme>://<label>--<port>.<next domain>` and other machines'
+listings `nextUrl = <scheme>://<machine-label>--<port>.<next domain>` (the
+machine label from `bb.hosts.ensureSharedPortTunnel`); `bb connect expose`
+prints it on a second line, `bb connect shares` and `bb connect status` after
+the first URL, and the remote-access agent instructions mention it. A machine
+enrolled through the next address already has `url` on the next domain, so its
+listing has no `nextUrl` and the address is printed once.

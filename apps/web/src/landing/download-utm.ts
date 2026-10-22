@@ -103,9 +103,7 @@ export function carryUtmToDownloadLinks(): () => void {
       const query = params.toString();
       linkSearch = query ? `?${query}` : "";
     }
-    const params = new URLSearchParams(addSavedUtmParams(linkSearch, saved));
-    params.set("instructions", "1");
-    const search = `?${params.toString()}`;
+    const search = addSavedUtmParams(linkSearch, saved);
     if (search !== link.search) {
       link.search = search;
     }

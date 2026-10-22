@@ -5,7 +5,7 @@ import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { formatByteSize } from "@/lib/format-byte-size";
 import { cn } from "@bb/shared-ui/lib/utils";

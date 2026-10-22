@@ -70,6 +70,7 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
   "mail",
   "media",
   "mx",
+  "next",
   "ns1",
   "ns2",
   "origin",

@@ -1623,6 +1623,25 @@ export async function resumeEnvironmentProvisioningForHost(
   }
 }
 
+export async function runTrackedEnvironmentAttach(
+  deps: CommandResultSideEffectsDeps,
+  args: {
+    hostId: string;
+    command: EnvironmentProvisionRequest["command"];
+    timeoutMs: number;
+  },
+): Promise<void> {
+  const operation = runTrackedOperation({
+    kind: "attach",
+    map: perDbRegistry(environmentOperations, deps.db),
+    key: args.command.environmentId,
+    run: async () => {
+      await runLiveHostCommand(deps, args);
+    },
+  });
+  await operation.done;
+}
+
 async function runEnvironmentProvisionCommand(
   deps: CommandResultSideEffectsDeps,
   args: StartTrackedEnvironmentProvisionCommandArgs,

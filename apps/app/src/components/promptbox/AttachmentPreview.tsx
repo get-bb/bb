@@ -1,5 +1,5 @@
 import { isVideoAttachment } from "@/lib/video-attachments";
-import { VideoThumbnail } from "@/components/ui/video-thumbnail";
+import { VideoThumbnail } from "@bb/shared-ui/video-thumbnail";
 import { useEffect, useState } from "react";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";

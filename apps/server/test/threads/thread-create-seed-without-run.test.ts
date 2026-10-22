@@ -93,6 +93,7 @@ describe("thread creation telemetry", () => {
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
         properties: {
+          initiator: "user",
           is_child_thread: false,
           message_source: "thread_create",
           provider: "codex",
@@ -100,6 +101,138 @@ describe("thread creation telemetry", () => {
       });
     });
   });
+});
+
+describe("thread creation initiator telemetry", () => {
+  it("adds initiator to thread and message events only when the flag is on", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-initiator-telemetry",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/initiator-telemetry",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/initiator-telemetry",
+      });
+      const request = {
+        environment: {
+          type: "host" as const,
+          hostId: host.id,
+          workspace: {
+            type: "unmanaged" as const,
+            path: "/tmp/initiator-telemetry",
+          },
+        },
+        input: textInput("Start with initiator"),
+        origin: "app" as const,
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      };
+
+      harness.deps.config.featureFlags = {
+        ...harness.deps.config.featureFlags,
+        initiatorTelemetry: false,
+      };
+      await createThreadFromRequest(harness.deps, request);
+      expect(capture).toHaveBeenCalledWith({
+        name: "thread_created",
+        properties: { is_child_thread: false, provider: "codex" },
+      });
+
+      capture.mockClear();
+      harness.deps.config.featureFlags = {
+        ...harness.deps.config.featureFlags,
+        initiatorTelemetry: true,
+      };
+      await createThreadFromRequest(harness.deps, request);
+      expect(capture).toHaveBeenCalledWith({
+        name: "thread_created",
+        properties: {
+          is_child_thread: false,
+          provider: "codex",
+          initiator: "user",
+        },
+      });
+      expect(capture).toHaveBeenCalledWith({
+        name: "user_message_sent",
+        properties: {
+          is_child_thread: false,
+          message_source: "thread_create",
+          provider: "codex",
+          initiator: "user",
+        },
+      });
+    });
+  });
+});
+
+describe("thread creation initiator for CLI spawns from a thread", () => {
+  it.each([
+    [true, "agent"],
+    [false, "user"],
+  ] as const)(
+    "labels the spawn %s → %s depending on whether the sender thread is mid-turn",
+    async (senderMidTurn, expected) => {
+      await withTestHarness(async (harness) => {
+        const capture = installTelemetryCaptureSpy(harness);
+        harness.deps.config.featureFlags = {
+          ...harness.deps.config.featureFlags,
+          initiatorTelemetry: true,
+        };
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-sender-${String(senderMidTurn)}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/sender-initiator",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/sender-initiator",
+        });
+        const sender = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        if (senderMidTurn) {
+          seedTurnStarted(harness.deps, {
+            threadId: sender.id,
+            turnId: "turn-sender-1",
+          });
+        }
+
+        await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "unmanaged", path: "/tmp/sender-initiator" },
+          },
+          input: textInput("spawned from a thread"),
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          senderThreadId: sender.id,
+          startedOnBehalfOf: null,
+        });
+
+        expect(capture).toHaveBeenCalledWith({
+          name: "thread_created",
+          properties: {
+            is_child_thread: false,
+            provider: "codex",
+            initiator: expected,
+          },
+        });
+      });
+    },
+  );
 });
 
 describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {

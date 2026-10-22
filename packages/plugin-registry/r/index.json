@@ -194,6 +194,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "pill",
+      "type": "registry:ui"
+    },
+    {
       "name": "plugin-icon",
       "type": "registry:ui"
     },
@@ -366,6 +370,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "truncate-start",
+      "type": "registry:ui"
+    },
+    {
       "name": "use-browser-dimming-modal",
       "type": "registry:hook"
     },
@@ -400,6 +408,14 @@
     {
       "name": "utils",
       "type": "registry:lib"
+    },
+    {
+      "name": "video",
+      "type": "registry:ui"
+    },
+    {
+      "name": "video-thumbnail",
+      "type": "registry:ui"
     },
     {
       "name": "voice-input-textarea",

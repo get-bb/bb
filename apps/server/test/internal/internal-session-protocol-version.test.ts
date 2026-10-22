@@ -1,4 +1,5 @@
 import {
+  HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS,
   HOST_DAEMON_PROTOCOL_VERSION,
   type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
@@ -116,7 +117,8 @@ describe("internal session protocol version", () => {
         name: "Protocol Host",
       });
       const daemonClient = createHostDaemonClient(server.baseUrl, hostKey);
-      const staleProtocolVersion = HOST_DAEMON_PROTOCOL_VERSION - 1;
+      const staleProtocolVersion =
+        Math.min(...HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS) - 1;
 
       const priorProtocolResponse = await fetch(
         `${server.baseUrl}/internal/session/open`,

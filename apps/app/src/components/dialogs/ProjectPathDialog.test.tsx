@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("ProjectPathDialog machine selection", () => {
-  it("creates a project from a folder on the selected connected machine", () => {
+  it("creates a project from a folder on the selected connected machine", async () => {
     const onSubmit = vi.fn();
     render(
       <ProjectPathDialog
@@ -65,9 +65,11 @@ describe("ProjectPathDialog machine selection", () => {
     const trigger = screen.getByRole("button", { name: "Machine" });
     expect(trigger.textContent).toContain("atum");
     expect(
-      screen
-        .getByRole("button", { name: "Choose folder on host_atum" })
-        .getAttribute("data-allow-create-folder"),
+      (
+        await screen.findByRole("button", {
+          name: "Choose folder on host_atum",
+        })
+      ).getAttribute("data-allow-create-folder"),
     ).toBe("true");
 
     fireEvent.pointerDown(trigger, { button: 0 });

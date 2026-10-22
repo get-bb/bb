@@ -22,7 +22,16 @@ import {
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 import { machineEnvironmentSetSchema } from "./machine-environment.js";
-
+import { systemVoiceTranscriptionResponseSchema } from "./system-voice.js";
+import {
+  systemEnvironmentProviderSchema,
+  systemEnvironmentProvidersResponseSchema,
+} from "./system-environment-providers.js";
+export {
+  systemEnvironmentProviderSchema,
+  systemEnvironmentProvidersResponseSchema,
+} from "./system-environment-providers.js";
+export { systemVoiceTranscriptionResponseSchema } from "./system-voice.js";
 const machineEnvironmentReplacementVariableSchema =
   machineEnvironmentSetSchema.extend({
     value: machineEnvironmentSetSchema.shape.value.nullable(),
@@ -131,9 +140,6 @@ export interface SystemVoiceTranscriptionForm {
 export { providerInfoSchema as systemProviderInfoSchema } from "@bb/domain";
 export type { ProviderInfo as SystemProviderInfo } from "@bb/domain";
 
-export const systemVoiceTranscriptionResponseSchema = z.object({
-  text: z.string(),
-});
 export type SystemVoiceTranscriptionResponse = z.infer<
   typeof systemVoiceTranscriptionResponseSchema
 >;
@@ -579,54 +585,10 @@ export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
 >;
 
-const systemEnvironmentProviderAvailabilitySchema = z.discriminatedUnion(
-  "status",
-  [
-    z.object({ status: z.literal("available") }),
-    z.object({
-      status: z.literal("setup-required"),
-      message: z.string().min(1),
-    }),
-    z.object({
-      status: z.literal("unavailable"),
-      message: z.string().min(1),
-    }),
-  ],
-);
-
-export const systemEnvironmentProviderSchema = z.object({
-  environmentProviderId: z.string().min(1).optional(),
-  machineProviderId: z.string().min(1).nullable(),
-  id: z.string().min(1),
-  displayName: z.string().min(1),
-  description: z.string().min(1).nullable(),
-  icon: z.string().min(1).nullable(),
-  logoUrl: z.string().min(1).nullable(),
-  pluginId: z.string().min(1),
-  requires: z.object({
-    projectCheckout: z.boolean(),
-    gitCheckout: z.boolean(),
-    gitRemote: z.boolean(),
-    projectless: z.boolean(),
-  }),
-  inputs: jsonValueSchema.nullable(),
-  acceptsEmptyInputs: z.boolean(),
-  availability: systemEnvironmentProviderAvailabilitySchema.nullable(),
-  machineAvailability: z.record(
-    z.string().min(1),
-    systemEnvironmentProviderAvailabilitySchema.nullable(),
-  ),
-  machineInputs: jsonValueSchema.nullable().optional(),
-  machineAcceptsEmptyInputs: z.boolean().optional(),
-  machineProviderPluginId: z.string().min(1).optional(),
-});
 export type SystemEnvironmentProvider = z.infer<
   typeof systemEnvironmentProviderSchema
 >;
 
-export const systemEnvironmentProvidersResponseSchema = z.object({
-  providers: z.array(systemEnvironmentProviderSchema),
-});
 export type SystemEnvironmentProvidersResponse = z.infer<
   typeof systemEnvironmentProvidersResponseSchema
 >;

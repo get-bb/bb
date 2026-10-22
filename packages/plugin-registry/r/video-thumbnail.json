@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "video-thumbnail",
+  "type": "registry:ui",
+  "title": "video-thumbnail",
+  "description": "BB ui \"video-thumbnail\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/utils",
+    "@bb/video"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/video-thumbnail.tsx",
+      "content": "import { Video } from \"./video\";\nimport { Icon } from \"./icon\";\nimport { cn } from \"../../lib/utils\";\n\nexport function VideoThumbnail({\n  src,\n  className,\n}: {\n  src: string;\n  className?: string;\n}) {\n  return (\n    <span\n      className={cn(\"relative block h-16 w-24 bg-surface-recessed\", className)}\n    >\n      <Video\n        src={`${src.split(\"#\")[0]}#t=0.001`}\n        muted\n        playsInline\n        preload=\"metadata\"\n        aria-hidden=\"true\"\n        className=\"size-full object-cover\"\n      />\n      <span className=\"absolute inset-0 flex items-center justify-center\">\n        <span className=\"flex size-8 items-center justify-center rounded-full bg-black/55 text-white\">\n          <Icon name=\"Play\" className=\"size-4\" />\n        </span>\n      </span>\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/video-thumbnail.tsx"
+    }
+  ]
+}

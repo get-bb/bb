@@ -18,6 +18,15 @@ import { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 import { threadOriginKindSchema } from "./thread-origin-kind.js";
 import { threadParentNotificationsSchema } from "./thread-parent-notifications.js";
 import { threadVisibilitySchema } from "./thread-visibility.js";
+import {
+  threadRuntimeDisplayStatusSchema,
+  threadRuntimeStateSchema,
+  threadActivityStateSchema,
+} from "./thread-runtime-state.js";
+export {
+  threadRuntimeStateSchema,
+  threadActivityStateSchema,
+} from "./thread-runtime-state.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export { threadOriginKindSchema } from "./thread-origin-kind.js";
@@ -33,30 +42,13 @@ export type { ThreadOriginKind } from "./thread-origin-kind.js";
  * separate `held` display status, derived from an `idle` thread holding a live
  * dispatch hold; that derivation and the holds behind it are both gone.
  */
-const threadRuntimeDisplayStatusValues = [
-  ...threadStatusValues,
-  "provisioning",
-  "waiting-for-host",
-] as const;
-const threadRuntimeDisplayStatusSchema = z.enum(
-  threadRuntimeDisplayStatusValues,
-);
+
 export type ThreadRuntimeDisplayStatus = z.infer<
   typeof threadRuntimeDisplayStatusSchema
 >;
 
-export const threadRuntimeStateSchema = z.object({
-  displayStatus: threadRuntimeDisplayStatusSchema,
-});
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
-export const threadActivityStateSchema = z.object({
-  activeWorkflowCount: z.number().int().nonnegative(),
-  activeBackgroundAgentCount: z.number().int().nonnegative(),
-  activeBackgroundCommandCount: z.number().int().nonnegative(),
-  activePlanModeCount: z.number().int().nonnegative(),
-  activeGoalCount: z.number().int().nonnegative(),
-});
 export type ThreadActivityState = z.infer<typeof threadActivityStateSchema>;
 
 const workspaceStateValues = [

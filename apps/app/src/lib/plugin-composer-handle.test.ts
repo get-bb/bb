@@ -204,15 +204,14 @@ describe("composer handle", () => {
         text: "See @a.ts",
         mentions: [
           {
-            start: 4,
-            end: 9,
-            resource: {
-              kind: "plugin",
-              pluginId: "demo",
-              icon: null,
-              itemId: "files:a.ts",
-              label: "a.ts",
-            },
+            from: 4,
+            to: 9,
+            kind: "plugin",
+            pluginId: "demo",
+            icon: null,
+            provider: "files",
+            id: "a.ts",
+            label: "a.ts",
           },
         ],
       },

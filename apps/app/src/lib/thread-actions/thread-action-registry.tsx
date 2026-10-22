@@ -22,7 +22,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
-import { useBbNavigate, useSdk } from "@/lib/plugin-sdk-hooks";
+import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 export const CORE_THREAD_ACTION_OWNER = "bb--core";

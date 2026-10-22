@@ -19,23 +19,7 @@ import {
   systemThreadInterruptedReasonSchema,
 } from "./system-message.js";
 
-export const systemEventTypeValues = [
-  "client/thread/start",
-  "client/turn/requested",
-  "client/turn/rejected",
-  "client/turn/start",
-  "system/error",
-  "system/manager/user_message",
-  "system/thread/interrupted",
-  "system/operation",
-  "system/interaction/lifecycle",
-  "system/permissionGrant/lifecycle",
-  "system/userQuestion/lifecycle",
-  "system/thread-provisioning",
-  // Legacy persisted watchdog diagnostic; retained for read/decode/render
-  // only, with no current producer.
-  "system/provider-turn-watchdog",
-] as const;
+export { systemEventTypeValues } from "./thread-event-types.js";
 
 const threadTurnInitiatorValues = ["user", "agent", "system"] as const;
 export const threadTurnInitiatorSchema = z.enum(threadTurnInitiatorValues);

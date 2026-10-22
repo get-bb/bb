@@ -15,6 +15,7 @@ export {
   type SignOutResult,
 } from "./schemas.js";
 export const CONNECT_PLUGIN_ID = "connect";
+export const CONNECT_NEXT_PLUGIN_ID = "bb--connect-next";
 
 export const STATUS_METHOD = "bb-account.v1.status";
 export const WAIT_FOR_STATUS_CHANGE_METHOD =

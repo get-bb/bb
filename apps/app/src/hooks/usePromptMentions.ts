@@ -271,6 +271,8 @@ export function usePromptMentions(
       (pathSearch.isDebouncing ||
         pathSearch.isLoading ||
         pathSearch.isRefreshing ||
+        projectNamesQuery.isLoading ||
+        projectNamesQuery.isFetching ||
         threadsQuery.isLoading ||
         threadsQuery.isFetching)) ||
     (hasMentionProviders &&
@@ -280,14 +282,15 @@ export function usePromptMentions(
   const isLoading = hasQuery && results.suggestions.length === 0 && isSearching;
   const isRefreshing =
     hasQuery && results.suggestions.length > 0 && isSearching;
-  const isThreadError =
-    includeBuiltInSources &&
-    hasQuery &&
-    threadsQuery.isError &&
-    !threadsQuery.isLoading &&
-    !threadsQuery.isFetching;
   const isError =
-    (includeBuiltInSources && pathSearch.isError) || isThreadError;
+    hasQuery &&
+    results.suggestions.length === 0 &&
+    !isSearching &&
+    ((includeBuiltInSources &&
+      (pathSearch.isError ||
+        threadsQuery.isError ||
+        projectNamesQuery.isError)) ||
+      (hasMentionProviders && pluginSearch.isError));
 
   return {
     query,

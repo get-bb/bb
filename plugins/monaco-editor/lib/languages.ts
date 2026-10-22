@@ -21,6 +21,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   yml: "yaml",
   toml: "ini",
   ini: "ini",
+  properties: "ini",
   cfg: "ini",
   conf: "ini",
   env: "shell",

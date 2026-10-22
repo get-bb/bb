@@ -373,6 +373,21 @@
       "source": "./src/components/ui/split-pane-mini-map.tsx",
       "types": "./src/components/ui/split-pane-mini-map.tsx",
       "default": "./src/components/ui/split-pane-mini-map.tsx"
+    },
+    "./truncate-start": {
+      "source": "./src/components/ui/truncate-start.tsx",
+      "types": "./src/components/ui/truncate-start.tsx",
+      "default": "./src/components/ui/truncate-start.tsx"
+    },
+    "./video": {
+      "source": "./src/components/ui/video.tsx",
+      "types": "./src/components/ui/video.tsx",
+      "default": "./src/components/ui/video.tsx"
+    },
+    "./video-thumbnail": {
+      "source": "./src/components/ui/video-thumbnail.tsx",
+      "types": "./src/components/ui/video-thumbnail.tsx",
+      "default": "./src/components/ui/video-thumbnail.tsx"
     }
   },
   "scripts": {

@@ -12,7 +12,7 @@ import type {
   EnvironmentStatusResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
-import { publicApiRoutes } from "@bb/server-contract";
+import { environmentPullRequestRoute } from "@bb/server-contract";
 import type { EnvironmentDiffArgs } from "@bb/sdk/browser";
 import type {
   EnvironmentFilePreviewSource,
@@ -169,7 +169,7 @@ export function useEnvironmentPullRequest(
     ...routeTaggedRead(
       client,
       queryKey,
-      publicApiRoutes.environments.pullRequest,
+      environmentPullRequestRoute,
       { params: environmentId ? { id: environmentId } : {}, input: undefined },
       (signal) =>
         sdk.environments.pullRequest({

@@ -2,7 +2,10 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PromptMentionSuggestion } from "@bb/client-core";
+import {
+  composerMentionSuggestionFromPrompt,
+  type PromptMentionSuggestion,
+} from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { MentionMenu } from "./MentionMenu";
@@ -40,17 +43,15 @@ describe("MentionMenu", () => {
             state: {
               kind: "results",
               refreshing: false,
-              results: {
-                groups: [
-                  {
-                    key: "threads",
-                    label: "Threads",
-                    startIndex: 0,
-                    suggestions: [suggestion],
-                  },
-                ],
-                suggestions: [suggestion],
-              },
+              groups: [
+                {
+                  key: "threads",
+                  label: "Threads",
+                  suggestions: [
+                    composerMentionSuggestionFromPrompt(suggestion),
+                  ],
+                },
+              ],
             },
           }}
           selectedIndex={0}
@@ -83,17 +84,15 @@ describe("MentionMenu", () => {
             state: {
               kind: "results",
               refreshing,
-              results: {
-                groups: [
-                  {
-                    key: "workspace",
-                    label: "Workspace",
-                    startIndex: 0,
-                    suggestions: [suggestion],
-                  },
-                ],
-                suggestions: [suggestion],
-              },
+              groups: [
+                {
+                  key: "workspace",
+                  label: "Workspace",
+                  suggestions: [
+                    composerMentionSuggestionFromPrompt(suggestion),
+                  ],
+                },
+              ],
             },
           }}
           selectedIndex={0}

@@ -6,6 +6,14 @@ import {
 } from "./desktop-browser-import.js";
 
 const id = z.string().min(1).max(256);
+export const desktopBrowserBrokerChallengeSchema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/u);
+export const desktopBrowserBrokerProofSchema = z
+  .object({
+    proof: z.string().regex(/^[a-f0-9]{64}$/u),
+  })
+  .strict();
 export const desktopBrowserInstanceSchema = z.object({
   instanceId: id,
   generation: id,

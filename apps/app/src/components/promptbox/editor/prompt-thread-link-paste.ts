@@ -193,7 +193,7 @@ export function createPromptThreadLinkPasteExtension(
           occurrence.to,
           editor.schema.nodes.mention!.create(
             {
-              resource: {
+              mention: {
                 kind: "thread",
                 ...thread,
                 label: thread.label.trim() || thread.threadId,

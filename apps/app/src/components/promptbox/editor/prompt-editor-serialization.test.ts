@@ -3,14 +3,12 @@ import { getSchema } from "@tiptap/core";
 import { promptEditorExtensions } from "./prompt-editor-extensions";
 import { Node, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
-import type { PromptTextMention } from "@bb/domain";
+import type { ComposerMentionShape as ComposerMention } from "@bb/client-core";
 import {
-  promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorCopiedSlice,
   promptEditorInlineContentFromValue,
-  promptMentionResourceFromSuggestion,
   promptEditorValueFromDoc,
   type PromptEditorValue,
 } from "./prompt-editor-serialization";
@@ -78,24 +76,17 @@ describe("prompt editor serialization round-trip", () => {
     const prefix = "> a\n\nhey ";
     const mentionText = "@thread";
     const text = `${prefix}${mentionText} done`;
-    const mention: PromptTextMention = {
-      start: prefix.length,
-      end: prefix.length + mentionText.length,
-      resource: {
-        kind: "thread",
-        threadId: "thr_123",
-        projectId: "proj_1",
-        label: "@thread",
-      },
+    const mention: ComposerMention = {
+      from: prefix.length,
+      to: prefix.length + mentionText.length,
+      kind: "thread",
+      threadId: "thr_123",
+      projectId: "proj_1",
+      label: "@thread",
     };
     const value: PromptEditorValue = { text, mentions: [mention] };
 
-    const result = roundTrip(value);
-    expect(result.text).toBe(text);
-    expect(result.mentions).toHaveLength(1);
-    expect(result.mentions[0]!.start).toBe(mention.start);
-    expect(result.mentions[0]!.end).toBe(mention.end);
-    expect(result.mentions[0]!.resource).toEqual(mention.resource);
+    expect(roundTrip(value)).toEqual(value);
   });
 });
 
@@ -208,34 +199,16 @@ describe("promptEditorCopiedSlice", () => {
 });
 
 describe("prompt editor serialization", () => {
-  it("builds a project mention resource from a project suggestion", () => {
-    expect(
-      promptMentionResourceFromSuggestion({
-        kind: "project",
-        path: "project:proj_abc",
-        replacement: "project:proj_abc",
-        projectId: "proj_abc",
-        name: "Alpha Service",
-      }),
-    ).toEqual({
-      kind: "project",
-      projectId: "proj_abc",
-      label: "Alpha Service",
-    });
-  });
-
   it("round-trips a project mention through the editor document", () => {
     const value: PromptEditorValue = {
       text: "look at @project:proj_abc please",
       mentions: [
         {
-          start: "look at ".length,
-          end: "look at @project:proj_abc".length,
-          resource: {
-            kind: "project",
-            projectId: "proj_abc",
-            label: "Alpha Service",
-          },
+          from: "look at ".length,
+          to: "look at @project:proj_abc".length,
+          kind: "project",
+          projectId: "proj_abc",
+          label: "Alpha Service",
         },
       ],
     };
@@ -243,61 +216,19 @@ describe("prompt editor serialization", () => {
     expect(roundTrip(value)).toEqual(value);
   });
 
-  it("builds a section mention resource from a section suggestion", () => {
-    expect(
-      promptMentionResourceFromSuggestion({
-        kind: "section",
-        path: "section:sec_abc",
-        replacement: "section:sec_abc",
-        sectionId: "sec_abc",
-        name: "Release work",
-      }),
-    ).toEqual({
-      kind: "section",
-      sectionId: "sec_abc",
-      label: "Release work",
-    });
-  });
-
-  it("builds command mention resources from provider command suggestions", () => {
-    expect(
-      promptCommandResourceFromSuggestion({
-        trigger: "/",
-        suggestion: {
-          kind: "command",
-          name: "review",
-          source: "skill",
-          origin: "user",
-          description: "Review code changes",
-          argumentHint: "<files>",
-        },
-      }),
-    ).toEqual({
-      kind: "command",
-      trigger: "/",
-      name: "review",
-      source: "skill",
-      origin: "user",
-      label: "review",
-      argumentHint: "<files>",
-    });
-  });
-
   it("serializes a selected skill as a pill without materializing argument hint text", () => {
     const text = "/review ";
-    const mentions: PromptTextMention[] = [
+    const mentions: ComposerMention[] = [
       {
-        start: 0,
-        end: "/review".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "review",
-          source: "skill",
-          origin: "user",
-          label: "review",
-          argumentHint: "<files>",
-        },
+        from: 0,
+        to: "/review".length,
+        kind: "command",
+        trigger: "/",
+        name: "review",
+        source: "skill",
+        origin: "user",
+        label: "review",
+        argumentHint: "<files>",
       },
     ];
 
@@ -305,7 +236,15 @@ describe("prompt editor serialization", () => {
       {
         type: "mention",
         attrs: {
-          resource: mentions[0].resource,
+          mention: {
+            kind: "command",
+            trigger: "/",
+            name: "review",
+            source: "skill",
+            origin: "user",
+            label: "review",
+            argumentHint: "<files>",
+          },
           serializedText: "/review",
         },
       },
