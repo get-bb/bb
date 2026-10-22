@@ -264,6 +264,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
     getHeadSha: vi.fn(async () => "commit-1"),
     getLocalStateSnapshot: vi.fn(async () => ({
       fingerprint: "local-1",
+      directories: { ignored: [], untracked: [] },
       branchName: "main",
     })),
     getSharedGitRefsSnapshot: vi.fn(async () => ({

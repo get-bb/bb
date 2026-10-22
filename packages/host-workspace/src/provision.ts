@@ -66,7 +66,7 @@ export interface HostWorkspace {
   getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
-  getLocalStateSnapshot(): Promise<LocalStateSnapshot>;
+  getLocalStateSnapshot(includeIgnored?: boolean): Promise<LocalStateSnapshot>;
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot>;
   getAdditionalWorkspaceWriteRoots(): Promise<string[]>;
   getStatus(options?: StatusOptions): Promise<WorkspaceStatus>;
@@ -104,7 +104,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     this.gitProcessOptions = {
       ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
     };
-    this.ws = new Workspace(opts.path, this.gitProcessOptions);
+    this.ws = new Workspace(opts.path, this.gitProcessOptions, opts.isGitRepo);
   }
 
   async getCurrentBranch(): Promise<string | null> {
@@ -127,8 +127,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.getHeadSha();
   }
 
-  getLocalStateSnapshot(): Promise<LocalStateSnapshot> {
-    return this.ws.getLocalStateSnapshot();
+  getLocalStateSnapshot(includeIgnored?: boolean): Promise<LocalStateSnapshot> {
+    return this.ws.getLocalStateSnapshot(includeIgnored);
   }
 
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {

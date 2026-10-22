@@ -158,6 +158,7 @@ function createWorkspaceRootBaseIgnores(gitRoot: boolean): string[] {
 export async function resolveWorkspaceRootIgnores(args: {
   cwd: string;
   gitRoot: boolean;
+  readRootStatus?: () => Promise<RepositoryStatusDirectories>;
 }): Promise<WorkspaceRootIgnores> {
   const ignore = new Set(createWorkspaceRootBaseIgnores(args.gitRoot));
   const failures: string[] = [];
@@ -178,9 +179,14 @@ export async function resolveWorkspaceRootIgnores(args: {
       async (repository) => {
         let directories: RepositoryStatusDirectories;
         try {
-          directories = collectStatusDirectories(
-            await runGitIgnoredMatchingStatus(path.join(args.cwd, repository)),
-          );
+          directories =
+            repository.length === 0 && args.readRootStatus
+              ? await args.readRootStatus()
+              : collectStatusDirectories(
+                  await runGitIgnoredMatchingStatus(
+                    path.join(args.cwd, repository),
+                  ),
+                );
         } catch (error) {
           failures.push(
             repository.length === 0

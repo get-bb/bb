@@ -9,6 +9,7 @@ export function watchWorkspaceStatus(
     cwd,
     onChange: args.onChange,
     onReady: args.onReady,
+    readRootStatus: args.readRootStatus,
     onWatchError: args.onWatchError,
   });
   watcher.start();

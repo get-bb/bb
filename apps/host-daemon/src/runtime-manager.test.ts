@@ -142,7 +142,11 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       if (localStateFingerprintError) {
         throw localStateFingerprintError;
       }
-      return { fingerprint: localStateFingerprint, branchName: "main" };
+      return {
+        fingerprint: localStateFingerprint,
+        branchName: "main",
+        directories: { ignored: [], untracked: [] },
+      };
     }),
     getSharedGitRefsSnapshot: vi.fn(async () => {
       if (sharedGitRefsFingerprintError) {

@@ -1128,8 +1128,9 @@ export interface SharedGitRefsSnapshot {
 export async function readSharedGitRefsSnapshot(
   cwd: string,
   options: GitProcessOptions = {},
+  repositoryKnown = false,
 ): Promise<SharedGitRefsSnapshot> {
-  await ensureGitRepo(cwd, options);
+  if (!repositoryKnown) await ensureGitRepo(cwd, options);
   const [refs, remoteHead] = await Promise.all([
     runGit(
       [

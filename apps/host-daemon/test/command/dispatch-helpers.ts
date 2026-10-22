@@ -167,7 +167,11 @@ export function createFakeWorkspace(pathname: string) {
       return "commit-1";
     },
     async getLocalStateSnapshot() {
-      return { fingerprint: "local-1", branchName: "main" };
+      return {
+        fingerprint: "local-1",
+        branchName: "main",
+        directories: { ignored: [], untracked: [] },
+      };
     },
     async getSharedGitRefsSnapshot() {
       return { fingerprint: "refs-1", defaultBranch: "main" };
