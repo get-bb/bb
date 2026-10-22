@@ -1128,11 +1128,44 @@ export async function readDefaultBranch(
   return readRepoDefaultBranch(cwd, options);
 }
 
+async function readOriginHeadBranchNameFromFiles(
+  cwd: string,
+): Promise<string | undefined> {
+  try {
+    const dotGit = path.join(cwd, ".git");
+    let commonDir = dotGit;
+    if (!(await fs.stat(dotGit)).isDirectory()) {
+      const gitDir = /^gitdir: (.+)$/mu
+        .exec(await fs.readFile(dotGit, "utf8"))?.[1]
+        ?.trim();
+      if (!gitDir) return undefined;
+      const absoluteGitDir = path.resolve(cwd, gitDir);
+      commonDir = await fs
+        .readFile(path.join(absoluteGitDir, "commondir"), "utf8")
+        .then(
+          (relative) => path.resolve(absoluteGitDir, relative.trim()),
+          () => absoluteGitDir,
+        );
+    }
+    const symref = await fs.readFile(
+      path.join(commonDir, "refs", "remotes", "origin", "HEAD"),
+      "utf8",
+    );
+    return symref.startsWith("ref: ")
+      ? parseOriginHeadBranchName(symref.slice("ref: ".length))
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function readRepoDefaultBranch(
   cwd: string,
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
-  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
+  const originHeadBranch =
+    (await readOriginHeadBranchNameFromFiles(cwd)) ??
+    (await readOriginHeadBranchName(cwd, options));
   if (originHeadBranch !== undefined) {
     return originHeadBranch;
   }
