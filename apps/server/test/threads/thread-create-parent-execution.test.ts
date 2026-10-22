@@ -1,4 +1,4 @@
-import { upsertProjectExecutionDefaults } from "@bb/db";
+import { setDisabledProviderIds, upsertProjectExecutionDefaults } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import type { ThreadCreateServiceRequestInput } from "../../src/services/threads/thread-create-request.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -19,6 +19,7 @@ describe("child creation execution defaults", () => {
       name: "inherits same-provider parent model and reasoning",
       parentProviderId: "codex",
       hasParentExecution: true,
+      disabledProviderIds: [],
       request: {},
       expected: {
         providerId: "codex",
@@ -30,6 +31,7 @@ describe("child creation execution defaults", () => {
       name: "inherits parent provider ahead of project defaults",
       parentProviderId: "claude-code",
       hasParentExecution: true,
+      disabledProviderIds: [],
       request: {},
       expected: {
         providerId: "claude-code",
@@ -41,6 +43,7 @@ describe("child creation execution defaults", () => {
       name: "does not inherit incompatible execution with an explicit provider",
       parentProviderId: "claude-code",
       hasParentExecution: true,
+      disabledProviderIds: [],
       request: { providerId: "codex" },
       expected: {
         providerId: "codex",
@@ -52,6 +55,7 @@ describe("child creation execution defaults", () => {
       name: "keeps parent defaults with an explicit matching provider",
       parentProviderId: "claude-code",
       hasParentExecution: true,
+      disabledProviderIds: [],
       request: { providerId: "claude-code" },
       expected: {
         providerId: "claude-code",
@@ -63,6 +67,7 @@ describe("child creation execution defaults", () => {
       name: "honors explicit model and reasoning ahead of the parent",
       parentProviderId: "codex",
       hasParentExecution: true,
+      disabledProviderIds: [],
       request: { model: "requested-model", reasoningLevel: "high" },
       expected: {
         providerId: "codex",
@@ -74,6 +79,7 @@ describe("child creation execution defaults", () => {
       name: "falls back to project defaults without parent execution",
       parentProviderId: "claude-code",
       hasParentExecution: false,
+      disabledProviderIds: [],
       request: {},
       expected: {
         providerId: "codex",
@@ -85,6 +91,7 @@ describe("child creation execution defaults", () => {
       name: "ignores unowned picker values before inheriting parent execution",
       parentProviderId: "claude-code",
       hasParentExecution: true,
+      disabledProviderIds: [],
       request: {
         providerId: "codex",
         model: "stale-model",
@@ -97,10 +104,23 @@ describe("child creation execution defaults", () => {
         reasoningLevel: "low",
       },
     },
+    {
+      name: "falls back to project defaults when the parent provider is disabled",
+      parentProviderId: "claude-code",
+      hasParentExecution: true,
+      disabledProviderIds: ["claude-code"],
+      request: {},
+      expected: {
+        providerId: "codex",
+        model: "project-model",
+        reasoningLevel: "medium",
+      },
+    },
   ] satisfies {
     name: string;
     parentProviderId: string;
     hasParentExecution: boolean;
+    disabledProviderIds: string[];
     request: Pick<
       ThreadCreateServiceRequestInput,
       "providerId" | "model" | "reasoningLevel" | "executionInputSources"
@@ -110,7 +130,13 @@ describe("child creation execution defaults", () => {
 
   it.each(cases)(
     "$name",
-    async ({ parentProviderId, hasParentExecution, request, expected }) => {
+    async ({
+      parentProviderId,
+      hasParentExecution,
+      disabledProviderIds,
+      request,
+      expected,
+    }) => {
       await withTestHarness(async (harness) => {
         const { host } = seedHostSession(harness.deps);
         const { project } = seedProjectWithSource(harness.deps, {
@@ -143,6 +169,7 @@ describe("child creation execution defaults", () => {
           permissionMode: "auto",
           serviceTier: "default",
         });
+        setDisabledProviderIds(harness.db, disabledProviderIds);
 
         const child = await createThreadFromRequest(harness.deps, {
           projectId: project.id,

@@ -4,6 +4,7 @@ import {
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
+  RecordedThreadExecutionOptions,
   ResolvedThreadExecutionOptions,
   Thread,
 } from "@bb/domain";
@@ -61,6 +62,29 @@ function shouldRememberProjectExecutionDefaults(args: {
   return args.origin === "app";
 }
 
+interface InheritableParentExecution {
+  execution: RecordedThreadExecutionOptions;
+  providerId: string;
+}
+
+function resolveInheritableParentExecution(
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
+  parentThread: Pick<Thread, "id" | "providerId"> | null,
+): InheritableParentExecution | null {
+  if (parentThread === null) {
+    return null;
+  }
+  const { providerId } = parentThread;
+  if (
+    deps.providerRegistry.disabledProviderIds().has(providerId) ||
+    deps.providerRegistry.get(providerId)?.info.available !== true
+  ) {
+    return null;
+  }
+  const execution = getLastExecutionOptions(deps, parentThread.id);
+  return execution === null ? null : { execution, providerId };
+}
+
 function resolveRequestedCreateExecutionValue<TValue>({
   field,
   sources,
@@ -98,30 +122,25 @@ export function resolveProjectExecutionDefaultsForCreate(
     sources: args.executionInputSources,
     value: args.model,
   });
-  const parentExecution =
-    args.parentThread === null
-      ? null
-      : getLastExecutionOptions(deps, args.parentThread.id);
+  const parent = resolveInheritableParentExecution(deps, args.parentThread);
   const resolution = resolveCreateThreadExecutionDefaults(
     deps.providerRegistry,
     {
-      requestedProviderId:
-        requestedProviderId ??
-        (parentExecution === null ? undefined : args.parentThread?.providerId),
+      requestedProviderId: requestedProviderId ?? parent?.providerId,
       storedDefaults,
     },
   );
   const { providerId, providerFallbackCandidates } = resolution;
   const executionDefaults =
-    parentExecution !== null && providerId === args.parentThread?.providerId
+    parent !== null && providerId === parent.providerId
       ? {
           ...(resolution.executionDefaults ??
             buildProviderThreadExecutionDefaults(deps.providerRegistry, {
               providerId,
-              model: parentExecution.model,
+              model: parent.execution.model,
             })),
-          model: parentExecution.model,
-          reasoningLevel: parentExecution.reasoningLevel,
+          model: parent.execution.model,
+          reasoningLevel: parent.execution.reasoningLevel,
         }
       : resolution.executionDefaults;
 
