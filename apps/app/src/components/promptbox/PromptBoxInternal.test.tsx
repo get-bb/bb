@@ -210,9 +210,6 @@ function buildTypeaheadConfig({
       suggestions: commandSuggestions,
       isLoading: false,
       isError: false,
-      hasMore: false,
-      isLoadingMore: false,
-      loadMore: () => {},
       onQueryChange: onCommandQueryChange,
     },
   };
@@ -5960,9 +5957,6 @@ describe("PromptBoxInternal command typeahead submit", () => {
               suggestions: [suggestion],
               isLoading: false,
               isError: false,
-              hasMore: false,
-              isLoadingMore: false,
-              loadMore: () => {},
               onQueryChange: () => {},
             },
           }}

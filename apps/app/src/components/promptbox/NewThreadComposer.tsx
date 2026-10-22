@@ -1983,9 +1983,6 @@ export function NewThreadComposer({
               suggestions: commandSuggestions.suggestions,
               isLoading: commandSuggestions.isLoading,
               isError: commandSuggestions.isError,
-              hasMore: commandSuggestions.hasMore,
-              isLoadingMore: commandSuggestions.isLoadingMore,
-              loadMore: commandSuggestions.loadMore,
               onQueryChange: (query, trigger) =>
                 setCommandState({ query, trigger }),
               onEditorFocus: handleEditorFocus,

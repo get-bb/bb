@@ -1,14 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  type ReactNode,
-  type UIEvent,
-} from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { directoryFromPath } from "@bb/thread-view";
 import { promptCommandIconName } from "@bb/client-core";
 import { ComposerMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
-import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { Pill } from "@bb/shared-ui/pill";
@@ -37,7 +30,6 @@ interface MentionMenuProps {
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
   onDismiss?: () => void;
-  onCommandLoadMore?: () => void;
 }
 
 interface MentionResultsProps {
@@ -495,28 +487,8 @@ export function MentionMenu({
   selectedIndex,
   onApply,
   onDismiss,
-  onCommandLoadMore,
 }: MentionMenuProps) {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const handleScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => {
-      if (onCommandLoadMore === undefined) {
-        return;
-      }
-      const target = event.currentTarget;
-      if (
-        shouldLoadMoreCommandResults({
-          trigger: state.trigger,
-          scrollHeight: target.scrollHeight,
-          scrollTop: target.scrollTop,
-          clientHeight: target.clientHeight,
-        })
-      ) {
-        onCommandLoadMore();
-      }
-    },
-    [onCommandLoadMore, state.trigger],
-  );
 
   const innerState = state.state;
   const resultsLength = typeaheadResultsLength(state);
@@ -534,7 +506,7 @@ export function MentionMenu({
 
   return (
     <div className="@container/mention-menu flex max-h-(--promptbox-typeahead-max-height) flex-col overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
-      <div className="max-h-48 min-h-0 overflow-y-auto" onScroll={handleScroll}>
+      <div className="max-h-48 min-h-0 overflow-y-auto">
         {innerState.kind === "hint" ? (
           <MenuStatusRow
             onDismiss={onDismiss}

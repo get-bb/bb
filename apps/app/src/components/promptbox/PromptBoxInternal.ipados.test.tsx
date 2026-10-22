@@ -112,9 +112,6 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
               ],
               isLoading: false,
               isError: false,
-              hasMore: false,
-              isLoadingMore: false,
-              loadMore: vi.fn(),
               onQueryChange: vi.fn(),
             },
           }}

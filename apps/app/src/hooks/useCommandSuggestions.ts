@@ -34,9 +34,6 @@ interface UseCommandSuggestionsResult {
   suggestions: ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  loadMore: () => void;
 }
 
 interface CommandSuggestionPromptAction {
@@ -305,8 +302,5 @@ export function useCommandSuggestions(
     suggestions,
     isLoading,
     isError,
-    hasMore: false,
-    isLoadingMore: false,
-    loadMore: () => {},
   };
 }

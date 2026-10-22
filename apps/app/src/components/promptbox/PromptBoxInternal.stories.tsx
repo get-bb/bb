@@ -774,9 +774,6 @@ function WithLiveSkillsRow() {
           suggestions,
           isLoading: false,
           isError: false,
-          hasMore: query !== null && filterLiveCommands(query).length > 4,
-          isLoadingMore: false,
-          loadMore: noop,
           onQueryChange: setQuery,
         },
       )}

@@ -75,7 +75,6 @@ import {
   useAppCommandKeyDispatch,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import {
   voiceUnsupportedMessage,
   type VoiceUnsupportedReason,
@@ -516,9 +515,6 @@ export interface TypeaheadCommandConfig {
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  loadMore: () => void;
   onQueryChange: (
     query: string | null,
     trigger: PromptMentionCommandTrigger | null,
@@ -536,9 +532,6 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
   suggestions: [],
   isLoading: false,
   isError: false,
-  hasMore: false,
-  isLoadingMore: false,
-  loadMore: () => {},
   onQueryChange: () => {},
 };
 
@@ -2568,16 +2561,6 @@ export function PromptBoxInternal({
   const hasSubmittableInput = trimmedValue.length > 0 || hasAttachments;
 
   const activeTriggerKind = activeTrigger?.kind ?? null;
-  const commandHasMore = typeahead.command.hasMore;
-  const commandIsLoadingMore = typeahead.command.isLoadingMore;
-  const loadMoreCommands = typeahead.command.loadMore;
-  const canLoadMoreCommands =
-    activeTriggerKind === "command" &&
-    canLoadMoreCommandResults({
-      hasMore: commandHasMore,
-      isError: commandError,
-      isLoadingMore: commandIsLoadingMore,
-    });
   const activeCommandQuery =
     activeTrigger?.kind === "command" ? activeTrigger.query : "";
   const commandGroups = useMemo(
@@ -2721,26 +2704,6 @@ export function PromptBoxInternal({
       setSelectedSuggestionKey(null);
     }
   }, [selectedSuggestionIndex, selectedSuggestionKey]);
-
-  useEffect(() => {
-    if (
-      activeTriggerKind !== "command" ||
-      !canLoadMoreCommands ||
-      activeSuggestions.length === 0
-    ) {
-      return;
-    }
-    const prefetchIndex = Math.max(0, activeSuggestions.length - 3);
-    if (selectedIndex >= prefetchIndex) {
-      loadMoreCommands();
-    }
-  }, [
-    activeSuggestions.length,
-    activeTriggerKind,
-    canLoadMoreCommands,
-    loadMoreCommands,
-    selectedIndex,
-  ]);
 
   const finishApply = useCallback(
     (appliedEditor: Editor) => {
@@ -3526,17 +3489,6 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          if (
-            activeTriggerKind === "command" &&
-            !commandError &&
-            selectedIndex >= activeSuggestions.length - 1 &&
-            (commandHasMore || commandIsLoadingMore)
-          ) {
-            if (canLoadMoreCommands) {
-              loadMoreCommands();
-            }
-            return true;
-          }
           const nextIndex = (selectedIndex + 1) % activeSuggestions.length;
           const nextSuggestion = activeSuggestions[nextIndex];
           if (nextSuggestion) {
@@ -3682,18 +3634,12 @@ export function PromptBoxInternal({
     [
       activeHistoryIndex,
       activeSuggestions,
-      activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
-      canLoadMoreCommands,
-      commandError,
-      commandHasMore,
-      commandIsLoadingMore,
       dispatchAppCommandKey,
       handleComposerMenuKeyDown,
       history,
       isPointerCoarse,
-      loadMoreCommands,
       onEscape,
       onModifierSubmit,
       postCompositionKeyDownEvents,
@@ -3895,9 +3841,6 @@ export function PromptBoxInternal({
                   selectedIndex={selectedIndex}
                   onApply={applyTrigger}
                   onDismiss={isPointerCoarse ? dismissComposerMenu : undefined}
-                  onCommandLoadMore={
-                    canLoadMoreCommands ? loadMoreCommands : undefined
-                  }
                 />
               )}
             </ComposerPopupHost>
