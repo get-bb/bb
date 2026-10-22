@@ -180,7 +180,7 @@ export function ModelReasoningMenu({
                     role={listboxId ? "option" : undefined}
                     isActive={active}
                     label={stripModelBrandPrefix(option.label, brandPrefix)}
-                    qualifier={option.routeProviderId}
+                    qualifier={modelQualifier(option)}
                     selected={!isPreviewing && option.value === modelValue}
                     disabled={selectionBlocked || option.disabled === true}
                     disabledReason={option.disabledReason}
@@ -276,9 +276,12 @@ export function ModelReasoningMenu({
                       LIST_HOVER_TRANSITION,
                     )}
                   >
-                    {option.label === "Medium" || option.label === "Extra High" ? (
+                    {option.label === "Medium" ||
+                    option.label === "Extra High" ? (
                       <>
-                        <span className="max-[360px]:hidden">{option.label}</span>
+                        <span className="max-[360px]:hidden">
+                          {option.label}
+                        </span>
                         <span className="hidden max-[360px]:inline">
                           {option.label === "Medium" ? "Med" : "XHigh"}
                         </span>
@@ -612,7 +615,7 @@ function MoreModelsSubmenu({
             <MenuRowButton
               key={option.value}
               label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
-              qualifier={option.routeProviderId}
+              qualifier={modelQualifier(option)}
               selected={!isPreviewing && option.value === modelValue}
               onClick={() => onSelect(option.value)}
             />
@@ -620,6 +623,14 @@ function MoreModelsSubmenu({
         </MenuHoverProvider>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function modelQualifier(option: ModelPickerOption): string | undefined {
+  const separator = option.value.lastIndexOf("/");
+  return (
+    option.routeProviderId ??
+    (separator > 0 ? option.value.slice(0, separator) : undefined)
   );
 }
 

@@ -22,6 +22,11 @@ selector is supplied, both commands intentionally inspect the server machine.
 `bb guide threads` describes how `bb thread spawn` picks a default provider and
 model.
 
+The model picker shows the backing provider when reported, otherwise the
+namespace of a slash-separated model ID. For example, OMP's identically named
+Claude models can show `anthropic` or `openrouter/anthropic`. These are display
+qualifiers, not model IDs: keep the full ID when passing `--model`.
+
 Some providers read their models and options from the directory they run in
 (Pi, and opencode's project-level agents, for example). `--environment` lists
 what the provider reports in that environment's directory. `--project` lists

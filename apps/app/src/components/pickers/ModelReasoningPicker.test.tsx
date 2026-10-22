@@ -1081,6 +1081,29 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
   });
 
+  it("distinguishes ACP models by namespace without changing the selected ID", () => {
+    const directModel = "anthropic/claude-sonnet-5-5";
+    const routedModel = "openrouter/anthropic/claude-sonnet-5.5";
+    const { onModelChange } = renderPicker({
+      modelOptions: [
+        { value: directModel, label: "Claude Sonnet 5.5" },
+        { value: routedModel, label: "Claude Sonnet 5.5" },
+      ],
+      modelValue: directModel,
+      pickerProviderOptions: [{ value: "acp-omp", label: "OMP" }],
+      selectedProviderId: "acp-omp",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("anthropic")).not.toBeNull();
+    fireEvent.click(screen.getByText("openrouter/anthropic"));
+
+    expect(onModelChange).toHaveBeenCalledWith(routedModel);
+  });
+
   it("uses picker search policy and selects the match by keyboard", () => {
     const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
 
