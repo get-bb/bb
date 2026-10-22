@@ -335,7 +335,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       key: workspaceStatusCacheKey(target, query.mergeBaseBranch),
       load: () =>
         callEnvironmentWorkspaceStatus(deps, {
-          environment,
           target,
           ...(query.mergeBaseBranch
             ? { mergeBaseBranch: query.mergeBaseBranch }
@@ -642,7 +641,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
 
       const [statusResult, diffResult] = await Promise.all([
         callEnvironmentWorkspaceStatusForWork(deps, {
-          environment,
           target,
         }),
         callHostRetryableOnlineRpcForWork(deps, {

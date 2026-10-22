@@ -151,24 +151,11 @@ export function createFakeWorkspace(pathname: string) {
     async getHeadSha() {
       return "commit-1";
     },
-    async getLocalStateFingerprint() {
-      return JSON.stringify({
-        currentBranch: "main",
-        headSha: "commit-1",
-        workingTree: {
-          hasUncommittedChanges: false,
-          state: "clean",
-          insertions: 0,
-          deletions: 0,
-          files: [],
-        },
-      });
+    async getLocalStateSnapshot() {
+      return { fingerprint: "local-1", branchName: "main" };
     },
-    async getSharedGitRefsFingerprint() {
-      return JSON.stringify({
-        refs: ["refs/heads/main\u0000commit-1"],
-        remoteHead: "refs/remotes/origin/main",
-      });
+    async getSharedGitRefsSnapshot() {
+      return { fingerprint: "refs-1", defaultBranch: "main" };
     },
     async getAdditionalWorkspaceWriteRoots() {
       return [];

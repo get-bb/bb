@@ -124,10 +124,8 @@ export function useOverflowMeasurement({
       if (!element.isConnected) return;
       setMeasurement(nextMeasurement[axis] ? "overflowing" : "fits");
     };
-    if (typeof ResizeObserver === "undefined") {
-      applyMeasurement(readOverflowMeasurement(element));
-      return;
-    }
+    applyMeasurement(readOverflowMeasurement(element));
+    if (typeof ResizeObserver === "undefined") return;
 
     return observeOverflow(element, applyMeasurement);
   }, [elementRef, enabled, axis, measurementKey]);

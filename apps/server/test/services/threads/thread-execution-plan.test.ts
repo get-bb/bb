@@ -256,6 +256,7 @@ describe("thread execution plan input sources", () => {
         {
           executionInputSources: {},
           model: "openai-codex/gpt-5.4",
+          parentThread: null,
           projectId: project.id,
           providerId: "pi",
         },
@@ -264,6 +265,7 @@ describe("thread execution plan input sources", () => {
         harness.deps,
         {
           model: "openai-codex/gpt-5.4",
+          parentThread: null,
           projectId: project.id,
           providerId: "pi",
         },
@@ -273,6 +275,7 @@ describe("thread execution plan input sources", () => {
         {
           executionInputSources: { providerId: "client-preference" },
           model: "openai-codex/gpt-5.4",
+          parentThread: null,
           projectId: project.id,
           providerId: "pi",
         },
@@ -302,6 +305,7 @@ describe("thread execution plan input sources", () => {
         {
           executionInputSources: {},
           model: "openai-codex/gpt-5.4",
+          parentThread: null,
           projectId: project.id,
           providerId: "pi",
         },

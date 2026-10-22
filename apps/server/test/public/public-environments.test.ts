@@ -432,7 +432,7 @@ describe("public environments", () => {
     });
   });
 
-  it("records the daemon-observed current branch after workspace status", async () => {
+  it("keeps stored branch metadata unchanged when reading workspace status", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-environment-current-branch",
@@ -443,7 +443,7 @@ describe("public environments", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        branchName: "bb/stale",
+        branchName: "feature/observed",
         defaultBranch: "main",
         path: "/tmp/current-branch-env",
         environmentProviderId: "git-worktree",
@@ -499,13 +499,13 @@ describe("public environments", () => {
         },
       });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        branchName: "feature/current",
-        defaultBranch: "trunk",
+        branchName: "feature/observed",
+        defaultBranch: "main",
       });
     });
   });
 
-  it("clears the stored branch after detached workspace status", async () => {
+  it("keeps the stored branch when reading detached workspace status", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-environment-detached-branch",
@@ -516,7 +516,7 @@ describe("public environments", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        branchName: "bb/stale",
+        branchName: "feature/observed",
         defaultBranch: "main",
         path: "/tmp/detached-branch-env",
         environmentProviderId: "git-worktree",
@@ -558,7 +558,7 @@ describe("public environments", () => {
       const response = await statusPromise;
       expect(response.status).toBe(200);
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        branchName: null,
+        branchName: "feature/observed",
         defaultBranch: "main",
       });
     });

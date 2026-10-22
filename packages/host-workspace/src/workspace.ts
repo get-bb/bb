@@ -19,6 +19,8 @@ import {
   parseNumstatEntriesZ,
   parsePorcelainV2StatusZ,
   readRepoDefaultBranch,
+  readSharedGitRefsSnapshot,
+  type SharedGitRefsSnapshot,
   readMergeBaseRef,
   revParse,
   runGit,
@@ -44,6 +46,11 @@ import {
 } from "./commit-cache.js";
 import fs from "node:fs/promises";
 import { withCheckoutMutationLock } from "./checkout-mutation-lock.js";
+
+export interface LocalStateSnapshot {
+  fingerprint: string;
+  branchName: string | null;
+}
 
 export interface DiffOptions {
   target?: WorkspaceDiffTarget;
@@ -333,13 +340,6 @@ function resolveWorkspaceState(args: {
 
 function parseNullSeparatedLines(output: string): string[] {
   return output.split("\0").filter((value) => value.length > 0);
-}
-
-function parseNonEmptyLines(output: string): string[] {
-  return output
-    .split("\n")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
 }
 
 function isMissingHeadRevisionError(stderr: string): boolean {
@@ -747,53 +747,31 @@ export class Workspace {
     };
   }
 
-  async getLocalStateFingerprint(): Promise<string> {
+  async getLocalStateSnapshot(): Promise<LocalStateSnapshot> {
     await ensureGitRepo(this.path, {
       timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
       ...this.gitProcessOptions,
     });
-    const [headSha, status] = await Promise.all([
-      this.getHeadSha(),
-      this.runGit(
-        [
-          "--no-optional-locks",
-          "status",
-          "--porcelain=v1",
-          "--branch",
-          "--untracked-files=normal",
-        ],
-        { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
-      ),
-    ]);
-    return JSON.stringify({
-      headSha,
-      porcelain: status.stdout,
-    });
+    const status = await this.runGit(
+      [
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "-z",
+        "--untracked-files=normal",
+      ],
+      { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
+    );
+    const { headOid, headBranch } = parsePorcelainV2StatusZ(status.stdout);
+    return {
+      fingerprint: JSON.stringify({ headSha: headOid, porcelain: status.stdout }),
+      branchName: headBranch,
+    };
   }
 
-  async getSharedGitRefsFingerprint(): Promise<string> {
-    await ensureGitRepo(this.path, this.gitProcessOptions);
-
-    const [refs, remoteHead] = await Promise.all([
-      this.runGit(
-        [
-          "for-each-ref",
-          "--format=%(refname)%00%(objectname)",
-          "refs/heads",
-          "refs/remotes",
-        ],
-        { cwd: this.path },
-      ),
-      this.runGit(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], {
-        cwd: this.path,
-        allowFailure: true,
-      }),
-    ]);
-
-    return JSON.stringify({
-      refs: parseNonEmptyLines(refs.stdout),
-      remoteHead: remoteHead.exitCode === 0 ? remoteHead.stdout.trim() : "",
-    });
+  getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {
+    return readSharedGitRefsSnapshot(this.path, this.gitProcessOptions);
   }
 
   async getDiff(options: DiffOptions = {}): Promise<DiffResult> {

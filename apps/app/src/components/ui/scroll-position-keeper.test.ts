@@ -1,265 +1,552 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { installFakeFlowLayout, setFakeHeight } from "@/test/fake-flow-layout";
 import { ScrollPositionKeeper } from "./scroll-position-keeper";
 
 const VIEWPORT_HEIGHT = 500;
 
-interface LaidOutRow {
+interface RowSpec {
   id: string;
   height: number;
-  children?: LaidOutRow[];
+  children?: RowSpec[];
 }
 
-function createTimeline(initialRows: LaidOutRow[]) {
-  const scrollElement = document.createElement("div");
-  const list = document.createElement("div");
-  scrollElement.append(list);
-  document.body.append(scrollElement);
-  let scrollTop = 0;
-  let rows = initialRows;
-  const offsets = new Map<string, { top: number; height: number }>();
+let restoreLayout: (() => void) | null = null;
 
-  Object.defineProperty(scrollElement, "scrollTop", {
-    configurable: true,
-    get: () => scrollTop,
-    set: (value: number) => {
-      scrollTop = Math.max(0, value);
-    },
-  });
-  Object.defineProperty(scrollElement, "clientHeight", {
-    configurable: true,
-    value: VIEWPORT_HEIGHT,
-  });
-  vi.spyOn(scrollElement, "getBoundingClientRect").mockReturnValue(
-    new DOMRect(0, 0, 100, VIEWPORT_HEIGHT),
-  );
+afterEach(() => {
+  restoreLayout?.();
+  restoreLayout = null;
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  document.body.replaceChildren();
+});
 
-  const elements = new Map<string, HTMLElement>();
-  const elementFor = (id: string) => {
-    const existing = elements.get(id);
-    if (existing !== undefined) return existing;
-    const element = document.createElement("div");
-    elements.set(id, element);
-    element.setAttribute("data-timeline-row-id", id);
-    vi.spyOn(element, "getBoundingClientRect").mockImplementation(() => {
-      const offset = offsets.get(id);
-      return offset === undefined
-        ? new DOMRect(0, 0, 0, 0)
-        : new DOMRect(0, offset.top - scrollTop, 100, offset.height);
-    });
-    return element;
-  };
-
-  const layout = () => {
-    offsets.clear();
-    list.replaceChildren();
-    let top = 0;
-    const place = (row: LaidOutRow, parent: HTMLElement) => {
-      const element = elementFor(row.id);
-      element.replaceChildren();
-      parent.append(element);
-      offsets.set(row.id, { top, height: row.height });
-      let childTop = top;
-      for (const child of row.children ?? []) {
-        const childElement = elementFor(child.id);
-        element.append(childElement);
-        offsets.set(child.id, { top: childTop, height: child.height });
-        childTop += child.height;
-      }
-      top += row.height;
-    };
-    for (const row of rows) place(row, list);
-  };
-  layout();
-
-  const keeperOptions = { active: true };
-  const keeper = new ScrollPositionKeeper({
-    getScrollElement: () => scrollElement,
-    getTopLevelRows: () =>
-      Array.from(list.children).filter(
-        (child): child is HTMLElement => child instanceof HTMLElement,
-      ),
-    isActive: () => keeperOptions.active,
-  });
-
-  return {
-    keeper,
-    keeperOptions,
-    scrollElement,
-    get scrollTop() {
-      return scrollTop;
-    },
-    scrollTo(value: number) {
-      scrollTop = value;
-    },
-    setRows(next: LaidOutRow[]) {
-      rows = next;
-      layout();
-    },
-    viewportTopOf(id: string) {
-      const offset = offsets.get(id);
-      if (offset === undefined) throw new Error(`No row ${id}`);
-      return offset.top - scrollTop;
-    },
-  };
-}
-
-function rowsOf(count: number, height = 200, prefix = "row"): LaidOutRow[] {
+function rowsOf(count: number, height = 200, prefix = "row"): RowSpec[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `${prefix}-${index}`,
     height,
   }));
 }
 
-afterEach(() => {
-  document.body.replaceChildren();
-  vi.restoreAllMocks();
-});
+function createTimeline(
+  initialRows: RowSpec[],
+  {
+    deferWrites = false,
+    attached = false,
+    footerTop = null,
+  }: {
+    deferWrites?: boolean;
+    attached?: boolean;
+    footerTop?: number | null;
+  } = {},
+) {
+  const scrollElement = document.createElement("div");
+  const content = document.createElement("div");
+  const list = document.createElement("div");
+  list.setAttribute("data-timeline-row-list", "top-level");
+  const items = document.createElement("div");
+  items.setAttribute("data-timeline-items", "");
+  list.append(items);
+  content.append(list);
+  scrollElement.append(content);
+  document.body.append(scrollElement);
+  const layout = installFakeFlowLayout({
+    scrollElement,
+    viewportHeight: VIEWPORT_HEIGHT,
+  });
+  restoreLayout = layout.restore;
+
+  const elements = new Map<string, HTMLElement>();
+  const build = (row: RowSpec): HTMLElement => {
+    const element = elements.get(row.id) ?? document.createElement("div");
+    elements.set(row.id, element);
+    element.setAttribute("data-timeline-row-id", row.id);
+    element.replaceChildren(...(row.children ?? []).map(build));
+    if (row.children === undefined) setFakeHeight(element, row.height);
+    else element.removeAttribute("data-fake-height");
+    return element;
+  };
+  const setRows = (rows: RowSpec[]) => {
+    items.replaceChildren(...rows.map(build));
+  };
+  setRows(initialRows);
+  const footer = document.createElement("div");
+  footer.getBoundingClientRect = () =>
+    new DOMRect(0, footerTop ?? VIEWPORT_HEIGHT, 100, 80);
+
+  const keeper = new ScrollPositionKeeper({
+    bottomThresholdPx: 4,
+    deferWritesWhileScrolling: deferWrites,
+    getContentElement: () => content,
+    getFooterElement: () => (footerTop === null ? null : footer),
+    getScrollElement: () => scrollElement,
+    getTopLevelRows: () =>
+      items.querySelectorAll<HTMLElement>(":scope > [data-timeline-row-id]"),
+    initiallyAttached: attached,
+  });
+  const disconnect = keeper.connect(scrollElement);
+  const previousRestore = restoreLayout;
+  restoreLayout = () => {
+    disconnect();
+    previousRestore?.();
+  };
+
+  const topOf = (id: string) => {
+    const element = elements.get(id);
+    if (element === undefined) throw new Error(`No row ${id}`);
+    return element.getBoundingClientRect().top;
+  };
+
+  return {
+    content,
+    keeper,
+    layout,
+    scrollElement,
+    setRows,
+    topOf,
+    resize(id: string, height: number) {
+      const element = elements.get(id);
+      if (element === undefined) throw new Error(`No row ${id}`);
+      setFakeHeight(element, height);
+    },
+    userScrollTo(top: number) {
+      layout.userScrollTo(top);
+    },
+  };
+}
 
 describe("ScrollPositionKeeper", () => {
-  it("keeps the reading row still when older rows are prepended", () => {
-    const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
-    const before = timeline.viewportTopOf("row-5");
+  it("keeps the reading row in place when an older page is prepended", () => {
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows);
+    timeline.userScrollTo(450);
+    const before = timeline.topOf("row-3");
 
-    timeline.setRows([...rowsOf(4, 300, "older"), ...rowsOf(10)]);
+    timeline.setRows([...rowsOf(6, 150, "older"), ...rows]);
     timeline.keeper.reconcile();
 
-    expect(timeline.scrollTop).toBe(2_100);
-    expect(timeline.viewportTopOf("row-5")).toBe(before);
+    expect(timeline.topOf("row-3")).toBe(before);
+    expect(timeline.keeper.isAttached()).toBe(false);
   });
 
-  it("keeps the position momentum scrolling reached before the rows arrive", () => {
-    const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
+  it("drives each reconcile to the same intent, so a clamped intermediate correction is not counted twice", () => {
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows);
+    timeline.userScrollTo(450);
+    const before = timeline.topOf("row-3");
 
-    timeline.scrollTo(400);
-    timeline.keeper.handleScroll();
-    timeline.scrollTo(150);
-    timeline.keeper.handleScroll();
-    const before = timeline.viewportTopOf("row-1");
+    timeline.setRows(rows.slice(3));
+    timeline.keeper.reconcile();
+    expect(timeline.layout.scrollTop).toBe(0);
 
-    timeline.setRows([...rowsOf(2, 500, "older"), ...rowsOf(10)]);
+    timeline.setRows([...rowsOf(8, 100, "older"), ...rows]);
+    timeline.keeper.reconcile();
     timeline.keeper.reconcile();
 
-    expect(timeline.scrollTop).toBe(1_150);
-    expect(timeline.viewportTopOf("row-1")).toBe(before);
+    expect(timeline.topOf("row-3")).toBe(before);
   });
 
-  it("composes with scrolling that happens between layout changes", () => {
-    const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
+  it("never attaches when content shrinks under a detached reader and the browser clamps to the end", () => {
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows);
+    timeline.userScrollTo(1200);
 
-    timeline.scrollTo(700);
+    timeline.setRows(rows.slice(0, 7));
+    timeline.keeper.reconcile();
+    timeline.scrollElement.dispatchEvent(new Event("scroll"));
+
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+    expect(timeline.keeper.isAttached()).toBe(false);
+  });
+
+  it("keeps the end in view on every layout change while attached and stays attached", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+
+    timeline.resize("row-9", 900);
+    timeline.keeper.reconcile();
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+
+    timeline.resize("row-4", 20);
+    timeline.keeper.reconcile();
+    timeline.scrollElement.dispatchEvent(new Event("scroll"));
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+    expect(timeline.keeper.isAttached()).toBe(true);
+  });
+
+  it("shifts content above an attached toggle by exactly the height change", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const lastBottom = () => timeline.topOf("row-9") + 200;
+    const bottomBefore = lastBottom();
+    const toggledBefore = timeline.topOf("row-8");
+
+    timeline.resize("row-8", 450);
     timeline.keeper.reconcile();
 
-    expect(timeline.scrollTop).toBe(700);
+    expect(lastBottom()).toBe(bottomBefore);
+    expect(timeline.topOf("row-8")).toBe(toggledBefore - 250);
   });
 
-  it("corrects a foreign write that ignored a layout change above the reader", () => {
-    const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
-    const before = timeline.viewportTopOf("row-5");
+  it("keeps the reader in place through another visible row when the anchor row's key goes away", () => {
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows);
+    timeline.userScrollTo(450);
+    const before = timeline.topOf("row-4");
 
-    timeline.setRows([{ id: "older", height: 3_000 }, ...rowsOf(10)]);
-    timeline.scrollTo(865);
-    timeline.keeper.handleScroll();
-
-    expect(timeline.viewportTopOf("row-5")).toBe(before + 35);
-  });
-
-  it("locates an unmounted anchor through a registered row offset source", () => {
-    const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
-    timeline.keeper.registerRowOffsetSource((rowId) =>
-      rowId === "row-5" ? 3_400 : null,
-    );
-
-    timeline.setRows(rowsOf(3, 1_000, "older"));
+    timeline.setRows([
+      ...rows.slice(0, 1),
+      { id: "row-1-and-2", height: 120 },
+      { id: "row-3-renamed", height: 200 },
+      ...rows.slice(4),
+    ]);
     timeline.keeper.reconcile();
 
-    expect(timeline.scrollTop).toBe(3_300);
+    expect(timeline.topOf("row-4")).toBe(before);
   });
 
-  it("notifies write subscribers after it moves the scroll position", () => {
+  it("does not write when nothing changed above the reading row", () => {
     const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
-    const listener = vi.fn(() => timeline.scrollTop);
-    timeline.keeper.subscribeScrollWrites(listener);
+    timeline.userScrollTo(450);
+    const setter = vi.spyOn(timeline.scrollElement, "scrollTop", "set");
 
-    timeline.setRows([{ id: "older", height: 120 }, ...rowsOf(10)]);
+    timeline.resize("row-8", 600);
+    timeline.keeper.reconcile();
     timeline.keeper.reconcile();
 
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveReturnedWith(1_020);
+    expect(setter).not.toHaveBeenCalled();
   });
 
-  it("anchors to a nested row that starts inside the viewport", () => {
+  it("corrects a row above the reading row resizing within the same reconcile", () => {
+    const timeline = createTimeline(rowsOf(10));
+    timeline.userScrollTo(450);
+    const before = timeline.topOf("row-3");
+
+    timeline.resize("row-1", 520);
+    timeline.keeper.reconcile();
+
+    expect(timeline.topOf("row-3")).toBe(before);
+  });
+
+  it("attaches only when the reader scrolls down into the end, and detaches when they scroll up out of it", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const max = timeline.layout.maxScrollTop();
+
+    timeline.userScrollTo(max - 2);
+    expect(timeline.keeper.isAttached()).toBe(true);
+    timeline.userScrollTo(max - 300);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    timeline.userScrollTo(max - 200);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    timeline.userScrollTo(max);
+    expect(timeline.keeper.isAttached()).toBe(true);
+  });
+
+  it("attributes layout that changed before a scroll event to layout, not to the reader's movement", () => {
+    const timeline = createTimeline(rowsOf(10));
+    timeline.userScrollTo(450);
+    const before = timeline.topOf("row-3");
+
+    timeline.resize("row-1", 224);
+    timeline.userScrollTo(440);
+
+    expect(timeline.topOf("row-3")).toBe(before + 10);
+  });
+
+  it("corrects a row above the reading row that grows while the lists re-render for a scroll", () => {
+    const timeline = createTimeline(rowsOf(10));
+    timeline.userScrollTo(450);
+    let grown = false;
+    timeline.keeper.registerList({
+      itemAt: () => null,
+      onPositionChange: () => {
+        if (grown) return;
+        grown = true;
+        timeline.resize("row-1", 220);
+      },
+    });
+    const before = timeline.topOf("row-3");
+
+    timeline.userScrollTo(440);
+
+    expect(timeline.topOf("row-3")).toBe(before + 10);
+  });
+
+  it("adopts the rows that mount under an estimated position instead of moving the view to the estimate", () => {
+    const timeline = createTimeline([]);
+    const spacer = document.createElement("div");
+    setFakeHeight(spacer, 6_000);
+    timeline.content.prepend(spacer);
+    timeline.keeper.reconcile();
+    timeline.keeper.registerList({
+      itemAt: (viewportTop) => ({ key: "row-1", top: viewportTop + 40 }),
+      onPositionChange: () => {
+        if (timeline.content.firstElementChild !== spacer) return;
+        spacer.remove();
+        timeline.setRows(rowsOf(20));
+      },
+    });
+
+    timeline.userScrollTo(1_100);
+
+    expect(timeline.layout.scrollTop).toBe(1_100);
+    expect(timeline.topOf("row-5")).toBe(-100);
+    timeline.keeper.reconcile();
+    expect(timeline.layout.scrollTop).toBe(1_100);
+  });
+
+  it("measures a logarithmic number of rows per scroll event, however long the timeline is", () => {
+    const measuredPerScroll = (count: number) => {
+      const timeline = createTimeline(rowsOf(count, 120));
+      timeline.userScrollTo(count * 60);
+      const reads = vi.spyOn(Element.prototype, "getBoundingClientRect");
+      timeline.userScrollTo(count * 60 - 300);
+      const calls = reads.mock.calls.length;
+      reads.mockRestore();
+      restoreLayout?.();
+      restoreLayout = null;
+      document.body.replaceChildren();
+      return calls;
+    };
+
+    const short = measuredPerScroll(100);
+    const long = measuredPerScroll(1_000);
+
+    expect(long - short).toBeLessThanOrEqual(15);
+  });
+
+  it("anchors the first top-level row that starts in the viewport, not a nested row above it", () => {
     const timeline = createTimeline([
+      ...rowsOf(2),
       {
-        id: "turn",
-        height: 1_500,
-        children: rowsOf(5, 300, "step"),
+        id: "group",
+        height: 0,
+        children: [
+          { id: "group-a", height: 300 },
+          { id: "group-b", height: 300 },
+        ],
       },
-      ...rowsOf(5),
+      ...rowsOf(5, 200, "after"),
     ]);
-    timeline.scrollTo(250);
-    timeline.keeper.handleScroll();
-    const before = timeline.viewportTopOf("step-1");
+    timeline.userScrollTo(850);
+    const before = timeline.topOf("after-0");
 
-    timeline.setRows([
-      {
-        id: "turn",
-        height: 1_700,
-        children: [{ id: "step-0", height: 500 }, ...rowsOf(4, 300, "step").slice(1)],
-      },
-      ...rowsOf(5),
-    ]);
+    timeline.resize("group-b", 340);
     timeline.keeper.reconcile();
 
-    expect(timeline.viewportTopOf("step-1")).toBe(before);
+    expect(timeline.topOf("after-0")).toBe(before);
   });
 
-  it("leaves scrolling and native anchoring to others while inactive", () => {
-    const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
-    expect(timeline.scrollElement.style.overflowAnchor).toBe("none");
+  it("anchors the row the reader can see, not one hidden behind the composer", () => {
+    const timeline = createTimeline(rowsOf(10, 450), { footerTop: 300 });
+    timeline.userScrollTo(1_000);
+    const before = timeline.topOf("row-2");
 
-    timeline.keeperOptions.active = false;
-    timeline.keeper.capture();
-    timeline.setRows([{ id: "older", height: 400 }, ...rowsOf(10)]);
+    timeline.resize("row-2", 500);
     timeline.keeper.reconcile();
 
-    expect(timeline.scrollTop).toBe(900);
-    expect(timeline.scrollElement.style.overflowAnchor).toBe("");
+    expect(timeline.topOf("row-2")).toBe(before);
   });
 
-  it("holds an element edge instead of the top row while a hold lasts", () => {
+  it("holds a correction as a transform during a touch and writes it once scrolling settles", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows, { deferWrites: true });
+    timeline.userScrollTo(450);
+    vi.advanceTimersByTime(500);
+    const before = timeline.topOf("row-3");
+    const setter = vi.spyOn(timeline.scrollElement, "scrollTop", "set");
+
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.setRows([...rowsOf(4, 100, "older"), ...rows]);
+    timeline.keeper.reconcile();
+    expect(setter).not.toHaveBeenCalled();
+    expect(timeline.topOf("row-3")).toBe(before);
+
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+    vi.advanceTimersByTime(400);
+    expect(setter).toHaveBeenCalled();
+    expect(timeline.content.style.transform).toBe("");
+    expect(timeline.topOf("row-3")).toBe(before);
+  });
+
+  it("keeps a touch drag that delivered no scroll events as the reader's movement", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const timeline = createTimeline(rowsOf(10), { deferWrites: true });
+    timeline.userScrollTo(600);
+    vi.advanceTimersByTime(500);
+
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.layout.bounceTo(400);
+    const after = timeline.topOf("row-3");
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+    vi.advanceTimersByTime(400);
+    timeline.keeper.reconcile();
+
+    expect(timeline.layout.scrollTop).toBe(400);
+    expect(timeline.topOf("row-3")).toBe(after);
+  });
+
+  it("keeps fling momentum as the reader's movement after a long frame, while correcting layout that changed with it", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const timeline = createTimeline(rowsOf(10));
-    timeline.scrollTo(900);
-    timeline.keeper.handleScroll();
-    const element = timeline.scrollElement.querySelector<HTMLElement>(
-      '[data-timeline-row-id="row-6"]',
+    timeline.userScrollTo(600);
+    vi.advanceTimersByTime(500);
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.layout.layoutScrollTo(560);
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+    const before = timeline.topOf("row-3");
+    vi.advanceTimersByTime(400);
+
+    timeline.resize("row-0", 150);
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 30);
+
+    expect(timeline.topOf("row-3")).toBe(before + 30);
+  });
+
+  it("ends a tap whose target left the document on pointerup, so content arriving after a send keeps the reader attached", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const send = document.createElement("button");
+    timeline.content.append(send);
+    const pointer = (type: string) =>
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerType: "touch",
+        pointerId: 7,
+      });
+    send.dispatchEvent(pointer("pointerdown"));
+    send.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+    send.remove();
+    window.dispatchEvent(pointer("pointerup"));
+
+    timeline.setRows(rowsOf(12));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 120);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("ends the reader's fling session when the app scrolls to the bottom, so a send right after a fling stays attached", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 600);
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+    vi.advanceTimersByTime(1_000);
+    expect(timeline.keeper.isAttached()).toBe(false);
+
+    timeline.keeper.scrollToBottom();
+    timeline.setRows(rowsOf(12));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 120);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("does not count a send button's jump to the end as the reader's gesture when the button handles pointerup itself", () => {
+    const timeline = createTimeline(rowsOf(10));
+    timeline.userScrollTo(200);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    const send = document.createElement("button");
+    timeline.content.append(send);
+    const pointer = (type: string) =>
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerType: "touch",
+        pointerId: 9,
+      });
+    send.addEventListener("pointerup", (event) => {
+      event.stopPropagation();
+      timeline.keeper.scrollToBottom();
+      send.remove();
+    });
+    send.dispatchEvent(pointer("pointerdown"));
+    send.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+    send.dispatchEvent(pointer("pointerup"));
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+
+    timeline.setRows(rowsOf(12));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 120);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("leaves an iOS edge bounce alone instead of holding it with a transform", () => {
+    const timeline = createTimeline(rowsOf(10), { deferWrites: true });
+    timeline.userScrollTo(300);
+    const before = timeline.topOf("row-1");
+
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.layout.bounceTo(-40);
+    timeline.keeper.reconcile();
+
+    expect(timeline.content.style.transform).toBe("");
+    expect(timeline.topOf("row-1")).toBe(before + 340);
+  });
+
+  it("restores a saved row at its saved offset once it mounts, and stays at the end until then", () => {
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows.slice(5), { attached: true });
+
+    timeline.keeper.restore({
+      rowId: "row-3",
+      offsetWithinRow: 40,
+      atBottom: false,
+    });
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+
+    timeline.setRows(rows);
+    timeline.keeper.reconcile();
+
+    expect(timeline.topOf("row-3")).toBe(-40);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    expect(timeline.keeper.savedPosition()).toEqual({
+      rowId: "row-4",
+      offsetWithinRow: -160,
+      atBottom: false,
+    });
+  });
+
+  it("restores a saved row where it stays visible when the viewport is now shorter than its offset", () => {
+    const timeline = createTimeline(rowsOf(10), { footerTop: 120 });
+
+    timeline.keeper.restore({
+      rowId: "row-4",
+      offsetWithinRow: -300,
+      atBottom: false,
+    });
+
+    expect(timeline.topOf("row-4")).toBe(72);
+  });
+
+  it("restores the exact view when the first row starting in it is too close to the bottom to restore there", () => {
+    const rows = rowsOf(10).map((row) =>
+      row.id === "row-2" ? { ...row, height: 480 } : row,
     );
-    if (element === null) throw new Error("Expected row-6");
-    timeline.keeper.hold(element, "bottom", 250);
-    const bottomBefore = timeline.viewportTopOf("row-6") + 200;
+    const first = createTimeline(rows);
+    first.userScrollTo(410);
+    expect(first.topOf("row-3")).toBe(470);
+    const saved = first.keeper.savedPosition();
+    if (saved === null) throw new Error("No saved position");
+    restoreLayout?.();
+    document.body.replaceChildren();
 
-    timeline.setRows([
-      ...rowsOf(6),
-      { id: "row-6", height: 50 },
-      ...rowsOf(10).slice(7),
-    ]);
+    const second = createTimeline(rows);
+    second.keeper.restore(saved);
+
+    expect(second.topOf("row-2")).toBe(-10);
+    expect(second.topOf("row-3")).toBe(470);
+  });
+
+  it("keeps the reading row when every row reflows at a new width", () => {
+    const timeline = createTimeline(rowsOf(10));
+    timeline.userScrollTo(450);
+    const before = timeline.topOf("row-3");
+
+    for (let index = 0; index < 10; index += 1) {
+      timeline.resize(`row-${index}`, 320);
+    }
     timeline.keeper.reconcile();
 
-    expect(timeline.viewportTopOf("row-6") + 50).toBe(bottomBefore);
+    expect(timeline.topOf("row-3")).toBe(before);
   });
 });

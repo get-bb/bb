@@ -587,10 +587,6 @@ const NEXT_CONFIG = {
   },
 };
 
-const LEGACY_SESSION_OPEN_RESPONSE_SCHEMA = hostDaemonSessionOpenResponseSchema
-  .omit({ connectNext: true })
-  .strict();
-
 function openDaemonSession(harness: TestAppHarness, protocolVersion: number) {
   return harness.app.request("/internal/session/open", {
     method: "POST",
@@ -697,44 +693,6 @@ describe("connect next machine tunnels", () => {
     unsubscribe();
   });
 
-  it("serves a protocol-246 daemon its Cloudflare shares and never a next message", async () => {
-    await withTestHarness(async (harness) => {
-      upsertHost(harness.db, harness.hub, {
-        id: "host-1",
-        name: "Host",
-        connectMachineId: "machine-1",
-      });
-      harness.deps.sharedPorts.setNextTunnelConfig(
-        "bb--connect-next",
-        NEXT_CONFIG,
-      );
-      const response = await openDaemonSession(harness, 246);
-      expect(response.status).toBe(201);
-      const body = await readJson(response);
-      const legacy = LEGACY_SESSION_OPEN_RESPONSE_SCHEMA.parse(body);
-      harness.deps.sharedPorts.declareSharedPorts({
-        ownerId: "connect",
-        hostId: "host-1",
-        ports: [4173],
-      });
-      const daemonSocket = createMockHubSocket();
-      onDaemonSocketOpen(harness.deps, {
-        hostId: "host-1",
-        sessionId: legacy.sessionId,
-        socket: daemonSocket,
-      });
-      harness.deps.sharedPorts.setNextTunnelConfig("bb--connect-next", null);
-      const types = daemonSocket.messages.map(
-        (message) => (JSON.parse(message) as { type: string }).type,
-      );
-      expect(types).toContain("connect-shares.replace");
-      expect(types).not.toContain("connect-next.replace");
-      expect(
-        harness.deps.sharedPorts.reconcileSharedPortsForHost("host-1"),
-      ).toEqual({ generation: 1, ports: [4173] });
-    });
-  });
-
   it("gives a current daemon the config at session open and on the socket", async () => {
     await withTestHarness(async (harness) => {
       upsertHost(harness.db, harness.hub, {
@@ -795,7 +753,10 @@ describe("connect next machine tunnels", () => {
   it("still rejects protocols outside the compatible window", async () => {
     await withTestHarness(async (harness) => {
       upsertHost(harness.db, harness.hub, { id: "host-1", name: "Host" });
-      for (const version of [243, HOST_DAEMON_PROTOCOL_VERSION + 1]) {
+      for (const version of [
+        HOST_DAEMON_PROTOCOL_VERSION - 1,
+        HOST_DAEMON_PROTOCOL_VERSION + 1,
+      ]) {
         const response = await openDaemonSession(harness, version);
         expect(response.status).toBe(400);
         await expect(readJson(response)).resolves.toMatchObject({

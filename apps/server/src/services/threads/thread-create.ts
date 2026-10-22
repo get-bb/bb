@@ -686,6 +686,7 @@ export async function createThreadFromRequest(
   } = resolveProjectExecutionDefaultsForCreate(deps, {
     executionInputSources: requestInput.executionInputSources,
     model: requestInput.model,
+    parentThread,
     projectId: requestInput.projectId,
     providerId: requestInput.providerId,
   });

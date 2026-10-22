@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 
 const AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX = 600;
@@ -38,14 +44,11 @@ export function useAutoLoadOlderRows({
 }: UseAutoLoadOlderRowsArgs): AutoLoadOlderRows {
   const bottomAnchor = useBottomAnchoredScroll();
   const sentinelNodeRef = useRef<HTMLElement | null>(null);
-  const isIntersectingRef = useRef(false);
-  const [sentinelVersion, setSentinelVersion] = useState(0);
-  const [intersectionTick, setIntersectionTick] = useState(0);
+  const loadInFlightRef = useRef(false);
   const [autoLoadFailed, setAutoLoadFailed] = useState(false);
 
   const sentinelRef = useCallback((node: HTMLElement | null) => {
     sentinelNodeRef.current = node;
-    setSentinelVersion((version) => version + 1);
   }, []);
 
   const isAutoLoadEnabled =
@@ -58,11 +61,14 @@ export function useAutoLoadOlderRows({
     if (!onLoadOlderRows) {
       return;
     }
+    loadInFlightRef.current = true;
     void (async () => {
       try {
         await onLoadOlderRows();
       } catch {
         setAutoLoadFailed(true);
+      } finally {
+        loadInFlightRef.current = false;
       }
     })();
   }, [onLoadOlderRows]);
@@ -72,55 +78,60 @@ export function useAutoLoadOlderRows({
     startLoad();
   }, [startLoad]);
 
-  useEffect(() => {
-    if (!isAutoLoadEnabled) {
-      isIntersectingRef.current = false;
-      return;
-    }
-    const sentinel = sentinelNodeRef.current;
-    if (!sentinel) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries.at(-1);
-        isIntersectingRef.current = entry?.isIntersecting ?? false;
-        if (isIntersectingRef.current) {
-          setIntersectionTick((tick) => tick + 1);
-        }
-      },
-      {
-        root: bottomAnchor?.getScrollElement() ?? null,
-        rootMargin: `${AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX}px 0px 0px 0px`,
-      },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [bottomAnchor, isAutoLoadEnabled, sentinelVersion]);
+  const liveRef = useRef({
+    isAutoLoadEnabled,
+    isLoadingOlderTimelineRows,
+    startLoad,
+  });
+  useLayoutEffect(() => {
+    liveRef.current = {
+      isAutoLoadEnabled,
+      isLoadingOlderTimelineRows,
+      startLoad,
+    };
+  });
 
-  useEffect(() => {
+  const loadIfSentinelInRange = useCallback(() => {
+    const live = liveRef.current;
     if (
-      !isAutoLoadEnabled ||
-      isLoadingOlderTimelineRows ||
-      !isIntersectingRef.current
+      !live.isAutoLoadEnabled ||
+      live.isLoadingOlderTimelineRows ||
+      loadInFlightRef.current
     ) {
       return;
     }
     const sentinel = sentinelNodeRef.current;
     const scrollElement = bottomAnchor?.getScrollElement();
-    if (!sentinel || !scrollElement) {
+    if (!sentinel?.isConnected || !scrollElement) {
       return;
     }
-    if (!isSentinelWithinPrefetchRange({ scrollElement, sentinel })) {
-      isIntersectingRef.current = false;
-      return;
+    if (isSentinelWithinPrefetchRange({ scrollElement, sentinel })) {
+      live.startLoad();
     }
-    startLoad();
+  }, [bottomAnchor]);
+
+  const positionKeeper = bottomAnchor?.positionKeeper ?? null;
+  useEffect(() => {
+    if (positionKeeper === null) return;
+    let timeout: number | null = null;
+    const unsubscribe = positionKeeper.subscribePosition(() => {
+      timeout ??= window.setTimeout(() => {
+        timeout = null;
+        loadIfSentinelInRange();
+      }, 0);
+    });
+    return () => {
+      unsubscribe();
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
+  }, [loadIfSentinelInRange, positionKeeper]);
+
+  useEffect(() => {
+    loadIfSentinelInRange();
   }, [
-    bottomAnchor,
-    intersectionTick,
     isAutoLoadEnabled,
     isLoadingOlderTimelineRows,
+    loadIfSentinelInRange,
     startLoad,
   ]);
 

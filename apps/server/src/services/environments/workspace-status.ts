@@ -1,5 +1,3 @@
-import { recordEnvironmentCurrentBranch } from "@bb/db/internal-environment-lifecycle";
-import type { Environment } from "@bb/domain";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   COMMAND_TIMEOUT_MS,
@@ -17,13 +15,8 @@ import type { WorkspaceCommandTarget } from "./workspace-command-target.js";
 type WorkspaceStatusResult = HostDaemonOnlineRpcResult<"workspace.status">;
 
 interface CallEnvironmentWorkspaceStatusArgs {
-  environment: Pick<Environment, "id">;
   target: WorkspaceCommandTarget;
   mergeBaseBranch?: string;
-}
-
-function normalizeObservedDefaultBranch(defaultBranch: string): string | null {
-  return defaultBranch.length > 0 ? defaultBranch : null;
 }
 
 export async function callEnvironmentWorkspaceStatus(
@@ -48,12 +41,12 @@ export async function callEnvironmentWorkspaceStatusForWork(
   );
 }
 
-async function callEnvironmentWorkspaceStatusWith(
+function callEnvironmentWorkspaceStatusWith(
   deps: AppDeps,
   args: CallEnvironmentWorkspaceStatusArgs,
   callRpc: typeof callHostRetryableOnlineRpc,
 ): Promise<WorkspaceStatusResult> {
-  const result = await callRpc(deps, {
+  return callRpc(deps, {
     hostId: args.target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -68,15 +61,4 @@ async function callEnvironmentWorkspaceStatusWith(
         : {}),
     },
   });
-
-  if (result.outcome === "available") {
-    recordEnvironmentCurrentBranch(deps.db, deps.hub, args.environment.id, {
-      branchName: result.workspaceStatus.branch.currentBranch,
-      defaultBranch: normalizeObservedDefaultBranch(
-        result.workspaceStatus.branch.defaultBranch,
-      ),
-    });
-  }
-
-  return result;
 }

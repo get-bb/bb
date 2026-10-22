@@ -6,527 +6,369 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AutoHeightSnapContext } from "@/components/ui/height-transition";
-import {
-  TimelineWindowedItems,
-  type TimelineWindowedItemRenderState,
-} from "./TimelineWindowedItems.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
+import { installFakeFlowLayout } from "@/test/fake-flow-layout";
+import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 
-const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
-
-let scrollElement: HTMLDivElement;
-let itemHeights = new Map<number, number>();
-
-function rect(top: number, height: number): DOMRect {
-  return {
-    bottom: top + height,
-    height,
-    left: 0,
-    right: 320,
-    top,
-    width: 320,
-    x: 0,
-    y: top,
-    toJSON: () => ({}),
-  };
-}
-
-const resizeObserverCallbacks = new Set<ResizeObserverCallback>();
-
-class ResizeObserverStub implements ResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {
-    resizeObserverCallbacks.add(callback);
-  }
-  disconnect(): void {
-    resizeObserverCallbacks.delete(this.callback);
-  }
-  observe(): void {}
-  unobserve(): void {}
-}
-
-function reportItemResize(element: HTMLElement, height: number) {
-  const entry = {
-    target: element,
-    borderBoxSize: [{ blockSize: height, inlineSize: 320 }],
-    contentBoxSize: [{ blockSize: height, inlineSize: 320 }],
-    contentRect: rect(0, height),
-    devicePixelContentBoxSize: [],
-  } satisfies ResizeObserverEntry;
-  for (const callback of resizeObserverCallbacks) {
-    callback([entry], new ResizeObserverStub(callback));
-  }
-}
-
-function readSpacerHeight() {
-  const spacer = scrollElement.querySelector<HTMLElement>(
-    "[data-timeline-virtual-spacer]",
-  );
-  return Number.parseFloat(spacer?.style.height ?? "") || 0;
-}
-
-function clampScrollTopToContentHeight(readContentHeight: () => number) {
-  let scrollTop = 0;
-  const maxScrollTop = () =>
-    Math.max(0, readContentHeight() - scrollElement.clientHeight);
-  Object.defineProperty(scrollElement, "scrollTop", {
-    configurable: true,
-    get: () => scrollTop,
-    set: (value: number) => {
-      scrollTop = Math.min(Math.max(0, value), maxScrollTop());
-    },
-  });
-  scrollElement.scrollTo = ((options: ScrollToOptions) => {
-    if (options.top !== undefined) scrollElement.scrollTop = options.top;
-  }) as typeof scrollElement.scrollTo;
-}
-
-function renderWindowedItems(options?: {
-  alwaysMountedKeys?: ReadonlySet<string>;
-  clientHeight?: number;
-  measurements?: Map<string, number>;
-  snapAutoHeight?: () => void;
-  pinnedToEnd?: boolean;
-}) {
-  const measurements = options?.measurements ?? new Map<string, number>();
-  Object.defineProperty(scrollElement, "clientHeight", {
-    configurable: true,
-    value: options?.clientHeight ?? 96,
-  });
-  Object.defineProperty(scrollElement, "offsetHeight", {
-    configurable: true,
-    value: options?.clientHeight ?? 96,
-  });
-  return {
-    ...render(
-      <AutoHeightSnapContext.Provider value={options?.snapAutoHeight ?? null}>
-        <TimelineWindowedItems
-          alwaysMountedKeys={options?.alwaysMountedKeys}
-          estimateItemHeight={() => 32}
-          gap={0}
-          getScrollElement={() => scrollElement}
-          itemKeys={ITEM_KEYS}
-          measurements={measurements}
-          positionKeeper={null}
-          pinnedToEnd={options?.pinnedToEnd ?? false}
-          renderItem={(
-            index: number,
-            state: TimelineWindowedItemRenderState,
-          ) => (
-            <div
-              key={ITEM_KEYS[index]}
-              ref={state.itemRef}
-              data-index={state.itemIndex}
-              data-testid={`wrapper-${index}`}
-              data-timeline-window-key={ITEM_KEYS[index]}
-              style={state.itemStyle}
-            >
-              <button type="button" data-testid={`content-${index}`}>
-                row {index}
-              </button>
-            </div>
-          )}
-        />
-      </AutoHeightSnapContext.Provider>,
-      { container: scrollElement },
-    ),
-    measurements,
-  };
-}
-
-beforeEach(() => {
-  itemHeights = new Map();
-  scrollElement = document.createElement("div");
-  document.body.append(scrollElement);
-  Object.defineProperty(scrollElement, "clientWidth", {
-    configurable: true,
-    value: 320,
-  });
-  Object.defineProperty(scrollElement, "offsetWidth", {
-    configurable: true,
-    value: 320,
-  });
-  Object.defineProperty(scrollElement, "scrollHeight", {
-    configurable: true,
-    value: 3_200,
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-    function (this: HTMLElement) {
-      if (this === scrollElement) return rect(0, scrollElement.clientHeight);
-      if (this.hasAttribute("data-timeline-virtual-spacer")) {
-        return rect(
-          -scrollElement.scrollTop,
-          Number.parseFloat(this.style.height) || 0,
-        );
-      }
-      const index = Number(this.dataset.index);
-      if (Number.isInteger(index)) {
-        return rect(
-          index * 32 - scrollElement.scrollTop,
-          itemHeights.get(index) ?? 32,
-        );
-      }
-      return rect(0, Number.parseFloat(this.style.height) || 0);
-    },
-  );
-  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-});
+const VIEWPORT_HEIGHT = 600;
+const cleanups: (() => void)[] = [];
 
 afterEach(() => {
   cleanup();
-  resizeObserverCallbacks.clear();
-  scrollElement.remove();
-  vi.useRealTimers();
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
+  for (const run of cleanups.splice(0).reverse()) run();
+  document.body.replaceChildren();
 });
 
+function keys(count: number, prefix = "row"): string[] {
+  return Array.from({ length: count }, (_, index) => `${prefix}-${index}`);
+}
+
+function setup({
+  attached,
+  heightOf = (key: string) => 40 + ((key.length * 7) % 90),
+  viewportHeight = VIEWPORT_HEIGHT,
+  rootPending = false,
+}: {
+  attached: boolean;
+  heightOf?: (key: string) => number;
+  viewportHeight?: number;
+  rootPending?: boolean;
+}) {
+  const scrollElement = document.createElement("div");
+  const content = document.createElement("div");
+  const list = document.createElement("div");
+  list.setAttribute("data-timeline-row-list", "top-level");
+  content.append(list);
+  scrollElement.append(content);
+  document.body.append(scrollElement);
+  const layout = installFakeFlowLayout({ scrollElement, viewportHeight });
+  let rootReady = !rootPending;
+  const keeper = new ScrollPositionKeeper({
+    bottomThresholdPx: 4,
+    deferWritesWhileScrolling: false,
+    getContentElement: () => content,
+    getFooterElement: () => null,
+    getScrollElement: () => (rootReady ? scrollElement : null),
+    getTopLevelRows: () =>
+      list.querySelectorAll<HTMLElement>(
+        ":scope > [data-timeline-items] > [data-timeline-row-id]",
+      ),
+    initiallyAttached: attached,
+  });
+  let disconnect = rootPending ? () => undefined : keeper.connect(scrollElement);
+  cleanups.push(layout.restore, () => disconnect());
+  const connectRoot = () => {
+    rootReady = true;
+    disconnect = keeper.connect(scrollElement);
+  };
+  const measurements = new Map<string, number>();
+  const view = (
+    itemKeys: string[],
+    {
+      alwaysMountedKeys,
+      pinnedToEnd = attached,
+    }: { alwaysMountedKeys?: ReadonlySet<string>; pinnedToEnd?: boolean } = {},
+  ) => (
+    <TimelineWindowedItems
+      alwaysMountedKeys={alwaysMountedKeys}
+      estimateItemHeight={() => 60}
+      gap={8}
+      itemKeys={itemKeys}
+      measurements={measurements}
+      positionKeeper={keeper}
+      pinnedToEnd={pinnedToEnd}
+      renderItem={(index, state) => {
+        const key = itemKeys[index] ?? "";
+        return (
+          <div
+            key={key}
+            ref={state.itemRef}
+            data-timeline-row-id={key}
+            data-timeline-window-key={key}
+            data-fake-height={heightOf(key)}
+          >
+            <button type="button">{key}</button>
+          </div>
+        );
+      }}
+    />
+  );
+  const mounted = () =>
+    [...list.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].map(
+      (row) => row.dataset.timelineRowId ?? "",
+    );
+  const topOf = (key: string) => {
+    const row = list.querySelector(`[data-timeline-row-id="${key}"]`);
+    if (row === null) throw new Error(`${key} is not mounted`);
+    return row.getBoundingClientRect().top;
+  };
+  const visibleKeys = () =>
+    mounted().filter((key) => {
+      const top = topOf(key);
+      return top < VIEWPORT_HEIGHT && top + heightOf(key) > 0;
+    });
+  return {
+    connectRoot,
+    heightOf,
+    keeper,
+    layout,
+    list,
+    measurements,
+    mounted,
+    topOf,
+    view,
+    visibleKeys,
+  };
+}
+
 describe("TimelineWindowedItems", () => {
-  it("never mounts the full history while the parent scroll ref is pending", async () => {
-    const rendered = new Set<number>();
-    let root: HTMLElement | null = null;
-    Object.defineProperty(scrollElement, "clientHeight", { value: 96 });
-    Object.defineProperty(scrollElement, "offsetHeight", { value: 96 });
-    render(
-      <div
-        ref={() => {
-          root = scrollElement;
-        }}
-      >
+  it("keeps the reader's rows mounted and in place when an older page turns windowing on", () => {
+    const harness = setup({ attached: false });
+    const latest = keys(15);
+    const { rerender } = render(harness.view(latest), {
+      container: harness.list,
+    });
+    act(() => harness.layout.userScrollTo(250));
+    const anchor = harness.visibleKeys()[1] ?? "";
+    const before = harness.topOf(anchor);
+
+    act(() => rerender(harness.view([...keys(40, "older"), ...latest])));
+
+    expect(harness.mounted()).toContain(anchor);
+    expect(harness.topOf(anchor)).toBe(before);
+    expect(harness.mounted().length).toBeLessThan(55);
+  });
+
+  it("renders the rows under a scroll jump before the scroll handler returns", () => {
+    const harness = setup({ attached: true });
+    const itemKeys = keys(400);
+    render(harness.view(itemKeys), { container: harness.list });
+    expect(harness.mounted()).not.toContain("row-0");
+
+    harness.layout.userScrollTo(0);
+
+    expect(harness.visibleKeys()).toContain("row-0");
+    expect(harness.visibleKeys().length).toBeGreaterThan(3);
+  });
+
+  it("jumps far away from a detached reading row without a render loop", () => {
+    const harness = setup({ attached: true });
+    render(harness.view(keys(400)), { container: harness.list });
+    act(() => harness.layout.userScrollTo(harness.layout.maxScrollTop() - 900));
+    expect(harness.keeper.isAttached()).toBe(false);
+
+    harness.layout.userScrollTo(0);
+
+    expect(harness.visibleKeys()).toContain("row-0");
+  });
+
+  it("sizes spacers from retained measurements, so rows unmounting around the reader never shift it", () => {
+    const harness = setup({ attached: true });
+    const itemKeys = keys(200);
+    for (const key of itemKeys)
+      harness.measurements.set(key, harness.heightOf(key));
+    render(harness.view(itemKeys), { container: harness.list });
+    const extent = harness.layout.maxScrollTop();
+
+    act(() => harness.layout.userScrollTo(extent - 3_000));
+    const reader = harness.visibleKeys()[0] ?? "";
+    const before = harness.topOf(reader);
+    act(() => harness.layout.userScrollTo(extent - 2_400));
+    act(() => harness.layout.userScrollTo(extent - 3_600));
+    act(() => harness.layout.userScrollTo(extent - 3_000));
+
+    expect(harness.layout.maxScrollTop()).toBe(extent);
+    expect(harness.layout.scrollTop).toBe(extent - 3_000);
+    expect(harness.topOf(reader)).toBe(before);
+  });
+
+  it("keeps the viewport covered after retained measurements for rows above the window are evicted", () => {
+    const harness = setup({
+      attached: true,
+      heightOf: (key) => (Number(key.split("-")[1]) < 250 ? 300 : 80),
+    });
+    const itemKeys = keys(300);
+    for (const key of itemKeys)
+      harness.measurements.set(key, harness.heightOf(key));
+    render(harness.view(itemKeys), { container: harness.list });
+    const firstMounted = harness.mounted()[0] ?? "";
+    for (const key of itemKeys.slice(0, 250)) harness.measurements.delete(key);
+    const mountedRow = harness.list.querySelector(
+      `[data-timeline-row-id="${harness.mounted().at(-1) ?? ""}"]`,
+    );
+    mountedRow?.setAttribute("data-fake-height", "81");
+    act(() => harness.layout.flushResizeObservers());
+
+    act(() =>
+      harness.layout.userScrollTo(
+        harness.layout.scrollTop + harness.topOf(firstMounted) - 900,
+      ),
+    );
+
+    expect(harness.visibleKeys().length).toBeGreaterThan(0);
+  });
+
+  it("never mounts the full history while the scroll root is still pending", () => {
+    const harness = setup({ attached: false, rootPending: true });
+    const { rerender } = render(harness.view(keys(400)), {
+      container: harness.list,
+    });
+    expect(harness.mounted().length).toBeLessThan(50);
+
+    act(() => harness.connectRoot());
+    act(() => harness.layout.userScrollTo(6_000));
+    act(() => rerender(harness.view(keys(400))));
+
+    expect(harness.mounted().length).toBeLessThan(50);
+    expect(harness.visibleKeys().length).toBeGreaterThan(3);
+  });
+
+  it("renders every row while the scrollport has no usable geometry, and windows once it does", () => {
+    const harness = setup({ attached: false, viewportHeight: 0 });
+    render(harness.view(keys(300)), { container: harness.list });
+    expect(harness.mounted().length).toBe(300);
+
+    harness.layout.setViewportHeight(VIEWPORT_HEIGHT);
+    act(() => harness.keeper.reconcile());
+
+    expect(harness.mounted().length).toBeLessThan(50);
+    expect(harness.visibleKeys().length).toBeGreaterThan(3);
+  });
+
+  it("starts at the end of the list when pinned to the bottom", () => {
+    const harness = setup({ attached: true });
+    const itemKeys = keys(500);
+    render(harness.view(itemKeys), { container: harness.list });
+    const last = itemKeys.at(-1) ?? "";
+
+    expect(harness.mounted()).toContain(last);
+    expect(harness.mounted()).not.toContain("row-0");
+    expect(harness.topOf(last) + harness.heightOf(last)).toBe(VIEWPORT_HEIGHT);
+  });
+
+  it("keeps the reader in place when a nested windowed list mounts above it", () => {
+    const harness = setup({ attached: false });
+    const outerKeys = keys(60);
+    const nestedKeys = keys(200, "nested");
+    const nestedMeasurements = new Map<string, number>();
+    function Outer({ showNested }: { showNested: boolean }) {
+      return (
         <TimelineWindowedItems
-          estimateItemHeight={() => 32}
-          gap={0}
-          getScrollElement={() => root}
-          itemKeys={ITEM_KEYS}
-          measurements={new Map()}
-          positionKeeper={null}
+          estimateItemHeight={() => 60}
+          gap={8}
+          itemKeys={outerKeys}
+          measurements={harness.measurements}
+          positionKeeper={harness.keeper}
           pinnedToEnd={false}
           renderItem={(index, state) => {
-            rendered.add(index);
+            const key = outerKeys[index] ?? "";
+            const nested = showNested && key === "row-5";
             return (
               <div
-                key={ITEM_KEYS[index]}
+                key={key}
                 ref={state.itemRef}
-                data-index={state.itemIndex}
-                style={state.itemStyle}
-                data-testid={`pending-${index}`}
-              />
+                data-timeline-row-id={key}
+                data-timeline-window-key={key}
+                data-fake-height={nested ? undefined : harness.heightOf(key)}
+              >
+                {nested ? (
+                  <TimelineWindowedItems
+                    estimateItemHeight={() => 30}
+                    gap={4}
+                    itemKeys={nestedKeys}
+                    measurements={nestedMeasurements}
+                    positionKeeper={harness.keeper}
+                    pinnedToEnd={false}
+                    renderItem={(nestedIndex, nestedState) => {
+                      const nestedKey = nestedKeys[nestedIndex] ?? "";
+                      return (
+                        <div
+                          key={nestedKey}
+                          ref={nestedState.itemRef}
+                          data-timeline-row-id={nestedKey}
+                          data-timeline-window-key={nestedKey}
+                          data-fake-height={50}
+                        />
+                      );
+                    }}
+                  />
+                ) : (
+                  key
+                )}
+              </div>
             );
           }}
         />
-      </div>,
-      { container: scrollElement },
-    );
-    await waitFor(() => expect(screen.getByTestId("pending-0")).toBeTruthy());
-    expect(rendered.size).toBeLessThan(50);
-    scrollElement.scrollTop = 1_600;
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    });
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("pending-50")).toBeTruthy());
-    expect(screen.queryByTestId("pending-0")).toBeNull();
-  });
-
-  it("captures exact heights before the scrollport becomes usable", () => {
-    const measurements = new Map<string, number>();
-
-    render(
-      <TimelineWindowedItems
-        estimateItemHeight={() => 100}
-        gap={0}
-        getScrollElement={() => scrollElement}
-        itemKeys={ITEM_KEYS}
-        measurements={measurements}
-        positionKeeper={null}
-        pinnedToEnd={false}
-        renderItem={(index, state) => (
-          <div
-            key={ITEM_KEYS[index]}
-            ref={state.itemRef}
-            data-index={state.itemIndex}
-          />
-        )}
-      />,
-      { container: scrollElement },
-    );
-
-    expect(measurements.get("row-0")).toBe(32);
-    expect(measurements.get("row-99")).toBe(32);
-  });
-
-  it("preserves visible row identity when crossing the windowing threshold in either direction", async () => {
-    Object.defineProperty(scrollElement, "clientHeight", {
-      configurable: true,
-      value: 1_000,
-    });
-    Object.defineProperty(scrollElement, "offsetHeight", {
-      configurable: true,
-      value: 1_000,
-    });
-    const measurements = new Map<string, number>();
-    const getScrollElement = () => scrollElement;
-    const list = (count: number) => (
-      <TimelineWindowedItems
-        estimateItemHeight={() => 100}
-        gap={0}
-        getScrollElement={getScrollElement}
-        itemKeys={ITEM_KEYS.slice(0, count)}
-        measurements={measurements}
-        positionKeeper={null}
-        pinnedToEnd={false}
-        renderItem={(index, state) => (
-          <div
-            key={ITEM_KEYS[index]}
-            ref={state.itemRef}
-            data-index={state.itemIndex}
-            style={state.itemStyle}
-          >
-            <input data-testid={`input-${index}`} defaultValue="draft" />
-          </div>
-        )}
-      />
-    );
-    const view = render(list(19), { container: scrollElement });
-    const inputs = screen.getAllByTestId(/^input-/);
-    fireEvent.change(inputs[0]!, { target: { value: "unsaved edit" } });
-
-    view.rerender(list(20));
-    await waitFor(() =>
-      expect(screen.getAllByTestId(/^input-/)).toHaveLength(20),
-    );
-    inputs.forEach((input, index) => {
-      expect(screen.getByTestId(`input-${index}`)).toBe(input);
-    });
-    expect(screen.getByDisplayValue("unsaved edit")).toBe(inputs[0]);
-    expect(
-      scrollElement.querySelector<HTMLElement>("[data-timeline-virtual-spacer]")
-        ?.style.height,
-    ).toBe("640px");
-
-    view.rerender(list(19));
-    inputs.forEach((input, index) => {
-      expect(screen.getByTestId(`input-${index}`)).toBe(input);
-    });
-    expect(screen.getByDisplayValue("unsaved edit")).toBe(inputs[0]);
-    expect(
-      scrollElement.querySelector("[data-timeline-virtual-spacer]"),
-    ).toBeNull();
-  });
-
-  it("mounts only the visible TanStack range and removes offscreen wrappers", async () => {
-    renderWindowedItems();
-
-    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
-    expect(screen.getAllByTestId(/^wrapper-/).length).toBeLessThan(30);
-    expect(screen.queryByTestId("wrapper-60")).toBeNull();
-    expect(
-      scrollElement.querySelector<HTMLElement>("[data-timeline-virtual-spacer]")
-        ?.style.height,
-    ).toBe("3200px");
-  });
-
-  it("changes ranges on scroll without retaining the old rich rows", async () => {
-    renderWindowedItems();
-    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
-
-    scrollElement.scrollTop = 1_600;
-    fireEvent.scroll(scrollElement);
-
-    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
-    expect(screen.queryByTestId("wrapper-0")).toBeNull();
-  });
-
-  it("preserves an existing scroll offset when a nested virtualizer mounts", async () => {
-    scrollElement.scrollTop = 1_600;
-
-    renderWindowedItems();
-
-    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
-    expect(scrollElement.scrollTop).toBe(1_600);
-  });
-
-  it("keeps search and interacted rows mounted outside the visible range", async () => {
-    renderWindowedItems({ alwaysMountedKeys: new Set(["row-80"]) });
-    await waitFor(() => expect(screen.getByTestId("content-80")).toBeTruthy());
-    fireEvent.click(screen.getByTestId("content-0"));
-
-    scrollElement.scrollTop = 1_600;
-    fireEvent.scroll(scrollElement);
-
-    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
-    expect(screen.getByTestId("content-0")).toBeTruthy();
-    expect(screen.getByTestId("content-80")).toBeTruthy();
-  });
-
-  it("keeps visible content mounted during a programmatic scroll jump", async () => {
-    vi.useFakeTimers();
-    renderWindowedItems();
-    await act(async () => {});
-
-    scrollElement.scrollTop = 1_600;
-    fireEvent.scroll(scrollElement);
-    await act(async () => {});
-
-    const content = screen.getByTestId("content-50");
-    expect(content).toBeTruthy();
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-    });
-    expect(screen.getByTestId("content-50")).toBe(content);
-  });
-
-  it("seeds its size model from measurements retained by the thread", async () => {
-    const measurements = new Map<string, number>([["row-50", 64]]);
-    renderWindowedItems({ measurements });
-    await waitFor(() =>
-      expect(
-        scrollElement.querySelector<HTMLElement>(
-          "[data-timeline-virtual-spacer]",
-        )?.style.height,
-      ).toBe("3232px"),
-    );
-  });
-
-  it("starts its range at the end of the list when pinned to the bottom", async () => {
-    renderWindowedItems({ pinnedToEnd: true });
-
-    await waitFor(() => expect(screen.getByTestId("content-98")).toBeTruthy());
-    expect(screen.queryByTestId("wrapper-0")).toBeNull();
-  });
-
-  it("grows the list before compensating for a taller row above the viewport", async () => {
-    clampScrollTopToContentHeight(readSpacerHeight);
-    renderWindowedItems();
-    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
-    scrollElement.scrollTop = 3_104;
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("content-98")).toBeTruthy());
-
-    itemHeights.set(95, 332);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-95"), 332);
-    });
-
-    expect(
-      scrollElement.querySelector<HTMLElement>("[data-timeline-virtual-spacer]")
-        ?.style.height,
-    ).toBe("3500px");
-    expect(scrollElement.scrollTop).toBe(3_404);
-  });
-
-  it("keeps the reading position when a measured row above the viewport reloads while scrolling backward", async () => {
-    clampScrollTopToContentHeight(readSpacerHeight);
-    renderWindowedItems();
-    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
-    scrollElement.scrollTop = 1_600;
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
-    itemHeights.set(45, 40);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-45"), 40);
-    });
-    scrollElement.scrollTop = 1_536;
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("content-48")).toBeTruthy());
-
-    for (const height of [340, 40, 340]) {
-      const previousHeight = itemHeights.get(45) ?? 32;
-      const previousScrollTop = scrollElement.scrollTop;
-      itemHeights.set(45, height);
-      act(() => {
-        reportItemResize(screen.getByTestId("wrapper-45"), height);
-      });
-      expect(scrollElement.scrollTop).toBe(
-        previousScrollTop + height - previousHeight,
       );
     }
+    const { rerender } = render(<Outer showNested={false} />, {
+      container: harness.list,
+    });
+    act(() => harness.layout.userScrollTo(1_500));
+    const reader = harness.visibleKeys()[0] ?? "";
+    const before = harness.topOf(reader);
+
+    act(() => rerender(<Outer showNested />));
+    act(() => harness.layout.flushResizeObservers());
+
+    expect(harness.topOf(reader)).toBe(before);
+    expect(harness.keeper.isAttached()).toBe(false);
   });
 
-  it("keeps a measured row's top fixed when it straddles the viewport top while scrolling backward", async () => {
-    renderWindowedItems();
-    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
-    scrollElement.scrollTop = 1_600;
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
-    itemHeights.set(48, 40);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-48"), 40);
-    });
-    scrollElement.scrollTop = 1_552;
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("content-48")).toBeTruthy());
+  it("keeps every row mounted on iOS WebKit", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1",
+    );
+    const harness = setup({ attached: true });
+    render(harness.view(keys(300)), { container: harness.list });
 
-    itemHeights.set(48, 340);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-48"), 340);
-    });
-
-    expect(readSpacerHeight()).toBe(3_508);
-    expect(scrollElement.scrollTop).toBe(1_552);
+    expect(harness.mounted().length).toBe(300);
   });
 
-  it("settles the enclosing auto-height wrapper before compensating for a taller row", async () => {
-    let wrapperHeight = 0;
-    clampScrollTopToContentHeight(() => wrapperHeight);
-    renderWindowedItems({
-      snapAutoHeight: () => {
-        wrapperHeight = readSpacerHeight();
-      },
-    });
-    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
-    wrapperHeight = readSpacerHeight();
-    scrollElement.scrollTop = 3_104;
-    fireEvent.scroll(scrollElement);
-    await waitFor(() => expect(screen.getByTestId("content-98")).toBeTruthy());
+  it("mounts a bounded window of a long history", () => {
+    const harness = setup({ attached: true });
+    render(harness.view(keys(1_000)), { container: harness.list });
 
-    itemHeights.set(95, 332);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-95"), 332);
-    });
-
-    expect(wrapperHeight).toBe(3_500);
-    expect(scrollElement.scrollTop).toBe(3_404);
+    expect(harness.mounted().length).toBeLessThan(40);
+    expect(harness.layout.scrollTop).toBe(harness.layout.maxScrollTop());
   });
 
-  it("keeps the end in place when a visible row grows while pinned to the end", async () => {
-    clampScrollTopToContentHeight(readSpacerHeight);
-    renderWindowedItems({ pinnedToEnd: true });
-    await waitFor(() => expect(screen.getByTestId("content-98")).toBeTruthy());
-    scrollElement.scrollTop = 3_104;
-
-    itemHeights.set(98, 332);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-98"), 332);
+  it("keeps forced and interacted rows mounted outside the window", () => {
+    const harness = setup({ attached: true });
+    const itemKeys = keys(300);
+    const forced = new Set(["row-3"]);
+    render(harness.view(itemKeys, { alwaysMountedKeys: forced }), {
+      container: harness.list,
     });
+    const interacted = harness.visibleKeys()[0] ?? "";
+    fireEvent.click(screen.getByRole("button", { name: interacted }));
 
-    expect(readSpacerHeight()).toBe(3_500);
-    expect(scrollElement.scrollTop).toBe(3_404);
+    act(() => harness.layout.userScrollTo(4_000));
+    act(() => harness.layout.userScrollTo(2_000));
+
+    expect(harness.mounted()).toContain("row-3");
+    expect(harness.mounted()).toContain(interacted);
   });
 
-  it("leaves the growing last row to the scroll root while pinned to the end", async () => {
-    clampScrollTopToContentHeight(readSpacerHeight);
-    renderWindowedItems({ pinnedToEnd: true });
-    await waitFor(() => expect(screen.getByTestId("content-99")).toBeTruthy());
-    scrollElement.scrollTop = 3_104;
-
-    itemHeights.set(99, 332);
-    act(() => {
-      reportItemResize(screen.getByTestId("wrapper-99"), 332);
+  it("keeps mounted row elements when crossing the windowing threshold in either direction", () => {
+    const harness = setup({ attached: true });
+    const { rerender } = render(harness.view(keys(19)), {
+      container: harness.list,
     });
+    const element = harness.list.querySelector(
+      '[data-timeline-row-id="row-18"]',
+    );
 
-    expect(readSpacerHeight()).toBe(3_500);
-    expect(scrollElement.scrollTop).toBe(3_104);
-  });
-
-  it("renders everything when its scrollport has no usable geometry", async () => {
-    renderWindowedItems({ clientHeight: 0 });
-
-    await waitFor(() =>
-      expect(screen.getAllByTestId(/^content-/)).toHaveLength(100),
+    act(() => rerender(harness.view(keys(20))));
+    expect(harness.list.querySelector('[data-timeline-row-id="row-18"]')).toBe(
+      element,
+    );
+    act(() => rerender(harness.view(keys(19))));
+    expect(harness.list.querySelector('[data-timeline-row-id="row-18"]')).toBe(
+      element,
     );
   });
 });

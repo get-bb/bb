@@ -374,7 +374,7 @@ describe("theme.css sidebar width registration", () => {
   });
 });
 
-describe("theme.css shimmer and scroll-anchor paint scope", () => {
+describe("theme.css shimmer paint scope", () => {
   function ruleBody(selector: string, source = css): string {
     const at = source.indexOf(`${selector} {`);
     if (at === -1) throw new Error(`no ${selector} rule in theme.css`);
@@ -463,15 +463,5 @@ describe("theme.css shimmer and scroll-anchor paint scope", () => {
     expect(rule).toBeDefined();
     expect(rule).toMatch(/(?<!-)mask-image:\s*none;/);
     expect(rule).toMatch(/-webkit-mask-image:\s*none;/);
-  });
-
-  it("excludes the bottom-anchored wrapper without a universal descendant rule", () => {
-    expect(css).not.toMatch(/\.scroll-bottom-anchor-content\s*\*/);
-    expect(ruleBody(".scroll-bottom-anchor-content")).toMatch(
-      /overflow-anchor:\s*none;/,
-    );
-    expect(ruleBody(".scroll-bottom-anchor")).toMatch(
-      /overflow-anchor:\s*auto;/,
-    );
   });
 });

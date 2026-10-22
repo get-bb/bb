@@ -1,29 +1,24 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type SyntheticEvent,
 } from "react";
-import { useComposedRefs } from "@radix-ui/react-compose-refs";
-import {
-  defaultRangeExtractor,
-  elementScroll,
-  observeElementOffset,
-  useVirtualizer,
-  type Range,
-} from "@tanstack/react-virtual";
-import { AutoHeightSnapContext } from "@/components/ui/height-transition";
-import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
+import { flushSync } from "react-dom";
 import { isIOSWebKit } from "@/lib/ios-webkit";
+import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 
 export const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
 const MAX_MEASUREMENTS = 2_000;
+const OVERSCAN_ITEMS = 8;
+const EDGE_MARGIN_ITEMS = 2;
+const TOP_MOUNT_VIEWPORTS = 2;
+const MAX_INTERACTION_PINS = 24;
+const MAX_WINDOW_UPDATES_PER_FRAME = 8;
 
 export function recordTimelineMeasurement(
   measurements: Map<string, number>,
@@ -53,17 +48,20 @@ export const TimelineWindowingMeasurementsContext = createContext<Map<
 > | null>(null);
 
 export interface TimelineWindowedItemRenderState {
-  itemIndex: number | undefined;
-  itemRef: (node: HTMLDivElement | null) => void;
-  itemStyle: CSSProperties | undefined;
+  itemRef: (node: HTMLDivElement | null) => (() => void) | undefined;
   windowingEnabled: boolean;
+}
+
+export interface TimelineWindowAnchor {
+  key: string;
+  offset: number;
 }
 
 export interface TimelineWindowedItemsProps {
   alwaysMountedKeys?: ReadonlySet<string>;
   estimateItemHeight: (index: number) => number;
   gap: number;
-  getScrollElement: (() => HTMLElement | null) | null;
+  initialWindowAnchor?: TimelineWindowAnchor | null;
   itemKeys: readonly string[];
   measurements: Map<string, number>;
   positionKeeper: ScrollPositionKeeper | null;
@@ -74,18 +72,120 @@ export interface TimelineWindowedItemsProps {
   pinnedToEnd: boolean;
 }
 
-const TIMELINE_WINDOW_OVERSCAN_ITEMS = 8;
-const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
+interface LayoutModel {
+  heights: number[];
+  offsets: number[];
+  total: number;
+}
+
+interface IndexRange {
+  start: number;
+  end: number;
+}
+
+interface WindowState {
+  keys: ReadonlySet<string>;
+  heights: ReadonlyMap<string, number>;
+}
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
-const GET_NO_SCROLL_ELEMENT = () => null;
+const WINDOW_KEY_ATTRIBUTE = "data-timeline-window-key";
 
-function measureBorderBox(
-  element: HTMLElement,
-  entry: ResizeObserverEntry | undefined,
-): number {
-  const observedHeight = entry?.borderBoxSize[0]?.blockSize;
-  return observedHeight ?? element.getBoundingClientRect().height;
+function buildModel(
+  itemKeys: readonly string[],
+  heights: ReadonlyMap<string, number>,
+  estimateItemHeight: (index: number) => number,
+  gap: number,
+): LayoutModel {
+  const itemHeights = new Array<number>(itemKeys.length);
+  const offsets = new Array<number>(itemKeys.length);
+  let top = 0;
+  for (let index = 0; index < itemKeys.length; index += 1) {
+    const key = itemKeys[index];
+    const height =
+      (key === undefined ? undefined : heights.get(key)) ??
+      Math.max(1, estimateItemHeight(index));
+    itemHeights[index] = height;
+    offsets[index] = top;
+    top += height + gap;
+  }
+  return {
+    heights: itemHeights,
+    offsets,
+    total: itemKeys.length === 0 ? 0 : top - gap,
+  };
+}
+
+function indexAtOffset(model: LayoutModel, offset: number): number {
+  let low = 0;
+  let high = model.offsets.length - 1;
+  let found = 0;
+  while (low <= high) {
+    const index = low + Math.floor((high - low) / 2);
+    if ((model.offsets[index] ?? 0) <= offset) {
+      found = index;
+      low = index + 1;
+    } else {
+      high = index - 1;
+    }
+  }
+  return found;
+}
+
+function visibleRange(
+  model: LayoutModel,
+  localTop: number,
+  viewportHeight: number,
+): IndexRange {
+  const count = model.offsets.length;
+  if (count === 0) return { start: 0, end: -1 };
+  const start = indexAtOffset(model, Math.max(0, localTop));
+  const end = indexAtOffset(model, Math.max(0, localTop + viewportHeight));
+  return { start, end: Math.min(count - 1, Math.max(start, end)) };
+}
+
+function reachesListTop(
+  model: LayoutModel,
+  visible: IndexRange,
+  viewportHeight: number,
+): boolean {
+  return (
+    (model.offsets[visible.start] ?? 0) < TOP_MOUNT_VIEWPORTS * viewportHeight
+  );
+}
+
+function windowKeysAround(
+  itemKeys: readonly string[],
+  visible: IndexRange,
+  mountToTop: boolean,
+): Set<string> {
+  const keys = new Set<string>();
+  const start = mountToTop ? 0 : Math.max(0, visible.start - OVERSCAN_ITEMS);
+  const end = Math.min(itemKeys.length - 1, visible.end + OVERSCAN_ITEMS);
+  for (let index = start; index <= end; index += 1) {
+    const key = itemKeys[index];
+    if (key !== undefined) keys.add(key);
+  }
+  return keys;
+}
+
+function heldKeyOf(positionKeeper: ScrollPositionKeeper): string | null {
+  const position = positionKeeper.getPosition();
+  return position.kind === "anchor"
+    ? position.key
+    : positionKeeper.pendingRestoreRowId();
+}
+
+function sameKeys(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  if (left.size !== right.size) return false;
+  for (const key of left) if (!right.has(key)) return false;
+  return true;
+}
+
+function spacerHeight(model: LayoutModel, first: number, last: number) {
+  const top = model.offsets[first] ?? 0;
+  const bottom = (model.offsets[last] ?? 0) + (model.heights[last] ?? 0);
+  return Math.max(0, bottom - top);
 }
 
 function findOwnedWindowKey(
@@ -95,7 +195,7 @@ function findOwnedWindowKey(
 ): string | null {
   let element = target instanceof Element ? target : null;
   while (element !== null && element !== container) {
-    const key = element.getAttribute("data-timeline-window-key");
+    const key = element.getAttribute(WINDOW_KEY_ATTRIBUTE);
     if (key !== null && indexByKey.has(key)) return key;
     element = element.parentElement;
   }
@@ -106,313 +206,387 @@ export function TimelineWindowedItems({
   alwaysMountedKeys = EMPTY_KEY_SET,
   estimateItemHeight,
   gap,
-  getScrollElement,
+  initialWindowAnchor = null,
   itemKeys,
   measurements,
   positionKeeper,
   renderItem,
   pinnedToEnd,
 }: TimelineWindowedItemsProps) {
-  const [scrollAdjustmentsKeepMomentum] = useState(
+  const [windowingSupported] = useState(
     () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
   );
-  const configured =
-    scrollAdjustmentsKeepMomentum &&
-    itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT &&
-    getScrollElement !== null;
-  const [scrollRootStatus, setScrollRootStatus] = useState<
-    "pending" | "usable" | "unusable"
-  >("pending");
-  const [initialRect] = useState(() => ({
-    width: 0,
-    height: typeof window === "undefined" ? 800 : window.innerHeight,
-  }));
-  const [scrollMargin, setScrollMargin] = useState(0);
+  const [scrollRootUsable, setScrollRootUsable] = useState<boolean | null>(
+    null,
+  );
+  const windowingEnabled =
+    windowingSupported &&
+    positionKeeper !== null &&
+    scrollRootUsable !== false &&
+    itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [windowState, setWindowState] = useState<WindowState>(() => {
+    const heights = new Map(measurements);
+    if (itemKeys.length < DEFAULT_WINDOWING_MIN_ITEM_COUNT) {
+      return { keys: new Set(itemKeys), heights };
+    }
+    const model = buildModel(itemKeys, heights, estimateItemHeight, gap);
+    const viewportHeight =
+      positionKeeper?.getViewportHeight() || window.innerHeight;
+    const anchorIndex =
+      initialWindowAnchor === null
+        ? -1
+        : itemKeys.indexOf(initialWindowAnchor.key);
+    const localTop =
+      anchorIndex >= 0 && initialWindowAnchor !== null
+        ? (model.offsets[anchorIndex] ?? 0) - initialWindowAnchor.offset
+        : pinnedToEnd
+          ? model.total - viewportHeight
+          : 0;
+    const visible = visibleRange(model, localTop, viewportHeight);
+    return {
+      keys: windowKeysAround(
+        itemKeys,
+        visible,
+        reachesListTop(model, visible, viewportHeight),
+      ),
+      heights,
+    };
+  });
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);
-  const containerElementRef = useRef<HTMLDivElement>(null);
-  const windowingEnabled = configured && scrollRootStatus !== "unusable";
-  const resolvedGetScrollElement = getScrollElement ?? GET_NO_SCROLL_ELEMENT;
 
   const indexByKey = useMemo(
     () => new Map(itemKeys.map((key, index) => [key, index])),
     [itemKeys],
   );
-  const forcedIndexes = useMemo(() => {
+  const renderModel = useMemo(
+    () => buildModel(itemKeys, windowState.heights, estimateItemHeight, gap),
+    [estimateItemHeight, gap, itemKeys, windowState.heights],
+  );
+  const mountedIndexes = useMemo(() => {
+    if (!windowingEnabled) return itemKeys.map((_, index) => index);
     const indexes = new Set<number>();
-    for (const key of alwaysMountedKeys) {
+    const add = (key: string) => {
       const index = indexByKey.get(key);
       if (index !== undefined) indexes.add(index);
-    }
-    for (const key of interactionPins) {
-      const index = indexByKey.get(key);
-      if (index !== undefined) indexes.add(index);
-    }
-    return indexes;
-  }, [alwaysMountedKeys, indexByKey, interactionPins]);
-
-  const getItemKey = useCallback(
-    (index: number) => itemKeys[index] ?? index,
-    [itemKeys],
-  );
-  const estimateSize = useCallback(
-    (index: number) => {
-      const key = itemKeys[index];
-      return key === undefined
-        ? Math.max(1, estimateItemHeight(index))
-        : (measurements.get(key) ?? Math.max(1, estimateItemHeight(index)));
-    },
-    [estimateItemHeight, itemKeys, measurements],
-  );
-  const measureElement = useCallback(
-    (
-      element: HTMLDivElement,
-      entry: ResizeObserverEntry | undefined,
-    ): number => {
-      const index = Number(element.dataset.index);
-      const height = measureBorderBox(element, entry);
-      const key = Number.isInteger(index) ? itemKeys[index] : undefined;
-      if (key !== undefined && height > 0) {
-        recordTimelineMeasurement(measurements, key, height);
-      }
-      return height > 0 ? height : estimateSize(index);
-    },
-    [estimateSize, itemKeys, measurements],
-  );
-  const rangeExtractor = useCallback(
-    (range: Range) => {
-      const indexes = new Set(defaultRangeExtractor(range));
-      for (const index of forcedIndexes) indexes.add(index);
-      return [...indexes].sort((left, right) => left - right);
-    },
-    [forcedIndexes],
-  );
-  const initialOffset = useCallback(() => {
-    const scrollElement = resolvedGetScrollElement();
-    if (!pinnedToEnd) return scrollElement?.scrollTop ?? 0;
-    let estimatedEnd = scrollMargin;
-    for (let index = 0; index < itemKeys.length; index += 1) {
-      estimatedEnd += estimateSize(index) + (index > 0 ? gap : 0);
-    }
-    const viewportHeight = scrollElement?.clientHeight || initialRect.height;
-    return Math.max(0, estimatedEnd - viewportHeight);
+    };
+    for (const key of windowState.keys) add(key);
+    for (const key of alwaysMountedKeys) add(key);
+    for (const key of interactionPins) add(key);
+    return [...indexes].sort((left, right) => left - right);
   }, [
-    estimateSize,
-    gap,
-    initialRect,
+    alwaysMountedKeys,
+    indexByKey,
+    interactionPins,
     itemKeys,
-    resolvedGetScrollElement,
-    scrollMargin,
-    pinnedToEnd,
+    windowState.keys,
+    windowingEnabled,
   ]);
-  const snapAutoHeight = useContext(AutoHeightSnapContext);
-  const scrollToFn = useCallback<typeof elementScroll<HTMLElement>>(
-    (offset, options, instance) => {
-      const container = containerElementRef.current;
-      if (container !== null) {
-        container.style.height = `${instance.getTotalSize()}px`;
-      }
-      snapAutoHeight?.();
-      if (positionKeeper?.isActive() === true) return;
-      elementScroll(offset, options, instance);
+
+  const liveRef = useRef({
+    estimateItemHeight,
+    gap,
+    indexByKey,
+    itemKeys,
+    mountedIndexes,
+    renderedHeights: windowState.heights,
+    scrollRootUsable,
+    windowKeys: windowState.keys,
+    windowingEnabled,
+  });
+  useLayoutEffect(() => {
+    liveRef.current = {
+      estimateItemHeight,
+      gap,
+      indexByKey,
+      itemKeys,
+      mountedIndexes,
+      renderedHeights: windowState.heights,
+      scrollRootUsable,
+      windowKeys: windowState.keys,
+      windowingEnabled,
+    };
+  });
+
+  const modelCacheRef = useRef<{
+    itemKeys: readonly string[];
+    mountedIndexes: readonly number[];
+    renderedHeights: ReadonlyMap<string, number>;
+    revision: number;
+    model: LayoutModel;
+  } | null>(null);
+  const measurementRevisionRef = useRef(0);
+  const renderedModel = useCallback((): LayoutModel => {
+    const live = liveRef.current;
+    const cached = modelCacheRef.current;
+    if (
+      cached !== null &&
+      cached.itemKeys === live.itemKeys &&
+      cached.mountedIndexes === live.mountedIndexes &&
+      cached.renderedHeights === live.renderedHeights &&
+      cached.revision === measurementRevisionRef.current
+    ) {
+      return cached.model;
+    }
+    const heights = new Map(live.renderedHeights);
+    for (const index of live.mountedIndexes) {
+      const key = live.itemKeys[index];
+      const height = key === undefined ? undefined : measurements.get(key);
+      if (key !== undefined && height !== undefined) heights.set(key, height);
+    }
+    const model = buildModel(
+      live.itemKeys,
+      heights,
+      live.estimateItemHeight,
+      live.gap,
+    );
+    modelCacheRef.current = {
+      itemKeys: live.itemKeys,
+      mountedIndexes: live.mountedIndexes,
+      renderedHeights: live.renderedHeights,
+      revision: measurementRevisionRef.current,
+      model,
+    };
+    return model;
+  }, [measurements]);
+
+  const record = useCallback(
+    (key: string, height: number): boolean => {
+      if (height <= 0 || measurements.get(key) === height) return false;
+      recordTimelineMeasurement(measurements, key, height);
+      measurementRevisionRef.current += 1;
+      return true;
     },
-    [positionKeeper, snapAutoHeight],
+    [measurements],
   );
-  const observeOffset = useCallback<typeof observeElementOffset<HTMLElement>>(
-    (instance, callback) => {
-      const unobserve = observeElementOffset(instance, callback);
-      const unsubscribe = positionKeeper?.subscribeScrollWrites(() => {
-        const scrollElement = instance.scrollElement;
-        if (scrollElement !== null) {
-          callback(scrollElement.scrollTop, instance.isScrolling);
-        }
-      });
+
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const getObserver = useCallback((): ResizeObserver | null => {
+    if (observerRef.current !== null) return observerRef.current;
+    if (typeof ResizeObserver === "undefined") return null;
+    observerRef.current = new ResizeObserver((entries) => {
+      let changed = false;
+      for (const entry of entries) {
+        const key = entry.target.getAttribute(WINDOW_KEY_ATTRIBUTE);
+        if (key === null) continue;
+        const height =
+          entry.borderBoxSize?.[0]?.blockSize ??
+          entry.target.getBoundingClientRect().height;
+        if (record(key, height)) changed = true;
+      }
+      if (changed) positionKeeper?.reconcile();
+    });
+    return observerRef.current;
+  }, [positionKeeper, record]);
+
+  useLayoutEffect(
+    () => () => {
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+    },
+    [],
+  );
+
+  const itemRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node === null) return undefined;
+      const key = node.getAttribute(WINDOW_KEY_ATTRIBUTE);
+      if (key !== null) record(key, node.getBoundingClientRect().height);
+      const observer = getObserver();
+      observer?.observe(node);
       return () => {
-        unobserve?.();
-        unsubscribe?.();
+        observer?.unobserve(node);
       };
     },
-    [positionKeeper],
-  );
-  const reconcileScrollPosition = useCallback(() => {
-    positionKeeper?.reconcile();
-  }, [positionKeeper]);
-
-  const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
-    count: itemKeys.length,
-    directDomUpdates: true,
-    directDomUpdatesMode: "position",
-    enabled: windowingEnabled,
-    estimateSize,
-    gap,
-    getItemKey,
-    getScrollElement: resolvedGetScrollElement,
-    initialOffset,
-    initialRect,
-    measureElement,
-    observeElementOffset: observeOffset,
-    onChange: reconcileScrollPosition,
-    overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
-    rangeExtractor,
-    scrollMargin,
-    scrollToFn,
-    useFlushSync: false,
-  });
-  const containerRef = useComposedRefs(
-    containerElementRef,
-    virtualizer.containerRef,
+    [getObserver, record],
   );
 
-  useLayoutEffect(() => {
-    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
-      item,
-      _delta,
-      instance,
-    ) => {
-      if (positionKeeper?.isActive() === true) return false;
-      if (pinnedToEnd) return item.index < instance.options.count - 1;
-      const scrollTop = resolvedGetScrollElement()?.scrollTop ?? 0;
-      if (item.start >= scrollTop) return false;
-      if (!instance.itemSizeCache.has(item.key)) return true;
-      return item.end <= scrollTop;
-    };
-  }, [pinnedToEnd, positionKeeper, resolvedGetScrollElement, virtualizer]);
+  const frameUpdatesRef = useRef({ count: 0, frame: null as number | null });
+  const takeFrameUpdate = useCallback((): boolean => {
+    const budget = frameUpdatesRef.current;
+    if (budget.frame === null) {
+      budget.frame = requestAnimationFrame(() => {
+        budget.frame = null;
+        budget.count = 0;
+      });
+    }
+    budget.count += 1;
+    return budget.count <= MAX_WINDOW_UPDATES_PER_FRAME;
+  }, []);
+  useLayoutEffect(
+    () => () => {
+      const frame = frameUpdatesRef.current.frame;
+      if (frame !== null) cancelAnimationFrame(frame);
+    },
+    [],
+  );
 
-  const rowOffsetStateRef = useRef({ indexByKey, windowingEnabled });
-  rowOffsetStateRef.current = { indexByKey, windowingEnabled };
+  const syncWindow = useCallback(
+    (urgent: boolean) => {
+      const live = liveRef.current;
+      const scrollRoot = positionKeeper?.getScrollElement() ?? null;
+      if (scrollRoot !== null) {
+        const usable = scrollRoot.clientHeight > 0;
+        if (usable !== live.scrollRootUsable) {
+          live.scrollRootUsable = usable;
+          setScrollRootUsable(usable);
+        }
+      }
+      if (!live.windowingEnabled || positionKeeper === null) return;
+      const container = containerRef.current;
+      const scrollElement = positionKeeper.getScrollElement();
+      if (container === null || scrollElement === null) return;
+      const viewportHeight =
+        positionKeeper.getViewportHeight() || scrollElement.clientHeight;
+      if (viewportHeight <= 0) return;
+      const model = renderedModel();
+      const localTop =
+        scrollElement.getBoundingClientRect().top -
+        container.getBoundingClientRect().top;
+      const visible = visibleRange(model, localTop, viewportHeight);
+      if (visible.end < visible.start) return;
+      const mounted = new Set(live.mountedIndexes);
+      let uncovered = false;
+      for (let index = visible.start; index <= visible.end; index += 1) {
+        if (!mounted.has(index)) {
+          uncovered = true;
+          break;
+        }
+      }
+      const windowIndexes: number[] = [];
+      for (const key of live.windowKeys) {
+        const index = live.indexByKey.get(key);
+        if (index !== undefined) windowIndexes.push(index);
+      }
+      const first = windowIndexes.length ? Math.min(...windowIndexes) : 0;
+      const last = windowIndexes.length ? Math.max(...windowIndexes) : -1;
+      const mountToTop = reachesListTop(model, visible, viewportHeight);
+      const nearEdge =
+        (mountToTop && first > 0) ||
+        (visible.start - first < EDGE_MARGIN_ITEMS && first > 0) ||
+        (last - visible.end < EDGE_MARGIN_ITEMS &&
+          last < live.itemKeys.length - 1) ||
+        (!mountToTop && visible.start - first > 3 * OVERSCAN_ITEMS) ||
+        last - visible.end > 3 * OVERSCAN_ITEMS;
+      if (!uncovered && !nearEdge) return;
+      const keys = windowKeysAround(live.itemKeys, visible, mountToTop);
+      const heldKey = heldKeyOf(positionKeeper);
+      if (heldKey !== null && live.indexByKey.has(heldKey)) keys.add(heldKey);
+      if (sameKeys(keys, live.windowKeys) || !takeFrameUpdate()) return;
+      const heights = new Map<string, number>();
+      for (const key of live.itemKeys) {
+        const height =
+          measurements.get(key) ?? live.renderedHeights.get(key);
+        if (height !== undefined) heights.set(key, height);
+      }
+      const apply = () => setWindowState({ keys, heights });
+      if (urgent && uncovered) {
+        flushSync(apply);
+      } else {
+        apply();
+      }
+    },
+    [measurements, positionKeeper, renderedModel, takeFrameUpdate],
+  );
+
   useLayoutEffect(() => {
     if (positionKeeper === null) return;
-    return positionKeeper.registerRowOffsetSource((rowId) => {
-      const { indexByKey: keys, windowingEnabled: windowed } =
-        rowOffsetStateRef.current;
-      const index = keys.get(rowId);
-      const container = containerElementRef.current;
-      const scrollElement = virtualizer.scrollElement;
-      if (!windowed || index === undefined || container === null) return null;
-      if (scrollElement === null || !container.isConnected) return null;
-      const item = virtualizer.measurementsCache[index];
-      if (item === undefined) return null;
-      const containerOffset =
-        container.getBoundingClientRect().top -
-        scrollElement.getBoundingClientRect().top +
-        scrollElement.scrollTop;
-      return containerOffset + item.start - virtualizer.options.scrollMargin;
+    return positionKeeper.registerList({
+      itemAt: (viewportTop) => {
+        const live = liveRef.current;
+        const container = containerRef.current;
+        if (container === null || live.itemKeys.length === 0) return null;
+        const model = renderedModel();
+        const containerTop = container.getBoundingClientRect().top;
+        const localTop = viewportTop - containerTop;
+        if (localTop > model.total) return null;
+        const index = indexAtOffset(model, Math.max(0, localTop));
+        const key = live.itemKeys[index];
+        if (key === undefined) return null;
+        return { key, top: containerTop + (model.offsets[index] ?? 0) };
+      },
+      onPositionChange: syncWindow,
     });
-  }, [positionKeeper, virtualizer]);
+  }, [positionKeeper, renderedModel, syncWindow]);
 
-  useLayoutEffect(reconcileScrollPosition);
-
-  const updateScrollGeometry = useCallback(() => {
-    if (!configured) return;
-    const container = containerElementRef.current;
-    const scrollElement = resolvedGetScrollElement();
-    if (container === null || scrollElement === null) return;
-    const nextMargin =
-      container.getBoundingClientRect().top -
-      scrollElement.getBoundingClientRect().top +
-      scrollElement.scrollTop -
-      scrollElement.clientTop;
-    setScrollMargin((previous) =>
-      Math.abs(previous - nextMargin) < 0.5 ? previous : nextMargin,
-    );
-  }, [configured, resolvedGetScrollElement]);
+  const mountHeldKey = useCallback((): boolean => {
+    if (positionKeeper === null) return false;
+    const live = liveRef.current;
+    const heldKey = heldKeyOf(positionKeeper);
+    if (heldKey === null || !live.windowingEnabled) return false;
+    const index = live.indexByKey.get(heldKey);
+    if (index === undefined || live.mountedIndexes.includes(index)) {
+      return false;
+    }
+    setWindowState((current) => ({
+      keys: new Set([...current.keys, heldKey]),
+      heights: current.heights,
+    }));
+    return true;
+  }, [positionKeeper]);
 
   useLayoutEffect(() => {
-    if (!configured) return;
-    const updateRootUsability = () => {
-      const scrollElement = resolvedGetScrollElement();
-      if (scrollElement !== null) {
-        setScrollRootStatus(
-          scrollElement.clientHeight > 0 ? "usable" : "unusable",
-        );
-      }
-    };
-    let frame: number | undefined;
-    let observer: ResizeObserver | undefined;
-    const attach = () => {
-      const scrollElement = resolvedGetScrollElement();
-      if (scrollElement === null) {
-        frame = requestAnimationFrame(attach);
-        return;
-      }
-      updateRootUsability();
-      updateScrollGeometry();
-      if (typeof ResizeObserver === "undefined") return;
-      observer = new ResizeObserver(() => {
-        updateRootUsability();
-        updateScrollGeometry();
-      });
-      observer.observe(scrollElement);
-      const containerParent = containerElementRef.current?.parentElement;
-      if (containerParent !== null && containerParent !== undefined) {
-        observer.observe(containerParent);
-      }
-    };
-    attach();
-    return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      observer?.disconnect();
-    };
-  }, [configured, resolvedGetScrollElement, updateScrollGeometry]);
-
-  useLayoutEffect(updateScrollGeometry);
+    if (positionKeeper === null || mountHeldKey()) return;
+    positionKeeper.reconcile(false);
+    syncWindow(false);
+  });
 
   const retainInteractedItem = useCallback(
     (event: SyntheticEvent<HTMLDivElement>) => {
-      const container = containerElementRef.current;
+      const container = containerRef.current;
       if (container === null) return;
       const key = findOwnedWindowKey(event.target, container, indexByKey);
       if (key === null) return;
       setInteractionPins((previous) => {
+        if (previous.at(-1) === key) return previous;
         const next = previous.filter((candidate) => candidate !== key);
         next.push(key);
-        return next.slice(-TIMELINE_WINDOW_MAX_INTERACTION_PINS);
+        return next.slice(-MAX_INTERACTION_PINS);
       });
     },
     [indexByKey],
   );
 
-  const virtualItemsByIndex = new Map(
-    virtualizer.getVirtualItems().map((item) => [item.index, item]),
-  );
-  for (const index of forcedIndexes) {
-    const item = virtualizer.measurementsCache[index];
-    if (item !== undefined) virtualItemsByIndex.set(index, item);
+  const children: ReactNode[] = [];
+  let previous = -1;
+  for (const index of mountedIndexes) {
+    if (index > previous + 1) {
+      children.push(
+        <div
+          key={`spacer:${itemKeys[previous + 1] ?? previous + 1}`}
+          aria-hidden
+          data-timeline-window-spacer=""
+          style={{ height: spacerHeight(renderModel, previous + 1, index - 1) }}
+        />,
+      );
+    }
+    children.push(renderItem(index, { itemRef, windowingEnabled }));
+    previous = index;
   }
-  const virtualItems = [...virtualItemsByIndex.values()].sort(
-    (left, right) => left.index - right.index,
-  );
-  const indexes = windowingEnabled
-    ? virtualItems.map((item) => item.index)
-    : itemKeys.map((_, index) => index);
+  if (mountedIndexes.length > 0 && previous < itemKeys.length - 1) {
+    children.push(
+      <div
+        key="spacer:end"
+        aria-hidden
+        data-timeline-window-spacer=""
+        style={{
+          height: spacerHeight(renderModel, previous + 1, itemKeys.length - 1),
+        }}
+      />,
+    );
+  }
+
   return (
     <div
       ref={containerRef}
-      className="relative w-full"
-      style={windowingEnabled ? undefined : { display: "contents" }}
+      className="flex w-full min-w-0 flex-col"
+      style={{ gap }}
       data-timeline-items=""
       data-timeline-virtual-spacer={windowingEnabled ? "" : undefined}
       onClickCapture={retainInteractedItem}
       onFocusCapture={retainInteractedItem}
     >
-      {indexes.map((index) =>
-        renderItem(index, {
-          itemIndex: index,
-          itemRef: windowingEnabled
-            ? virtualizer.measureElement
-            : (element) => {
-                if (element === null) return;
-                const key = itemKeys[index];
-                const height = element.getBoundingClientRect().height;
-                if (key !== undefined && height > 0) {
-                  recordTimelineMeasurement(measurements, key, height);
-                }
-              },
-          itemStyle: windowingEnabled
-            ? { position: "absolute", left: 0, width: "100%" }
-            : undefined,
-          windowingEnabled,
-        }),
-      )}
+      {children}
     </div>
   );
 }

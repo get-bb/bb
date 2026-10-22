@@ -66,7 +66,7 @@ describe("public environment action regressions", () => {
     });
   });
 
-  it("records the daemon-observed branch during commit action status preflight", async () => {
+  it("preserves daemon branch metadata during commit action status preflight", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-commit-observed-branch",
@@ -77,7 +77,7 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        branchName: "bb/stale",
+        branchName: "feature/observed",
         defaultBranch: "main",
         path: "/tmp/commit-observed-branch-env",
       });
@@ -145,8 +145,8 @@ describe("public environment action regressions", () => {
         code: "no_changes",
       });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        branchName: "feature/current",
-        defaultBranch: "trunk",
+        branchName: "feature/observed",
+        defaultBranch: "main",
       });
     });
   });

@@ -1,11 +1,17 @@
-import { getEnvironment } from "@bb/db";
-import { getThread } from "@bb/db";
+import {
+  createProjectSource,
+  getEnvironment,
+  getThread,
+  updateHost,
+} from "@bb/db";
 import { threadSchema, type GitSourceInspection } from "@bb/domain";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
 import type { ThreadProvisionEnvironmentIntent } from "../../src/services/threads/thread-startup-store.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
 import {
   seedEnvironment,
   seedHost,
@@ -223,6 +229,197 @@ describe("project-default thread environment", () => {
       };
       expect(body.code).toBe("host_unavailable");
       expect(body.message).toBe("Host is not connected");
+    });
+  });
+});
+
+describe("project-default machine", () => {
+  function worktreeIntentOn(hostId: string) {
+    return {
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      machine: { type: "existing", hostId },
+      inputs: { branch: { kind: "named", name: "origin/main" } },
+      selectionResolved: true,
+    };
+  }
+
+  it("runs on the project's machine when the primary host has no source", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const { host: laptop } = seedHostSession(harness.deps, {
+        id: "host-laptop",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: laptop.id,
+        path: "/tmp/laptop-only-project",
+      });
+
+      const { intent } = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
+
+      expect(intent).toEqual(worktreeIntentOn(laptop.id));
+    });
+  });
+
+  it("keeps the primary host when it has a source, even if the default source is elsewhere", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const { host: laptop } = seedHostSession(harness.deps, {
+        id: "host-laptop",
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: laptop.id,
+        path: "/tmp/laptop-project",
+      });
+      expect(source.isDefault).toBe(true);
+      createProjectSource(harness.db, harness.hub, {
+        projectId: project.id,
+        type: "local_path",
+        hostId: primary.id,
+        path: "/tmp/primary-project",
+      });
+
+      const { intent } = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
+
+      expect(intent).toEqual(worktreeIntentOn(primary.id));
+    });
+  });
+
+  it("skips a source on a temporary machine", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const { host: sandbox } = seedHostSession(harness.deps, {
+        id: "host-sandbox",
+      });
+      updateHost(harness.db, harness.hub, sandbox.id, { type: "ephemeral" });
+      const { host: laptop } = seedHostSession(harness.deps, {
+        id: "host-laptop",
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: sandbox.id,
+        path: "/tmp/sandbox-project",
+      });
+      expect(source.isDefault).toBe(true);
+      createProjectSource(harness.db, harness.hub, {
+        projectId: project.id,
+        type: "local_path",
+        hostId: laptop.id,
+        path: "/tmp/laptop-project",
+      });
+
+      const { intent } = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
+
+      expect(intent).toEqual(worktreeIntentOn(laptop.id));
+    });
+  });
+
+  it("fails instead of moving the thread when the project's machine is offline", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const laptop = seedHost(harness.deps, { id: "host-laptop" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: laptop.id,
+        path: "/tmp/laptop-only-project",
+      });
+
+      const response = await postCreateThread(harness, project.id, {
+        environment: { type: "project-default" },
+      });
+
+      expect(response.status).toBe(502);
+      expect(await readJson(response)).toMatchObject({
+        code: "host_unavailable",
+        message: "Host is not connected",
+      });
+    });
+  });
+
+  it("wakes the project's suspended machine instead of failing", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const resume = vi.fn(async () => ({ resource: { id: "restored" } }));
+      installMachineProvider({
+        resume,
+        suspend: async () => ({ resource: { id: "saved" } }),
+      });
+      onTestFinished(() => setPluginMachineProviderBridge(undefined));
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const { host: laptop } = seedHostSession(harness.deps, {
+        id: "host-laptop",
+      });
+      updateHost(harness.db, harness.hub, laptop.id, {
+        machineProviderId: "test-machine",
+        phase: "suspended",
+        resource: { id: "saved" },
+        suspendedAt: 1,
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: laptop.id,
+        path: "/tmp/laptop-only-project",
+      });
+
+      const { intent } = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
+
+      expect(resume).toHaveBeenCalledOnce();
+      expect(intent).toEqual(worktreeIntentOn(laptop.id));
+    });
+  });
+
+  it("keeps the missing-source error when only a temporary machine has a source", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const { host: sandbox } = seedHostSession(harness.deps, {
+        id: "host-sandbox",
+      });
+      updateHost(harness.db, harness.hub, sandbox.id, { type: "ephemeral" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: sandbox.id,
+        path: "/tmp/sandbox-project",
+      });
+
+      const response = await postCreateThread(harness, project.id, {
+        environment: { type: "project-default" },
+      });
+
+      expect(response.status).toBe(404);
+      expect(await readJson(response)).toMatchObject({
+        message: "Project has no local-path source for host",
+      });
     });
   });
 });

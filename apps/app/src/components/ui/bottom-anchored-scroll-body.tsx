@@ -14,13 +14,9 @@ import { useStore } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
-import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import { PAGE_SCROLL_TO_TOP_EVENT } from "@/lib/page-scroll-to-top";
-import {
-  threadTimelineScrollAnchorAtomFamily,
-  type ScrollAnchor,
-} from "@/lib/thread-timeline-scroll-anchor.js";
-import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
+import { isIOSWebKit } from "@/lib/ios-webkit";
+import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor.js";
 import {
   ScrollPositionKeeper,
   getDirectTimelineRows,
@@ -37,6 +33,11 @@ export interface BottomAnchorContextValue {
   ) => void;
   holdContentPosition: (args: HoldContentPositionArgs) => void;
   positionKeeper: ScrollPositionKeeper;
+}
+
+export interface TimelineScrollRestore {
+  key: string;
+  offset: number;
 }
 
 interface BottomAnchoredScrollBodyProps {
@@ -64,162 +65,38 @@ interface HoldContentPositionArgs {
   update: () => void;
 }
 
-interface ElementVisibilityArgs {
-  element: HTMLElement;
-  scrollArea: HTMLElement;
-}
-
 const BOTTOM_ANCHOR_THRESHOLD_PX = 4;
-const USER_SCROLL_INTENT_MS = 1_000;
 const SCROLLBAR_IDLE_DELAY_MS = 600;
-const BOTTOM_RESTORE_SETTLE_FRAME_COUNT = 3;
 const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
 const COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 250;
-const SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS = 8;
-const CONTENT_POSITION_HOLD_MS = 250;
 const NATIVE_PAGE_SCROLL_KEYS = new Set(["PageDown", "PageUp", " "]);
 const EDITABLE_KEY_TARGET_SELECTOR =
   "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
-const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
 const TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR =
   '[data-timeline-row-list="top-level"]';
-const TIMELINE_VIRTUAL_SPACER_SELECTOR =
-  ":scope > [data-timeline-virtual-spacer]";
-const SCROLL_INTENT_KEYS = new Set([
-  "ArrowDown",
-  "ArrowUp",
-  "End",
-  "Home",
-  "PageDown",
-  "PageUp",
-  " ",
-]);
+const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
 
 export const BottomAnchorContext =
   createContext<BottomAnchorContextValue | null>(null);
 
-export const TimelineScrollRestoreRowIdContext = createContext<string | null>(
-  null,
-);
+export const TimelineScrollRestoreContext =
+  createContext<TimelineScrollRestore | null>(null);
 
 export function useBottomAnchoredScroll(): BottomAnchorContextValue | null {
   return useContext(BottomAnchorContext);
 }
 
-function getMaxScrollOffset(element: HTMLElement) {
-  return Math.max(0, element.scrollHeight - element.clientHeight);
-}
-
-function isScrolledNearBottom(maxScrollOffset: number, scrollTop: number) {
-  return maxScrollOffset - scrollTop <= BOTTOM_ANCHOR_THRESHOLD_PX;
-}
-
-function getScrollOffsetToRevealElement({
-  element,
-  scrollArea,
-}: ElementVisibilityArgs) {
-  const elementRect = element.getBoundingClientRect();
-  const scrollAreaRect = scrollArea.getBoundingClientRect();
-  return Math.max(
-    0,
-    elementRect.top - scrollAreaRect.top + scrollArea.scrollTop,
-  );
-}
-
-interface TopMostVisibleRow {
-  rowId: string;
-  offsetWithinRow: number;
-}
-
-interface ScrollAnchorRowQuery {
-  rows: NodeListOf<HTMLElement>;
-  windowed: boolean;
-}
-
-function getScrollAnchorRows(scrollArea: HTMLElement): ScrollAnchorRowQuery {
+function getTopLevelRows(scrollArea: HTMLElement): ArrayLike<HTMLElement> {
   const topLevelList = scrollArea.querySelector<HTMLElement>(
     TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR,
   );
-  if (topLevelList) {
-    return {
-      rows: getDirectTimelineRows(topLevelList),
-      windowed:
-        topLevelList.querySelector(TIMELINE_VIRTUAL_SPACER_SELECTOR) !== null,
-    };
-  }
-  return {
-    rows: scrollArea.querySelectorAll<HTMLElement>(TIMELINE_ROW_ID_SELECTOR),
-    windowed: false,
-  };
+  return topLevelList
+    ? getDirectTimelineRows(topLevelList)
+    : scrollArea.querySelectorAll<HTMLElement>(TIMELINE_ROW_ID_SELECTOR);
 }
 
-function getTopMostVisibleRow(
-  scrollArea: HTMLElement,
-  rows: NodeListOf<HTMLElement>,
-): TopMostVisibleRow | null {
-  const scrollAreaTop = scrollArea.getBoundingClientRect().top;
-  let low = 0;
-  let high = rows.length - 1;
-  let visibleRow: HTMLElement | null = null;
-  let visibleRowRect: DOMRect | null = null;
-
-  while (low <= high) {
-    const index = low + Math.floor((high - low) / 2);
-    const row = rows[index];
-    if (!row) break;
-    const rowRect = row.getBoundingClientRect();
-    if (rowRect.bottom <= scrollAreaTop + 1) {
-      low = index + 1;
-      continue;
-    }
-    visibleRow = row;
-    visibleRowRect = rowRect;
-    high = index - 1;
-  }
-
-  const rowId = visibleRow?.dataset.timelineRowId;
-  if (!rowId || !visibleRowRect) return null;
-  return {
-    rowId,
-    offsetWithinRow: Math.max(0, scrollAreaTop - visibleRowRect.top),
-  };
-}
-
-function findTimelineRowElement(
-  scrollArea: HTMLElement,
-  rowId: string,
-): HTMLElement | null {
-  const rows = scrollArea.querySelectorAll<HTMLElement>(
-    TIMELINE_ROW_ID_SELECTOR,
-  );
-  for (const row of rows) {
-    if (row.dataset.timelineRowId === rowId) return row;
-  }
-  return null;
-}
-
-function isEditableKeyboardTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT" ||
-    target.isContentEditable ||
-    target.closest("[contenteditable='true']") !== null
-  );
-}
-
-function isKeyboardEventFromScrollArea(
-  event: KeyboardEvent,
-  scrollArea: HTMLElement,
-) {
-  const target = event.target;
-  if (!(target instanceof Node)) return true;
-  if (target === document.body || target === document.documentElement) {
-    return true;
-  }
-  return scrollArea.contains(target);
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 export function BottomAnchoredScrollBody({
@@ -235,185 +112,56 @@ export function BottomAnchoredScrollBody({
   const isPointerCoarse = usePointerCoarse();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
+  const pageContentRef = useRef<HTMLDivElement>(null);
   const scrollFooterRef = useRef<HTMLDivElement>(null);
   const hasFooter = Boolean(footer);
-  const shouldStickToBottomRef = useRef(true);
-  const scrollToTopInProgressRef = useRef(false);
-  const userScrollIntentUntilRef = useRef(0);
-  const pointerScrollIntentRef = useRef(false);
-  const restoreFrameRef = useRef<number | null>(null);
-  const restoreFramesRemainingRef = useRef(0);
-  const restoreTailLiveReadRef = useRef(false);
-  const pendingScrollRestoreRef = useRef<{
-    anchor: ScrollAnchor;
-    attemptsRemaining: number;
-    lastAppliedScrollTop: number | null;
-  } | null>(null);
-  const contentPositionHoldUntilRef = useRef(0);
   const scrollAnchorCaptureThrottleRef = useRef<{
     lastWriteAt: number;
     trailingTimeout: number | null;
   }>({ lastWriteAt: 0, trailingTimeout: null });
-  const userDetachedFromBottomRef = useRef(false);
-  const maxScrollOffsetRef = useRef(0);
-  const resizeObserverHasDeliveredRef = useRef(false);
-  const observedScrollGeometryRef = useRef<{
-    scrollAreaClientHeight: number | null;
-    scrollContentHeight: number | null;
-  }>({ scrollAreaClientHeight: null, scrollContentHeight: null });
-  const scrollAnchorRowsRef = useRef<NodeListOf<HTMLElement> | null>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const initialScrollRestoreRowId = useMemo(() => {
+  const initialRestore = useMemo<TimelineScrollRestore | null>(() => {
     if (scrollAnchorThreadId === undefined) return null;
     const anchor = store.get(
       threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId),
     );
-    return anchor !== null && anchor !== undefined && !anchor.atBottom
-      ? anchor.rowId
+    return anchor !== null && !anchor.atBottom
+      ? { key: anchor.rowId, offset: -anchor.offsetWithinRow }
       : null;
   }, [scrollAnchorThreadId, store]);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const getScrollElement = useCallback(() => scrollAreaRef.current, []);
-
-  const getScrollAnchorRowsCached = useCallback((scrollArea: HTMLElement) => {
-    const cached = scrollAnchorRowsRef.current;
-    if (
-      cached &&
-      (cached.length === 0 ||
-        (cached[0]?.isConnected === true &&
-          cached[cached.length - 1]?.isConnected === true))
-    ) {
-      return cached;
-    }
-    const { rows, windowed } = getScrollAnchorRows(scrollArea);
-    scrollAnchorRowsRef.current = windowed ? null : rows;
-    return rows;
-  }, []);
 
   const [positionKeeper] = useState(
     () =>
       new ScrollPositionKeeper({
+        bottomThresholdPx: BOTTOM_ANCHOR_THRESHOLD_PX,
+        deferWritesWhileScrolling: isIOSWebKit(navigator),
+        getContentElement: () => pageContentRef.current,
+        getFooterElement: () => scrollFooterRef.current,
         getScrollElement: () => scrollAreaRef.current,
-        getTopLevelRows: getScrollAnchorRowsCached,
-        isActive: () =>
-          !shouldStickToBottomRef.current &&
-          pendingScrollRestoreRef.current === null,
+        getTopLevelRows,
+        initiallyAttached: true,
       }),
   );
 
-  const refreshMaxScrollOffset = useCallback((scrollArea: HTMLElement) => {
-    const maxScrollOffset = getMaxScrollOffset(scrollArea);
-    maxScrollOffsetRef.current = maxScrollOffset;
-    return maxScrollOffset;
-  }, []);
-
-  const readMaxScrollOffset = useCallback(
-    (scrollArea: HTMLElement) =>
-      resizeObserverHasDeliveredRef.current
-        ? maxScrollOffsetRef.current
-        : refreshMaxScrollOffset(scrollArea),
-    [refreshMaxScrollOffset],
+  useLayoutEffect(
+    () =>
+      positionKeeper.subscribe(() => {
+        setIsAtBottom(positionKeeper.isAttached());
+      }),
+    [positionKeeper],
   );
 
-  const cancelPendingScrollRestore = useCallback(() => {
-    pendingScrollRestoreRef.current = null;
-  }, []);
-
-  const cancelQueuedRestore = useCallback(() => {
-    scrollToTopInProgressRef.current = false;
-    if (restoreFrameRef.current === null) return;
-    window.cancelAnimationFrame(restoreFrameRef.current);
-    restoreFrameRef.current = null;
-    restoreFramesRemainingRef.current = 0;
-    restoreTailLiveReadRef.current = false;
-  }, []);
-
-  const restoreBottomOnce = useCallback(() => {
-    const scrollArea = scrollAreaRef.current;
-    if (!scrollArea || !shouldStickToBottomRef.current) return false;
-    const maxScrollOffset = refreshMaxScrollOffset(scrollArea);
-    if (isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop)) {
-      return false;
-    }
-    scrollArea.scrollTop = maxScrollOffset;
-    return true;
-  }, [refreshMaxScrollOffset]);
-
-  const restoreBottomFromCacheOnce = useCallback(() => {
-    const scrollArea = scrollAreaRef.current;
-    if (!scrollArea || !shouldStickToBottomRef.current) return false;
-    const maxScrollOffset = readMaxScrollOffset(scrollArea);
-    if (isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop)) {
-      return false;
-    }
-    scrollArea.scrollTop = maxScrollOffset;
-    return true;
-  }, [readMaxScrollOffset]);
-
-  const queueBottomRestore = useCallback(() => {
-    if (!shouldStickToBottomRef.current) return;
-    restoreBottomOnce();
-    restoreFramesRemainingRef.current = BOTTOM_RESTORE_SETTLE_FRAME_COUNT;
-    restoreTailLiveReadRef.current = false;
-    if (restoreFrameRef.current !== null) return;
-    const runQueuedRestore = () => {
-      restoreFrameRef.current = null;
-      const useLiveRead = restoreTailLiveReadRef.current;
-      restoreTailLiveReadRef.current = false;
-      const restored = useLiveRead
-        ? restoreBottomOnce()
-        : restoreBottomFromCacheOnce();
-      if (!restored) {
-        restoreFramesRemainingRef.current = 0;
-        return;
-      }
-      if (!useLiveRead) {
-        restoreTailLiveReadRef.current = true;
-      }
-      restoreFramesRemainingRef.current -= 1;
-      if (restoreFramesRemainingRef.current > 0) {
-        restoreFrameRef.current =
-          window.requestAnimationFrame(runQueuedRestore);
-      }
-    };
-    restoreFrameRef.current = window.requestAnimationFrame(runQueuedRestore);
-  }, [restoreBottomOnce, restoreBottomFromCacheOnce]);
-
   const scrollToBottom = useCallback(() => {
-    const scrollArea = scrollAreaRef.current;
-    scrollToTopInProgressRef.current = false;
-    cancelPendingScrollRestore();
-    userScrollIntentUntilRef.current = 0;
-    pointerScrollIntentRef.current = false;
-    userDetachedFromBottomRef.current = false;
-    shouldStickToBottomRef.current = true;
-    positionKeeper.capture();
-    setIsAtBottom(true);
-    if (scrollArea) {
-      scrollArea.scrollTop = refreshMaxScrollOffset(scrollArea);
-    }
-    queueBottomRestore();
-  }, [
-    cancelPendingScrollRestore,
-    positionKeeper,
-    queueBottomRestore,
-    refreshMaxScrollOffset,
-  ]);
+    positionKeeper.scrollToBottom();
+  }, [positionKeeper]);
 
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
-      const scrollArea = scrollAreaRef.current;
-      cancelPendingScrollRestore();
-      shouldStickToBottomRef.current = false;
-      setIsAtBottom(false);
-      cancelQueuedRestore();
-      const previousScrollTop = scrollArea?.scrollTop;
-      element.scrollIntoView(options);
-      if (scrollArea && scrollArea.scrollTop !== previousScrollTop) {
-        scrollArea.dispatchEvent(new Event("scroll"));
-      }
+      positionKeeper.revealElement(element, options ?? {});
     },
-    [cancelPendingScrollRestore, cancelQueuedRestore],
+    [positionKeeper],
   );
 
   const scrollElementIntoViewClampedToMaxScroll = useCallback(
@@ -423,132 +171,34 @@ export function BottomAnchoredScrollBody({
         element.scrollIntoView({ block: "start", inline: "nearest" });
         return;
       }
-
-      cancelPendingScrollRestore();
-      const maxScrollOffset = refreshMaxScrollOffset(scrollArea);
-      scrollArea.scrollTop = Math.min(
-        maxScrollOffset,
-        getScrollOffsetToRevealElement({ element, scrollArea }),
+      positionKeeper.scrollTo(
+        element.getBoundingClientRect().top -
+          scrollArea.getBoundingClientRect().top +
+          scrollArea.scrollTop,
+        "instant",
       );
-
-      const targetIsAtBottom = isScrolledNearBottom(
-        maxScrollOffset,
-        scrollArea.scrollTop,
-      );
-      shouldStickToBottomRef.current = targetIsAtBottom;
-      setIsAtBottom(targetIsAtBottom);
-
-      if (targetIsAtBottom) {
-        queueBottomRestore();
-        return;
-      }
-
-      cancelQueuedRestore();
     },
-    [
-      cancelPendingScrollRestore,
-      cancelQueuedRestore,
-      queueBottomRestore,
-      refreshMaxScrollOffset,
-    ],
+    [positionKeeper],
   );
 
   const holdContentPosition = useCallback(
     ({ edge, element, update }: HoldContentPositionArgs) => {
-      const scrollArea = scrollAreaRef.current;
-      if (!scrollArea) {
-        update();
-        return;
-      }
-      cancelQueuedRestore();
-      cancelPendingScrollRestore();
-      shouldStickToBottomRef.current = false;
-      contentPositionHoldUntilRef.current =
-        window.performance.now() + CONTENT_POSITION_HOLD_MS;
-      store.set(layoutAnimationInFlightCountAtom, (count) => count + 1);
-      window.setTimeout(() => {
-        store.set(layoutAnimationInFlightCountAtom, (count) =>
-          Math.max(0, count - 1),
-        );
-      }, CONTENT_POSITION_HOLD_MS);
-      positionKeeper.hold(element, edge, CONTENT_POSITION_HOLD_MS);
-      flushSync(() => {
-        setIsAtBottom(false);
-        update();
-      });
+      positionKeeper.hold(element, edge);
+      flushSync(update);
       positionKeeper.reconcile();
     },
-    [cancelPendingScrollRestore, cancelQueuedRestore, positionKeeper, store],
+    [positionKeeper],
   );
 
-  const hasRecentUserScrollIntent = useCallback(() => {
-    return (
-      pointerScrollIntentRef.current ||
-      window.performance.now() <= userScrollIntentUntilRef.current
+  const writeScrollAnchor = useCallback(() => {
+    if (scrollAnchorThreadId === undefined) return;
+    const saved = positionKeeper.savedPosition();
+    if (saved === null) return;
+    store.set(
+      threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId),
+      saved,
     );
-  }, []);
-
-  const writeScrollAnchor = useCallback(
-    (scrollAreaOverride?: HTMLElement) => {
-      if (scrollAnchorThreadId === undefined) return;
-      const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
-      if (!scrollArea) return;
-      let atBottomByGeometry = isScrolledNearBottom(
-        readMaxScrollOffset(scrollArea),
-        scrollArea.scrollTop,
-      );
-      if (!atBottomByGeometry && shouldStickToBottomRef.current) {
-        atBottomByGeometry = isScrolledNearBottom(
-          refreshMaxScrollOffset(scrollArea),
-          scrollArea.scrollTop,
-        );
-      }
-      const recentUserIntent = hasRecentUserScrollIntent();
-      const anchorAtom =
-        threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
-      if (atBottomByGeometry && !scrollToTopInProgressRef.current) {
-        userDetachedFromBottomRef.current = false;
-        store.set(anchorAtom, {
-          rowId: "",
-          offsetWithinRow: 0,
-          atBottom: true,
-        });
-        return;
-      }
-      if (recentUserIntent) {
-        userDetachedFromBottomRef.current = true;
-      }
-      if (
-        shouldStickToBottomRef.current &&
-        !userDetachedFromBottomRef.current
-      ) {
-        store.set(anchorAtom, {
-          rowId: "",
-          offsetWithinRow: 0,
-          atBottom: true,
-        });
-        return;
-      }
-      const topMostRow = getTopMostVisibleRow(
-        scrollArea,
-        getScrollAnchorRowsCached(scrollArea),
-      );
-      if (!topMostRow) return;
-      store.set(anchorAtom, {
-        rowId: topMostRow.rowId,
-        offsetWithinRow: topMostRow.offsetWithinRow,
-        atBottom: false,
-      });
-    },
-    [
-      getScrollAnchorRowsCached,
-      hasRecentUserScrollIntent,
-      readMaxScrollOffset,
-      refreshMaxScrollOffset,
-      scrollAnchorThreadId,
-      store,
-    ],
-  );
+  }, [positionKeeper, scrollAnchorThreadId, store]);
 
   const scrollAnchorCaptureThrottleMs = isPointerCoarse
     ? COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS
@@ -572,346 +222,44 @@ export function BottomAnchoredScrollBody({
     }, scrollAnchorCaptureThrottleMs - elapsed);
   }, [scrollAnchorCaptureThrottleMs, scrollAnchorThreadId, writeScrollAnchor]);
 
-  const applyScrollRestore = useCallback(
-    (anchor: ScrollAnchor): number | null => {
-      const scrollArea = scrollAreaRef.current;
-      if (!scrollArea) return null;
-      const rowElement = findTimelineRowElement(scrollArea, anchor.rowId);
-      if (!rowElement) return null;
-      shouldStickToBottomRef.current = false;
-      setIsAtBottom(false);
-      cancelQueuedRestore();
-      const revealOffset = getScrollOffsetToRevealElement({
-        element: rowElement,
-        scrollArea,
+  useLayoutEffect(() => {
+    if (initialRestore !== null) {
+      positionKeeper.restore({
+        rowId: initialRestore.key,
+        offsetWithinRow: -initialRestore.offset,
+        atBottom: false,
       });
-      const targetScrollTop = Math.min(
-        refreshMaxScrollOffset(scrollArea),
-        revealOffset + anchor.offsetWithinRow,
-      );
-      scrollArea.scrollTop = targetScrollTop;
-      return targetScrollTop;
-    },
-    [cancelQueuedRestore, refreshMaxScrollOffset],
-  );
+    }
+  }, [initialRestore, positionKeeper]);
 
-  const markUserScrollIntent = useCallback(() => {
-    scrollToTopInProgressRef.current = false;
-    contentPositionHoldUntilRef.current = 0;
-    positionKeeper.releaseHold();
-    userScrollIntentUntilRef.current =
-      window.performance.now() + USER_SCROLL_INTENT_MS;
-  }, [positionKeeper]);
+  useLayoutEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+    const captureThrottle = scrollAnchorCaptureThrottleRef.current;
+    const disconnect = positionKeeper.connect(scrollArea);
+    return () => {
+      if (captureThrottle.trailingTimeout !== null) {
+        window.clearTimeout(captureThrottle.trailingTimeout);
+        captureThrottle.trailingTimeout = null;
+      }
+      writeScrollAnchor();
+      disconnect();
+    };
+  }, [positionKeeper, writeScrollAnchor]);
 
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
     const scrollToTop = (event: Event) => {
       event.preventDefault();
-      if (refreshMaxScrollOffset(scrollArea) === 0) return;
-      markUserScrollIntent();
-      userDetachedFromBottomRef.current = true;
-      shouldStickToBottomRef.current = false;
-      setIsAtBottom(false);
-      cancelQueuedRestore();
-      pendingScrollRestoreRef.current = null;
-      scrollToTopInProgressRef.current = scrollArea.scrollTop > 0;
-      scrollArea.scrollTo({
-        top: 0,
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "instant"
-          : "smooth",
-      });
+      if (scrollArea.scrollHeight <= scrollArea.clientHeight) return;
+      positionKeeper.scrollTo(0, prefersReducedMotion() ? "instant" : "smooth");
     };
     scrollArea.addEventListener(PAGE_SCROLL_TO_TOP_EVENT, scrollToTop);
     return () => {
       scrollArea.removeEventListener(PAGE_SCROLL_TO_TOP_EVENT, scrollToTop);
     };
-  }, [cancelQueuedRestore, markUserScrollIntent, refreshMaxScrollOffset]);
-
-  const markWheelScrollIntent = useCallback(
-    (event: WheelEvent) => {
-      const scrollArea = scrollAreaRef.current;
-      scrollToTopInProgressRef.current = false;
-      if (event.deltaY > 0 && scrollArea) {
-        const nearBottom =
-          isScrolledNearBottom(
-            readMaxScrollOffset(scrollArea),
-            scrollArea.scrollTop,
-          ) ||
-          (shouldStickToBottomRef.current &&
-            isScrolledNearBottom(
-              refreshMaxScrollOffset(scrollArea),
-              scrollArea.scrollTop,
-            ));
-        if (nearBottom) {
-          userScrollIntentUntilRef.current = 0;
-          return;
-        }
-      }
-      markUserScrollIntent();
-    },
-    [markUserScrollIntent, readMaxScrollOffset, refreshMaxScrollOffset],
-  );
-
-  const markTouchStartScrollIntent = useCallback(() => {
-    markUserScrollIntent();
-  }, [markUserScrollIntent]);
-
-  const markTouchMoveScrollIntent = useCallback(() => {
-    markUserScrollIntent();
-  }, [markUserScrollIntent]);
-
-  const startPointerScrollIntent = useCallback(() => {
-    scrollToTopInProgressRef.current = false;
-    pointerScrollIntentRef.current = true;
-  }, []);
-
-  const endPointerScrollIntent = useCallback(() => {
-    pointerScrollIntentRef.current = false;
-  }, []);
-
-  const markKeyboardScrollIntent = useCallback(
-    (event: KeyboardEvent) => {
-      const scrollArea = scrollAreaRef.current;
-      if (!scrollArea) return;
-      if (!SCROLL_INTENT_KEYS.has(event.key)) return;
-      if (isEditableKeyboardTarget(event.target)) return;
-      if (!isKeyboardEventFromScrollArea(event, scrollArea)) return;
-
-      markUserScrollIntent();
-    },
-    [markUserScrollIntent],
-  );
-
-  const attachToBottom = useCallback(() => {
-    userDetachedFromBottomRef.current = false;
-    shouldStickToBottomRef.current = true;
-    userScrollIntentUntilRef.current = 0;
-    setIsAtBottom(true);
-    pendingScrollRestoreRef.current = null;
-    positionKeeper.capture();
   }, [positionKeeper]);
-
-  const settleContentPositionHold = useCallback((): boolean => {
-    const scrollArea = scrollAreaRef.current;
-    if (
-      !scrollArea ||
-      shouldStickToBottomRef.current ||
-      window.performance.now() > contentPositionHoldUntilRef.current
-    ) {
-      contentPositionHoldUntilRef.current = 0;
-      return false;
-    }
-    if (
-      isScrolledNearBottom(maxScrollOffsetRef.current, scrollArea.scrollTop)
-    ) {
-      contentPositionHoldUntilRef.current = 0;
-      attachToBottom();
-      return false;
-    }
-    userDetachedFromBottomRef.current = true;
-    return true;
-  }, [attachToBottom]);
-
-  const syncBottomStateFromScroll = useCallback(() => {
-    const scrollArea = scrollAreaRef.current;
-    if (!scrollArea) return;
-
-    if (scrollToTopInProgressRef.current) {
-      if (scrollArea.scrollTop <= 0) scrollToTopInProgressRef.current = false;
-      return;
-    }
-
-    let nearBottom = isScrolledNearBottom(
-      readMaxScrollOffset(scrollArea),
-      scrollArea.scrollTop,
-    );
-    if (
-      !nearBottom &&
-      shouldStickToBottomRef.current &&
-      hasRecentUserScrollIntent()
-    ) {
-      nearBottom = isScrolledNearBottom(
-        refreshMaxScrollOffset(scrollArea),
-        scrollArea.scrollTop,
-      );
-    }
-
-    if (nearBottom) {
-      attachToBottom();
-      return;
-    }
-
-    if (!hasRecentUserScrollIntent()) return;
-
-    userDetachedFromBottomRef.current = true;
-    shouldStickToBottomRef.current = false;
-    setIsAtBottom(false);
-    cancelQueuedRestore();
-    pendingScrollRestoreRef.current = null;
-  }, [
-    attachToBottom,
-    cancelQueuedRestore,
-    hasRecentUserScrollIntent,
-    readMaxScrollOffset,
-    refreshMaxScrollOffset,
-  ]);
-
-  const handleScroll = useCallback(() => {
-    positionKeeper.reconcile();
-    syncBottomStateFromScroll();
-    positionKeeper.capture();
-    captureScrollAnchorThrottled();
-  }, [positionKeeper, syncBottomStateFromScroll, captureScrollAnchorThrottled]);
-
-  const advancePendingScrollRestore = useCallback((): boolean => {
-    const pending = pendingScrollRestoreRef.current;
-    if (!pending) return false;
-    pending.attemptsRemaining -= 1;
-    const appliedScrollTop = applyScrollRestore(pending.anchor);
-    if (appliedScrollTop !== null) {
-      if (pending.lastAppliedScrollTop === appliedScrollTop) {
-        pendingScrollRestoreRef.current = null;
-        return true;
-      }
-      pending.lastAppliedScrollTop = appliedScrollTop;
-    }
-    if (pending.attemptsRemaining <= 0) {
-      pendingScrollRestoreRef.current = null;
-      if (appliedScrollTop === null) {
-        shouldStickToBottomRef.current = true;
-        setIsAtBottom(true);
-        queueBottomRestore();
-      }
-    }
-    return true;
-  }, [applyScrollRestore, queueBottomRestore]);
-
-  const handleScrollAreaResize = useCallback(
-    (entries: ResizeObserverEntry[]) => {
-      const scrollArea = scrollAreaRef.current;
-      scrollAnchorRowsRef.current = null;
-      positionKeeper.reconcile();
-      let shrankOntoBottomWhileDetached = false;
-      if (scrollArea) {
-        const previousMaxScrollOffset = maxScrollOffsetRef.current;
-        const cacheWasAuthoritative = resizeObserverHasDeliveredRef.current;
-        const observedGeometry = observedScrollGeometryRef.current;
-        for (const entry of entries) {
-          if (entry.target === scrollArea) {
-            observedGeometry.scrollAreaClientHeight =
-              entry.contentBoxSize[0]?.blockSize ?? entry.contentRect.height;
-          } else if (entry.target === scrollContentRef.current) {
-            observedGeometry.scrollContentHeight =
-              entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height;
-          }
-        }
-        let maxScrollOffset: number;
-        if (
-          observedGeometry.scrollAreaClientHeight !== null &&
-          observedGeometry.scrollContentHeight !== null
-        ) {
-          maxScrollOffset = Math.max(
-            0,
-            Math.round(observedGeometry.scrollContentHeight) -
-              Math.round(observedGeometry.scrollAreaClientHeight),
-          );
-          maxScrollOffsetRef.current = maxScrollOffset;
-        } else {
-          maxScrollOffset = refreshMaxScrollOffset(scrollArea);
-        }
-        resizeObserverHasDeliveredRef.current = true;
-        shrankOntoBottomWhileDetached =
-          cacheWasAuthoritative &&
-          !shouldStickToBottomRef.current &&
-          maxScrollOffset < previousMaxScrollOffset &&
-          isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop);
-      }
-      if (settleContentPositionHold()) {
-        positionKeeper.capture();
-        return;
-      }
-      if (advancePendingScrollRestore()) {
-        positionKeeper.capture();
-        return;
-      }
-      if (shrankOntoBottomWhileDetached && scrollArea) {
-        attachToBottom();
-        writeScrollAnchor(scrollArea);
-      }
-      positionKeeper.capture();
-      queueBottomRestore();
-    },
-    [
-      advancePendingScrollRestore,
-      attachToBottom,
-      positionKeeper,
-      queueBottomRestore,
-      refreshMaxScrollOffset,
-      settleContentPositionHold,
-      writeScrollAnchor,
-    ],
-  );
-
-  useLayoutEffect(() => {
-    if (scrollAnchorThreadId === undefined) return;
-    const anchor = store.get(
-      threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId),
-    );
-    if (!anchor || anchor.atBottom) return;
-    shouldStickToBottomRef.current = false;
-    setIsAtBottom(false);
-    pendingScrollRestoreRef.current = {
-      anchor,
-      attemptsRemaining: SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS,
-      lastAppliedScrollTop: null,
-    };
-    advancePendingScrollRestore();
-  }, [scrollAnchorThreadId, store, advancePendingScrollRestore]);
-
-  const bottomAnchorContextValue = useMemo<BottomAnchorContextValue>(
-    () => ({
-      getScrollElement,
-      isAtBottom,
-      scrollToBottom,
-      scrollElementIntoView,
-      scrollElementIntoViewClampedToMaxScroll,
-      holdContentPosition,
-      positionKeeper,
-    }),
-    [
-      getScrollElement,
-      isAtBottom,
-      scrollToBottom,
-      scrollElementIntoView,
-      scrollElementIntoViewClampedToMaxScroll,
-      holdContentPosition,
-      positionKeeper,
-    ],
-  );
-
-  const flushScrollAnchorCapture = useCallback(
-    (scrollArea: HTMLElement) => {
-      const captureThrottle = scrollAnchorCaptureThrottleRef.current;
-      if (captureThrottle.trailingTimeout !== null) {
-        window.clearTimeout(captureThrottle.trailingTimeout);
-        captureThrottle.trailingTimeout = null;
-      }
-      refreshMaxScrollOffset(scrollArea);
-      writeScrollAnchor(scrollArea);
-    },
-    [refreshMaxScrollOffset, writeScrollAnchor],
-  );
-
-  useLayoutEffect(() => {
-    const scrollArea = scrollAreaRef.current;
-    if (!scrollArea) return;
-
-    return () => {
-      flushScrollAnchorCapture(scrollArea);
-    };
-  }, [flushScrollAnchorCapture]);
 
   useLayoutEffect(() => {
     const scrollArea = scrollAreaRef.current;
@@ -950,8 +298,7 @@ export function BottomAnchoredScrollBody({
 
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
-    const scrollContent = scrollContentRef.current;
-    if (!scrollArea || !scrollContent) return;
+    if (!scrollArea) return;
 
     let scrollbarIdleTimeout: number | null = null;
     const handleScrollEvent = () => {
@@ -965,71 +312,44 @@ export function BottomAnchoredScrollBody({
         scrollbarIdleTimeout = null;
         scrollArea.removeAttribute("data-scrollbar-scrolling");
       }, SCROLLBAR_IDLE_DELAY_MS);
-      handleScroll();
+      captureScrollAnchorThrottled();
     };
-
-    let resizeObserver: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(handleScrollAreaResize);
-      resizeObserver.observe(scrollArea);
-      resizeObserver.observe(scrollContent);
-    }
-
     scrollArea.addEventListener("scroll", handleScrollEvent, {
       passive: true,
     });
-    scrollArea.addEventListener("wheel", markWheelScrollIntent, {
-      passive: true,
-    });
-    scrollArea.addEventListener("touchstart", markTouchStartScrollIntent, {
-      passive: true,
-    });
-    scrollArea.addEventListener("touchmove", markTouchMoveScrollIntent, {
-      passive: true,
-    });
-    scrollArea.addEventListener("pointerdown", startPointerScrollIntent, {
-      passive: true,
-    });
-    window.addEventListener("pointerup", endPointerScrollIntent);
-    window.addEventListener("pointercancel", endPointerScrollIntent);
-    window.addEventListener("keydown", markKeyboardScrollIntent);
-
-    queueBottomRestore();
-
     return () => {
-      resizeObserver?.disconnect();
       scrollArea.removeEventListener("scroll", handleScrollEvent);
-      scrollArea.removeEventListener("wheel", markWheelScrollIntent);
-      scrollArea.removeEventListener("touchstart", markTouchStartScrollIntent);
-      scrollArea.removeEventListener("touchmove", markTouchMoveScrollIntent);
-      scrollArea.removeEventListener("pointerdown", startPointerScrollIntent);
-      window.removeEventListener("pointerup", endPointerScrollIntent);
-      window.removeEventListener("pointercancel", endPointerScrollIntent);
-      window.removeEventListener("keydown", markKeyboardScrollIntent);
       if (scrollbarIdleTimeout !== null) {
         window.clearTimeout(scrollbarIdleTimeout);
       }
       scrollArea.removeAttribute("data-scrollbar-scrolling");
-      cancelQueuedRestore();
     };
-  }, [
-    cancelQueuedRestore,
-    endPointerScrollIntent,
-    handleScroll,
-    handleScrollAreaResize,
-    markKeyboardScrollIntent,
-    markTouchMoveScrollIntent,
-    markTouchStartScrollIntent,
-    markWheelScrollIntent,
-    queueBottomRestore,
-    startPointerScrollIntent,
-  ]);
+  }, [captureScrollAnchorThrottled]);
+
+  const bottomAnchorContextValue = useMemo<BottomAnchorContextValue>(
+    () => ({
+      getScrollElement,
+      isAtBottom,
+      scrollToBottom,
+      scrollElementIntoView,
+      scrollElementIntoViewClampedToMaxScroll,
+      holdContentPosition,
+      positionKeeper,
+    }),
+    [
+      getScrollElement,
+      isAtBottom,
+      scrollToBottom,
+      scrollElementIntoView,
+      scrollElementIntoViewClampedToMaxScroll,
+      holdContentPosition,
+      positionKeeper,
+    ],
+  );
 
   return (
     <BottomAnchorContext.Provider value={bottomAnchorContextValue}>
-      <TimelineScrollRestoreRowIdContext.Provider
-        value={initialScrollRestoreRowId}
-      >
+      <TimelineScrollRestoreContext.Provider value={initialRestore}>
         <div className="relative grid min-h-0 flex-1 grid-rows-[minmax(auto,1fr)] overflow-hidden">
           <TitleBarScrollFade tone="background" />
           <div
@@ -1044,26 +364,23 @@ export function BottomAnchoredScrollBody({
               ref={scrollContentRef}
               className="flex min-h-full min-w-0 flex-col"
             >
-              {}
               <div
+                ref={pageContentRef}
+                data-scroll-attached={isAtBottom ? "" : undefined}
                 className={cn(
                   "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 pb-4 pt-2",
                   maxWidthClassName,
                   contentClassName,
-                  isAtBottom &&
-                    supportsScrollAnchoring() &&
-                    "scroll-bottom-anchor-content",
                 )}
                 style={PAGE_SHELL_CONTENT_STYLE}
               >
                 {children}
               </div>
-              <div className="scroll-bottom-anchor" aria-hidden />
               {footer ? (
                 <div
                   ref={scrollFooterRef}
                   data-scroll-footer=""
-                  className="sticky bottom-0 z-20 shrink-0 [overflow-anchor:none]"
+                  className="sticky bottom-0 z-20 shrink-0"
                 >
                   {footer}
                 </div>
@@ -1079,7 +396,7 @@ export function BottomAnchoredScrollBody({
             </div>
           ) : null}
         </div>
-      </TimelineScrollRestoreRowIdContext.Provider>
+      </TimelineScrollRestoreContext.Provider>
     </BottomAnchorContext.Provider>
   );
 }

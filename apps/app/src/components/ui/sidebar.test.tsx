@@ -61,6 +61,7 @@ afterEach(() => {
   uninstallNativeShell();
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -518,6 +519,56 @@ describe("SidebarContent", () => {
     render(<SidebarContent data-testid="content">Rows</SidebarContent>);
 
     expect(screen.getByTestId("content").classList).toContain("bg-sidebar");
+  });
+
+  it("publishes its scrollbar lane and keeps it current when the scrollbar style changes", () => {
+    const observers: {
+      callback: ResizeObserverCallback;
+      instance: ResizeObserver;
+      targets: Set<Element>;
+    }[] = [];
+    class StubResizeObserver {
+      private readonly targets = new Set<Element>();
+      constructor(callback: ResizeObserverCallback) {
+        observers.push({
+          callback,
+          instance: this as unknown as ResizeObserver,
+          targets: this.targets,
+        });
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target);
+      }
+      disconnect() {
+        this.targets.clear();
+      }
+    }
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(256);
+    const clientWidth = vi
+      .spyOn(Element.prototype, "clientWidth", "get")
+      .mockReturnValue(246);
+
+    render(<SidebarContent data-testid="content">Rows</SidebarContent>);
+    const content = screen.getByTestId("content");
+    expect(content.style.getPropertyValue("--bb-sidebar-scrollbar-lane")).toBe(
+      "10px",
+    );
+
+    clientWidth.mockReturnValue(256);
+    act(() => {
+      for (const { callback, instance, targets } of observers) {
+        if (targets.has(content)) {
+          callback([], instance);
+        }
+      }
+    });
+    expect(content.style.getPropertyValue("--bb-sidebar-scrollbar-lane")).toBe(
+      "0px",
+    );
   });
 });
 

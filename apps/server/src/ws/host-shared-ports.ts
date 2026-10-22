@@ -3,7 +3,6 @@ import {
   hostDaemonConnectNextConfigSchema,
   hostDaemonConnectNextStatusSchema,
   hostDaemonConnectTunnelIdentitySchema,
-  hostDaemonSupportsConnectNext,
   type HostDaemonConnectNext,
   type HostDaemonConnectNextConfig,
   type HostDaemonConnectNextStatus,
@@ -160,10 +159,7 @@ export class HostSharedPortCoordinator {
   }
 
   hostSupportsNextTunnel(hostId: string): boolean {
-    const state = this.connectCapabilityState(hostId);
-    return (
-      state !== null && hostDaemonSupportsConnectNext(state.protocolVersion)
-    );
+    return this.connectCapabilityState(hostId) !== null;
   }
 
   pushCurrentNextTunnelForHost(hostId: string): void {

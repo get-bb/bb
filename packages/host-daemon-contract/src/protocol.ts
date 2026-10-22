@@ -1,4 +1,4 @@
-export const HOST_DAEMON_PROTOCOL_VERSION = 250 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 251 as const;
 
 export const HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION = 247 as const;
 
@@ -8,10 +8,7 @@ export const HOST_DAEMON_ENVIRONMENT_CLEANUP_INSPECTION_PROTOCOL_VERSION =
   249 as const;
 
 export const HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS: readonly number[] = [
-  246,
-  247,
-  248,
-  249,
+  250,
   HOST_DAEMON_PROTOCOL_VERSION,
 ];
 
