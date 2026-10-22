@@ -7,6 +7,7 @@ import {
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import {
+  HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS,
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonServerWsMessageSchema,
   hostDaemonSessionOpenResponseSchema,
@@ -754,7 +755,7 @@ describe("connect next machine tunnels", () => {
     await withTestHarness(async (harness) => {
       upsertHost(harness.db, harness.hub, { id: "host-1", name: "Host" });
       for (const version of [
-        HOST_DAEMON_PROTOCOL_VERSION - 1,
+        Math.min(...HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS) - 1,
         HOST_DAEMON_PROTOCOL_VERSION + 1,
       ]) {
         const response = await openDaemonSession(harness, version);
