@@ -34,6 +34,7 @@ import {
   createEnvironment,
   environments,
   environmentHookOperations,
+  hostDaemonSessions,
   getEnvironment,
   getPreparingEnvironment,
   getThread,
@@ -2731,6 +2732,44 @@ it.each([false, true])(
         .update(threads)
         .set({ status: "idle", archivedAt: Date.now() })
         .where(eq(threads.id, fixture.thread.id))
+        .run();
+      const unsupported = registerHostRpcResponder(harness, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        handle: async () => {
+          throw new Error("Unsupported RPC reached old daemon");
+        },
+      });
+      for (const protocolVersion of [246, 247, 248]) {
+        harness.db
+          .update(hostDaemonSessions)
+          .set({ protocolVersion })
+          .where(eq(hostDaemonSessions.id, fixture.session.id))
+          .run();
+        const response = await harness.app.request(
+          `/api/v1/environments/${row.id}/cleanup?recover=true`,
+          { method: "POST" },
+        );
+        expect(response.status).toBe(409);
+        expect(await response.text()).toContain("Update this machine");
+        expect(unsupported.requests).toHaveLength(0);
+        expect(
+          harness.deps.hub.getDaemonSessionIdForHost(fixture.host.id),
+        ).toBe(fixture.session.id);
+        expect(fixture.row().teardownStatus).toBe("failed");
+        expect(remove).not.toHaveBeenCalled();
+        expect(
+          harness.db
+            .select()
+            .from(environmentHookOperations)
+            .where(eq(environmentHookOperations.id, hookId))
+            .get()?.finishedAt ?? null,
+        ).toBeNull();
+      }
+      harness.db
+        .update(hostDaemonSessions)
+        .set({ protocolVersion: fixture.session.protocolVersion })
+        .where(eq(hostDaemonSessions.id, fixture.session.id))
         .run();
       for (const inspection of [
         { supported: true, active: false, pids: [123], unreadablePids: [] },

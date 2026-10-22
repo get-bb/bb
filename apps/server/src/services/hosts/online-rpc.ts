@@ -1,9 +1,15 @@
 import { hostCommandMayWake } from "./wake-policy.js";
 import { isHostCleanupAllowed } from "./cleanup-context.js";
 import { assertMachineLifecycleAdmission } from "../machines/lifecycle.js";
-import { getHost, getLatestSessionForHost, getThread } from "@bb/db";
+import {
+  getHost,
+  getLatestSessionForHost,
+  getSessionById,
+  getThread,
+} from "@bb/db";
 import { randomUUID } from "node:crypto";
 import {
+  hostDaemonSupportsEnvironmentCleanupInspection,
   type HostDaemonOnlineRpcResponseMessage,
   type HostDaemonOnlineRpcResultForCommand,
   type HostDaemonRetryableOnlineRpcCommand,
@@ -325,9 +331,24 @@ export function isHostUnavailableApiError(error: unknown): boolean {
 }
 
 function requestHostOnlineRpcResponse(
-  deps: Pick<WorkSessionDeps, "hub">,
+  deps: Pick<WorkSessionDeps, "hub" | "db">,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
+  if (args.command.type === "environment.inspect_cleanup") {
+    const sessionId = deps.hub.getDaemonSessionIdForHost(args.hostId);
+    const session = sessionId ? getSessionById(deps.db, { sessionId }) : null;
+    if (
+      session &&
+      !hostDaemonSupportsEnvironmentCleanupInspection(session.protocolVersion)
+    )
+      return Promise.reject(
+        new ApiError(
+          409,
+          "environment_cleanup_upgrade_required",
+          "Update this machine before recovering environment cleanup",
+        ),
+      );
+  }
   return traceTurnRpc(args.command.type, () =>
     deps.hub.requestHostOnlineRpc({
       hostId: args.hostId,
