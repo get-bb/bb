@@ -1069,19 +1069,3 @@ body.sidebar-resizing [data-sidebar="panel"] {
   transition-property: opacity;
 }
 
-/*
- * Bottom-anchored scroll bodies (see bottom-anchored-scroll-body.tsx). The
- * class goes on the content wrapper alone: scroll anchoring skips an excluded
- * element's whole subtree, so no descendant rule is needed. A `*` descendant
- * rule here would restyle every timeline node each time the class toggles.
- * The sentinel is a sibling of the wrapper, so it stays eligible.
- */
-.scroll-bottom-anchor-content {
-  overflow-anchor: none;
-}
-
-.scroll-bottom-anchor {
-  height: 1px;
-  flex-shrink: 0;
-  overflow-anchor: auto;
-}

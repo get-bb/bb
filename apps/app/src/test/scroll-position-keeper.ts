@@ -2,10 +2,12 @@ import { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 
 export function createInertScrollPositionKeeper(): ScrollPositionKeeper {
   return new ScrollPositionKeeper({
+    bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
-    getDeferredOffsetElement: () => null,
+    getContentElement: () => null,
+    getFooterElement: () => null,
     getScrollElement: () => null,
     getTopLevelRows: () => [],
-    isActive: () => false,
+    initiallyAttached: true,
   });
 }

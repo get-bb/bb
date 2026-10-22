@@ -204,44 +204,101 @@ as a row at the end of the timeline.
 
 ## Browser scroll ownership
 
-The web timeline windows lists of 20 or more items on every platform,
-including iOS Safari and the mobile app's WKWebView. The virtualizer keeps
-visible rows, overscan, and interaction or navigation pins mounted. Loaded
-history stays available without every rich row being mounted. Expanded detail
-lists use their own scroll roots and the same windowing adapter.
+Each scroll root has one owner of the reading position: `ScrollPositionKeeper`.
+The thread timeline (`BottomAnchoredScrollBody`) and every expanded detail
+scroller (`useStickyBottomScroll`) create one. It is the only code that writes
+`scrollTop` on its root, apart from the reader and explicit navigation it
+performs for callers (reveal a row, jump to the bottom, scroll to the top).
+Native CSS scroll anchoring is off on the root.
 
-While the reader is scrolled away from the bottom, `ScrollPositionKeeper` is
-the only writer of the reading position, for both the main timeline and nested
-detail scrollers. It anchors the first row that starts in the viewport by its
-offset in the content. When older pages load, rows measure, or a row resizes,
-it applies the change above that row as a relative `scrollTop` adjustment.
-TanStack's own scroll adjustments and native CSS scroll anchoring stay off while
-the keeper holds a row. Stuck-to-bottom following is unchanged.
+The reading position is explicit state: attached to the bottom, or a row key
+with the distance from the top of the visible viewport to that row's top (or,
+for a held element such as a collapsing message, its bottom). The visible
+viewport ends at the sticky composer. The anchor is the first top-level row
+that starts in the visible viewport, or a row nested in a row that covers the
+whole viewport. The owner also records the other visible rows' offsets from the
+anchor. If a merge replaces the anchor row's key, for example when an older page
+regroups a turn, the first of those rows that is still mounted becomes the
+anchor. The position changes only when:
 
-The timeline list sits in an auto-height wrapper whose height follows its
-content one resize-observer tick late. Before the keeper writes a correction
-past the current scroll extent, for example after an older page prepends rows,
-it snaps that wrapper to its content height. Otherwise the browser clamps the
-write to the old bottom, the reader loses their place, and the shell reads the
-clamped position as a return to the bottom and reattaches.
+- the reader scrolls;
+- a caller navigates;
+- the viewport gets narrower or wider and the anchor would leave the visible
+  viewport, in which case the anchor moves just enough to stay on screen;
+- the content really shrinks, so the browser clamps a correction, and the clamp
+  is still there on the next frame.
+
+A scroll counts as the reader's during an input session: a wheel, a scroll key,
+a touch or pointer drag that scrolled, and the momentum that follows (up to
+three seconds after the finger lifts, on every platform). Any other
+scroll that comes with a change in the scroll extent is layout, such as a clamp
+after content briefly shrank, and the owner reconciles it back to the position.
+A scroll without input or size change, such as find in page or focus moving to
+an offscreen control, is navigation, and the position follows it. Moving down
+into the last 4 px, or a wheel or End/PageDown at the end, attaches. Moving up
+out of it detaches. Layout changes never attach or detach.
+
+Every layout change is reconciled before paint. Triggers are ResizeObservers on
+the root, its content, and every mounted row, plus each windowed list's layout
+effect after a commit. Within one reconciliation:
+
+1. A scroll the owner did not make is folded into the position as the reader's
+   movement, before the layout is read. Changes that landed in the same forced
+   layout are therefore not mistaken for scrolling. They are reconciled against
+   the moved position first. Only then, if the anchor has left the viewport,
+   the owner picks a new anchor where the reader now is.
+2. Windowed lists render the rows around a row key, never around a raw
+   `scrollTop`. A prepend keeps the same rows mounted, and the owner's anchor
+   row is always mounted.
+3. The owner reads the anchor's position and computes the target `scrollTop`
+   from the fixed position. It is never a relative delta, so a clamped
+   intermediate write is not counted twice.
+4. It writes the target, clamped to the scroll extent. Attached means the
+   maximum.
+5. Lists check that the visible range is mounted. If the viewport would show a
+   spacer, they render the rows synchronously before paint. The check uses the
+   heights the spacers were rendered with and the measured heights of mounted
+   rows, so it describes what is on screen, not newer measurements the spacers
+   have not used yet.
+
+When the viewport lands on a spacer, the owner can only record which row the
+list estimates is there. That estimate never moves the view: once real rows
+mount, the owner takes its position from them.
+
+Lists of 20 or more items are windowed on every platform, including iOS Safari
+and the mobile app's WKWebView. Rows stay in normal flow between spacers whose
+heights come from the measurements the thread retains, so rows never overlap
+and a row resize needs no positioning pass. The thread retains the 2,000 most
+recent measurements; a spacer keeps the height it last rendered for a row whose
+measurement was dropped. Only rows that have never mounted use an estimate. When such a row mounts above the reader, its real height
+changes the content above, and step 3 corrects it. Visible rows, eight rows of
+overscan on each side, search and navigation targets, the last row, and the 24
+most recently interacted rows stay mounted. Within two viewport heights of the
+top of the list, every row above the viewport is mounted, so estimates are
+corrected while there is still room to scroll. Expanded detail lists use their own
+scroll roots and the same list.
 
 iOS WebKit overrides a scroll write made while a finger is down, during
-momentum, or during an edge bounce, and the content then sags and snaps back.
-On iOS the keeper waits during those phases instead. It keeps the correction as
-a transform on the scroll content, so rows stay in place visually. The
-virtualizer reads the scroll offset plus the held correction, so the window
-matches what is on screen. Once the touch has ended and the scroll position has
-been still for 150 ms, the keeper writes the correction to `scrollTop` and
-removes the transform in the same frame. It also writes before it stops
-keeping the position, for example when the reader returns to the bottom. Other
+momentum, or during an edge bounce. On iOS the owner applies the correction as a
+transform on the scroll content during those phases, so rows stay in place
+visually, and lists window around the rendered position. Once the touch has
+ended and the scroll position has been still for 150 ms, it writes the
+correction to `scrollTop` and removes the transform in the same task. Other
 browsers write immediately.
 
-When a detached reader's scrollport changes width (for example after a rotation),
-the shell pins the saved reading row and restores it while measurements settle.
-The restore is scoped to the thread, and it clamps an offset inside the row to
-the row's new height. Height-only changes, such as the keyboard opening, keep the
-existing path. A restore waits at the bottom until the saved row renders. It
-does not stay wherever the new scroll root starts, because that position can
-keep loading older pages. If the scroll position is past the cached scroll extent, the shell
-reads the live extent first. A resize clamp or a correction past an outdated
-extent therefore does not count as the reader returning to the bottom.
+Older pages load when the "load older" sentinel above the list comes within
+600 px of the viewport. The check runs after every position change the owner
+reports, scrolls and reconciliations alike, rather than on intersection
+changes, so a reader who returns to the top after a prepend always loads the
+next page.
+
+A thread's position is saved when the reader scrolls and when the timeline
+unmounts. Returning to the thread mounts the saved row's window and restores
+the row at its saved offset, kept on screen if the viewport is now shorter. If
+the row has not loaded yet, the timeline waits
+at the bottom for up to a second. The timeline keeps the loaded pages of the
+eight most recent threads for each query client, so a position in older history
+survives a thread switch.
+
+Content shorter than the viewport is top-aligned. In that case a row that
+expands moves the rows below it, including the latest row.
