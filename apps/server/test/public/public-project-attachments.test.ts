@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createBbSdk } from "@bb/sdk/core";
+import { createHttpTransport } from "@bb/sdk/node";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
@@ -296,6 +298,55 @@ describe("public project attachments", () => {
       }
     });
   });
+
+  it.each([
+    ["photo.heic", "", "localImage", "image/png"],
+    ["photo.HEIF", "", "localImage", "image/png"],
+    [
+      "photo.heic",
+      "application/octet-stream",
+      "localFile",
+      "application/octet-stream",
+    ],
+  ])(
+    "uploads %s with MIME %s through the SDK and multipart route",
+    async (name, mimeType, type, storedMimeType) => {
+      const bytes = await readFile(
+        new URL("../fixtures/images/quadrants.heic", import.meta.url),
+      );
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, { id: "host-heic-sdk" });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const sdk = createBbSdk({
+          transport: createHttpTransport({
+            baseUrl: "http://localhost",
+            runtime: "browser",
+            fetch: async (input, init) =>
+              harness.app.request(new Request(input, init)),
+          }),
+        });
+        const uploaded = await sdk.projects.attachments.upload({
+          projectId: project.id,
+          clientFile: new File([bytes], name, { type: mimeType }),
+        });
+        expect(uploaded).toMatchObject({ type, mimeType: storedMimeType });
+        const content = await sdk.projects.attachments.read({
+          projectId: project.id,
+          path: uploaded.path,
+        });
+        if (type === "localImage") {
+          expect(uploaded.name).toBe("photo.png");
+          expect(Buffer.from(content.bytes).subarray(0, 8)).toEqual(
+            Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+          );
+        } else {
+          expect(Buffer.from(content.bytes)).toEqual(bytes);
+        }
+      });
+    },
+  );
 
   it("keeps attachment read tokens scoped to their owning project", async () => {
     await withTestHarness(async (harness) => {
