@@ -1,3 +1,4 @@
+import { isGitDiffFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GitBranchRefClassification } from "@bb/domain";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
@@ -93,7 +94,7 @@ export function useGitDiffPanel({
     enabled:
       Boolean(environmentId) &&
       (mergeBaseBranchOptionsEnabled ||
-        activeSecondaryTab?.kind === "git-diff"),
+        isGitDiffFixedPanelTab(activeSecondaryTab)),
     query: mergeBaseBranchSearchQuery,
     selectedBranch: requestedMergeBaseBranch,
   });

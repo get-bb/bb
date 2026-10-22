@@ -71,6 +71,14 @@ const gitDiffFixedPanelTabSchema = z
     kind: z.literal("git-diff"),
   })
   .strict();
+const pluginFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("plugin-fixed"),
+    pluginId: z.string().min(1),
+    tabId: z.string().min(1),
+  })
+  .strict();
 const pluginPageFixedPanelTabSchema = z
   .object({
     fixedTabId: z.string().min(1),
@@ -165,6 +173,7 @@ const pluginPanelFixedPanelTabSchema = z
 const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
+  pluginFixedPanelTabSchema,
   pluginPageFixedPanelTabSchema,
   pluginPanelFixedPanelTabSchema,
   workspaceFilePreviewFixedPanelTabSchema,
@@ -214,6 +223,13 @@ interface GitDiffFixedPanelTab {
   kind: "git-diff";
 }
 
+export interface PluginFixedPanelTab {
+  id: string;
+  kind: "plugin-fixed";
+  pluginId: string;
+  tabId: string;
+}
+
 export interface PluginPageFixedPanelTab {
   fixedTabId: string;
   id: string;
@@ -225,7 +241,8 @@ export interface PluginPageFixedPanelTab {
 export type FixedPanelViewTab =
   | ThreadInfoFixedPanelTab
   | GitDiffFixedPanelTab
-  | PluginPageFixedPanelTab;
+  | PluginPageFixedPanelTab
+  | PluginFixedPanelTab;
 
 export interface PluginPanelFixedPanelTab {
   actionId: string;
@@ -301,6 +318,7 @@ export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
   | GitDiffFixedPanelTab
   | PluginPageFixedPanelTab
+  | PluginFixedPanelTab
   | PluginPanelFixedPanelTab
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
@@ -539,17 +557,42 @@ function buildAttachmentFilePreviewTabId({
   });
 }
 
-export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
-  return {
-    id: THREAD_INFO_TAB_ID,
-    kind: "thread-info",
-  };
+export function createThreadInfoFixedPanelTab(): PluginFixedPanelTab {
+  return createPluginFixedPanelTab({ pluginId: "core", tabId: "info" });
 }
 
-export function createGitDiffFixedPanelTab(): GitDiffFixedPanelTab {
+export function createGitDiffFixedPanelTab(): PluginFixedPanelTab {
+  return createPluginFixedPanelTab({ pluginId: "core", tabId: "diff" });
+}
+
+export function isGitDiffFixedPanelTab(
+  tab: FixedPanelTab | null | undefined,
+): boolean {
+  return (
+    tab?.kind === "plugin-fixed" &&
+    tab.pluginId === "core" &&
+    tab.tabId === "diff"
+  );
+}
+
+export function migrateLegacyFixedPanelTabId(id: string): string {
+  if (id === THREAD_INFO_TAB_ID) return createThreadInfoFixedPanelTab().id;
+  if (id === GIT_DIFF_TAB_ID) return createGitDiffFixedPanelTab().id;
+  return id;
+}
+
+export function createPluginFixedPanelTab({
+  pluginId,
+  tabId,
+}: {
+  pluginId: string;
+  tabId: string;
+}): PluginFixedPanelTab {
   return {
-    id: GIT_DIFF_TAB_ID,
-    kind: "git-diff",
+    id: `plugin-fixed:${encodeURIComponent(pluginId)}:${encodeURIComponent(tabId)}`,
+    kind: "plugin-fixed",
+    pluginId,
+    tabId,
   };
 }
 
@@ -726,22 +769,16 @@ export function createTerminalFixedPanelTab({
   };
 }
 
-function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
+function normalizeFixedPanelTab(tab: FixedPanelTab): FixedPanelTab {
   switch (tab.kind) {
     case "thread-info":
-      return tab.id === THREAD_INFO_TAB_ID
-        ? tab
-        : {
-            ...tab,
-            id: THREAD_INFO_TAB_ID,
-          };
+      return createThreadInfoFixedPanelTab();
     case "git-diff":
-      return tab.id === GIT_DIFF_TAB_ID
-        ? tab
-        : {
-            ...tab,
-            id: GIT_DIFF_TAB_ID,
-          };
+      return createGitDiffFixedPanelTab();
+    case "plugin-fixed": {
+      const id = createPluginFixedPanelTab(tab).id;
+      return tab.id === id ? tab : { ...tab, id };
+    }
     case "plugin-page-fixed": {
       const id = createPluginPageFixedPanelTab({
         fixedTabId: tab.fixedTabId,
@@ -833,7 +870,7 @@ function normalizeFixedPanelTabGroupState({
   const tabs: FixedPanelTab[] = [];
   let activeTabId: string | null = null;
   for (const tab of group.tabs) {
-    const normalizedTab = normalizeFixedPanelTabId(tab);
+    const normalizedTab = normalizeFixedPanelTab(tab);
     if (
       isTransientFixedPanelTab(normalizedTab) ||
       seenTabIds.has(normalizedTab.id)
@@ -880,6 +917,7 @@ function stripTransientFixedPanelTabForStorage(
       };
     case "thread-info":
     case "git-diff":
+    case "plugin-fixed":
     case "plugin-page-fixed":
     case "attachment-file-preview":
     case "browser":
@@ -1090,6 +1128,12 @@ export function areFixedPanelTabsEquivalent(
     case "git-diff":
     case "new-tab":
       return true;
+    case "plugin-fixed":
+      return (
+        b.kind === "plugin-fixed" &&
+        a.pluginId === b.pluginId &&
+        a.tabId === b.tabId
+      );
     case "plugin-page-fixed":
       return (
         b.kind === "plugin-page-fixed" &&

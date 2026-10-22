@@ -1,3 +1,4 @@
+import type { ExperimentalTabRegistration } from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,7 +14,17 @@ const { querySnapshotStorageKey, resetQuerySnapshotStateForTest } =
   await import("./query-snapshot.js");
 
 const tasksRegistration = app.navPanels[0]!;
-const navigationView = tasksRegistration.fixedTabs?.[0]!;
+const navigationView = app.tabs.find(
+  (
+    tab,
+  ): tab is Extract<
+    ExperimentalTabRegistration,
+    { context: { kind: "nav-panel" }; availability: "fixed" }
+  > =>
+    tab.context.kind === "nav-panel" &&
+    tab.availability === "fixed" &&
+    tab.id === "navigation",
+)!;
 const navigationRegistration = {
   ...tasksRegistration,
   component: navigationView.component,

@@ -26,6 +26,13 @@ Read the installed declarations for exact current signatures.
 - `ComposerInsertOptions`
 - `DiffProps`
 - `DiffViewMode`
+- `ExperimentalTabRegistration`
+- `ExperimentalTabContext`
+- `ExperimentalTabReference`
+- `ExperimentalTabOpenOptions`
+- `ExperimentalTabTargetReference`
+- `ExperimentalThreadActionTabProps`
+- `ExperimentalThreadTabActionContext`
 - `ExperimentalAppPanel`
 - `ExperimentalAppPanelSurface`
 - `ExperimentalDesktopBrowserAcquireInput`
@@ -226,8 +233,6 @@ Read the installed declarations for exact current signatures.
 - `PluginFileOpenerProps`
 - `PluginFileOpenerRegistration`
 - `PluginFileOpenerSource`
-- `PluginFixedTabDeclaration`
-- `PluginFixedTabRegistration`
 - `PluginHomepageSectionProps`
 - `PluginHomepageSectionRegistration`
 - `PluginHosts`
@@ -344,9 +349,6 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalInfoListRowProps`
 - `PluginThreadListProps`
 - `PluginThreadListRegistration`
-- `PluginThreadPanelActionContext`
-- `PluginThreadPanelActionRegistration`
-- `PluginThreadPanelProps`
 - `PluginTimelineRendererProps`
 - `PluginTimelineRendererRegistration`
 - `PluginTimelineRendererRow`

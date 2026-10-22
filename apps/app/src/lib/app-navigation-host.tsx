@@ -26,7 +26,14 @@ export interface AppFixedTabOpenIntent {
   target?: JsonValue;
 }
 
+export interface AppTabOpenIntent extends AppFixedTabOpenIntent {
+  availability?: "fixed" | "action";
+  params?: JsonValue;
+  title?: string;
+}
+
 interface AppNavigationHostCapabilities {
+  openTab?: (intent: AppTabOpenIntent) => boolean;
   openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;
@@ -35,6 +42,7 @@ interface AppNavigationHostCapabilities {
 }
 
 interface ResolvedAppNavigationHostCapabilities {
+  openTab: (intent: AppTabOpenIntent) => boolean;
   openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab: (intent: AppFixedTabOpenIntent) => boolean;
@@ -44,6 +52,7 @@ interface ResolvedAppNavigationHostCapabilities {
 
 const rejectNavigationIntent = () => false;
 const DEFAULT_APP_NAVIGATION_HOST: ResolvedAppNavigationHostCapabilities = {
+  openTab: rejectNavigationIntent,
   openFileExternally: rejectNavigationIntent,
   openFilePreview: rejectNavigationIntent,
   openFixedTab: rejectNavigationIntent,
@@ -66,6 +75,7 @@ export function AppNavigationHostProvider({
   const parent = useContext(AppNavigationHostContext);
   const value = useMemo<ResolvedAppNavigationHostCapabilities>(
     () => ({
+      openTab: capabilities.openTab ?? parent.openTab,
       openFileExternally:
         capabilities.openFileExternally ?? parent.openFileExternally,
       openFilePreview: capabilities.openFilePreview ?? parent.openFilePreview,
@@ -74,6 +84,8 @@ export function AppNavigationHostProvider({
       openUrl: capabilities.openUrl ?? parent.openUrl,
     }),
     [
+      capabilities.openTab,
+      parent.openTab,
       capabilities.openFileExternally,
       capabilities.openFilePreview,
       capabilities.openFixedTab,

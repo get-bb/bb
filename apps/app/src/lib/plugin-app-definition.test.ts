@@ -513,7 +513,10 @@ describe("collectPluginAppRegistrations", () => {
         experimental_useBadge: useNoBadge,
         headerContent: Component,
       });
-      app.slots.threadPanelAction({
+      Reflect.get(
+        app.slots,
+        "threadPanelAction",
+      )({
         id: "thread-panel",
         title: "Thread panel",
         icon: "Columns",
@@ -616,7 +619,10 @@ describe("collectPluginAppRegistrations", () => {
         path: "board",
         component: Component,
       });
-      app.slots.threadPanelAction({
+      Reflect.get(
+        app.slots,
+        "threadPanelAction",
+      )({
         id: "issue",
         title: "Issue",
         icon: "Columns",
@@ -688,7 +694,7 @@ describe("collectPluginAppRegistrations", () => {
         component: Component,
       },
     ]);
-    expect(registrations.threadPanelActions).toEqual([
+    expect(registrations.threadPanelActions).toMatchObject([
       {
         id: "issue",
         title: "Issue",
@@ -1058,7 +1064,10 @@ describe("collectPluginAppRegistrations", () => {
       "thread panel action with a non-function run",
       () =>
         definePluginApp((app) => {
-          app.slots.threadPanelAction({
+          app.slots.experimental_tab({
+            context: { kind: "thread" },
+            availability: "action",
+            icon: "Info",
             id: "x",
             title: "X",
             component: Component,

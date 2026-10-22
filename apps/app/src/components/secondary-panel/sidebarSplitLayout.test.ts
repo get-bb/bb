@@ -93,6 +93,34 @@ function splitOff(
 }
 
 describe("sidebar split layout", () => {
+  it("keeps a legacy Diff tab in its saved split pane", () => {
+    const saved = createSidebarSplitState(
+      [
+        "terminal:keep:none",
+        "git-diff:git-diff:none",
+        "thread-info:thread-info:none",
+      ],
+      "git-diff:git-diff:none",
+    );
+    const restored = parseSidebarSplitState(
+      serializeSidebarSplitState(saved),
+      [
+        "terminal:keep:none",
+        "plugin-fixed:core:diff",
+        "plugin-fixed:core:info",
+      ],
+      "plugin-fixed:core:diff",
+    );
+    const group = Object.values(restored.groups)[0];
+    expect(group?.tabIds).toEqual([
+      "terminal:keep:none",
+      "plugin-fixed:core:diff",
+      "plugin-fixed:core:info",
+    ]);
+    expect(group?.activeTabId).toBe("plugin-fixed:core:diff");
+    expect(restored.layout).toEqual(saved.layout);
+  });
+
   it("derives fixed sidebar identities from the canonical fixed-panel tabs", () => {
     expect(SIDEBAR_FIXED_INFO_TAB_ID).toBe(createThreadInfoFixedPanelTab().id);
   });

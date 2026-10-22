@@ -1,3 +1,4 @@
+import type { ExperimentalTabRegistration } from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
@@ -11,7 +12,17 @@ import {
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
-const navigationView = docsRegistration.fixedTabs?.[0]!;
+const navigationView = app.tabs.find(
+  (
+    tab,
+  ): tab is Extract<
+    ExperimentalTabRegistration,
+    { context: { kind: "nav-panel" }; availability: "fixed" }
+  > =>
+    tab.context.kind === "nav-panel" &&
+    tab.availability === "fixed" &&
+    tab.id === "navigation",
+)!;
 const navigationRegistration = {
   ...docsRegistration,
   component: navigationView.component,

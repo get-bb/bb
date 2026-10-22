@@ -98,7 +98,7 @@ describe("plugin app runtime shim", () => {
         pluginName: "bb-plugin-runtime-shims",
         location: expect.objectContaining({ line: 4 }),
         text: expect.stringMatching(
-          /^experimental_useSidebarThreadPullRequest is retired from @get-bb\/plugin-sdk\/app and keeps working only for already-built plugins\. Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
+          /^experimental_useSidebarThreadPullRequest is retired from @get-bb\/plugin-sdk\/app\. Existing plugins remain supported\. Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
         ),
       },
     ]);
@@ -370,6 +370,60 @@ describe("plugin app runtime shim", () => {
       css.lastIndexOf("@layer utilities{"),
     );
     expect(css).toContain("@keyframes bb71-authored-pulse");
+  });
+
+  it("builds retired tab registrations alongside retired hooks and returns migration warnings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-legacy-tabs-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-legacy-tabs-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Legacy tabs",
+          description: "Published API compatibility",
+          branding: { icon: "Info" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.ts"),
+      `import { definePluginApp, experimental_useSidebarThreadPullRequest } from "@get-bb/plugin-sdk/app";
+      const component = () => experimental_useSidebarThreadPullRequest("thread").pullRequest;
+      export default definePluginApp((app) => {
+        app.slots.threadPanelAction({ id: "legacy", title: "Legacy", component });
+        app.slots.navPanel({ id: "board", title: "Board", icon: "Info", path: "board", component, fixedTabs: [{ id: "fixed", title: "Fixed", icon: "Info", component }] });
+      });`,
+    );
+    const result = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+      { minify: true },
+    );
+    const warnings = result.migrationWarnings;
+    expect(await readFile(result.jsPath, "utf8")).toContain(
+      "threadPanelAction",
+    );
+    expect(warnings).toHaveLength(3);
+    expect(warnings.join("\n")).toContain(
+      "experimental_useSidebarThreadPullRequest",
+    );
+    expect(warnings.join("\n")).toContain("experimental_useRpcKeyedQuery");
+    expect(warnings.join("\n")).toContain('availability: "action"');
+    expect(warnings.join("\n")).toContain('availability: "fixed"');
+    expect(
+      warnings.filter((warning) =>
+        warning.includes("frontend-registration.md#tab-api-migration"),
+      ).length,
+    ).toBe(2);
   });
 
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {

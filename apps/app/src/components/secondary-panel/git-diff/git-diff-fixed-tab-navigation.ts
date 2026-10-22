@@ -7,8 +7,8 @@ type GitDiffFixedTabTarget =
   | { kind: "commit"; sha: string };
 
 export const GIT_DIFF_FIXED_TAB_REFERENCE: AppFixedTabReference = {
-  ownerId: "core:git-diff",
-  tabId: "changes",
+  ownerId: "plugin-thread:core",
+  tabId: "diff",
 };
 
 function normalizeGitDiffFixedTabTarget(

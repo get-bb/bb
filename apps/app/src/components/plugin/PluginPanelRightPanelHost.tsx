@@ -18,7 +18,13 @@ import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
 import type { Host, JsonValue } from "@bb/domain";
 import { jsonValueSchema } from "@bb/domain";
-import type { PluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
+import { PluginTabScope, usePluginTabs } from "./PluginTabs";
+import type { PluginNavTabSlot } from "@/lib/plugin-slots";
+import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
+import {
+  createPanelActionDestination,
+  runPluginPanelAction,
+} from "./PluginPanelActions";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -28,7 +34,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
@@ -83,6 +88,7 @@ import {
   AppFixedTabTargetProvider,
   getPluginFixedTabOwnerId,
   openAppFixedTabFromDestinations,
+  openAppTabFromDestinations,
   type AppFixedTabDestination,
   type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
@@ -128,7 +134,6 @@ function marketplacePluginDetailTab(pluginId: string) {
 function PluginFixedTabContent({
   fixedTabOwnerId,
   isOpen,
-  panelGeneration,
   panelId,
   panelStateId,
   pluginId,
@@ -137,11 +142,10 @@ function PluginFixedTabContent({
 }: {
   fixedTabOwnerId: string;
   isOpen: boolean;
-  panelGeneration: number;
   panelId: string;
   panelStateId: string;
   pluginId: string;
-  registration: PluginFixedTabDeclaration;
+  registration: Extract<PluginNavTabSlot, { availability: "fixed" }>;
   subPath: string;
 }) {
   const targetStore = useStore();
@@ -172,17 +176,14 @@ function PluginFixedTabContent({
   if (!isOpen) return null;
   const FixedTabComponent = registration.component;
   return (
-    <PluginSlotMount
-      key={`${pluginId}/${panelId}/${registration.id}/${panelGeneration}`}
-      pluginId={pluginId}
-      slotKind="navPanelFixedTab"
-      slotId={registration.id}
-      instanceId={panelId}
+    <PluginTabScope
+      slot={registration}
+      instanceId={`nav-panel/${pluginId}/${panelId}`}
     >
       <AppFixedTabTargetProvider state={targetState}>
         <FixedTabComponent subPath={subPath} />
       </AppFixedTabTargetProvider>
-    </PluginSlotMount>
+    </PluginTabScope>
   );
 }
 
@@ -223,6 +224,34 @@ export function PluginPanelRightPanelHost({
       (candidate) =>
         candidate.pluginId === pluginId && candidate.path === panelPath,
     ) ?? null;
+  const registeredTabs = usePluginTabs(
+    panel === null
+      ? null
+      : { kind: "nav-panel", panelId: panel.id, pluginId, subPath },
+  );
+  const pageTabs = useMemo(
+    () =>
+      registeredTabs.slots.filter(
+        (tab): tab is PluginNavTabSlot => tab.context.kind === "nav-panel",
+      ),
+    [registeredTabs.slots],
+  );
+  const pageFixedTabs = useMemo(
+    () =>
+      pageTabs.filter(
+        (tab): tab is Extract<PluginNavTabSlot, { availability: "fixed" }> =>
+          tab.availability === "fixed",
+      ),
+    [pageTabs],
+  );
+  const pageActions = useMemo(
+    () =>
+      pageTabs.filter(
+        (tab): tab is Extract<PluginNavTabSlot, { availability: "action" }> =>
+          tab.availability === "action",
+      ),
+    [pageTabs],
+  );
   const paneContext = useOptionalPaneContext();
   const isFocused = paneContext?.isFocused ?? true;
   const isHostedBySplitWorkspace = paneContext?.secondaryPanelHost != null;
@@ -240,18 +269,18 @@ export function PluginPanelRightPanelHost({
   });
   const fixedViewTabs = useMemo<readonly PluginPageFixedPanelTab[]>(
     () =>
-      (panel?.fixedTabs ?? []).map((fixedTab) =>
+      pageFixedTabs.map((fixedTab) =>
         createPluginPageFixedPanelTab({
           fixedTabId: fixedTab.id,
           pageId: panel?.id ?? panelPath,
           pluginId,
         }),
       ),
-    [panel, panelPath, pluginId],
+    [pageFixedTabs, panel, panelPath, pluginId],
   );
   const panelState = useReconciledFixedPanelTabsState({
     fixedTabs: fixedViewTabs,
-    isAuthoritative: panel !== null,
+    isAuthoritative: registeredTabs.isReady,
     openFirstFixedTabWhenEmpty: true,
     panelStateId,
     syncThreadId: null,
@@ -348,6 +377,7 @@ export function PluginPanelRightPanelHost({
     browserTabs,
     closeTab,
     openTab,
+    openPluginPanel,
     orderedSecondaryFileTabs,
     reopenClosedTab,
     reorderTab,
@@ -447,7 +477,7 @@ export function PluginPanelRightPanelHost({
   );
   const fixedTabDestinations = useMemo<readonly AppFixedTabDestination[]>(
     () =>
-      (panel?.fixedTabs ?? []).flatMap((registration) => {
+      pageFixedTabs.flatMap((registration) => {
         const tab = fixedViewTabs.find(
           (candidate) => candidate.fixedTabId === registration.id,
         );
@@ -498,7 +528,7 @@ export function PluginPanelRightPanelHost({
       fixedViewTabs,
       fixedTabOwnerId,
       panelStateId,
-      panel?.fixedTabs,
+      pageFixedTabs,
       revealPanel,
       selectPersistedPanelTab,
       targetStore,
@@ -509,6 +539,71 @@ export function PluginPanelRightPanelHost({
     (intent: Parameters<typeof openAppFixedTabFromDestinations>[1]) =>
       openAppFixedTabFromDestinations(fixedTabDestinations, intent),
     [fixedTabDestinations],
+  );
+  const openRegisteredTab = useCallback(
+    (intent: AppTabOpenIntent) =>
+      openAppTabFromDestinations(
+        [
+          ...fixedTabDestinations,
+          ...pageActions.map((action) => ({
+            ...createPanelActionDestination({
+              action,
+              slot: "tab",
+              openPluginPanel: (args) => {
+                selectPersistedPanelTab();
+                openPluginPanel(args);
+                revealPanel();
+              },
+            }),
+            tab: { ownerId: fixedTabOwnerId, tabId: action.id },
+          })),
+        ],
+        intent,
+      ),
+    [
+      fixedTabDestinations,
+      pageActions,
+      openPluginPanel,
+      revealPanel,
+      selectPersistedPanelTab,
+      fixedTabOwnerId,
+    ],
+  );
+  const pluginActions = useMemo(
+    () =>
+      pageActions.map((action) => ({
+        id: `plugin-action:${action.pluginId}:${action.id}`,
+        pluginId: action.pluginId,
+        icon: action.icon,
+        title: action.title,
+        tooltip: action.tooltip,
+        onSelect: () => {
+          if (panel === null) return;
+          runPluginPanelAction({
+            action,
+            context: {
+              kind: "nav-panel",
+              pluginId,
+              panelId: panel.id,
+              subPath,
+            },
+            openPluginPanel: (args) => {
+              selectPersistedPanelTab();
+              openPluginPanel(args);
+              revealPanel();
+            },
+          });
+        },
+      })),
+    [
+      pageActions,
+      panel,
+      pluginId,
+      subPath,
+      openPluginPanel,
+      revealPanel,
+      selectPersistedPanelTab,
+    ],
   );
   const revealPersistedPanel = useCallback(() => {
     selectPersistedPanelTab();
@@ -539,9 +634,10 @@ export function PluginPanelRightPanelHost({
     () => ({
       openFilePreview: openLiveFilePreview,
       openFixedTab,
+      openTab: openRegisteredTab,
       openTerminal: terminals.open,
     }),
-    [openFixedTab, openLiveFilePreview, terminals.open],
+    [openFixedTab, openRegisteredTab, openLiveFilePreview, terminals.open],
   );
   const hidePanel = useCallback(() => {
     setIsPluginDetailPanelOpen(false);
@@ -716,14 +812,14 @@ export function PluginPanelRightPanelHost({
 
   const fixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
-      (panel?.fixedTabs ?? []).flatMap((registration) => {
+      pageFixedTabs.flatMap((registration) => {
         const tab = fixedViewTabs.find(
           (candidate) => candidate.fixedTabId === registration.id,
         );
         if (tab === undefined) return [];
         return [
           {
-            ariaLabel: registration.title,
+            ariaLabel: registration.tooltip ?? registration.title,
             contentFillsRegion: registration.layout === "flush",
             label: registration.title,
             leadingVisual: (
@@ -748,7 +844,6 @@ export function PluginPanelRightPanelHost({
                 <PluginFixedTabContent
                   fixedTabOwnerId={fixedTabOwnerId}
                   isOpen={isOpen}
-                  panelGeneration={panel.generation}
                   panelId={panel.id}
                   panelStateId={panelStateId}
                   pluginId={pluginId}
@@ -757,12 +852,13 @@ export function PluginPanelRightPanelHost({
                 />
               ),
             tab,
-            title: registration.title,
+            title: registration.tooltip ?? registration.title,
           },
         ];
       }),
     [
       fixedViewTabs,
+      pageFixedTabs,
       fixedTabOwnerId,
       isOpen,
       openFixedTab,
@@ -814,6 +910,7 @@ export function PluginPanelRightPanelHost({
                 activateTab(tab.id);
                 terminals.start();
               }}
+              pluginActions={pluginActions}
               showFileSearch={false}
               startTerminalDisabled={!terminals.canStart}
               startTerminalTrailing={
@@ -869,7 +966,12 @@ export function PluginPanelRightPanelHost({
           return (
             <PluginPanelTabContent
               tab={tab}
-              context={{ kind: "new-thread", projectId: null }}
+              context={{
+                kind: "nav-panel",
+                pluginId,
+                panelId: panel?.id ?? panelPath,
+                subPath,
+              }}
               fileOpenerOriginal={
                 originalTab === null ? undefined : renderTabContent(originalTab)
               }
@@ -880,6 +982,11 @@ export function PluginPanelRightPanelHost({
     },
     [
       activateTab,
+      pluginActions,
+      panel,
+      panelPath,
+      pluginId,
+      subPath,
       hostsQuery.isLoading,
       isOpen,
       openBrowser,
@@ -1067,6 +1174,7 @@ export function PluginPanelRightPanelHost({
           }
           isOpen={isOpen}
           fixedTabs={fixedTabs}
+          areFixedTabsReady={registeredTabs.isReady}
           showConversationCollapseControl={activePluginDetailId !== null}
           showNewTabButton={activePluginDetailId === null}
           onPanelFocus={() => undefined}
@@ -1087,6 +1195,7 @@ export function PluginPanelRightPanelHost({
       panelBrowser.addressFocusRequest,
       browserTabs,
       fixedTabs,
+      registeredTabs.isReady,
       panelBrowser.handleAddressFocusRequestConsumed,
       panelBrowser.open,
       hidePanel,
@@ -1173,6 +1282,7 @@ export function PluginPanelRightPanelHost({
         <PluginDetailRouteNavigationProvider
           onOpenPluginDetail={openPluginDetail}
         >
+          {registeredTabs.observers}
           {routedPage}
         </PluginDetailRouteNavigationProvider>
       </AppNavigationHostProvider>

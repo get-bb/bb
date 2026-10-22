@@ -43,6 +43,7 @@ export interface NewTabAction {
   id: string;
   icon: ReactNode;
   label: string;
+  tooltip?: string;
   disabled: boolean;
   shortcut: AppShortcutPresentation | null;
   trailing: ReactNode;
@@ -130,6 +131,7 @@ export function useNewTabActions({
         />
       ),
       label: action.title,
+      tooltip: action.tooltip,
       disabled: false,
       shortcut: null,
       trailing: null,
@@ -308,6 +310,7 @@ function NewTabActionRow({ action, dragHandle }: NewTabActionRowProps) {
       <button
         type="button"
         id={action.id}
+        title={action.tooltip ?? action.label}
         data-panel-new-tab-item=""
         aria-keyshortcuts={action.shortcut?.ariaKeyshortcuts}
         disabled={action.disabled}

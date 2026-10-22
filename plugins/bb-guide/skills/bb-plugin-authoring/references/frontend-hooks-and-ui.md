@@ -48,7 +48,7 @@ experimental_openFilePreview(options), experimental_openFileExternally(options),
 experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
-  opener opens one of the current plugin's registered `threadPanelAction` tabs
+  opener opens one of the current plugin's registered `experimental_tab` with thread context and action availability tabs
   in a thread, or its `experimental_newThreadPanelAction` tabs on the New
   thread screen, and returns whether the host accepted it; it returns false on
   plugin pages, which have no panel actions.

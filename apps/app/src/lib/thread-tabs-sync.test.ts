@@ -44,6 +44,48 @@ function browserTab(
 }
 
 describe("thread tab synchronization", () => {
+  it("converts server-saved Diff and Info tabs in place before reconciling selection", () => {
+    const current = createEmptyFixedPanelTabsState({
+      secondary: {
+        tabs: [
+          {
+            id: "plugin-fixed:core:diff",
+            kind: "plugin-fixed",
+            pluginId: "core",
+            tabId: "diff",
+          },
+        ],
+        activeTabId: "plugin-fixed:core:diff",
+        isOpen: true,
+      },
+    });
+    const terminal = createTerminalFixedPanelTab({ terminalId: "saved" });
+    const restored = reconcileFixedPanelTabsState(current, [
+      terminal,
+      { id: "git-diff:git-diff:none", kind: "git-diff" },
+      { id: "thread-info:thread-info:none", kind: "thread-info" },
+    ]);
+    expect(restored.secondary).toEqual({
+      isOpen: true,
+      activeTabId: "plugin-fixed:core:diff",
+      tabs: [
+        terminal,
+        {
+          id: "plugin-fixed:core:diff",
+          kind: "plugin-fixed",
+          pluginId: "core",
+          tabId: "diff",
+        },
+        {
+          id: "plugin-fixed:core:info",
+          kind: "plugin-fixed",
+          pluginId: "core",
+          tabId: "info",
+        },
+      ],
+    });
+  });
+
   it("preserves remote additions and edits when removing a local tab", () => {
     const source = browserTab("source", "Source");
     const updatedSource = { ...source, title: "Updated elsewhere" };

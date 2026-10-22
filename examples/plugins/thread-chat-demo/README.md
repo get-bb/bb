@@ -7,7 +7,7 @@ Demonstrates the SDK's host-owned `ThreadChat` component and the
   that thread's full chat (`<ThreadChat variant="full" layout="contained" />`).
   The "Focus composer" button exercises `focusRequest`.
 - **Targeted fixed tab "Compact thread"** — the nav-page button calls the
-  generic `experimental_useAppPanel().openFixedTab(...)` primitive with the
+  generic `experimental_useAppPanel().experimental_openTab(...)` primitive with the
   page-owned registration and a typed thread target. The tab validates and
   renders that session target across panel and route remounts without putting
   it in the URL or persisted panel state. "View source" also demonstrates

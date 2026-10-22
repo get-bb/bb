@@ -193,6 +193,45 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
   return {
     name: "bb-plugin-runtime-shims",
     setup(build) {
+      build.onLoad(
+        { filter: /\.[cm]?[jt]sx?$/, namespace: "file" },
+        async (args) => {
+          if (
+            args.path.includes("/node_modules/") ||
+            args.path.includes("\\node_modules\\")
+          )
+            return undefined;
+          const source = await readFile(args.path, "utf8");
+          const warnings = [];
+          const migration =
+            "See bb-plugin-authoring, frontend-registration.md#tab-api-migration.";
+          if (/\.\s*threadPanelAction\s*\(/u.test(source)) {
+            warnings.push({
+              text: `threadPanelAction is retired from SDK typings. Use app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id, title, icon, component, run }). Existing bundles remain supported. ${migration}`,
+            });
+          }
+          if (
+            /\bfixedTabs\s*:/u.test(source) &&
+            /\.\s*navPanel\s*\(/u.test(source)
+          ) {
+            warnings.push({
+              text: `navPanel.fixedTabs is retired from SDK typings. Register each tab with app.slots.experimental_tab({ context: { kind: "nav-panel", panelId }, availability: "fixed", id, title, icon, component }). Existing bundles remain supported. ${migration}`,
+            });
+          }
+          if (warnings.length === 0) return undefined;
+          return {
+            contents: source,
+            loader: args.path.endsWith("tsx")
+              ? "tsx"
+              : args.path.endsWith("ts")
+                ? "ts"
+                : args.path.endsWith("jsx")
+                  ? "jsx"
+                  : "js",
+            warnings,
+          };
+        },
+      );
       build.onResolve({ filter: SHIM_FILTER }, async (args) => {
         const retired =
           (args.path === PLUGIN_SDK_APP_SPECIFIER ||
@@ -205,7 +244,7 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
           path: args.path,
           namespace: SHIM_NAMESPACE,
           warnings: retired.map((name) => ({
-            text: `${name} is retired from ${args.path} and keeps working only for already-built plugins. ${RETIRED_PLUGIN_SDK_APP_EXPORTS[name]}`,
+            text: `${name} is retired from ${args.path}. Existing plugins remain supported. ${RETIRED_PLUGIN_SDK_APP_EXPORTS[name]}`,
           })),
         };
       });

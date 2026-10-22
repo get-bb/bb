@@ -13,6 +13,8 @@ export {
   type CollectedPluginProviderIconRegistration,
   type CollectedPluginCommandRegistration,
   type CollectedPluginAppRegistrations,
+  type LegacyThreadPanelActionRegistration,
+  type LegacyNavPanelRegistration,
   type CollectedSidebarNavigationRegistration,
   collectPluginAppRegistrations,
 } from "./plugin-app-registration-collector.js";

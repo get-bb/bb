@@ -45,7 +45,7 @@ import {
   useRealtimeConnectionState,
   useRpc,
   type PluginMessageDirectiveProps,
-  type PluginThreadPanelProps,
+  type ExperimentalThreadActionTabProps,
 } from "@get-bb/plugin-sdk/app";
 import {
   WORKFLOW_RUNS_REALTIME_CHANNEL,
@@ -1000,7 +1000,10 @@ function WorkflowPreviewLoaded({
   );
 }
 
-function WorkflowRunPanel({ threadId, params }: PluginThreadPanelProps) {
+function WorkflowRunPanel({
+  threadId,
+  params,
+}: ExperimentalThreadActionTabProps) {
   const runId = panelRunId(params);
   return (
     <div className="h-full min-h-0 flex-1 bg-border">
@@ -1197,7 +1200,9 @@ export default definePluginApp((app) => {
     id: "workflow-preview",
     component: WorkflowPreviewDirective,
   });
-  app.slots.threadPanelAction({
+  app.slots.experimental_tab({
+    context: { kind: "thread" },
+    availability: "action",
     id: WORKFLOW_PANEL_ACTION_ID,
     title: "Workflow run",
     icon: "Workflow",

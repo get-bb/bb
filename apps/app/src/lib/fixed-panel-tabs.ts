@@ -320,6 +320,19 @@ export function useFixedPanelTabsState(
       localTabs: state.secondary.tabs,
       server: tabsQuery.data,
     });
+    if (
+      !hasPendingThreadTabsWrite(queryClient, resolvedThreadId) &&
+      tabsQuery.data.tabs.some(
+        (tab) => tab.kind === "git-diff" || tab.kind === "thread-info",
+      )
+    ) {
+      scheduleThreadTabsPersistence({
+        queryClient,
+        threadId: resolvedThreadId,
+        previousTabs: state.secondary.tabs,
+        tabs: state.secondary.tabs,
+      });
+    }
     if (hydration?.kind === "migrate-local-tabs") {
       scheduleLocalThreadTabsMigration({
         queryClient,

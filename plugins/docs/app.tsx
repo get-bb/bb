@@ -17,7 +17,7 @@ import {
   type PluginFileOpenerProps,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
-  type PluginThreadPanelProps,
+  type ExperimentalThreadActionTabProps,
   type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -1073,7 +1073,9 @@ function InlineDocument({
           </p>
         )}
         <div
-          className={panel ? "relative min-h-0 flex-1 overflow-y-auto" : "relative"}
+          className={
+            panel ? "relative min-h-0 flex-1 overflow-y-auto" : "relative"
+          }
           style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
         >
           {!state.loaded ? (
@@ -1276,7 +1278,7 @@ function DocumentPicker() {
   );
 }
 
-function DocumentPanel({ params }: PluginThreadPanelProps) {
+function DocumentPanel({ params }: ExperimentalThreadActionTabProps) {
   const document = parseDocumentRef(params);
   const navigate = useBbNavigate();
   if (!document) return <DocumentPicker />;
@@ -2427,18 +2429,19 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
-    fixedTabs: [
-      {
-        panelId: "docs",
-        id: "navigation",
-        title: "Navigation",
-        icon: "FileText",
-        component: NotesNavigationPanel,
-        layout: "flush",
-      },
-    ],
   });
-  app.slots.threadPanelAction({
+  app.slots.experimental_tab({
+    context: { kind: "nav-panel", panelId: "docs" },
+    availability: "fixed",
+    id: "navigation",
+    title: "Navigation",
+    icon: "FileText",
+    component: NotesNavigationPanel,
+    layout: "flush",
+  });
+  app.slots.experimental_tab({
+    context: { kind: "thread" },
+    availability: "action",
     id: "document",
     title: "Document",
     icon: "FileText",

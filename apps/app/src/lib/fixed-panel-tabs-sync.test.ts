@@ -73,6 +73,49 @@ afterEach(() => {
 });
 
 describe("fixed panel tab server sync", () => {
+  it("automatically saves legacy core tabs as registered entries without changing order", async () => {
+    const threadId = "legacy-core-tabs";
+    const terminal = createTerminalFixedPanelTab({ terminalId: "keep" });
+    const tabs = [
+      terminal,
+      {
+        id: "plugin-fixed:core:diff",
+        kind: "plugin-fixed",
+        pluginId: "core",
+        tabId: "diff",
+      },
+      {
+        id: "plugin-fixed:core:info",
+        kind: "plugin-fixed",
+        pluginId: "core",
+        tabId: "info",
+      },
+    ];
+    apiMocks.getThreadTabs.mockResolvedValue({
+      revision: 7,
+      tabs: [
+        terminal,
+        { id: "git-diff:git-diff:none", kind: "git-diff" },
+        { id: "thread-info:thread-info:none", kind: "thread-info" },
+      ],
+    });
+    apiMocks.updateThreadTabs.mockResolvedValue({ revision: 8, tabs });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useFixedPanelTabsState(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+    await waitFor(() =>
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
+        threadId,
+        expectedRevision: 7,
+        tabs,
+      }),
+    );
+    await waitFor(() => expect(result.current.secondary.tabs).toEqual(tabs));
+    expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(1);
+  });
+
   it("does not let another window's stored presentation overwrite live tab history", () => {
     const panelStateId = "window-local-history";
     const queryClient = createTestQueryClient();

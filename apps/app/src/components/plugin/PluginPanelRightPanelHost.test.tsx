@@ -1,3 +1,7 @@
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
 // @vitest-environment jsdom
 
 import {
@@ -36,6 +40,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import * as panelSplits from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
+import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { resetRecentlyClosedPanelTabsForTest } from "@/components/secondary-panel/useThreadFileTabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
@@ -138,6 +143,7 @@ const terminalQueryState = vi.hoisted(() => ({
 }));
 const fixedTabState = vi.hoisted(() => ({
   panelRegistered: true,
+  generation: 1,
   registrations: [] as TestFixedTabRegistration[],
   fileOpeners: [] as TestFileOpenerRegistration[],
   newThreadPanelActions: [] as TestNewThreadPanelActionRegistration[],
@@ -238,6 +244,15 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
+    tabs: fixedTabState.panelRegistered
+      ? fixedTabState.registrations.map((tab) => ({
+          ...tab,
+          pluginId: "demo",
+          generation: fixedTabState.generation,
+          context: { kind: "nav-panel", panelId: "board" },
+          availability: "fixed",
+        }))
+      : [],
     fileOpeners: fixedTabState.fileOpeners,
     newThreadPanelActions: fixedTabState.newThreadPanelActions,
     navPanels: fixedTabState.panelRegistered
@@ -249,7 +264,7 @@ vi.mock("@/lib/plugin-slots", () => ({
             title: "Board",
             icon: "Columns",
             component: () => null,
-            generation: 1,
+            generation: fixedTabState.generation,
             fixedTabs: fixedTabState.registrations,
           },
         ]
@@ -747,6 +762,7 @@ describe("PluginPanelRightPanelHost", () => {
   });
 
   beforeEach(() => {
+    markPluginFrontendsSettled();
     appCommandHandlers.clear();
     resetRecentlyClosedPanelTabsForTest();
     browserState.available = false;
@@ -758,6 +774,7 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.update.mockReset();
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
     fixedTabState.panelRegistered = true;
+    fixedTabState.generation = 1;
     fixedTabState.registrations = [];
     fixedTabState.fileOpeners = [];
     fixedTabState.newThreadPanelActions = [];
@@ -772,7 +789,10 @@ describe("PluginPanelRightPanelHost", () => {
   });
 
   afterEach(() => {
+    resetPluginFrontendBootStateForTest();
     cleanup();
+    resetAllCrashedPluginSlotsForTest();
+    vi.restoreAllMocks();
     resetPluginLogoStoreForTest();
   });
 
@@ -1094,6 +1114,35 @@ describe("PluginPanelRightPanelHost", () => {
     ).toBe(false);
   });
 
+  it("recovers a crashed navigation tab after its plugin reloads", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    fixedTabState.registrations = [
+      {
+        panelId: "board",
+        id: "details",
+        title: "Details",
+        icon: "Info",
+        component: () => {
+          throw new Error("broken navigation tab");
+        },
+      },
+    ];
+    const store = createStore();
+    const view = renderHost("board", "", store);
+    expect(await screen.findByText("plugin demo crashed")).toBeTruthy();
+    view.unmount();
+    fixedTabState.generation = 2;
+    fixedTabState.registrations = [
+      {
+        ...fixedTabState.registrations[0]!,
+        component: () => <div>Recovered navigation tab</div>,
+      },
+    ];
+    renderHost("board", "", store);
+    expect(await screen.findByText("Recovered navigation tab")).toBeTruthy();
+  });
+
   it("retains a validated fixed-tab target across panel and route remounts for the app session", async () => {
     function Details() {
       const targetState = useAppFixedTabTarget(
@@ -1378,6 +1427,7 @@ describe("PluginPanelRightPanelHost", () => {
     loading.unmount();
 
     fixedTabState.panelRegistered = true;
+    fixedTabState.generation = 1;
     renderHost("board", "", store);
 
     await waitFor(() =>

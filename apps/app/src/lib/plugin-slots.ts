@@ -1,6 +1,8 @@
+import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useSyncExternalStore } from "react";
 import type {
+  ExperimentalTabRegistration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
   ExperimentalCodeFenceRendererRegistration,
@@ -25,11 +27,12 @@ import type {
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
-  PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 import {
   type CollectedPluginCommandRegistration,
+  type LegacyThreadPanelActionRegistration,
+  type LegacyNavPanelRegistration,
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
   type CollectedPluginProviderIconRegistration,
@@ -43,8 +46,9 @@ export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
   settingsSections: readonly PluginSettingsSectionRegistration[];
   appOverlays?: readonly ExperimentalAppOverlayRegistration[];
-  navPanels: readonly PluginNavPanelRegistration[];
-  threadPanelActions: readonly PluginThreadPanelActionRegistration[];
+  navPanels: readonly LegacyNavPanelRegistration[];
+  tabs?: readonly ExperimentalTabRegistration[];
+  threadPanelActions: readonly LegacyThreadPanelActionRegistration[];
   newThreadPanelActions?: readonly PluginNewThreadPanelActionRegistration[];
   composerCustomizations?: readonly ComposerCustomization[];
   pendingInteractions?: readonly PluginPendingInteractionRegistration[];
@@ -85,8 +89,27 @@ export interface ExperimentalAppOverlaySlot
   extends ExperimentalAppOverlayRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
+export type PluginTabSlot = ExperimentalTabRegistration & PluginSlotBase;
+export type PluginThreadTabSlot = Extract<
+  PluginTabSlot,
+  { context: { kind: "thread" } }
+>;
+export type PluginNavTabSlot = Extract<
+  PluginTabSlot,
+  { context: { kind: "nav-panel" } }
+>;
+export type PluginThreadFixedTabSlot = Extract<
+  PluginThreadTabSlot,
+  { availability: "fixed" }
+>;
+export function isThreadTab(tab: PluginTabSlot): tab is PluginThreadTabSlot {
+  return tab.context.kind === "thread";
+}
+export function isNavTab(tab: PluginTabSlot): tab is PluginNavTabSlot {
+  return tab.context.kind === "nav-panel";
+}
 export interface PluginThreadPanelActionSlot
-  extends PluginThreadPanelActionRegistration, PluginSlotBase {}
+  extends LegacyThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginNewThreadPanelActionSlot
   extends PluginNewThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerCustomizationSlot
@@ -140,6 +163,7 @@ export interface PluginSlotSnapshot {
   settingsSections: readonly PluginSettingsSectionSlot[];
   appOverlays: readonly ExperimentalAppOverlaySlot[];
   navPanels: readonly PluginNavPanelSlot[];
+  tabs: readonly PluginTabSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   newThreadPanelActions: readonly PluginNewThreadPanelActionSlot[];
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
@@ -172,6 +196,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   settingsSections: [],
   appOverlays: [],
   navPanels: [],
+  tabs: coreTabs,
   threadPanelActions: [],
   newThreadPanelActions: [],
   composerCustomizations: [],
@@ -211,6 +236,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "settingsSections",
   "appOverlays",
   "navPanels",
+  "tabs",
   "threadPanelActions",
   "newThreadPanelActions",
   "composerCustomizations",
@@ -269,12 +295,37 @@ function flattenRegistrations(
       adaptExperimentalSidebarFooterItem,
     ),
   ];
+  const tabs = set.tabs ?? [
+    ...set.threadPanelActions.map((action) => ({
+      ...action,
+      icon: action.icon ?? "",
+      context: { kind: "thread" as const },
+      availability: "action" as const,
+    })),
+    ...set.navPanels.flatMap((panel) =>
+      (panel.fixedTabs ?? []).map((tab) => ({
+        ...tab,
+        context: { kind: "nav-panel" as const, panelId: panel.id },
+        availability: "fixed" as const,
+      })),
+    ),
+  ];
   return {
     homepageSections: stamp(set.homepageSections),
     settingsSections: stamp(set.settingsSections),
     appOverlays: stamp(set.appOverlays),
     navPanels: stamp(set.navPanels),
-    threadPanelActions: stamp(set.threadPanelActions),
+    tabs: stamp(tabs),
+    threadPanelActions: stamp(
+      tabs.filter(
+        (
+          tab,
+        ): tab is Extract<
+          ExperimentalTabRegistration,
+          { context: { kind: "thread" }; availability: "action" }
+        > => tab.context.kind === "thread" && tab.availability === "action",
+      ),
+    ),
     newThreadPanelActions: stamp(set.newThreadPanelActions),
     composerCustomizations: stamp(set.composerCustomizations),
     pendingInteractions: stamp(set.pendingInteractions),
@@ -318,6 +369,9 @@ function collectKind<K extends SlotKind>(
   pluginIds: readonly string[],
 ): PluginSlotSnapshot[K][number][] {
   const collected: PluginSlotSnapshot[K][number][] = [];
+  if (kind === "tabs") {
+    for (const slot of coreTabs) collected.push(slot);
+  }
   for (const pluginId of pluginIds) {
     const flattened = flattenedByPluginId.get(pluginId);
     if (flattened === undefined) continue;

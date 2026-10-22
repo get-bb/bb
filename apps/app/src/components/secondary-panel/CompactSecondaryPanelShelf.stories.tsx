@@ -1,3 +1,5 @@
+import { ThreadDiffFixedTabContent } from "./git-diff/thread-diff-registration";
+import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -131,6 +133,8 @@ function ShelfPanel({
         {
           ariaLabel: "Show thread info panel",
           label: "Info",
+          contentFillsRegion: true,
+          renderContent: () => <ThreadInfoFixedTabContent />,
           leadingVisual: <Icon name="Info" />,
           onSelect: () => onSelectTab(infoTab),
           tab: infoTab,
@@ -139,6 +143,8 @@ function ShelfPanel({
         {
           ariaLabel: "Show diff panel",
           label: "Diff",
+          contentFillsRegion: true,
+          renderContent: () => <ThreadDiffFixedTabContent />,
           leadingVisual: <Icon name="FileDiff" />,
           onSelect: () => onSelectTab(diffTab),
           tab: diffTab,

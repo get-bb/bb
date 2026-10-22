@@ -6,6 +6,7 @@ import {
   createGitDiffFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
+  createPluginFixedPanelTab,
   createPluginPageFixedPanelTab,
   createPluginPanelFixedPanelTab,
   parseFixedPanelTabsState,
@@ -148,6 +149,47 @@ describe("secondaryPanelTabState", () => {
     expect(nextState.secondary.isOpen).toBe(true);
   });
 
+  it("restores pinned plugin tabs and their order after visibility and registration changes", () => {
+    const info = createThreadInfoFixedPanelTab();
+    const first = createPluginFixedPanelTab({
+      pluginId: "example",
+      tabId: "status",
+    });
+    const second = createPluginFixedPanelTab({
+      pluginId: "other",
+      tabId: "status",
+    });
+    const original = createEmptyFixedPanelTabsState({
+      secondary: {
+        tabs: [second, info, first],
+        activeTabId: first.id,
+        isOpen: true,
+      },
+    });
+    const restored = parseFixedPanelTabsState({
+      storedValue: serializeFixedPanelTabsState({ state: original }),
+      initialValue: createEmptyFixedPanelTabsState(),
+      now: original.lastUsedAt,
+    });
+    const hidden = reconcileFixedPanelViewTabsInState({
+      state: restored,
+      fixedTabs: [info, second],
+    });
+    expect(hidden.secondary.tabs).toEqual([second, info, first]);
+    expect(hidden.secondary.activeTabId).toBe(info.id);
+    const reloaded = reconcileFixedPanelViewTabsInState({
+      state: hidden,
+      fixedTabs: [info, first, second],
+    });
+    expect(reloaded.secondary.tabs).toEqual([second, info, first]);
+    expect(
+      buildOrderedSecondaryPanelFileTabs({
+        tabs: reloaded.secondary.tabs,
+        resolvedEnvironmentId: undefined,
+      }),
+    ).toEqual([]);
+  });
+
   it("reconciles every surface's fixed tabs ahead of closable content", () => {
     const infoTab = createThreadInfoFixedPanelTab();
     const diffTab = createGitDiffFixedPanelTab();
@@ -203,7 +245,7 @@ describe("secondaryPanelTabState", () => {
     ).toBe(hidden);
   });
 
-  it("falls back through the shared fixed-tab order when one disappears", () => {
+  it("falls back while retaining a hidden fixed tab’s saved position", () => {
     const firstTab = createPluginPageFixedPanelTab({
       fixedTabId: "navigation",
       pageId: "docs",
@@ -230,8 +272,15 @@ describe("secondaryPanelTabState", () => {
     expect(nextState.secondary).toEqual({
       activeTabId: secondTab.id,
       isOpen: true,
-      tabs: [secondTab],
+      tabs: [firstTab, secondTab],
+      previousActiveTabId: firstTab.id,
     });
+    expect(
+      reconcileFixedPanelViewTabsInState({
+        fixedTabs: [firstTab, secondTab],
+        state: nextState,
+      }).secondary.tabs,
+    ).toEqual([firstTab, secondTab]);
   });
 
   it("retains an active Diff tab until eligibility is authoritative", () => {
@@ -258,7 +307,8 @@ describe("secondaryPanelTabState", () => {
     expect(onceIneligible.secondary).toEqual({
       activeTabId: infoTab.id,
       isOpen: true,
-      tabs: [infoTab],
+      tabs: [infoTab, diffTab],
+      previousActiveTabId: diffTab.id,
     });
   });
 

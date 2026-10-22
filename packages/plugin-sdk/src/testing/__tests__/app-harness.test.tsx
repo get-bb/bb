@@ -490,20 +490,24 @@ function ThreadChatPage({ subPath }: PluginNavPanelProps) {
 
 const app = await loadPluginApp(
   definePluginApp((builder) => {
-    builder.slots.navPanel({
-      id: "panel",
-      title: "Panel",
-      icon: "FileText",
-      path: "panel",
-      component: Panel,
-    });
-    builder.slots.navPanel({
-      id: "chat",
-      title: "Chat",
-      icon: "MessageSquarePlus",
-      path: "chat",
-      component: ThreadChatPage,
-    });
+    (Reflect.get(builder.slots, "navPanel") as (registration: unknown) => void)(
+      {
+        id: "panel",
+        title: "Panel",
+        icon: "FileText",
+        path: "panel",
+        component: Panel,
+      },
+    );
+    (Reflect.get(builder.slots, "navPanel") as (registration: unknown) => void)(
+      {
+        id: "chat",
+        title: "Chat",
+        icon: "MessageSquarePlus",
+        path: "chat",
+        component: ThreadChatPage,
+      },
+    );
     builder.slots.messageAction({
       id: "summarize",
       title: "Summarize",
@@ -672,7 +676,11 @@ describe("loadPluginApp", () => {
             });
           },
         });
-        builder.slots.navPanel({
+        (
+          Reflect.get(builder.slots, "navPanel") as (
+            registration: unknown,
+          ) => void
+        )({
           id: "panel",
           title: "Panel",
           icon: "Folder",
@@ -922,7 +930,11 @@ describe("loadPluginApp", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.navPanel({
+          (
+            Reflect.get(builder.slots, "navPanel") as (
+              registration: unknown,
+            ) => void
+          )({
             id: "bad id!",
             title: "x",
             icon: "x",
@@ -935,7 +947,11 @@ describe("loadPluginApp", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.navPanel({
+          (
+            Reflect.get(builder.slots, "navPanel") as (
+              registration: unknown,
+            ) => void
+          )({
             id: "panel",
             title: "Panel",
             icon: "FileText",
@@ -957,7 +973,11 @@ describe("loadPluginApp", () => {
     }
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
-        builder.slots.navPanel({
+        (
+          Reflect.get(builder.slots, "navPanel") as (
+            registration: unknown,
+          ) => void
+        )({
           id: "tasks",
           title: "Tasks",
           icon: "ListTodo",
@@ -990,7 +1010,11 @@ describe("loadPluginApp", () => {
     };
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
-        builder.slots.navPanel({
+        (
+          Reflect.get(builder.slots, "navPanel") as (
+            registration: unknown,
+          ) => void
+        )({
           id: "tasks",
           title: "Tasks",
           icon: "ListTodo",
@@ -1024,11 +1048,22 @@ describe("loadPluginApp", () => {
     ]);
   });
 
-  it("rejects a malformed fixed-tab target contract", async () => {
-    await expect(
-      loadPluginApp(
+  it.each([
+    ["missing owner", {}, 1],
+    ["different owner", { panelId: "other-page" }, 1],
+    ["unknown options", { deprecatedSetting: true }, 1],
+    ["malformed target", { experimental_target: { validate: "bad" } }, 1],
+    ["malformed component", { component: null }, 0],
+  ])(
+    "loads legacy fixed tabs with %s without crashing",
+    async (_label, options, count) => {
+      const captured = await loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.navPanel({
+          (
+            Reflect.get(builder.slots, "navPanel") as (
+              registration: unknown,
+            ) => void
+          )({
             id: "tasks",
             title: "Tasks",
             icon: "ListTodo",
@@ -1036,108 +1071,24 @@ describe("loadPluginApp", () => {
             component: Panel,
             fixedTabs: [
               {
-                panelId: "tasks",
                 id: "details",
                 title: "Details",
                 icon: "Info",
                 component: Panel,
-                experimental_target: {
-                  // @ts-expect-error Runtime collector coverage for malformed JS.
-                  validate: "not-a-function",
-                },
+                ...options,
               },
             ],
           });
         }),
-      ),
-    ).rejects.toThrow(
-      '"experimental_target.validate" must be a function when set',
-    );
-  });
-
-  it("rejects a fixed-tab reference scoped to a different nav panel", async () => {
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.navPanel({
-            id: "tasks",
-            title: "Tasks",
-            icon: "ListTodo",
-            path: "tasks",
-            component: Panel,
-            fixedTabs: [
-              {
-                panelId: "other-page",
-                id: "navigation",
-                title: "Navigation",
-                icon: "PanelRight",
-                component: Panel,
-              },
-            ],
-          });
-        }),
-      ),
-    ).rejects.toThrow(
-      '"panelId" must match its containing navPanel id "tasks"',
-    );
-  });
-
-  it("rejects a fixed-tab registration without an owner panel", async () => {
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.navPanel({
-            id: "tasks",
-            title: "Tasks",
-            icon: "ListTodo",
-            path: "tasks",
-            component: Panel,
-            fixedTabs: [
-              // @ts-expect-error Runtime collector coverage for malformed JS.
-              {
-                id: "navigation",
-                title: "Navigation",
-                icon: "PanelRight",
-                component: Panel,
-              },
-            ],
-          });
-        }),
-      ),
-    ).rejects.toThrow('"panelId" must be a non-empty string');
-  });
-
-  it("rejects duplicate nav panel fixed tab ids", async () => {
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.navPanel({
-            id: "tasks",
-            title: "Tasks",
-            icon: "ListTodo",
-            path: "tasks",
-            component: Panel,
-            fixedTabs: [
-              {
-                panelId: "tasks",
-                id: "navigation",
-                title: "First",
-                icon: "PanelRight",
-                component: Panel,
-              },
-              {
-                panelId: "tasks",
-                id: "navigation",
-                title: "Second",
-                icon: "PanelRight",
-                component: Panel,
-              },
-            ],
-          });
-        }),
-      ),
-    ).rejects.toThrow('duplicate id "navigation"');
-  });
+      );
+      expect(captured.tabs).toHaveLength(count);
+      if (count === 1)
+        expect(captured.tabs[0]?.context).toEqual({
+          kind: "nav-panel",
+          panelId: "tasks",
+        });
+    },
+  );
 
   it("captures messageDirective registrations", () => {
     expect(app.messageDirectives).toEqual([

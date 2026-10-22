@@ -43,6 +43,49 @@ function makeInitialState(): FixedPanelTabsState {
 }
 
 describe("fixed-panel-tabs-state", () => {
+  it.each(["git-diff:git-diff:none", "old-diff-id"])(
+    "converts a saved Diff entry %s without changing its order or selection",
+    (legacyId) => {
+      const terminal = createTerminalFixedPanelTab({ terminalId: "saved" });
+      const restored = parseFixedPanelTabsState({
+        initialValue: makeInitialState(),
+        now: NOW,
+        storedValue: JSON.stringify({
+          version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+          lastUsedAt: NOW,
+          secondary: {
+            isOpen: true,
+            activeTabId: legacyId,
+            tabs: [
+              terminal,
+              { id: legacyId, kind: "git-diff" },
+              { id: "thread-info:thread-info:none", kind: "thread-info" },
+            ],
+          },
+        }),
+      });
+      expect(restored.secondary).toEqual({
+        isOpen: true,
+        activeTabId: "plugin-fixed:core:diff",
+        tabs: [
+          terminal,
+          {
+            id: "plugin-fixed:core:diff",
+            kind: "plugin-fixed",
+            pluginId: "core",
+            tabId: "diff",
+          },
+          {
+            id: "plugin-fixed:core:info",
+            kind: "plugin-fixed",
+            pluginId: "core",
+            tabId: "info",
+          },
+        ],
+      });
+    },
+  );
+
   it("preserves native browser identities and detects a reconnected desktop generation", () => {
     const tab = {
       ...createBrowserFixedPanelTab({

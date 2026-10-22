@@ -3,13 +3,13 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
   BbNavigate,
   JsonValue,
-  PluginThreadPanelActionContext,
-  PluginThreadPanelProps,
+  ExperimentalThreadTabActionContext,
+  ExperimentalThreadActionTabProps,
 } from "../index.js";
 import type { JsonValue as AppJsonValue } from "../app.js";
 
 type OpenPanelOptions = NonNullable<
-  Parameters<PluginThreadPanelActionContext["openPanel"]>[0]
+  Parameters<ExperimentalThreadTabActionContext["openPanel"]>[0]
 >;
 type NavigatePanelOptions = Parameters<BbNavigate["openThreadPanel"]>[0];
 
@@ -23,7 +23,7 @@ describe("plugin SDK JsonValue contract", () => {
       JsonValue | undefined
     >();
     expectTypeOf<
-      PluginThreadPanelProps["params"]
+      ExperimentalThreadActionTabProps["params"]
     >().toEqualTypeOf<JsonValue | null>();
 
     const recursive: JsonValue = {

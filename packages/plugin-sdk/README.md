@@ -22,7 +22,7 @@ write into a composer the user picks use `useComposers()`, one handle per
 composer on screen.
 Any mounted plugin component can use
 `useBbNavigate().openThreadPanel(...)` to request one of the
-same plugin's registered panel actions: `threadPanelAction` in a thread,
+same plugin's registered panel actions: `experimental_tab` with thread context and action availability in a thread,
 `experimental_newThreadPanelAction` on the New thread screen. It returns false
 on plugin pages, which have no panel actions.
 
@@ -70,7 +70,7 @@ target. The frontend harness records accepted requests in
 behavior, and can seed `experimental_fixedTabTarget` state.
 
 Every panel-open entry point reports the same way: `openThreadPanel` and the
-`openPanel` handed to `threadPanelAction`, `experimental_newThreadPanelAction`,
+`openPanel` handed to `experimental_tab` with thread context and action availability, `experimental_newThreadPanelAction`,
 and `messageAction` `run` callbacks all return `boolean` — true when the host
 accepted the open, false when it declined (non-JSON `params`, an unavailable
 action id, or a surface with no side panel). A decline is a return value, never

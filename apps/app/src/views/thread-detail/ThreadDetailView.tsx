@@ -1,3 +1,13 @@
+import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
+import { openAppTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
+import { createPanelActionDestination } from "@/components/plugin/PluginPanelActions";
+import { ThreadDiffVisibilityContext } from "@/components/secondary-panel/git-diff/thread-diff-registration";
+import { isGitDiffFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  useThreadFixedTabs,
+  createThreadFixedTabDescriptor,
+  type ThreadFixedTabEntry,
+} from "@/components/plugin/PluginThreadFixedTabs";
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
@@ -41,7 +51,6 @@ import type { PullRequestMergeMethod } from "bb-plugin-bb--github-pr-status/cont
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   PluginDetailPanelContext,
   usePluginDetailPanelState,
@@ -153,10 +162,7 @@ import {
   createGitDiffFixedTabDestination,
   GIT_DIFF_FIXED_TAB_REFERENCE,
 } from "@/components/secondary-panel/git-diff/git-diff-fixed-tab-navigation";
-import {
-  createThreadInfoFixedTabDestination,
-  THREAD_INFO_FIXED_TAB_REFERENCE,
-} from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
+import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
   ThreadDetailPromptArea,
@@ -268,11 +274,7 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import {
-  createGitDiffFixedPanelTab,
-  createThreadInfoFixedPanelTab,
-  type SecondaryFileFixedPanelTab,
-} from "@/lib/fixed-panel-tabs-state";
+import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -314,7 +316,6 @@ const pullRequestMergeMethodAtom = atomWithStorage<PullRequestMergeMethod>(
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
-type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
 type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
@@ -539,19 +540,16 @@ function ThreadDetailViewInternal(
     hasResolvedThread: thread !== undefined,
     threadArchived: thread?.archivedAt != null || executionUnavailable,
   });
+  const threadFixedTabs = useThreadFixedTabs({ threadId: thread?.id ?? null });
   const threadFixedViewTabs = useMemo(
-    () => [
-      createThreadInfoFixedPanelTab(),
-      ...(gitDiffTabStatus === "ineligible"
-        ? []
-        : [createGitDiffFixedPanelTab()]),
-    ],
-    [gitDiffTabStatus],
+    () => threadFixedTabs.entries.map((entry) => entry.tab),
+    [threadFixedTabs.entries],
   );
   const fixedPanelTabsState = useReconciledFixedPanelTabsState({
     fixedTabs: threadFixedViewTabs,
     isAuthoritative:
-      gitDiffTabStatus === "eligible" || gitDiffTabStatus === "ineligible",
+      threadFixedTabs.isReady &&
+      (gitDiffTabStatus === "eligible" || gitDiffTabStatus === "ineligible"),
     panelStateId: threadId,
     syncThreadId: threadId,
   });
@@ -683,10 +681,11 @@ function ThreadDetailViewInternal(
   const pluginPanelActions = usePluginPanelActions({
     openPluginPanel,
     threadId,
+    actions: threadFixedTabs.actions,
   });
   const {
     fileOpeners: pluginFileOpeners,
-    threadPanelActions: pluginThreadPanelActions,
+    threadPanelActions: registeredThreadActions,
   } = usePluginSlots();
   useThreadOpenFileSignal({
     threadId,
@@ -1180,9 +1179,7 @@ function ThreadDetailViewInternal(
     openCommitDiff: openGitDiffCommitDestination,
     openCompactDrawer,
     openDiffFile: openGitDiffFileDestination,
-    openDiffPanel: openGitDiffDestination,
     openHostFile,
-    openPanel: openFixedViewDestination,
     openStorageFile,
     openWorkspaceFile,
     togglePanel: toggleWorkspacePanel,
@@ -1209,27 +1206,62 @@ function ThreadDetailViewInternal(
     if (pluginDetails.activePluginId !== null) closeSecondaryPanel();
     else toggleWorkspacePanel();
   }, [pluginDetails.activePluginId, closeSecondaryPanel, toggleWorkspacePanel]);
-  const openThreadInfo = useCallback(
-    () => openFixedViewDestination("thread-info"),
-    [openFixedViewDestination],
+  const openRegisteredFixedTab = useCallback(
+    (entry: ThreadFixedTabEntry) => {
+      dismissPluginDetails();
+      clearActiveFileTabs();
+      updateFixedPanelTabsState((current) => ({
+        ...current,
+        secondary: {
+          ...current.secondary,
+          isOpen: true,
+          activeTabId: entry.tab.id,
+          tabs: current.secondary.tabs.some((tab) => tab.id === entry.tab.id)
+            ? current.secondary.tabs
+            : [...current.secondary.tabs, entry.tab],
+        },
+      }));
+      openCompactDrawer();
+    },
+    [
+      dismissPluginDetails,
+      clearActiveFileTabs,
+      updateFixedPanelTabsState,
+      openCompactDrawer,
+    ],
   );
   const fixedTabDestinations = useMemo(
-    () => [
-      createThreadInfoFixedTabDestination(() =>
-        openFixedViewDestination("thread-info"),
-      ),
-      createGitDiffFixedTabDestination({
-        eligible: canUseGitUi,
-        openCommit: openGitDiffCommitDestination,
-        openFile: openGitDiffFileDestination,
-        openOrdinary: openGitDiffDestination,
+    () =>
+      threadFixedTabs.entries.map((entry) => {
+        const destination = {
+          tab: entry.reference,
+          open(target: unknown) {
+            if (target !== undefined) return false;
+            openRegisteredFixedTab(entry);
+            return true;
+          },
+        };
+        if (!isGitDiffFixedPanelTab(entry.tab)) return destination;
+        return createGitDiffFixedTabDestination({
+          eligible: canUseGitUi,
+          openCommit: (sha) => {
+            openGitDiffCommitDestination(sha);
+            destination.open(undefined);
+          },
+          openFile: (path) => {
+            openGitDiffFileDestination(path);
+            destination.open(undefined);
+          },
+          openOrdinary: () => {
+            destination.open(undefined);
+          },
+        });
       }),
-    ],
     [
       canUseGitUi,
-      openFixedViewDestination,
+      threadFixedTabs.entries,
+      openRegisteredFixedTab,
       openGitDiffCommitDestination,
-      openGitDiffDestination,
       openGitDiffFileDestination,
     ],
   );
@@ -1238,14 +1270,38 @@ function ThreadDetailViewInternal(
       openAppFixedTabFromDestinations(fixedTabDestinations, intent),
     [fixedTabDestinations],
   );
-  const openSecondaryPanel = useCallback(
-    (panel: ThreadSecondaryPanelTab) =>
+  const openRegisteredTab = useCallback(
+    (intent: AppTabOpenIntent) =>
+      openAppTabFromDestinations(
+        [
+          ...fixedTabDestinations,
+          ...threadFixedTabs.actions.map((action) =>
+            createPanelActionDestination({
+              action,
+              slot: "tab",
+              openPluginPanel: (args) => {
+                dismissPluginDetails();
+                openPluginPanel(args);
+                openCompactDrawer();
+              },
+            }),
+          ),
+        ],
+        intent,
+      ),
+    [
+      fixedTabDestinations,
+      threadFixedTabs.actions,
+      openPluginPanel,
+      dismissPluginDetails,
+      openCompactDrawer,
+    ],
+  );
+  const openThreadInfo = useCallback(
+    () =>
       openFixedTab({
         surface: { kind: "current" },
-        tab:
-          panel === "git-diff"
-            ? GIT_DIFF_FIXED_TAB_REFERENCE
-            : THREAD_INFO_FIXED_TAB_REFERENCE,
+        tab: THREAD_INFO_FIXED_TAB_REFERENCE,
       }),
     [openFixedTab],
   );
@@ -1276,7 +1332,7 @@ function ThreadDetailViewInternal(
     [openFixedTab],
   );
   const handleOpenTimelinePluginPanel = usePanelPluginPanels({
-    actions: pluginThreadPanelActions,
+    actions: threadFixedTabs.actions,
     isFocused,
     openPluginPanel,
     reveal: openCompactDrawer,
@@ -1335,36 +1391,30 @@ function ThreadDetailViewInternal(
         setHasRequestedMergeBaseOptions(true);
       }
     }, []);
-  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      clearActiveFileTabs();
-      openSecondaryPanel(panel);
-    },
-    [clearActiveFileTabs, openSecondaryPanel],
-  );
-  const secondaryPanelFixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
-    () =>
-      threadFixedViewTabs.map((tab) =>
-        tab.kind === "thread-info"
-          ? {
-              ariaLabel: "Show thread info panel",
-              label: "Info",
-              leadingVisual: <Icon name="Info" />,
-              onSelect: () => handleSecondaryPanelChange("thread-info"),
-              tab,
-              title: "Thread info",
-            }
-          : {
-              ariaLabel: "Show diff panel",
-              label: "Diff",
-              leadingVisual: <Icon name="FileDiff" />,
-              onSelect: () => handleSecondaryPanelChange("git-diff"),
-              tab,
-              title: "Diff",
-            },
-      ),
-    [handleSecondaryPanelChange, threadFixedViewTabs],
-  );
+  const secondaryPanelFixedTabs = useMemo<
+    readonly SecondaryPanelFixedTab[]
+  >(() => {
+    if (thread === undefined) return [];
+    const order = new Map(
+      fixedPanelTabsState.secondary.tabs.map((tab, index) => [tab.id, index]),
+    );
+    return [...threadFixedTabs.entries]
+      .sort(
+        (left, right) =>
+          (order.get(left.tab.id) ?? Infinity) -
+          (order.get(right.tab.id) ?? Infinity),
+      )
+      .map((entry) =>
+        createThreadFixedTabDescriptor(entry, thread.id, (reference) => {
+          openFixedTab({ surface: { kind: "current" }, tab: reference });
+        }),
+      );
+  }, [
+    fixedPanelTabsState.secondary.tabs,
+    threadFixedTabs.entries,
+    openFixedTab,
+    thread,
+  ]);
   const openAttachment = useCallback(
     (attachment: OpenAttachmentRequest) => {
       openTab({ kind: "attachment-file-preview", ...attachment });
@@ -1488,9 +1538,10 @@ function ThreadDetailViewInternal(
     () => ({
       openFilePreview: openLiveFilePreview,
       openFixedTab,
+      openTab: openRegisteredTab,
       openTerminal: terminals.open,
     }),
-    [openLiveFilePreview, openFixedTab, terminals.open],
+    [openLiveFilePreview, openFixedTab, openRegisteredTab, terminals.open],
   );
   const handleCloseWindowRequest = useCallback(() => {
     if (pluginDetails.activePluginId !== null) {
@@ -1546,7 +1597,10 @@ function ThreadDetailViewInternal(
     if (!isFocused || !canUseGitUi) {
       return false;
     }
-    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "git-diff") {
+    if (
+      isSecondaryPanelOpen &&
+      isGitDiffFixedPanelTab(activeFixedSecondaryTab)
+    ) {
       closeSecondaryPanel();
     } else {
       openSecondaryPanelDiffPanel();
@@ -2620,7 +2674,7 @@ function ThreadDetailViewInternal(
     syncedOrderedSecondaryFileTabs.map((tab): SecondaryPanelRenderableTab => {
       const pluginAction =
         tab.kind === "plugin-panel"
-          ? pluginThreadPanelActions.find(
+          ? registeredThreadActions.find(
               (action) =>
                 action.pluginId === tab.pluginId && action.id === tab.actionId,
             )
@@ -2744,6 +2798,11 @@ function ThreadDetailViewInternal(
       />
       <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
         <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+          <ThreadDiffVisibilityContext.Provider
+            value={gitDiffTabStatus !== "ineligible"}
+          >
+            {threadFixedTabs.observers}
+          </ThreadDiffVisibilityContext.Provider>
           <ThreadDetailSecondaryContent
             footer={composerFooter}
             header={timelineHeader}
@@ -2812,6 +2871,7 @@ function ThreadDetailViewInternal(
             secondaryPanel={{
               canNavigateTabs: isFocused,
               activeTab: activeFixedSecondaryTab,
+              areFixedTabsReady: threadFixedTabs.isReady,
               canUseGitUi,
               gitDiffTabStatus,
               environmentId: thread.environmentId ?? undefined,

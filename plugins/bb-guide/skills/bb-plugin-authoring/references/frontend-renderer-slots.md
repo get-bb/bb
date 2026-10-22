@@ -144,7 +144,7 @@ openWorkspaceFile }` — register a leaf
   `(path: string) => boolean` or `null`; pass it a worktree-relative path to
   open that file in the host's workspace viewer. It is `null` when the message
   surface has no workspace viewer, and it returns whether the host accepted
-  the path. To open one of the same plugin's registered `threadPanelAction`
+  the path. To open one of the same plugin's registered `experimental_tab` with thread context and action availability
   components, call
   `useBbNavigate().openThreadPanel({ actionId, title?, params? })`.
   `params` is typed as `JsonValue`; use normal plugin navigation as the
@@ -209,7 +209,7 @@ message, Original }` — render fenced code blocks of chosen languages in
   while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
   `openPanel({ actionId, title?, params? })` opens one of the same plugin's
-  registered `threadPanelAction` components in the current thread's side
+  registered `experimental_tab` with thread context and action availability components in the current thread's side
   panel — same semantics and boolean return as
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and

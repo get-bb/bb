@@ -1,3 +1,4 @@
+import { useThreadFixedTabs } from "./PluginThreadFixedTabs";
 // @vitest-environment jsdom
 
 import {
@@ -29,7 +30,7 @@ import type {
   PluginComposerApi,
   PluginFileOpenerProps,
   PluginNewThreadPanelProps,
-  PluginThreadPanelProps,
+  ExperimentalThreadActionTabProps,
 } from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
@@ -1887,7 +1888,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
 });
 
 describe("plugin thread panel actions", () => {
-  function PanelProbe({ threadId, params }: PluginThreadPanelProps) {
+  function PanelProbe({ threadId, params }: ExperimentalThreadActionTabProps) {
     return (
       <div>
         panel body for {threadId} / {JSON.stringify(params)}
@@ -1913,7 +1914,11 @@ describe("plugin thread panel actions", () => {
     threadId: string | null;
     openPluginPanel: (args: OpenPluginPanelArgs) => void;
   }) {
-    const entries = usePluginPanelActions({ openPluginPanel, threadId });
+    const entries = usePluginPanelActions({
+      openPluginPanel,
+      threadId,
+      actions: useThreadFixedTabs({ threadId }).actions,
+    });
     return (
       <div>
         {entries.map((entry) => (
@@ -2055,6 +2060,7 @@ describe("plugin thread panel actions", () => {
 
     function BothActionsHarness() {
       const threadEntries = usePluginPanelActions({
+        actions: useThreadFixedTabs({ threadId: "thr_one" }).actions,
         openPluginPanel: () => undefined,
         threadId: "thr_9",
       });

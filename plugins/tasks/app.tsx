@@ -12,18 +12,19 @@ export default definePluginApp((app) => {
     path: "tasks",
     component: TasksAppShell,
     experimental_useBadge: useTasksBadge,
-    fixedTabs: [
-      {
-        panelId: "tasks",
-        id: "navigation",
-        title: "Navigation",
-        icon: "ListTodo",
-        component: TasksNavigationPanel,
-        layout: "flush",
-      },
-    ],
   });
-  app.slots.threadPanelAction({
+  app.slots.experimental_tab({
+    context: { kind: "nav-panel", panelId: "tasks" },
+    availability: "fixed",
+    id: "navigation",
+    title: "Navigation",
+    icon: "ListTodo",
+    component: TasksNavigationPanel,
+    layout: "flush",
+  });
+  app.slots.experimental_tab({
+    context: { kind: "thread" },
+    availability: "action",
     id: "task",
     title: "Task",
     icon: "ListTodo",
