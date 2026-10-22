@@ -402,7 +402,9 @@ function AutomationProblemRow({
   );
 }
 
-function automationProblemLabel(automation: AutomationReadProblem): string {
+export function automationProblemLabel(
+  automation: AutomationReadProblem,
+): string {
   return automation.problem === "missing-agent-prompt"
     ? "Prompt required"
     : "Invalid data";

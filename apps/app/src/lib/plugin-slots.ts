@@ -19,6 +19,8 @@ import type {
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
+  ExperimentalThreadInfoRowRegistration,
+  ExperimentalThreadInfoSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
@@ -50,6 +52,8 @@ export interface PluginRegistrationSet {
   threadLists?: readonly PluginThreadListRegistration[];
   experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
+  threadInfoRows?: readonly ExperimentalThreadInfoRowRegistration[];
+  threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
@@ -95,6 +99,10 @@ export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
+export interface PluginThreadInfoRowSlot
+  extends ExperimentalThreadInfoRowRegistration, PluginSlotBase {}
+export interface PluginThreadInfoSectionSlot
+  extends ExperimentalThreadInfoSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot
@@ -136,6 +144,8 @@ export interface PluginSlotSnapshot {
   threadLists: readonly PluginThreadListSlot[];
   experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
+  threadInfoRows: readonly PluginThreadInfoRowSlot[];
+  threadInfoSections: readonly PluginThreadInfoSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
@@ -165,6 +175,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadLists: [],
   experimentalSidebarNavigations: [],
   threadHeaderActions: [],
+  threadInfoRows: [],
+  threadInfoSections: [],
   threadActions: [],
   browserToolbarActions: [],
   fileOpeners: [],
@@ -201,6 +213,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadLists",
   "experimentalSidebarNavigations",
   "threadHeaderActions",
+  "threadInfoRows",
+  "threadInfoSections",
   "threadActions",
   "browserToolbarActions",
   "fileOpeners",
@@ -261,6 +275,8 @@ function flattenRegistrations(
     threadLists: stamp(set.threadLists),
     experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadHeaderActions: stamp(set.threadHeaderActions),
+    threadInfoRows: stamp(set.threadInfoRows),
+    threadInfoSections: stamp(set.threadInfoSections),
     threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),
     fileOpeners: stamp(set.fileOpeners),

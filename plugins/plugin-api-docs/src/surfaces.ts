@@ -351,6 +351,32 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Ask User Question", "Pi provider", "Secrets"],
       },
       {
+        id: "thread-info",
+        title: "Thread Info rows and sections",
+        summary:
+          "Add a row to a thread's Info tab details, or a section below them. With this, a plugin can:",
+        bullets: [
+          "Show plugin state for the thread beside Project, Environment, Branch, and Pull request",
+          'List related items in a section with bb\'s heading, count, collapse, and "N more" list',
+          "Sit at any position among bb's own rows and sections, which use the same slots",
+        ],
+        apiSymbols: [
+          "ExperimentalThreadInfoRowRegistration",
+          "ExperimentalThreadInfoSectionRegistration",
+          "ExperimentalThreadInfoProps",
+          "experimental_InfoSection",
+          "ExperimentalInfoSectionProps",
+          "experimental_DetailRow",
+          "ExperimentalDetailRowProps",
+          "experimental_InfoList",
+          "ExperimentalInfoListProps",
+          "experimental_InfoListRow",
+          "ExperimentalInfoListRowProps",
+        ],
+        firstParty: ["Automations"],
+        experimental: true,
+      },
+      {
         id: "code-renderers",
         title: "Code & diff renderers",
         summary:

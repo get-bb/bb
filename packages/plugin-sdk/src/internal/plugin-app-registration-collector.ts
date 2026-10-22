@@ -29,6 +29,8 @@ import type {
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
+  ExperimentalThreadInfoRowRegistration,
+  ExperimentalThreadInfoSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   ExperimentalSidebarHeaderProps,
@@ -273,6 +275,8 @@ export interface CollectedPluginAppRegistrations {
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadInfoRows: ExperimentalThreadInfoRowRegistration[];
+  threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -292,6 +296,17 @@ export interface CollectedPluginAppRegistrations {
 
 export interface CollectedSidebarNavigationRegistration extends ExperimentalSidebarNavigationRegistration {
   placement: ExperimentalSidebarNavigationPlacement;
+}
+
+function requireOptionalOrder(
+  kind: string,
+  order: number | undefined,
+): { order?: number } {
+  if (order === undefined) return {};
+  if (!Number.isFinite(order)) {
+    throw new Error(`${kind}: "order" must be a finite number`);
+  }
+  return { order };
 }
 
 function collectTitledComponent<C>(
@@ -387,6 +402,8 @@ export function collectPluginAppRegistrations(
     threadLists: [],
     experimentalSidebarNavigations: [],
     threadHeaderActions: [],
+    threadInfoRows: [],
+    threadInfoSections: [],
     threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
@@ -419,6 +436,8 @@ export function collectPluginAppRegistrations(
     sidebarNavigation: new Set<string>(),
     sidebarHeader: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    threadInfoRow: new Set<string>(),
+    threadInfoSection: new Set<string>(),
     threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -772,6 +791,26 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_threadInfoRow(registration) {
+        const kind = "slots.experimental_threadInfoRow";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadInfoRow, id);
+        collected.threadInfoRows.push({
+          id,
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadInfoSection(registration) {
+        const kind = "slots.experimental_threadInfoSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadInfoSection, id);
+        collected.threadInfoSections.push({
+          id,
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       experimental_threadAction(registration) {
         const kind = "slots.experimental_threadAction";
         const id = requireSlotId(kind, registration?.id);
@@ -785,20 +824,12 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(`${kind}: "useData" must be a function`);
         }
-        if (
-          registration.order !== undefined &&
-          !Number.isFinite(registration.order)
-        ) {
-          throw new Error(`${kind}: "order" must be a finite number`);
-        }
         collected.threadActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           group: requireNonEmptyString(kind, "group", registration.group),
-          ...(registration.order !== undefined
-            ? { order: registration.order }
-            : {}),
+          ...requireOptionalOrder(kind, registration.order),
           ...(registration.useData !== undefined
             ? { useData: registration.useData }
             : {}),

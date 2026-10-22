@@ -16,7 +16,6 @@ import {
 import { getFileNameFromPath } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
-import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 function toFolderHint(path: string): string | null {
   const folderPath = directoryFromPath(path);
@@ -90,14 +89,12 @@ export function UncommittedChangesSection({
   onChangedFileClick,
   onOpenChangedFile,
 }: ChangedFilesHandlers & { workspaceStatus: WorkspaceStatus | undefined }) {
-  const collapse = useInfoSectionCollapse("uncommittedChanges");
   const section = selectChangedFilesSection(workspaceStatus, "uncommitted");
   if (section === undefined) return null;
   return (
     <InfoSection
       label="Uncommitted files"
       count={section.stats.fileCount}
-      collapse={collapse}
       trailing={<ChangedFilesTally section={section} />}
     >
       <ChangedFilesList

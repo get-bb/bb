@@ -1,7 +1,11 @@
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
-import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalInfoListRowProps,
+  MarkdownProps,
+  PluginSdkApp,
+} from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
 import {
@@ -83,6 +87,24 @@ import {
   useSidebarNavigationSplit,
 } from "./plugin-sidebar-navigation";
 import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationModel";
+import {
+  InfoList,
+  InfoListRow,
+  InfoSection,
+} from "@/components/secondary-panel/info/info-list";
+import { InfoDetailRow } from "@/components/ui/detail-card";
+
+function PluginInfoListRow({
+  onSelect,
+  ...props
+}: ExperimentalInfoListRowProps) {
+  return (
+    <InfoListRow
+      {...props}
+      target={onSelect === undefined ? null : { kind: "button", onSelect }}
+    />
+  );
+}
 
 function useArchiveEnvironmentThreads(): (
   environmentId: string,
@@ -124,6 +146,10 @@ export const pluginSdkAppImplementation = {
   experimental_useCheckoutState: usePluginCheckoutState,
   experimental_SourceCode: PluginSourceCode,
   experimental_Diff: PluginDiff,
+  experimental_InfoSection: InfoSection,
+  experimental_DetailRow: InfoDetailRow,
+  experimental_InfoList: InfoList,
+  experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,

@@ -292,6 +292,18 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadInfoRows,
+      "thread-info-row",
+      "Adds a row to the thread Info tab.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadInfoSections,
+      "thread-info-section",
+      "Adds a section to the thread Info tab.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadActions,
       "thread-action",
       "Adds an action to thread menus.",

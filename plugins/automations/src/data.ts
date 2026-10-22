@@ -485,6 +485,22 @@ export function listAutomationsForProject(
     .map(requiredAutomationRow);
 }
 
+export function listAutomationsTargetingThread(
+  db: Db,
+  targetThreadId: string,
+): AutomationRow[] {
+  return db
+    .prepare(
+      `SELECT
+         ${AUTOMATION_COLUMNS}
+       FROM automations
+       WHERE target_thread_id = ?
+       ORDER BY created_at DESC, id DESC`,
+    )
+    .all(targetThreadId)
+    .map(requiredAutomationRow);
+}
+
 export function listAllAutomations(db: Db): AutomationRow[] {
   return db
     .prepare(

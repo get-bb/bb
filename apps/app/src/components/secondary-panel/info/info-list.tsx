@@ -12,6 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
+import { useScopedInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 const INFO_LIST_LEADING_CLASS =
   "flex size-3 shrink-0 items-center justify-center";
@@ -125,12 +126,22 @@ export interface InfoSectionProps extends InfoSectionHeadingProps {
   children: ReactNode;
 }
 
-export function InfoSection({ children, ...heading }: InfoSectionProps) {
+export function InfoSection({
+  children,
+  collapse,
+  ...heading
+}: InfoSectionProps) {
   const bodyId = useId();
-  const collapsed = heading.collapse?.collapsed ?? false;
+  const scopedCollapse = useScopedInfoSectionCollapse();
+  const resolvedCollapse = collapse ?? scopedCollapse;
+  const collapsed = resolvedCollapse?.collapsed ?? false;
   return (
-    <section className="min-w-0">
-      <InfoSectionHeading {...heading} bodyId={bodyId} />
+    <section data-info-section="" className="min-w-0">
+      <InfoSectionHeading
+        {...heading}
+        collapse={resolvedCollapse}
+        bodyId={bodyId}
+      />
       {collapsed ? null : <div id={bodyId}>{children}</div>}
     </section>
   );
@@ -316,7 +327,10 @@ function InfoRowTouchActionsMenu({
         <button
           type="button"
           aria-label="More actions"
-          className={cn(INFO_ROW_ACTION_CLASS, "hidden [@media(hover:none)]:flex")}
+          className={cn(
+            INFO_ROW_ACTION_CLASS,
+            "hidden [@media(hover:none)]:flex",
+          )}
         >
           <Icon name="MoreHorizontal" className="size-3" aria-hidden />
         </button>

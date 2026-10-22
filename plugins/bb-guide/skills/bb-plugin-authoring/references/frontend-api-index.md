@@ -23,6 +23,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useCheckoutState`
 - `experimental_SourceCode`
 - `experimental_Diff`
+- `experimental_InfoSection`
+- `experimental_DetailRow`
+- `experimental_InfoList`
+- `experimental_InfoListRow`
 - `useRpc`
 - `experimental_useRpcQuery`
 - `experimental_useRpcKeyedQuery`
@@ -110,6 +114,11 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarFooterDisclosureProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
+- `ExperimentalThreadInfoProps`
+- `ExperimentalInfoSectionProps`
+- `ExperimentalDetailRowProps`
+- `ExperimentalInfoListProps`
+- `ExperimentalInfoListRowProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
 - `ExperimentalPluginBrowserPage`
 - `ExperimentalPluginBrowserPageEvaluateOptions`
@@ -181,6 +190,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginBoundThreadsArea`
 - `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
+- `ExperimentalThreadInfoRowRegistration`
+- `ExperimentalThreadInfoSectionRegistration`
 - `PluginThreadActionTarget`
 - `PluginThreadActionChoice`
 - `PluginThreadActionChoices`

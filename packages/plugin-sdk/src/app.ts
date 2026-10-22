@@ -148,6 +148,18 @@ export const experimental_SourceCode = runtimeComponent(
   "experimental_SourceCode",
 );
 export const experimental_Diff = runtimeComponent("experimental_Diff");
+// The thread Info tab's building blocks (experimental — see
+// docs/api_to_audit.md).
+export const experimental_InfoSection = runtimeComponent(
+  "experimental_InfoSection",
+);
+export const experimental_DetailRow = runtimeComponent(
+  "experimental_DetailRow",
+);
+export const experimental_InfoList = runtimeComponent("experimental_InfoList");
+export const experimental_InfoListRow = runtimeComponent(
+  "experimental_InfoListRow",
+);
 export const experimental_useRpcQuery = runtimeFunction(
   "experimental_useRpcQuery",
 );

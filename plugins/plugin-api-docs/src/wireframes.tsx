@@ -642,6 +642,7 @@ export const ANATOMY_RENDERER_KEYS = {
 };
 
 export type AppShellRightPanelTab =
+  | "thread-info"
   | "browser-toolbar"
   | "thread-panel"
   | "file-opener"
@@ -653,6 +654,13 @@ function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
     : undefined;
   return (
     <>
+      <MeasuredBadge
+        id="thread-info"
+        label="Plugin rows and sections in bb's Info tab"
+        anchor='[data-guide-region="thread-info"]'
+        clipTo={clipTo}
+        at="lane"
+      />
       <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
@@ -961,6 +969,7 @@ export function AppShellWireframe({
 
   useEffect(() => {
     if (
+      expandedId === "thread-info" ||
       expandedId === "browser-toolbar" ||
       expandedId === "code-renderers" ||
       expandedId === "thread-panel" ||
@@ -1348,6 +1357,93 @@ function AppShellWireframeBody({
   );
 }
 
+const THREAD_INFO_FIXTURE_ROWS = [
+  { icon: "Folder", label: "Project", value: "checkout-service" },
+  { icon: "GitBranch", label: "Branch", value: "fix/retry-flake" },
+] as const;
+
+function ThreadInfoFixtureRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 py-0.5 text-xs leading-5">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="min-w-0 truncate text-foreground">{children}</span>
+    </div>
+  );
+}
+
+function ThreadInfoFixture() {
+  return (
+    <div data-guide-fixture="thread-info" className="flex flex-col text-xs">
+      <div className="flex flex-col gap-1.5">
+        {THREAD_INFO_FIXTURE_ROWS.map((row) => (
+          <ThreadInfoFixtureRow
+            key={row.label}
+            icon={<MiniIcon icon={row.icon} className="size-3" />}
+            label={row.label}
+          >
+            {row.value}
+          </ThreadInfoFixtureRow>
+        ))}
+        <Mark
+          id="thread-info"
+          label="Plugin rows and sections in bb's Info tab"
+          className="block rounded-md"
+          showChip={false}
+        >
+          <ThreadInfoFixtureRow
+            icon={<PluginGlyph className="size-3" />}
+            label="Deploy"
+          >
+            Staging · healthy
+          </ThreadInfoFixtureRow>
+        </Mark>
+      </div>
+      <Mark
+        id="thread-info"
+        label="Plugin rows and sections in bb's Info tab"
+        className="mt-3 block rounded-md border-t border-border-hairline pt-3"
+        showChip={false}
+      >
+        <span className="mb-1 flex items-center font-medium text-muted-foreground">
+          Automations
+          <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal tabular-nums">
+            1
+          </span>
+        </span>
+        <span className="flex h-6 items-center gap-1.5">
+          <MiniIcon icon="Calendar" className="size-3" />
+          <span className="min-w-0 flex-1 truncate text-foreground">
+            Nightly CI check
+          </span>
+          <span className="shrink-0 text-2xs text-subtle-foreground">
+            Next 9:00 AM
+          </span>
+        </span>
+      </Mark>
+      <div className="mt-3 border-t border-border-hairline pt-3">
+        <span className="mb-1 flex items-center font-medium text-muted-foreground">
+          Commits
+          <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal tabular-nums">
+            2
+          </span>
+        </span>
+        <span className="block h-2 w-3/5 rounded-sm bg-muted/60" />
+      </div>
+    </div>
+  );
+}
+
 export function AppShellRightPanel({
   compact = false,
   activeTab,
@@ -1402,12 +1498,17 @@ export function AppShellRightPanel({
           data-guide-fixture="right-panel-fixed-tabs"
           className="flex shrink-0 items-center gap-1.5"
         >
-          <span
-            data-guide-tab="info"
-            className="flex h-6 items-center rounded-md px-1.5"
+          <Mark
+            id="thread-info"
+            label="Plugin rows and sections in bb's Info tab"
+            className={cn(tabClass("thread-info"), "px-1.5")}
+            showChip={false}
+            onActivate={() => onTabSelect("thread-info")}
           >
-            <MiniIcon icon="Info" className="size-3.5" />
-          </span>
+            <span data-guide-tab="thread-info" className="contents">
+              <MiniIcon icon="Info" className="size-3.5" />
+            </span>
+          </Mark>
           <Mark
             id="code-renderers"
             label="Plugin code and diff renderers on bb's Diff tab"
@@ -1488,7 +1589,9 @@ export function AppShellRightPanel({
           compact && "text-sm leading-relaxed",
         )}
       >
-        {activeTab === "browser-toolbar" ? (
+        {activeTab === "thread-info" ? (
+          <ThreadInfoFixture />
+        ) : activeTab === "browser-toolbar" ? (
           <div data-guide-fixture="browser-toolbar" className="space-y-4">
             <div className="flex items-center gap-2 border-b border-border-hairline pb-3">
               <MiniIcon icon="ChevronLeft" className="size-3.5" />

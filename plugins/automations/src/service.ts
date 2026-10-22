@@ -11,6 +11,7 @@ import {
   listAllAutomations,
   listAutomationRuns,
   listAutomationsForProject,
+  listAutomationsTargetingThread,
   setAutomationEnabled,
   toAutomationResponse,
   toAutomationRunResponse,
@@ -43,6 +44,7 @@ import {
   type AutomationResponse,
   type AutomationScriptWorkingDirectory,
   type AutomationsOverviewResponse,
+  type ListAutomationsInput,
   type ResolvedCreateAutomationInput,
   type ResolvedAutomationRunsInput,
   type RunAutomationInput,
@@ -78,7 +80,7 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
-  list(input: { projectId: string }): AutomationReadResult[];
+  list(input: ListAutomationsInput): AutomationReadResult[];
   get(input: {
     projectId: string;
     automationId: string;
@@ -583,7 +585,11 @@ export function createAutomationService(args: {
     },
 
     list(input) {
-      return listAutomationsForProject(db, input.projectId).map((row) =>
+      const rows =
+        "projectId" in input
+          ? listAutomationsForProject(db, input.projectId)
+          : listAutomationsTargetingThread(db, input.targetThreadId);
+      return rows.map((row) =>
         toStoredAutomationReadResult(bb, pluginDataDir, row),
       );
     },

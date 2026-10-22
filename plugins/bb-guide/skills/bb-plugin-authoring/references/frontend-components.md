@@ -148,6 +148,18 @@ className? }` —
   not, so code there renders unhighlighted rather than broken.
   Experimental: see `docs/api_to_audit.md`.
 
+- `experimental_InfoSection`, `experimental_DetailRow`, `experimental_InfoList`,
+  `experimental_InfoListRow` — the thread Info tab's building blocks, the ones
+  bb's own rows and sections use. `experimental_InfoSection` takes
+  `{ label, count?, accessory?, trailing?, children }` and collapses inside an
+  `experimental_threadInfoSection`. `experimental_DetailRow` takes
+  `{ label, icon?, align?, children }`, where `icon` is any name
+  `experimental_Icon` accepts. `experimental_InfoList` takes
+  `{ items, getKey, renderItem, limit? }`. `experimental_InfoListRow` takes
+  `{ leading, leadingLabel?, name, title?, context?, trailing?, onSelect? }`.
+  Usage is in frontend-registration.md. Experimental: see
+  `docs/api_to_audit.md`.
+
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews

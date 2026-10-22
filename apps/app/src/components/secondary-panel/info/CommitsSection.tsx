@@ -14,7 +14,6 @@ import {
   InfoSection,
   InfoSubheading,
 } from "./info-list";
-import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface CommitsSectionProps {
   workspaceStatus: WorkspaceStatus | undefined;
@@ -34,10 +33,9 @@ export function CommitsSection({
     workspaceStatus,
     "committed",
   );
-  const collapse = useInfoSectionCollapse("commits");
   if (commits.length === 0 && committedFiles === undefined) return null;
   return (
-    <InfoSection label="Commits" count={commits.length} collapse={collapse}>
+    <InfoSection label="Commits" count={commits.length}>
       <InfoList
         items={commits}
         rail

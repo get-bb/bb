@@ -113,3 +113,33 @@ export function DetailRow({
     </div>
   );
 }
+
+interface InfoDetailRowProps {
+  label: ReactNode;
+  icon?: IconName;
+  align?: "start" | "center";
+  children: ReactNode;
+}
+
+export function InfoDetailRow({
+  label,
+  icon,
+  align,
+  children,
+}: InfoDetailRowProps) {
+  return (
+    <DetailRow
+      label={
+        icon === undefined ? (
+          label
+        ) : (
+          <DetailRowIconLabel icon={icon}>{label}</DetailRowIconLabel>
+        )
+      }
+      align={align}
+      valueClassName="min-w-0"
+    >
+      {children}
+    </DetailRow>
+  );
+}

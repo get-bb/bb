@@ -112,6 +112,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         appShellScene: "panel" as const,
         surfaces: group.surfaces.filter((surface) =>
           [
+            "thread-info",
             "code-renderers",
             "browser-toolbar",
             "thread-panel",

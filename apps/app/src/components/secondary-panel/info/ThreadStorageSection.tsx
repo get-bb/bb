@@ -25,7 +25,6 @@ import {
   type ThreadStorageFlattenOptions,
   type ThreadStorageTreeRow,
 } from "./thread-storage-tree";
-import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 const THREAD_STORAGE_FOLDER_CHILD_LIMIT = 5;
 
@@ -82,7 +81,6 @@ export function ThreadStorageSection({
     toggleFolder,
   } = controller;
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const collapse = useInfoSectionCollapse("threadStorage");
   const tree = useMemo(
     () => buildThreadStorageTree(filteredFiles),
     [filteredFiles],
@@ -191,7 +189,6 @@ export function ThreadStorageSection({
     <InfoSection
       label="Thread storage"
       count={loadedFiles.length}
-      collapse={collapse}
       trailing={
         !searchable ? null : isSearchOpen ? (
           <div className="flex min-w-0 flex-1 items-center gap-1">

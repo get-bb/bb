@@ -276,6 +276,7 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   with `experimental_useSidebarNavigation()`. Exclusive; see
   frontend-sidebar-navigation.md. Experimental: see `docs/api_to_audit.md`.
 - `experimental_threadList`, `experimental_threadHeaderAction`,
+  `experimental_threadInfoRow`, `experimental_threadInfoSection`,
   `experimental_threadAction`, and `experimental_browserToolbarAction` are
   covered in frontend-registration.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor

@@ -410,9 +410,11 @@ export const projectAutomationInputSchema = z
   })
   .strict();
 
-export const listAutomationsInputSchema = z
-  .object({ projectId: z.string().min(1) })
-  .strict();
+export const listAutomationsInputSchema = z.union([
+  z.object({ projectId: z.string().min(1) }).strict(),
+  z.object({ targetThreadId: z.string().min(1) }).strict(),
+]);
+export type ListAutomationsInput = z.infer<typeof listAutomationsInputSchema>;
 
 export const createAutomationInputSchema = z
   .object({

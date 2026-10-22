@@ -2411,6 +2411,54 @@ Docs: `frontend-registration.md`.
    that split, and decide whether other multi-mount slots need the same
    treatment.
 
+## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
+
+A registration is `{ id, order?, component }`. The component receives
+`{ threadId, projectId }` and mounts once per visible thread's Info tab. Rows
+render in the details block, sections below it, each sorted by `order`, then
+registration order; unordered entries follow every ordered one. Each plugin
+entry mounts in its own crash boundary keyed by thread, so a crash drops only
+that row or section. The four components are the Info tab's own building
+blocks: `experimental_InfoSection` (heading, count pill, collapse),
+`experimental_DetailRow` (label/value row with an optional icon),
+`experimental_InfoList` (the "N more" list), and `experimental_InfoListRow`.
+Inside a section slot, `experimental_InfoSection` collapses, and the state is
+stored in the `infoPanel.collapsedSections` preference under the core id or
+`<pluginId>/<id>`.
+
+**Core callers.** `ThreadMetadataContent` renders the Info tab only through
+`ThreadInfoRows` and `ThreadInfoSections`
+(`apps/app/src/components/secondary-panel/info/ThreadInfoSlots.tsx`), which
+merge `CORE_THREAD_INFO_ROWS` and `CORE_THREAD_INFO_SECTIONS` with plugin
+registrations. Core's eleven rows draw with `InfoDetailRow` (the host side of
+`experimental_DetailRow`) except Branch and Archived, which truncate their
+value cell; core's five sections draw with `InfoSection` and `InfoList`. The
+Automations plugin registers the Automations section. Contract tests:
+`ThreadInfoSlots.test.tsx`.
+
+Docs: `frontend-registration.md`, `frontend-components.md`.
+
+**Audit before stabilizing.**
+
+1. **Props.** Components get only ids, so a plugin row that needs the thread's
+   environment or workspace status has no SDK read for it; core rows read the
+   Info tab's host state instead. Decide whether the props should carry a
+   thread snapshot before a second plugin needs one.
+2. **Order numbers.** Core's orders are documented numbers, not exported
+   constants. Decide whether to export them, or to anchor plugins relative to
+   a named core entry.
+3. **Empty state.** The Info tab still decides between its details, a loading
+   skeleton, and "No thread details available." from core state
+   (`hasAnyThreadMetadata`), so plugin entries never count toward it and are
+   hidden with core's details. Decide whether registrations should report
+   visibility.
+4. **Row value styling.** `experimental_DetailRow` always lets the value cell
+   shrink without truncating; Branch and Archived use a truncating value cell.
+   Decide whether that variant needs a prop.
+5. **Separators.** The Info tab draws section separators on every
+   `[data-info-section]`, so a section that renders without
+   `experimental_InfoSection` gets no separator. Confirm that is acceptable.
+
 ## `app.slots.experimental_threadAction` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, title, icon, group, order?, useData?, item }`.

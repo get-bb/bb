@@ -27,6 +27,7 @@ describe("product-map surfaces", () => {
       "code-fence-renderers",
       "message-actions",
       "pending-interaction",
+      "thread-info",
       "code-renderers",
       "browser-toolbar",
       "thread-panel",

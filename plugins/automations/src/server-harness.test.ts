@@ -635,6 +635,52 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("lists only automations that re-prompt a thread, not ones it created", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const targeted = await createAgentAutomation(harness, {
+      name: "Targets the thread",
+      targetThreadId: THREAD_ID,
+    });
+    await harness.callRpc("automations_create", {
+      projectId: PROJECT_ID,
+      name: "Created by the thread",
+      enabled: true,
+      trigger: oneShotTrigger(),
+      execution: agentExecution(),
+      origin: "agent",
+      createdByThreadId: THREAD_ID,
+    });
+
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { targetThreadId: THREAD_ID }),
+    );
+    expect(listed.map((automation) => automation.id)).toEqual([targeted.id]);
+
+    const cliList = await harness.runCli([
+      "list",
+      "--target-thread",
+      THREAD_ID,
+      "--json",
+    ]);
+    expect(cliList.exitCode).toBe(0);
+    expect(
+      automationListResponseSchema
+        .parse(JSON.parse(cliList.stdout ?? ""))
+        .map((automation) => automation.id),
+    ).toEqual([targeted.id]);
+
+    const conflicting = await harness.runCli([
+      "list",
+      "--project",
+      PROJECT_ID,
+      "--target-thread",
+      THREAD_ID,
+    ]);
+    expect(conflicting.exitCode).not.toBe(0);
+
+    await harness.dispose();
+  });
+
   it.each([
     {
       supported: ["accept-edits", "auto", "full"] as const,
