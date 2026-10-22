@@ -298,6 +298,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     baseRef: "abc123",
     aheadCount: 4,
     behindCount: 0,
+    squashMergeCheckComplete: true,
     hasCommittedUnmergedChanges: true,
     commits: [],
     files: promptboxBannerFiles.slice(0, 3),

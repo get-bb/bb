@@ -12,11 +12,11 @@ import {
   parseNameStatusEntries,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
+  parsePorcelainV2StatusZ,
   readDefaultBranchRefs,
   readGitBlob,
   runGit,
   runGitWithNullRecordLimit,
-  runShellPipeline,
   summarizeNumstat,
 } from "../src/git.js";
 
@@ -142,16 +142,19 @@ afterEach(async () => {
   );
 });
 
-describe("runShellPipeline", () => {
+describe("runGit", () => {
   it("scrubs inherited bb runtime env vars and node mode", async () => {
     const repoPath = await initEmptyRepo();
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("OPENAI_API_KEY", "external-secret");
 
-    const result = await runShellPipeline(
-      `printf '%s|%s|%s' "\${BB_DATA_DIR-missing}" "\${NODE_ENV-missing}" "\${OPENAI_API_KEY-missing}"`,
-      [],
+    const result = await runGit(
+      [
+        "-c",
+        `alias.env-probe=!printf '%s|%s|%s' "\${BB_DATA_DIR-missing}" "\${NODE_ENV-missing}" "\${OPENAI_API_KEY-missing}"`,
+        "env-probe",
+      ],
       { cwd: repoPath },
     );
 
@@ -440,21 +443,6 @@ describe("command timeouts", () => {
       name: "WorkspaceError",
     });
   });
-
-  it("classifies shell pipeline timeouts as hard failures when allowFailure is true", async () => {
-    const repoPath = await initEmptyRepo();
-
-    await expect(
-      runShellPipeline("while :; do :; done", [], {
-        cwd: repoPath,
-        allowFailure: true,
-        timeoutMs: 500,
-      }),
-    ).rejects.toMatchObject({
-      code: "shell_pipeline_timeout",
-      name: "WorkspaceError",
-    });
-  });
 });
 
 describe("fetchRemoteBranches", () => {
@@ -484,7 +472,7 @@ describe("fetchRemoteBranches", () => {
 });
 
 describe("user-shell Git resolution", () => {
-  it("uses the resolved shell PATH for Git commands and Git pipelines", async () => {
+  it("uses the resolved shell PATH for Git commands", async () => {
     const workspacePath = await fs.mkdtemp(
       path.join(os.tmpdir(), "bb-git-shell-path-workspace-"),
     );
@@ -492,41 +480,16 @@ describe("user-shell Git resolution", () => {
       path.join(os.tmpdir(), "bb-git-shell-path-bin-"),
     );
     tempDirs.push(workspacePath, binPath);
-    const shell =
-      process.platform === "win32"
-        ? (
-            await runGit(["var", "GIT_SHELL_PATH"], { cwd: workspacePath })
-          ).stdout.trim()
-        : "/bin/sh";
-    const gitPath = path.join(
-      binPath,
-      process.platform === "win32" ? "git.cmd" : "git",
-    );
     await fs.writeFile(
-      gitPath,
+      path.join(binPath, process.platform === "win32" ? "git.cmd" : "git"),
       process.platform === "win32"
-        ? `@echo off\r\nif "%~1"=="var" (echo ${shell}) else (echo user-shell-git)\r\n`
+        ? "@echo off\r\necho user-shell-git\r\n"
         : "#!/bin/sh\nprintf 'user-shell-git\\n'\n",
       { mode: 0o755 },
     );
-    if (process.platform === "win32") {
-      await fs.writeFile(
-        path.join(binPath, "git"),
-        "#!/bin/sh\nprintf 'user-shell-git\\n'\n",
-        { mode: 0o755 },
-      );
-    }
 
     await expect(
       runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
-    ).resolves.toMatchObject({
-      stdout: expect.stringMatching(/^user-shell-git\r?\n$/),
-    });
-    await expect(
-      runShellPipeline("git --version", [], {
-        cwd: workspacePath,
-        shellPath: binPath,
-      }),
     ).resolves.toMatchObject({
       stdout: expect.stringMatching(/^user-shell-git\r?\n$/),
     });
@@ -592,6 +555,94 @@ describe("readGitBlob", () => {
     ).rejects.toMatchObject({
       code: "blob_too_large",
       message: "Blob size 11 bytes exceeds the 0 MB limit",
+    });
+  });
+});
+
+describe("parsePorcelainV2StatusZ", () => {
+  const readStatus = async (repoPath: string) =>
+    parsePorcelainV2StatusZ(
+      (
+        await runGit(
+          [
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "-z",
+            "--untracked-files=all",
+          ],
+          { cwd: repoPath },
+        )
+      ).stdout,
+    );
+
+  it("reads renames, unusual paths, and the checked-out commit", async () => {
+    const repoPath = await initConflictRepo();
+    await fs.writeFile(path.join(repoPath, "old name.txt"), "rename me\n");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Add file"], { cwd: repoPath });
+    await runGit(["mv", "old name.txt", "new -> name.txt"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "README.md"), "edited\n");
+    await fs.writeFile(path.join(repoPath, "line\nbreak.txt"), "new\n");
+    const head = (
+      await runGit(["rev-parse", "HEAD"], { cwd: repoPath })
+    ).stdout.trim();
+
+    const status = await readStatus(repoPath);
+
+    expect(status.headOid).toBe(head);
+    expect(status.headBranch).toBe("main");
+    expect(status.entries).toEqual(
+      expect.arrayContaining([
+        {
+          path: "README.md",
+          status: "M",
+          indexStatus: " ",
+          worktreeStatus: "M",
+        },
+        {
+          path: "new -> name.txt",
+          status: "R",
+          indexStatus: "R",
+          worktreeStatus: " ",
+        },
+        {
+          path: "line\nbreak.txt",
+          status: "??",
+          indexStatus: "?",
+          worktreeStatus: "?",
+        },
+      ]),
+    );
+    expect(status.entries).toHaveLength(3);
+
+    await runGit(["checkout", "--detach"], { cwd: repoPath });
+    expect(await readStatus(repoPath)).toMatchObject({
+      headOid: head,
+      headBranch: null,
+    });
+  });
+
+  it("reads unmerged entries during a conflicted merge", async () => {
+    const repoPath = await initConflictRepo();
+    await runGit(["merge", "feature"], { cwd: repoPath, allowFailure: true });
+
+    expect((await readStatus(repoPath)).entries).toEqual([
+      {
+        path: "README.md",
+        status: "UU",
+        indexStatus: "U",
+        worktreeStatus: "U",
+      },
+    ]);
+  });
+
+  it("reports an unborn branch without a commit", async () => {
+    const repoPath = await initEmptyRepo();
+    expect(await readStatus(repoPath)).toEqual({
+      entries: [],
+      headOid: null,
+      headBranch: "main",
     });
   });
 });

@@ -138,6 +138,7 @@ export const STORY_COMMITTED_MERGE_BASE: WorkspaceMergeBase = {
   baseRef: "main",
   aheadCount: 2,
   behindCount: 0,
+  squashMergeCheckComplete: true,
   hasCommittedUnmergedChanges: true,
   commits: [],
   insertions: 110,

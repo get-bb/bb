@@ -1,4 +1,5 @@
 import type {
+  GitCheckoutRef,
   RawDiffFileStat,
   ThreadGitDiffResponse,
   WorkspaceCommitSummary,
@@ -19,15 +20,13 @@ import {
 import {
   createTempDir,
   ensureGitRepo,
-  getCheckoutRef,
   getCurrentBranch,
   parseNameStatusEntries,
   parseNameStatusSourceEntries,
   parseNumstatEntriesZ,
-  parsePorcelainEntries,
-  readDefaultBranch,
+  parsePorcelainV2StatusZ,
+  readRepoDefaultBranch,
   readMergeBaseRef,
-  parsePatchId,
   revParse,
   runGit,
   runGitWithNullRecordLimit,
@@ -39,10 +38,17 @@ import {
   type RawDiffEntry,
   type NumstatEntry,
   type RunGitOptions,
-  runShellPipeline,
   summarizeNumstat,
   WorkspaceError,
 } from "./git.js";
+import { ByteBudgetCache } from "./byte-budget-cache.js";
+import {
+  readCommitChanges,
+  readCommitPatchIds,
+  readPatchEquivalentCommits,
+  readSquashRangePatchId,
+  type CommitGitRunner,
+} from "./commit-cache.js";
 import fs from "node:fs/promises";
 import { withCheckoutMutationLock } from "./checkout-mutation-lock.js";
 
@@ -192,13 +198,44 @@ type ResolvedTrackedDiffRange = {
 
 type WorkspaceMutationWork<T> = () => Promise<T>;
 
+type SquashMergeCheck = { merged: boolean | null; timedOut: boolean };
+type MergeBaseStatusComputation = {
+  status: WorkspaceStatus["mergeBase"];
+  retryable: boolean;
+};
+
+const MERGE_BASE_STATUS_CACHE_BYTES = 16 * 1024 * 1024;
+const mergeBaseStatusCache = new ByteBudgetCache<
+  NonNullable<WorkspaceStatus["mergeBase"]>
+>(MERGE_BASE_STATUS_CACHE_BYTES);
+const pendingMergeBaseStatuses = new Map<
+  string,
+  Promise<MergeBaseStatusComputation>
+>();
 const WORKSPACE_STATUS_GIT_TIMEOUT_MS = 15_000;
+const SQUASH_MERGE_MAX_METADATA_COMMITS = 1_000;
+const SQUASH_MERGE_TIMEOUT_MS = 1_000;
+const SQUASH_MERGE_MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const WORKSPACE_STATUS_UNTRACKED_ENRICHMENT_TIMEOUT_MS = 10_000;
 const TEMPORARY_UNTRACKED_INDEX_ADD_ATTEMPTS = 3;
 const DIFF_NUMSTAT_BASE_BUFFER_BYTES = 64 * 1024;
 const DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES = 16 * 1024;
 const ZERO_BLOB_PATTERN = /^0+$/u;
 const MISSING_DIFF_REVISION = "missing";
+
+function squashChangeSignature(entries: RawDiffEntry[]): string {
+  return JSON.stringify(
+    entries
+      .map((entry) => [
+        entry.path,
+        entry.oldMode,
+        entry.newMode,
+        entry.oldBlob,
+        entry.newBlob,
+      ])
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+  );
+}
 
 function whitespaceDiffArgs(ignoreWhitespace: boolean): string[] {
   return ignoreWhitespace ? ["-w"] : [];
@@ -535,17 +572,6 @@ export class Workspace {
     );
   }
 
-  private runShellPipeline(
-    script: string,
-    positionalArgs: string[],
-    options: Parameters<typeof runShellPipeline>[2],
-  ): Promise<GitCommandResult> {
-    return runShellPipeline(script, positionalArgs, {
-      ...options,
-      ...this.gitProcessOptions,
-    });
-  }
-
   get exists(): Promise<boolean> {
     return pathExists(this.path);
   }
@@ -623,47 +649,71 @@ export class Workspace {
         "maxUntrackedLineStatBytes",
       );
     }
-    await ensureGitRepo(this.path, {
-      timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-      ...this.gitProcessOptions,
-    });
-
     const mergeBaseBranch = options.mergeBaseBranch;
-    const [statusOutput, diffOutput, checkout, defaultBranch, mergeBaseData] =
-      await Promise.all([
-        this.runGit(
-          [
-            "--no-optional-locks",
-            "status",
-            "--porcelain=v1",
-            "--branch",
-            "--untracked-files=all",
-          ],
-          { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
-        ),
-        readHeadNumstat(
-          this.path,
-          WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-          this.gitProcessOptions,
-        ),
-        getCheckoutRef(this.path, {
-          timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-          ...this.gitProcessOptions,
-        }),
-        readDefaultBranch(this.path, {
-          timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-          ...this.gitProcessOptions,
-        }),
-        mergeBaseBranch
-          ? this.readMergeBaseStatus(
-              mergeBaseBranch,
-              maxFiles,
-              WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-            )
-          : null,
-      ]);
-
-    const entries = parsePorcelainEntries(statusOutput.stdout);
+    const statusRead = this.runGit(
+      [
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "-z",
+        "--untracked-files=all",
+      ],
+      {
+        cwd: this.path,
+        allowFailure: true,
+        timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+      },
+    );
+    const otherReads = Promise.all([
+      readHeadNumstat(
+        this.path,
+        WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+        this.gitProcessOptions,
+      ),
+      readRepoDefaultBranch(this.path, {
+        timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+        ...this.gitProcessOptions,
+      }),
+      mergeBaseBranch
+        ? this.readMergeBaseStatus(
+            mergeBaseBranch,
+            maxFiles,
+            WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+          )
+        : null,
+    ]);
+    otherReads.catch(() => undefined);
+    const statusOutput = await statusRead;
+    if (statusOutput.exitCode !== 0) {
+      const detail = statusOutput.stderr.trim();
+      throw /not a git repository/iu.test(detail)
+        ? new WorkspaceError(
+            "not_git_repo",
+            `Path is not a git repository: ${this.path}`,
+          )
+        : new WorkspaceError(
+            "git_command_failed",
+            `git status failed${detail ? `: ${detail}` : ""}`,
+          );
+    }
+    const [diffOutput, defaultBranch, mergeBaseData] = await otherReads;
+    const {
+      entries,
+      headOid,
+      headBranch,
+    } = parsePorcelainV2StatusZ(statusOutput.stdout);
+    const checkout: GitCheckoutRef =
+      headBranch === null
+        ? headOid === null
+          ? {
+              kind: "unknown",
+              reason: "HEAD is not symbolic and no commit is checked out",
+            }
+          : { kind: "detached", headSha: headOid }
+        : headOid === null
+          ? { kind: "unborn", branchName: headBranch }
+          : { kind: "branch", branchName: headBranch, headSha: headOid };
     const untrackedPaths = entries
       .filter((entry) => entry.status === "??")
       .map((entry) => entry.path);
@@ -995,67 +1045,96 @@ export class Workspace {
     };
   }
 
-  private async readPatchUniqueCommitSummaries(
-    mergeBaseBranch: string,
-    timeoutMs?: number,
-  ): Promise<WorkspaceCommitSummary[]> {
-    const log = await this.runGit(
-      [
-        "log",
-        "--cherry-pick",
-        "--right-only",
-        "--reverse",
-        "--format=%H%x1f%h%x1f%s%x1f%an%x1f%at",
-        `${mergeBaseBranch}...HEAD`,
-      ],
-      { cwd: this.path, allowFailure: true, timeoutMs },
-    );
-
-    return log.stdout
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const [sha, shortSha, subject, authorName, authoredAt] =
-          line.split("\u001f");
-        return {
-          sha,
-          shortSha,
-          subject,
-          authorName: authorName ?? "",
-          authoredAt: Number.parseInt(authoredAt ?? "0", 10) * 1000,
-        };
-      });
-  }
-
   private async readMergeBaseStatus(
     mergeBaseBranch: string,
     maxFiles: number | undefined,
     timeoutMs?: number,
   ): Promise<WorkspaceStatus["mergeBase"]> {
-    const [mergeBaseRef, aheadBehindCounts, commits, nameStatus, numstat] =
-      await Promise.all([
-        readMergeBaseRef(this.path, mergeBaseBranch, {
+    const revisions = await this.runGit(
+      ["rev-parse", "HEAD^{commit}", `${mergeBaseBranch}^{commit}`],
+      { cwd: this.path, allowFailure: true, timeoutMs },
+    );
+    const [headSha, baseSha] = revisions.stdout.trim().split("\n");
+    if (revisions.exitCode !== 0 || !headSha || !baseSha) {
+      return (
+        await this.computeMergeBaseStatus(
+          mergeBaseBranch,
+          "HEAD",
+          mergeBaseBranch,
+          maxFiles,
           timeoutMs,
-          ...this.gitProcessOptions,
-        }),
+        )
+      ).status;
+    }
+    const key = JSON.stringify([
+      this.path,
+      this.gitProcessOptions.shellPath,
+      headSha,
+      baseSha,
+      mergeBaseBranch,
+      maxFiles,
+    ]);
+    const cached = mergeBaseStatusCache.get(key);
+    if (cached) return structuredClone(cached);
+    let pending = pendingMergeBaseStatuses.get(key);
+    if (!pending) {
+      const computation = this.computeMergeBaseStatus(
+        baseSha,
+        headSha,
+        mergeBaseBranch,
+        maxFiles,
+        timeoutMs,
+      );
+      pending = computation;
+      pendingMergeBaseStatuses.set(key, computation);
+      computation
+        .then(({ status, retryable }) => {
+          if (status && !retryable) {
+            mergeBaseStatusCache.set(key, status, JSON.stringify(status).length);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (pendingMergeBaseStatuses.get(key) === computation) {
+            pendingMergeBaseStatuses.delete(key);
+          }
+        });
+    }
+    return structuredClone((await pending).status);
+  }
+
+  private async computeMergeBaseStatus(
+    baseRevision: string,
+    headRevision: string,
+    mergeBaseBranch: string,
+    maxFiles: number | undefined,
+    timeoutMs?: number,
+  ): Promise<MergeBaseStatusComputation> {
+    const [mergeBaseRef, history, nameStatus, numstat] =
+      await Promise.all([
+        this.runGit(["merge-base", baseRevision, headRevision], {
+          cwd: this.path,
+          timeoutMs,
+          allowFailure: true,
+        }).then((result) =>
+          result.exitCode === 0 ? result.stdout.trim() : undefined,
+        ),
         this.runGit(
           [
-            "rev-list",
-            "--cherry-pick",
+            "log",
             "--left-right",
-            "--count",
-            `${mergeBaseBranch}...HEAD`,
+            "--format=%m%x1f%H%x1f%h%x1f%s%x1f%an%x1f%at",
+            `${baseRevision}...${headRevision}`,
           ],
           { cwd: this.path, allowFailure: true, timeoutMs },
         ),
-        this.readPatchUniqueCommitSummaries(mergeBaseBranch, timeoutMs),
         this.runGit(
           [
             "diff",
             "--no-ext-diff",
             "--name-status",
             "-z",
-            `${mergeBaseBranch}...HEAD`,
+            `${baseRevision}...${headRevision}`,
           ],
           { cwd: this.path, allowFailure: true, timeoutMs },
         ),
@@ -1065,41 +1144,78 @@ export class Workspace {
             "--no-ext-diff",
             "--numstat",
             "-z",
-            `${mergeBaseBranch}...HEAD`,
+            `${baseRevision}...${headRevision}`,
           ],
           { cwd: this.path, allowFailure: true, timeoutMs },
         ),
       ]);
-    if (aheadBehindCounts.exitCode !== 0) {
-      if (isMissingHeadRevisionError(aheadBehindCounts.stderr)) {
+    if (history.exitCode !== 0) {
+      if (isMissingHeadRevisionError(history.stderr)) {
         return {
-          mergeBaseBranch,
-          baseRef: null,
-          aheadCount: 0,
-          behindCount: 0,
-          hasCommittedUnmergedChanges: false,
-          commits: [],
-          fileCount: 0,
-          files: [],
-          insertions: 0,
-          deletions: 0,
-          lineStatsComplete: true,
+          retryable: false,
+          status: {
+            mergeBaseBranch,
+            baseRef: null,
+            aheadCount: 0,
+            behindCount: 0,
+            squashMergeCheckComplete: true,
+            hasCommittedUnmergedChanges: false,
+            commits: [],
+            fileCount: 0,
+            files: [],
+            insertions: 0,
+            deletions: 0,
+            lineStatsComplete: true,
+          },
         };
       }
-      const detail = aheadBehindCounts.stderr.trim();
+      const detail = history.stderr.trim();
       throw new WorkspaceError(
         "git_command_failed",
-        `git rev-list ${mergeBaseBranch}...HEAD failed${detail ? `: ${detail}` : ""}`,
+        `git log ${baseRevision}...${headRevision} failed${detail ? `: ${detail}` : ""}`,
       );
     }
-    const [behindCount, aheadCount] = aheadBehindCounts.stdout
-      .trim()
-      .split(/\s+/)
-      .map((value) => Number.parseInt(value, 10));
-    let normalizedAheadCount = Number.isFinite(aheadCount) ? aheadCount : 0;
-    const normalizedBehindCount = Number.isFinite(behindCount)
-      ? behindCount
-      : 0;
+    const behindCommits: string[] = [];
+    const aheadCommits: WorkspaceCommitSummary[] = [];
+    for (const line of history.stdout.split("\n")) {
+      const [mark, sha, shortSha, subject, authorName, authoredAt] =
+        line.split("\u001f");
+      if (mark === "<") behindCommits.push(sha);
+      if (mark !== ">") continue;
+      aheadCommits.push({
+        sha,
+        shortSha,
+        subject,
+        authorName: authorName ?? "",
+        authoredAt: Number.parseInt(authoredAt ?? "0", 10) * 1000,
+      });
+    }
+    const runHistoryGit: CommitGitRunner = (args, options) =>
+      this.runGit(args, {
+        cwd: this.path,
+        allowFailure: true,
+        timeoutMs,
+        ...options,
+      });
+    const equivalent = await readPatchEquivalentCommits(
+      runHistoryGit,
+      behindCommits,
+      aheadCommits.map((commit) => commit.sha),
+    );
+    if (!equivalent) {
+      throw new WorkspaceError(
+        "git_command_failed",
+        `Could not compare commits in ${baseRevision}...${headRevision}`,
+      );
+    }
+    const uniqueBehindCommits = behindCommits.filter(
+      (sha) => !equivalent.has(sha),
+    );
+    const commits = aheadCommits
+      .filter((commit) => !equivalent.has(commit.sha))
+      .reverse();
+    const normalizedBehindCount = uniqueBehindCommits.length;
+    let normalizedAheadCount = commits.length;
     let effectiveCommits = commits;
     const numstatEntries =
       numstat.exitCode === 0 ? parseNumstatEntriesZ(numstat.stdout) : [];
@@ -1126,13 +1242,18 @@ export class Workspace {
       if (entry.deletions !== null) effectiveDeletions += entry.deletions;
     }
 
+    let squashMergeCheckComplete = true;
+    let retryable = nameStatus.exitCode !== 0 || numstat.exitCode !== 0;
     if (normalizedAheadCount > 0 && normalizedBehindCount > 0 && mergeBaseRef) {
-      const squashMerged = await this.detectSquashMerge(
+      const { merged, timedOut } = await this.detectSquashMerge(
         mergeBaseRef,
-        mergeBaseBranch,
+        headRevision,
+        behindCommits,
         timeoutMs,
       );
-      if (squashMerged) {
+      squashMergeCheckComplete = merged !== null;
+      retryable ||= timedOut;
+      if (merged) {
         normalizedAheadCount = 0;
         effectiveCommits = [];
       }
@@ -1146,57 +1267,125 @@ export class Workspace {
     }
 
     return {
-      mergeBaseBranch,
-      baseRef: mergeBaseRef ?? null,
-      aheadCount: normalizedAheadCount,
-      behindCount: normalizedBehindCount,
-      hasCommittedUnmergedChanges: normalizedAheadCount > 0,
-      commits: effectiveCommits,
-      fileCount: effectiveFiles.length,
-      files:
-        maxFiles === undefined
-          ? effectiveFiles
-          : effectiveFiles.slice(0, maxFiles),
-      insertions: effectiveInsertions,
-      deletions: effectiveDeletions,
-      lineStatsComplete: effectiveLineStatsComplete,
+      retryable,
+      status: {
+        mergeBaseBranch,
+        baseRef: mergeBaseRef ?? null,
+        aheadCount: normalizedAheadCount,
+        behindCount: normalizedBehindCount,
+        squashMergeCheckComplete,
+        hasCommittedUnmergedChanges: normalizedAheadCount > 0,
+        commits: effectiveCommits,
+        fileCount: effectiveFiles.length,
+        files:
+          maxFiles === undefined
+            ? effectiveFiles
+            : effectiveFiles.slice(0, maxFiles),
+        insertions: effectiveInsertions,
+        deletions: effectiveDeletions,
+        lineStatsComplete: effectiveLineStatsComplete,
+      },
     };
   }
 
   private async detectSquashMerge(
     mergeBaseRef: string,
-    mergeBaseBranch: string,
+    headRevision: string,
+    behindCommits: string[],
     timeoutMs?: number,
-  ): Promise<boolean> {
-    const branchPatchIdResult = await this.runShellPipeline(
-      'git diff "$1".."$2" | git patch-id --stable',
-      [mergeBaseRef, "HEAD"],
-      { cwd: this.path, allowFailure: true, timeoutMs },
+  ): Promise<SquashMergeCheck> {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      Math.min(timeoutMs ?? SQUASH_MERGE_TIMEOUT_MS, SQUASH_MERGE_TIMEOUT_MS),
     );
-    if (branchPatchIdResult.exitCode !== 0) {
-      return false;
+    try {
+      const merged = await this.computeSquashMerge(
+        mergeBaseRef,
+        headRevision,
+        behindCommits,
+        controller.signal,
+      );
+      return controller.signal.aborted
+        ? { merged: null, timedOut: true }
+        : { merged, timedOut: false };
+    } catch (error) {
+      if (controller.signal.aborted) return { merged: null, timedOut: true };
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    if (!branchPatchIdResult.stdout.trim()) {
-      return true;
-    }
-    const branchPatchId = parsePatchId(
-      branchPatchIdResult.stdout.split("\n")[0],
-    );
-    if (!branchPatchId) {
-      return false;
-    }
+  }
 
-    const basePatchIdsResult = await this.runShellPipeline(
-      'git log -p -n 1000 --format="commit %H" "$1".."$2" | git patch-id --stable',
-      [mergeBaseRef, mergeBaseBranch],
-      { cwd: this.path, allowFailure: true, timeoutMs },
-    );
-    if (basePatchIdsResult.exitCode !== 0) {
-      return false;
+  private async computeSquashMerge(
+    mergeBaseRef: string,
+    headRevision: string,
+    behindCommits: string[],
+    signal: AbortSignal,
+  ): Promise<boolean | null> {
+    const run: CommitGitRunner = (args, options) =>
+      this.runGit(args, {
+        cwd: this.path,
+        signal,
+        allowFailure: true,
+        ...options,
+      });
+    const branch = await run([
+      "diff",
+      "--raw",
+      "-z",
+      "--no-renames",
+      "--no-abbrev",
+      "--no-ext-diff",
+      "--no-textconv",
+      mergeBaseRef,
+      headRevision,
+    ]);
+    if (branch.exitCode !== 0) return null;
+    const branchEntries = parseRawDiffEntriesZ(branch.stdout);
+    if (branchEntries.length === 0) return true;
+    const scanned = behindCommits.slice(0, SQUASH_MERGE_MAX_METADATA_COMMITS);
+    const complete = behindCommits.length <= SQUASH_MERGE_MAX_METADATA_COMMITS;
+    const changes = await readCommitChanges(run, scanned);
+    if (!changes) return null;
+    const branchSignature = squashChangeSignature(branchEntries);
+    const requiredPaths = branchEntries
+      .filter((entry) => !/[^!-~]|["\\]/u.test(entry.path))
+      .map((entry) => entry.path);
+    const candidates: string[] = [];
+    for (const commit of scanned) {
+      const entries = changes.get(commit) ?? [];
+      if (entries.length === 0) continue;
+      const paths = new Set(
+        entries.map((entry) => entry.path.replace(/\s/gu, "")),
+      );
+      if (!requiredPaths.every((path) => paths.has(path))) continue;
+      if (squashChangeSignature(entries) === branchSignature) return true;
+      candidates.push(commit);
     }
-    return basePatchIdsResult.stdout
-      .split("\n")
-      .some((line) => parsePatchId(line) === branchPatchId);
+    if (candidates.length === 0) return complete ? false : null;
+    let remainingPatchBytes = SQUASH_MERGE_MAX_PATCH_BYTES;
+    const branchPatch = await readSquashRangePatchId(
+      run,
+      mergeBaseRef,
+      headRevision,
+      remainingPatchBytes,
+    );
+    if (!branchPatch?.patchId) return null;
+    remainingPatchBytes -= branchPatch.patchBytes;
+    for (const candidate of candidates) {
+      const hashed = await readCommitPatchIds(
+        run,
+        "squash",
+        [candidate],
+        remainingPatchBytes,
+      );
+      const patchId = hashed?.patchIds.get(candidate);
+      if (!hashed || !patchId) return null;
+      remainingPatchBytes -= hashed.patchBytes;
+      if (patchId === branchPatch.patchId) return true;
+    }
+    return complete ? false : null;
   }
 
   private targetIncludesUntracked(target: WorkspaceDiffTarget): boolean {
@@ -2096,12 +2285,7 @@ export class Workspace {
         attempt += 1
       ) {
         candidates = await this.filterExistingUntrackedPaths(candidates);
-        await this.runGit(["read-tree", "--empty"], {
-          cwd: this.path,
-          env,
-          signal: options.signal,
-          timeoutMs: options.timeoutMs,
-        });
+        await fs.rm(indexPath, { force: true });
         if (candidates.length === 0) {
           return await work(env, []);
         }
@@ -2140,12 +2324,7 @@ export class Workspace {
         candidates = refreshedCandidates;
       }
 
-      await this.runGit(["read-tree", "--empty"], {
-        cwd: this.path,
-        env,
-        signal: options.signal,
-        timeoutMs: options.timeoutMs,
-      });
+      await fs.rm(indexPath, { force: true });
       return await work(env, []);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });

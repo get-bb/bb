@@ -65,7 +65,10 @@ import {
   selectWorkspaceChangedFilesSections,
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
-import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
+import {
+  getGitStatusDisplay,
+  SquashMergeInfo,
+} from "@/components/workspace/workspace-status";
 import {
   useUnarchiveThread,
   useUpdateThread,
@@ -784,6 +787,7 @@ export function GitStatusRow({
               <TooltipContent>{refreshFailure}</TooltipContent>
             </Tooltip>
           ) : null}
+          {!mergeBase.squashMergeCheckComplete ? <SquashMergeInfo /> : null}
         </span>
       </DetailRow>
     );

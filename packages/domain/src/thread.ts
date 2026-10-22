@@ -118,6 +118,7 @@ const workspaceMergeBaseSchema = workspaceChangeStatsSchema.extend({
   baseRef: z.string().nullable(),
   aheadCount: z.number(),
   behindCount: z.number(),
+  squashMergeCheckComplete: z.boolean(),
   hasCommittedUnmergedChanges: z.boolean(),
   commits: z.array(workspaceCommitSummarySchema),
 });

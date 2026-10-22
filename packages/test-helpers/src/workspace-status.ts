@@ -27,6 +27,7 @@ export function makeWorkspaceMergeBase(
     baseRef: "main",
     aheadCount: 0,
     behindCount: 0,
+    squashMergeCheckComplete: true,
     hasCommittedUnmergedChanges: false,
     commits: [],
     files: [],

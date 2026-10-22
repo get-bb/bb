@@ -632,6 +632,7 @@ export function makeWorkspaceStatus(
       baseRef: null,
       aheadCount: 0,
       behindCount: 0,
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       commits: [],
       insertions: 0,

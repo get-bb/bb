@@ -48,6 +48,7 @@ describe("bb environment command output", () => {
       baseRef: "def456",
       aheadCount: 2,
       behindCount: 0,
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: true,
       commits: [],
       files: [],
@@ -354,6 +355,25 @@ describe("bb environment command output", () => {
         "Changed files: 1",
         "Merge base: main",
         "Ahead: 2",
+      ]),
+    );
+  });
+
+  it("qualifies status counts when squash detection is incomplete", async () => {
+    const workspace = structuredClone(workspaceStatus);
+    if (!workspace.mergeBase) throw new Error("Missing comparison fixture");
+    workspace.mergeBase.squashMergeCheckComplete = false;
+    stubServerApi({
+      "v1.environments.:id.status.$get": vi.fn(async () => ({
+        outcome: "available",
+        workspace,
+      })),
+    });
+    await runCommand(["environment", "status", "env-incomplete"], register);
+    expect(collectLogLines(vi.mocked(console.log))).toEqual(
+      expect.arrayContaining([
+        "Ahead: 2",
+        "Squash-merge check incomplete; counts may include already-merged commits.",
       ]),
     );
   });

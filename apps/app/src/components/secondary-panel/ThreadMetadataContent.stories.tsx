@@ -55,6 +55,7 @@ function WorkInProgressPanel() {
         baseRef: "main",
         aheadCount: STORY_AHEAD_COMMITS.length,
         behindCount: 0,
+        squashMergeCheckComplete: true,
         hasCommittedUnmergedChanges: true,
         commits: STORY_AHEAD_COMMITS,
         insertions: 0,

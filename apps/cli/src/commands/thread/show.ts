@@ -370,7 +370,7 @@ export function registerShowCommand(
             if (ws.mergeBase) {
               console.log(`  Merge base:   ${ws.mergeBase.mergeBaseBranch}`);
               console.log(
-                `  Ahead: ${ws.mergeBase.aheadCount}  Behind: ${ws.mergeBase.behindCount}`,
+                `  Ahead: ${ws.mergeBase.aheadCount}  Behind: ${ws.mergeBase.behindCount}${ws.mergeBase.squashMergeCheckComplete ? "" : " (squash-merge check incomplete)"}`,
               );
             }
           } else {

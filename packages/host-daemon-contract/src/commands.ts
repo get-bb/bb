@@ -1109,11 +1109,18 @@ const fileWriteResultSchema = z.discriminatedUnion("outcome", [
     .strict(),
 ]);
 
+const hostWorkspaceStatusSchema = workspaceStatusSchema.extend({
+  mergeBase: workspaceStatusSchema.shape.mergeBase
+    .unwrap()
+    .extend({ squashMergeCheckComplete: z.boolean().default(true) })
+    .nullable(),
+});
+
 const workspaceStatusResultSchema = z.discriminatedUnion("outcome", [
   z
     .object({
       outcome: z.literal("available"),
-      workspaceStatus: workspaceStatusSchema,
+      workspaceStatus: hostWorkspaceStatusSchema,
     })
     .strict(),
   z

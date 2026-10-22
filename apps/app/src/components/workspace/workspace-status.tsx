@@ -1,8 +1,14 @@
+import { useState } from "react";
+import { Icon } from "@bb/shared-ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { assertNever } from "@bb/core-ui";
 import type { WorkspaceStatus } from "@bb/domain";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { BbHttpError } from "@bb/sdk/browser";
 import { describeLifecycleError } from "@/lib/lifecycle-errors";
+
+export const INCOMPLETE_SQUASH_MERGE_MESSAGE =
+  "Squash-merge check incomplete; counts may include already-merged commits.";
 
 export interface ThreadGitStatusDisplay {
   label:
@@ -15,6 +21,7 @@ export interface ThreadGitStatusDisplay {
     | "Dirty"
     | "Untracked";
   summary: string;
+  warning?: string;
 }
 
 interface GetGitStatusDisplayOptions {
@@ -80,7 +87,7 @@ function divergenceDisplay(
   return null;
 }
 
-export function getGitStatusDisplay(
+function getGitStatusDisplayWithoutWarning(
   status: WorkspaceStatus | undefined,
   options?: GetGitStatusDisplayOptions,
 ): ThreadGitStatusDisplay {
@@ -150,4 +157,40 @@ export function getGitStatusDisplay(
     default:
       return assertNever(status.workingTree.state);
   }
+}
+
+export function getGitStatusDisplay(
+  status: WorkspaceStatus | undefined,
+  options?: GetGitStatusDisplayOptions,
+): ThreadGitStatusDisplay {
+  const display = getGitStatusDisplayWithoutWarning(status, options);
+  return status?.mergeBase?.squashMergeCheckComplete === false
+    ? { ...display, warning: INCOMPLETE_SQUASH_MERGE_MESSAGE }
+    : display;
+}
+
+export function SquashMergeInfo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={INCOMPLETE_SQUASH_MERGE_MESSAGE}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            setOpen((value) => !value);
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            if (event.detail === 0) setOpen((value) => !value);
+          }}
+          className="inline-flex shrink-0 items-center text-muted-foreground"
+        >
+          <Icon name="Info" className="size-3" aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{INCOMPLETE_SQUASH_MERGE_MESSAGE}</TooltipContent>
+    </Tooltip>
+  );
 }

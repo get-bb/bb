@@ -52,12 +52,31 @@ function makeStatus(options: MakeStatusOptions): WorkspaceStatus {
       baseRef: "origin/main",
       aheadCount,
       behindCount,
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: aheadCount > 0,
     }),
   });
 }
 
 describe("workspace-status", () => {
+  it("qualifies counts when squash detection could not finish", () => {
+    const status = makeStatus({
+      state: "committed_unmerged",
+      aheadCount: 2,
+      behindCount: 3,
+    });
+    if (!status.mergeBase) throw new Error("Missing comparison fixture");
+    status.mergeBase.squashMergeCheckComplete = false;
+    expect(getGitStatusDisplay(status, { showBranchComparison: true })).toEqual(
+      {
+        label: "Diverged",
+        summary: "2 ahead, 3 behind relative to main",
+        warning:
+          "Squash-merge check incomplete; counts may include already-merged commits.",
+      },
+    );
+  });
+
   it("reports untracked workspaces without echoing working-tree file counts", () => {
     expect(
       getGitStatusDisplay(makeStatus({ changedFiles: 1, state: "untracked" })),

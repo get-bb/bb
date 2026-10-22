@@ -129,6 +129,9 @@ Making your repo work with bb:
                                           200 entries (tracked changes first); fileCount is
                                           the total number of changed files
     --merge-base-branch <branch>          Include merge-base status
+      If squash-merge detection hits its limits (1,000 commits, 1 second),
+      mergeBase.squashMergeCheckComplete is false and counts may include
+      already squash-merged commits.
 
   bb environment branches <id>            List local and remote branches
     --query <query>                       Filter branch names

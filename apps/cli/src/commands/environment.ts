@@ -607,6 +607,11 @@ export function registerEnvironmentCommands(
         }
         if (status.mergeBase) {
           console.log(`Merge base: ${status.mergeBase.mergeBaseBranch}`);
+          if (!status.mergeBase.squashMergeCheckComplete) {
+            console.log(
+              "Squash-merge check incomplete; counts may include already-merged commits.",
+            );
+          }
           console.log(`Ahead: ${status.mergeBase.aheadCount}`);
           console.log(`Behind: ${status.mergeBase.behindCount}`);
         }

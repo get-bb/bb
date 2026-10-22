@@ -309,6 +309,29 @@ describe("EnvironmentProvisioningFailureRow", () => {
 });
 
 describe("GitStatusRow", () => {
+  it("qualifies counts when squash detection is incomplete", () => {
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <GitStatusRow
+          thread={makeThread()}
+          environment={null}
+          workspaceStatus={makeWorkspaceStatus({
+            mergeBase: makeWorkspaceMergeBase({
+              aheadCount: 3,
+              squashMergeCheckComplete: false,
+            }),
+          })}
+          workspaceStatusError={null}
+        />
+      </TooltipProvider>,
+    );
+    expect(markup).toContain("3 ahead of main");
+    expect(markup).toContain(
+      'aria-label="Squash-merge check incomplete; counts may include already-merged commits."',
+    );
+    expect(markup).not.toContain(">Squash-merge check incomplete");
+  });
+
   it("shows no live git status for an archived attached checkout", () => {
     const markup = renderToStaticMarkup(
       <GitStatusRow

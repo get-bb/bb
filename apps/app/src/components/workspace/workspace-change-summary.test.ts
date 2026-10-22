@@ -122,6 +122,7 @@ describe("workspace-change-summary", () => {
           deletions: 1,
           baseRef: "abc1234",
           aheadCount: 1,
+          squashMergeCheckComplete: true,
           hasCommittedUnmergedChanges: true,
         }),
       }),
@@ -151,6 +152,7 @@ describe("workspace-change-summary", () => {
           deletions: 10,
           baseRef: "abc1234",
           aheadCount: 2,
+          squashMergeCheckComplete: true,
           hasCommittedUnmergedChanges: true,
         }),
       }),
@@ -181,6 +183,7 @@ describe("workspace-change-summary", () => {
         mergeBase: makeWorkspaceMergeBase({
           files: [makeWorkspaceFileStatus("A")],
           aheadCount: 1,
+          squashMergeCheckComplete: true,
           hasCommittedUnmergedChanges: true,
         }),
       }),
@@ -195,6 +198,7 @@ describe("workspace-change-summary", () => {
         mergeBase: makeWorkspaceMergeBase({
           files: [makeWorkspaceFileStatus("A")],
           aheadCount: 1,
+          squashMergeCheckComplete: true,
           hasCommittedUnmergedChanges: true,
         }),
       }),

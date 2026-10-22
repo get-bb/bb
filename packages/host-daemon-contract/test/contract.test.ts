@@ -151,6 +151,7 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
       baseRef: "abc123",
       aheadCount: 1,
       behindCount: 0,
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: true,
       commits: [
         {
@@ -1288,6 +1289,22 @@ describe("host-daemon command schemas", () => {
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
+  });
+
+  it("reads workspace status from daemons that predate squash-check completeness", () => {
+    const legacyResult: unknown = JSON.parse(
+      JSON.stringify(WORKSPACE_STATUS_AVAILABLE_RESULT, (key, value) =>
+        key === "squashMergeCheckComplete" ? undefined : value,
+      ),
+    );
+    expect(
+      contract.hostDaemonOnlineRpcResultSchemaByType["workspace.status"].parse(
+        legacyResult,
+      ),
+    ).toMatchObject({
+      outcome: "available",
+      workspaceStatus: { mergeBase: { squashMergeCheckComplete: true } },
+    });
   });
 
   it("parses connect next config and status messages strictly", () => {

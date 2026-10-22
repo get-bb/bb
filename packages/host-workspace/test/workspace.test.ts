@@ -255,6 +255,7 @@ describe("Workspace", () => {
       mergeBaseBranch: "main",
       aheadCount: 1,
       behindCount: 0,
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: true,
     });
     expect(status.mergeBase?.commits[0]?.subject).toBe("Feature commit");
@@ -357,6 +358,7 @@ describe("Workspace", () => {
     ]);
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: true,
       aheadCount: 1,
       behindCount: 0,
@@ -385,6 +387,7 @@ describe("Workspace", () => {
     expect(status.workingTree.state).toBe("clean");
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       aheadCount: 0,
       behindCount: 1,
@@ -412,6 +415,7 @@ describe("Workspace", () => {
 
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       aheadCount: 0,
     });
@@ -452,6 +456,7 @@ describe("Workspace", () => {
 
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       aheadCount: 0,
     });
@@ -478,6 +483,7 @@ describe("Workspace", () => {
 
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       aheadCount: 0,
     });
@@ -494,6 +500,7 @@ describe("Workspace", () => {
 
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: true,
       aheadCount: 2,
     });
@@ -521,6 +528,7 @@ describe("Workspace", () => {
     expect(status.workingTree.state).toBe("clean");
     expect(status.mergeBase).toMatchObject({
       mergeBaseBranch: "main",
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       aheadCount: 0,
       behindCount: 1,
@@ -571,6 +579,7 @@ describe("Workspace", () => {
       baseRef: null,
       aheadCount: 0,
       behindCount: 0,
+      squashMergeCheckComplete: true,
       hasCommittedUnmergedChanges: false,
       commits: [],
       files: [],
