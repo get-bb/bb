@@ -51,6 +51,7 @@ import {
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type { PluginServiceDeps } from "./plugin-service-internal.js";
+import { logPluginBuildWarnings } from "./plugin-log.js";
 import {
   createNpmResolverRun,
   evaluateCompatibility,
@@ -286,8 +287,9 @@ export function createManagedPluginArtifacts(
           artifact: "app",
         })
       ) {
+        let app: Awaited<ReturnType<typeof buildPluginApp>>;
         try {
-          await buildPluginApp(
+          app = await buildPluginApp(
             args.rootDir,
             deps.appVersion,
             await getPluginBuildToolchain(deps),
@@ -297,6 +299,12 @@ export function createManagedPluginArtifacts(
             `install failed: frontend bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+        logPluginBuildWarnings({
+          dataDir: deps.dataDir,
+          logger: deps.logger,
+          pluginId: manifest.id,
+          warnings: app.migrationWarnings,
+        });
       }
     }
     if (kind === "git") {

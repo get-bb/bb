@@ -58,11 +58,13 @@ In `renderSlot(...)` tests, answer the read with the `rpc` option:
 
 The hook and its
 `PluginSidebarPullRequest` and `PluginSidebarThreadPullRequestState` types were
-removed from `@get-bb/plugin-sdk/app`. `bb plugin build` fails on an import of
-the hook and names this replacement. Bundles already published keep working:
-the app still provides the hook at runtime, backed by the same read, and it
-returns `{ isLoading: false, pullRequest: null }` when GitHub PR Status is
-disabled. To migrate, read `pullRequests` as above with
+removed from `@get-bb/plugin-sdk/app`'s typings, so TypeScript reports the
+import. Plugins that still import it keep building and working: bb's plugin
+build resolves the name to the app's runtime member, prints a warning that
+names this replacement, and bb writes the same warning to the plugin's log
+when it builds the plugin at install, update or SDK change. The runtime member
+reads the same data and returns `{ isLoading: false, pullRequest: null }` when
+GitHub PR Status is disabled. To migrate, read `pullRequests` as above with
 `thread.environment?.id` in place of the thread id. Fields map as follows:
 `number`, `title`, `url`, `state` and `attention` keep their names;
 `experimental_autoMerge` is `autoMerge`, `experimental_inMergeQueue` is

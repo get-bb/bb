@@ -2,6 +2,7 @@ import {
   realtimeSubscriptionTargetKey,
   type PluginReadSubscriptionTarget,
 } from "@bb/domain";
+import { logPluginBuildWarnings } from "./plugin-log.js";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -1221,11 +1222,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           : "plugin source is newer than dist/app.js";
         logger.info(`plugin ${row.id}: rebuilding frontend bundle (${reason})`);
         try {
-          await buildPluginApp(
+          const app = await buildPluginApp(
             row.rootDir,
             deps.appVersion,
             await getPluginBuildToolchain(deps),
           );
+          logPluginBuildWarnings({
+            dataDir: deps.dataDir,
+            logger,
+            pluginId: row.id,
+            warnings: app.migrationWarnings,
+          });
           setDevBuildProblem(row.id, "frontend", null);
         } catch (error) {
           const message =

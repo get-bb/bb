@@ -32,6 +32,18 @@ export function appendPluginLogLine(
   } catch {}
 }
 
+export function logPluginBuildWarnings(args: {
+  dataDir: string;
+  logger: { warn(message: string): void };
+  pluginId: string;
+  warnings: readonly string[];
+}): void {
+  for (const warning of args.warnings) {
+    args.logger.warn(`[plugin:${args.pluginId}] ${warning}`);
+    appendPluginLogLine(args.dataDir, args.pluginId, "warn", warning);
+  }
+}
+
 function splitLines(content: string): string[] {
   return content.split("\n").filter((line) => line.length > 0);
 }

@@ -86,6 +86,27 @@ async function freshModuleExports(moduleUrl: string): Promise<string[]> {
   return Object.keys(moduleNamespace).sort();
 }
 
+async function pluginSdkAppExports(
+  pluginSdkAppModuleUrl: string | undefined,
+): Promise<readonly string[]> {
+  if (pluginSdkAppModuleUrl !== undefined) {
+    return freshModuleExports(pluginSdkAppModuleUrl);
+  }
+  let resolvedModuleUrl: string;
+  try {
+    resolvedModuleUrl = import.meta.resolve(PLUGIN_SDK_APP_SPECIFIER);
+  } catch {
+    const names = RUNTIME_EXPORT_MANIFEST[PLUGIN_SDK_APP_SPECIFIER];
+    if (!names) {
+      throw new Error(
+        `no runtime export manifest entry for "${PLUGIN_SDK_APP_SPECIFIER}"`,
+      );
+    }
+    return names;
+  }
+  return freshModuleExports(resolvedModuleUrl);
+}
+
 async function shimExportsOf(
   requestedSpecifier: string,
   pluginSdkAppModuleUrl: string | undefined,
@@ -95,20 +116,12 @@ async function shimExportsOf(
       ? PLUGIN_SDK_APP_SPECIFIER
       : requestedSpecifier;
   if (specifier === PLUGIN_SDK_APP_SPECIFIER) {
-    if (pluginSdkAppModuleUrl !== undefined) {
-      return freshModuleExports(pluginSdkAppModuleUrl);
-    }
-    let resolvedModuleUrl: string;
-    try {
-      resolvedModuleUrl = import.meta.resolve(PLUGIN_SDK_APP_SPECIFIER);
-    } catch {
-      const names = RUNTIME_EXPORT_MANIFEST[specifier];
-      if (!names) {
-        throw new Error(`no runtime export manifest entry for "${specifier}"`);
-      }
-      return names;
-    }
-    return freshModuleExports(resolvedModuleUrl);
+    return [
+      ...new Set([
+        ...(await pluginSdkAppExports(pluginSdkAppModuleUrl)),
+        ...Object.keys(RETIRED_PLUGIN_SDK_APP_EXPORTS),
+      ]),
+    ];
   }
   const names = RUNTIME_EXPORT_MANIFEST[specifier];
   if (!names) {
@@ -188,14 +201,13 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
           args.importer !== ""
             ? await retiredPluginSdkAppImports(args.importer, args.path)
             : [];
-        if (retired.length > 0) {
-          return {
-            errors: retired.map((name) => ({
-              text: `${name} was removed from ${args.path}. ${RETIRED_PLUGIN_SDK_APP_EXPORTS[name]}`,
-            })),
-          };
-        }
-        return { path: args.path, namespace: SHIM_NAMESPACE };
+        return {
+          path: args.path,
+          namespace: SHIM_NAMESPACE,
+          warnings: retired.map((name) => ({
+            text: `${name} is retired from ${args.path} and keeps working only for already-built plugins. ${RETIRED_PLUGIN_SDK_APP_EXPORTS[name]}`,
+          })),
+        };
       });
       build.onResolve(
         {
@@ -447,6 +459,7 @@ interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
   metaPath: string;
+  migrationWarnings: string[];
 }
 
 interface PluginAppBuildOptions {
@@ -469,6 +482,7 @@ export async function buildPluginApp(
   const cssPath = join(distDir, "app.css");
   const metaPath = join(distDir, "app.meta.json");
 
+  let migrationWarnings: string[] = [];
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
   try {
     const stagedJsPath = join(stageDir, "app.js");
@@ -498,6 +512,14 @@ export async function buildPluginApp(
       logLevel: "error",
       plugins: [zodLocaleStubPlugin(), runtimeShimPlugin()],
     });
+
+    migrationWarnings = bundle.warnings
+      .filter((warning) => warning.pluginName === "bb-plugin-runtime-shims")
+      .map((warning) =>
+        warning.location === null
+          ? warning.text
+          : `${warning.location.file}:${warning.location.line}: ${warning.text}`,
+      );
 
     let authoredCss = "";
     try {
@@ -545,5 +567,5 @@ export async function buildPluginApp(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, cssPath, metaPath };
+  return { jsPath, cssPath, metaPath, migrationWarnings };
 }

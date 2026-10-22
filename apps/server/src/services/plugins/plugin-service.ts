@@ -141,7 +141,7 @@ import {
   syncPluginCommandsSkill,
   type PluginCliContribution,
 } from "./plugin-commands-skill.js";
-import { readPluginLogTail } from "./plugin-log.js";
+import { logPluginBuildWarnings, readPluginLogTail } from "./plugin-log.js";
 import {
   buildPluginSettingsView,
   pluginSecretsDir,
@@ -407,8 +407,7 @@ export interface PluginService {
     input: unknown,
     caller: ExperimentalPluginRpcCaller,
   ): Promise<
-    | { ok: true; result: JsonValue }
-    | { ok: false; error: PluginRpcError }
+    { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
   >;
   httpToken(
     id: string,
@@ -1530,11 +1529,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             },
             buildApp: async () => {
               try {
-                await buildPluginApp(
+                const app = await buildPluginApp(
                   bundled.rootDir,
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
                 );
+                logPluginBuildWarnings({
+                  dataDir: deps.dataDir,
+                  logger,
+                  pluginId: row.id,
+                  warnings: app.migrationWarnings,
+                });
                 setDevBuildProblem(row.id, "frontend", null);
                 notifyPluginsChanged();
               } catch (error) {
