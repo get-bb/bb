@@ -302,6 +302,7 @@ export function ThreadDetailHeader({
               HEADER_ICON_BUTTON_CLASS,
               CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
               "relative",
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               isTopRow &&
                 isSidebarFramed &&
                 MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
