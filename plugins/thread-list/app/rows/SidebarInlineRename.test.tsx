@@ -19,7 +19,15 @@ import { renameError } from "@/components/ui/inline-rename";
 
 installTestPluginRuntime();
 
-afterEach(cleanup);
+const pointerState = vi.hoisted(() => ({ coarse: false }));
+vi.mock("@/components/ui/hooks/use-pointer-coarse", () => ({
+  usePointerCoarse: () => pointerState.coarse,
+}));
+
+afterEach(() => {
+  cleanup();
+  pointerState.coarse = false;
+});
 
 class FakeHttpError extends Error {
   status: number;
@@ -62,7 +70,11 @@ function RenameRow({
         Rename {id}
       </button>
       <button onClick={rename.startEditingFromMenu}>Menu rename {id}</button>
-      {rename.isEditing ? rename.editor : <span>{name}</span>}
+      {rename.isEditing ? (
+        rename.editor
+      ) : (
+        <span onDoubleClick={rename.startEditingFromDoubleClick}>{name}</span>
+      )}
     </div>
   );
 }
@@ -332,7 +344,7 @@ describe("sidebar inline rename", () => {
   });
 });
 
-describe("compact menu rename", () => {
+describe("dialog menu rename", () => {
   function CompactProviders({ children }: { children: React.ReactNode }) {
     return (
       <CompactViewportOverrideProvider isCompactViewport>
@@ -341,22 +353,38 @@ describe("compact menu rename", () => {
     );
   }
 
-  it("renames in a dialog instead of turning the row into an input", async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow onSave={onSave} />, { wrapper: CompactProviders });
-    fireEvent.click(screen.getByRole("button", { name: "Menu rename first" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(screen.getByText("Original name")).not.toBeNull();
-    const input = await screen.findByRole<HTMLInputElement>("textbox", {
-      name: "first name",
-    });
-    expect(dialog.contains(input)).toBe(true);
-    expect(input.value).toBe("Original name");
-    fireEvent.change(input, { target: { value: "  From dialog  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(onSave).toHaveBeenCalledExactlyOnceWith("From dialog");
-  });
+  it.each([
+    { compact: true, coarse: false },
+    { compact: true, coarse: true },
+    { compact: false, coarse: true },
+  ])(
+    "renames from the menu in a dialog for compact=$compact coarse=$coarse",
+    async ({ compact, coarse }) => {
+      pointerState.coarse = coarse;
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      render(
+        <CompactViewportOverrideProvider isCompactViewport={compact}>
+          <SidebarRenameProvider>
+            <RenameRow onSave={onSave} />
+          </SidebarRenameProvider>
+        </CompactViewportOverrideProvider>,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Menu rename first" }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      expect(screen.getByText("Original name")).not.toBeNull();
+      const input = await screen.findByRole<HTMLInputElement>("textbox", {
+        name: "first name",
+      });
+      expect(dialog.contains(input)).toBe(true);
+      expect(input.value).toBe("Original name");
+      fireEvent.change(input, { target: { value: "  From dialog  " } });
+      fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(onSave).toHaveBeenCalledExactlyOnceWith("From dialog");
+    },
+  );
 
   it("keeps the dialog open with the error when saving fails, and discards on dismiss", async () => {
     const onSave = vi.fn().mockRejectedValue(new Error("offline"));
@@ -381,3 +409,33 @@ describe("compact menu rename", () => {
     ).toBe("Original name");
   });
 });
+
+it.each([
+  { compact: false, coarse: false },
+  { compact: true, coarse: false },
+  { compact: false, coarse: true },
+  { compact: true, coarse: true },
+])(
+  "chooses sidebar title double-click presentation for compact=$compact coarse=$coarse",
+  async ({ compact, coarse }) => {
+    pointerState.coarse = coarse;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={compact}>
+        <SidebarRenameProvider>
+          <RenameRow onSave={onSave} />
+        </SidebarRenameProvider>
+      </CompactViewportOverrideProvider>,
+    );
+    fireEvent.doubleClick(screen.getByText("Original name"));
+    const input = await screen.findByRole("textbox", { name: "first name" });
+    expect(input.closest('[role="dialog"]') !== null).toBe(coarse);
+    fireEvent.change(input, { target: { value: "Updated name" } });
+    if (coarse)
+      fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
+    else fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledExactlyOnceWith("Updated name"),
+    );
+  },
+);

@@ -7,6 +7,7 @@ import {
   type ComponentType,
 } from "react";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport";
+import { usePointerCoarse } from "./hooks/use-pointer-coarse";
 
 export interface InlineRenameArgs {
   kind: "thread" | "project" | "section" | "environment" | "machine";
@@ -196,6 +197,7 @@ export function useInlineRename(
   { controller, Editor, fitEditorToContent = false }: InlineRenameOptions,
 ) {
   const compact = useIsCompactViewport();
+  const coarse = usePointerCoarse();
   const pendingMenuRename = useRef<(() => void) | null>(null);
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
@@ -206,13 +208,16 @@ export function useInlineRename(
     session.id === args.id &&
     session.presentation === "inline";
   const startEditing = useCallback(() => {
-    void start({ ...args, ownerKey, presentation: "inline" });
-  }, [args, start, ownerKey]);
+    void start({
+      ...args,
+      ownerKey,
+      presentation: coarse ? "dialog" : "inline",
+    });
+  }, [args, start, ownerKey, coarse]);
   const startEditingFromDoubleClick = useCallback(() => {
-    if (compact) return false;
     startEditing();
     return true;
-  }, [compact, startEditing]);
+  }, [startEditing]);
 
   useEffect(() => {
     if (
@@ -236,7 +241,7 @@ export function useInlineRename(
     startEditing,
     startEditingFromDoubleClick,
     startEditingFromMenu: () => {
-      if (compact) {
+      if (compact || coarse) {
         void start({ ...args, ownerKey, presentation: "dialog" });
       } else {
         pendingMenuRename.current = startEditing;

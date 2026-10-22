@@ -56,7 +56,10 @@ vi.mock("@/components/layout/AppPageHeader", () => ({
   ),
 }));
 
-const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
+const viewportState = vi.hoisted(() => ({
+  isCompactViewport: false,
+  isPointerCoarse: false,
+}));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -84,6 +87,10 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.isCompactViewport,
 }));
 
+vi.mock("@bb/shared-ui/hooks/use-pointer-coarse", () => ({
+  usePointerCoarse: () => viewportState.isPointerCoarse,
+}));
+
 const THREAD_ID = "thr_header";
 
 const PANE_CONTEXT: PaneContextValue = {
@@ -105,6 +112,7 @@ afterEach(() => {
   cleanup();
   resetThreadActionRegistryForTest();
   viewportState.isCompactViewport = false;
+  viewportState.isPointerCoarse = false;
   mocks.renameThreadAsync.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -713,17 +721,66 @@ describe("ThreadDetailHeader", () => {
     expect(requestRenameDialog).not.toHaveBeenCalled();
   });
 
-  it("opens the rename dialog from the actions menu at compact width", () => {
-    viewportState.isCompactViewport = true;
-    const { menuArgs, requestRenameDialog } = renderWithMenuArgs();
-    menuArgs.current?.requestRename(THREAD_ID);
-    const closeEvent = new Event("focusout", { cancelable: true });
-    menuArgs.current?.onCloseAutoFocus(closeEvent);
-
-    expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
-    expect(closeEvent.defaultPrevented).toBe(false);
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
-  });
+  it.each([
+    { compact: false, coarse: false },
+    { compact: true, coarse: false },
+    { compact: false, coarse: true },
+    { compact: true, coarse: true },
+  ])(
+    "chooses rename presentation for compact=$compact coarse=$coarse",
+    async ({ compact, coarse }) => {
+      viewportState.isCompactViewport = compact;
+      viewportState.isPointerCoarse = coarse;
+      const { menuArgs, requestRenameDialog } = renderWithMenuArgs();
+      const expectsDialog = compact || coarse;
+      menuArgs.current?.requestRename(THREAD_ID);
+      menuArgs.current?.onCloseAutoFocus(
+        new Event("focusout", { cancelable: true }),
+      );
+      if (expectsDialog) {
+        expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
+        expect(
+          screen.queryByRole("textbox", { name: "Thread name" }),
+        ).toBeNull();
+      } else {
+        fireEvent.keyDown(
+          await screen.findByRole("textbox", { name: "Thread name" }),
+          { key: "Escape" },
+        );
+      }
+      requestRenameDialog.mockClear();
+      fireEvent.keyDown(window, {
+        key: "R",
+        code: "KeyR",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      if (expectsDialog) {
+        expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
+        expect(
+          screen.queryByRole("textbox", { name: "Thread name" }),
+        ).toBeNull();
+      } else {
+        fireEvent.keyDown(
+          await screen.findByRole("textbox", { name: "Thread name" }),
+          { key: "Escape" },
+        );
+      }
+      requestRenameDialog.mockClear();
+      fireEvent.doubleClick(screen.getByText("Focused thread"));
+      if (coarse) {
+        expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
+        expect(
+          screen.queryByRole("textbox", { name: "Thread name" }),
+        ).toBeNull();
+      } else {
+        expect(
+          await screen.findByRole("textbox", { name: "Thread name" }),
+        ).toHaveProperty("value", "Focused thread");
+        expect(requestRenameDialog).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it.each([
     [true, true],

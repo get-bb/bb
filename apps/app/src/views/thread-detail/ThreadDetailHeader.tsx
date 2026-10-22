@@ -43,6 +43,7 @@ import {
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
@@ -90,6 +91,7 @@ export function ThreadDetailHeader({
   workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
+  const isPointerCoarse = usePointerCoarse();
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
@@ -106,11 +108,11 @@ export function ThreadDetailHeader({
   const requestRenameDialog = useDefaultRequestRename();
   const pendingMenuRename = useRef(false);
   const requestRename = (id: string) => {
-    if (isCompactViewport) requestRenameDialog(id);
+    if (isCompactViewport || isPointerCoarse) requestRenameDialog(id);
     else startEditing();
   };
   const requestRenameFromMenu = (id: string) => {
-    if (isCompactViewport) requestRenameDialog(id);
+    if (isCompactViewport || isPointerCoarse) requestRenameDialog(id);
     else pendingMenuRename.current = true;
   };
   const handleActionsMenuCloseAutoFocus = (event: Event) => {
@@ -178,7 +180,8 @@ export function ThreadDetailHeader({
     if (isEditing) {
       return;
     }
-    startEditing();
+    if (isPointerCoarse) requestRenameDialog(threadId);
+    else startEditing();
   };
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
