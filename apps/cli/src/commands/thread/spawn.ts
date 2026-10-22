@@ -44,7 +44,7 @@ import { parseSpawnSessionOptions } from "./session-state.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 
 const PROVIDER_HELP =
-  "Provider ID for the thread. Omit to use the project's remembered provider choice";
+  "Provider ID for the thread. Omit to use the live parent's provider, then the project's remembered provider choice; pass it with a --model of another provider";
 
 interface ThreadSpawnCommandOptions {
   prompt?: string;
@@ -324,7 +324,7 @@ export function registerSpawnCommand(
     .command("spawn")
     .aliases(["create", "new"])
     .description(
-      "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
+      "Spawn a new thread; omitted execution flags follow the live parent's latest turn unless --provider names another provider, then remembered project defaults, then the target provider catalog default",
     )
     .option(
       "--prompt <prompt>",
@@ -370,7 +370,7 @@ export function registerSpawnCommand(
     .option("--provider <id>", PROVIDER_HELP)
     .option(
       "--model <model>",
-      "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
+      "Model ID for the thread. Omit to use the live parent's model when it runs the resolved provider, then the project's remembered default for that provider",
     )
     .option(
       "--reasoning-level <level>",

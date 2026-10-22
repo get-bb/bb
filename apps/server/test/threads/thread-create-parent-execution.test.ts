@@ -16,7 +16,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 describe("child creation execution defaults", () => {
   const cases = [
     {
-      name: "inherits same-provider parent model and reasoning",
+      name: "inherits same-provider parent model, reasoning, and service tier",
       parentProviderId: "codex",
       hasParentExecution: true,
       disabledProviderIds: [],
@@ -25,6 +25,7 @@ describe("child creation execution defaults", () => {
         providerId: "codex",
         model: "parent-model",
         reasoningLevel: "low",
+        serviceTier: "fast",
       },
     },
     {
@@ -37,6 +38,7 @@ describe("child creation execution defaults", () => {
         providerId: "claude-code",
         model: "parent-model",
         reasoningLevel: "low",
+        serviceTier: "fast",
       },
     },
     {
@@ -49,6 +51,7 @@ describe("child creation execution defaults", () => {
         providerId: "codex",
         model: "project-model",
         reasoningLevel: "medium",
+        serviceTier: "default",
       },
     },
     {
@@ -61,6 +64,7 @@ describe("child creation execution defaults", () => {
         providerId: "claude-code",
         model: "parent-model",
         reasoningLevel: "low",
+        serviceTier: "fast",
       },
     },
     {
@@ -73,6 +77,20 @@ describe("child creation execution defaults", () => {
         providerId: "codex",
         model: "requested-model",
         reasoningLevel: "high",
+        serviceTier: "fast",
+      },
+    },
+    {
+      name: "honors an explicit service tier ahead of the parent",
+      parentProviderId: "codex",
+      hasParentExecution: true,
+      disabledProviderIds: [],
+      request: { serviceTier: "ultrafast" },
+      expected: {
+        providerId: "codex",
+        model: "parent-model",
+        reasoningLevel: "low",
+        serviceTier: "ultrafast",
       },
     },
     {
@@ -85,6 +103,7 @@ describe("child creation execution defaults", () => {
         providerId: "codex",
         model: "project-model",
         reasoningLevel: "medium",
+        serviceTier: "default",
       },
     },
     {
@@ -102,6 +121,7 @@ describe("child creation execution defaults", () => {
         providerId: "claude-code",
         model: "parent-model",
         reasoningLevel: "low",
+        serviceTier: "fast",
       },
     },
     {
@@ -114,6 +134,7 @@ describe("child creation execution defaults", () => {
         providerId: "codex",
         model: "project-model",
         reasoningLevel: "medium",
+        serviceTier: "default",
       },
     },
   ] satisfies {
@@ -123,9 +144,18 @@ describe("child creation execution defaults", () => {
     disabledProviderIds: string[];
     request: Pick<
       ThreadCreateServiceRequestInput,
-      "providerId" | "model" | "reasoningLevel" | "executionInputSources"
+      | "providerId"
+      | "model"
+      | "reasoningLevel"
+      | "serviceTier"
+      | "executionInputSources"
     >;
-    expected: { providerId: string; model: string; reasoningLevel: string };
+    expected: {
+      providerId: string;
+      model: string;
+      reasoningLevel: string;
+      serviceTier: string;
+    };
   }[];
 
   it.each(cases)(
@@ -158,6 +188,7 @@ describe("child creation execution defaults", () => {
             providerThreadId: "parent-session",
             model: "parent-model",
             reasoningLevel: "low",
+            serviceTier: "fast",
             permissionMode: "auto",
           });
         }
@@ -193,6 +224,7 @@ describe("child creation execution defaults", () => {
           providerId: child.providerId,
           model: start.command.options.model,
           reasoningLevel: start.command.options.reasoningLevel,
+          serviceTier: start.command.options.serviceTier,
         }).toEqual(expected);
       });
     },

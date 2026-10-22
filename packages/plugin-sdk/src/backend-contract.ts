@@ -580,7 +580,8 @@ export interface PluginDispatchExecution {
 /**
  * Where each execution value came from. `explicit` is a user choice,
  * `client-preference` a remembered client default, and null means core
- * resolved it from project/provider defaults. A hook that must not act against
+ * resolved it from the parent thread's latest turn or from project/provider
+ * defaults. A hook that must not act against
  * a deliberate choice checks for `explicit` here.
  */
 export interface PluginDispatchExecutionSources {
