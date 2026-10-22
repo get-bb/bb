@@ -19,8 +19,7 @@ import type {
   GitHostPullRequestLookup,
 } from "./git-host.js";
 import {
-  detectGitRepo,
-  detectLinkedWorktree,
+  inspectGitRepository,
   readDefaultBranch,
   WorkspaceError,
   type SharedGitRefsSnapshot,
@@ -195,14 +194,9 @@ async function provisionUnmanaged(
       `Unmanaged workspace path does not exist: ${opts.path}`,
     );
   }
-  const isGitRepo = await detectGitRepo(opts.path, {
+  const { isGitRepo, isWorktree } = await inspectGitRepository(opts.path, {
     ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
   });
-  const gitProcessOptions =
-    opts.shellPath === undefined ? {} : { shellPath: opts.shellPath };
-  const isWorktree = isGitRepo
-    ? await detectLinkedWorktree(opts.path, gitProcessOptions)
-    : false;
 
   return new ProvisionedHostWorkspace({
     path: opts.path,

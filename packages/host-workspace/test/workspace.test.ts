@@ -242,41 +242,96 @@ describe("Workspace", () => {
     );
   });
 
-  it("includes the default branch in the shared refs snapshot without depending on file edits", async () => {
-    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
-    const workspace = new Workspace(repoPath);
-    const initialSnapshot = await workspace.getSharedGitRefsSnapshot();
-    expect(initialSnapshot.defaultBranch).toBe("main");
+  it.for(["files", "reftable"])(
+    "includes the default branch in %s shared refs without depending on file edits",
+    async (format, context) => {
+      const repoPath = await makeTempDir("bb-workspace-repo-");
+      if (format === "reftable") {
+        const initialization = await runGit(
+          ["init", "--ref-format=reftable", "-b", "main"],
+          { cwd: repoPath, allowFailure: true },
+        );
+        if (initialization.exitCode !== 0) context.skip();
+      }
+      await initRepo(repoPath);
+      const workspace = new Workspace(repoPath);
+      const initialSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(initialSnapshot.defaultBranch).toBe("main");
 
-    await fs.writeFile(path.join(repoPath, "README.md"), "dirty\n", "utf8");
-    expect(await workspace.getSharedGitRefsSnapshot()).toEqual(initialSnapshot);
+      await fs.writeFile(path.join(repoPath, "README.md"), "dirty\n", "utf8");
+      expect(await workspace.getSharedGitRefsSnapshot()).toEqual(
+        initialSnapshot,
+      );
 
-    await runGit(["branch", "feature"], { cwd: repoPath });
-    const branchSnapshot = await workspace.getSharedGitRefsSnapshot();
-    expect(branchSnapshot.fingerprint).not.toBe(initialSnapshot.fingerprint);
-    expect(branchSnapshot.defaultBranch).toBe("main");
+      await runGit(["branch", "feature"], { cwd: repoPath });
+      const branchSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(branchSnapshot.fingerprint).not.toBe(initialSnapshot.fingerprint);
+      expect(branchSnapshot.defaultBranch).toBe("main");
 
-    await runGit(
-      ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"],
-      { cwd: repoPath },
-    );
-    const remoteSnapshot = await workspace.getSharedGitRefsSnapshot();
-    expect(remoteSnapshot.fingerprint).not.toBe(branchSnapshot.fingerprint);
-    expect(remoteSnapshot.defaultBranch).toBe("trunk");
+      await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
+        cwd: repoPath,
+      });
+      await runGit(["update-ref", "refs/remotes/origin/trunk", "HEAD"], {
+        cwd: repoPath,
+      });
+      await runGit(
+        [
+          "symbolic-ref",
+          "refs/remotes/origin/HEAD",
+          "refs/remotes/origin/main",
+        ],
+        { cwd: repoPath },
+      );
+      const originMainSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(originMainSnapshot.defaultBranch).toBe("main");
+      await runGit(
+        [
+          "symbolic-ref",
+          "refs/remotes/origin/HEAD",
+          "refs/remotes/origin/trunk",
+        ],
+        { cwd: repoPath },
+      );
+      const remoteSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(remoteSnapshot.fingerprint).not.toBe(
+        originMainSnapshot.fingerprint,
+      );
+      expect(remoteSnapshot.defaultBranch).toBe("trunk");
+      await runGit(["update-ref", "-d", "refs/remotes/origin/trunk"], {
+        cwd: repoPath,
+      });
+      expect((await workspace.getSharedGitRefsSnapshot()).defaultBranch).toBe(
+        "trunk",
+      );
+      await runGit(
+        [
+          "symbolic-ref",
+          "refs/remotes/origin/trunk",
+          "refs/remotes/origin/missing",
+        ],
+        { cwd: repoPath },
+      );
+      expect((await workspace.getSharedGitRefsSnapshot()).defaultBranch).toBe(
+        "missing",
+      );
+      await runGit(["symbolic-ref", "--delete", "refs/remotes/origin/trunk"], {
+        cwd: repoPath,
+      });
 
-    await runGit(["symbolic-ref", "--delete", "refs/remotes/origin/HEAD"], {
-      cwd: repoPath,
-    });
-    await runGit(["branch", "-m", "main", "master"], { cwd: repoPath });
-    expect((await workspace.getSharedGitRefsSnapshot()).defaultBranch).toBe(
-      "master",
-    );
-    await runGit(["checkout", "feature"], { cwd: repoPath });
-    await runGit(["branch", "-D", "master"], { cwd: repoPath });
-    expect((await workspace.getSharedGitRefsSnapshot()).defaultBranch).toBe(
-      "feature",
-    );
-  });
+      await runGit(["symbolic-ref", "--delete", "refs/remotes/origin/HEAD"], {
+        cwd: repoPath,
+      });
+      await runGit(["branch", "-m", "main", "master"], { cwd: repoPath });
+      expect((await workspace.getSharedGitRefsSnapshot()).defaultBranch).toBe(
+        "master",
+      );
+      await runGit(["checkout", "feature"], { cwd: repoPath });
+      await runGit(["branch", "-D", "master"], { cwd: repoPath });
+      expect((await workspace.getSharedGitRefsSnapshot()).defaultBranch).toBe(
+        "feature",
+      );
+    },
+  );
 
   it("returns grouped status details only when merge-base data is requested", async () => {
     const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
