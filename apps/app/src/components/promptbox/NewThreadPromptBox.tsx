@@ -117,7 +117,6 @@ export interface NewThreadModeConfig {
   environmentProviderInputsSlot?: ReactNode;
   machineProviderInputsSlot?: ReactNode;
   banner?: ReactNode;
-  header?: ReactNode;
 }
 
 interface NewThreadPromptBoxUIProps {
@@ -335,7 +334,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         editorLayout="root-compose"
         minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
         placeholder={placeholder}
-        header={modeConfig.header}
         footerStart={<ExecutionControls {...execution} />}
       />
       <div

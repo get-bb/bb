@@ -654,7 +654,6 @@ interface PromptBoxInternalProps {
   autoFocus?: boolean;
   textEffects?: readonly ComposerTextEffectSource[];
   onComposerLayoutChange?: (layout: ComposerView["layout"]) => void;
-  header?: ReactNode;
   modeHeader?: ReactNode;
   footerStart?: ReactNode;
   submitAccessory?: ReactNode;
@@ -1271,7 +1270,6 @@ export function PromptBoxInternal({
   autoFocus = true,
   textEffects,
   onComposerLayoutChange,
-  header,
   modeHeader,
   footerStart,
   submitAccessory,
@@ -3788,15 +3786,6 @@ export function PromptBoxInternal({
             showVoiceActionGroup && "pointer-events-none",
           )}
         >
-          {header && !showCompactLayout ? (
-            <div
-              data-promptbox-expanded-only=""
-              inert={showVoiceActionGroup ? true : undefined}
-              className="pl-4 pr-14 pt-3"
-            >
-              {header}
-            </div>
-          ) : null}
           {showCompactLayout ? (
             <AttachmentPreview
               compact

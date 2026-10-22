@@ -316,7 +316,10 @@ function InfoRowTouchActionsMenu({
         <button
           type="button"
           aria-label="More actions"
-          className={cn(INFO_ROW_ACTION_CLASS, "hidden [@media(hover:none)]:flex")}
+          className={cn(
+            INFO_ROW_ACTION_CLASS,
+            "hidden [@media(hover:none)]:flex",
+          )}
         >
           <Icon name="MoreHorizontal" className="size-3" aria-hidden />
         </button>

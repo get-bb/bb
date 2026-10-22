@@ -58,7 +58,10 @@ export function toPluginSidebarThread(
     pinSortKey: entry.pinSortKey,
     isArchived: entry.archivedAt !== null,
     archivedAt: entry.archivedAt,
-    href: getThreadRoutePath({ projectId: entry.projectId, threadId: entry.id }),
+    href: getThreadRoutePath({
+      projectId: entry.projectId,
+      threadId: entry.id,
+    }),
     isHidden: entry.visibility === "hidden",
     environment:
       entry.environmentId === null

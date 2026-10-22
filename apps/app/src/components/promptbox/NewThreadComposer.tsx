@@ -204,7 +204,6 @@ interface NewThreadComposerPromptOptions {
   placeholder?: string;
   autoFocus?: boolean;
   banner?: ReactNode;
-  header?: ReactNode;
   blockedReason?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   pluginComposerHost?: PluginComposerHost;
@@ -2079,7 +2078,6 @@ export function NewThreadComposer({
                   }
                 />
               )),
-            header: options.header,
           }}
           project={{
             projects: projectOptions,

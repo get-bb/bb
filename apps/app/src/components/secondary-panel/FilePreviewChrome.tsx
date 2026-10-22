@@ -95,15 +95,15 @@ export function FilePreviewLoading({
       {showHeader ? (
         <FilePreviewHeaderFrame>
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span
-            className={cn(
-              "flex items-center justify-center text-subtle-foreground",
-              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-            )}
-          >
-            <Icon name="File" className="size-full" aria-hidden />
-          </span>
-          <FilePreviewPath path={path} copyPath={copyPath} />
+            <span
+              className={cn(
+                "flex items-center justify-center text-subtle-foreground",
+                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+              )}
+            >
+              <Icon name="File" className="size-full" aria-hidden />
+            </span>
+            <FilePreviewPath path={path} copyPath={copyPath} />
           </div>
         </FilePreviewHeaderFrame>
       ) : null}

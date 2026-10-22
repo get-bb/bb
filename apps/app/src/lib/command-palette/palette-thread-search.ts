@@ -1,7 +1,4 @@
-import {
-  PERSONAL_PROJECT_ID,
-  type ThreadListEntry,
-} from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { fuzzyMatchText } from "@bb/fuzzy-match";
 import type {
   ThreadSearchMatch,
@@ -123,7 +120,10 @@ function serverRow(
           },
     projectName: projectMetadata(thread.projectId, projectNamesById),
     projectHighlightRanges: [],
-    relativeTime: formatRelativeTime({ timestamp: sortDate(thread, sort), now }),
+    relativeTime: formatRelativeTime({
+      timestamp: sortDate(thread, sort),
+      now,
+    }),
     projectId: thread.projectId,
     threadId: thread.id,
     thread,
