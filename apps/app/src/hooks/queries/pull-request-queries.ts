@@ -6,8 +6,8 @@ import {
   type PullRequest,
 } from "bb-plugin-bb--github-pr-status/contract";
 import {
-  experimental_useRpcKeyedQuery,
-  experimental_useRpcMutation,
+  experimental_useRpcKeyedQuery as useRpcKeyedQuery,
+  experimental_useRpcMutation as useRpcMutation,
 } from "@/lib/plugin-sdk-hooks";
 
 const OPEN_PULL_REQUEST_STALE_MS = 30_000;
@@ -55,7 +55,7 @@ export function useEnvironmentPullRequest(
   options: { enabled?: boolean } = {},
 ): EnvironmentPullRequestState {
   const enabled = (options.enabled ?? true) && Boolean(environmentId);
-  const query = experimental_useRpcKeyedQuery({
+  const query = useRpcKeyedQuery({
     pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
     contract: githubPrStatusRpcContract,
     method: "pullRequests",
@@ -113,17 +113,17 @@ export function useEnvironmentPullRequest(
 }
 
 export function usePullRequestActions() {
-  const markReady = experimental_useRpcMutation({
+  const markReady = useRpcMutation({
     pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
     contract: githubPrStatusRpcContract,
     method: "markReady",
   });
-  const markDraft = experimental_useRpcMutation({
+  const markDraft = useRpcMutation({
     pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
     contract: githubPrStatusRpcContract,
     method: "markDraft",
   });
-  const merge = experimental_useRpcMutation({
+  const merge = useRpcMutation({
     pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
     contract: githubPrStatusRpcContract,
     method: "merge",
