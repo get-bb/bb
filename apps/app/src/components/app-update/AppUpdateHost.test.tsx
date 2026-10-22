@@ -54,6 +54,7 @@ function status(
     blocked: null,
     current: { commit: null, version: "1.1.0" },
     lastResult: null,
+    resumedThreadCount: 0,
     runningThreadCount: 0,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
@@ -109,6 +110,23 @@ describe("AppUpdateHost", () => {
       });
     });
     expect(appToast.success).toHaveBeenCalledOnce();
+  });
+
+  it("announces how many threads resumed after the update", async () => {
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      status({ lastResult: result(), resumedThreadCount: 3 }),
+    );
+    vi.mocked(sdk.system.acknowledgeAppUpdate).mockResolvedValue(
+      status({ lastResult: result({ acknowledged: true }) }),
+    );
+
+    renderHost();
+
+    await waitFor(() => {
+      expect(appToast.success).toHaveBeenCalledWith(
+        "Updated to bb 1.1.0 · 3 threads picking up where they left off",
+      );
+    });
   });
 
   it("keeps a failure visible until dismissed from its details", async () => {

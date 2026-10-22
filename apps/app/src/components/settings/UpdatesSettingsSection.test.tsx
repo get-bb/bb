@@ -318,6 +318,7 @@ function makeAppUpdateStatus(
     blocked: null,
     current: { commit: null, version: "0.0.5" },
     lastResult: null,
+    resumedThreadCount: 0,
     runningThreadCount: 0,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
@@ -1914,7 +1915,7 @@ The canonical release summary.
     expect(sdk.system.appUpdate).toHaveBeenCalledWith({ force: true });
   });
 
-  it("asks before an update interrupts running threads", async () => {
+  it("asks before an update stops running commands", async () => {
     useWebApp();
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({ runningThreadCount: 2 }),
@@ -1931,11 +1932,14 @@ The canonical release summary.
     );
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/2 threads are running/)).toBeDefined();
+    expect(within(dialog).getByText("Update bb?")).toBeDefined();
+    expect(
+      within(dialog).getByText(
+        "2 commands are running. Updating stops them now. bb is back in under a minute, and each agent picks up where it left off.",
+      ),
+    ).toBeDefined();
     expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Update and restart" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
@@ -1971,17 +1975,34 @@ The canonical release summary.
     );
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
+    expect(within(dialog).getByText(/1 command is running/)).toBeDefined();
     expect(appToast.error).not.toHaveBeenCalled();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Update and restart" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenLastCalledWith({
         confirmInterruptingThreads: true,
         entry: "settings",
       });
     });
+  });
+
+  it("keeps the update unstarted when the confirmation is declined", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 1 }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
   });
 
   it("retries an unavailable release check from the app row", async () => {
@@ -2485,4 +2506,53 @@ The canonical release summary.
       expect(installUpdate).not.toHaveBeenCalled();
     },
   );
+
+  it("relaunches a downloaded desktop update through the server so running threads resume", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      downloadState: "downloaded",
+      lastCheckedAt: null,
+      latestVersion: "0.0.6",
+      pendingVersion: "0.0.6",
+      platform: "macos",
+      updateAvailable: true,
+      updateDownloaded: true,
+      version: "0.0.5",
+    };
+    const installUpdate = vi.fn().mockResolvedValue(undefined);
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: {
+        checkForUpdates: vi.fn().mockResolvedValue(desktopInfo),
+        installUpdate,
+      } as unknown as BbDesktopApi,
+      desktopInfo,
+      isDesktop: true,
+    });
+    hostDaemon.localDaemonHostId = "host_laptop";
+    useUpdateInventoryMock.mockReturnValue(desktopFleet());
+    const status = makeAppUpdateStatus({
+      desktopUpdateSupported: true,
+      runningThreadCount: 3,
+      support: { kind: "unsupported", reason: "desktop" },
+    });
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(status);
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(status);
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Relaunch bb to finish updating/,
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/3 commands are running/)).toBeDefined();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    await waitFor(() =>
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: true,
+        entry: "desktop_relaunch",
+      }),
+    );
+    expect(installUpdate).not.toHaveBeenCalled();
+  });
 });

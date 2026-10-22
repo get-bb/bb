@@ -49,6 +49,18 @@ export function describeAppUpdateResult(
   }
 }
 
+export function appUpdateSuccessTitle(
+  result: SystemAppUpdateResult,
+  resumedThreadCount: number,
+): string {
+  if (resumedThreadCount === 0) return describeAppUpdateResult(result).title;
+  const resumed =
+    resumedThreadCount === 1
+      ? "1 thread picking up where it left off"
+      : `${String(resumedThreadCount)} threads picking up where they left off`;
+  return `Updated to bb ${result.to.version} · ${resumed}`;
+}
+
 export function pendingAppUpdateResult(
   status: SystemAppUpdateStatus | undefined,
 ): SystemAppUpdateResult | null {
@@ -104,8 +116,12 @@ export function runningThreadCountFromError(error: unknown): number | null {
   return parsed.success ? parsed.data.details.runningThreadCount : null;
 }
 
-export function runningThreadsWarning(count: number): string {
-  return `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${
-    count === 1 ? "it" : "them"
-  }.`;
+export function appUpdateConfirmDescription(
+  runningThreadCount: number,
+): string {
+  const running =
+    runningThreadCount === 1
+      ? "1 command is running. Updating stops it now."
+      : `${String(runningThreadCount)} commands are running. Updating stops them now.`;
+  return `${running} bb is back in under a minute, and each agent picks up where it left off.`;
 }

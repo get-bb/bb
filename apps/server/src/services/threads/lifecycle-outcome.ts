@@ -1,10 +1,12 @@
 import {
   getThread,
+  hasUnclaimedQueuedSystemNotice,
   applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
   type ApplyThreadLifecycleEventArgs,
   type ApplyThreadLifecycleEventOutcome,
   type DbConnection,
+  type DbQueryConnection,
   type DbTransaction,
 } from "@bb/db";
 import { recordFinishedTurn } from "../system/turn-telemetry.js";
@@ -28,10 +30,19 @@ import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
  * handled.
  */
 function announceTurnFailed(
+  db: DbQueryConnection,
   args: ApplyThreadLifecycleEventArgs,
   outcome: ApplyThreadLifecycleEventOutcome,
 ): void {
   if (!outcome.applied || args.event.type !== "run.failed") return;
+  if (
+    hasUnclaimedQueuedSystemNotice(db, {
+      kind: "app-update-resume",
+      threadId: args.threadId,
+    })
+  ) {
+    return;
+  }
   emitPluginTurnFailed(args.threadId);
 }
 
@@ -84,7 +95,7 @@ export function applyLoggedThreadLifecycleEvent(
   }
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
   emitPluginThreadLifecycleOutcome(outcome);
-  announceTurnFailed(args, outcome);
+  announceTurnFailed(deps.db, args, outcome);
   return outcome;
 }
 
@@ -99,6 +110,6 @@ export function applyLoggedThreadLifecycleEventInTransaction(
   }
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
   emitPluginThreadLifecycleOutcome(outcome);
-  announceTurnFailed(args, outcome);
+  announceTurnFailed(deps.db, args, outcome);
   return outcome;
 }

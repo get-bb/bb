@@ -1,3 +1,4 @@
+import { createAppUpdateResumer } from "./services/system/app-update-resume.js";
 import { createAppUpdateTelemetry } from "./services/system/app-update-telemetry.js";
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
@@ -267,6 +268,23 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
+  const appUpdateResumer = createAppUpdateResumer({
+    deps: {
+      aiServices,
+      config: runtimeConfig,
+      db,
+      hub,
+      lifecycleDedupers,
+      logger,
+      machineAuth,
+      pendingInteractions,
+      pluginHostArtifacts,
+      providerRegistry,
+      skillTreeRegistry,
+      telemetry,
+      terminalSessions,
+    },
+  });
   const appUpdateTelemetry = createAppUpdateTelemetry({
     currentRevision:
       serverConfig.BB_APP_INSTALL_KIND === "source"
@@ -277,8 +295,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
     telemetry,
   });
-  const listRunningThreadProviders = (): string[] =>
-    listRunningThreads(db).map((row) => row.providerId);
   const appUpdateMode = serverConfig.BB_APP_UPDATE_MODE ?? null;
   const desktopUpdateChannel =
     serverConfig.BB_APP_SURFACE === "desktop"
@@ -297,10 +313,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           countRunningThreads: () => listRunningThreads(db).length,
           launcher:
             appUpdateMode === null ? null : createLauncherChannel(process),
-          listRunningThreadProviders,
           logger,
           mode: appUpdateMode,
           notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          resumer: appUpdateResumer,
           telemetry: appUpdateTelemetry,
         })
       : createDesktopAppUpdateService({
@@ -308,9 +324,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           currentVersion: runtimeConfig.appVersion,
           dataDir: serverConfig.BB_DATA_DIR,
           countRunningThreads: () => listRunningThreads(db).length,
-          listRunningThreadProviders,
           notifyChanged: () => hub.notifySystem(["app-update-changed"]),
           logger,
+          resumer: appUpdateResumer,
           telemetry: appUpdateTelemetry,
         });
   const cliCommand = createCliCommandService({
@@ -437,8 +453,17 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
+    let threadsResumed = 0;
+    try {
+      threadsResumed = appUpdateResumer.releaseResumes();
+    } catch (error) {
+      logger.error(
+        { err: error },
+        "Could not resume threads paused for the bb update",
+      );
+    }
     await appUpdateTelemetry
-      .reportFinished({ threadsResumed: 0 })
+      .reportFinished({ threadsResumed })
       .catch((error: unknown) => {
         logger.warn({ err: error }, "Could not report the finished app update");
       });

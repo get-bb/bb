@@ -294,6 +294,7 @@ function appUpdateStatus(
     blocked: null,
     current: { commit: null, version: "0.0.32" },
     lastResult: null,
+    resumedThreadCount: 0,
     runningThreadCount: 0,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
@@ -342,6 +343,7 @@ describe("bb updates app command output", () => {
         },
         current: { version: "0.0.32", commit: null },
         lastResult: null,
+        resumedThreadCount: 0,
         runningThreadCount: 0,
         support: { kind: "supported", mode: "npm" },
       })),
@@ -384,7 +386,7 @@ describe("bb updates app command output", () => {
     ]);
   });
 
-  it("bb updates app apply confirms before interrupting threads, then follows the restart", async () => {
+  it("bb updates app apply confirms before stopping commands, then follows the restart", async () => {
     const statuses = [
       appUpdateStatus({ runningThreadCount: 2 }),
       appUpdateStatus({
@@ -422,7 +424,7 @@ describe("bb updates app command output", () => {
     await runCommand(["updates", "app", "apply"], register);
 
     expect(readlineMocks.question).toHaveBeenCalledWith(
-      expect.stringContaining("2 threads are running"),
+      "2 commands are running. Updating stops them now. bb is back in under a minute, and each agent picks up where it left off. Update bb? [y/N] ",
     );
     expect(apply).toHaveBeenCalledWith({
       json: { confirmInterruptingThreads: true, entry: "cli" },
@@ -464,7 +466,28 @@ describe("bb updates app command output", () => {
     );
   });
 
-  it("bb updates app apply refuses to interrupt threads without a terminal or --yes", async () => {
+  it("bb updates app apply does not start the update when the confirmation is declined", async () => {
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 1 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+    });
+    readlineMocks.question.mockResolvedValue("n");
+
+    await runCommand(["updates", "app", "apply"], register);
+
+    expect(readlineMocks.question).toHaveBeenCalledWith(
+      expect.stringContaining("1 command is running. Updating stops it now."),
+    );
+    expect(apply).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Update cancelled.",
+    ]);
+  });
+
+  it("bb updates app apply refuses to stop commands without a terminal or --yes", async () => {
     Object.defineProperty(process.stdin, "isTTY", {
       value: false,
       configurable: true,

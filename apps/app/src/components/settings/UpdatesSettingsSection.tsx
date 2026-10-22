@@ -62,18 +62,14 @@ import {
   type ChangelogBlock,
 } from "@/components/settings/changelog-preview";
 import { openAppUpdateResultDetails } from "@/components/app-update/app-update-details-store";
+import { AppUpdateConfirmDialog } from "@/components/app-update/AppUpdateConfirmDialog";
 import {
   formatAppUpdateRevision,
   formatAppUpdateTarget,
   isDesktopOwnedServer,
   pendingAppUpdateResult,
   runningThreadCountFromError,
-  runningThreadsWarning,
 } from "@/components/app-update/app-update-presentation";
-import {
-  ConfirmDeleteDialog,
-  ConfirmDeleteDialogContent,
-} from "@bb/shared-ui/confirm-delete-dialog";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
@@ -2028,16 +2024,20 @@ export function UpdatesSettingsSection({
   const [confirmingAppUpdateThreads, setConfirmingAppUpdateThreads] = useState<
     number | null
   >(null);
+  const [appUpdateEntry, setAppUpdateEntry] = useState<
+    "settings" | "desktop_relaunch"
+  >("settings");
   const appUpdate = appUpdateStatus.data;
 
-  function startAppUpdate(): void {
+  function startAppUpdate(entry: "settings" | "desktop_relaunch"): void {
+    setAppUpdateEntry(entry);
     const runningThreadCount = appUpdate?.runningThreadCount ?? 0;
     if (runningThreadCount > 0) {
       setConfirmingAppUpdateThreads(runningThreadCount);
       return;
     }
     applyAppUpdate.mutate(
-      { confirmInterruptingThreads: false, entry: "settings" },
+      { confirmInterruptingThreads: false, entry },
       {
         onError: (error) => {
           const count = runningThreadCountFromError(error);
@@ -2124,13 +2124,15 @@ export function UpdatesSettingsSection({
   const relaunchDesktop =
     desktopApi === null || showFallbackBbStatus
       ? null
-      : () => {
-          void desktopApi.installUpdate().catch((error) => {
-            appToast.error("Relaunch failed", {
-              description: checkErrorDescription(error),
+      : appUpdate?.desktopUpdateSupported === true
+        ? () => startAppUpdate("desktop_relaunch")
+        : () => {
+            void desktopApi.installUpdate().catch((error) => {
+              appToast.error("Relaunch failed", {
+                description: checkErrorDescription(error),
+              });
             });
-          });
-        };
+          };
   const retryDesktop =
     desktopApi === null || showFallbackBbStatus
       ? null
@@ -2154,7 +2156,7 @@ export function UpdatesSettingsSection({
       desktopInfo={useServerUpdate ? null : desktopInfo}
       isDesktop={!useServerUpdate && isDesktop}
       isChecking={isChecking}
-      onApplyAppUpdate={startAppUpdate}
+      onApplyAppUpdate={() => startAppUpdate("settings")}
       onRetryAppCheck={handleCheckForUpdates}
       onShowAppUpdateResult={openAppUpdateResultDetails}
       onRelaunchDesktop={useServerUpdate ? null : relaunchDesktop}
@@ -2223,26 +2225,17 @@ export function UpdatesSettingsSection({
           void invalidateHostProviderCliStatus({ queryClient, hostId });
         }}
       />
-      <ConfirmDeleteDialog
-        open={confirmingAppUpdateThreads !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmingAppUpdateThreads(null);
+      <AppUpdateConfirmDialog
+        runningThreadCount={confirmingAppUpdateThreads}
+        pending={applyAppUpdate.isPending}
+        onCancel={() => setConfirmingAppUpdateThreads(null)}
+        onConfirm={() => {
+          applyAppUpdate.mutate(
+            { confirmInterruptingThreads: true, entry: appUpdateEntry },
+            { onSettled: () => setConfirmingAppUpdateThreads(null) },
+          );
         }}
-      >
-        <ConfirmDeleteDialogContent
-          title="Update bb now?"
-          description={runningThreadsWarning(confirmingAppUpdateThreads ?? 0)}
-          confirmLabel="Update and restart"
-          pending={applyAppUpdate.isPending}
-          onCancel={() => setConfirmingAppUpdateThreads(null)}
-          onConfirm={() => {
-            applyAppUpdate.mutate(
-              { confirmInterruptingThreads: true, entry: "settings" },
-              { onSettled: () => setConfirmingAppUpdateThreads(null) },
-            );
-          }}
-        />
-      </ConfirmDeleteDialog>
+      />
     </div>
   );
 }

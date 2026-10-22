@@ -13,7 +13,8 @@ import {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
-import type { AppUpdateService } from "./app-update.js";
+import { restartTelemetry, type AppUpdateService } from "./app-update.js";
+import type { AppUpdateResumer } from "./app-update-resume.js";
 import type { AppUpdateTelemetry } from "./app-update-telemetry.js";
 import type { DesktopUpdateChannel } from "./desktop-update-channel.js";
 
@@ -30,9 +31,9 @@ export function createDesktopAppUpdateService(args: {
   currentVersion: string;
   dataDir: string;
   countRunningThreads: () => number;
-  listRunningThreadProviders: () => string[];
   notifyChanged: () => void;
   logger: ServerLogger;
+  resumer: AppUpdateResumer;
   telemetry: AppUpdateTelemetry;
 }): AppUpdateService {
   const path = join(args.dataDir, "bb-desktop-app-update.json");
@@ -135,6 +136,7 @@ export function createDesktopAppUpdateService(args: {
       activity,
       lastResult,
       runningThreadCount: args.countRunningThreads(),
+      resumedThreadCount: args.resumer.resumedThreadCount(),
     };
   };
   const waitForDownload = async (version: string): Promise<void> => {
@@ -200,6 +202,12 @@ export function createDesktopAppUpdateService(args: {
         );
       }
       abort.signal.throwIfAborted();
+      const interrupted = await args.resumer.interrupt();
+      abort.signal.throwIfAborted();
+      await args.resumer.parkResumes({
+        result: interrupted,
+        targetVersion: version,
+      });
       await mutateManagedJsonFile({
         path,
         read: readState,
@@ -212,21 +220,12 @@ export function createDesktopAppUpdateService(args: {
         targetVersion: version,
       };
       args.notifyChanged();
-      const providers = args.listRunningThreadProviders();
-      await args.telemetry.restarting({
-        reason: providers.length > 0 ? "update_now" : "nothing_running",
-        targetRevision: version,
-        threads: providers.map((providerId) => ({
-          providerId,
-          saveResult: "forced",
-          stopMethod: "none",
-        })),
-        waitMs: 0,
-      });
+      await args.telemetry.restarting(restartTelemetry(interrupted, version));
       await delay(1_500, undefined, { signal: abort.signal });
       await args.channel.request("install");
     } catch (error) {
       if (abort.signal.aborted) return;
+      args.resumer.releaseResumes();
       const failure: SystemAppUpdateStatus["lastResult"] = {
         ...result,
         finishedAt: new Date().toISOString(),

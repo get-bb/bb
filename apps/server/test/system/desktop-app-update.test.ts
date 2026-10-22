@@ -9,6 +9,7 @@ import type {
 import { createDesktopAppUpdateService } from "../../src/services/system/desktop-app-update.js";
 import type { DesktopUpdateChannel } from "../../src/services/system/desktop-update-channel.js";
 import type { AppUpdateService } from "../../src/services/system/app-update.js";
+import { createFakeAppUpdateResumer } from "../helpers/app-update-resumer.js";
 import { createFakeAppUpdateTelemetry } from "../helpers/app-update-telemetry.js";
 import { testLogger } from "../helpers/test-app.js";
 
@@ -51,6 +52,7 @@ async function fixture() {
   roots.push(dataDir);
   const channel = new DesktopChannel();
   const running = { count: 0 };
+  const resumer = createFakeAppUpdateResumer();
   const telemetry = createFakeAppUpdateTelemetry();
   const create = (currentVersion: string) => {
     const service = createDesktopAppUpdateService({
@@ -58,16 +60,22 @@ async function fixture() {
       currentVersion,
       dataDir,
       countRunningThreads: () => running.count,
-      listRunningThreadProviders: () =>
-        Array.from({ length: running.count }, () => "codex"),
       notifyChanged: vi.fn(),
       logger: testLogger,
+      resumer,
       telemetry,
     });
     services.push(service);
     return service;
   };
-  return { channel, running, telemetry, create, service: create("1.0.0") };
+  return {
+    channel,
+    running,
+    resumer,
+    telemetry,
+    create,
+    service: create("1.0.0"),
+  };
 }
 
 afterEach(async () => {
@@ -77,8 +85,9 @@ afterEach(async () => {
 });
 
 describe("desktop-hosted server updates", () => {
-  it("confirms running threads, waits for the download, and records the new server after restart", async () => {
-    const { service, channel, running, telemetry, create } = await fixture();
+  it("confirms running threads, waits for the download, saves them, and records the new server after restart", async () => {
+    const { service, channel, running, resumer, telemetry, create } =
+      await fixture();
     const status = await service.getStatus({ forceRefresh: true });
     expect(status).toMatchObject({
       desktopUpdateSupported: true,
@@ -117,6 +126,7 @@ describe("desktop-hosted server updates", () => {
         ).toHaveLength(1),
       { timeout: 3_000 },
     );
+    expect(resumer.calls).toEqual(["interrupt", "park"]);
     expect(telemetry.calls).toEqual([
       {
         method: "started",
@@ -125,12 +135,9 @@ describe("desktop-hosted server updates", () => {
       {
         method: "restarting",
         args: {
-          reason: "update_now",
+          reason: "nothing_running",
           targetRevision: "1.1.0",
-          threads: [
-            { providerId: "codex", saveResult: "forced", stopMethod: "none" },
-            { providerId: "codex", saveResult: "forced", stopMethod: "none" },
-          ],
+          threads: [],
           waitMs: 0,
         },
       },

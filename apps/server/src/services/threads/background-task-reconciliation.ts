@@ -3,6 +3,7 @@ import {
   getLatestThreadSequence,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  type DbConnection,
   type DbNotifier,
   type DbTransaction,
   type OpenBackgroundTaskItemRow,
@@ -43,6 +44,21 @@ function parseStoredBackgroundTaskItem(
   } catch {
     return null;
   }
+}
+
+export function listOpenBackgroundTaskDescriptionsByThread(
+  db: DbConnection,
+  hostId: string,
+): Map<string, string[]> {
+  const byThread = new Map<string, string[]>();
+  for (const row of listOpenBackgroundTaskItemRowsForHost(db, { hostId })) {
+    const item = parseStoredBackgroundTaskItem(row);
+    if (!item) continue;
+    const descriptions = byThread.get(row.threadId) ?? [];
+    descriptions.push(item.description);
+    byThread.set(row.threadId, descriptions);
+  }
+  return byThread;
 }
 
 export function settleDanglingBackgroundTasks(

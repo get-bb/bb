@@ -132,10 +132,14 @@ CLI counterpart of Settings → Updates.
                                           version, and the last result
     --json                                Print the status as JSON
   bb updates app apply                    Download the update and restart bb into it
-    --yes                                 Interrupt running threads without asking
+    --yes                                 Stop running threads without asking
     --no-wait                             Return once the update starts
     --json                                Print the final status as JSON
   bb updates app dismiss                  Mark the last update result as seen
+
+When threads are running, `bb updates app apply` asks first, then stops them and
+restarts right away. After the restart, each interrupted thread gets one message
+naming the command it was running, and the agent checks it and continues.
 
 `bb updates app apply` also updates a server hosted by the desktop app, restarting
 that hosting app through its native updater. It never updates the desktop you

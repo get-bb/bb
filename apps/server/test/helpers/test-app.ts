@@ -1,5 +1,6 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { createFakeAppUpdateTelemetry } from "./app-update-telemetry.js";
+import { createFakeAppUpdateResumer } from "./app-update-resumer.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
@@ -302,11 +303,10 @@ export async function createTestAppHarness(
       config,
       countRunningThreads: () => listRunningThreads(db).length,
       launcher: null,
-      listRunningThreadProviders: () =>
-        listRunningThreads(db).map((row) => row.providerId),
       logger,
       mode: null,
       notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+      resumer: createFakeAppUpdateResumer(),
       telemetry: createFakeAppUpdateTelemetry(),
     });
   const deps: ServerAppDeps = {

@@ -21,6 +21,7 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
+import { createAppUpdateResumer } from "../../src/services/system/app-update-resume.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
@@ -432,6 +433,57 @@ describe("the turn.failed announcement", () => {
 
       failThread(harness, failing.id);
       expect(announced).toEqual([failing.id]);
+    });
+  });
+
+  it("is not announced for a turn a bb update cut off, and announces the resumed turn's own failure as a first attempt", async () => {
+    await withTestHarness(async (harness) => {
+      const announced = recordTurnFailedAnnouncements();
+      const {
+        environment,
+        requestId,
+        thread: interrupted,
+      } = seedFailableThread(harness, "host-update");
+      const resumer = createAppUpdateResumer({ deps: harness.deps });
+      await resumer.parkResumes({
+        result: {
+          idleThreadsWithJobs: [],
+          threads: [
+            {
+              command: "pnpm test",
+              providerId: "codex",
+              threadId: interrupted.id,
+            },
+          ],
+          waitMs: 0,
+        },
+        targetVersion: "1.1.0",
+      });
+
+      failThread(harness, interrupted.id);
+      expect(announced).toEqual([]);
+      expect(listQueuedThreadMessages(harness.db, interrupted.id)).toHaveLength(
+        1,
+      );
+
+      resumer.releaseResumes();
+      await sweepPastResume(harness);
+      expect(turnRequests(harness, interrupted.id)).toHaveLength(2);
+      expect(lastTurnRequest(harness, interrupted.id).retryAttempt).toBe(
+        undefined,
+      );
+
+      seedRateLimitFailure(harness, {
+        environmentId: environment.id,
+        threadId: interrupted.id,
+        resetsAtMs: Date.now() + 3_600_000,
+      });
+      failThread(harness, interrupted.id);
+      expect(announced).toEqual([interrupted.id]);
+      const failed = buildTurnFailedEvent(harness.db, interrupted.id);
+      expect(failed?.attemptNumber).toBe(1);
+      expect(failed?.requestId).not.toBe(requestId);
+      expect(failed?.errorInfo?.category).toBe("rate-limit");
     });
   });
 });

@@ -37,6 +37,8 @@ import {
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppUpdateService } from "../../../apps/server/src/services/system/app-update.js";
+import { createFakeAppUpdateResumer } from "../../../apps/server/test/helpers/app-update-resumer.js";
+import { createFakeAppUpdateTelemetry } from "../../../apps/server/test/helpers/app-update-telemetry.js";
 import { createCliCommandService } from "../../../apps/server/src/services/system/cli-command.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
@@ -260,6 +262,8 @@ async function startIntegrationServer(
     logger: testLogger,
     mode: null,
     notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+    resumer: createFakeAppUpdateResumer(),
+    telemetry: createFakeAppUpdateTelemetry(),
   });
   const serverDeps = {
     appUpdate,

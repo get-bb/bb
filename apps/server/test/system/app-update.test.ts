@@ -14,6 +14,7 @@ import {
   createLauncherChannel,
   type LauncherChannel,
 } from "../../src/services/system/launcher-channel.js";
+import { createFakeAppUpdateResumer } from "../helpers/app-update-resumer.js";
 import { createFakeAppUpdateTelemetry } from "../helpers/app-update-telemetry.js";
 import { testLogger } from "../helpers/test-app.js";
 
@@ -118,11 +119,11 @@ function createService(args: {
     config: { appVersion: "1.0.0", isDevelopment: args.isDevelopment ?? false },
     countRunningThreads: () => args.runningThreads ?? 0,
     launcher,
-    listRunningThreadProviders: () => [],
     logger: testLogger,
     mode: args.mode === undefined ? "npm" : args.mode,
     notifyChanged,
     ...(args.now === undefined ? {} : { now: args.now }),
+    resumer: createFakeAppUpdateResumer(),
     telemetry: createFakeAppUpdateTelemetry(),
   });
   launcher?.push({});
@@ -383,6 +384,7 @@ describe("app update service", () => {
   it("restarts a staged update once no unconfirmed threads are running", async () => {
     let runningThreads = 0;
     const launcher = new FakeLauncher();
+    const resumer = createFakeAppUpdateResumer();
     const service = createAppUpdateService({
       currentCommit: null,
       appSurface: "web",
@@ -390,10 +392,10 @@ describe("app update service", () => {
       config: { appVersion: "1.0.0", isDevelopment: false },
       countRunningThreads: () => runningThreads,
       launcher,
-      listRunningThreadProviders: () => [],
       logger: testLogger,
       mode: "npm",
       notifyChanged: vi.fn(),
+      resumer,
       telemetry: createFakeAppUpdateTelemetry(),
     });
     launcher.push({});
@@ -441,7 +443,48 @@ describe("app update service", () => {
         targetVersion: "1.1.0",
       },
     });
-    expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+    await vi.waitFor(() =>
+      expect(launcher.requests.at(-1)).toEqual({ type: "restart" }),
+    );
+    expect(resumer.calls).toEqual(["interrupt", "park"]);
+  });
+
+  it("releases parked resumes when the launcher rejects the restart", async () => {
+    const launcher = new FakeLauncher();
+    const resumer = createFakeAppUpdateResumer();
+    const service = createAppUpdateService({
+      currentCommit: null,
+      appSurface: "web",
+      appVersion: appVersion({}),
+      config: { appVersion: "1.0.0", isDevelopment: false },
+      countRunningThreads: () => 1,
+      launcher,
+      logger: testLogger,
+      mode: "npm",
+      notifyChanged: vi.fn(),
+      resumer,
+      telemetry: createFakeAppUpdateTelemetry(),
+    });
+    launcher.push({});
+    await service.apply({
+      confirmInterruptingThreads: true,
+      entry: "settings",
+    });
+    launcher.respond = async (request) => {
+      if (request.type === "restart") throw new Error("launcher went away");
+      return null;
+    };
+    launcher.push({
+      activity: {
+        phase: "ready",
+        startedAt: "2026-09-23T00:10:00.000Z",
+        target: { kind: "npm", version: "1.1.0" },
+        targetVersion: "1.1.0",
+      },
+    });
+    await vi.waitFor(() =>
+      expect(resumer.calls).toEqual(["interrupt", "park", "release"]),
+    );
   });
 
   it("stops offering updates once the launcher disconnects", async () => {

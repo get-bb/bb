@@ -52,6 +52,7 @@ const IN_APP_UPDATE: SystemAppUpdateStatus = {
   blocked: null,
   current: { commit: null, version: "0.38.0" },
   lastResult: null,
+  resumedThreadCount: 0,
   runningThreadCount: 0,
   support: { kind: "supported", mode: "npm" },
 };

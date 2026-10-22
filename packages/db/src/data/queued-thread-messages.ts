@@ -36,6 +36,7 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
+  SystemMessageKind,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
   QueuedMessageWaitHolder,
@@ -2038,6 +2039,75 @@ export function clearQueuedThreadMessageWaitingOn(
 
   if (updated) {
     notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return updated;
+}
+
+/**
+ * Unclaimed rows carrying one of core's system notices of `kind`, oldest
+ * first. The app-update flow parks its resume notices before a restart and
+ * reschedules them from here on the next boot.
+ */
+export function listUnclaimedQueuedSystemNotices(
+  db: DbQueryConnection,
+  kind: SystemMessageKind,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        sql`json_extract(${queuedThreadMessages.systemNotice}, '$.kind') = ${kind}`,
+        isNull(queuedThreadMessages.claimToken),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.createdAt), asc(queuedThreadMessages.id))
+    .all();
+}
+
+export function hasUnclaimedQueuedSystemNotice(
+  db: DbQueryConnection,
+  args: { kind: SystemMessageKind; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, args.threadId),
+          sql`json_extract(${queuedThreadMessages.systemNotice}, '$.kind') = ${args.kind}`,
+          isNull(queuedThreadMessages.claimToken),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function rescheduleQueuedThreadMessage(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: { id: string; sendAt: number },
+): QueuedThreadMessageRow | null {
+  const updated = db.transaction(
+    (tx) => {
+      const row = getQueuedThreadMessage(tx, args.id);
+      if (!row || isQueuedThreadMessageClaimed(row)) return null;
+      return transitionQueuedMessage(tx, {
+        now: Date.now(),
+        row,
+        transition: {
+          event: "wait.recorded",
+          sendAt: args.sendAt,
+          waitingOn: { kind: "time" },
+        },
+      });
+    },
+    { behavior: "immediate" },
+  );
+  if (updated !== null) {
+    notifier.notifyThread(updated.threadId, ["queue-changed"]);
   }
   return updated;
 }

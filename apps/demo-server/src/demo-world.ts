@@ -266,6 +266,7 @@ export class DemoWorld {
             current: { commit: null, version: SYSTEM_VERSION.currentVersion },
             lastResult: null,
             runningThreadCount: 0,
+            resumedThreadCount: 0,
             support: { kind: "unsupported", reason: "unmanaged" },
           } satisfies SystemAppUpdateStatus);
         case "/system/cli-command":

@@ -29,6 +29,7 @@ import {
 } from "./app-update-details-store";
 import {
   appUpdateRevisionKey,
+  appUpdateSuccessTitle,
   describeAppUpdateResult,
   pendingAppUpdateResult,
   restartingActivity,
@@ -60,6 +61,7 @@ export function AppUpdateHost({
   );
   const pendingResult = pendingAppUpdateResult(status.data);
   const restart = restartingActivity(status.data);
+  const resumedThreadCount = status.data?.resumedThreadCount ?? 0;
   const revision =
     status.data === undefined ? null : appUpdateRevisionKey(status.data);
   const acknowledgeResult = acknowledge.mutate;
@@ -82,7 +84,9 @@ export function AppUpdateHost({
     announcedResultIds.current.add(pendingResult.id);
     const presentation = describeAppUpdateResult(pendingResult);
     if (presentation.tone === "success") {
-      appToast.success(presentation.title);
+      appToast.success(
+        appUpdateSuccessTitle(pendingResult, resumedThreadCount),
+      );
       acknowledgeResult({ id: pendingResult.id });
       return;
     }
@@ -96,7 +100,7 @@ export function AppUpdateHost({
       },
       duration: FAILURE_TOAST_DURATION_MS,
     });
-  }, [acknowledgeResult, pendingResult]);
+  }, [acknowledgeResult, pendingResult, resumedThreadCount]);
 
   return (
     <>

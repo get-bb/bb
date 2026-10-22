@@ -205,6 +205,14 @@ function describeAppUpdateResult(result: SystemAppUpdateResult): string {
   }
 }
 
+function confirmUpdatePrompt(runningThreadCount: number): string {
+  const running =
+    runningThreadCount === 1
+      ? "1 command is running. Updating stops it now."
+      : `${String(runningThreadCount)} commands are running. Updating stops them now.`;
+  return `${running} bb is back in under a minute, and each agent picks up where it left off. Update bb?`;
+}
+
 async function readAppUpdateStatus(
   sdk: CliSdk,
   force: boolean,
@@ -384,7 +392,10 @@ function registerAppUpdateCommands(
   app
     .command("apply")
     .description("Download the available bb update and restart bb into it")
-    .option("--yes", "Interrupt running threads without asking")
+    .option(
+      "--yes",
+      "Stop running threads without asking; each resumes after the restart",
+    )
     .option(
       "--no-wait",
       "Return once the update starts instead of following it",
@@ -412,9 +423,8 @@ function registerAppUpdateCommands(
         }
         let confirmInterruptingThreads = opts.yes === true;
         if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
-          const count = status.runningThreadCount;
           confirmInterruptingThreads = await confirmDestructiveAction(
-            `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}. Continue?`,
+            confirmUpdatePrompt(status.runningThreadCount),
           );
           if (!confirmInterruptingThreads) {
             console.log("Update cancelled.");

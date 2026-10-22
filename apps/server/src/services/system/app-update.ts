@@ -21,6 +21,10 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
+import type {
+  AppUpdateInterruptResult,
+  AppUpdateResumer,
+} from "./app-update-resume.js";
 import type { AppUpdateTelemetry } from "./app-update-telemetry.js";
 import type { AppVersionService } from "./app-version.js";
 import type { LauncherChannel } from "./launcher-channel.js";
@@ -45,11 +49,11 @@ interface CreateAppUpdateServiceArgs {
   config: Pick<ServerRuntimeConfig, "appVersion" | "isDevelopment">;
   countRunningThreads: () => number;
   launcher: LauncherChannel | null;
-  listRunningThreadProviders: () => string[];
   logger: ServerLogger;
   mode: AppUpdateMode | null;
   notifyChanged: () => void;
   now?: () => number;
+  resumer: AppUpdateResumer;
   sourceCheckTtlMs?: number;
   telemetry: AppUpdateTelemetry;
 }
@@ -107,6 +111,26 @@ function toPublicResult(result: AppUpdateResult): SystemAppUpdateResult {
   };
 }
 
+export function restartTelemetry(
+  result: AppUpdateInterruptResult,
+  targetRevision: string,
+): Parameters<AppUpdateTelemetry["restarting"]>[0] {
+  return {
+    reason: result.threads.length > 0 ? "update_now" : "nothing_running",
+    targetRevision,
+    threads: result.threads.map((thread) => ({
+      providerId: thread.providerId,
+      saveResult: "forced",
+      stopMethod: "none",
+    })),
+    waitMs: result.waitMs,
+  };
+}
+
+function revisionOf(target: AppUpdateTarget): string {
+  return target.kind === "source" ? target.commit : target.version;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -140,10 +164,33 @@ export function createAppUpdateService(
   let confirmedInterruptingThreads = false;
   let decidedReadyAt: string | null = null;
 
+  const interruptThenRestart = async (
+    launcher: LauncherChannel,
+    target: AppUpdateTarget,
+    targetVersion: string,
+  ): Promise<void> => {
+    try {
+      const result = await args.resumer.interrupt();
+      await args.resumer.parkResumes({ result, targetVersion });
+      await args.telemetry.restarting(
+        restartTelemetry(result, revisionOf(target)),
+      );
+      await launcher.request({ type: "restart" });
+    } catch (error) {
+      args.logger.warn(
+        { error: errorMessage(error) },
+        "Could not stop running threads and restart for the bb update",
+      );
+      args.resumer.releaseResumes();
+      args.notifyChanged();
+    }
+  };
+
   const decideRestart = (
     launcher: LauncherChannel,
     readyAt: string,
     target: AppUpdateTarget,
+    targetVersion: string,
   ): void => {
     if (decidedReadyAt === readyAt) return;
     decidedReadyAt = readyAt;
@@ -164,26 +211,7 @@ export function createAppUpdateService(
         });
       return;
     }
-    const providers = args.listRunningThreadProviders();
-    void args.telemetry
-      .restarting({
-        reason: providers.length > 0 ? "update_now" : "nothing_running",
-        targetRevision:
-          target.kind === "source" ? target.commit : target.version,
-        threads: providers.map((providerId) => ({
-          providerId,
-          saveResult: "forced",
-          stopMethod: "none",
-        })),
-        waitMs: 0,
-      })
-      .then(() => launcher.request({ type: "restart" }))
-      .catch((error: unknown) => {
-        args.logger.warn(
-          { error: errorMessage(error), request: "restart" },
-          "Launcher did not accept the restart decision",
-        );
-      });
+    void interruptThenRestart(launcher, target, targetVersion);
   };
 
   const unsubscribeStatus =
@@ -196,6 +224,7 @@ export function createAppUpdateService(
           args.launcher,
           status.activity.startedAt,
           status.activity.target,
+          status.activity.targetVersion,
         );
       }
       args.notifyChanged();
@@ -364,6 +393,7 @@ export function createAppUpdateService(
           ? null
           : toPublicResult(status.lastResult),
       runningThreadCount: args.countRunningThreads(),
+      resumedThreadCount: args.resumer.resumedThreadCount(),
       support,
     };
   };

@@ -158,8 +158,11 @@ internal markers the launcher passes to its server child; do not set them. See
 
 Settings → Updates shows the **Server** row for both standalone servers and servers
 hosted by the desktop app. **Update** downloads the release and restarts the
-server, using the hosting desktop's native updater when applicable. It asks
-before interrupting running threads and checks again when the download finishes.
+server, using the hosting desktop's native updater when applicable. When threads
+are running it asks first, then stops them and restarts right away. After the
+restart, each interrupted thread gets one message naming the command it was
+running, so the agent checks it and continues. Threads resume 10 seconds apart
+per machine. It checks again when the download finishes.
 A separate **Desktop** row appears when the viewing desktop needs attention and
 is not the desktop hosting the server. The same server update is available with
 `bb updates app apply` and `sdk.system.applyAppUpdate`.

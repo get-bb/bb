@@ -4288,6 +4288,60 @@ export function pruneTokenUsageEventsInTransaction(
   });
 }
 
+/**
+ * The command a thread is still running: its latest started
+ * `commandExecution` item with no completion yet, or null.
+ */
+export function getRunningCommandForThread(
+  db: DbQueryConnection,
+  args: { threadId: string },
+): string | null {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const completedType = "item/completed" satisfies ThreadEventType;
+  const finished = alias(events, "finished_command");
+  const row = db
+    .select({ data: events.data })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        sql`${events.itemKind} = 'commandExecution'`,
+        eq(events.type, startedType),
+        isNotNull(events.itemId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(finished)
+            .where(
+              and(
+                eq(finished.threadId, events.threadId),
+                eq(finished.itemId, events.itemId),
+                eq(finished.type, completedType),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!row) return null;
+  try {
+    const data: unknown = JSON.parse(row.data);
+    const item =
+      typeof data === "object" && data !== null && "item" in data
+        ? data.item
+        : null;
+    const command =
+      typeof item === "object" && item !== null && "command" in item
+        ? item.command
+        : null;
+    return typeof command === "string" && command.length > 0 ? command : null;
+  } catch {
+    return null;
+  }
+}
+
 export function listOpenBackgroundTaskItemRowsForHost(
   db: DbQueryConnection,
   args: ListOpenBackgroundTaskItemRowsForHostArgs,
