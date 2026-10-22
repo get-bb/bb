@@ -43,7 +43,7 @@ function automation(
 }
 
 describe("automations thread Info section", () => {
-  it("lists the thread's automations, refreshes on any project's change, and opens one", async () => {
+  it("lists the thread's automations, refreshes on any project's automation change but not run-only signals, and opens one", async () => {
     const section = app.threadInfoSections[0];
     if (section === undefined) throw new Error("missing Info section");
     let listed: AutomationResponse[] = [];
@@ -59,6 +59,12 @@ describe("automations thread Info section", () => {
       ]);
     });
     expect(screen.queryByRole("region", { name: "Automations" })).toBeNull();
+
+    await slot.behavior.emitRealtime("automations", {
+      projectId: "proj_1",
+      kind: "automation-runs-changed",
+    });
+    expect(slot.inspection.rpcCalls).toHaveLength(1);
 
     listed = [
       automation({

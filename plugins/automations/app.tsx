@@ -242,7 +242,7 @@ function useTargetThreadAutomations(
     automationQueryClient,
   );
   useRealtime("automations", (payload) => {
-    if (asSignal(payload) !== null) {
+    if (asSignal(payload)?.kind === "automations-changed") {
       void automationQueryClient.invalidateQueries(
         { queryKey },
         { cancelRefetch: false },
