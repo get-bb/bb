@@ -52,6 +52,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_ThreadActionsMenu`
 - `experimental_ThreadActionsContextMenu`
 - `experimental_THREAD_ACTION_GROUPS`
+- `experimental_THREAD_INFO_ROW_GROUPS`
+- `experimental_THREAD_INFO_SECTION_GROUPS`
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
 - `experimental_useSidebarNavigation` — the sidebar navigation items in the

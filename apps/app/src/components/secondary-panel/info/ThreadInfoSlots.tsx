@@ -1,17 +1,20 @@
 import type { ComponentType } from "react";
 import type { ExperimentalThreadInfoProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { InfoSectionCollapseIdContext } from "./useInfoSectionCollapse";
 
 export interface CoreThreadInfoRegistration {
   id: string;
+  group: string;
   order: number;
   component: ComponentType<ExperimentalThreadInfoProps>;
 }
 
 interface PluginThreadInfoRegistration {
   id: string;
+  group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadInfoProps>;
   pluginId: string;
@@ -35,14 +38,14 @@ function sortThreadInfoEntries(
   ];
   return entries
     .map((entry, index) => ({ entry, index }))
-    .sort((left, right) => {
-      const leftOrder =
-        left.entry.registration.order ?? Number.POSITIVE_INFINITY;
-      const rightOrder =
-        right.entry.registration.order ?? Number.POSITIVE_INFINITY;
-      if (leftOrder !== rightOrder) return leftOrder < rightOrder ? -1 : 1;
-      return left.index - right.index;
-    })
+    .sort((left, right) =>
+      compareGroupedPlacement(
+        left.entry.registration,
+        left.index,
+        right.entry.registration,
+        right.index,
+      ),
+    )
     .map(({ entry }) => entry);
 }
 

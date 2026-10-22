@@ -24,7 +24,11 @@ import {
   ThreadInfoSections,
   type CoreThreadInfoRegistration,
 } from "./info/ThreadInfoSlots";
-import type { ExperimentalThreadInfoProps } from "@get-bb/plugin-sdk";
+import {
+  experimental_THREAD_INFO_ROW_GROUPS,
+  experimental_THREAD_INFO_SECTION_GROUPS,
+  type ExperimentalThreadInfoProps,
+} from "@get-bb/plugin-sdk";
 import { Link } from "react-router-dom";
 import type {
   Environment,
@@ -1088,38 +1092,104 @@ function CoreThreadStorageSection() {
   return storage ? <ThreadStorageSection {...storage} /> : null;
 }
 
+const ROW_GROUPS = experimental_THREAD_INFO_ROW_GROUPS;
+const SECTION_GROUPS = experimental_THREAD_INFO_SECTION_GROUPS;
+
 const CORE_THREAD_INFO_ROWS: readonly CoreThreadInfoRegistration[] = [
-  { id: "parent", order: 100, component: CoreParentRow },
+  {
+    id: "parent",
+    group: ROW_GROUPS.thread,
+    order: 10,
+    component: CoreParentRow,
+  },
   {
     id: "parentNotifications",
-    order: 200,
+    group: ROW_GROUPS.thread,
+    order: 20,
     component: CoreParentNotificationsRow,
   },
-  { id: "project", order: 300, component: CoreProjectRow },
-  { id: "environment", order: 400, component: CoreEnvironmentRow },
+  {
+    id: "project",
+    group: ROW_GROUPS.thread,
+    order: 30,
+    component: CoreProjectRow,
+  },
+  {
+    id: "environment",
+    group: ROW_GROUPS.environment,
+    order: 10,
+    component: CoreEnvironmentRow,
+  },
   {
     id: "environmentProvisioningFailure",
-    order: 500,
+    group: ROW_GROUPS.environment,
+    order: 20,
     component: CoreEnvironmentProvisioningFailureRow,
   },
-  { id: "directory", order: 600, component: CoreWorkspacePathRow },
-  { id: "branch", order: 700, component: CoreBranchRow },
-  { id: "mergeBase", order: 800, component: CoreMergeBaseRow },
-  { id: "gitStatus", order: 900, component: CoreGitStatusRow },
-  { id: "pullRequest", order: 1000, component: CorePullRequestRow },
-  { id: "archived", order: 1100, component: CoreArchivedRow },
+  {
+    id: "directory",
+    group: ROW_GROUPS.environment,
+    order: 30,
+    component: CoreWorkspacePathRow,
+  },
+  { id: "branch", group: ROW_GROUPS.git, order: 10, component: CoreBranchRow },
+  {
+    id: "mergeBase",
+    group: ROW_GROUPS.git,
+    order: 20,
+    component: CoreMergeBaseRow,
+  },
+  {
+    id: "gitStatus",
+    group: ROW_GROUPS.git,
+    order: 30,
+    component: CoreGitStatusRow,
+  },
+  {
+    id: "pullRequest",
+    group: ROW_GROUPS.pullRequest,
+    order: 10,
+    component: CorePullRequestRow,
+  },
+  {
+    id: "archived",
+    group: ROW_GROUPS.lifecycle,
+    order: 10,
+    component: CoreArchivedRow,
+  },
 ];
 
 const CORE_THREAD_INFO_SECTIONS: readonly CoreThreadInfoRegistration[] = [
-  { id: "childThreads", order: 100, component: CoreChildThreadsSection },
-  { id: "forks", order: 200, component: CoreForksSection },
-  { id: "commits", order: 300, component: CoreCommitsSection },
+  {
+    id: "childThreads",
+    group: SECTION_GROUPS.related,
+    order: 10,
+    component: CoreChildThreadsSection,
+  },
+  {
+    id: "forks",
+    group: SECTION_GROUPS.related,
+    order: 20,
+    component: CoreForksSection,
+  },
+  {
+    id: "commits",
+    group: SECTION_GROUPS.changes,
+    order: 10,
+    component: CoreCommitsSection,
+  },
   {
     id: "uncommittedChanges",
-    order: 400,
+    group: SECTION_GROUPS.changes,
+    order: 20,
     component: CoreUncommittedChangesSection,
   },
-  { id: "threadStorage", order: 500, component: CoreThreadStorageSection },
+  {
+    id: "threadStorage",
+    group: SECTION_GROUPS.storage,
+    order: 10,
+    component: CoreThreadStorageSection,
+  },
 ];
 
 export function ThreadMetadataContent(props: ThreadMetadataContentProps) {

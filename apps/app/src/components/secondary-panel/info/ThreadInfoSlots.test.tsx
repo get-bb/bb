@@ -43,12 +43,18 @@ function Crashes(): never {
 }
 
 const CORE_ROWS: CoreThreadInfoRegistration[] = [
-  { id: "first", order: 100, component: row("Core first") },
-  { id: "second", order: 200, component: row("Core second") },
+  { id: "first", group: "1_a", order: 10, component: row("Core first") },
+  { id: "second", group: "1_a", order: 20, component: row("Core second") },
+  { id: "later", group: "3_c", order: 10, component: row("Core later") },
 ];
 
 const CORE_SECTIONS: CoreThreadInfoRegistration[] = [
-  { id: "coreSection", order: 100, component: section("Core section") },
+  {
+    id: "coreSection",
+    group: "1_a",
+    order: 10,
+    component: section("Core section"),
+  },
 ];
 
 function renderInfo() {
@@ -80,24 +86,44 @@ afterEach(() => {
 });
 
 describe("thread Info slots", () => {
-  it("places plugin rows and sections among core's by order, unordered ones last", () => {
+  it("places plugin rows and sections by group, then order, after core on a tie", () => {
     setPluginSlotRegistrations(
       "demo",
       makePluginRegistrationSet({
         threadInfoRows: [
-          { id: "unordered", component: row("Plugin unordered") },
-          { id: "between", order: 150, component: row("Plugin between") },
+          { id: "own", group: "2_b", component: row("Plugin own group") },
+          { id: "unordered", group: "1_a", component: row("Plugin unordered") },
+          { id: "tie", group: "1_a", order: 20, component: row("Plugin tie") },
+          {
+            id: "between",
+            group: "1_a",
+            order: 15,
+            component: row("Plugin between"),
+          },
         ],
         threadInfoSections: [
-          { id: "late", component: section("Plugin late") },
-          { id: "early", order: 50, component: section("Plugin early") },
+          { id: "late", group: "9_z", component: section("Plugin late") },
+          {
+            id: "early",
+            group: "1_a",
+            order: 0,
+            component: section("Plugin early"),
+          },
         ],
       }),
     );
     renderInfo();
 
     expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
-      ["Core first", "Plugin between", "Core second", "Plugin unordered"],
+      [
+        "Core first",
+        "Plugin between",
+        "Core second",
+        "Plugin tie",
+        "Plugin unordered",
+        "Plugin own group",
+        "Core later",
+      ],
     );
     expect(
       screen.getAllByRole("heading").map((heading) => heading.textContent),
@@ -110,14 +136,16 @@ describe("thread Info slots", () => {
     setPluginSlotRegistrations(
       "demo",
       makePluginRegistrationSet({
-        threadInfoRows: [{ id: "broken", order: 150, component: Crashes }],
-        threadInfoSections: [{ id: "broken", order: 50, component: Crashes }],
+        threadInfoRows: [{ id: "broken", group: "1_a", component: Crashes }],
+        threadInfoSections: [
+          { id: "broken", group: "1_a", component: Crashes },
+        ],
       }),
     );
     renderInfo();
 
     expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
-      ["Core first", "Core second"],
+      ["Core first", "Core second", "Core later"],
     );
     expect(screen.getByText("Core section body")).toBeTruthy();
     expect(screen.queryByText(/demo/)).toBeNull();
@@ -128,7 +156,12 @@ describe("thread Info slots", () => {
       "demo",
       makePluginRegistrationSet({
         threadInfoSections: [
-          { id: "coreSection", order: 200, component: section("Plugin") },
+          {
+            id: "coreSection",
+            group: "1_a",
+            order: 20,
+            component: section("Plugin"),
+          },
         ],
       }),
     );

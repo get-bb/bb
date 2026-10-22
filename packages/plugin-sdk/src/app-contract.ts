@@ -1786,12 +1786,14 @@ export interface ExperimentalThreadInfoRowRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /**
-   * Position among all rows, ascending; ties keep registration order, and
-   * rows without one follow every ordered row. bb's own rows use Parent 100,
-   * Notify parent 200, Project 300, Environment and Machine 400, environment
-   * provisioning failure 500, Directory 600, Branch 700, Merge base 800,
-   * Git status 900, Pull request 1000, and Archived 1100.
+   * Rows sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own rows first
+   * on a tie. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}; any other
+   * string is a group of its own, placed where it sorts. Groups only order
+   * rows; the details block draws no separator between them.
    */
+  group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadInfoProps>;
 }
@@ -1806,11 +1808,13 @@ export interface ExperimentalThreadInfoSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /**
-   * Position among all sections, ascending; ties keep registration order, and
-   * sections without one follow every ordered section. bb's own sections use
-   * Child threads 100, Forks 200, Commits 300, Uncommitted files 400, and
-   * Thread storage 500.
+   * Sections sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own sections
+   * first on a tie. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_INFO_SECTION_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
    */
+  group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadInfoProps>;
 }
@@ -4405,6 +4409,31 @@ export interface PluginSdkApp {
     readonly lifecycle: "4_lifecycle";
   };
   /**
+   * bb's thread Info row groups, for an `experimental_threadInfoRow` that
+   * joins one: `thread` (Parent, Notify parent, Project), `environment`
+   * (Environment, Machine, provisioning failure, Directory), `git` (Branch,
+   * Merge base, Git status), `pullRequest`, and `lifecycle` (Archived).
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_THREAD_INFO_ROW_GROUPS: {
+    readonly thread: "1_thread";
+    readonly environment: "2_environment";
+    readonly git: "3_git";
+    readonly pullRequest: "4_pullRequest";
+    readonly lifecycle: "5_lifecycle";
+  };
+  /**
+   * bb's thread Info section groups, for an `experimental_threadInfoSection`
+   * that joins one: `related` (Child threads, Forks), `changes` (Commits,
+   * Uncommitted files), and `storage` (Thread storage). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_THREAD_INFO_SECTION_GROUPS: {
+    readonly related: "1_related";
+    readonly changes: "2_changes";
+    readonly storage: "3_storage";
+  };
+  /**
    * The pull request for one thread's branch (see
    * {@link PluginSidebarThreadPullRequestState}).
    *
@@ -4675,7 +4704,9 @@ export interface PluginSdkApp {
    * The thread Info tab's list (see {@link ExperimentalInfoListProps}), the
    * one bb's own sections use. Experimental: see docs/api_to_audit.md.
    */
-  experimental_InfoList<Item>(props: ExperimentalInfoListProps<Item>): ReactNode;
+  experimental_InfoList<Item>(
+    props: ExperimentalInfoListProps<Item>,
+  ): ReactNode;
   /**
    * One row of `experimental_InfoList` (see
    * {@link ExperimentalInfoListRowProps}), the row bb's own sections use.

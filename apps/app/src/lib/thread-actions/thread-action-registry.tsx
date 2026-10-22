@@ -23,6 +23,7 @@ import type {
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
+import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 export const CORE_THREAD_ACTION_OWNER = "bb--core";
@@ -294,7 +295,7 @@ function useThreadActionRecords(
   return records
     .map((record, index) => ({ record, index }))
     .sort((left, right) =>
-      compareThreadActionPlacement(
+      compareGroupedPlacement(
         left.record.registration,
         left.index,
         right.record.registration,
@@ -366,19 +367,6 @@ export function bindThreadAction(
         }),
       ),
   };
-}
-
-export function compareThreadActionPlacement(
-  left: { group: string; order?: number },
-  leftIndex: number,
-  right: { group: string; order?: number },
-  rightIndex: number,
-): number {
-  if (left.group !== right.group) return left.group < right.group ? -1 : 1;
-  const leftOrder = left.order ?? Number.POSITIVE_INFINITY;
-  const rightOrder = right.order ?? Number.POSITIVE_INFINITY;
-  if (leftOrder !== rightOrder) return leftOrder < rightOrder ? -1 : 1;
-  return leftIndex - rightIndex;
 }
 
 function evaluateRecord(

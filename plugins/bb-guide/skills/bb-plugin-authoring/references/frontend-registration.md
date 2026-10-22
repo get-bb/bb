@@ -173,11 +173,11 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 
 `app.slots.experimental_threadInfoRow` adds a row to the Info tab's details
 block; `app.slots.experimental_threadInfoSection` adds a section below it. bb's
-own rows and sections are registrations of the same `{ id, order?, component }`
-shape, drawn with the SDK's Info components (frontend-components.md).
+own rows and sections are registrations of the same `{ id, group, order?,
+component }` shape, drawn with the SDK's Info components (frontend-components.md).
 
 ```tsx
-app.slots.experimental_threadInfoSection({ id: "automations", order: 50, component: Automations });
+app.slots.experimental_threadInfoSection({ id: "automations", group: SECTION_GROUPS.related, order: 0, component: Automations });
 function Automations({ threadId }: ExperimentalThreadInfoProps) {
   const items = useItems(threadId);
   if (items.length === 0) return null;
@@ -192,12 +192,11 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
 
 Components receive `{ threadId, projectId }` and mount once per visible
 thread; return null to show nothing. A row renders `experimental_DetailRow`.
-`order` places the entry among bb's: rows use Parent 100, Notify parent 200,
-Project 300, Environment and Machine 400, provisioning failure 500, Directory
-600, Branch 700, Merge base 800, Git status 900, Pull request 1000, Archived
-1100; sections use Child threads 100, Forks 200, Commits 300, Uncommitted files
-400, Thread storage 500. Ties keep registration order; unordered entries come
-last. Inside a section slot `experimental_InfoSection` collapses and bb
+Entries sort by `group`, then `order` within it (unset last), then registration
+order, bb's first on a tie, as thread actions do. Join one of bb's groups from
+`experimental_THREAD_INFO_ROW_GROUPS` or `experimental_THREAD_INFO_SECTION_GROUPS`
+(bb's entries use orders 10, 20, 30 within a group), or name your own group to
+sort it where its string falls. Inside a section slot `experimental_InfoSection` collapses and bb
 remembers it per registration. A crash removes only that row or section.
 
 ### An action in every thread menu

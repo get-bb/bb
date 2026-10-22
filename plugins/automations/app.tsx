@@ -7,6 +7,7 @@ import {
   experimental_InfoList as InfoList,
   experimental_InfoListRow as InfoListRow,
   experimental_InfoSection as InfoSection,
+  experimental_THREAD_INFO_SECTION_GROUPS,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -881,7 +882,8 @@ export default definePluginApp((app) => {
   });
   app.slots.experimental_threadInfoSection({
     id: "automations",
-    order: 50,
+    group: experimental_THREAD_INFO_SECTION_GROUPS.related,
+    order: 0,
     component: AutomationsThreadInfoSection,
   });
 });

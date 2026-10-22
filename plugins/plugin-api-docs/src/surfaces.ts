@@ -364,6 +364,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalThreadInfoRowRegistration",
           "ExperimentalThreadInfoSectionRegistration",
           "ExperimentalThreadInfoProps",
+          "experimental_THREAD_INFO_ROW_GROUPS",
+          "experimental_THREAD_INFO_SECTION_GROUPS",
           "experimental_InfoSection",
           "ExperimentalInfoSectionProps",
           "experimental_DetailRow",

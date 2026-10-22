@@ -290,7 +290,7 @@
         {
           "path": "apps/app/src/components/secondary-panel/info/ThreadInfoSlots.test.tsx",
           "anchors": [
-            "places plugin rows and sections among core's by order, unordered ones last",
+            "places plugin rows and sections by group, then order, after core on a tie",
             "drops only a crashing plugin row or section",
             "collapses each section on its own, keyed by registration"
           ]

@@ -797,6 +797,7 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.threadInfoRow, id);
         collected.threadInfoRows.push({
           id,
+          group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),
         });
@@ -807,6 +808,7 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.threadInfoSection, id);
         collected.threadInfoSections.push({
           id,
+          group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),
         });

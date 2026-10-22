@@ -222,6 +222,10 @@ export const experimental_ThreadActionsContextMenu = runtimeComponent(
   "experimental_ThreadActionsContextMenu",
 );
 export { experimental_THREAD_ACTION_GROUPS } from "./thread-action-groups.js";
+export {
+  experimental_THREAD_INFO_ROW_GROUPS,
+  experimental_THREAD_INFO_SECTION_GROUPS,
+} from "./thread-info-groups.js";
 export const experimental_useSidebarThreadPullRequest = runtimeFunction(
   "experimental_useSidebarThreadPullRequest",
 );
