@@ -859,6 +859,48 @@ describe("collectPluginAppRegistrations", () => {
     );
   });
 
+  it("keeps a caret-line rich-text mode and rejects unknown modes", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({
+        id: "caret-modes",
+        richText: {
+          effects: [
+            {
+              id: "line",
+              className: "line",
+              experimental_skipAtCaret: "line",
+              match: () => [],
+            },
+            { id: "plain", className: "plain", match: () => [] },
+            {
+              id: "word",
+              className: "word",
+              experimental_skipAtCaret: "word" as never,
+              match: () => [],
+            },
+          ],
+        },
+      });
+    });
+
+    const [customization] =
+      collectPluginAppRegistrations(definition, rejected)
+        .composerCustomizations ?? [];
+
+    expect(
+      customization?.richText?.effects?.map(
+        ({ id, experimental_skipAtCaret }) => [id, experimental_skipAtCaret],
+      ),
+    ).toEqual([
+      ["line", "line"],
+      ["plain", undefined],
+    ]);
+    expect(rejected).toHaveBeenCalledWith(
+      expect.stringContaining('"experimental_skipAtCaret" must be "line"'),
+    );
+  });
+
   it("does not reserve nested ids for malformed contributions", () => {
     const rejected = vi.fn<(reason: string) => void>();
     const definition = definePluginApp((app) => {

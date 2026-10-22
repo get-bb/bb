@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { Editor } from "@tiptap/core";
+import { DecorationSet } from "@tiptap/pm/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS,
@@ -215,6 +216,169 @@ describe("PromptDecorationExtension", () => {
         (spec) => spec.className === "partial-range",
       ) ?? [];
     expect(decorations.map(({ from, to }) => [from, to])).toEqual([[1, 6]]);
+    editor.destroy();
+  });
+
+  it("drops caret-line-only classes on lines the focused selection touches", () => {
+    const editor = createEditor(
+      {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "**a**" }] },
+          { type: "paragraph", content: [{ type: "text", text: "**b**" }] },
+        ],
+      },
+      {
+        getDecorationSources: () => [
+          {
+            id: "plugin:markers",
+            generation: 1,
+            effects: [
+              {
+                id: "marker",
+                className: "marker",
+                experimental_skipAtCaret: "line",
+                match: (text) =>
+                  Array.from(text.matchAll(/\*\*/g), (match) => ({
+                    from: match.index,
+                    to: match.index + 2,
+                  })),
+              },
+            ],
+          },
+        ],
+      },
+    );
+    const markerPositions = () =>
+      (
+        getPromptDecorationSet(editor.state)?.find(
+          undefined,
+          undefined,
+          (spec) => spec.className === "marker",
+        ) ?? []
+      ).map((decoration) => decoration.from);
+
+    editor.commands.setTextSelection(3);
+    expect(markerPositions()).toEqual([1, 4, 8, 11]);
+
+    editor.view.dom.dispatchEvent(new FocusEvent("focus"));
+    expect(markerPositions()).toEqual([8, 11]);
+
+    editor.commands.setTextSelection(10);
+    expect(markerPositions()).toEqual([1, 4]);
+
+    editor.commands.setTextSelection({ from: 3, to: 10 });
+    expect(markerPositions()).toEqual([]);
+
+    editor.view.dom.dispatchEvent(new FocusEvent("blur"));
+    expect(markerPositions()).toEqual([1, 4, 8, 11]);
+    editor.destroy();
+  });
+
+  function markerEditor(content: object): Editor {
+    return createEditor(content, {
+      getDecorationSources: () => [
+        {
+          id: "plugin:markers",
+          generation: 1,
+          effects: [
+            {
+              id: "marker",
+              className: "marker",
+              experimental_skipAtCaret: "line",
+              match: (text) =>
+                Array.from(text.matchAll(/\*\*/g), (match) => ({
+                  from: match.index,
+                  to: match.index + 2,
+                })),
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function markerPositions(editor: Editor): number[] {
+    return (
+      getPromptDecorationSet(editor.state)?.find(
+        undefined,
+        undefined,
+        (spec) => spec.className === "marker",
+      ) ?? []
+    )
+      .map((decoration) => decoration.from)
+      .sort((left, right) => left - right);
+  }
+
+  const twoMarkedParagraphs = {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "**a**" }] },
+      { type: "paragraph", content: [{ type: "text", text: "**b**" }] },
+    ],
+  };
+
+  it("moves the caret line without rebuilding every decoration", () => {
+    const editor = markerEditor(twoMarkedParagraphs);
+    editor.commands.setTextSelection(3);
+    editor.view.dom.dispatchEvent(new FocusEvent("focus"));
+    const createDecorationSet = DecorationSet.create;
+    let markerRebuilds = 0;
+    vi.spyOn(DecorationSet, "create").mockImplementation((doc, decorations) => {
+      if (
+        decorations.some((decoration) => decoration.spec.className === "marker")
+      ) {
+        markerRebuilds += 1;
+      }
+      return createDecorationSet.call(DecorationSet, doc, decorations);
+    });
+
+    editor.commands.setTextSelection(10);
+    editor.view.dom.dispatchEvent(new FocusEvent("blur"));
+    editor.view.dom.dispatchEvent(new FocusEvent("focus"));
+
+    expect(markerRebuilds).toBe(0);
+    expect(markerPositions(editor)).toEqual([1, 4]);
+    editor.destroy();
+  });
+
+  it("keeps the caret line plain while typing on it", () => {
+    const editor = markerEditor(twoMarkedParagraphs);
+    editor.commands.setTextSelection(3);
+    editor.view.dom.dispatchEvent(new FocusEvent("focus"));
+
+    editor.commands.insertContent("x");
+
+    expect(promptEditorValueFromDoc(editor.state.doc).text).toBe(
+      "**xa**\n**b**",
+    );
+    expect(markerPositions(editor)).toEqual([9, 12]);
+    editor.destroy();
+  });
+
+  it("finds the caret line inside a quote with a hard break", () => {
+    const editor = markerEditor({
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "**a**" },
+                { type: "hardBreak" },
+                { type: "text", text: "**b**" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    editor.commands.setTextSelection(10);
+    editor.view.dom.dispatchEvent(new FocusEvent("focus"));
+
+    expect(markerPositions(editor)).toEqual([2, 5]);
     editor.destroy();
   });
 
