@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { UploadedPromptAttachment } from "@bb/server-contract";
+import { CompactBeforeSendChip } from "@/components/promptbox/CompactBeforeSendChip";
 import { ExecutionControls } from "@/components/promptbox/ExecutionControls";
 import type {
   PromptMentionSuggestion,
@@ -1103,10 +1104,14 @@ function CompactVoiceComparisonRow({
   compact = true,
   initialValue = "",
   running = false,
+  attachmentItems = [],
+  submitAccessory = null,
 }: {
   compact?: boolean;
   initialValue?: string;
   running?: boolean;
+  attachmentItems?: UploadedPromptAttachment[];
+  submitAccessory?: ReactNode;
 }) {
   const { value, mentionRanges, onChange } = useControlledValue(initialValue);
   const [state, setState] = useState<PromptVoiceConfig["state"]>("idle");
@@ -1124,9 +1129,10 @@ function CompactVoiceComparisonRow({
       }
       typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
-      attachments={makeAttachments()}
+      attachments={makeAttachments({ items: attachmentItems })}
       history={baseHistory}
       submission={makeSubmission({ isRunning: running, onStop: noop })}
+      submitAccessory={submitAccessory}
       voice={{
         ...idleVoice,
         state,
@@ -1153,6 +1159,25 @@ export function CompactVoiceComparison() {
       </StoryRow>
       <StoryRow label="Compact stop">
         <CompactVoiceComparisonRow running />
+      </StoryRow>
+      <StoryRow label="Compact long text with attachments">
+        <CompactVoiceComparisonRow
+          initialValue="Take a look at this screenshot and the diff, then explain why the compact composer clips its text"
+          attachmentItems={mockAttachments}
+        />
+      </StoryRow>
+      <StoryRow label="Compact long text with attachments and accessory">
+        <CompactVoiceComparisonRow
+          initialValue="Take a look at this screenshot and the diff, then explain why the compact composer clips its text"
+          attachmentItems={mockAttachments}
+          submitAccessory={
+            <CompactBeforeSendChip
+              compactFirst
+              tokens={331_000}
+              onCompactFirstChange={noop}
+            />
+          }
+        />
       </StoryRow>
     </StoryCard>
   );
