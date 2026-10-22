@@ -39,6 +39,7 @@ import {
   ComposerExtensionHost,
   useComposerExtensionController,
 } from "@/components/plugin/ComposerExtensionHost";
+import { ComposerFooterItemsSlot } from "@/components/plugin/PluginComposerFooterItems";
 import {
   ComposerBox,
   DEFAULT_COMPOSER_SCOPE,
@@ -277,6 +278,8 @@ function FollowUpPromptBoxWithComposer({
   const attachmentCount = attachments.items?.length ?? 0;
   const composerScope =
     pluginComposerScope ?? pluginComposerHost?.scope ?? null;
+  const showPluginFooterItems =
+    composerScope !== null && !suppressPluginComposerCustomizations;
   const [composerLayout, setComposerLayout] =
     useState<ComposerView["layout"]>("expanded");
   const composerView = usePluginComposerViewModel({
@@ -822,8 +825,14 @@ function FollowUpPromptBoxWithComposer({
         >
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
             {isCompactViewport ? compactEnvironmentSummary : environmentSummary}
+            {showPluginFooterItems ? (
+              <ComposerFooterItemsSlot side="start" />
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2 max-md:gap-0">
+            {showPluginFooterItems ? (
+              <ComposerFooterItemsSlot side="end" />
+            ) : null}
             {sessionOptionsControl}
             {permissionControl}
             {contextWindowUsage ? (

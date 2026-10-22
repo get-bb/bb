@@ -3850,6 +3850,12 @@ export type PluginComposerScope =
       projectId: string | null;
     };
 
+/** A plugin component in the thread composer's footer row. Keep it to one line: an icon or a short label. */
+export interface ComposerFooterItem {
+  id: string;
+  component: ComponentType;
+}
+
 /** One plugin-owned composer customization registration. */
 export interface ComposerCustomization {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -3867,6 +3873,10 @@ export interface ComposerCustomization {
   /** Host-rendered rows in the menu next to the composer's send button. */
   sendMenu?: readonly ComposerSendMenuItem[];
   richText?: ComposerRichTextSpec;
+  /** Small items at the start of the thread composer's footer row, after the environment summary. They shrink first when the row is narrow. Thread composers only; hidden while the composer is compact. Inside, useComposer() is bound to that composer. */
+  experimental_footerStart?: readonly ComposerFooterItem[];
+  /** Small items at the end of the thread composer's footer row, before the session options, permission control and context window indicator. Same rules as `experimental_footerStart`. */
+  experimental_footerEnd?: readonly ComposerFooterItem[];
   /** Host-managed popups sharing the mention menu's above/below placement, with a responsive drawer on compact screens. Open by popup id, unique within this plugin. */
   experimental_popups?: readonly ExperimentalComposerPopupRegistration[];
 }

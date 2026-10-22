@@ -22,6 +22,8 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
+import { useComposerView } from "@/lib/plugin-sdk-hooks";
+import { MemoryRouter } from "react-router-dom";
 
 const mocks = vi.hoisted(() => {
   const values = {
@@ -513,6 +515,80 @@ describe("FollowUpPromptBox", () => {
       .closest("[data-bb-plugin-root]");
     const queuedMessages = screen.getByTestId("queued-messages");
     expect(queuedMessages.previousElementSibling).toBe(pluginHeaderRoot);
+  });
+
+  it("renders plugin footer items in the thread composer footer bound to that composer", () => {
+    function FooterItem() {
+      const view = useComposerView();
+      return (
+        <span data-testid="plugin-footer-item">
+          {view.scope.kind === "thread" ? view.scope.threadId : "unbound"}
+        </span>
+      );
+    }
+    function StartItem() {
+      return <span data-testid="plugin-footer-start-item">start</span>;
+    }
+    setPluginSlotRegistrations(
+      "footer-item",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "footer",
+            experimental_footerStart: [{ id: "label", component: StartItem }],
+            experimental_footerEnd: [{ id: "usage", component: FooterItem }],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const renderInRouter = (ui: ReactNode) => <MemoryRouter>{ui}</MemoryRouter>;
+    const { rerender } = render(
+      renderInRouter(
+        <FollowUpPromptBox
+          {...props}
+          pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+        />,
+      ),
+    );
+
+    const item = screen.getByTestId("plugin-footer-item");
+    expect(item.textContent).toBe("thr_test");
+    expect(item.closest("[data-bb-plugin-root]")).toBeTruthy();
+    expect(item.closest("[data-follow-up-composer-footer]")).toBeTruthy();
+    expect(
+      item.closest('[data-plugin-composer-footer-item="end"]'),
+    ).toBeTruthy();
+    const startItem = screen.getByTestId("plugin-footer-start-item");
+    expect(
+      startItem.closest('[data-plugin-composer-footer-item="start"]'),
+    ).toBeTruthy();
+    expect(
+      startItem.compareDocumentPosition(item) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    rerender(
+      renderInRouter(
+        <FollowUpPromptBox
+          {...props}
+          pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+          suppressPluginComposerCustomizations
+        />,
+      ),
+    );
+    expect(screen.queryByTestId("plugin-footer-item")).toBeNull();
+    expect(screen.queryByTestId("plugin-footer-start-item")).toBeNull();
+
+    rerender(
+      renderInRouter(
+        <FollowUpPromptBox {...props} pluginComposerScope={null} />,
+      ),
+    );
+    expect(screen.queryByTestId("plugin-footer-item")).toBeNull();
   });
 
   it("lays the banner stack on an explicit single-column track", () => {

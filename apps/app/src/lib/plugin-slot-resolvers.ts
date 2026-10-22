@@ -14,6 +14,9 @@ import type {
 
 type ComposerAction = NonNullable<ComposerCustomization["actions"]>[number];
 type ComposerBanner = NonNullable<ComposerCustomization["banners"]>[number];
+type ComposerFooterItem = NonNullable<
+  ComposerCustomization["experimental_footerEnd"]
+>[number];
 type ComposerEditorEffect = NonNullable<
   NonNullable<ComposerCustomization["richText"]>["effects"]
 >[number];
@@ -34,6 +37,10 @@ export interface ResolvedComposerAction extends ResolvedComposerContribution {
 
 interface ResolvedComposerBanner extends ResolvedComposerContribution {
   banner: ComposerBanner;
+}
+
+export interface ResolvedComposerFooterItem extends ResolvedComposerContribution {
+  item: ComposerFooterItem;
 }
 
 export interface ResolvedComposerPlusMenuItem extends ResolvedComposerContribution {
@@ -114,6 +121,47 @@ export function resolveComposerBanners(
     }
   }
   return resolved;
+}
+
+function resolveComposerFooter(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+  field: "experimental_footerStart" | "experimental_footerEnd",
+): readonly ResolvedComposerFooterItem[] {
+  const resolved: ResolvedComposerFooterItem[] = [];
+  if (scopeKind !== "thread") return resolved;
+  for (const customization of customizations) {
+    if (!composerCustomizationApplies(customization, scopeKind)) continue;
+    for (const item of customization[field] ?? []) {
+      resolved.push({
+        ...resolvedComposerContribution(customization, item.id),
+        item,
+      });
+    }
+  }
+  return resolved;
+}
+
+export function resolveComposerFooterStart(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+): readonly ResolvedComposerFooterItem[] {
+  return resolveComposerFooter(
+    customizations,
+    scopeKind,
+    "experimental_footerStart",
+  );
+}
+
+export function resolveComposerFooterEnd(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+): readonly ResolvedComposerFooterItem[] {
+  return resolveComposerFooter(
+    customizations,
+    scopeKind,
+    "experimental_footerEnd",
+  );
 }
 
 export function resolveComposerPlusMenuItems(

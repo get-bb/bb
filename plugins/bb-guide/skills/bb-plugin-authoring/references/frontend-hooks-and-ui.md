@@ -185,13 +185,21 @@ composer.insert("Please summarize this.", { at: "end", block: true });
 Composer customizations:
 
 - Register with `app.composer.customize({ id, scopes?, actions?, experimental_popups?, plusMenu?,
-sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
+sendMenu?, banners?, experimental_footerStart?, experimental_footerEnd?,
+richText? })`. Omitted `scopes` means all thread,
   queued-message, and new-thread composers.
 - `actions` and `banners` are plugin React components. `useComposer()` inside
   them is bound to the composer that mounted the component. Actions render
   before native voice/submit and are unavailable in compact layout; banners
   render above the composer. A banner's `chrome` is `"card"` by default or
   `"bare"`.
+- `experimental_footerStart` and `experimental_footerEnd` (`[{ id, component }]`)
+  are small components the host places in the footer row under a thread
+  composer. Start items go after the environment summary and are clipped first
+  when the row is narrow. End items go before the session options, permission
+  control, and context window indicator. They mount only in `thread` scope, are
+  hidden while the composer is compact, and `useComposer()` inside them is
+  bound to that composer. Keep each to one line: an icon or a short label.
 - `plusMenu` rows (the `+` menu) and `sendMenu` rows (the menu beside the send
   button, shown only while the composer can submit) are host-rendered so
   keyboard navigation, focus restoration, and mobile layout remain correct.
