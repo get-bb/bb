@@ -36,6 +36,7 @@ describe("project attachments", () => {
   it.each([
     ["quadrants.heic", "", 64, 32],
     ["quadrants-rotated.heic", "image/heic", 32, 64],
+    ["quadrants-primary-second.heic", "image/heic", 32, 64],
   ])(
     "stores %s as a PNG with the displayed orientation",
     async (name, mimeType, width, height) => {
