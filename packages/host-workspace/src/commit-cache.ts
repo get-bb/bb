@@ -24,7 +24,6 @@ const COMMIT_LOG_ARGS = [
   "--no-ext-diff",
   "--no-textconv",
   "--no-show-signature",
-  "--diff-merges=off",
 ];
 
 type PatchIdMode = "cherry-pick" | "squash";
