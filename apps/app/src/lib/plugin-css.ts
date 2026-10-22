@@ -217,6 +217,17 @@ export function usePluginCss(pluginId: string | null): void {
   );
 }
 
+export function usePluginCssList(pluginIds: readonly string[]): void {
+  const key = pluginIds.join("\0");
+  useInsertionEffect(() => {
+    if (key.length === 0) return undefined;
+    const releases = key.split("\0").map(retainPluginCss);
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [key]);
+}
+
 export function resetPluginCssForTest(): void {
   for (const record of recordsByPluginId.values()) {
     cancelDeferredDeactivate(record);

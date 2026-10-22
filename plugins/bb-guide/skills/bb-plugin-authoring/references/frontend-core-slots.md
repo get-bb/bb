@@ -45,7 +45,8 @@ and never returns, so detached work must handle its own errors.
 Prefer the existing imported `app.css` pipeline for static styles. Its lifetime
 follows the plugin UI and content scripts that use it: the host keeps the
 stylesheet active while a slot, panel header/accessory, or plugin portal is
-rendered and throughout an active content-script generation, then releases it
+rendered, while its composer rich-text rules apply to a mounted prompt box,
+and throughout an active content-script generation, then releases it
 after the final consumer. Imported `app.css` is therefore not an app-wide CSS
 hook. Put app-wide selectable palette CSS in manifest `bb.themes` entries;
 theme CSS has an independent app-theme lifetime.

@@ -133,6 +133,7 @@ import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   type PluginMentionTrigger,
 } from "@bb/client-core";
+import { usePluginCssList } from "@/lib/plugin-css";
 import {
   clearComposerEditorBridge,
   publishComposerEditorBridge,
@@ -1618,6 +1619,18 @@ export function PromptBoxInternal({
       ),
     [resolvedComposerEditor.effects, textEffects],
   );
+  const decorationPluginIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          decorationSources.flatMap((source) =>
+            source.pluginId === undefined ? [] : [source.pluginId],
+          ),
+        ),
+      ].sort(),
+    [decorationSources],
+  );
+  usePluginCssList(decorationPluginIds);
   const decorationSourcesRef = useRef(decorationSources);
   decorationSourcesRef.current = decorationSources;
   const [draftObserverRunner] = useState(createDraftObserverRunner);
