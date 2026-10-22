@@ -625,10 +625,13 @@ export interface PromptVoiceConfig {
 export interface PromptBoxHandle {
   focusEnd: () => void;
   captureHeightForLayoutChange: () => void;
-  insertTextAtCursor: (text: string) => void;
-  sendVoiceTranscript: (text: string) => void;
-  getTextBeforeCursor: () => string | undefined;
-  playVoiceCompletionTransition: () => Promise<void>;
+  voice: PromptBoxVoice;
+}
+
+export interface PromptBoxVoice {
+  textBeforeCursor(): string | null;
+  deliverTranscript(text: string, delivery: VoiceDelivery): void;
+  playCompletionTransition(): Promise<void>;
 }
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
@@ -3072,17 +3075,17 @@ export function PromptBoxInternal({
     [finishApply, focusAfterPromptAction, triggers],
   );
 
-  const getTextBeforeCursor = useCallback((): string | undefined => {
+  const getTextBeforeCursor = useCallback((): string | null => {
     const currentValue = valueRef.current;
     const currentEditor = editorRef.current;
     if (!currentEditor) {
       const trimmed = currentValue.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
+      return trimmed.length > 0 ? trimmed : null;
     }
     const beforeCursor = currentEditor.state.doc
       .textBetween(0, currentEditor.state.selection.from, "\n", "\n")
       .trim();
-    return beforeCursor.length > 0 ? beforeCursor : undefined;
+    return beforeCursor.length > 0 ? beforeCursor : null;
   }, []);
 
   const voiceSubmitBaselineRef = useRef<string | null>(null);
@@ -3099,10 +3102,14 @@ export function PromptBoxInternal({
     () => ({
       captureHeightForLayoutChange: capturePromptBoxHeight,
       focusEnd,
-      insertTextAtCursor,
-      sendVoiceTranscript,
-      getTextBeforeCursor,
-      playVoiceCompletionTransition,
+      voice: {
+        textBeforeCursor: getTextBeforeCursor,
+        deliverTranscript: (text, delivery) => {
+          if (delivery === "send") sendVoiceTranscript(text);
+          else insertTextAtCursor(text);
+        },
+        playCompletionTransition: playVoiceCompletionTransition,
+      },
     }),
     [
       capturePromptBoxHeight,

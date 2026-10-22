@@ -230,7 +230,7 @@ function PromptBoxRaceHarness({
 
     insertedForValueRef.current = value;
     promptBoxRef.current?.focusEnd();
-    promptBoxRef.current?.insertTextAtCursor("reply");
+    promptBoxRef.current?.voice.deliverTranscript("reply", "insert");
   }, [value]);
 
   return (
@@ -1560,7 +1560,9 @@ describe("PromptBoxInternal controlled value sync", () => {
       document.body.append(outsideTarget);
       outsideTarget.focus();
 
-      act(() => promptBoxRef.current?.insertTextAtCursor("transcript"));
+      act(() =>
+        promptBoxRef.current?.voice.deliverTranscript("transcript", "insert"),
+      );
 
       expect(onChange).toHaveBeenLastCalledWith("transcript", []);
       expect(document.activeElement).toBe(outsideTarget);
@@ -1756,7 +1758,7 @@ describe("PromptBoxInternal controlled value sync", () => {
 
     await waitForPromptFocus();
     await act(async () => {
-      promptBoxRef.current?.insertTextAtCursor("reply");
+      promptBoxRef.current?.voice.deliverTranscript("reply", "insert");
     });
 
     expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
@@ -4066,7 +4068,9 @@ describe("PromptBoxInternal compact layout", () => {
       );
     }
     render(<Harness />);
-    act(() => promptBoxRef.current?.sendVoiceTranscript("more words"));
+    act(() =>
+      promptBoxRef.current?.voice.deliverTranscript("more words", "send"),
+    );
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
       "Existing prompt more words",
     );
@@ -4103,7 +4107,9 @@ describe("PromptBoxInternal compact layout", () => {
       );
     }
     render(<Harness />);
-    act(() => promptBoxRef.current?.sendVoiceTranscript("more words"));
+    act(() =>
+      promptBoxRef.current?.voice.deliverTranscript("more words", "send"),
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Finish transcription" }),
     );
@@ -4270,7 +4276,7 @@ describe("PromptBoxInternal compact layout", () => {
       let transitionFinished = false;
       let transition: Promise<void> | undefined;
       act(() => {
-        transition = promptBoxRef.current?.playVoiceCompletionTransition();
+        transition = promptBoxRef.current?.voice.playCompletionTransition();
         void transition?.then(() => {
           transitionFinished = true;
         });
@@ -4382,7 +4388,7 @@ describe("PromptBoxInternal compact layout", () => {
       );
 
       await expect(
-        promptBoxRef.current?.playVoiceCompletionTransition(),
+        promptBoxRef.current?.voice.playCompletionTransition(),
       ).resolves.toBeUndefined();
     } finally {
       if (originalVisibilityState) {
@@ -4421,7 +4427,7 @@ describe("PromptBoxInternal compact layout", () => {
       );
 
       await expect(
-        promptBoxRef.current?.playVoiceCompletionTransition(),
+        promptBoxRef.current?.voice.playCompletionTransition(),
       ).resolves.toBeUndefined();
     } finally {
       window.matchMedia = originalMatchMedia;
@@ -4562,7 +4568,9 @@ describe("PromptBoxInternal mention triggers", () => {
     await screen.findByRole("button", { name: /Fix login bug/u });
 
     fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
-    await act(async () => promptBoxRef.current?.insertTextAtCursor("rt"));
+    await act(async () =>
+      promptBoxRef.current?.voice.deliverTranscript("rt", "insert"),
+    );
 
     await waitFor(() => expect(latestValue(changes)).toBe("@asdf qwe rt"));
     expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
@@ -5784,7 +5792,7 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
     await waitForPromptFocus();
     await act(async () => {
-      promptBoxRef.current?.insertTextAtCursor("wraps CI");
+      promptBoxRef.current?.voice.deliverTranscript("wraps CI", "insert");
     });
     await waitFor(() => expect(latestValue(changes)).toBe("/plan wraps CI"));
 
@@ -5881,7 +5889,7 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitForPromptFocus();
 
     await act(async () => {
-      promptBoxRef.current?.insertTextAtCursor("clean up");
+      promptBoxRef.current?.voice.deliverTranscript("clean up", "insert");
     });
     await waitFor(() => expect(latestValue(changes)).toBe("/plan clean up"));
 
@@ -5977,7 +5985,7 @@ describe("PromptBoxInternal command typeahead submit", () => {
   ) {
     await focusPromptEnd(promptBoxRef);
     await act(async () => {
-      promptBoxRef.current?.insertTextAtCursor(token);
+      promptBoxRef.current?.voice.deliverTranscript(token, "insert");
     });
     await act(async () => {});
     await waitFor(() => expect(screen.queryByText(name)).not.toBeNull());

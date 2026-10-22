@@ -45,12 +45,12 @@ export function usePromptVoice(
   );
 
   const getPromptContext = useCallback(
-    () => promptBoxRef.current?.getTextBeforeCursor(),
+    () => promptBoxRef.current?.voice.textBeforeCursor() ?? undefined,
     [promptBoxRef],
   );
 
   const playCompletionTransition = useCallback(
-    () => promptBoxRef.current?.playVoiceCompletionTransition(),
+    () => promptBoxRef.current?.voice.playCompletionTransition(),
     [promptBoxRef],
   );
 

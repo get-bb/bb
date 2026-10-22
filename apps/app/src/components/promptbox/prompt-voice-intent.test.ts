@@ -4,13 +4,15 @@ import type { PromptBoxHandle } from "./PromptBoxInternal";
 import { deliverPromptVoiceTranscript } from "./prompt-voice-intent";
 
 function createPromptBox() {
+  const voice = {
+    textBeforeCursor: vi.fn(() => null),
+    deliverTranscript: vi.fn(),
+    playCompletionTransition: vi.fn(async () => {}),
+  };
   return {
     captureHeightForLayoutChange: vi.fn(),
     focusEnd: vi.fn(),
-    getTextBeforeCursor: vi.fn(),
-    insertTextAtCursor: vi.fn(),
-    sendVoiceTranscript: vi.fn(),
-    playVoiceCompletionTransition: vi.fn(async () => {}),
+    voice,
   } satisfies PromptBoxHandle;
 }
 
@@ -46,8 +48,7 @@ describe("deliverPromptVoiceTranscript", () => {
       });
 
       expect(draft.text).toBe("Existing and later edits late transcript");
-      expect(promptBox.sendVoiceTranscript).not.toHaveBeenCalled();
-      expect(promptBox.insertTextAtCursor).not.toHaveBeenCalled();
+      expect(promptBox.voice.deliverTranscript).not.toHaveBeenCalled();
       expect(submit).toHaveBeenCalledTimes(send ? 1 : 0);
     },
   );

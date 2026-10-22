@@ -21,11 +21,7 @@ export function deliverPromptVoiceTranscript(
 ): Promise<void> | undefined {
   const send = delivery === "send";
   if (mounted && promptBox) {
-    if (send) {
-      promptBox.sendVoiceTranscript(text);
-    } else {
-      promptBox.insertTextAtCursor(text);
-    }
+    promptBox.voice.deliverTranscript(text, delivery);
     return;
   }
   if (!draft) return;
