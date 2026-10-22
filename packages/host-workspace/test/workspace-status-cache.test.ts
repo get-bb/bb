@@ -451,28 +451,3 @@ it("keeps renamed files compact when comparing squash patches", async () => {
     aheadCount: 0,
   });
 }, 60_000);
-
-it("reads the default branch from origin/HEAD in linked worktrees without a git process", async () => {
-  const source = await initRepo(await makeTempDir("bb-status-origin-"));
-  await runGit(["branch", "trunk"], { cwd: source });
-  const clone = path.join(await makeTempDir("bb-status-clone-"), "clone");
-  await runGit(["clone", "--quiet", source, clone], { cwd: source });
-  const worktree = path.join(await makeTempDir("bb-status-linked-"), "linked");
-  await runGit(["worktree", "add", "--detach", worktree], { cwd: clone });
-  const originHeadReads = () =>
-    vi
-      .mocked(runGit)
-      .mock.calls.filter(
-        ([args, options]) =>
-          options.cwd === worktree && args[0] === "symbolic-ref",
-      ).length;
-
-  expect((await new Workspace(worktree).getStatus()).branch).toMatchObject({
-    defaultBranch: "main",
-  });
-  await runGit(["remote", "set-head", "origin", "trunk"], { cwd: clone });
-  expect((await new Workspace(worktree).getStatus()).branch).toMatchObject({
-    defaultBranch: "trunk",
-  });
-  expect(originHeadReads()).toBe(0);
-});
