@@ -172,61 +172,33 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 ### Rows and sections in the thread Info tab
 
 `app.slots.experimental_threadInfoRow` adds a row to the Info tab's details
-block, and `app.slots.experimental_threadInfoSection` adds a section below it.
-bb's own rows (Project, Environment, Branch, Pull request, …) and sections
-(Child threads, Forks, Commits, …) are registrations of the same shape, drawn
-with the same components the SDK exports, so plugin content looks identical.
+block; `app.slots.experimental_threadInfoSection` adds a section below it. bb's
+own rows and sections are registrations of the same `{ id, order?, component }`
+shape, drawn with the SDK's Info components (frontend-components.md).
 
 ```tsx
-import {
-  experimental_DetailRow as DetailRow,
-  experimental_InfoList as InfoList,
-  experimental_InfoListRow as InfoListRow,
-  experimental_InfoSection as InfoSection,
-} from "@get-bb/plugin-sdk/app";
-
-app.slots.experimental_threadInfoRow({
-  id: "deploy",
-  order: 1050,
-  component: ({ threadId }) => (
-    <DetailRow icon="Rocket" label="Deploy">{useDeploy(threadId)}</DetailRow>
-  ),
-});
-
-app.slots.experimental_threadInfoSection({
-  id: "automations",
-  order: 50,
-  component: ({ threadId }) => {
-    const items = useItems(threadId);
-    if (items.length === 0) return null;
-    return (
-      <InfoSection label="Automations" count={items.length}>
-        <InfoList
-          items={items}
-          getKey={(item) => item.id}
-          limit={3}
-          renderItem={(item) => (
-            <InfoListRow leading={<Glyph />} name={item.name} onSelect={...} />
-          )}
-        />
-      </InfoSection>
-    );
-  },
-});
+app.slots.experimental_threadInfoSection({ id: "automations", order: 50, component: Automations });
+function Automations({ threadId }: ExperimentalThreadInfoProps) {
+  const items = useItems(threadId);
+  if (items.length === 0) return null;
+  return (
+    <InfoSection label="Automations" count={items.length}>
+      <InfoList items={items} getKey={(item) => item.id} limit={3}
+        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={...} />} />
+    </InfoSection>
+  );
+}
 ```
 
-Both components receive `{ threadId, projectId }` and mount once per visible
-thread, so a split layout mounts one copy per pane. Return null to show nothing
-for a thread. `order` places the entry among bb's: rows use Parent 100, Notify
-parent 200, Project 300, Environment and Machine 400, provisioning failure 500,
-Directory 600, Branch 700, Merge base 800, Git status 900, Pull request 1000,
-and Archived 1100; sections use Child threads 100, Forks 200, Commits 300,
-Uncommitted files 400, and Thread storage 500. Ties keep registration order;
-entries without an order follow every ordered one. `experimental_InfoSection`
-draws the heading, count pill, and collapse control; inside a section slot it
-collapses, and bb remembers that per registration. `experimental_InfoList`
-shows `limit` rows (default 5) behind a "N more" toggle. A crash removes only
-that row or section for that thread.
+Components receive `{ threadId, projectId }` and mount once per visible
+thread; return null to show nothing. A row renders `experimental_DetailRow`.
+`order` places the entry among bb's: rows use Parent 100, Notify parent 200,
+Project 300, Environment and Machine 400, provisioning failure 500, Directory
+600, Branch 700, Merge base 800, Git status 900, Pull request 1000, Archived
+1100; sections use Child threads 100, Forks 200, Commits 300, Uncommitted files
+400, Thread storage 500. Ties keep registration order; unordered entries come
+last. Inside a section slot `experimental_InfoSection` collapses and bb
+remembers it per registration. A crash removes only that row or section.
 
 ### An action in every thread menu
 
