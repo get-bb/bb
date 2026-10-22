@@ -3,7 +3,6 @@ import {
   sourceUpdateCheckSchema,
   type AppRevision,
   type AppUpdateActivity,
-  type AppUpdateLauncherRequest,
   type AppUpdateMode,
   type AppUpdateResult,
   type AppUpdateTarget,
@@ -14,6 +13,7 @@ import type { AppSurface } from "@bb/config/app-surface";
 import type {
   SystemAppUpdateActivity,
   SystemAppUpdateAvailable,
+  SystemAppUpdateEntry,
   SystemAppUpdateResult,
   SystemAppUpdateRevision,
   SystemAppUpdateStatus,
@@ -21,6 +21,7 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
+import type { AppUpdateTelemetry } from "./app-update-telemetry.js";
 import type { AppVersionService } from "./app-version.js";
 import type { LauncherChannel } from "./launcher-channel.js";
 
@@ -31,6 +32,7 @@ export interface AppUpdateService {
   acknowledgeResult(args: { id: string }): Promise<SystemAppUpdateStatus>;
   apply(args: {
     confirmInterruptingThreads: boolean;
+    entry: SystemAppUpdateEntry;
   }): Promise<SystemAppUpdateStatus>;
   dispose(): void;
   getStatus(args: { forceRefresh: boolean }): Promise<SystemAppUpdateStatus>;
@@ -43,11 +45,13 @@ interface CreateAppUpdateServiceArgs {
   config: Pick<ServerRuntimeConfig, "appVersion" | "isDevelopment">;
   countRunningThreads: () => number;
   launcher: LauncherChannel | null;
+  listRunningThreadProviders: () => string[];
   logger: ServerLogger;
   mode: AppUpdateMode | null;
   notifyChanged: () => void;
   now?: () => number;
   sourceCheckTtlMs?: number;
+  telemetry: AppUpdateTelemetry;
 }
 
 function toPublicRevision(revision: AppRevision): SystemAppUpdateRevision {
@@ -136,25 +140,50 @@ export function createAppUpdateService(
   let confirmedInterruptingThreads = false;
   let decidedReadyAt: string | null = null;
 
-  const decideRestart = (launcher: LauncherChannel, readyAt: string): void => {
+  const decideRestart = (
+    launcher: LauncherChannel,
+    readyAt: string,
+    target: AppUpdateTarget,
+  ): void => {
     if (decidedReadyAt === readyAt) return;
     decidedReadyAt = readyAt;
     const runningThreadCount = args.countRunningThreads();
-    const request: AppUpdateLauncherRequest =
-      runningThreadCount > 0 && !confirmedInterruptingThreads
-        ? {
-            message: `${String(runningThreadCount)} thread${
-              runningThreadCount === 1 ? "" : "s"
-            } started while bb was downloading the update. Update again to restart.`,
-            type: "cancel",
-          }
-        : { type: "restart" };
-    void launcher.request(request).catch((error: unknown) => {
-      args.logger.warn(
-        { error: errorMessage(error), request: request.type },
-        "Launcher did not accept the restart decision",
-      );
-    });
+    if (runningThreadCount > 0 && !confirmedInterruptingThreads) {
+      void launcher
+        .request({
+          message: `${String(runningThreadCount)} thread${
+            runningThreadCount === 1 ? "" : "s"
+          } started while bb was downloading the update. Update again to restart.`,
+          type: "cancel",
+        })
+        .catch((error: unknown) => {
+          args.logger.warn(
+            { error: errorMessage(error), request: "cancel" },
+            "Launcher did not accept the restart decision",
+          );
+        });
+      return;
+    }
+    const providers = args.listRunningThreadProviders();
+    void args.telemetry
+      .restarting({
+        reason: providers.length > 0 ? "update_now" : "nothing_running",
+        targetRevision:
+          target.kind === "source" ? target.commit : target.version,
+        threads: providers.map((providerId) => ({
+          providerId,
+          saveResult: "forced",
+          stopMethod: "none",
+        })),
+        waitMs: 0,
+      })
+      .then(() => launcher.request({ type: "restart" }))
+      .catch((error: unknown) => {
+        args.logger.warn(
+          { error: errorMessage(error), request: "restart" },
+          "Launcher did not accept the restart decision",
+        );
+      });
   };
 
   const unsubscribeStatus =
@@ -163,7 +192,11 @@ export function createAppUpdateService(
       resolveFirstStatus?.();
       resolveFirstStatus = null;
       if (status.activity.phase === "ready" && args.launcher !== null) {
-        decideRestart(args.launcher, status.activity.startedAt);
+        decideRestart(
+          args.launcher,
+          status.activity.startedAt,
+          status.activity.target,
+        );
       }
       args.notifyChanged();
     }) ?? (() => undefined);
@@ -357,7 +390,7 @@ export function createAppUpdateService(
       }
       return getStatus({ forceRefresh: false });
     },
-    async apply({ confirmInterruptingThreads }) {
+    async apply({ confirmInterruptingThreads, entry }) {
       const launcher = requireLauncher();
       if (launcherStatus !== null && launcherStatus.activity.phase !== "idle") {
         throw new ApiError(
@@ -407,6 +440,11 @@ export function createAppUpdateService(
         );
       }
       confirmedInterruptingThreads = confirmInterruptingThreads;
+      args.telemetry.started({
+        entry,
+        mode: "now",
+        runningThreads: status.runningThreadCount,
+      });
       try {
         await launcher.request({
           target,

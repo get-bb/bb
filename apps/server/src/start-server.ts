@@ -1,3 +1,4 @@
+import { createAppUpdateTelemetry } from "./services/system/app-update-telemetry.js";
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
@@ -266,6 +267,18 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
+  const appUpdateTelemetry = createAppUpdateTelemetry({
+    currentRevision:
+      serverConfig.BB_APP_INSTALL_KIND === "source"
+        ? (serverConfig.BB_APP_SOURCE_COMMIT ?? runtimeConfig.appVersion)
+        : runtimeConfig.appVersion,
+    dataDir: serverConfig.BB_DATA_DIR,
+    enabled: () => runtimeConfig.featureFlags.appUpdateTelemetry,
+    logger,
+    telemetry,
+  });
+  const listRunningThreadProviders = (): string[] =>
+    listRunningThreads(db).map((row) => row.providerId);
   const appUpdateMode = serverConfig.BB_APP_UPDATE_MODE ?? null;
   const desktopUpdateChannel =
     serverConfig.BB_APP_SURFACE === "desktop"
@@ -284,17 +297,21 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           countRunningThreads: () => listRunningThreads(db).length,
           launcher:
             appUpdateMode === null ? null : createLauncherChannel(process),
+          listRunningThreadProviders,
           logger,
           mode: appUpdateMode,
           notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          telemetry: appUpdateTelemetry,
         })
       : createDesktopAppUpdateService({
           channel: desktopUpdateChannel,
           currentVersion: runtimeConfig.appVersion,
           dataDir: serverConfig.BB_DATA_DIR,
           countRunningThreads: () => listRunningThreads(db).length,
+          listRunningThreadProviders,
           notifyChanged: () => hub.notifySystem(["app-update-changed"]),
           logger,
+          telemetry: appUpdateTelemetry,
         });
   const cliCommand = createCliCommandService({
     env: process.env,
@@ -420,6 +437,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
+    await appUpdateTelemetry
+      .reportFinished({ threadsResumed: 0 })
+      .catch((error: unknown) => {
+        logger.warn({ err: error }, "Could not report the finished app update");
+      });
   }
 
   if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {

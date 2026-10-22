@@ -425,7 +425,7 @@ describe("bb updates app command output", () => {
       expect.stringContaining("2 threads are running"),
     );
     expect(apply).toHaveBeenCalledWith({
-      json: { confirmInterruptingThreads: true },
+      json: { confirmInterruptingThreads: true, entry: "cli" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Updating bb to 0.0.33",
@@ -498,7 +498,7 @@ describe("bb updates app command output", () => {
     );
 
     expect(apply).toHaveBeenCalledWith({
-      json: { confirmInterruptingThreads: true },
+      json: { confirmInterruptingThreads: true, entry: "cli" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Updating bb to 0.0.33. Run bb updates app to follow it.",

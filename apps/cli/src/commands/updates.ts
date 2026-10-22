@@ -424,6 +424,7 @@ function registerAppUpdateCommands(
         const previousResultId = status.lastResult?.id ?? null;
         const started = await sdk.system.applyAppUpdate({
           confirmInterruptingThreads,
+          entry: "cli",
         });
         if (!opts.wait) {
           if (outputJson(opts, started)) return;

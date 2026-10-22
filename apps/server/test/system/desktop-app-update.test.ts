@@ -9,6 +9,7 @@ import type {
 import { createDesktopAppUpdateService } from "../../src/services/system/desktop-app-update.js";
 import type { DesktopUpdateChannel } from "../../src/services/system/desktop-update-channel.js";
 import type { AppUpdateService } from "../../src/services/system/app-update.js";
+import { createFakeAppUpdateTelemetry } from "../helpers/app-update-telemetry.js";
 import { testLogger } from "../helpers/test-app.js";
 
 class DesktopChannel implements DesktopUpdateChannel {
@@ -50,19 +51,23 @@ async function fixture() {
   roots.push(dataDir);
   const channel = new DesktopChannel();
   const running = { count: 0 };
+  const telemetry = createFakeAppUpdateTelemetry();
   const create = (currentVersion: string) => {
     const service = createDesktopAppUpdateService({
       channel,
       currentVersion,
       dataDir,
       countRunningThreads: () => running.count,
+      listRunningThreadProviders: () =>
+        Array.from({ length: running.count }, () => "codex"),
       notifyChanged: vi.fn(),
       logger: testLogger,
+      telemetry,
     });
     services.push(service);
     return service;
   };
-  return { channel, running, create, service: create("1.0.0") };
+  return { channel, running, telemetry, create, service: create("1.0.0") };
 }
 
 afterEach(async () => {
@@ -73,7 +78,7 @@ afterEach(async () => {
 
 describe("desktop-hosted server updates", () => {
   it("confirms running threads, waits for the download, and records the new server after restart", async () => {
-    const { service, channel, running, create } = await fixture();
+    const { service, channel, running, telemetry, create } = await fixture();
     const status = await service.getStatus({ forceRefresh: true });
     expect(status).toMatchObject({
       desktopUpdateSupported: true,
@@ -83,18 +88,21 @@ describe("desktop-hosted server updates", () => {
     });
     running.count = 2;
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ confirmInterruptingThreads: false, entry: "settings" }),
     ).rejects.toMatchObject({
       body: { code: "threads_running", details: { runningThreadCount: 2 } },
     });
     expect(channel.requests).not.toContain("install");
 
-    await service.apply({ confirmInterruptingThreads: true });
+    await service.apply({
+      confirmInterruptingThreads: true,
+      entry: "settings",
+    });
     expect(
       (await service.getStatus({ forceRefresh: false })).activity.phase,
     ).toBe("preparing");
     await expect(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
     ).rejects.toMatchObject({ body: { code: "app_update_in_progress" } });
     expect(channel.requests).not.toContain("install");
     channel.push({
@@ -109,6 +117,24 @@ describe("desktop-hosted server updates", () => {
         ).toHaveLength(1),
       { timeout: 3_000 },
     );
+    expect(telemetry.calls).toEqual([
+      {
+        method: "started",
+        args: { entry: "settings", mode: "now", runningThreads: 2 },
+      },
+      {
+        method: "restarting",
+        args: {
+          reason: "update_now",
+          targetRevision: "1.1.0",
+          threads: [
+            { providerId: "codex", saveResult: "forced", stopMethod: "none" },
+            { providerId: "codex", saveResult: "forced", stopMethod: "none" },
+          ],
+          waitMs: 0,
+        },
+      },
+    ]);
     service.dispose();
 
     const restarted = create("1.1.0");
@@ -128,7 +154,10 @@ describe("desktop-hosted server updates", () => {
 
   it("keeps the server running when a new thread starts during download", async () => {
     const { service, channel, running } = await fixture();
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({
+      confirmInterruptingThreads: false,
+      entry: "settings",
+    });
     running.count = 1;
     channel.push({
       updateDownloaded: true,
@@ -148,7 +177,10 @@ describe("desktop-hosted server updates", () => {
 
   it("reports a failed download without restarting and allows another attempt", async () => {
     const { service, channel } = await fixture();
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({
+      confirmInterruptingThreads: false,
+      entry: "settings",
+    });
     channel.push({ downloadState: "failed" });
     await vi.waitFor(async () =>
       expect(
@@ -158,7 +190,7 @@ describe("desktop-hosted server updates", () => {
     expect(channel.requests).not.toContain("install");
     channel.push({ downloadState: "downloading" });
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ confirmInterruptingThreads: false, entry: "settings" }),
     ).resolves.toMatchObject({ activity: { phase: "preparing" } });
   });
 
@@ -173,7 +205,7 @@ describe("desktop-hosted server updates", () => {
       blocked: { reason: "fetch-failed" },
     });
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ confirmInterruptingThreads: false, entry: "settings" }),
     ).rejects.toMatchObject({ body: { code: "app_update_blocked" } });
     expect(channel.requests).not.toContain("install");
 
@@ -184,7 +216,7 @@ describe("desktop-hosted server updates", () => {
       available: { version: "1.1.0" },
     });
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ confirmInterruptingThreads: false, entry: "settings" }),
     ).resolves.toMatchObject({ activity: { phase: "preparing" } });
   });
 
@@ -195,7 +227,7 @@ describe("desktop-hosted server updates", () => {
       (await service.getStatus({ forceRefresh: false })).desktopUpdateSupported,
     ).toBeUndefined();
     await expect(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
     ).rejects.toMatchObject({ body: { code: "app_update_unsupported" } });
     expect(channel.requests).not.toContain("install");
   });

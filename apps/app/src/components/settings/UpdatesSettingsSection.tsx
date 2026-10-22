@@ -2037,7 +2037,7 @@ export function UpdatesSettingsSection({
       return;
     }
     applyAppUpdate.mutate(
-      { confirmInterruptingThreads: false },
+      { confirmInterruptingThreads: false, entry: "settings" },
       {
         onError: (error) => {
           const count = runningThreadCountFromError(error);
@@ -2147,7 +2147,9 @@ export function UpdatesSettingsSection({
     <BbAppUpdateRows
       name="Server"
       systemVersion={inventory.systemVersion}
-      appUpdate={useServerUpdate || desktopInfo === null ? appUpdate : undefined}
+      appUpdate={
+        useServerUpdate || desktopInfo === null ? appUpdate : undefined
+      }
       applyPending={applyAppUpdate.isPending}
       desktopInfo={useServerUpdate ? null : desktopInfo}
       isDesktop={!useServerUpdate && isDesktop}
@@ -2235,7 +2237,7 @@ export function UpdatesSettingsSection({
           onCancel={() => setConfirmingAppUpdateThreads(null)}
           onConfirm={() => {
             applyAppUpdate.mutate(
-              { confirmInterruptingThreads: true },
+              { confirmInterruptingThreads: true, entry: "settings" },
               { onSettled: () => setConfirmingAppUpdateThreads(null) },
             );
           }}
