@@ -1084,7 +1084,7 @@ describe("ThreadRow", () => {
   });
 
   it.each([true, false])(
-    "gives a parent title the action space while actions are hidden (collapsed: %s)",
+    "reserves quick-action space after parent disclosure (collapsed: %s)",
     (isCollapsed) => {
       const onToggleCollapsed = vi.fn();
       renderThreadRow({
@@ -1106,22 +1106,24 @@ describe("ThreadRow", () => {
       const toggle = screen.getByRole("button", {
         name: /(?:Expand|Collapse) Nested discussion/,
       });
-      const titleContainer = toggle.parentElement;
       const link = screen.getByRole("link", {
         name: "Open Nested discussion with enough text to fill the sidebar width",
       });
-      const navigationTarget = link.parentElement;
-      const titleWrapper = link.nextElementSibling;
       expect(
-        titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
-      ).toBe(false);
-      expect(
-        titleContainer?.classList.contains(
+        link.parentElement?.classList.contains(
           "pr-(--bb-sidebar-hover-actions-inset)",
         ),
-      ).toBe(false);
-      expect(navigationTarget?.classList.contains("flex-1")).toBe(true);
-      expect(titleWrapper?.classList.contains("flex-1")).toBe(false);
+      ).toBe(true);
+      const row = link.closest("[data-sidebar-rename-row]");
+      expect(
+        Array.from(row?.querySelectorAll("button") ?? [], (button) =>
+          button.getAttribute("aria-label"),
+        ),
+      ).toEqual([
+        toggle.getAttribute("aria-label"),
+        "Archive",
+        "Thread actions",
+      ]);
       fireEvent.click(toggle);
       expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
     },

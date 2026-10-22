@@ -7,10 +7,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,
   promptMentionTooltipLabel,
-} from "@/components/promptbox/mentions/prompt-mention-display";
+} from "@bb/client-core";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
-import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { promptMentionClipboardDataAttributes } from "@bb/client-core";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { useThreadRoutePath } from "@/components/thread/ThreadTitleMentions";
 
 interface PromptMentionPillProps {

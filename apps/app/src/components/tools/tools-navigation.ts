@@ -8,10 +8,6 @@ import {
   REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   SKILL_DETAIL_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
-  AUTOMATIONS_BROWSE_ROUTE_PATH,
-  AUTOMATIONS_ROUTE_PATH,
-  AUTOMATION_DETAIL_ROUTE_PATH,
-  AUTOMATION_EDIT_ROUTE_PATH,
   isPluginsRoutePath,
   isSkillsRoutePath,
 } from "@/lib/route-paths";
@@ -74,36 +70,6 @@ function resolvePluginCreateBreadcrumbs(
     { label: "Plugins", to: getPluginsRoutePath() },
     { label: "Create a plugin" },
   ];
-}
-
-export function resolveAutomationBreadcrumbs(
-  pathname: string,
-  resourceLabel?: string | null,
-): ToolsBreadcrumbSegment[] | null {
-  const root = { label: "Automations", to: AUTOMATIONS_ROUTE_PATH };
-  if (pathname === AUTOMATIONS_BROWSE_ROUTE_PATH) {
-    return [root, { label: "Browse" }];
-  }
-  for (const pattern of [
-    AUTOMATION_DETAIL_ROUTE_PATH,
-    AUTOMATION_EDIT_ROUTE_PATH,
-  ]) {
-    const match = matchPath(pattern, pathname);
-    if (!match) continue;
-    return [
-      root,
-      { label: "Installed", to: AUTOMATIONS_ROUTE_PATH },
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(match.params.automationId, "Automation"),
-      },
-    ];
-  }
-  if (pathname === AUTOMATIONS_ROUTE_PATH) {
-    return [root, { label: "Installed" }];
-  }
-  return null;
 }
 
 function belongsToRoute(pathname: string, route: string): boolean {

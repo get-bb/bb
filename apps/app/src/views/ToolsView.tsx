@@ -31,10 +31,7 @@ import {
   pluginDetailLocation,
   withoutPluginListing,
 } from "@/components/plugin/plugin-detail-key";
-import {
-  ResourceListState,
-  useResourceRouteLabel,
-} from "@bb/shared-ui/resource-list";
+import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import {
@@ -267,12 +264,6 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
       catalogQuery.data?.entries ?? [],
       { allowSourceFallback: false },
     );
-  useResourceRouteLabel(
-    selectedPlugin?.name ??
-      selectedPlugin?.id ??
-      selectedCatalogEntry?.displayName ??
-      null,
-  );
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id

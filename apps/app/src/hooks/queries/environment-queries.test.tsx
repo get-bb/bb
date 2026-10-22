@@ -2,12 +2,15 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadPullRequest } from "@bb/domain";
-import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
+import { CORE_TAG_SCOPE, invalidateTags } from "@bb/query-tags";
+import {
+  environmentPullRequestTag,
+  type EnvironmentPullRequestResponse,
+} from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getEnvironmentPullRequestRefetchInterval,
   getEnvironmentPullRequestStaleTime,
   useEnvironmentMergeBaseBranches,
   useEnvironmentPullRequest,
@@ -19,12 +22,12 @@ vi.mock("@/lib/sdk", () => ({
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useEnvironmentDetailRealtimeSubscription: vi.fn(),
+  useEnvironmentPullRequestRealtimeSubscription: vi.fn(),
 }));
 
 const ENVIRONMENT_ID = "env-1";
 const ACTIVE_PULL_REQUEST_STALE_MS = 30_000;
 const SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
-const ACTIVE_PULL_REQUEST_REFETCH_MS = 30_000;
 
 const pullRequestFixture: ThreadPullRequest = {
   number: 128,
@@ -106,85 +109,6 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(SETTLED_PULL_REQUEST_STALE_MS);
   });
 
-  it("polls open pull requests while checks or mergeability are still settling", () => {
-    expect(getEnvironmentPullRequestRefetchInterval(null)).toBe(false);
-    expect(getEnvironmentPullRequestRefetchInterval(undefined)).toBe(false);
-    expect(getEnvironmentPullRequestRefetchInterval(pullRequestFixture)).toBe(
-      false,
-    );
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        checks: {
-          ...pullRequestFixture.checks,
-          state: "pending",
-          pendingCount: 1,
-        },
-        attention: "checks_pending",
-      }),
-    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        mergeability: {
-          state: "unknown",
-          mergeStateStatus: "UNKNOWN",
-          mergeable: "UNKNOWN",
-        },
-        attention: "none",
-      }),
-    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
-  });
-
-  it.each([
-    { autoMerge: true, inMergeQueue: false },
-    { autoMerge: false, inMergeQueue: true },
-  ])("keeps polling automated merges after checks pass: %j", (automation) => {
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        ...automation,
-      }),
-    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        ...automation,
-        state: "merged",
-        attention: "merged",
-      }),
-    ).toBe(false);
-  });
-
-  it("does not poll draft or settled pull requests", () => {
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        state: "draft",
-        mergeability: {
-          state: "draft",
-          mergeStateStatus: "DRAFT",
-          mergeable: "UNKNOWN",
-        },
-        attention: "draft",
-      }),
-    ).toBe(false);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        state: "closed",
-        attention: "closed",
-      }),
-    ).toBe(false);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        state: "merged",
-        attention: "merged",
-      }),
-    ).toBe(false);
-  });
-
   it("refreshes a cached closed PR when its row returns after missing a realtime update", async () => {
     const { wrapper } = createQueryClientTestHarness();
     const closed = pullRequestResponse({
@@ -208,6 +132,35 @@ describe("useEnvironmentPullRequest", () => {
       { wrapper },
     );
     await waitFor(() => expect(returned.result.current.data).toEqual(reopened));
+    expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches only the environment whose pull request tag the server invalidates", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const pending = pullRequestResponse({
+      ...pullRequestFixture,
+      checks: { ...pullRequestFixture.checks, state: "pending" },
+    });
+    const passing = pullRequestResponse(pullRequestFixture);
+    vi.mocked(sdk.environments.pullRequest)
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(passing);
+
+    const { result } = renderHook(
+      () => useEnvironmentPullRequest(ENVIRONMENT_ID),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(pending));
+
+    await invalidateTags(queryClient, CORE_TAG_SCOPE, [
+      environmentPullRequestTag("env-other"),
+    ]);
+    expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(1);
+
+    await invalidateTags(queryClient, CORE_TAG_SCOPE, [
+      environmentPullRequestTag(ENVIRONMENT_ID),
+    ]);
+    await waitFor(() => expect(result.current.data).toEqual(passing));
     expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(2);
   });
 });

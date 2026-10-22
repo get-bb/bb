@@ -85,7 +85,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add a navigation rail destination that opens a full page your plugin renders. With this, a plugin can:",
         bullets: [
           "Build dashboards, boards or inboxes with a custom sidebar on their own routes",
-          "Give the page a URL that can be shared and works with back and forward",
+          "Give the page a shareable URL, pane breadcrumbs and a focused window title",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
           "Show a live count or dot on its navigation entry",
         ],
@@ -104,6 +104,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalOpenFixedTabOptions",
           "experimental_useFixedTabTarget",
           "ExperimentalFixedTabTargetState",
+          "PluginNavPanelRegistration.experimental_usePageTitle",
+          "ExperimentalPageTitle",
+          "ExperimentalPageBreadcrumb",
           "useBbContext",
           "useBbNavigate",
           "BbNavigate.toPluginPanel",
@@ -1527,6 +1530,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "createFakePluginHost",
           "renderSlot",
+          "RenderedSlotInspectionState.experimental_pageTitle",
           "createFakeSdk",
           "experimental_createHostEntryHarness",
           "loadPluginApp",

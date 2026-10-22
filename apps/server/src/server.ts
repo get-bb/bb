@@ -15,6 +15,11 @@ import {
   INSTALL_MACHINE_WINDOWS_SCRIPT_PATH,
 } from "./install-machine-asset.js";
 import { createNodeWebSocket } from "@hono/node-ws";
+import { createGateKeyStore } from "./services/connect-next/gate-keys.js";
+import {
+  createTunnelIngressManager,
+  type TunnelIngressManager,
+} from "./services/connect-next/tunnel-ingress.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
@@ -77,6 +82,7 @@ import {
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
+import { setTurnTelemetryDeps } from "./services/system/turn-telemetry.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
@@ -154,6 +160,7 @@ interface ServerApp {
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
   serverMove: ServerMoveCoordinator;
+  tunnelIngress: TunnelIngressManager;
 }
 
 interface CloseWebSocketServerArgs {
@@ -194,6 +201,7 @@ interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   performanceDiagnosticsEnabled?: () => boolean;
   staticDir?: string;
+  tunnelIngressNow?: () => number;
 }
 
 interface StaticResponseHeadersArgs {
@@ -464,6 +472,18 @@ export function createApp(
   const app = new Hono();
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
+  });
+  const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
+  const tunnelIngress = createTunnelIngressManager({
+    app,
+    injectWebSocket,
+    keys: createGateKeyStore({
+      url: () => deps.config.connectGateKeysUrl,
+      logger: deps.logger,
+      now: tunnelIngressNow,
+    }),
+    loopbackOrigin: () => `http://127.0.0.1:${deps.config.serverPort}`,
+    logger: deps.logger,
   });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
@@ -772,6 +792,7 @@ export function createApp(
         }),
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
+    openTunnelIngress: (audience) => tunnelIngress.open(audience),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
@@ -801,6 +822,7 @@ export function createApp(
       threadId,
     });
   });
+  setTurnTelemetryDeps(deps);
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
@@ -961,8 +983,8 @@ export function createApp(
       return {
         onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
         onMessage: (event, socket) =>
-          onClientSocketMessage(deps, socket, event.data),
-        onClose: (_event, socket) => onClientSocketClose(deps, socket),
+          onClientSocketMessage(deps.hub, socket, event.data),
+        onClose: (_event, socket) => onClientSocketClose(deps.hub, socket),
       };
     }),
   );
@@ -1055,5 +1077,6 @@ export function createApp(
     pluginService,
     pluginCatalogService,
     serverMove,
+    tunnelIngress,
   };
 }

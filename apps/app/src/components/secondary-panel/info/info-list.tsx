@@ -10,7 +10,7 @@ import {
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { TruncateStart } from "@/components/ui/truncate-start";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
 
 const INFO_LIST_LEADING_CLASS =

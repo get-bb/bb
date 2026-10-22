@@ -704,6 +704,7 @@ describe("bb thread spawn command output", () => {
         model: "gpt-5",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: { type: "project-default" },
+        senderThreadId: "thread-context-parent",
       },
     });
   });

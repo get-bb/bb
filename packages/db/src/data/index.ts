@@ -125,6 +125,7 @@ export {
   forgetPluginProviders,
   getAiServiceSelections,
   getAppKeybindingOverrides,
+  claimInstallTurnNumber,
   getAppSettings,
   getDisabledPluginProviderCatalog,
   getDisabledProviderIds,

@@ -24,6 +24,7 @@ import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import {
   createTestDaemonHostKey,
   withTestHarness,
+  type TestAppHarness,
 } from "../helpers/test-app.js";
 
 function setup(args: { enrolled?: boolean; online?: boolean } = {}) {
@@ -573,6 +574,234 @@ describe("daemon session connect shares", () => {
       expect(
         harness.deps.sharedPorts.reconcileSharedPortsForHost("host-1"),
       ).toEqual({ generation: 0, ports: [] });
+    });
+  });
+});
+
+const NEXT_CONFIG = {
+  domain: "next.getbb.app",
+  server: {
+    protocol: "wss" as const,
+    host: "tunnel.next.getbb.app",
+    port: 443,
+  },
+};
+
+const LEGACY_SESSION_OPEN_RESPONSE_SCHEMA = hostDaemonSessionOpenResponseSchema
+  .omit({ connectNext: true })
+  .strict();
+
+function openDaemonSession(harness: TestAppHarness, protocolVersion: number) {
+  return harness.app.request("/internal/session/open", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${createTestDaemonHostKey({ hostId: "host-1" })}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      hostId: "host-1",
+      instanceId: `instance-${protocolVersion}`,
+      hostName: "Host",
+      hasMachineCredential: true,
+      platform: "linux",
+      dataDir: "/tmp/host-data",
+      localApiPort: null,
+      protocolVersion,
+      activeThreads: [],
+    }),
+  });
+}
+
+describe("connect next machine tunnels", () => {
+  it("sends the config to enrolled hosts, owned by one plugin and cleared with it", () => {
+    const { host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected a session");
+    const daemonSocket = createMockHubSocket();
+    hub.registerDaemon(session.id, host.id, daemonSocket);
+    const sent = () =>
+      daemonSocket.messages
+        .map((message) =>
+          hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+        )
+        .filter((message) => message.type === "connect-next.replace");
+
+    sharedPorts.setNextTunnelConfig("bb--connect-next", NEXT_CONFIG);
+    expect(sent()).toEqual([
+      { type: "connect-next.replace", generation: 1, config: NEXT_CONFIG },
+    ]);
+    sharedPorts.setNextTunnelConfig("bb--connect-next", NEXT_CONFIG);
+    expect(sent()).toHaveLength(1);
+    expect(() =>
+      sharedPorts.setNextTunnelConfig("other-plugin", NEXT_CONFIG),
+    ).toThrow('already configured by plugin "bb--connect-next"');
+    sharedPorts.setNextTunnelConfig("other-plugin", null);
+    expect(sent()).toHaveLength(1);
+
+    sharedPorts.clearDeclarationsForOwner("bb--connect-next");
+    expect(sent().at(-1)).toEqual({
+      type: "connect-next.replace",
+      generation: 2,
+      config: null,
+    });
+    sharedPorts.setNextTunnelConfig("other-plugin", NEXT_CONFIG);
+    expect(sent().at(-1)?.generation).toBe(3);
+  });
+
+  it("gives an unenrolled host no config", () => {
+    const { host, sharedPorts } = setup({ enrolled: false });
+    sharedPorts.setNextTunnelConfig("bb--connect-next", NEXT_CONFIG);
+    expect(sharedPorts.reconcileNextTunnelForHost(host.id)).toEqual({
+      generation: 1,
+      config: null,
+    });
+  });
+
+  it("keeps the latest status per session and drops it when the session ends", () => {
+    const { host, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected a session");
+    let changes = 0;
+    const unsubscribe = sharedPorts.onNextTunnelStatusChange(() => {
+      changes += 1;
+    });
+    const status = {
+      state: "connected" as const,
+      label: "sawyer-air",
+      lastError: null,
+      nextRetryAt: null,
+      since: 1,
+      shares: [{ port: 3000, state: "active" as const, error: null }],
+    };
+    sharedPorts.recordNextTunnelStatus({
+      hostId: host.id,
+      sessionId: "another-session",
+      status,
+    });
+    expect(sharedPorts.listNextTunnelStatuses()).toEqual([]);
+    sharedPorts.recordNextTunnelStatus({
+      hostId: host.id,
+      sessionId: session.id,
+      status,
+    });
+    sharedPorts.recordNextTunnelStatus({
+      hostId: host.id,
+      sessionId: session.id,
+      status,
+    });
+    expect(changes).toBe(1);
+    expect(sharedPorts.listNextTunnelStatuses()).toEqual([
+      { hostId: host.id, hostName: "test-host", status },
+    ]);
+    sharedPorts.clearHostConnectCapability(session.id);
+    expect(sharedPorts.listNextTunnelStatuses()).toEqual([]);
+    expect(changes).toBe(2);
+    unsubscribe();
+  });
+
+  it("serves a protocol-246 daemon its Cloudflare shares and never a next message", async () => {
+    await withTestHarness(async (harness) => {
+      upsertHost(harness.db, harness.hub, {
+        id: "host-1",
+        name: "Host",
+        connectMachineId: "machine-1",
+      });
+      harness.deps.sharedPorts.setNextTunnelConfig(
+        "bb--connect-next",
+        NEXT_CONFIG,
+      );
+      const response = await openDaemonSession(harness, 246);
+      expect(response.status).toBe(201);
+      const body = await readJson(response);
+      const legacy = LEGACY_SESSION_OPEN_RESPONSE_SCHEMA.parse(body);
+      harness.deps.sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: "host-1",
+        ports: [4173],
+      });
+      const daemonSocket = createMockHubSocket();
+      onDaemonSocketOpen(harness.deps, {
+        hostId: "host-1",
+        sessionId: legacy.sessionId,
+        socket: daemonSocket,
+      });
+      harness.deps.sharedPorts.setNextTunnelConfig("bb--connect-next", null);
+      const types = daemonSocket.messages.map(
+        (message) => (JSON.parse(message) as { type: string }).type,
+      );
+      expect(types).toContain("connect-shares.replace");
+      expect(types).not.toContain("connect-next.replace");
+      expect(
+        harness.deps.sharedPorts.reconcileSharedPortsForHost("host-1"),
+      ).toEqual({ generation: 1, ports: [4173] });
+    });
+  });
+
+  it("gives a current daemon the config at session open and on the socket", async () => {
+    await withTestHarness(async (harness) => {
+      upsertHost(harness.db, harness.hub, {
+        id: "host-1",
+        name: "Host",
+        connectMachineId: "machine-1",
+      });
+      harness.deps.sharedPorts.setNextTunnelConfig(
+        "bb--connect-next",
+        NEXT_CONFIG,
+      );
+      const response = await openDaemonSession(
+        harness,
+        HOST_DAEMON_PROTOCOL_VERSION,
+      );
+      const session = hostDaemonSessionOpenResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(session.connectNext).toEqual({
+        generation: 1,
+        config: NEXT_CONFIG,
+      });
+      const daemonSocket = createMockHubSocket();
+      onDaemonSocketOpen(harness.deps, {
+        hostId: "host-1",
+        sessionId: session.sessionId,
+        socket: daemonSocket,
+      });
+      onDaemonSocketMessage(harness.deps, {
+        hostId: "host-1",
+        sessionId: session.sessionId,
+        socket: daemonSocket,
+        raw: JSON.stringify({
+          type: "connect-next.status",
+          status: {
+            state: "connecting",
+            label: null,
+            lastError: null,
+            nextRetryAt: null,
+            since: 1,
+            shares: [],
+          },
+        }),
+      });
+      expect(
+        daemonSocket.messages.map((message) => JSON.parse(message)),
+      ).toContainEqual({
+        type: "connect-next.replace",
+        generation: 1,
+        config: NEXT_CONFIG,
+      });
+      expect(harness.deps.sharedPorts.listNextTunnelStatuses()).toMatchObject([
+        { hostId: "host-1", status: { state: "connecting" } },
+      ]);
+    });
+  });
+
+  it("still rejects protocols outside the compatible window", async () => {
+    await withTestHarness(async (harness) => {
+      upsertHost(harness.db, harness.hub, { id: "host-1", name: "Host" });
+      for (const version of [243, HOST_DAEMON_PROTOCOL_VERSION + 1]) {
+        const response = await openDaemonSession(harness, version);
+        expect(response.status).toBe(400);
+        await expect(readJson(response)).resolves.toMatchObject({
+          code: "protocol_version_mismatch",
+        });
+      }
     });
   });
 });

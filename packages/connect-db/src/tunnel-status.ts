@@ -56,3 +56,17 @@ export function isLive(args: {
     args.lastSeenMs !== null && args.now - args.lastSeenMs < args.offlineAfterMs
   );
 }
+
+export const NEXT_TUNNEL_WRITE_INTERVAL_MS = 5 * 60_000;
+export const NEXT_TUNNEL_STALE_MS = 12 * 60_000;
+
+export function nextTunnelConnected(
+  row: { nextTunnelGate: string | null; nextTunnelAt: Date | null },
+  now: number,
+): boolean {
+  return (
+    row.nextTunnelGate !== null &&
+    row.nextTunnelAt !== null &&
+    now - row.nextTunnelAt.getTime() < NEXT_TUNNEL_STALE_MS
+  );
+}

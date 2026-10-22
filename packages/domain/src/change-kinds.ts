@@ -2,8 +2,8 @@ import { z } from "zod";
 import {
   threadEventTypeSchema,
   threadEventTypeValues,
-  type ThreadEventType,
-} from "./provider-event.js";
+} from "./thread-event-types.js";
+import type { ThreadEventType } from "./provider-event.js";
 import {
   threadActivityStateSchema,
   threadRuntimeStateSchema,
@@ -122,6 +122,12 @@ export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("environment-pull-request"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("environment-list"),
     })
     .strict(),
@@ -187,10 +193,16 @@ export const pingMessageSchema = z.object({
   type: z.literal("ping"),
 });
 
+const visibilityMessageSchema = z.object({
+  type: z.literal("visibility"),
+  visible: z.boolean(),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
   unsubscribeMessageSchema,
   pingMessageSchema,
+  visibilityMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -225,6 +237,8 @@ export function realtimeSubscriptionTargetKey(
       return "project-list";
     case "environment-detail":
       return `environment-detail:${target.environmentId}`;
+    case "environment-pull-request":
+      return `environment-pull-request:${target.environmentId}`;
     case "environment-list":
       return "environment-list";
     case "host-detail":

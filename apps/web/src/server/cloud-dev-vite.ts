@@ -17,16 +17,20 @@ export function resolveCloudDevViteSettings(
     return null;
   }
 
+  const baseDomain = new URL(appUrl).hostname;
+  const gatePublicKeys = env.BB_CLOUD_DEV_GATE_PUBLIC_KEYS?.trim();
   return {
     persistStatePath,
     vars: {
       APP_URL: appUrl,
-      BASE_DOMAIN: new URL(appUrl).hostname,
+      BASE_DOMAIN: baseDomain,
       BETTER_AUTH_SECRET: betterAuthSecret,
       CONNECT_SERVER_URL_TEMPLATE: serverUrlTemplate,
       DEV_EMAIL_PASSWORD_AUTH: "true",
       GITHUB_CLIENT_ID: "local-cloud-dev-unused",
       GITHUB_CLIENT_SECRET: "local-cloud-dev-unused",
+      NEXT_BASE_DOMAIN: `next.${baseDomain}`,
+      ...(gatePublicKeys ? { GATE_PUBLIC_KEYS: gatePublicKeys } : {}),
     },
   };
 }

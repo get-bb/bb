@@ -65,7 +65,7 @@ import {
   type NewThreadPromptBoxProps,
 } from "@/components/promptbox/NewThreadPromptBox";
 import { buildProviderPromptActionProps } from "@bb/client-core";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   type PluginComposerHost,
   useComposerHostSelection,

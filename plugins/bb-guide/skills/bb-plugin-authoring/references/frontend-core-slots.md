@@ -93,7 +93,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, fixedTabs?, experimental_useBadge?, headerContent?, experimental_sidebar? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_useBadge?, experimental_usePageTitle?, headerContent?, experimental_sidebar? }`.
   The host renders your compact plugin icon + `title` into the shared app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do not
@@ -267,7 +267,7 @@ onChange }` — the control the New Thread environment picker renders beside
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.
 - `experimental_sidebarNavigation` → `{ isCompactViewport, placement,
-  experimental_Original }` — draws the sidebar navigation. Registration:
+experimental_Original }` — draws the sidebar navigation. Registration:
   `{ id, title, description?, placement?, component, headerComponent? }`,
   where `placement` is `"rail"` or `"list"` (the default). The optional
   `headerComponent` receives `{ width, controlSize, isCompactViewport }` and

@@ -546,6 +546,39 @@ describe("WebSocketManager liveness", () => {
     expect(onResumed).not.toHaveBeenCalled();
   });
 
+  it("stops watching after a long hide, across reconnects, until visible again", () => {
+    const { browserEvents, manager, socket } = createLiveManager();
+    const onResumed = vi.fn();
+    manager.onResumed(onResumed);
+    manager.subscribe(THREAD_TARGET);
+    const nonPingMessages = () =>
+      readClientMessages(socket).filter((message) => message.type !== "ping");
+
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_RESUME_HIDDEN_THRESHOLD_MS - 1);
+    browserEvents.setVisible(true);
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_RESUME_HIDDEN_THRESHOLD_MS);
+    socket.close();
+    socket.open();
+    manager.subscribe(PROJECT_TARGET);
+    browserEvents.setVisible(true);
+
+    expect(nonPingMessages()).toEqual([
+      { type: "subscribe", target: THREAD_TARGET },
+      { type: "visibility", visible: false },
+      { type: "visibility", visible: false },
+      { type: "subscribe", targets: [THREAD_TARGET] },
+      { type: "subscribe", target: PROJECT_TARGET },
+      { type: "visibility", visible: true },
+    ]);
+    expect(onResumed).toHaveBeenCalledTimes(1);
+    expect(onResumed).toHaveBeenCalledWith([THREAD_TARGET, PROJECT_TARGET]);
+
+    browserEvents.goOnline();
+    expect(onResumed).toHaveBeenLastCalledWith([]);
+  });
+
   it("schedules the first automatic reconnect within 500 ms of a close", () => {
     createLiveManager();
     const options = fakeSocketState.instances[0]?.options;

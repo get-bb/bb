@@ -11,6 +11,16 @@
 //                 && pnpm --filter @bb/web exec wrangler deploy
 // Secrets (per worker): wrangler secret put [--name bb-web] GITHUB_CLIENT_ID /
 //   GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET / LANDING_POSTHOG_KEY / RESEND_API_KEY
+// Var: NEXT_BASE_DOMAIN — bb connect next's domain; /oauth/authorize also
+//   issues MCP tokens for https://<label>.<NEXT_BASE_DOMAIN>/mcp.
+// Var: GATE_PUBLIC_KEYS — the bb connect next gate's Ed25519 public key set
+//   as a JSON string ({"keys":[{"kid","kty":"OKP","crv":"Ed25519","x"}]}),
+//   served at /.well-known/bb-connect-gate-keys.json. Unset = 404. It is
+//   public, so it lives in "vars" here (not the dashboard: a deploy replaces
+//   dashboard vars). Staging holds the staging gate's key (kid
+//   staging-2026-10-20), production the production gate's (kid
+//   prod-2026-10-21); the private halves are the gates' GATE_SIGNING_KEY
+//   Fly secrets.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-web-staging",
@@ -26,6 +36,8 @@
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
     "PRESENCE_WRITES": "on-change",
+    "NEXT_BASE_DOMAIN": "next.vibecodethis.site",
+    "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"staging-2026-10-20\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"R5uinj0FFjpFtS9QHKb7LY7wsPo9RZkoRRsxegheihw\"}]}",
   },
   "secrets": {
     "required": [
@@ -95,6 +107,8 @@
         "BASE_DOMAIN": "getbb.app",
         "APP_URL": "https://getbb.app",
         "PRESENCE_WRITES": "on-change",
+        "NEXT_BASE_DOMAIN": "next.getbb.app",
+        "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"prod-2026-10-21\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"sSHHgGnUQNXtsJ2_4EDXj4ZpIq9y45fZDvMGkKsWnGU\"}]}",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
       "d1_databases": [

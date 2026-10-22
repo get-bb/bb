@@ -194,6 +194,7 @@ async function startIntegrationServer(
     hostDaemonPort: 3001,
     inheritedSkillsRootPaths: [],
     marketplaceUrl: "https://marketplace.invalid/marketplace.json",
+    connectGateKeysUrl: "https://gate-keys.invalid/bb-connect-gate-keys.json",
     appUrl: "https://bb.example.test",
     serverPort: 0,
     sharedSkillRoots: { user: [], project: [] },

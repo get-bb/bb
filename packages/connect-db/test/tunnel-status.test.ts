@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  NEXT_TUNNEL_STALE_MS,
   TUNNEL_STATUS_HEADER,
   TUNNEL_STATUS_URL,
   isLive,
+  nextTunnelConnected,
   presenceWritesOnChange,
   readTunnelConnected,
   tunnelConnectedLookup,
@@ -123,5 +125,42 @@ describe("isLive", () => {
     expect(isLive({ ...base, lastSeenMs: null, tunnelConnected: null })).toBe(
       false,
     );
+  });
+});
+
+describe("nextTunnelConnected", () => {
+  const now = 1_000_000_000;
+
+  it("holds while a gate machine is on record and its last event is fresh", () => {
+    expect(
+      nextTunnelConnected(
+        {
+          nextTunnelGate: "fly-a",
+          nextTunnelAt: new Date(now - NEXT_TUNNEL_STALE_MS + 1),
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("lapses when the gate went quiet or reported a disconnect", () => {
+    expect(
+      nextTunnelConnected(
+        {
+          nextTunnelGate: "fly-a",
+          nextTunnelAt: new Date(now - NEXT_TUNNEL_STALE_MS),
+        },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      nextTunnelConnected(
+        { nextTunnelGate: null, nextTunnelAt: new Date(now) },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      nextTunnelConnected({ nextTunnelGate: null, nextTunnelAt: null }, now),
+    ).toBe(false);
   });
 });

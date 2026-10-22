@@ -107,7 +107,7 @@ import {
   isPluginRenderableWorkRow,
   usePluginTimelineRenderer,
 } from "./PluginTimelineRendererBody.js";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   TimelineScrollRestoreRowIdContext,
   useBottomAnchoredScroll,

@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import {
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
   CONNECT_SESSION_UPDATE_AGE_SECONDS,
@@ -93,6 +93,10 @@ export class SettledLookupCache<T> {
     this.lookups.delete(key);
     this.generation += 1;
   }
+
+  prime(key: string, value: T, expires: number): void {
+    this.entries.set(key, { value, expires });
+  }
 }
 
 const labelCache = new SettledLookupCache<ResolvedLabel | null>();
@@ -147,6 +151,85 @@ export async function resolveLabel(
     expires: () => now + LABEL_TTL_MS,
     load: () => lookupLabel(label, db),
   });
+}
+
+export async function resolveLabels(
+  labels: readonly string[],
+  db: ConnectDb,
+): Promise<Map<string, ResolvedLabel | null>> {
+  const wanted = [...new Set(labels)];
+  const resolved = new Map<string, ResolvedLabel | null>();
+  if (wanted.length === 0) return resolved;
+  const now = Date.now();
+  const [serverRows, machineRows] = await Promise.all([
+    db
+      .select({
+        label: server.subdomain,
+        userId: server.userId,
+        serverId: server.id,
+        credentialHash: server.credentialHash,
+        revokedAt: server.revokedAt,
+        lastSeenAt: server.lastSeenAt,
+      })
+      .from(server)
+      .where(inArray(server.subdomain, wanted))
+      .all(),
+    db
+      .select({
+        label: machine.subdomain,
+        userId: machine.userId,
+        accountHandle: profile.handle,
+        machineId: machine.id,
+        credentialHash: machine.credentialHash,
+        revokedAt: machine.revokedAt,
+        lastSeenAt: machine.lastSeenAt,
+        generation: labelClaim.generation,
+      })
+      .from(machine)
+      .innerJoin(profile, eq(profile.userId, machine.userId))
+      .innerJoin(
+        labelClaim,
+        and(
+          eq(labelClaim.label, machine.subdomain),
+          eq(labelClaim.kind, "machine"),
+          eq(labelClaim.ownerId, machine.id),
+        ),
+      )
+      .where(inArray(machine.subdomain, wanted))
+      .all(),
+  ]);
+  for (const label of wanted) resolved.set(label, null);
+  for (const row of machineRows) {
+    if (row.label === null) continue;
+    resolved.set(row.label, {
+      kind: "machine",
+      routingKey: machineRoutingKey(row.label, row.generation),
+      userId: row.userId,
+      accountHandle: row.accountHandle,
+      machine: {
+        id: row.machineId,
+        credentialHash: row.credentialHash,
+        revokedAt: row.revokedAt,
+        lastSeenAt: row.lastSeenAt,
+      },
+    });
+  }
+  for (const row of serverRows) {
+    resolved.set(row.label, {
+      kind: "server",
+      userId: row.userId,
+      server: {
+        id: row.serverId,
+        credentialHash: row.credentialHash,
+        revokedAt: row.revokedAt,
+        lastSeenAt: row.lastSeenAt,
+      },
+    });
+  }
+  for (const [label, value] of resolved) {
+    labelCache.prime(label, value, now + LABEL_TTL_MS);
+  }
+  return resolved;
 }
 
 async function lookupLabel(
@@ -241,21 +324,34 @@ export async function verifySessionCookieDetails(
   if (dot <= 0) return null;
 
   const now = Date.now();
-  const cachedSession = await sessionCache.read(decoded, {
-    now,
-    expires: (looked) =>
-      looked === null
-        ? now + SESSION_TTL_MS
-        : Math.min(now + SESSION_TTL_MS, looked.expiresAt),
-    load: () =>
-      lookupCachedSession(
-        decoded.slice(0, dot),
-        decoded.slice(dot + 1),
-        secret,
-        db,
-        now,
-      ),
-  });
+  let loaded = false;
+  const read = (fresh: boolean) =>
+    sessionCache.read(decoded, {
+      now,
+      fresh,
+      expires: (looked) =>
+        looked === null
+          ? now + SESSION_TTL_MS
+          : Math.min(now + SESSION_TTL_MS, looked.expiresAt),
+      load: () => {
+        loaded = true;
+        return lookupCachedSession(
+          decoded.slice(0, dot),
+          decoded.slice(dot + 1),
+          secret,
+          db,
+          now,
+        );
+      },
+    });
+  let cachedSession = await read(false);
+  if (
+    !loaded &&
+    cachedSession !== null &&
+    verifiedSession(cachedSession, now).needsRefresh
+  ) {
+    cachedSession = await read(true);
+  }
   return cachedSession === null ? null : verifiedSession(cachedSession, now);
 }
 

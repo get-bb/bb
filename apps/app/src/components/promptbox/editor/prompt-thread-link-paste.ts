@@ -1,8 +1,4 @@
 import { isProjectlessProjectId } from "@bb/client-core";
-import {
-  THREAD_MENTION_RESOLVE_MAX_IDS,
-  type ResolveThreadMentionsResponse,
-} from "@bb/server-contract";
 import { Extension, getChangedRanges, type Editor } from "@tiptap/core";
 import { closeHistory, isHistoryTransaction } from "@tiptap/pm/history";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
@@ -11,17 +7,17 @@ import {
   findPastedThreadLinkCandidates,
   type PastedThreadLink,
 } from "../mentions/pasted-thread-link-candidates";
+import {
+  resolveThreadMentionsInBatches,
+  type ResolveThreadMentionBatch,
+  type ThreadMentionResolution,
+} from "@/lib/thread-links";
 import { promptEditorSerializationFromDoc } from "./prompt-editor-serialization";
-
-type ThreadMentionResolution = ResolveThreadMentionsResponse[number];
 
 interface PromptThreadLinkPasteOptions {
   getOrigin: () => string;
   getCachedThread: (threadId: string) => ThreadMentionResolution | null;
-  resolveThreads: (
-    threadIds: string[],
-    signal: AbortSignal,
-  ) => Promise<readonly ThreadMentionResolution[]>;
+  resolveThreads: ResolveThreadMentionBatch;
 }
 
 interface PendingPaste {
@@ -193,7 +189,7 @@ export function createPromptThreadLinkPasteExtension(
           occurrence.to,
           editor.schema.nodes.mention!.create(
             {
-              resource: {
+              mention: {
                 kind: "thread",
                 ...thread,
                 label: thread.label.trim() || thread.threadId,
@@ -233,28 +229,14 @@ export function createPromptThreadLinkPasteExtension(
         if (cached?.threadId === id) resolved.set(id, cached);
         else missing.push(id);
       }
-      const batches: Promise<void>[] = [];
-      for (
-        let index = 0;
-        index < missing.length;
-        index += THREAD_MENTION_RESOLVE_MAX_IDS
-      ) {
-        const ids = missing.slice(
-          index,
-          index + THREAD_MENTION_RESOLVE_MAX_IDS,
-        );
-        batches.push(
-          (async () => {
-            const threads = await options.resolveThreads(ids, signal);
-            if (signal.aborted) return;
-            for (const thread of threads) {
-              if (ids.includes(thread.threadId))
-                resolved.set(thread.threadId, thread);
-            }
-          })(),
-        );
-      }
-      await Promise.allSettled(batches);
+      await resolveThreadMentionsInBatches(
+        missing,
+        options.resolveThreads,
+        signal,
+        ({ threads }) => {
+          for (const thread of threads) resolved.set(thread.threadId, thread);
+        },
+      );
     } catch {
       return;
     } finally {

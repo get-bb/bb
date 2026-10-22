@@ -975,14 +975,24 @@ function dirtyThreadPullRequestQueryForCompletedTurn({
   if (!threadId || !eventTypes?.includes("turn/completed")) {
     return [];
   }
+  const environmentId = getCachedThreadEnvironmentId({ queryClient, threadId });
+  return environmentId ? [environmentPullRequestQueryKey(environmentId)] : [];
+}
+
+export function getCachedThreadEnvironmentId({
+  queryClient,
+  threadId,
+}: {
+  queryClient: QueryClient;
+  threadId: string;
+}): string | null {
   const cachedThread =
     queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)) ??
     getCachedThreadListPlaceholder(queryClient, threadId) ??
     getCachedSidebarNavigationThreads(queryClient).find(
       (thread) => thread.id === threadId,
     );
-  const environmentId = cachedThread?.environmentId;
-  return environmentId ? [environmentPullRequestQueryKey(environmentId)] : [];
+  return cachedThread?.environmentId ?? null;
 }
 
 function dirtyThreadTerminalQueries({

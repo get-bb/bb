@@ -18,6 +18,7 @@ export {
   type FakeLogLevel,
   type FakeMentionProviderRecord,
   type ExperimentalFakeHostRpcCall,
+  type InternalDoNotUseFakeTunnelIngress,
   type FakePluginHarness,
   type FakePluginHost,
   type FakePluginBehaviorDrivers,

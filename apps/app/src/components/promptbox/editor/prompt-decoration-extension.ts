@@ -1,8 +1,4 @@
-import type {
-  ComposerRichTextSpec,
-  ComposerStructuredDraft,
-  ComposerView,
-} from "@get-bb/plugin-sdk";
+import type { ComposerRichTextSpec } from "@get-bb/plugin-sdk";
 import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
@@ -11,14 +7,11 @@ import {
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { PromptTextMention } from "@bb/domain";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import {
   promptEditorSerializationFromDoc,
   type PromptEditorOffsetSegment,
 } from "./prompt-editor-serialization";
-
-export const ULTRACODE_HIGHLIGHT_CLASS = "prompt-ultracode-highlight";
 
 interface PromptDecorationRange {
   from: number;
@@ -36,16 +29,8 @@ export interface PromptDecorationSource {
   effects: readonly PromptDecorationRule[];
 }
 
-export interface PromptDraftObserver {
-  id: string;
-  getView(): ComposerView;
-  onDraftChange(draft: ComposerStructuredDraft, view: ComposerView): void;
-}
-
 export interface PromptDecorationExtensionOptions {
   getDecorationSources?: () => readonly PromptDecorationSource[];
-  getDraftObservers?: () => readonly PromptDraftObserver[];
-  draftObserverDebounceMs?: number;
   onRuleError?: (sourceId: string, ruleId: string, error: unknown) => void;
 }
 
@@ -65,33 +50,6 @@ export const PROMPT_DECORATION_LARGE_DOC_SIZE = 100_000;
 export const PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS = 200;
 
 const EMPTY_SOURCES: readonly PromptDecorationSource[] = [];
-const EMPTY_OBSERVERS: readonly PromptDraftObserver[] = [];
-
-function ultracodePattern(): RegExp {
-  return /\bultracode\b/giu;
-}
-
-export function findUltracodeRanges(text: string): PromptDecorationRange[] {
-  const ranges: PromptDecorationRange[] = [];
-  const pattern = ultracodePattern();
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    ranges.push({ from: match.index, to: match.index + match[0].length });
-  }
-  return ranges;
-}
-
-const PROMPT_ULTRACODE_DECORATION_RULE: PromptDecorationRule = {
-  id: "ultracode",
-  match: findUltracodeRanges,
-  className: ULTRACODE_HIGHLIGHT_CLASS,
-};
-
-const BUILT_IN_HOST_SOURCE: PromptDecorationSource = {
-  id: "host:ultracode",
-  generation: 0,
-  effects: [PROMPT_ULTRACODE_DECORATION_RULE],
-};
 
 function parseRanges(value: unknown): PromptDecorationRange[] | null {
   if (!Array.isArray(value)) return null;
@@ -156,13 +114,6 @@ function defaultRuleErrorLogger(
   );
 }
 
-function defaultObserverErrorLogger(observerId: string, error: unknown): void {
-  console.warn(
-    `[composer-draft-observer:${observerId}] onDraftChange failed`,
-    error,
-  );
-}
-
 function buildDecorations(
   doc: ProseMirrorNode,
   sources: readonly PromptDecorationSource[],
@@ -170,13 +121,9 @@ function buildDecorations(
   onRuleError: PromptDecorationExtensionOptions["onRuleError"],
 ): DecorationSet | null {
   const serialization = promptEditorSerializationFromDoc(doc);
-  const orderedSources: PromptDecorationSource[] = [
-    BUILT_IN_HOST_SOURCE,
-    ...sources,
-  ];
   const decorations: Decoration[] = [];
 
-  for (const [sourceIndex, source] of orderedSources.entries()) {
+  for (const [sourceIndex, source] of sources.entries()) {
     for (const [ruleIndex, rule] of source.effects.entries()) {
       const failureKey = `${source.id}\0${rule.id}\0${ruleIndex}`;
       const disabledGeneration = disabledRules.get(failureKey);
@@ -232,53 +179,6 @@ function buildDecorations(
     : DecorationSet.create(doc, decorations);
 }
 
-function structuredMention(
-  mention: PromptTextMention,
-): ComposerStructuredDraft["mentions"][number] {
-  const { resource } = mention;
-  if (resource.kind === "plugin") {
-    const separator = resource.itemId.indexOf(":");
-    return {
-      from: mention.start,
-      to: mention.end,
-      provider:
-        separator === -1
-          ? resource.pluginId
-          : resource.itemId.slice(0, separator),
-      id:
-        separator === -1
-          ? resource.itemId
-          : resource.itemId.slice(separator + 1),
-      label: resource.label,
-    };
-  }
-
-  let id: string;
-  if (resource.kind === "thread") id = resource.threadId;
-  else if (resource.kind === "project") id = resource.projectId;
-  else if (resource.kind === "section") id = resource.sectionId;
-  else if (resource.kind === "path" || resource.kind === "attachment")
-    id = resource.path;
-  else id = `${resource.trigger}${resource.name}`;
-  return {
-    from: mention.start,
-    to: mention.end,
-    provider: resource.kind,
-    id,
-    label: resource.label,
-  };
-}
-
-function composerStructuredDraftFromDoc(
-  doc: ProseMirrorNode,
-): ComposerStructuredDraft {
-  const value = promptEditorSerializationFromDoc(doc);
-  return {
-    text: value.text,
-    mentions: value.mentions.map(structuredMention),
-  };
-}
-
 export function refreshPromptDecorations(editor: Editor): void {
   editor.view.dispatch(
     editor.state.tr.setMeta(
@@ -307,8 +207,6 @@ export const PromptDecorationExtension =
     addOptions() {
       return {
         getDecorationSources: () => EMPTY_SOURCES,
-        getDraftObservers: () => EMPTY_OBSERVERS,
-        draftObserverDebounceMs: 100,
       };
     },
     addProseMirrorPlugins() {
@@ -365,11 +263,9 @@ export const PromptDecorationExtension =
               );
             },
           },
-          view(initialView) {
-            let timeout: ReturnType<typeof setTimeout> | null = null;
+          view() {
             let rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
-            let latestDoc = initialView.state.doc;
-            const scheduleDeferredRebuild = (view: typeof initialView) => {
+            const scheduleDeferredRebuild = (view: EditorView) => {
               if (rebuildTimeout !== null) return;
               rebuildTimeout = setTimeout(() => {
                 rebuildTimeout = null;
@@ -382,39 +278,11 @@ export const PromptDecorationExtension =
                 );
               }, PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS);
             };
-            const schedule = (doc: ProseMirrorNode) => {
-              latestDoc = doc;
-              if (timeout !== null) clearTimeout(timeout);
-              timeout = setTimeout(() => {
-                timeout = null;
-                const observers =
-                  options.getDraftObservers?.() ?? EMPTY_OBSERVERS;
-                if (observers.length === 0) return;
-                const draft = composerStructuredDraftFromDoc(latestDoc);
-                for (const observer of observers) {
-                  try {
-                    observer.onDraftChange(draft, observer.getView());
-                  } catch (error) {
-                    defaultObserverErrorLogger(observer.id, error);
-                  }
-                }
-              }, options.draftObserverDebounceMs ?? 100);
-            };
-            schedule(initialView.state.doc);
             return {
-              update(updatedView, previousState) {
-                latestDoc = updatedView.state.doc;
-                const previousPluginState =
-                  promptDecorationPluginKey.getState(previousState);
+              update(updatedView) {
                 const nextPluginState = promptDecorationPluginKey.getState(
                   updatedView.state,
                 );
-                if (
-                  !updatedView.state.doc.eq(previousState.doc) ||
-                  previousPluginState?.revision !== nextPluginState?.revision
-                ) {
-                  schedule(updatedView.state.doc);
-                }
                 if (nextPluginState?.rebuildPending) {
                   scheduleDeferredRebuild(updatedView);
                 } else if (rebuildTimeout !== null) {
@@ -423,7 +291,6 @@ export const PromptDecorationExtension =
                 }
               },
               destroy() {
-                if (timeout !== null) clearTimeout(timeout);
                 if (rebuildTimeout !== null) clearTimeout(rebuildTimeout);
               },
             };

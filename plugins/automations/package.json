@@ -6,7 +6,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.0"
+    "bbPluginSdk": ">=0.6.65"
   },
   "bb": {
     "name": "Automations",
@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
+    "@tanstack/react-query": "^5.62.0",
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.14.0",
     "zod": "^4.3.6"

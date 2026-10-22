@@ -198,6 +198,7 @@ interface PluginSlotMountProps {
   crashFallback?: ReactNode;
   crashResetKey?: string;
   instanceId?: string;
+  wrapRoot?: boolean;
   onCrash?: (pluginId: string) => void;
 }
 
@@ -209,6 +210,7 @@ export function PluginSlotMount({
   crashFallback,
   crashResetKey,
   instanceId,
+  wrapRoot = true,
   onCrash,
 }: PluginSlotMountProps) {
   const onRouteAnchorClick = useRouteAnchorDelegate();
@@ -227,14 +229,18 @@ export function PluginSlotMount({
         {...(crashResetKey === undefined ? {} : { resetKey: crashResetKey })}
         {...(onCrash ? { onCrash } : {})}
       >
-        <div
-          data-bb-plugin-root=""
-          data-bb-plugin={pluginId}
-          className="contents"
-          onClick={onRouteAnchorClick}
-        >
-          {children}
-        </div>
+        {wrapRoot ? (
+          <div
+            data-bb-plugin-root=""
+            data-bb-plugin={pluginId}
+            className="contents"
+            onClick={onRouteAnchorClick}
+          >
+            {children}
+          </div>
+        ) : (
+          children
+        )}
       </PluginSlotBoundary>
     </PluginContext.Provider>
   );

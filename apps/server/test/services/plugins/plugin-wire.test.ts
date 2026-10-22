@@ -37,6 +37,13 @@ const WIRE_SOURCE = `
     cyclicResult: { input: z.null(), output: z.any() },
     nonFiniteResult: { input: z.null(), output: z.any() },
     validated: { input: z.object({ value: z.string().min(1) }), output: z.string() },
+    tagged: {
+      input: z.object({ id: z.string() }),
+      output: z.record(z.string(), z.number()),
+      tags: (input: any) => ["item:" + input.id],
+      keyTags: (key: string) => ["row:" + key],
+      invalidates: (input: any) => ["item:" + input.id],
+    },
   });
   export default function plugin(bb: any) {
     bb.http.route("GET", "/hello", (c: any) => c.json({ message: "hello v1" }));
@@ -128,6 +135,7 @@ const WIRE_SOURCE = `
         throw new experimental_PluginRpcRefusal({ code, message: "Cannot change this item", issues: [{ path: ["id"], message: "Unavailable" }] });
       },
       echo: async (input: any) => ({ echoed: input }),
+      tagged: async () => ({ a: 1 }),
       boom: async () => {
         throw new Error("rpc boom");
       },
@@ -562,9 +570,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await oldRpc.json()).toEqual({
       ok: true,
       result: { echoed: { kept: true } },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
     const candidateRoute = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/candidate`,
@@ -586,9 +591,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await ok.json()).toEqual({
       ok: true,
       result: { echoed: { x: 1 } },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
 
     const boom = await rpc(harness, "boom", {});
@@ -613,6 +615,14 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         message: 'plugin "wire" has no rpc method "missing"',
       },
     });
+  });
+
+  it("rpc: a method declaring tags returns only ok and result and still broadcasts its invalidation", async () => {
+    const changed = vi.spyOn(harness.hub, "notifyPluginChanged");
+    const response = await rpc(harness, "tagged", { id: "x" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, result: { a: 1 } });
+    expect(changed).toHaveBeenCalledWith("wire", ["item:x"]);
   });
 
   it.each([
@@ -732,9 +742,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: "published",
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
 
     for (const socket of [systemSocket, threadSocket]) {
@@ -808,9 +815,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({
       ok: true,
       result: { gen: firstGen + 1 },
-      tags: [],
-      keyTags: {},
-      invalidated: [],
     });
   });
 });

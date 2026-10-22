@@ -7,7 +7,7 @@ import type {
   UiPreferenceValue,
 } from "@bb/domain";
 import {
-  publicApiRoutes,
+  updateUiPreferenceRoute,
   UI_PREFERENCES_TAG,
   type UiPreferencesResponse,
 } from "@bb/server-contract";
@@ -214,7 +214,7 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
       const request = { expectedRevision: base.revision, value };
       const response = await runRouteMutation(
         queryClient,
-        publicApiRoutes.system.updateUiPreference,
+        updateUiPreferenceRoute,
         { params: { key }, input: request },
         () => sdk.system.uiPreferences.set({ ...request, key }),
       );

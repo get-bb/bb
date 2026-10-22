@@ -139,9 +139,9 @@ describe("shouldEngageSidebarSplitDrag", () => {
     );
   });
 
-  it("lets reorder win on a mostly-vertical drag even past the edge", () => {
+  it("engages a mostly-vertical drag once it leaves the sidebar", () => {
     expect(shouldEngageSidebarSplitDrag({ ...base, x: 288, y: 700 })).toBe(
-      false,
+      true,
     );
   });
 

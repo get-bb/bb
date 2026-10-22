@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 
 export const FILE_PREVIEW_WRAPPER_STYLE = {

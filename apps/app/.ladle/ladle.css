@@ -21,3 +21,4 @@
   --ladle-bg-color-secondary: var(--sidebar);
   --ladle-color-primary: var(--foreground);
 }
+@source "../../../plugins/thread-list";

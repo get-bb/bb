@@ -1,5 +1,5 @@
 import type { DiffFileEntry } from "@bb/server-contract";
-import { filterDiffFilesByPath } from "./gitDiffPanelHelpers";
+import { filterDiffFilesByPath } from "./filter-diff-files";
 
 export interface DiffFileFilters {
   selectedExtensions: readonly string[];

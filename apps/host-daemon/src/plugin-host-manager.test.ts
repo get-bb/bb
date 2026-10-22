@@ -273,17 +273,31 @@ describe("PluginHostManager", () => {
   });
 
   describe("environment reuse across active calls", () => {
-    async function fixture() {
+    async function fixture(startupDelayMs = 0) {
+      const source =
+        startupDelayMs === 0
+          ? artifactSource
+          : Buffer.concat([
+              Buffer.from(
+                `await new Promise((resolve) => setTimeout(resolve, ${startupDelayMs}));\n`,
+              ),
+              artifactSource,
+            ]);
       const onSignal = vi.fn();
       const onWorkerExit = vi.fn();
       const manager = await createManager({
         shellEnv: () => ({ GATE_VALUE: "base" }),
         onSignal,
         onWorkerExit,
+        fetchArtifact: vi.fn(async () => source),
       });
       const command = (id: string, value: string, delay = 0) =>
         callCommand({
           callId: id,
+          artifact: {
+            digest: createHash("sha256").update(source).digest("hex"),
+            byteLength: source.byteLength,
+          },
           method: "environment",
           input: { id, delay },
           timeoutMs: 15_000,
@@ -308,7 +322,9 @@ describe("PluginHostManager", () => {
           payload: expect.objectContaining({ id }),
         });
       const waitForStart = (id: string) =>
-        vi.waitFor(() => expect(onSignal).toHaveBeenCalledWith(started(id)));
+        vi.waitFor(() => expect(onSignal).toHaveBeenCalledWith(started(id)), {
+          timeout: 10_000,
+        });
       return {
         manager,
         command,
@@ -383,29 +399,35 @@ describe("PluginHostManager", () => {
       },
     );
 
-    it("keeps the first values until every overlapping call finishes", async () => {
-      const { manager, command, cancel, waitForStart } = await fixture();
-      const a = manager
-        .call(command("a", "first", 10_000))
-        .catch((error: unknown) => error);
-      await waitForStart("a");
-      const b = manager
-        .call(command("b", "second", 10_000))
-        .catch((error: unknown) => error);
-      await waitForStart("b");
-      cancel("a");
-      await expect(a).resolves.toMatchObject({ name: "AbortError" });
-      await expect(manager.call(command("c", "third"))).resolves.toMatchObject({
-        output: { before: "first", after: "first" },
-      });
-      cancel("b");
-      await expect(b).resolves.toMatchObject({ name: "AbortError" });
-      await expect(manager.call(command("d", "fourth"))).resolves.toMatchObject(
-        {
+    it.each([0, 1_500])(
+      "keeps the first values until every overlapping call finishes with %ims startup",
+      async (startupDelayMs) => {
+        const { manager, command, cancel, waitForStart } =
+          await fixture(startupDelayMs);
+        const a = manager
+          .call(command("a", "first", 10_000))
+          .catch((error: unknown) => error);
+        await waitForStart("a");
+        const b = manager
+          .call(command("b", "second", 10_000))
+          .catch((error: unknown) => error);
+        await waitForStart("b");
+        cancel("a");
+        await expect(a).resolves.toMatchObject({ name: "AbortError" });
+        await expect(
+          manager.call(command("c", "third")),
+        ).resolves.toMatchObject({
+          output: { before: "first", after: "first" },
+        });
+        cancel("b");
+        await expect(b).resolves.toMatchObject({ name: "AbortError" });
+        await expect(
+          manager.call(command("d", "fourth")),
+        ).resolves.toMatchObject({
           output: { before: "fourth", after: "fourth" },
-        },
-      );
-    });
+        });
+      },
+    );
 
     it("disposes with overlapping calls and starts a fresh generation", async () => {
       const { manager, command, waitForStart } = await fixture();

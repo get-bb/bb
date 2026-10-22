@@ -16,7 +16,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
+import { LazyRemotePathBrowser } from "@/components/dialogs/LazyRemotePathBrowser";
 import { useAddProjectSource } from "@/hooks/mutations/project-mutations";
 import {
   isHostPathMissing,
@@ -292,7 +292,7 @@ function ProjectMachineSetupDialogContent({
           </div>
         ) : null}
         {option === "folder" ? (
-          <RemotePathBrowser
+          <LazyRemotePathBrowser
             hostId={target.hostId}
             allowCreateFolder={false}
             onDirectoryChange={(directory) => {

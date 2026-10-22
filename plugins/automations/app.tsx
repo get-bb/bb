@@ -1,3 +1,4 @@
+import { QueryClient, useQuery } from "@tanstack/react-query";
 import { composerCustomization, CREATE_AUTOMATION_PROMPT } from "./composer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -169,46 +170,61 @@ function useOverview(): {
   return { ...state, refetch };
 }
 
-function useAutomation(route: DetailRoute): {
+const automationQueryClient = new QueryClient();
+
+function useAutomation(route: DetailRoute | null): {
   automation: AutomationDetailReadResult | null;
   error: string | null;
   refetch: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
-  const { projectId, automationId } = route;
-  const [state, setState] = useState<{
-    automation: AutomationDetailReadResult | null;
-    error: string | null;
-  }>({ automation: null, error: null });
-  const requestRef = useRef(0);
-
-  const refetch = useCallback(() => {
-    const requestId = ++requestRef.current;
-    setState((current) => ({ ...current, error: null }));
-    rpc.call("automations_get", { projectId, automationId }).then(
-      (result) => {
-        if (requestRef.current !== requestId) return;
-        setState({ automation: result, error: null });
+  const queryKey = [
+    "automation",
+    route?.projectId ?? null,
+    route?.automationId ?? null,
+  ];
+  const query = useQuery(
+    {
+      queryKey,
+      queryFn: () => {
+        if (!route) throw new Error("Automation route required");
+        return rpc.call("automations_get", route);
       },
-      (error: unknown) => {
-        if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error) });
-      },
-    );
-  }, [rpc, projectId, automationId]);
-
-  useEffect(() => {
-    setState({ automation: null, error: null });
-    refetch();
-    return () => {
-      requestRef.current += 1;
-    };
-  }, [refetch]);
+      enabled: route !== null,
+      staleTime: 30_000,
+      retry: false,
+    },
+    automationQueryClient,
+  );
   useRealtime("automations", (payload) => {
     const signal = asSignal(payload);
-    if (signal !== null && signal.projectId === projectId) refetch();
+    if (route && signal?.projectId === route.projectId) {
+      void automationQueryClient.invalidateQueries(
+        { queryKey },
+        { cancelRefetch: false },
+      );
+    }
   });
-  return { ...state, refetch };
+  return {
+    automation: query.data ?? null,
+    error: query.error ? errorText(query.error) : null,
+    refetch: () => {
+      void query.refetch();
+    },
+  };
+}
+
+function useAutomationsPageTitle({ subPath }: PluginNavPanelProps) {
+  const parsed = parseSubPath(subPath);
+  const { automation } = useAutomation(parsed?.route ?? null);
+  return parsed
+    ? {
+        breadcrumbs: [
+          { label: "Installed", to: "/plugins/automations/automations" },
+          { label: automation?.name ?? parsed.route.automationId },
+        ],
+      }
+    : { title: subPath === "browse" ? "Browse" : "Installed" };
 }
 
 interface RunsState {
@@ -761,5 +777,6 @@ export default definePluginApp((app) => {
     icon: "Repeat",
     path: PANEL_PATH,
     component: AutomationsPanel,
+    experimental_usePageTitle: useAutomationsPageTitle,
   });
 });

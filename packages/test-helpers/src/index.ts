@@ -3,6 +3,7 @@ export { createDeferredPromise } from "./deferred-promise.js";
 export type { DeferredPromise } from "./deferred-promise.js";
 export { initRepo } from "./git-repo.js";
 export {
+  LIVE_TEST_PROVIDER_ID,
   listPreferredTestModels,
   resolvePreferredTestModel,
 } from "./provider-models.js";

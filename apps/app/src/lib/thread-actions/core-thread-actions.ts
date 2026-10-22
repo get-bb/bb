@@ -11,7 +11,7 @@ import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
-import { resolveThread } from "@/lib/plugin-sidebar-hooks";
+import { resolveThread } from "@/lib/cached-thread";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { countPanes, listPanes } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -40,7 +40,9 @@ function useSplitAvailability(): SplitAvailability {
   const layout = useAtomValue(splitLayoutAtom);
   const { threadId } = useRouteState();
   const panes =
-    layout !== null && countPanes(layout.root) > 1 ? listPanes(layout.root) : [];
+    layout !== null && countPanes(layout.root) > 1
+      ? listPanes(layout.root)
+      : [];
   const focusedPane = panes.find(
     (pane) => pane.paneId === layout?.focusedPaneId,
   );

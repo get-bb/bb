@@ -1,7 +1,6 @@
 import { clientMessageSchema, type PongMessage } from "@bb/domain";
 import { parseSocketMessage } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
-import type { WatchInterestCoordinator } from "./watch-interests.js";
 
 const PONG_MESSAGE: PongMessage = { type: "pong" };
 
@@ -18,13 +17,7 @@ export function onClientSocketOpen(
 }
 
 export function onClientSocketMessage(
-  deps: {
-    hub: NotificationHub;
-    watchInterests: Pick<
-      WatchInterestCoordinator,
-      "subscribe" | "unsubscribe" | "releaseSocket"
-    >;
-  },
+  hub: NotificationHub,
   socket: ClientSocket,
   raw: unknown,
 ): void {
@@ -37,19 +30,20 @@ export function onClientSocketMessage(
     case "subscribe":
       for (const target of parsed.targets ??
         (parsed.target ? [parsed.target] : [])) {
-        deps.hub.subscribe(socket, target);
-        deps.watchInterests.subscribe(socket, target);
+        hub.subscribe(socket, target);
       }
       break;
     case "unsubscribe":
       for (const target of parsed.targets ??
         (parsed.target ? [parsed.target] : [])) {
-        deps.hub.unsubscribe(socket, target);
-        deps.watchInterests.unsubscribe(socket, target);
+        hub.unsubscribe(socket, target);
       }
       break;
     case "ping":
       socket.send(JSON.stringify(PONG_MESSAGE));
+      break;
+    case "visibility":
+      hub.setClientVisible(socket, parsed.visible);
       break;
     default: {
       const _exhaustive: never = parsed;
@@ -59,12 +53,8 @@ export function onClientSocketMessage(
 }
 
 export function onClientSocketClose(
-  deps: {
-    hub: NotificationHub;
-    watchInterests: Pick<WatchInterestCoordinator, "releaseSocket">;
-  },
+  hub: NotificationHub,
   socket: ClientSocket,
 ): void {
-  deps.watchInterests.releaseSocket(socket);
-  deps.hub.unregisterClient(socket);
+  hub.unregisterClient(socket);
 }

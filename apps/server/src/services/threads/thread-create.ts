@@ -60,6 +60,11 @@ import {
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
+import { getActiveTurnId } from "./thread-events.js";
+import {
+  resolveTelemetryInitiator,
+  initiatorTelemetryProperty,
+} from "./telemetry-initiator.js";
 import { deriveForkTitle, deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
@@ -849,23 +854,37 @@ export async function createThreadFromRequest(
     ...createArgs,
     sendAt: request.sendAt,
   });
+  const { initiator } = resolveDispatchAuthor({
+    retrying: false,
+    senderThreadId: null,
+    startedOnBehalfOf: request.startedOnBehalfOf,
+  });
+  const spawnedByWorkingAgent =
+    request.senderThreadId !== undefined &&
+    getActiveTurnId(deps, request.senderThreadId) !== null;
+  const telemetryInitiator = resolveTelemetryInitiator({
+    origin: request.origin,
+    originPluginId: request.originPluginId ?? null,
+    initiator:
+      spawnedByWorkingAgent && initiator === "user" ? "agent" : initiator,
+  });
   deps.telemetry.capture({
     name: "thread_created",
     properties: {
       is_child_thread: parentThread !== null,
       provider: request.providerId,
+      ...initiatorTelemetryProperty(
+        deps.config.featureFlags,
+        telemetryInitiator,
+      ),
     },
-  });
-  const { initiator } = resolveDispatchAuthor({
-    retrying: false,
-    senderThreadId: null,
-    startedOnBehalfOf: request.startedOnBehalfOf,
   });
   if (initiator === "user" && request.input.length > 0) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: parentThread !== null,
       messageSource: "thread_create",
       providerId: request.providerId,
+      initiator: telemetryInitiator,
     });
   }
   return thread;

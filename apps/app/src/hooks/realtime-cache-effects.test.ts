@@ -3,6 +3,7 @@ import {
   runTaggedRead,
   taggedQueryOptions,
 } from "@bb/query-tags";
+import { environmentPullRequestTag } from "@bb/server-contract";
 import { machineEnvironmentQueryKey } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
@@ -218,6 +219,117 @@ describe("core tag realtime refresh", () => {
       }
     },
   );
+});
+
+describe("resuming released watches", () => {
+  it("refreshes only the data the released watches were keeping live", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    queryClient.setQueryData(threadQueryKey("thr_1"), {
+      id: "thr_1",
+      environmentId: "env-thread",
+    });
+    const observe = (
+      queryKey: readonly unknown[],
+      tagged?: { scope: string; tag: string },
+    ) => {
+      const queryFn = vi.fn(async () => "value");
+      const observer = new QueryObserver(queryClient, {
+        queryKey,
+        staleTime: Infinity,
+        refetchOnWindowFocus: false,
+        ...(tagged
+          ? taggedQueryOptions<string>(queryClient, queryKey, {
+              scope: tagged.scope,
+              tagsOf: () => [tagged.tag],
+            })
+          : {}),
+        queryFn: tagged
+          ? ({ queryKey: key }) => runTaggedRead(queryClient, key, queryFn)
+          : queryFn,
+      });
+      return { queryFn, stop: observer.subscribe(() => {}) };
+    };
+    const reads = {
+      environment: observe(environmentWorkStatusQueryKey("env-1", "main")),
+      threadEnvironment: observe(
+        environmentWorkStatusQueryKey("env-thread", "main"),
+      ),
+      otherEnvironment: observe(
+        environmentWorkStatusQueryKey("env-other", "main"),
+      ),
+      pullRequest: observe(["pull-request", "env-1"], {
+        scope: CORE_TAG_SCOPE,
+        tag: environmentPullRequestTag("env-1"),
+      }),
+    };
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      for (const read of Object.values(reads)) read.queryFn.mockClear();
+
+      effects.handleResumed([]);
+      await vi.advanceTimersByTimeAsync(500);
+      for (const read of Object.values(reads))
+        expect(read.queryFn).not.toHaveBeenCalled();
+
+      effects.handleResumed([
+        { kind: "environment-detail", environmentId: "env-1" },
+        { kind: "thread-detail", threadId: "thr_1" },
+        { kind: "environment-pull-request", environmentId: "env-1" },
+        { kind: "thread-list" },
+      ]);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(reads.environment.queryFn).toHaveBeenCalled();
+      expect(reads.threadEnvironment.queryFn).toHaveBeenCalled();
+      expect(reads.otherEnvironment.queryFn).not.toHaveBeenCalled();
+      expect(reads.pullRequest.queryFn).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const read of Object.values(reads)) read.stop();
+      effects.dispose();
+    }
+  });
+});
+
+describe("core tag reconnect refresh", () => {
+  it("re-reads core tagged data after a reconnect but not on the first connect", async () => {
+    const client = createAppQueryClient();
+    const effects = createRealtimeCacheEffects({
+      queryClient: client,
+      visibility: createFakeVisibility(),
+    });
+    let value = 1;
+    const queryKey = environmentPullRequestQueryKey("env-1");
+    const observer = new QueryObserver(client, {
+      queryKey,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      ...taggedQueryOptions<number>(client, queryKey, {
+        scope: CORE_TAG_SCOPE,
+        tagsOf: () => [environmentPullRequestTag("env-1")],
+      }),
+      queryFn: ({ queryKey: key }) =>
+        runTaggedRead(client, key, async () => value),
+    });
+    const stop = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
+      value = 2;
+      effects.handleConnected({ reconnected: false });
+      await Promise.resolve();
+      expect(observer.getCurrentResult().data).toBe(1);
+
+      effects.handleConnected({
+        reconnected: true,
+        disconnectedAt: Date.now() - 1_000,
+      });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
+    } finally {
+      stop();
+      effects.dispose();
+      client.clear();
+    }
+  });
 });
 
 describe("createRealtimeCacheEffects", () => {
@@ -3097,8 +3209,8 @@ describe("createRealtimeCacheEffects", () => {
         ).toBe(true),
       );
 
-      effects.handleResumed();
-      effects.handleResumed();
+      effects.handleResumed([]);
+      effects.handleResumed([]);
 
       await vi.waitFor(() => expect(sidebarFn).toHaveBeenCalledTimes(2));
       expect(threadFn).toHaveBeenCalledTimes(2);
@@ -3135,7 +3247,7 @@ describe("createRealtimeCacheEffects", () => {
     const unsubscribe = observer.subscribe(() => {});
     visibility.setVisible(false);
 
-    effects.handleResumed();
+    effects.handleResumed([]);
 
     expect(sidebarFn).not.toHaveBeenCalled();
     unsubscribe();

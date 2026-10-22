@@ -77,11 +77,7 @@ export function AddServerScreen() {
         ),
       });
       await setActiveProfile(profile.id);
-      toast.success(`Added ${profile.label}`, {
-        description: probe.advertisedServerUrl
-          ? `Server reports ${probe.advertisedServerUrl}; keeping ${serverUrl}.`
-          : undefined,
-      });
+      toast.success(`Added ${profile.label}`);
       router.dismissTo("/");
       if (params.next?.startsWith("/")) router.push(rawPathHref(params.next));
     } catch (error) {

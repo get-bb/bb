@@ -26,6 +26,7 @@ const shareListingSchema: z.ZodType<ShareListing> = z
     port: z.number().int(),
     createdAt: z.number(),
     url: z.string(),
+    nextUrl: z.string().optional(),
     unavailableReason: z.string().optional(),
   })
   .strict();

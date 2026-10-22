@@ -902,6 +902,76 @@ Docs: `backend-foundation.md`.
 connect URL should supply this value when `BB_APP_URL` is empty. Confirm that
 one public URL has clear behavior when a server has several access paths.
 
+## `bb.server.internal_DO_NOT_USE_openTunnelIngress`
+
+Internal to bb's own connect plugins (`connect`, `bb--connect-next`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_openTunnelIngress({ audience })` resolves to
+`{ baseUrl, close() }` for a listener on `127.0.0.1` with an ephemeral port.
+Every HTTP request and WebSocket upgrade on it must carry an
+`x-bb-gate-assertion` (`@bb/tunnel-contract/next`) signed by the bb connect
+next gate for `audience`, the request method and the exact path and query;
+anything else gets a 401 JSON body `{ code: "gate_assertion_invalid", reason }`
+and never reaches the app. A verified request loses every inbound
+`x-bb-gate-*` header, gets `x-bb-gate-auth` (and the machine id or OAuth
+grant headers) from the claims only, has Host and the public Origin rewritten
+to the server's loopback origin, and is dispatched in-process into the same
+app as `loopbackBaseUrl` (HTTP, `/ws`, plugin WebSockets). The ingress never
+counts as a loopback caller. Gate keys come from `BB_CONNECT_GATE_KEYS_URL`.
+Opening an audience again shares its listener; it stops, and drops its
+WebSockets, when every handle closes. Handles close when the plugin is
+disabled or unloaded.
+
+Core callers: none. The Cloudflare bb connect path still replays requests to
+the main loopback port; the `connect-next` plugin is the only caller.
+
+Docs: `backend-foundation.md`; the request rules are in [connect-next.md](connect-next.md) (Server ingress).
+
+**Audit before stabilizing.** Decide whether the Cloudflare tunnel client
+moves onto the same ingress so core and both connect plugins share one path.
+Decide whether `target` (share ports) belongs here or stays refused. Confirm
+the audience should stay free-form or become a typed server id, and whether a
+plugin may open audiences for servers other than its own.
+
+## `bb.hosts.internal_DO_NOT_USE_setNextTunnels`, `internal_DO_NOT_USE_nextTunnelStatuses`, `internal_DO_NOT_USE_onNextTunnelStatusChange`
+
+Internal to bb's own connect plugins (`connect`, `bb--connect-next`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_setNextTunnels(config | null)` turns bb connect next machine
+tunnels on (an `InternalDoNotUsePluginNextTunnelConfig`,
+`{ domain, server: { protocol, host, port } }`) or off. The server keeps one
+config owned by the calling plugin (another plugin's non-null call throws
+while it is set; a null call from a non-owner is a no-op), clears it when the
+owner is disabled or uninstalled, and sends it as `connect-next.replace` (and
+`connectNext` in the session-open response) to every connected daemon that
+holds a bb connect machine credential and opened its session with protocol
+247 or newer. A protocol-246 daemon is still accepted and only gets its
+Cloudflare shares. Each daemon runs frpc with one proxy per port declared
+through `declareSharedPorts` at `<label>--<port>.<domain>` while it shares at
+least one port, and refuses a config whose domain is not its trusted
+enrollment's base domain or `next.<base domain>`, or whose tunnel host is not
+`tunnel.<domain>`, or that is not `wss` for an https enrollment, so a plugin
+cannot send the machine credential elsewhere.
+`internal_DO_NOT_USE_nextTunnelStatuses()` returns each connected daemon's last
+`connect-next.status` report as `InternalDoNotUsePluginHostNextTunnelStatus`
+(dropped when its session ends), and
+`internal_DO_NOT_USE_onNextTunnelStatusChange(listener)` calls `listener` on any
+change and returns an unsubscribe function that disposal also runs.
+
+Core callers: none. Product policy (on or off, which domain) belongs to the
+`connect-next` plugin, which calls all three; core's Cloudflare machine tunnel
+needs no config because the daemon derives its gate from its enrollment.
+
+Docs: `backend-foundation.md`; the wire and daemon behavior are in
+[connect-next.md](connect-next.md) (Machine tunnels).
+
+**Audit before stabilizing.** Decide whether the config should be per host
+instead of global, whether the status should be pushed through `bb.realtime`
+instead of a listener, and whether the compatibility window for protocol 246
+can close (then `HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS` goes back to the
+current version only). Decide whether the Cloudflare machine tunnel should
+move onto the same frpc runner once next replaces it.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto
@@ -3241,3 +3311,25 @@ field introduces no separate backend or headless side effect.
 - `experimental_PluginRpcCallError` is exported from the SDK root and app entry and is the error of live read/mutation hooks and every rejected `mutate`. It always has `code: PluginRpcErrorCode`, `message`, optional validated issues and optional HTTP status. `transport_error`, `invalid_response` and `unknown_error` cover client failures. The union may grow: consumers need a fallback; unknown server codes map to `unknown_error` and remain in `serverCode`. CLI output preserves newer codes without assuming an exhaustive list. Core callers use the same HTTP, SDK and command error boundaries; bb-account exercises expected refusals. Stabilize after version-skew, transport, malformed-response and refusal checks.
 - `mutate`, `isPending` and `pendingInputs` finish at write acknowledgement. Core `runRouteMutation` has the same semantics through `runTaggedMutation`; ui-preferences saves the acknowledged revision independently of refresh completion. Cache predictions survive background refreshes and failed rereads until fresh confirmed data arrives. Write rejection rolls back. Owner tests cover acknowledgement, held refreshes, reconciliation and concurrent predictions.
 - BB read state means: `data` is the latest successful value plus predictions, retained during refresh errors (plain reads start undefined; keyed selections receive loaded rows, initially an empty record). `isLoading` means an enabled read is fetching never-loaded requested data. `isFetching` includes background attempts; keyed views share method activity. `error` records the completed read failure and clears on success; retrying a first load clears its old error while loading. `refetch` forces a read and waits through retries; failure remains in `error` and its promise resolves. Production freshness is two seconds without polling. Focus does not refetch while BB's realtime connection is healthy; while disconnected, focus/browser-online events recheck stale active reads. BB reconnect invalidates all plugin reads regardless of freshness. Page hiding cancels active attempts and resume restarts cancelled reads. Invalidations refresh immediately. Tags remain plain strings. Network/abort failures retry twice with 250 ms delay, HTTP failures never retry, and writes never retry automatically. No query-library options are exposed.
+
+## Page titles
+
+`PluginNavPanelRegistration.experimental_usePageTitle(props)` returns
+`ExperimentalPageTitle | null`: either `title` or
+`breadcrumbs: { label, to? }[]`, with an optional `windowTitle` override.
+The host calls this React hook in each pane's plugin scope with its own
+`subPath`. Content appears after the panel icon/name. Breadcrumb links must
+be absolute app routes starting with a single slash. The focused pane supplies
+the window title, defaulting to the leaf/title combined with the panel name.
+Null restores defaults. A title hook failure clears the title without crashing
+the body; navigation and plugin reload retry it. The host isolates hook
+lifecycles by pane, route and plugin generation.
+
+Core Tools, Skills and Plugins use the same hook host and title provider;
+Automations registers its own hook and shares its detail query with the body.
+The Plugin Guide full-page panels card owns the API documentation.
+`renderSlot` evaluates the registered hook in its slot scope and exposes its
+current result as `RenderedSlotInspectionState.experimental_pageTitle`;
+audit test-host lifecycle parity before stabilization.
+Before stabilization, audit focus changes, same-plugin splits, loading,
+back/forward navigation, crash/reload recovery, links and overflow.

@@ -83,3 +83,17 @@ new machine TunnelDO/cache keys are generation-isolated from their first use.
 Server label resolution, cache/DO keys, disconnect, and reuse behavior remain
 exactly as on main. The pre-existing server-label reuse race is out of scope for
 this migration and must be handled as separate server hardening.
+
+## bb connect next presence migration
+
+Migration `0010_next_tunnel_presence.sql` uses the normal schema-diff workflow
+and adds three nullable columns to both `server` and `machine`:
+`next_tunnel_gate` (the Fly gate machine holding the label's frp tunnel, `NULL`
+when none does), `next_tunnel_region` and `next_tunnel_at` (the gate's time of
+the last presence event applied). `POST /api/gate/presence` on the gate worker
+writes them; the dashboard readers treat a server or machine as online when its
+Cloudflare tunnel is connected or `next_tunnel_gate` is set and
+`next_tunnel_at` is younger than `NEXT_TUNNEL_STALE_MS`. The change is
+additive: old workers never read the columns. Both workers select whole
+`server` rows, so apply the migration before deploying either new worker, which
+the deploy workflows already do.

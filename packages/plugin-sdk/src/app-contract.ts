@@ -78,6 +78,17 @@ export interface PluginSettingsSectionProps {}
  */
 export interface ExperimentalAppOverlayProps {}
 
+export type ExperimentalPageTitle = (
+  | { title: string; breadcrumbs?: never }
+  | { title?: never; breadcrumbs: readonly ExperimentalPageBreadcrumb[] }
+) & { windowTitle?: string };
+
+export interface ExperimentalPageBreadcrumb {
+  label: string;
+  /** Absolute app route, starting with a single slash. */
+  to?: string;
+}
+
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
   /**
@@ -943,6 +954,16 @@ export interface PluginNavPanelRegistration {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_sidebar?: ComponentType<PluginNavPanelProps>;
+  /**
+   * React hook evaluated in each pane's plugin scope with its current subPath.
+   * Returns text after the panel icon/name and the focused pane's window title.
+   * Null restores the default panel title. May use SDK hooks to load data.
+   * A crash or invalid result clears the title without crashing the page;
+   * navigation or plugin reload retries the hook. Experimental.
+   */
+  experimental_usePageTitle?: (
+    props: PluginNavPanelProps,
+  ) => ExperimentalPageTitle | null;
   /**
    * Ordered, non-closable tabs shown in this page's host-owned right panel.
    * BB owns selection and persistence and always includes its native Browser

@@ -1,0 +1,83 @@
+name: Deploy Connect Next
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "24.x"
+  PNPM_VERSION: "9.15.0"
+  FLYCTL_VERSION: "0.4.114"
+  FLYCTL_SHA256: "86782019ab470c2f53a8fe0c24541178c51239b733f31a0463b5e18ce3b056cc"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: connect-next-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test and deploy bb-connect-next to Fly
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Typecheck and test the gate with real frp
+        run: pnpm exec turbo run typecheck test --filter=@bb/connect-next --filter=@bb/tunnel-contract
+
+      - name: Require the Fly token
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::Set the FLY_API_TOKEN repository secret to deploy."
+            exit 1
+          fi
+
+      - name: Fetch the Fly CLI
+        run: |
+          curl -fsSL -o /tmp/flyctl.tar.gz \
+            "https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz"
+          echo "${FLYCTL_SHA256}  /tmp/flyctl.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/flyctl"
+          tar -xzf /tmp/flyctl.tar.gz -C "$RUNNER_TEMP/flyctl" flyctl
+          echo "$RUNNER_TEMP/flyctl" >> "$GITHUB_PATH"
+
+      - name: Deploy the gate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: >-
+          flyctl deploy --config apps/connect-next/fly.toml
+          --dockerfile apps/connect-next/Dockerfile
+          --ignorefile apps/connect-next/Dockerfile.dockerignore
+          --remote-only
+          --ha=false
+
+      - name: Check the gate answers
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            status=$(curl -s -o /dev/null -m 20 -w '%{http_code}' https://bb-connect-next.fly.dev/__gate/health)
+            if [ "$status" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::https://bb-connect-next.fly.dev/__gate/health answered $status after the deploy."
+          exit 1

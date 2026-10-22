@@ -617,6 +617,9 @@ export function registerSpawnCommand(
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
+            ...(process.env.BB_THREAD_ID
+              ? { senderThreadId: process.env.BB_THREAD_ID }
+              : {}),
             ...(parentNotifications ? { parentNotifications } : {}),
             ...(opts.lifecycleOwnerThread !== undefined
               ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }

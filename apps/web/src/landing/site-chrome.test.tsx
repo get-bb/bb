@@ -27,9 +27,7 @@ describe("site navigation", () => {
     expect(html.indexOf("Changelog")).toBeLessThan(html.indexOf("Sign in"));
     expect(html).toContain("Sign in");
     expect(html).toContain('aria-label="GitHub"');
-    expect(html).toContain(
-      'href="/download/macos?placement=nav&amp;instructions=1"',
-    );
+    expect(html).toContain('href="/download/macos?placement=nav"');
     expect(html).toContain("Download for macOS");
     expect(html).not.toContain(">GitHub<");
     expect(html).not.toContain("Theme");

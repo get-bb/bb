@@ -302,10 +302,11 @@ export function observeStreamTraceEventBatch(
           committedAt: epochMs(batch.committedAt),
           notifiedAt: epochMs(batch.notifiedAt),
           ...entry,
-          served:
-            deps.hub.listThreadTimelineTargets(threadId).length > 0
-              ? "push"
-              : "refetch",
+          served: deps.hub
+            .listWatchedTargets("thread-timeline")
+            .some((target) => target.threadId === threadId)
+            ? "push"
+            : "refetch",
         },
       },
       "Stream trace",

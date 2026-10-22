@@ -70,7 +70,7 @@ export function downloadHref(
   platform: DesktopPlatform,
   placement: CtaPlacement,
 ): string {
-  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}&instructions=1`;
+  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}`;
 }
 
 declare const __SITE_ORIGIN__: string;

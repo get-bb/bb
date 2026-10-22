@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  promptMentionResourceSchema,
-  type PromptMentionCommandTrigger,
-  type PromptMentionResource,
-  type PromptTextMention,
-} from "@bb/domain";
+import type { ComposerMentionShape as ComposerMention } from "@bb/client-core";
 import type { JSONContent } from "@tiptap/react";
 import {
   Fragment,
@@ -13,14 +8,18 @@ import {
   type Schema,
 } from "@tiptap/pm/model";
 import type { Selection } from "@tiptap/pm/state";
-import type {
-  PromptMentionSuggestion,
-  ProviderCommandSuggestion,
-} from "@bb/client-core";
+import {
+  compareMentions,
+  mentionInRange,
+  mentionTarget,
+  mentionTargetSchema,
+  shiftMention,
+  type MentionTarget,
+} from "./composer-mentions";
 
 export interface PromptEditorValue {
   text: string;
-  mentions: PromptTextMention[];
+  mentions: ComposerMention[];
 }
 
 export interface PromptEditorOffsetSegment {
@@ -37,24 +36,33 @@ interface PromptEditorSerialization extends PromptEditorValue {
 
 interface PromptEditorContentValue {
   text: string;
-  mentions: readonly PromptTextMention[];
+  mentions: readonly ComposerMention[];
 }
 
-interface PromptEditorMentionAttrs {
-  resource: PromptMentionResource;
+export interface PromptEditorMentionAttrs {
+  mention: MentionTarget;
   serializedText: string;
 }
 
 const promptEditorMentionAttrsSchema = z.object({
-  resource: promptMentionResourceSchema,
+  mention: mentionTargetSchema,
   serializedText: z.string().min(1),
 });
+
+const parsedMentionAttrs = new WeakMap<
+  ProseMirrorNode["attrs"],
+  PromptEditorMentionAttrs | null
+>();
 
 export function parsePromptEditorMentionAttrs(
   attrs: ProseMirrorNode["attrs"],
 ): PromptEditorMentionAttrs | null {
+  const cached = parsedMentionAttrs.get(attrs);
+  if (cached !== undefined) return cached;
   const result = promptEditorMentionAttrsSchema.safeParse(attrs);
-  return result.success ? result.data : null;
+  const parsed = result.success ? result.data : null;
+  parsedMentionAttrs.set(attrs, parsed);
+  return parsed;
 }
 
 function splitTextContent(text: string): JSONContent[] {
@@ -75,17 +83,15 @@ function splitTextContent(text: string): JSONContent[] {
   return nodes;
 }
 
-function normalizeMentions(
-  value: PromptEditorContentValue,
-): PromptTextMention[] {
+function normalizeMentions(value: PromptEditorContentValue): ComposerMention[] {
   return value.mentions
     .filter(
       (mention) =>
-        mention.start >= 0 &&
-        mention.end > mention.start &&
-        mention.end <= value.text.length,
+        mention.from >= 0 &&
+        mention.to > mention.from &&
+        mention.to <= value.text.length,
     )
-    .sort((left, right) => left.start - right.start || left.end - right.end);
+    .sort(compareMentions);
 }
 
 function isQuoteLine(line: string): boolean {
@@ -111,20 +117,14 @@ interface StrippedLineSpan {
 function rebaseMentionsToSpan(
   value: PromptEditorContentValue,
   lineSpans: readonly StrippedLineSpan[],
-): PromptTextMention[] {
-  const rebased: PromptTextMention[] = [];
+): ComposerMention[] {
+  const rebased: ComposerMention[] = [];
   for (const mention of value.mentions) {
     for (const span of lineSpans) {
-      if (
-        mention.start >= span.contentStart &&
-        mention.end <= span.contentEnd
-      ) {
-        const delta = span.innerStart - span.contentStart;
-        rebased.push({
-          ...mention,
-          start: mention.start + delta,
-          end: mention.end + delta,
-        });
+      if (mention.from >= span.contentStart && mention.to <= span.contentEnd) {
+        rebased.push(
+          shiftMention(mention, span.innerStart - span.contentStart),
+        );
         break;
       }
     }
@@ -195,14 +195,8 @@ function promptEditorContentValueFromSourceSpan({
 }): PromptEditorContentValue {
   const subText = value.text.slice(sourceStart, sourceEnd);
   const subMentions = value.mentions.flatMap((mention) =>
-    mention.start >= sourceStart && mention.end <= sourceEnd
-      ? [
-          {
-            ...mention,
-            start: mention.start - sourceStart,
-            end: mention.end - sourceStart,
-          },
-        ]
+    mention.from >= sourceStart && mention.to <= sourceEnd
+      ? [shiftMention(mention, -sourceStart)]
       : [],
   );
   return { text: subText, mentions: subMentions };
@@ -286,18 +280,18 @@ export function promptEditorInlineContentFromValue(
   let cursor = 0;
 
   for (const mention of normalizeMentions(value)) {
-    if (mention.start < cursor) {
+    if (mention.from < cursor) {
       continue;
     }
-    content.push(...splitTextContent(value.text.slice(cursor, mention.start)));
+    content.push(...splitTextContent(value.text.slice(cursor, mention.from)));
     content.push({
       type: "mention",
       attrs: {
-        resource: mention.resource,
-        serializedText: value.text.slice(mention.start, mention.end),
+        mention: mentionTarget(mention),
+        serializedText: value.text.slice(mention.from, mention.to),
       } satisfies PromptEditorMentionAttrs,
     });
-    cursor = mention.end;
+    cursor = mention.to;
   }
 
   content.push(...splitTextContent(value.text.slice(cursor)));
@@ -311,7 +305,7 @@ function serializePromptEditorNode(
 ): PromptEditorSerialization {
   let text = "";
   let previousSerializedBlockWasBlockquote: boolean | null = null;
-  const mentions: PromptTextMention[] = [];
+  const mentions: ComposerMention[] = [];
   const offsetMapping: PromptEditorOffsetSegment[] = [];
 
   const appendInlineText = (
@@ -369,11 +363,7 @@ function serializePromptEditorNode(
           nodePosition + node.nodeSize,
           "mention",
         );
-        mentions.push({
-          start: span.start,
-          end: span.end,
-          resource: attrs.resource,
-        });
+        mentions.push(mentionInRange(attrs.mention, span.start, span.end));
       }
       return;
     }
@@ -425,8 +415,8 @@ function serializePromptEditorNode(
     for (const innerMention of inner.mentions) {
       mentions.push({
         ...innerMention,
-        start: blockStart + prefixedOffset(innerMention.start),
-        end: blockStart + prefixedOffset(innerMention.end),
+        from: blockStart + prefixedOffset(innerMention.from),
+        to: blockStart + prefixedOffset(innerMention.to),
       });
     }
   };
@@ -542,79 +532,4 @@ export function promptEditorClipboardTextFromSlice(
   schema: Schema,
 ): string {
   return promptEditorValueFromSlice(slice, schema).text;
-}
-
-export function promptMentionResourceFromSuggestion(
-  suggestion: PromptMentionSuggestion,
-): PromptMentionResource {
-  if (suggestion.kind === "thread") {
-    return {
-      kind: "thread",
-      threadId: suggestion.threadId,
-      projectId: suggestion.projectId,
-      label: suggestion.title?.trim() || suggestion.threadId,
-    };
-  }
-
-  if (suggestion.kind === "project") {
-    return {
-      kind: "project",
-      projectId: suggestion.projectId,
-      label: suggestion.name.trim() || suggestion.projectId,
-    };
-  }
-
-  if (suggestion.kind === "section") {
-    return {
-      kind: "section",
-      sectionId: suggestion.sectionId,
-      label: suggestion.name.trim() || suggestion.sectionId,
-    };
-  }
-
-  if (suggestion.kind === "plugin") {
-    return {
-      kind: "plugin",
-      pluginId: suggestion.pluginId,
-      icon: suggestion.icon,
-      itemId: suggestion.itemId,
-      label: suggestion.title.trim() || suggestion.itemId,
-    };
-  }
-
-  if (suggestion.kind === "attachment") {
-    return {
-      kind: "attachment",
-      path: suggestion.path,
-      label: suggestion.name,
-    };
-  }
-
-  return {
-    kind: "path",
-    source: suggestion.source,
-    entryKind: suggestion.entryKind,
-    path: suggestion.path,
-    label: suggestion.name,
-  };
-}
-
-interface PromptCommandResourceFromSuggestionArgs {
-  suggestion: ProviderCommandSuggestion;
-  trigger: PromptMentionCommandTrigger;
-}
-
-export function promptCommandResourceFromSuggestion({
-  suggestion,
-  trigger,
-}: PromptCommandResourceFromSuggestionArgs): PromptMentionResource {
-  return {
-    kind: "command",
-    trigger,
-    name: suggestion.name,
-    source: suggestion.source,
-    origin: suggestion.origin,
-    label: suggestion.name,
-    argumentHint: suggestion.argumentHint,
-  };
 }

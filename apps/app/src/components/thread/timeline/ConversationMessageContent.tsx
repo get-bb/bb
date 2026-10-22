@@ -22,7 +22,7 @@ import {
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
 } from "@/components/ui/markdown-local-file-link.js";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   computeMutedPrefixLength,
   parseAutomationDueMessage,

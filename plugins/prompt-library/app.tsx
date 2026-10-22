@@ -588,7 +588,7 @@ function PromptLibraryPopup() {
             title={starred ? "Unstar" : "Star prompt"}
             className={cn(
               "relative flex size-6 shrink-0 items-center justify-center rounded text-subtle-foreground hover:text-foreground",
-              !selected && [
+              !(selected || starred) && [
                 "opacity-0 group-hover:opacity-100",
                 HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
               ],

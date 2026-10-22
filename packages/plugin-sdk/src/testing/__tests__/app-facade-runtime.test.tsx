@@ -116,3 +116,22 @@ describe("@get-bb/plugin-sdk/app without a runtime at import time", () => {
     expect(screen.getByLabelText("zap").getAttribute("data-icon")).toBe("Zap");
   });
 });
+
+describe("registered page title test host", () => {
+  it("evaluates registered hooks in the slot scope and clears the result on unmount", () => {
+    function usePageTitle({ subPath }: { subPath: string }) {
+      const { projectId } = useBbContext();
+      return { title: `${projectId}/${subPath}` };
+    }
+    const slot = renderSlot(
+      { component: () => null, experimental_usePageTitle: usePageTitle },
+      { subPath: "detail" },
+      { context: { projectId: "proj_1" } },
+    );
+    expect(slot.inspection.experimental_pageTitle).toEqual({
+      title: "proj_1/detail",
+    });
+    slot.lifecycle.unmount();
+    expect(slot.inspection.experimental_pageTitle).toBeNull();
+  });
+});

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "pill",
+  "type": "registry:ui",
+  "title": "pill",
+  "description": "BB ui \"pill\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/pill.tsx",
+      "content": "import type { ReactNode } from \"react\";\nimport { cn } from \"../../lib/utils\";\n\nexport type PillVariant = \"secondary\" | \"destructive\" | \"outline\" | \"emphasis\";\n\nexport type PillSize = \"default\" | \"sm\";\n\nconst PILL_VARIANT_CLASS: Record<PillVariant, string> = {\n  secondary: \"border-transparent bg-secondary text-secondary-foreground\",\n  destructive: \"border-transparent bg-destructive text-destructive-foreground\",\n  outline: \"border-border bg-background text-foreground\",\n  emphasis: \"border-transparent bg-foreground text-background\",\n};\n\nconst PILL_SIZE_CLASS: Record<PillSize, string> = {\n  default: \"px-2 py-0.5\",\n  sm: \"px-1.5 py-0\",\n};\n\nexport interface PillProps {\n  variant: PillVariant;\n  size?: PillSize;\n  className?: string;\n  children: ReactNode;\n}\n\nexport function Pill({\n  variant,\n  size = \"default\",\n  className,\n  children,\n}: PillProps) {\n  return (\n    <span\n      className={cn(\n        \"inline-flex items-center rounded border text-xs\",\n        PILL_SIZE_CLASS[size],\n        PILL_VARIANT_CLASS[variant],\n        className,\n      )}\n    >\n      <span className=\"min-w-0 truncate\">{children}</span>\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/pill.tsx"
+    }
+  ]
+}

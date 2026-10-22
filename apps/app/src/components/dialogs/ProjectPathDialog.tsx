@@ -24,7 +24,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
+import { LazyRemotePathBrowser } from "@/components/dialogs/LazyRemotePathBrowser";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { selectHosts } from "@/hooks/queries/host-queries";
@@ -322,7 +322,7 @@ export function ProjectPathDialogContent({
           </DropdownMenu>
         ) : null}
         {selectedHostId ? (
-          <RemotePathBrowser
+          <LazyRemotePathBrowser
             key={selectedHostId}
             hostId={selectedHostId}
             initialPath={target.kind === "update" ? target.currentPath : null}

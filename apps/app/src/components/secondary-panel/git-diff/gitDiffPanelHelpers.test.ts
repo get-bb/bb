@@ -1,3 +1,4 @@
+import { filterDiffFilesByPath } from "./filter-diff-files";
 import type { WorkspaceCommitSummary } from "@bb/domain";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
@@ -5,7 +6,6 @@ import {
   buildGitDiffSelectionOptions,
   buildGitDiffTarget,
   COMMITTED_GIT_DIFF_SELECTION,
-  filterDiffFilesByPath,
   selectScopedMergeBaseBranch,
   selectScopedPendingGitDiffIntent,
   shouldResetSelectedGitDiffSelection,

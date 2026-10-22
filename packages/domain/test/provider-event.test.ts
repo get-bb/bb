@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { threadEventSchema, turnScope } from "../src/index.js";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import {
+  threadEventSchema,
+  threadEventTypeValues,
+  type ThreadEventType,
+  turnScope,
+} from "../src/index.js";
+
+expectTypeOf<
+  (typeof threadEventTypeValues)[number]
+>().toEqualTypeOf<ThreadEventType>();
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 

@@ -1,21 +1,17 @@
 import { useContext, type KeyboardEvent, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
-  PROMPT_MENTION_PILL_CLASS,
-  promptMentionTooltipLabel,
-} from "@/components/promptbox/mentions/prompt-mention-display";
-import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
-import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
+  describePromptMention,
+  promptMentionClipboardAttributes,
+} from "@/components/promptbox/mentions/prompt-mention-pill";
+import { ComposerMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 
-const EDITOR_MENTION_PILL_CLASS = cn(
-  "group",
-  PROMPT_MENTION_PILL_CLASS,
-  "selection:bg-transparent [&_*]:selection:bg-transparent",
-);
+const EDITOR_MENTION_PILL_CLASS =
+  "group selection:bg-transparent [&_*]:selection:bg-transparent";
 
 export function PromptMentionPillNodeView({
   node,
@@ -24,7 +20,7 @@ export function PromptMentionPillNodeView({
   const resolveLink = useContext(PromptMentionLinkContext);
   const attrs = parsePromptEditorMentionAttrs(node.attrs);
   const threadDisplayLabel = useThreadTitleDisplayText(
-    attrs?.resource.kind === "thread" ? attrs.resource.label : "",
+    attrs?.mention.kind === "thread" ? attrs.mention.label : "",
   );
   const fallbackSerializedText =
     typeof node.attrs.serializedText === "string"
@@ -47,12 +43,14 @@ export function PromptMentionPillNodeView({
     );
   }
 
-  const resource =
-    attrs.resource.kind === "thread"
-      ? { ...attrs.resource, label: threadDisplayLabel }
-      : attrs.resource;
-  const activate = resolveLink?.(resource) ?? null;
-  const title = promptMentionTooltipLabel(resource);
+  const mention =
+    attrs.mention.kind === "thread" &&
+    attrs.mention.label !== threadDisplayLabel
+      ? { ...attrs.mention, label: threadDisplayLabel }
+      : attrs.mention;
+  const activate = resolveLink?.(mention) ?? null;
+  const presentation = describePromptMention(mention);
+  const title = presentation.title;
   const activationLabel = activate ? `Open ${title}` : undefined;
   const handleClick = activate
     ? (event: MouseEvent<HTMLElement>) => {
@@ -90,22 +88,23 @@ export function PromptMentionPillNodeView({
       as="span"
       className={cn(
         EDITOR_MENTION_PILL_CLASS,
+        presentation.className,
         selectedClass,
         activate && "cursor-pointer",
       )}
-      {...promptMentionClipboardDataAttributes(attrs)}
+      {...promptMentionClipboardAttributes(attrs.mention, attrs.serializedText)}
       role={activate ? "button" : undefined}
       tabIndex={activate ? 0 : undefined}
       aria-label={activationLabel}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <PromptMentionIcon
-        resource={resource}
+      <ComposerMentionIcon
+        mention={mention}
         className="-ml-px size-4 shrink-0 self-center"
       />
       <span className={cn("truncate", activate && "group-hover:underline")}>
-        {resource.label}
+        {mention.label}
       </span>
     </NodeViewWrapper>
   );

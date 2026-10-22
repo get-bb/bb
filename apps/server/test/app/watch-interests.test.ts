@@ -63,17 +63,17 @@ function lastDaemonMessage(socket: {
 
 describe("WatchInterestCoordinator", () => {
   it("ref-counts duplicate workspace interests across sockets", () => {
-    const { environment, host, hub, watchInterests } = setup();
+    const { environment, host, hub } = setup();
     const daemonSocket = createMockHubSocket();
     const socketA = createMockHubSocket();
     const socketB = createMockHubSocket();
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socketA, {
+    hub.subscribe(socketA, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
-    watchInterests.subscribe(socketB, {
+    hub.subscribe(socketB, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -92,7 +92,7 @@ describe("WatchInterestCoordinator", () => {
       threadStorageTargets: [],
     });
 
-    watchInterests.unsubscribe(socketA, {
+    hub.unsubscribe(socketA, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -106,7 +106,7 @@ describe("WatchInterestCoordinator", () => {
       ],
     });
 
-    watchInterests.unsubscribe(socketB, {
+    hub.unsubscribe(socketB, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -124,8 +124,8 @@ describe("WatchInterestCoordinator", () => {
     const socket = createMockHubSocket();
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socket, { kind: "environment-list" });
-    watchInterests.subscribe(socket, { kind: "thread-list" });
+    hub.subscribe(socket, { kind: "environment-list" });
+    hub.subscribe(socket, { kind: "thread-list" });
 
     expect(daemonSocket.messages).toHaveLength(0);
     expect(watchInterests.reconcileWatchSetForHost(host.id)).toEqual({
@@ -136,16 +136,16 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("releases all socket interests on socket close", () => {
-    const { environment, host, hub, watchInterests } = setup();
+    const { environment, host, hub } = setup();
     const daemonSocket = createMockHubSocket();
     const socket = createMockHubSocket();
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
-    watchInterests.releaseSocket(socket);
+    hub.unregisterClient(socket);
 
     expect(lastDaemonMessage(daemonSocket)).toMatchObject({
       type: "watch-set.replace",
@@ -155,10 +155,10 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("includes current targets in session-open watch sets", () => {
-    const { environment, host, watchInterests } = setup();
+    const { environment, host, hub, watchInterests } = setup();
     const socket = createMockHubSocket();
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -178,7 +178,7 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("omits unresolved workspace targets from snapshots", () => {
-    const { db, host, project, watchInterests } = setup();
+    const { db, host, hub, project, watchInterests } = setup();
     const unready = createEnvironment(db, noopNotifier, {
       providerOwnsPath: false,
       projectId: project.id,
@@ -195,11 +195,11 @@ describe("WatchInterestCoordinator", () => {
     });
     const socket = createMockHubSocket();
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: unready.id,
     });
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: destroyed.id,
     });
@@ -210,7 +210,7 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("starts watching when a subscribed environment becomes ready", () => {
-    const { db, host, hub, project, watchInterests } = setup();
+    const { db, host, hub, project } = setup();
     const daemonSocket = createMockHubSocket();
     const socket = createMockHubSocket();
     const environment = createEnvironment(db, noopNotifier, {
@@ -222,7 +222,7 @@ describe("WatchInterestCoordinator", () => {
     });
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -249,12 +249,12 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("does not replace watch sets for ordinary workspace change events", () => {
-    const { environment, host, hub, watchInterests } = setup();
+    const { environment, host, hub } = setup();
     const daemonSocket = createMockHubSocket();
     const socket = createMockHubSocket();
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -266,12 +266,12 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("does not replace a watch set when a relevant invalidation resolves identically", () => {
-    const { environment, host, hub, watchInterests } = setup();
+    const { environment, host, hub } = setup();
     const daemonSocket = createMockHubSocket();
     const socket = createMockHubSocket();
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "environment-detail",
       environmentId: environment.id,
     });
@@ -283,7 +283,7 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("resolves thread-detail subscriptions to the owning thread storage target", () => {
-    const { db, environment, host, project, watchInterests } = setup();
+    const { db, environment, host, hub, project, watchInterests } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       environmentId: environment.id,
@@ -291,7 +291,7 @@ describe("WatchInterestCoordinator", () => {
     });
     const socket = createMockHubSocket();
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "thread-detail",
       threadId: thread.id,
     });
@@ -308,7 +308,7 @@ describe("WatchInterestCoordinator", () => {
   });
 
   it("starts watching thread storage after a subscribed thread is attached to an environment", () => {
-    const { db, environment, host, hub, project, watchInterests } = setup();
+    const { db, environment, host, hub, project } = setup();
     const daemonSocket = createMockHubSocket();
     const socket = createMockHubSocket();
     const thread = createThread(db, noopNotifier, {
@@ -318,7 +318,7 @@ describe("WatchInterestCoordinator", () => {
     });
     hub.registerDaemon("session-1", host.id, daemonSocket);
 
-    watchInterests.subscribe(socket, {
+    hub.subscribe(socket, {
       kind: "thread-detail",
       threadId: thread.id,
     });
@@ -357,7 +357,7 @@ describe("WatchInterestCoordinator", () => {
     hub.registerDaemon("second", otherHost.id, secondDaemon);
     const socket = createMockHubSocket();
     for (const target of [environment, otherEnvironment])
-      watchInterests.subscribe(socket, {
+      hub.subscribe(socket, {
         kind: "environment-detail",
         environmentId: target.id,
       });
@@ -369,7 +369,7 @@ describe("WatchInterestCoordinator", () => {
       }),
     );
     for (const thread of watched)
-      watchInterests.subscribe(socket, {
+      hub.subscribe(socket, {
         kind: "thread-detail",
         threadId: thread.id,
       });
@@ -440,7 +440,7 @@ describe("WatchInterestCoordinator", () => {
           })),
       },
     );
-    watchInterests.releaseSocket(socket);
+    hub.unregisterClient(socket);
     expect(lastDaemonMessage(secondDaemon)).toMatchObject({
       workspaceTargets: [],
       threadStorageTargets: [],

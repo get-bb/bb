@@ -70,8 +70,10 @@ import {
 } from "./path-list-policy.js";
 import {
   requireWorkspaceCommandTarget,
+  workspaceReadCacheKey,
   type WorkspaceCommandTarget,
 } from "../services/environments/workspace-command-target.js";
+import { createEnvironmentPullRequestWatch } from "../services/environments/pull-request-watch.js";
 import {
   callEnvironmentWorkspaceStatus,
   callEnvironmentWorkspaceStatusForWork,
@@ -150,10 +152,6 @@ function toWorkspaceDiffTarget(query: EnvironmentDiffQuery) {
       return _exhaustive;
     }
   }
-}
-
-function workspaceReadCacheKey(target: WorkspaceCommandTarget): string {
-  return JSON.stringify(target.workspaceContext);
 }
 
 function workspaceStatusCacheKey(
@@ -321,6 +319,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+  const pullRequests = createEnvironmentPullRequestWatch(deps);
   post(routes.cleanup, async (context, query) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
     if (
@@ -475,35 +474,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       deps.db,
       context.req.param("id"),
     );
-    if (!environment.isGitRepo) {
-      return context.json({ outcome: "absent" });
-    }
-    const target = requireWorkspaceCommandTarget(environment);
-    const result = await deps.workspaceReadCaches.pullRequest.read({
-      environmentId: environment.id,
-      hostId: target.hostId,
-      key: workspaceReadCacheKey(target),
-      load: () =>
-        callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "workspace.pull_request",
-            environmentId: target.environmentId,
-            workspaceContext: target.workspaceContext,
-          },
-        }),
-    });
-    if (result.outcome === "available") {
-      return context.json({
-        outcome: "available",
-        pullRequest: assembleThreadPullRequest(result.pullRequest),
-      });
-    }
-    if (result.outcome === "unavailable") {
-      return context.json({ outcome: "unavailable", message: result.message });
-    }
-    return context.json({ outcome: "absent" });
+    return context.json(await pullRequests.read(environment));
   });
 
   get(routes.diff, async (context, query) => {

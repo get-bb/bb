@@ -269,6 +269,24 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     desktopTarget: { ...desktopTarget, ...saved },
   });
 
+  it("reveals tabs without a saved owner on mount and return while ownership is unavailable", async () => {
+    const { api, visibilityWithoutFocus } = createRecordingBrowserApi();
+    api.getTarget = async () => null;
+    installDesktopBrowser(api);
+    const tab = makeBrowserTab("local-tab", "https://example.com/saved");
+
+    for (let visit = 0; visit < 2; visit += 1) {
+      visibilityWithoutFocus.length = 0;
+      const view = render(renderTargetDeck(tab));
+      await act(async () => {});
+      expect(visibilityWithoutFocus).toContainEqual({
+        tabId: tab.id,
+        visible: true,
+      });
+      view.unmount();
+    }
+  });
+
   it("shows the saved URL instead of attaching a tab from another machine", async () => {
     const { api, attachments } = createRecordingBrowserApi();
     api.getTarget = async () => desktopTarget;

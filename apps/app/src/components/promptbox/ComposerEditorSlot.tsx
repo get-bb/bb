@@ -4,7 +4,7 @@ import { COARSE_POINTER_TEXT_BASE_CLASS } from "@bb/shared-ui/coarse-pointer-siz
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PromptMentionLinkContext,
-  type PromptMentionLinkResolver,
+  type ComposerMentionLinkResolver,
 } from "./editor/prompt-mention-link";
 
 export type ComposerEditorLayout = "thread" | "root-compose";
@@ -40,7 +40,7 @@ export function ComposerEditorSlot({
   isCompactLayout: boolean;
   minHeight: number;
   layout: ComposerEditorLayout;
-  resolveMentionLink: PromptMentionLinkResolver | undefined;
+  resolveMentionLink: ComposerMentionLinkResolver | undefined;
 }) {
   return (
     <div

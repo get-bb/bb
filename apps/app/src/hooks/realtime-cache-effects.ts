@@ -13,6 +13,10 @@ import {
   type ThreadChangeKind,
 } from "@bb/domain";
 import {
+  environmentPullRequestTag,
+  type RealtimeSubscriptionTarget,
+} from "@bb/server-contract";
+import {
   invalidateRealtimeQueriesAfterServerReconnect,
   invalidateRealtimeQueriesFetchedBeforeInitialConnect,
   refetchActiveRealtimeQueriesOnResume,
@@ -29,6 +33,7 @@ import {
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
+  getCachedThreadEnvironmentId,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
   REALTIME_PROJECT_CHANGE_REGISTRY,
@@ -64,6 +69,11 @@ const {
 } = resolveThreadInvalidationDebounce(detectCoarsePointer());
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
+const WATCHED_ENVIRONMENT_CHANGE_KINDS: EnvironmentChangeKind[] = [
+  "work-status-changed",
+  "git-refs-changed",
+  "thread-storage-changed",
+];
 
 type RealtimeConnectedEvent =
   | { reconnected: false }
@@ -73,7 +83,9 @@ interface RealtimeCacheEffects {
   dispose: () => void;
   handleChanged: (message: ChangedMessage) => void;
   handleConnected: (event: RealtimeConnectedEvent) => void;
-  handleResumed: () => void;
+  handleResumed: (
+    releasedTargets: readonly RealtimeSubscriptionTarget[],
+  ) => void;
 }
 
 export interface RealtimeCacheEffectsVisibility {
@@ -474,6 +486,46 @@ export function createRealtimeCacheEffects({
         : new Set([...(previous ?? []), ...tags]),
     );
   };
+  const catchUpReleasedWatch = (target: RealtimeSubscriptionTarget): void => {
+    switch (target.kind) {
+      case "environment-detail":
+        environmentInvalidator.markChanged(
+          target.environmentId,
+          WATCHED_ENVIRONMENT_CHANGE_KINDS,
+        );
+        return;
+      case "thread-detail": {
+        const environmentId = getCachedThreadEnvironmentId({
+          queryClient,
+          threadId: target.threadId,
+        });
+        if (environmentId) {
+          environmentInvalidator.markChanged(
+            environmentId,
+            WATCHED_ENVIRONMENT_CHANGE_KINDS,
+          );
+        }
+        return;
+      }
+      case "environment-pull-request":
+        applyTags(CORE_TAG_SCOPE, [
+          environmentPullRequestTag(target.environmentId),
+        ]);
+        return;
+      case "thread-timeline":
+      case "thread-list":
+      case "project-list":
+      case "project-detail":
+      case "environment-list":
+      case "host-list":
+      case "host-detail":
+      case "system":
+      case "plugin":
+        return;
+      default:
+        assertNever(target);
+    }
+  };
   const flushDeferredChanges = (): void => {
     for (const [scope, tags] of deferredTags)
       void invalidateTags(queryClient, scope, tags === null ? null : [...tags]);
@@ -618,6 +670,7 @@ export function createRealtimeCacheEffects({
         for (const pluginId of pluginIds)
           if (typeof pluginId === "string")
             applyTags(pluginTagScope(pluginId), null);
+        applyTags(CORE_TAG_SCOPE, null);
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,
           queryClient,
@@ -630,11 +683,14 @@ export function createRealtimeCacheEffects({
         queryClient,
       });
     },
-    handleResumed: () => {
+    handleResumed: (releasedTargets) => {
       if (!visibility.isDocumentVisible()) {
         return;
       }
       refetchActiveRealtimeQueriesOnResume({ queryClient });
+      for (const target of releasedTargets) {
+        catchUpReleasedWatch(target);
+      }
     },
   };
 }

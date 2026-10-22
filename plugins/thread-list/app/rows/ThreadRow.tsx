@@ -4,7 +4,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -74,7 +73,6 @@ import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-  SIDEBAR_HOVER_ACTIONS_MASK_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
@@ -202,61 +200,6 @@ function getHoverActionsInsetStyle(actionCount: number): CSSProperties {
   return {
     "--bb-sidebar-hover-actions-inset": `calc(var(--spacing) * ${7.5 * actionCount})`,
   } as CSSProperties;
-}
-
-function measureDisclosureClearance(
-  content: HTMLElement,
-  actions: HTMLElement | null,
-): number | null {
-  const toggle = content.querySelector("button[aria-expanded]");
-  const trigger = actions?.querySelector("[data-thread-actions-trigger]");
-  const controls = trigger?.parentElement;
-  const firstAction = controls?.firstElementChild;
-  const lastAction = trigger?.previousElementSibling;
-  if (!toggle || !trigger || !controls || !firstAction || !lastAction) {
-    return null;
-  }
-  const toggleRect = toggle.getBoundingClientRect();
-  const triggerRect = trigger.getBoundingClientRect();
-  if (toggleRect.width === 0 || triggerRect.width === 0) return null;
-  const gap = Number.parseFloat(getComputedStyle(controls).columnGap) || 0;
-  const restingActionsLeft =
-    triggerRect.left -
-    gap -
-    (lastAction.getBoundingClientRect().right -
-      firstAction.getBoundingClientRect().left);
-  return toggleRect.right + gap > restingActionsLeft
-    ? Math.ceil(triggerRect.left - toggleRect.left)
-    : null;
-}
-
-function useDisclosureActionsClearance(enabled: boolean, actionCount: number) {
-  const contentRef = useRef<HTMLSpanElement>(null);
-  const titleRef = useRef<HTMLSpanElement>(null);
-  const actionsRef = useRef<HTMLDivElement>(null);
-  const [clearance, setClearance] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const content = contentRef.current;
-    const title = titleRef.current;
-    if (
-      !enabled ||
-      !content ||
-      !title ||
-      typeof ResizeObserver === "undefined"
-    ) {
-      return;
-    }
-    const observer = new ResizeObserver(() =>
-      setClearance(measureDisclosureClearance(content, actionsRef.current)),
-    );
-    observer.observe(content);
-    observer.observe(title);
-    return () => {
-      observer.disconnect();
-      setClearance(null);
-    };
-  }, [enabled, actionCount]);
-  return { contentRef, titleRef, actionsRef, clearance };
 }
 
 function getThreadRowStyle(depth: number): CSSProperties {
@@ -527,14 +470,7 @@ function ThreadRowComponent({
     parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
   const hasChildren = childCount > 0;
   const reserveActionSpace =
-    crossProjectLabel !== null ||
-    (isParentRow && hasChildren && thread.archivedAt !== null);
-  const overlayActionsBesideDisclosure =
-    isParentRow && hasChildren && !reserveActionSpace;
-  const disclosureActions = useDisclosureActionsClearance(
-    overlayActionsBesideDisclosure && !shortcut,
-    quickActions.length,
-  );
+    crossProjectLabel !== null || (isParentRow && hasChildren);
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const hiddenChildrenHaveDraft = useThreadsHaveDraft(
     hasHiddenChildren ? childActivity.threadIds : NO_THREAD_IDS,
@@ -668,7 +604,6 @@ function ThreadRowComponent({
         />
       ) : null}
       <span
-        ref={disclosureActions.contentRef}
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           !isActionsOpen &&
@@ -676,7 +611,6 @@ function ThreadRowComponent({
           !shortcut &&
             !isEditing &&
             !isCustomizingActions &&
-            !overlayActionsBesideDisclosure &&
             (reserveActionSpace
               ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
@@ -717,14 +651,11 @@ function ThreadRowComponent({
           className="absolute inset-0 rounded-md outline-none"
         />
         <span
-          ref={disclosureActions.titleRef}
           className={cn(
             "pointer-events-none relative flex min-w-0 items-center self-stretch",
             ((crossProjectLabel === null && (!parentOptions || !hasChildren)) ||
               isEditing) &&
               "flex-1",
-            disclosureActions.clearance !== null &&
-              SIDEBAR_HOVER_ACTIONS_MASK_CLASS,
           )}
         >
           {provider ? (
@@ -791,7 +722,7 @@ function ThreadRowComponent({
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             disabled={isEditing}
-            className={isEditing ? "hidden" : "z-[11]"}
+            className={isEditing ? "hidden" : undefined}
             isCollapsed={isParentCollapsed}
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
@@ -899,7 +830,6 @@ function ThreadRowComponent({
                 )}
               </span>
               <div
-                ref={disclosureActions.actionsRef}
                 data-sidebar-hover-actions-open={
                   isActionsOpen ? "true" : undefined
                 }
@@ -907,16 +837,7 @@ function ThreadRowComponent({
                   SIDEBAR_HOVER_ACTIONS_CLASS,
                   "absolute inset-y-0 right-0 z-10 flex items-center justify-end [@media(hover:none)]:hidden",
                   isEditing && "invisible pointer-events-none",
-                  disclosureActions.clearance !== null &&
-                    "[&_[data-thread-actions-trigger]]:ml-(--bb-sidebar-disclosure-clearance)",
                 )}
-                style={
-                  disclosureActions.clearance === null
-                    ? undefined
-                    : ({
-                        "--bb-sidebar-disclosure-clearance": `${disclosureActions.clearance}px`,
-                      } as CSSProperties)
-                }
               >
                 <SidebarRowControls
                   primaryAction={

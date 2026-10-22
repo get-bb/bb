@@ -7,9 +7,6 @@ import {
   type ProviderCommandSection,
   type ProviderCommandSource,
 } from "@bb/server-contract";
-import type { PromptMentionCommandTrigger } from "@bb/domain";
-import type { PluginMentionTrigger } from "./plugin-mention-triggers.js";
-import type { OrderedMentionSuggestions } from "./mention-candidates.js";
 
 type PromptPathMentionSource = "workspace" | "thread-storage";
 type PromptPathMentionEntryKind = "file" | "directory";
@@ -55,12 +52,6 @@ export type PromptMentionSuggestion =
       replacement: string;
       sectionId: string;
       name: string;
-    }
-  | {
-      kind: "attachment";
-      path: string;
-      name: string;
-      replacement: string;
     }
   | {
       kind: "plugin";
@@ -207,44 +198,38 @@ export function orderCommandSuggestions(
   return [...bySection.values()].flat();
 }
 
-export type TypeaheadTrigger =
-  | { char: PluginMentionTrigger; kind: "mention" }
-  | { char: PromptMentionCommandTrigger; kind: "command" };
+const COMMAND_SECTION_LABELS: Record<ProviderCommandSection, string> = {
+  "agent-command": "Commands",
+  skill: "Skills",
+  "project-command": "Project commands",
+  "user-command": "User commands",
+};
 
-export type ActiveTrigger =
-  | {
-      char: PluginMentionTrigger;
-      kind: "mention";
-      query: string;
-      from: number;
-      to: number;
+export interface ProviderCommandSuggestionGroup {
+  key: ProviderCommandSection;
+  label: string;
+  suggestions: ProviderCommandSuggestion[];
+}
+
+export function groupCommandSuggestions(
+  suggestions: readonly ProviderCommandSuggestion[],
+): ProviderCommandSuggestionGroup[] {
+  const groups = new Map<
+    ProviderCommandSection,
+    ProviderCommandSuggestionGroup
+  >();
+  for (const suggestion of suggestions) {
+    const key = providerCommandSection(suggestion);
+    const group = groups.get(key);
+    if (group) {
+      group.suggestions.push(suggestion);
+      continue;
     }
-  | {
-      char: PromptMentionCommandTrigger;
-      kind: "command";
-      query: string;
-      from: number;
-      to: number;
-    };
-
-export type MentionMenuState =
-  | { kind: "hint" }
-  | { kind: "loading" }
-  | { kind: "error" }
-  | {
-      kind: "results";
-      results: OrderedMentionSuggestions;
-      refreshing: boolean;
-    };
-
-export type CommandMenuState =
-  | { kind: "loading" }
-  | { kind: "error" }
-  | {
-      kind: "results";
-      suggestions: readonly ProviderCommandSuggestion[];
-    };
-
-export type TypeaheadMenuState =
-  | { trigger: "mention"; state: MentionMenuState }
-  | { trigger: "command"; state: CommandMenuState };
+    groups.set(key, {
+      key,
+      label: COMMAND_SECTION_LABELS[key],
+      suggestions: [suggestion],
+    });
+  }
+  return [...groups.values()];
+}

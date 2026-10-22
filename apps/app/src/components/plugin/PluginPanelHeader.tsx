@@ -1,3 +1,5 @@
+import { usePageTitleValue } from "@/components/layout/page-title";
+import { PageTitleHeader } from "@/components/layout/PageTitleHeader";
 import { Component, type ReactNode } from "react";
 import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
@@ -33,15 +35,19 @@ export function PluginPanelHeaderCenter({
 }: {
   chrome: Pick<PluginNavPanelChrome, "pluginId" | "icon" | "title">;
 }) {
+  const pageTitle = usePageTitleValue();
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <PluginItemIcon
-        pluginId={chrome.pluginId}
-        icon={chrome.icon}
-        className="text-muted-foreground"
-      />
-      <p className="truncate text-sm font-semibold">{chrome.title}</p>
-    </div>
+    <PageTitleHeader
+      icon={
+        <PluginItemIcon
+          pluginId={chrome.pluginId}
+          icon={chrome.icon}
+          className="text-muted-foreground"
+        />
+      }
+      title={chrome.title}
+      value={pageTitle}
+    />
   );
 }
 

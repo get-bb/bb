@@ -1,11 +1,15 @@
 import { MentionMenu } from "@/components/promptbox/mentions/MentionMenu";
+import {
+  composerMentionGroupsFromOrdered,
+  groupCommandSuggestions,
+  type ProviderCommandSuggestion,
+  type PromptMentionSuggestion,
+} from "@bb/client-core";
 import type {
   CommandMenuState,
   MentionMenuState,
-  ProviderCommandSuggestion,
-  PromptMentionSuggestion,
   TypeaheadMenuState,
-} from "@bb/client-core";
+} from "@/components/promptbox/mentions/typeahead-suggestions";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
@@ -314,10 +318,12 @@ function makeResultsState(args: ResultsStateConfig): MentionMenuState {
   return {
     kind: "results",
     refreshing: false,
-    results: orderPromptMentionSuggestions({
-      query: "",
-      suggestions: args.suggestions,
-    }),
+    groups: composerMentionGroupsFromOrdered(
+      orderPromptMentionSuggestions({
+        query: "",
+        suggestions: args.suggestions,
+      }),
+    ),
   };
 }
 
@@ -346,7 +352,7 @@ function makeCommandResultsState(
 ): CommandMenuState {
   return {
     kind: "results",
-    suggestions,
+    groups: groupCommandSuggestions(suggestions),
   };
 }
 

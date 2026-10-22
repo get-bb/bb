@@ -9,7 +9,6 @@ import {
   systemProviderTurnWatchdogEventDataSchema,
   systemThreadProvisioningEventDataSchema,
   systemUserQuestionLifecycleEventDataSchema,
-  systemEventTypeValues,
   systemThreadInterruptedEventDataSchema,
   clientTurnLifecycleEventDataSchema,
   turnRequestEventDataSchema,
@@ -29,7 +28,8 @@ import {
 import { threadTimelineGoalStatusSchema } from "./thread-timeline-goal.js";
 import { threadEventItemPresentationSchema } from "./item-presentation.js";
 import { extensionKindSchema } from "./provider-extension-kind.js";
-
+import { threadUsageCostSchema } from "./thread-usage-cost.js";
+export { threadUsageCostSchema } from "./thread-usage-cost.js";
 export const threadEventItemStatusSchema = z.enum([
   "pending",
   "completed",
@@ -299,10 +299,6 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
   typeof threadEventTokenUsageBreakdownSchema
 >;
 
-export const threadUsageCostSchema = z.object({
-  amount: z.number().nonnegative(),
-  currency: z.string().min(1),
-});
 export type ThreadUsageCost = z.infer<typeof threadUsageCostSchema>;
 
 const threadEventContextWindowUsageSchema = z.object({
@@ -723,9 +719,6 @@ export type ProviderUnhandledEvent = Extract<
   ProviderEvent,
   { type: "provider/unhandled" }
 >;
-const providerEventTypeValues = unscopedProviderEventSchema.options.map(
-  (option) => option.shape.type.value,
-);
 
 const unscopedSystemEventSchema = z.discriminatedUnion("type", [
   z
@@ -856,14 +849,8 @@ export function isThreadEventWithItem(
       return false;
   }
 }
-export const threadEventTypeValues = [
-  ...providerEventTypeValues,
-  ...systemEventTypeValues,
-] as const;
-const threadEventTypeSet = new Set<string>(threadEventTypeValues);
-export const threadEventTypeSchema = z
-  .string()
-  .refine(
-    (value): value is ThreadEventType => threadEventTypeSet.has(value),
-    "Invalid thread event type",
-  );
+
+export {
+  threadEventTypeValues,
+  threadEventTypeSchema,
+} from "./thread-event-types.js";

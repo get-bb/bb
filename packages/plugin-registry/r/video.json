@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "video",
+  "type": "registry:ui",
+  "title": "video",
+  "description": "BB ui \"video\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/video.tsx",
+      "content": "import { useEffect, useRef, type VideoHTMLAttributes } from \"react\";\n\nexport function Video({\n  src,\n  ...props\n}: VideoHTMLAttributes<HTMLVideoElement> & { src: string }) {\n  const ref = useRef<HTMLVideoElement>(null);\n  useEffect(() => {\n    const video = ref.current;\n    if (!video) return;\n    video.src = src;\n    return () => {\n      video.removeAttribute(\"src\");\n      video.load();\n    };\n  }, [src]);\n  return <video {...props} ref={ref} />;\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/video.tsx"
+    }
+  ]
+}

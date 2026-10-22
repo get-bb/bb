@@ -4,7 +4,7 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderReact,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -25,6 +25,12 @@ import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { AppLayout } from "./AppLayout";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+
+function render(ui: ReactNode) {
+  return renderReact(ui, { wrapper: createQueryClientTestHarness().wrapper });
+}
 
 const useThreadDetailBootstrapMock = vi.hoisted(() =>
   vi.fn(

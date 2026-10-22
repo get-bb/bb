@@ -12,7 +12,7 @@ import {
   getQueuedMessagesDrawerHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
 } from "@/components/promptbox/banner/queued-messages-layout";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 

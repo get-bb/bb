@@ -53,7 +53,7 @@ describe("download attribution privacy", () => {
           expect(params.get(name)).toBe(expected);
           expect(saved.get(name)).toBe(expected);
         }
-        expect(params.get("instructions")).toBe("1");
+        expect(params.get("instructions")).toBeNull();
         expect(params.get("placement")).toBe("hero");
         expect(params.get("utm_source")).toBe("qa");
         expect(params.get("utm_campaign")).toBe("privacy");
@@ -66,7 +66,7 @@ describe("download attribution privacy", () => {
   );
 
   it.each(["macos", "windows", "linux"])(
-    "opts a hardcoded %s link into instructions on keyboard activation",
+    "keeps a hardcoded %s link direct on keyboard activation",
     (platform) => {
       const link = document.createElement("a");
       link.href = `/download/${platform}`;
@@ -75,7 +75,7 @@ describe("download attribution privacy", () => {
       const stop = carryUtmToDownloadLinks();
       try {
         link.click();
-        expect(link.search).toBe("?instructions=1");
+        expect(link.search).toBe("");
       } finally {
         stop();
       }
@@ -137,7 +137,7 @@ describe("download attribution privacy", () => {
         expect(window.location.search).toBe("?utm_source=qa");
         expect(window.location.hash).toBe("#download");
         expect(window.history.state).toEqual({ review: true });
-        expect(new URL(link.href).searchParams.get("instructions")).toBe("1");
+        expect(new URL(link.href).searchParams.get("instructions")).toBeNull();
         expect(new URL(link.href).searchParams.get(name)).toBeNull();
         expect(new URL(link.href).searchParams.get("utm_campaign")).toBe("own");
       } finally {

@@ -24,8 +24,12 @@ export * from "./prompt/permission-mode-options.js";
 export * from "./prompt/mentions/plugin-mention-triggers.js";
 export * from "./prompt/mentions/types.js";
 export * from "./prompt/mentions/mention-candidates.js";
-export * from "./prompt/mentions/find-active-trigger.js";
 export * from "./prompt/mentions/command-trigger.js";
+export * from "./prompt/mentions/composer-mention.js";
+export * from "./prompt/mentions/composer-suggestions.js";
+export * from "./prompt/mentions/prompt-mention-clipboard.js";
+export * from "./prompt/mentions/prompt-mention-link.js";
+export * from "./prompt/mentions/prompt-mention-display.js";
 export * from "./prompt/fork-thread-request.js";
 export * from "./prompt/thread-handoff-request.js";
 

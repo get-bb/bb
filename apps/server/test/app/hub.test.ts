@@ -91,6 +91,107 @@ describe("NotificationHub", () => {
     expect(socket.messages).toHaveLength(0);
   });
 
+  it("watches a target from its first subscriber until its last one leaves", () => {
+    const hub = new NotificationHub();
+    const first = createMockHubSocket();
+    const second = createMockHubSocket();
+    const environment = {
+      kind: "environment-detail",
+      environmentId: "environment-1",
+    } as const;
+    const thread = { kind: "thread-detail", threadId: "thread-1" } as const;
+    const changes: unknown[] = [];
+    hub.onWatchedTargets(["environment-detail", "thread-detail"], (change) => {
+      changes.push(change);
+    });
+
+    hub.subscribe(first, environment);
+    hub.subscribe(second, { ...environment });
+    hub.subscribe(first, thread);
+    hub.subscribe(first, { kind: "project-detail", projectId: "project-1" });
+    hub.unsubscribe(first, environment);
+    expect(hub.listWatchedTargets("environment-detail")).toEqual([environment]);
+    hub.subscribe(second, thread);
+    hub.subscribe(second, { kind: "host-list" });
+    hub.unregisterClient(first);
+    hub.unregisterClient(second);
+
+    expect(changes).toEqual([
+      { started: [environment], stopped: [] },
+      { started: [thread], stopped: [] },
+      { started: [], stopped: [environment, thread] },
+    ]);
+    expect(hub.listWatchedTargets("environment-detail")).toEqual([]);
+    expect(hub.listWatchedTargets("thread-detail")).toEqual([]);
+  });
+
+  it("replays already watched targets to a late listener", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    const target = {
+      kind: "thread-timeline",
+      threadId: "thread-1",
+      segmentLimit: null,
+      deferContent: false,
+    } as const;
+    hub.subscribe(socket, target);
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+    const changes: unknown[] = [];
+
+    const stop = hub.onWatchedTargets(["thread-timeline"], (change) => {
+      changes.push(change);
+    });
+    stop();
+    hub.unregisterClient(socket);
+
+    expect(changes).toEqual([{ started: [target], stopped: [] }]);
+  });
+
+  it("watches only for visible clients while still routing changes to hidden ones", () => {
+    const hub = new NotificationHub();
+    const first = createMockHubSocket();
+    const second = createMockHubSocket();
+    const environment = {
+      kind: "environment-detail",
+      environmentId: "environment-1",
+    } as const;
+    const pullRequest = {
+      kind: "environment-pull-request",
+      environmentId: "environment-1",
+    } as const;
+    const changes: unknown[] = [];
+    hub.onWatchedTargets(
+      ["environment-detail", "environment-pull-request"],
+      (change) => {
+        changes.push(change);
+      },
+    );
+
+    hub.subscribe(first, environment);
+    hub.subscribe(second, { ...environment });
+    hub.setClientVisible(first, false);
+    hub.setClientVisible(first, false);
+    expect(hub.listWatchedTargets("environment-detail")).toEqual([environment]);
+    hub.setClientVisible(second, false);
+    hub.subscribe(second, pullRequest);
+    hub.notifyEnvironment("environment-1", ["metadata-changed"]);
+    hub.setClientVisible(second, true);
+    hub.unregisterClient(second);
+    hub.unregisterClient(first);
+
+    expect(changes).toEqual([
+      { started: [environment], stopped: [] },
+      { started: [], stopped: [environment] },
+      { started: [environment, pullRequest], stopped: [] },
+      { started: [], stopped: [environment, pullRequest] },
+    ]);
+    for (const socket of [first, second]) {
+      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+        expect.objectContaining({ entity: "environment", id: "environment-1" }),
+      ]);
+    }
+  });
+
   it("registers terminal clients and removes them when the socket disconnects", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

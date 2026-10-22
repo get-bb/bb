@@ -16,7 +16,6 @@ import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
 import {
   ResourceListState,
-  useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import {
   RegistrySkillDetailView,
@@ -391,9 +390,6 @@ export function SkillsLibrary() {
   });
   const selectedRegistrySkill =
     registrySkillOnPage ?? registryEntryQuery.data ?? null;
-  useResourceRouteLabel(
-    selectedSkill?.name ?? selectedRegistrySkill?.name ?? null,
-  );
   const registryDetailQuery = useQuery({
     queryKey: ["skills-registry-detail", selectedRegistrySkill?.id ?? "none"],
     queryFn: ({ signal }) =>

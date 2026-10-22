@@ -30,7 +30,6 @@ import {
   ResourcePromptPreview,
   ResourceDetailStack,
   ResourceMeta,
-  useResourceRouteLabel,
 } from "@/components/ui/resource-list";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -748,7 +747,6 @@ export function AutomationDetailView({
   onOpenThread,
   footer,
 }: AutomationDetailViewProps) {
-  useResourceRouteLabel(automation.name);
   const oneShotLifecycle = getOneShotLifecycle({
     enabled: automation.enabled,
     trigger: automation.trigger,
