@@ -2,6 +2,7 @@ import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
 import { pathExists } from "@bb/process-utils";
 import type {
   CommitOptions,
+  LocalStateSnapshot,
   CommitResult,
   DiffOptions,
   DiffResult,
@@ -65,7 +66,7 @@ export interface HostWorkspace {
   getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
-  getLocalStateFingerprint(): Promise<string>;
+  getLocalStateSnapshot(): Promise<LocalStateSnapshot>;
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot>;
   getAdditionalWorkspaceWriteRoots(): Promise<string[]>;
   getStatus(options?: StatusOptions): Promise<WorkspaceStatus>;
@@ -126,8 +127,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.getHeadSha();
   }
 
-  getLocalStateFingerprint(): Promise<string> {
-    return this.ws.getLocalStateFingerprint();
+  getLocalStateSnapshot(): Promise<LocalStateSnapshot> {
+    return this.ws.getLocalStateSnapshot();
   }
 
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {

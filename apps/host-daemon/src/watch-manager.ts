@@ -2,6 +2,7 @@ import type { DiscoveredWorkspaceProperties } from "@bb/domain";
 import {
   provisionWorkspace,
   type HostWorkspace,
+  type LocalStateSnapshot,
   type SharedGitRefsSnapshot,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
@@ -259,7 +260,6 @@ export class WatchManager {
           this.options.onWorkspaceStatusWatchError?.({ error });
         },
       });
-      void this.initializeWorkspaceWatchFingerprints(entry);
     } catch (error) {
       this.workspaceEntries.delete(target.environmentId);
       this.options.onWorkspaceStatusWatchError?.({
@@ -273,32 +273,6 @@ export class WatchManager {
           rootPath: target.workspaceContext.workspacePath,
         },
       });
-    }
-  }
-
-  private async initializeWorkspaceWatchFingerprints(
-    entry: WorkspaceWatchEntry,
-  ): Promise<void> {
-    if (!entry.workspace.isGitRepo) {
-      return;
-    }
-    try {
-      const [lastLocalFingerprint, lastSharedRefsFingerprint] =
-        await Promise.all([
-          entry.workspace.getLocalStateFingerprint(),
-          entry.workspace.getSharedGitRefsSnapshot(),
-        ]);
-      if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
-        return;
-      }
-      entry.watchState.lastLocalFingerprint = lastLocalFingerprint;
-      entry.watchState.lastSharedRefsFingerprint =
-        lastSharedRefsFingerprint.fingerprint;
-    } catch (error) {
-      if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
-        return;
-      }
-      this.reportWorkspaceWatchError(entry, error);
     }
   }
 
@@ -348,7 +322,25 @@ export class WatchManager {
 
     try {
       const changeKinds: HostDaemonEnvironmentChange[] = [];
+      let localState: LocalStateSnapshot | undefined;
       let sharedRefs: SharedGitRefsSnapshot | undefined;
+      if (
+        args.entry.workspace.isGitRepo &&
+        args.entry.watchState.lastBranchName === undefined
+      ) {
+        [localState, sharedRefs] = await Promise.all([
+          args.entry.workspace.getLocalStateSnapshot(),
+          args.entry.workspace.getSharedGitRefsSnapshot(),
+        ]);
+        if (
+          this.workspaceEntries.get(args.entry.target.environmentId) !==
+          args.entry
+        )
+          return;
+        args.entry.watchState.lastLocalFingerprint = localState.fingerprint;
+        args.entry.watchState.lastSharedRefsFingerprint =
+          sharedRefs.fingerprint;
+      }
       if (workspaceWatchKindsIncludeLocalState(pendingKinds)) {
         if (
           pendingKinds.includes("workspace-git-repository-created") &&
@@ -360,8 +352,8 @@ export class WatchManager {
           "workspace-content-changed",
         );
         if (args.entry.workspace.isGitRepo && !workspaceContentChanged) {
-          const nextLocalFingerprint =
-            await args.entry.workspace.getLocalStateFingerprint();
+          localState ??= await args.entry.workspace.getLocalStateSnapshot();
+          const nextLocalFingerprint = localState.fingerprint;
           if (
             args.entry.watchState.lastLocalFingerprint !== nextLocalFingerprint
           ) {
@@ -374,7 +366,7 @@ export class WatchManager {
         args.entry.workspace.isGitRepo &&
         pendingKinds.includes("shared-git-refs-changed")
       ) {
-        sharedRefs = await args.entry.workspace.getSharedGitRefsSnapshot();
+        sharedRefs ??= await args.entry.workspace.getSharedGitRefsSnapshot();
         const nextSharedRefsFingerprint = sharedRefs.fingerprint;
         if (
           args.entry.watchState.lastSharedRefsFingerprint !==
@@ -406,6 +398,7 @@ export class WatchManager {
           args.entry,
           pendingKinds.includes("workspace-git-changed"),
           sharedRefs,
+          localState,
         );
       }
     } catch (error) {
@@ -417,11 +410,14 @@ export class WatchManager {
     entry: WorkspaceWatchEntry,
     localGitChanged: boolean,
     sharedRefs: SharedGitRefsSnapshot | undefined,
+    localState: LocalStateSnapshot | undefined,
   ): Promise<void> {
     const [branchName, resolvedDefaultBranch] = await Promise.all([
-      localGitChanged || entry.watchState.lastBranchName === undefined
-        ? entry.workspace.getCurrentBranch()
-        : entry.watchState.lastBranchName,
+      localState !== undefined
+        ? localState.branchName
+        : localGitChanged || entry.watchState.lastBranchName === undefined
+          ? entry.workspace.getCurrentBranch()
+          : entry.watchState.lastBranchName,
       sharedRefs === undefined
         ? entry.workspace.getDefaultBranch()
         : sharedRefs.defaultBranch,
