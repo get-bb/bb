@@ -10,7 +10,14 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -33,6 +40,7 @@ import {
 } from "@/lib/split-layout";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
   resetPluginSlotStoreForTest,
@@ -329,6 +337,18 @@ vi.mock("./LazyThreadDetailView", () => ({
       projectId,
       threadId,
     });
+    const composerRootRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    useEffect(() => {
+      const root = composerRootRef.current;
+      if (root === null) return;
+      return registerPaneComposerFocus(root, () => {
+        const textarea = textareaRef.current;
+        if (textarea === null || textarea.disabled) return false;
+        textarea.focus();
+        return true;
+      });
+    }, []);
     return (
       <div
         data-testid={`pane-${threadId}`}
@@ -339,8 +359,9 @@ vi.mock("./LazyThreadDetailView", () => ({
           data-testid={`drag-${threadId}`}
           onPointerDown={(event) => pane?.beginPaneDrag?.(event, threadId)}
         />
-        <div data-promptbox="">
+        <div ref={composerRootRef}>
           <textarea
+            ref={textareaRef}
             data-testid={`draft-${threadId}`}
             value={draft.text}
             onChange={(event) =>

@@ -689,7 +689,7 @@ describe("suppressPromptEditorAnchorActivation", () => {
     document.body.append(outside);
     outside.focus();
     act(() => {
-      focusPaneComposer(element);
+      expect(focusPaneComposer(document.body)).toBe(true);
     });
     expect(document.activeElement).toBe(element);
     expect(editor.state.selection.from).toBe(3);

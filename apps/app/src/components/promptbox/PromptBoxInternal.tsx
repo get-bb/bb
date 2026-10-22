@@ -1,5 +1,6 @@
 import { VoiceInputButton } from "./VoiceInputButton";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
+import { ComposerMaxHeightContext } from "./composer-max-height";
 import { parseThreadLink, type ThreadLinkTarget } from "@/lib/thread-links";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
@@ -204,6 +205,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { findPastedThreadLinkCandidates } from "./mentions/pasted-thread-link-candidates";
 import {
   blurPromptEditor,
+  COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
   ComposerEditorSlot,
   type ComposerEditorLayout,
 } from "./ComposerEditorSlot";
@@ -1398,6 +1400,31 @@ export function PromptBoxInternal({
   const threadLinkCacheRef = useRef({ threadTitleResources, queryClient });
   threadLinkCacheRef.current = { threadTitleResources, queryClient };
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
+  const maxHeight = useContext(ComposerMaxHeightContext);
+  useLayoutEffect(() => {
+    const formElement = formRef.current;
+    const scrollElement = editorScrollContainerRef.current;
+    if (!formElement || !scrollElement) return;
+    if (maxHeight === undefined) {
+      formElement.style.removeProperty(
+        COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
+      );
+      return;
+    }
+    const capEditor = () => {
+      const chromeHeight =
+        formElement.offsetHeight - scrollElement.offsetHeight;
+      formElement.style.setProperty(
+        COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
+        `${maxHeight - chromeHeight}px`,
+      );
+    };
+    capEditor();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(capEditor);
+    observer.observe(formElement);
+    return () => observer.disconnect();
+  }, [maxHeight]);
   const revealSelectionFrameRef = useRef<number | null>(null);
   const promptActionFocusFrameRef = useRef<number | null>(null);
   const pendingFocusEndRef = useRef(false);
@@ -2344,9 +2371,12 @@ export function PromptBoxInternal({
   }, [editor, isSubmitting, composerInputLocked]);
 
   useLayoutEffect(() => {
-    if (!editor || editor.isDestroyed) return;
-    return registerPaneComposerFocus(editor.view.dom, () => {
-      if (!editor.isDestroyed && editor.isEditable) editor.view.focus();
+    const formElement = formRef.current;
+    if (!formElement || !editor || editor.isDestroyed) return;
+    return registerPaneComposerFocus(formElement, () => {
+      if (editor.isDestroyed || !editor.isEditable) return false;
+      editor.view.focus();
+      return true;
     });
   }, [editor]);
 

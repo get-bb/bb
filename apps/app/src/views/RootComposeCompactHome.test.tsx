@@ -2,13 +2,31 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useContext, useLayoutEffect, useRef } from "react";
 import { RootComposeCompactHome } from "./RootComposeCompactHome";
-import { COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY } from "@/components/promptbox/ComposerEditorSlot";
+import { ComposerMaxHeightContext } from "@/components/promptbox/composer-max-height";
+import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
+function ComposerRootProbe() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const maxHeight = useContext(ComposerMaxHeightContext);
+  useLayoutEffect(
+    () => registerPaneComposerFocus(rootRef.current!, () => false),
+    [],
+  );
+  return (
+    <div
+      ref={rootRef}
+      data-testid="composer-root"
+      data-max-height={maxHeight}
+    />
+  );
+}
 
 function renderCompactHome() {
   return render(
@@ -57,32 +75,27 @@ describe("RootComposeCompactHome", () => {
     expect(bottomSpacer.style.height).toBe("188px");
   });
 
-  it("caps the editor so a tall draft keeps the composer below the app chrome row", () => {
+  it("caps the composer so a tall draft keeps it below the app chrome row", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
         if (this.dataset.testid === "root-compose-compact-home") return 480;
         if (this.dataset.testid === "root-compose-compact-composer") {
           return 682;
         }
-        if (this.hasAttribute("data-promptbox-editor-scroll")) return 540;
+        if (this.dataset.testid === "composer-root") return 600;
         return 0;
       },
     );
 
     render(
-      <RootComposeCompactHome
-        composer={<div data-promptbox-editor-scroll="" />}
-      >
+      <RootComposeCompactHome composer={<ComposerRootProbe />}>
         <div />
       </RootComposeCompactHome>,
     );
 
-    const composer = screen.getByTestId("root-compose-compact-composer");
-    expect(
-      composer.style.getPropertyValue(
-        COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
-      ),
-    ).toBe(`${480 - 56 - (682 - 540)}px`);
+    expect(screen.getByTestId("composer-root").dataset.maxHeight).toBe(
+      `${480 - 56 - (682 - 600)}`,
+    );
   });
 
   it("starts the scroll viewport at the app chrome row so rows scroll up through the band", () => {
