@@ -218,8 +218,13 @@ def run():
     wait_for(lambda: (current := daemon()) and current["pid"] != original["pid"])
     assert same_process(HOOK), "Expected detached setup to survive daemon restart"
     log("PASS real setup survives isolated daemon restart; operation remains unresolved")
+    def thread_status():
+        with database() as db:
+            return db.execute("select status from threads where id=?", (thread["id"],)).fetchone()[0]
+
+    wait_for(lambda: thread_status() == "error")
     qa_write("thread", "archive", thread["id"], "--json")
-    wait_for(lambda: row(environment_id)["owner_thread_id"] is None)
+    wait_for(lambda: thread_status() not in ("active", "stopping"))
     for attempt in range(1, 6):
         if row(environment_id)["teardown_attempt"] < attempt:
             qa_write("environment", "cleanup", environment_id, "--json")
