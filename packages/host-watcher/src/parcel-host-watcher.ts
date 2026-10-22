@@ -117,7 +117,6 @@ function watchWorkspace(args: WatchWorkspaceArgs): () => Promise<void> {
       });
     },
     onReady: args.onReady,
-    readRootStatus: args.readRootStatus,
     onWatchError: (error) => {
       args.onWatchError({
         kind: "workspace-watch-error",

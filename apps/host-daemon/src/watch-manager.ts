@@ -34,7 +34,6 @@ interface WorkspaceWatchState {
   lastBranchName: string | null | undefined;
   lastDefaultBranch: string | null | undefined;
   lastLocalFingerprint: string | null;
-  initialLocalState: LocalStateSnapshot | null;
   lastSharedRefsFingerprint: string | null;
   pendingKinds: Set<WorkspaceStatusWatchChangeKind>;
   processing: Promise<void> | null;
@@ -235,7 +234,6 @@ export class WatchManager {
           lastBranchName: undefined,
           lastDefaultBranch: undefined,
           lastLocalFingerprint: null,
-          initialLocalState: null,
           lastSharedRefsFingerprint: null,
           pendingKinds: new Set(),
           processing: null,
@@ -243,26 +241,10 @@ export class WatchManager {
         workspace,
       };
       this.workspaceEntries.set(target.environmentId, entry);
-      let initialStatusVersion = 0;
       entry.stopWatchingStatus = this.hostWatcher.watchWorkspace({
         environmentId: target.environmentId,
         workspacePath: workspace.path,
-        readRootStatus: workspace.isGitRepo
-          ? async () => {
-              const version = initialStatusVersion;
-              const snapshot = await workspace.getLocalStateSnapshot(true);
-              if (
-                version === initialStatusVersion &&
-                entry.watchState.lastBranchName === undefined
-              ) {
-                entry.watchState.initialLocalState = snapshot;
-              }
-              return snapshot.directories;
-            }
-          : undefined,
         onChange: (event) => {
-          initialStatusVersion += 1;
-          entry.watchState.initialLocalState = null;
           this.queueWorkspaceWatchChange({
             changeKinds: event.changeKinds,
             entry,
@@ -347,8 +329,7 @@ export class WatchManager {
         args.entry.watchState.lastBranchName === undefined
       ) {
         [localState, sharedRefs] = await Promise.all([
-          args.entry.watchState.initialLocalState ??
-            args.entry.workspace.getLocalStateSnapshot(),
+          args.entry.workspace.getLocalStateSnapshot(),
           args.entry.workspace.getSharedGitRefsSnapshot(),
         ]);
         if (
@@ -356,7 +337,6 @@ export class WatchManager {
           args.entry
         )
           return;
-        args.entry.watchState.initialLocalState = null;
         args.entry.watchState.lastLocalFingerprint = localState.fingerprint;
         args.entry.watchState.lastSharedRefsFingerprint =
           sharedRefs.fingerprint;

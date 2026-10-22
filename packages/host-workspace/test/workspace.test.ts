@@ -215,35 +215,6 @@ describe("Workspace", () => {
     expect(detached.fingerprint).not.toBe(branchFingerprint.fingerprint);
   });
 
-  it("shares ignore discovery without changing local fingerprints or rename records", async () => {
-    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
-    const workspace = new Workspace(repoPath);
-    await fs.writeFile(path.join(repoPath, ".gitignore"), "output/\n");
-    await fs.mkdir(path.join(repoPath, "output"));
-    await fs.writeFile(path.join(repoPath, "output", "bundle.js"), "ignored");
-    await fs.mkdir(path.join(repoPath, "new-directory"));
-    await fs.writeFile(
-      path.join(repoPath, "new-directory", "notes.txt"),
-      "untracked",
-    );
-    await fs.writeFile(path.join(repoPath, "! original.txt"), "rename me");
-    await runGit(["add", ".gitignore", "! original.txt"], { cwd: repoPath });
-    await runGit(["commit", "-m", "prepare rename"], { cwd: repoPath });
-    await runGit(["mv", "! original.txt", "renamed.txt"], { cwd: repoPath });
-    const ordinary = await workspace.getLocalStateSnapshot();
-    const discovery = await workspace.getLocalStateSnapshot(true);
-    expect(discovery.branchName).toBe("main");
-    expect(discovery.directories).toEqual({
-      ignored: ["output"],
-      untracked: ["new-directory"],
-    });
-    expect(discovery.fingerprint).toBe(ordinary.fingerprint);
-    await fs.writeFile(path.join(repoPath, "output", "bundle.js"), "rebuilt");
-    expect((await workspace.getLocalStateSnapshot(true)).fingerprint).toBe(
-      ordinary.fingerprint,
-    );
-  });
-
   it("observes the initial branch before the first commit", async () => {
     const repoPath = await makeTempDir("bb-workspace-unborn-");
     await runGit(["init", "-b", "main"], { cwd: repoPath });

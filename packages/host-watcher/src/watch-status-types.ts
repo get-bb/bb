@@ -26,7 +26,6 @@ type WorkspaceStatusWatchErrorCallback = (
 ) => void;
 
 export interface WorkspaceStatusWatchArgs {
-  readRootStatus?: () => Promise<{ ignored: string[]; untracked: string[] }>;
   onChange: WorkspaceStatusChangeCallback;
   onReady?: () => void;
   onWatchError: WorkspaceStatusWatchErrorCallback;

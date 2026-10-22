@@ -64,7 +64,6 @@ export interface ThreadStorageWatchTarget {
 }
 
 export interface WatchWorkspaceArgs {
-  readRootStatus?: () => Promise<{ ignored: string[]; untracked: string[] }>;
   environmentId: string;
   workspacePath: string;
   onChange: (event: WorkspaceObservedChange) => void;

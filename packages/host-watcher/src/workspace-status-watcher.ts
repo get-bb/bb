@@ -138,7 +138,6 @@ class WorkspaceStatusWatcher {
     const { failures, ignore } = await resolveWorkspaceRootIgnores({
       cwd: this.args.cwd,
       gitRoot: this.gitWorkspace,
-      readRootStatus: this.args.readRootStatus,
     });
     if (this.disposed) {
       return;
@@ -323,7 +322,6 @@ export function createWorkspaceStatusWatcher(
     maxWaitMs: WORKSPACE_STATUS_WATCH_MAX_WAIT_MS,
     onChange: args.onChange,
     onReady: args.onReady,
-    readRootStatus: args.readRootStatus,
     onWatchError: args.onWatchError,
     retryDelayMs: WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS,
   });

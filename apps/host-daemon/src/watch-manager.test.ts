@@ -40,18 +40,15 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       async () => currentBranchName,
     ),
     getHeadSha: vi.fn(async () => "commit-1"),
-    getLocalStateSnapshot: vi.fn<HostWorkspace["getLocalStateSnapshot"]>(
-      async () => {
-        if (localStateFingerprintError) {
-          throw localStateFingerprintError;
-        }
-        return {
-          fingerprint: localStateFingerprint,
-          directories: { ignored: [], untracked: [] },
-          branchName: currentBranchName,
-        };
-      },
-    ),
+    getLocalStateSnapshot: vi.fn(async () => {
+      if (localStateFingerprintError) {
+        throw localStateFingerprintError;
+      }
+      return {
+        fingerprint: localStateFingerprint,
+        branchName: currentBranchName,
+      };
+    }),
     getSharedGitRefsSnapshot: vi.fn(async () => {
       if (sharedGitRefsFingerprintError) {
         throw sharedGitRefsFingerprintError;
@@ -172,7 +169,6 @@ describe("WatchManager", () => {
 
     localFingerprint.resolve({
       fingerprint: "local:/tmp/env-watch:initial",
-      directories: { ignored: [], untracked: [] },
       branchName: "main",
     });
     await vi.waitFor(() => {
@@ -216,63 +212,6 @@ describe("WatchManager", () => {
       environmentId: "env-watch",
     });
   });
-
-  it.each([false, true])(
-    "shares startup status unless discovery is invalidated: %s",
-    async (invalidate) => {
-      let watch: WatchWorkspaceArgs | undefined;
-      const workspace = createFakeWorkspace("/tmp/env-watch");
-      const { hostWatcher } = createFakeHostWatcher({
-        watchWorkspaceImplementation: (args) => {
-          watch = args;
-          return () => undefined;
-        },
-      });
-      const onWorkspaceMetadataChanged = vi.fn();
-      const manager = new WatchManager({
-        hostWatcher,
-        provisionWorkspace: async () => workspace,
-        onWorkspaceMetadataChanged,
-      });
-      await manager.replaceWatchSet({
-        generation: 1,
-        workspaceTargets: [
-          {
-            environmentId: "env-watch",
-            workspaceContext: { workspacePath: workspace.path },
-          },
-        ],
-        threadStorageTargets: [],
-      });
-      await watch?.readRootStatus?.();
-      if (invalidate) {
-        workspace.setCurrentBranch("feature");
-        watch?.onChange({
-          changedPaths: ["/tmp/env-watch/.git/HEAD"],
-          changeKinds: ["workspace-git-changed"],
-          kind: "workspace-status-changed",
-          environmentId: "env-watch",
-        });
-      }
-      watch?.onReady();
-      await vi.waitFor(() =>
-        expect(onWorkspaceMetadataChanged).toHaveBeenCalledWith({
-          environmentId: "env-watch",
-          workspace: {
-            path: workspace.path,
-            isGitRepo: true,
-            isWorktree: false,
-            branchName: invalidate ? "feature" : "main",
-            defaultBranch: "main",
-          },
-        }),
-      );
-      expect(workspace.getLocalStateSnapshot).toHaveBeenCalledTimes(
-        invalidate ? 2 : 1,
-      );
-      await manager.shutdown();
-    },
-  );
 
   it("starts workspace watches from snapshots and stops removed targets", async () => {
     const stopWatchingStatus = vi.fn(() => undefined);
@@ -651,11 +590,7 @@ describe("WatchManager", () => {
       expect(workspace.getLocalStateSnapshot).toHaveBeenCalled(),
     );
     await manager.shutdown();
-    branch.resolve({
-      fingerprint: "stale",
-      branchName: "stale",
-      directories: { ignored: [], untracked: [] },
-    });
+    branch.resolve({ fingerprint: "stale", branchName: "stale" });
     await branch.promise;
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(onWorkspaceMetadataChanged).not.toHaveBeenCalled();

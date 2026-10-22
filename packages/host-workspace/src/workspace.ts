@@ -57,7 +57,6 @@ import { withCheckoutMutationLock } from "./checkout-mutation-lock.js";
 export interface LocalStateSnapshot {
   fingerprint: string;
   branchName: string | null;
-  directories: { ignored: string[]; untracked: string[] };
 }
 
 export interface DiffOptions {
@@ -804,9 +803,7 @@ export class Workspace {
     };
   }
 
-  async getLocalStateSnapshot(
-    includeIgnored = false,
-  ): Promise<LocalStateSnapshot> {
+  async getLocalStateSnapshot(): Promise<LocalStateSnapshot> {
     if (!this.gitRepositoryKnown)
       await ensureGitRepo(this.path, {
         timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
@@ -820,42 +817,13 @@ export class Workspace {
         "--branch",
         "-z",
         "--untracked-files=normal",
-        ...(includeIgnored ? ["--ignored=matching"] : []),
       ],
       { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
     );
-    const records = status.stdout.split("\0");
-    const porcelain: string[] = [];
-    const directories: LocalStateSnapshot["directories"] = {
-      ignored: [],
-      untracked: [],
-    };
-    for (let index = 0; index < records.length; index += 1) {
-      const record = records[index] ?? "";
-      if (
-        (record.startsWith("! ") || record.startsWith("? ")) &&
-        record.endsWith("/")
-      ) {
-        const directory = record.slice(2).replace(/\/+$/u, "");
-        (record.startsWith("! ")
-          ? directories.ignored
-          : directories.untracked
-        ).push(directory);
-      }
-      if (!record.startsWith("! ")) porcelain.push(record);
-      if (record.startsWith("2 ")) {
-        index += 1;
-        porcelain.push(records[index] ?? "");
-      }
-    }
     const { headOid, headBranch } = parsePorcelainV2StatusZ(status.stdout);
     return {
-      fingerprint: JSON.stringify({
-        headSha: headOid,
-        porcelain: porcelain.join("\0"),
-      }),
+      fingerprint: JSON.stringify({ headSha: headOid, porcelain: status.stdout }),
       branchName: headBranch,
-      directories,
     };
   }
 

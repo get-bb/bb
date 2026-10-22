@@ -66,7 +66,7 @@ export interface HostWorkspace {
   getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
-  getLocalStateSnapshot(includeIgnored?: boolean): Promise<LocalStateSnapshot>;
+  getLocalStateSnapshot(): Promise<LocalStateSnapshot>;
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot>;
   getAdditionalWorkspaceWriteRoots(): Promise<string[]>;
   getStatus(options?: StatusOptions): Promise<WorkspaceStatus>;
@@ -127,8 +127,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.getHeadSha();
   }
 
-  getLocalStateSnapshot(includeIgnored?: boolean): Promise<LocalStateSnapshot> {
-    return this.ws.getLocalStateSnapshot(includeIgnored);
+  getLocalStateSnapshot(): Promise<LocalStateSnapshot> {
+    return this.ws.getLocalStateSnapshot();
   }
 
   getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {
