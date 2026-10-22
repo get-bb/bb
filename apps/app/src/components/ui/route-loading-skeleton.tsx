@@ -10,6 +10,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { ComposerLoadingSkeleton } from "@/components/promptbox/ComposerPlaceholder";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useEffect, type ReactNode } from "react";
 
@@ -86,7 +87,7 @@ export function RouteLoadingSkeleton({
             isCompactViewport ? "justify-end pt-2" : "pt-14",
           )}
         >
-          <Skeleton className="h-32 w-full shrink-0 rounded-xl max-md:pointer-coarse:h-34" />
+          <ComposerLoadingSkeleton shape="new-thread" />
           <div className="mt-1 flex h-8 shrink-0 items-center justify-between px-3.5 max-md:mt-0 max-md:px-1 max-md:pointer-coarse:h-11">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-3 w-24 max-md:w-12" />
@@ -98,9 +99,13 @@ export function RouteLoadingSkeleton({
             {children}
           </div>
           <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-4">
-            <div className="pb-7 max-md:pb-6 max-md:pointer-coarse:pb-11">
-              <Skeleton className="h-[151px] w-full rounded-xl" />
-            </div>
+            {isCompactViewport ? (
+              <ComposerLoadingSkeleton shape="thread-compact" />
+            ) : (
+              <div className="pb-7 max-md:pb-6 max-md:pointer-coarse:pb-11">
+                <ComposerLoadingSkeleton shape="thread" />
+              </div>
+            )}
           </div>
         </>
       )}

@@ -679,7 +679,15 @@ export function ComposerBox(props: ComposerBoxProps) {
       <ComposerPlaceholder
         state={
           !bootSettled
-            ? { kind: "loading" }
+            ? {
+                kind: "loading",
+                shape:
+                  props.surface === "new-thread"
+                    ? "new-thread"
+                    : props.compact?.when === "always"
+                      ? "thread-compact"
+                      : "thread",
+              }
             : loadFailed
               ? { kind: "failed", onRetry: schedulePluginFrontendReconcile }
               : { kind: "missing" }
