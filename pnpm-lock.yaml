@@ -1277,6 +1277,9 @@ importers:
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
+      heic-convert:
+        specifier: ^2.1.0
+        version: 2.1.0
       hono:
         specifier: ^4.7.0
         version: 4.11.9
@@ -1332,6 +1335,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+      '@types/heic-convert':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@types/mime-types':
         specifier: ^3.0.1
         version: 3.0.1
@@ -11285,6 +11291,9 @@ packages:
   '@types/hast@3.0.4':
     resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
 
+  '@types/heic-convert@2.1.1':
+    resolution: {integrity: sha512-+s14762Nf62z9zziIs7ItvAkSUCS3ls4Z5XPT9BlVve3Q3S4DAnf6qekffMTvEWycSUF+kulkGaSN65fK6eKvg==}
+
   '@types/http-cache-semantics@4.2.0':
     resolution: {integrity: sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==}
 
@@ -14090,6 +14099,14 @@ packages:
   headers-polyfill@4.0.3:
     resolution: {integrity: sha512-IScLbePpkvO846sIwOtOTDjutRMWdXdJmXdMvk6gCBHxFO8d+QKOQedyZSxFTTFYRSmlgSTDtXqqq4pcenBXLQ==}
 
+  heic-convert@2.1.0:
+    resolution: {integrity: sha512-1qDuRvEHifTVAj3pFIgkqGgJIr0M3X7cxEPjEp0oG4mo8GFjq99DpCo8Eg3kg17Cy0MTjxpFdoBHOatj7ZVKtg==}
+    engines: {node: '>=12.0.0'}
+
+  heic-decode@2.1.0:
+    resolution: {integrity: sha512-0fB3O3WMk38+PScbHLVp66jcNhsZ/ErtQ6u2lMYu/YxXgbBtl+oKOhGQHa4RpvE68k8IzbWkABzHnyAIjR758A==}
+    engines: {node: '>=8.0.0'}
+
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
 
@@ -14498,6 +14515,9 @@ packages:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
 
+  jpeg-js@0.4.4:
+    resolution: {integrity: sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==}
+
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
 
@@ -14639,6 +14659,10 @@ packages:
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
+
+  libheif-js@1.23.5:
+    resolution: {integrity: sha512-umXZPthnWZtF3iG/5mQG+AZ2V6i0UeYpo3z2CkggTEgL8dKmIIwJT6TDuAMuabXa1yTW8uJ1ZAgR+CxNTklYYw==}
+    engines: {node: '>=8.0.0'}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -15909,6 +15933,10 @@ packages:
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
+
+  pngjs@6.0.0:
+    resolution: {integrity: sha512-TRzzuFRRmEoSW/p1KVAmiOgPco2Irlah+bGFCeNfJXxxYGwSw7YwAOAcd7X28K/m5bjBWKsC29KyoMfHbypayg==}
+    engines: {node: '>=12.13.0'}
 
   pngjs@7.0.0:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
@@ -23511,6 +23539,8 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
+  '@types/heic-convert@2.1.1': {}
+
   '@types/http-cache-semantics@4.2.0': {}
 
   '@types/istanbul-lib-coverage@2.0.6': {}
@@ -26841,6 +26871,16 @@ snapshots:
 
   headers-polyfill@4.0.3: {}
 
+  heic-convert@2.1.0:
+    dependencies:
+      heic-decode: 2.1.0
+      jpeg-js: 0.4.4
+      pngjs: 6.0.0
+
+  heic-decode@2.1.0:
+    dependencies:
+      libheif-js: 1.23.5
+
   help-me@5.0.0: {}
 
   hermes-compiler@260318099.0.4: {}
@@ -27212,6 +27252,8 @@ snapshots:
 
   joycon@3.1.1: {}
 
+  jpeg-js@0.4.4: {}
+
   js-tokens@10.0.0: {}
 
   js-tokens@4.0.0: {}
@@ -27374,6 +27416,8 @@ snapshots:
   lazy-val@1.0.5: {}
 
   leven@3.1.0: {}
+
+  libheif-js@1.23.5: {}
 
   lightningcss-android-arm64@1.32.0:
     optional: true
@@ -28974,6 +29018,8 @@ snapshots:
   pngjs@3.4.0: {}
 
   pngjs@5.0.0: {}
+
+  pngjs@6.0.0: {}
 
   pngjs@7.0.0: {}
 

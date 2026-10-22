@@ -11,7 +11,8 @@
     "generate:bb-official-marketplace": "node --conditions=source --import tsx scripts/generate-bb-official-marketplace.ts",
     "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus"
+    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus",
+    "generate:heic-worker": "node scripts/generate-heic-worker.mjs"
   },
   "dependencies": {
     "@bb/async-cache": "workspace:*",
@@ -44,6 +45,7 @@
     "cron-parser": "^5.5.0",
     "drizzle-orm": "^0.38.4",
     "gray-matter": "^4.0.3",
+    "heic-convert": "^2.1.0",
     "hono": "^4.7.0",
     "mime-types": "^3.0.2",
     "npm": "11.16.0",
@@ -64,6 +66,7 @@
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
     "@types/better-sqlite3": "^7.6.12",
+    "@types/heic-convert": "^2.1.1",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^22.0.0",
     "@types/semver": "^7.7.0",

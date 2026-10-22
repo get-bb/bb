@@ -2,7 +2,7 @@ import type { PromptInput } from "@bb/domain";
 import { getProjectAttachment, projects, type DbConnection } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import { makeTempDir } from "@bb/test-helpers";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -33,6 +33,50 @@ afterEach(() => {
 });
 
 describe("project attachments", () => {
+  it.each([
+    ["quadrants.heic", "", 64, 32],
+    ["quadrants-rotated.heic", "image/heic", 32, 64],
+  ])(
+    "stores %s as a PNG with the displayed orientation",
+    async (name, mimeType, width, height) => {
+      const dataDir = await makeTempDir();
+      const bytes = await readFile(
+        new URL(`../../../test/fixtures/images/${name}`, import.meta.url),
+      );
+      const uploaded = await storeAttachment(
+        db,
+        dataDir,
+        "proj_source",
+        new File([bytes], name, { type: mimeType }),
+      );
+      const content = await readAttachment(
+        dataDir,
+        "proj_source",
+        uploaded.path,
+      );
+      expect(content.content.readUInt32BE(16)).toBe(width);
+      expect(content.content.readUInt32BE(20)).toBe(height);
+      expect(uploaded).toMatchObject({
+        type: "localImage",
+        mimeType: "image/png",
+        sizeBytes: content.content.length,
+      });
+      expect(
+        getProjectAttachment(db, "proj_source", uploaded.path),
+      ).toMatchObject({
+        originalName: name.replace(/\.heic$/u, ".png"),
+        mimeType: "image/png",
+        sizeBytes: content.content.length,
+      });
+      await copyProjectAttachments(db, dataDir, "proj_source", "proj_target", [
+        uploaded.path,
+      ]);
+      expect(
+        (await readAttachment(dataDir, "proj_target", uploaded.path)).content,
+      ).toEqual(content.content);
+    },
+  );
+
   it("reads attachments from inside the project attachment directory", async () => {
     const dataDir = await makeTempDir();
     const attachmentDir = join(dataDir, "attachments", "proj_test");

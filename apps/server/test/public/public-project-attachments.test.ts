@@ -3,6 +3,7 @@ import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { readFile } from "node:fs/promises";
 
 async function upload(
   app: {
@@ -188,7 +189,7 @@ describe("public project attachments", () => {
     });
   });
 
-  it("rejects HEIC/HEIF image uploads instead of storing an image nothing can render", async () => {
+  it("rejects corrupt HEIC/HEIF images but preserves explicit file uploads", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-project-attachment-heic",
@@ -202,8 +203,7 @@ describe("public project attachments", () => {
       ]);
       const rejected = {
         code: "invalid_request",
-        message:
-          "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
+        message: "Could not convert HEIC/HEIF image to PNG",
       };
 
       const heic = await upload(
@@ -244,6 +244,56 @@ describe("public project attachments", () => {
         }),
       );
       expect(stillAcceptsOtherImages.status).toBe(201);
+    });
+  });
+
+  it("converts real HEIC/HEIF uploads to portable PNG attachments", async () => {
+    const bytes = await readFile(
+      new URL("../fixtures/images/quadrants.heic", import.meta.url),
+    );
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-project-attachment-heic-png",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      for (const [name, mimeType] of [
+        ["photo.heic", "image/heic"],
+        ["photo.HEIF", "Image/HEIF; charset=binary"],
+        ["photo.heic", "image/heic-sequence"],
+        ["photo.heif", "image/heif-sequence"],
+        ["photo", "image/heic"],
+      ]) {
+        const response = await upload(
+          harness.app,
+          project.id,
+          new File([bytes], name, { type: mimeType }),
+        );
+        expect(response.status).toBe(201);
+        const uploaded = uploadedPromptAttachmentSchema.parse(
+          await readJson(response),
+        );
+        expect(uploaded).toMatchObject({
+          type: "localImage",
+          sourceProjectId: project.id,
+          name: "photo.png",
+          mimeType: "image/png",
+        });
+        expect(uploaded.path).toMatch(/\.png$/u);
+        const content = await harness.app.request(
+          `/api/v1/projects/${project.id}/attachments/content?path=${encodeURIComponent(uploaded.path)}`,
+        );
+        expect(content.status).toBe(200);
+        expect(content.headers.get("content-type")).toBe("image/png");
+        const png = Buffer.from(await content.arrayBuffer());
+        expect(png.subarray(0, 8)).toEqual(
+          Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        );
+        expect(png.readUInt32BE(16)).toBe(64);
+        expect(png.readUInt32BE(20)).toBe(32);
+        expect(uploaded.sizeBytes).toBe(png.byteLength);
+      }
     });
   });
 

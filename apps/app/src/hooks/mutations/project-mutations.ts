@@ -221,7 +221,9 @@ export function useUploadPromptAttachment() {
       const uploaded = await uploadWithinPromptAttachmentLimit(file, () =>
         sdk.projects.attachments.upload({ projectId, clientFile: file }),
       );
-      registerLocalAttachmentPreview(uploaded.path, file);
+      if (uploaded.mimeType === file.type) {
+        registerLocalAttachmentPreview(uploaded.path, file);
+      }
       return uploaded;
     },
     retry: false,
