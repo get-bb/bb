@@ -246,14 +246,14 @@ describe("Workspace", () => {
     "includes the default branch in %s shared refs without depending on file edits",
     async (format, context) => {
       const repoPath = await makeTempDir("bb-workspace-repo-");
+      await initRepo(repoPath);
       if (format === "reftable") {
-        const initialization = await runGit(
-          ["init", "--ref-format=reftable", "-b", "main"],
+        const migration = await runGit(
+          ["refs", "migrate", "--ref-format=reftable"],
           { cwd: repoPath, allowFailure: true },
         );
-        if (initialization.exitCode !== 0) context.skip();
+        if (migration.exitCode !== 0) context.skip();
       }
-      await initRepo(repoPath);
       const workspace = new Workspace(repoPath);
       const initialSnapshot = await workspace.getSharedGitRefsSnapshot();
       expect(initialSnapshot.defaultBranch).toBe("main");
