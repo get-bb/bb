@@ -65,13 +65,17 @@ function renderInline(text: string): React.ReactNode[] {
       nodes.push(
         <code
           key={key++}
-          className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]"
+          className="rounded bg-muted px-1 py-0.5 font-mono text-xs"
         >
           {token.slice(1, -1)}
         </code>,
       );
     } else if (token.startsWith("**")) {
-      nodes.push(<strong key={key++}>{token.slice(2, -2)}</strong>);
+      nodes.push(
+        <strong key={key++} className="font-semibold">
+          {token.slice(2, -2)}
+        </strong>,
+      );
     } else if (token.startsWith("*")) {
       nodes.push(<em key={key++}>{token.slice(1, -1)}</em>);
     } else {
@@ -107,11 +111,7 @@ function tableAlignmentClass(alignment: TableAlignment): string {
   }
 }
 
-const HEADING_CLASSES = [
-  "text-lg font-semibold",
-  "text-base font-semibold",
-  "text-sm font-semibold",
-];
+const HEADING_CLASS = "text-sm font-semibold text-foreground";
 
 export function Markdown({
   content,
@@ -158,7 +158,7 @@ export function Markdown({
         | "h3"
         | "h4";
       blocks.push(
-        <Tag key={key++} className={HEADING_CLASSES[level - 1]}>
+        <Tag key={key++} className={HEADING_CLASS}>
           {renderInline(heading[2])}
         </Tag>,
       );
@@ -241,5 +241,9 @@ export function Markdown({
       </p>,
     );
   }
-  return <div className={cn("space-y-3", className)}>{blocks}</div>;
+  return (
+    <div className={cn("space-y-3 [overflow-wrap:anywhere]", className)}>
+      {blocks}
+    </div>
+  );
 }
