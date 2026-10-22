@@ -275,7 +275,6 @@ interface MarkdownCodeRendererProps extends MarkdownCodeProps {
   codeFenceSourceOffset: number;
   imagePolicy: MarkdownImagePolicy;
   linkRouting?: MarkdownLinkRouting;
-  preferredTheme: Theme;
   rewriteLocalhostLinks: boolean;
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
@@ -787,13 +786,11 @@ function MarkdownCodeBlock({
   codeText,
   imagePolicy,
   language,
-  preferredTheme,
 }: {
   codeProps: ComponentPropsWithoutRef<"code">;
   codeText: string;
   imagePolicy: MarkdownImagePolicy;
   language: string | null;
-  preferredTheme: Theme;
 }) {
   const [softWrap, setSoftWrap] = useState(false);
   const highlightedHtml = useMemo(
@@ -808,12 +805,7 @@ function MarkdownCodeBlock({
     [highlightedHtml],
   );
   if (language === "mermaid" && imagePolicy === "render") {
-    return (
-      <MarkdownMermaidDiagram
-        preferredTheme={preferredTheme}
-        source={codeText}
-      />
-    );
+    return <MarkdownMermaidDiagram source={codeText} />;
   }
 
   return (
@@ -881,7 +873,6 @@ function MarkdownCode({
   imagePolicy,
   linkRouting,
   node: _node,
-  preferredTheme,
   rewriteLocalhostLinks,
   "data-code-fence-offset": codeFenceOffset,
   "data-code-fence-closed": codeFenceClosed,
@@ -898,7 +889,6 @@ function MarkdownCode({
         codeText={codeText}
         imagePolicy={imagePolicy}
         language={language}
-        preferredTheme={preferredTheme}
       />
     );
     return codeFenceOffset === undefined || language === null ? (
@@ -1400,7 +1390,6 @@ function buildMarkdownComponents({
         codeFenceSourceOffset={imageSourceOffset}
         imagePolicy={imagePolicy}
         linkRouting={linkRouting}
-        preferredTheme={preferredTheme}
         rewriteLocalhostLinks={rewriteLocalhostLinks}
       />
     );

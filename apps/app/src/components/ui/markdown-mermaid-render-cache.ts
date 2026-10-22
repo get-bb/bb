@@ -1,15 +1,6 @@
-import type { RenderResult } from "mermaid";
-import type { Theme } from "@/hooks/useTheme";
-
 export interface RenderedMermaidDiagram {
-  bindFunctions: RenderResult["bindFunctions"];
+  maxWidth: number | null;
   svg: string;
-}
-
-interface MermaidRenderCacheKeyArgs {
-  appThemeEpoch: number;
-  preferredTheme: Theme;
-  source: string;
 }
 
 export const MERMAID_SOURCE_RENDER_DEBOUNCE_MS = 300;
@@ -20,38 +11,30 @@ export const MERMAID_RENDER_CACHE_LIMIT = 32;
 
 const renderCache = new Map<string, RenderedMermaidDiagram>();
 
-export function buildMermaidRenderCacheKey({
-  appThemeEpoch,
-  preferredTheme,
-  source,
-}: MermaidRenderCacheKeyArgs): string {
-  return `${preferredTheme}\u0000${appThemeEpoch}\u0000${source}`;
-}
-
 export function peekMermaidRenderCache(
-  key: string,
+  source: string,
 ): RenderedMermaidDiagram | null {
-  return renderCache.get(key) ?? null;
+  return renderCache.get(source) ?? null;
 }
 
 export function readMermaidRenderCache(
-  key: string,
+  source: string,
 ): RenderedMermaidDiagram | null {
-  const cached = renderCache.get(key);
+  const cached = renderCache.get(source);
   if (cached === undefined) {
     return null;
   }
-  renderCache.delete(key);
-  renderCache.set(key, cached);
+  renderCache.delete(source);
+  renderCache.set(source, cached);
   return cached;
 }
 
 export function storeMermaidRenderCache(
-  key: string,
+  source: string,
   diagram: RenderedMermaidDiagram,
 ): void {
-  renderCache.delete(key);
-  renderCache.set(key, diagram);
+  renderCache.delete(source);
+  renderCache.set(source, diagram);
   while (renderCache.size > MERMAID_RENDER_CACHE_LIMIT) {
     const oldestKey = renderCache.keys().next().value;
     if (oldestKey === undefined) {

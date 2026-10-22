@@ -61,12 +61,12 @@ export function Overview() {
         hint="inline diagram; the Maximize control opens the shadow-sm viewer dialog"
       >
         <div className="w-full max-w-[640px]">
-          <MarkdownMermaidDiagram preferredTheme="light" source={FLOWCHART} />
+          <MarkdownMermaidDiagram source={FLOWCHART} />
         </div>
       </StoryRow>
       <StoryRow label="sequence" hint="a second diagram kind">
         <div className="w-full max-w-[640px]">
-          <MarkdownMermaidDiagram preferredTheme="light" source={SEQUENCE} />
+          <MarkdownMermaidDiagram source={SEQUENCE} />
         </div>
       </StoryRow>
     </StoryCard>
