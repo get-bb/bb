@@ -9,6 +9,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import { flushSync } from "react-dom";
+import { isIOSWebKit } from "@/lib/ios-webkit";
 import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 
 export const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
@@ -212,7 +213,11 @@ export function TimelineWindowedItems({
   renderItem,
   pinnedToEnd,
 }: TimelineWindowedItemsProps) {
+  const [windowingSupported] = useState(
+    () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
+  );
   const windowingEnabled =
+    windowingSupported &&
     positionKeeper !== null &&
     itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT;
   const containerRef = useRef<HTMLDivElement>(null);

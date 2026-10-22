@@ -265,8 +265,8 @@ When the viewport lands on a spacer, the owner can only record which row the
 list estimates is there. That estimate never moves the view: once real rows
 mount, the owner takes its position from them.
 
-Lists of 20 or more items are windowed on every platform, including iOS Safari
-and the mobile app's WKWebView. Rows stay in normal flow between spacers whose
+Lists of 20 or more items are windowed everywhere except iOS WebKit (Safari and
+the mobile app's WKWebView), where every row stays mounted. Rows stay in normal flow between spacers whose
 heights come from the measurements the thread retains, so rows never overlap
 and a row resize needs no positioning pass. The thread retains the 2,000 most
 recent measurements; a spacer keeps the height it last rendered for a row whose
@@ -281,7 +281,7 @@ scroll roots and the same list.
 iOS WebKit overrides a scroll write made while a finger is down, during
 momentum, or during an edge bounce. On iOS the owner applies the correction as a
 transform on the scroll content during those phases, so rows stay in place
-visually, and lists window around the rendered position. Once the touch has
+visually. Once the touch has
 ended and the scroll position has been still for 150 ms, it writes the
 correction to `scrollTop` and removes the transform in the same task. Other
 browsers write immediately.

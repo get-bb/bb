@@ -220,7 +220,7 @@ describe("ThreadTimelineRows windowing", () => {
         expect(view.container.textContent).toContain(
           `Window message ${count - 1}`,
         );
-        if (count < 20) {
+        if (count < 20 || iPhone) {
           expect(mountedRows.length).toBe(count);
           expect(
             view.container.querySelector("[data-timeline-virtual-spacer]"),

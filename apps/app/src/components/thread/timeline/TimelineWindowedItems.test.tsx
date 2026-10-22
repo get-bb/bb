@@ -7,7 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 import { installFakeFlowLayout } from "@/test/fake-flow-layout";
 import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
@@ -17,6 +17,7 @@ const cleanups: (() => void)[] = [];
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   for (const run of cleanups.splice(0).reverse()) run();
   document.body.replaceChildren();
 });
@@ -201,6 +202,16 @@ describe("TimelineWindowedItems", () => {
     );
 
     expect(harness.visibleKeys().length).toBeGreaterThan(0);
+  });
+
+  it("keeps every row mounted on iOS WebKit", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1",
+    );
+    const harness = setup({ attached: true });
+    render(harness.view(keys(300)), { container: harness.list });
+
+    expect(harness.mounted().length).toBe(300);
   });
 
   it("mounts a bounded window of a long history", () => {
