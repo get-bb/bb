@@ -4,6 +4,7 @@ import { unified } from "unified";
 import {
   findPastedThreadLinkCandidates,
   type PastedThreadLink,
+  type ThreadLinkParser,
 } from "./pasted-thread-link-candidates";
 
 const markdownParser = unified().use(remarkParse).freeze();
@@ -21,15 +22,15 @@ const protectedNodeTypes = new Set<Nodes["type"]>([
 
 export function findPastedThreadLinks({
   text,
-  origin,
+  parseLink,
 }: {
   text: string;
-  origin: string;
+  parseLink: ThreadLinkParser;
 }): PastedThreadLink[] {
   if (
     findPastedThreadLinkCandidates({
       text,
-      origin,
+      parseLink,
       offset: 0,
       allowMarkdownSuffix: true,
     }).length === 0
@@ -47,7 +48,7 @@ export function findPastedThreadLinks({
         links.push(
           ...findPastedThreadLinkCandidates({
             text: text.slice(from, to),
-            origin,
+            parseLink,
             offset: from,
             allowMarkdownSuffix: false,
           }),

@@ -1,48 +1,21 @@
-import {
-  GENERATED_ID_ALPHABET,
-  GENERATED_ID_SUFFIX_LENGTH,
-  isRawThreadId,
-} from "@bb/domain";
+import type { ThreadLinkTarget } from "@/lib/thread-links";
 
-export interface PastedThreadLink {
+export type ThreadLinkParser = (url: string) => ThreadLinkTarget | null;
+
+export interface PastedThreadLink extends ThreadLinkTarget {
   from: number;
   to: number;
   text: string;
-  threadId: string;
-  projectId: string | null;
-}
-
-const threadPathPattern = new RegExp(
-  `^/(?:projects/(proj_[${GENERATED_ID_ALPHABET}]{${GENERATED_ID_SUFFIX_LENGTH}})/)?threads/([^/]+)/?$`,
-  "u",
-);
-
-function parseThreadLink(
-  text: string,
-  origin: string,
-): Pick<PastedThreadLink, "threadId" | "projectId"> | null {
-  const parts = /^https?:\/\/([^/]+)(\/[^?#]*)$/iu.exec(text);
-  if (parts === null || /[@\\]/u.test(parts[1]!)) return null;
-  const path = threadPathPattern.exec(parts[2]!);
-  if (path === null || !isRawThreadId(path[2]!)) return null;
-
-  try {
-    if (new URL(text).origin !== origin) return null;
-  } catch {
-    return null;
-  }
-
-  return { threadId: path[2]!, projectId: path[1] ?? null };
 }
 
 export function findPastedThreadLinkCandidates({
   text,
-  origin,
+  parseLink,
   offset = 0,
   allowMarkdownSuffix = true,
 }: {
   text: string;
-  origin: string;
+  parseLink: ThreadLinkParser;
   offset?: number;
   allowMarkdownSuffix?: boolean;
 }): PastedThreadLink[] {
@@ -61,13 +34,14 @@ export function findPastedThreadLinkCandidates({
         : /[.,;:!)\]}\u2019\u201d\u2026\u3002\uff0c\uff01\uff1b\uff1a\uff1f]+$/u,
       "",
     );
-    const identity = parseThreadLink(value, origin);
+    const identity = parseLink(value);
     if (identity === null) continue;
     links.push({
       from: offset + match.index,
       to: offset + match.index + value.length,
       text: value,
-      ...identity,
+      threadId: identity.threadId,
+      projectId: identity.projectId,
     });
   }
   return links;

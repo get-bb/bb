@@ -1,5 +1,6 @@
 import { VoiceInputButton } from "./VoiceInputButton";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
+import { parseThreadLink, type ThreadLinkTarget } from "@/lib/thread-links";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type {
@@ -218,6 +219,10 @@ const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
 const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
   "size-8 p-0 transition-all [&_[data-icon-root]]:size-4 max-md:pointer-coarse:size-10";
+function parseLocalThreadLink(url: string): ThreadLinkTarget | null {
+  return parseThreadLink(url, window.location.origin);
+}
+
 const RICH_PASTE_BLOCK_TAGS = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -1021,7 +1026,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   visitChildren(document.body, false);
   const threadLinks = findPastedThreadLinkCandidates({
     text,
-    origin: window.location.origin,
+    parseLink: parseLocalThreadLink,
   }).map((link) => ({
     text: link.text,
     literal: literalRanges.some(
@@ -1943,7 +1948,7 @@ export function PromptBoxInternal({
         getDecorationSources: () => decorationSourcesRef.current,
       }),
       createPromptThreadLinkPasteExtension({
-        getOrigin: () => window.location.origin,
+        parseLink: parseLocalThreadLink,
         getCachedThread: (threadId) => {
           const cache = threadLinkCacheRef.current;
           const thread =
@@ -2099,7 +2104,7 @@ export function PromptBoxInternal({
               return { skip: skipThreadLinks };
             const pastedLinks = findPastedThreadLinkCandidates({
               text: pastedValue.text,
-              origin: window.location.origin,
+              parseLink: parseLocalThreadLink,
             });
             if (
               pastedLinks.length !== links.length ||

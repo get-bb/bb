@@ -16,6 +16,7 @@ import {
   promptThreadLinkPasteKey,
 } from "./prompt-thread-link-paste";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { parseThreadLink } from "@/lib/thread-links";
 
 const origin = "https://brsbl.getbb.app";
 const projectId = "proj_khiw2za95v";
@@ -41,7 +42,7 @@ function createEditor({
     extensions: [
       ...promptEditorExtensions({ getPlaceholder: () => "" }),
       createPromptThreadLinkPasteExtension({
-        getOrigin: () => origin,
+        parseLink: (link) => parseThreadLink(link, origin),
         getCachedThread,
         resolveThreads,
       }),

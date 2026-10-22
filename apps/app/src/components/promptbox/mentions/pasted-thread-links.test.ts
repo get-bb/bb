@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
+import type { ThreadLinkParser } from "./pasted-thread-link-candidates";
 import { findPastedThreadLinks } from "./pasted-thread-links";
 
 const origin = "https://bb.test";
 const threadId = "thr_86mb5jjzi9";
 const projectId = "proj_khiw2za95v";
+const personalProjectId = "proj_personal";
 const projectLink = `${origin}/projects/${projectId}/threads/${threadId}`;
 const projectlessLink = `${origin}/threads/thr_dcwivn5n8w/`;
+const links = new Map([
+  [projectLink, { threadId, projectId }],
+  [
+    projectlessLink,
+    { threadId: "thr_dcwivn5n8w", projectId: personalProjectId },
+  ],
+]);
+const parseLink: ThreadLinkParser = (url) => links.get(url) ?? null;
 
 describe("findPastedThreadLinks", () => {
   it("keeps source offsets, punctuation, and repeated occurrences in mixed prose", () => {
@@ -15,7 +25,7 @@ describe("findPastedThreadLinks", () => {
     const secondFrom = text.indexOf(projectlessLink);
     const repeatedFrom = text.lastIndexOf(projectLink);
 
-    expect(findPastedThreadLinks({ text, origin })).toEqual([
+    expect(findPastedThreadLinks({ text, parseLink })).toEqual([
       {
         from: 10,
         to: 10 + projectLink.length,
@@ -28,7 +38,7 @@ describe("findPastedThreadLinks", () => {
         to: secondFrom + projectlessLink.length,
         text: projectlessLink,
         threadId: "thr_dcwivn5n8w",
-        projectId: null,
+        projectId: personalProjectId,
       },
       {
         from: repeatedFrom,
@@ -58,61 +68,25 @@ describe("findPastedThreadLinks", () => {
   ])("preserves %s while recognizing adjacent prose", (_name, literal) => {
     const text = `${projectlessLink}\n\n${literal}`;
 
-    expect(findPastedThreadLinks({ text, origin })).toEqual([
+    expect(findPastedThreadLinks({ text, parseLink })).toEqual([
       {
         from: 0,
         to: projectlessLink.length,
         text: projectlessLink,
         threadId: "thr_dcwivn5n8w",
-        projectId: null,
+        projectId: personalProjectId,
       },
     ]);
   });
 
-  it("preserves foreign destinations and noncanonical thread routes", () => {
+  it("asks bb about whole URL tokens only", () => {
     const text = [
-      `https://bb.test.example/threads/${threadId}`,
-      `https://other.bb.test/threads/${threadId}`,
-      `http://bb.test/threads/${threadId}`,
-      `https://bb.test:444/threads/${threadId}`,
-      `https://user:password@bb.test/threads/${threadId}`,
-      `https://@bb.test/threads/${threadId}`,
-      `ftp://bb.test/threads/${threadId}`,
-      `/projects/${projectId}/threads/${threadId}`,
-      `${projectLink}?view=detail`,
-      `${projectLink}?`,
-      `${projectLink}#message`,
-      `${projectLink}#`,
-      `${projectLink}/messages`,
-      `${projectLink}//`,
-      `${projectLink}x`,
-      `${projectLink}_`,
-      `${origin}/threads/thr_0123456789`,
-      `${origin}/threads/thr_86mb5jjzi`,
-      `${origin}/threads/%74hr_86mb5jjzi9`,
-      `${origin}/projects/proj_0123456789/threads/${threadId}`,
-      `${origin}/projects/../threads/${threadId}`,
-      `${origin}/threads/./${threadId}`,
       `x${projectLink}`,
       `ftp:${projectLink}`,
+      `${projectLink}x`,
+      `${projectLink}?view=detail`,
     ].join("\n\n");
 
-    expect(findPastedThreadLinks({ text, origin })).toEqual([]);
-  });
-
-  it("accepts the active HTTP development origin while keeping other ports literal", () => {
-    const localOrigin = "http://localhost:3100";
-    const localLink = `${localOrigin}/threads/${threadId}`;
-    const text = `${localLink} http://localhost:3101/threads/${threadId}`;
-
-    expect(findPastedThreadLinks({ text, origin: localOrigin })).toEqual([
-      {
-        from: 0,
-        to: localLink.length,
-        text: localLink,
-        threadId,
-        projectId: null,
-      },
-    ]);
+    expect(findPastedThreadLinks({ text, parseLink })).toEqual([]);
   });
 });

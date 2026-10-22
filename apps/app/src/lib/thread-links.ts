@@ -1,7 +1,41 @@
 import {
+  GENERATED_ID_ALPHABET,
+  GENERATED_ID_SUFFIX_LENGTH,
+  isRawThreadId,
+  PERSONAL_PROJECT_ID,
+} from "@bb/domain";
+import {
   THREAD_MENTION_RESOLVE_MAX_IDS,
   type ResolveThreadMentionsResponse,
 } from "@bb/server-contract";
+
+export interface ThreadLinkTarget {
+  threadId: string;
+  projectId: string;
+}
+
+const threadPathPattern = new RegExp(
+  `^/(?:projects/(proj_[${GENERATED_ID_ALPHABET}]{${GENERATED_ID_SUFFIX_LENGTH}})/)?threads/([^/]+)/?$`,
+  "u",
+);
+
+export function parseThreadLink(
+  url: string,
+  origin: string,
+): ThreadLinkTarget | null {
+  const parts = /^https?:\/\/([^/]+)(\/[^?#]*)$/iu.exec(url);
+  if (parts === null || /[@\\]/u.test(parts[1]!)) return null;
+  const path = threadPathPattern.exec(parts[2]!);
+  if (path === null || !isRawThreadId(path[2]!)) return null;
+
+  try {
+    if (new URL(url).origin !== origin) return null;
+  } catch {
+    return null;
+  }
+
+  return { threadId: path[2]!, projectId: path[1] ?? PERSONAL_PROJECT_ID };
+}
 
 export type ThreadMentionResolution = ResolveThreadMentionsResponse[number];
 
