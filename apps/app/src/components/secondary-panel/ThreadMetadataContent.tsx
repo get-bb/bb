@@ -58,9 +58,7 @@ import { useFittedPathMiddle } from "@/components/ui/truncate-path-middle";
 import {
   DetailCard,
   DetailRow,
-  DetailRowIconLabel,
   DETAIL_ROW_ICON_CLASS,
-  InfoDetailRow,
 } from "@/components/ui/detail-card.js";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { Icon } from "@bb/shared-ui/icon";
@@ -155,7 +153,7 @@ export function ParentSelectorRow({
   }
 
   return (
-    <InfoDetailRow icon="UserRound" label="Parent">
+    <DetailRow icon="UserRound" label="Parent">
       {parentThreadId ? (
         <div
           className={cn(
@@ -207,7 +205,7 @@ export function ParentSelectorRow({
           defaultOpen={defaultOpen}
         />
       )}
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -238,7 +236,7 @@ export function ParentNotificationsRow({
   });
   if (thread.parentThreadId === null) return null;
   return (
-    <InfoDetailRow icon="BellDot" label="Notify parent">
+    <DetailRow icon="BellDot" label="Notify parent">
       <OptionPicker
         label="Notify parent"
         value={thread.parentNotifications}
@@ -251,7 +249,7 @@ export function ParentNotificationsRow({
           updateThread.mutate({ id: thread.id, parentNotifications });
         }}
       />
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -310,7 +308,7 @@ export function EnvironmentRow({
     infoDisplay.machineName !== null ? environmentDisplayHost.identity : null;
   return (
     <>
-      <InfoDetailRow
+      <DetailRow
         label={
           providerLookup.status === "loaded" &&
           providerLookup.provider !== null ? (
@@ -322,10 +320,13 @@ export function EnvironmentRow({
               <span className="min-w-0 truncate">Environment</span>
             </span>
           ) : (
-            <DetailRowIconLabel icon={infoDisplay.icon}>
-              Environment
-            </DetailRowIconLabel>
+            "Environment"
           )
+        }
+        icon={
+          providerLookup.status === "loaded" && providerLookup.provider !== null
+            ? undefined
+            : infoDisplay.icon
         }
       >
         <span className="flex min-w-0 items-center gap-1">
@@ -351,9 +352,9 @@ export function EnvironmentRow({
             </Tooltip>
           ) : null}
         </span>
-      </InfoDetailRow>
+      </DetailRow>
       {machineIdentity ? (
-        <InfoDetailRow
+        <DetailRow
           label={
             <span className="flex items-center gap-1.5">
               <MachineIcon
@@ -381,7 +382,7 @@ export function EnvironmentRow({
               <span className="shrink-0 text-muted-foreground">(offline)</span>
             )}
           </span>
-        </InfoDetailRow>
+        </DetailRow>
       ) : null}
     </>
   );
@@ -392,11 +393,11 @@ export function ProjectRow({ projectId }: { projectId: string }) {
   if (!projectName) return null;
 
   return (
-    <InfoDetailRow icon="Folder" label="Project">
+    <DetailRow icon="Folder" label="Project">
       <span className="block min-w-0 truncate" title={projectName}>
         {projectName}
       </span>
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -407,14 +408,14 @@ export function EnvironmentProvisioningFailureRow({
 }) {
   if (!failed) return null;
   return (
-    <InfoDetailRow icon="AlertTriangle" label="Environment">
+    <DetailRow icon="AlertTriangle" label="Environment">
       <span className="flex min-w-0 items-center gap-1">
         <span className="min-w-0 truncate">Not created</span>
         <span className="shrink-0 text-muted-foreground">
           · provisioning failed
         </span>
       </span>
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -446,7 +447,7 @@ function WorkspacePathValue({ path }: { path: string }) {
   );
 
   return (
-    <InfoDetailRow icon="FolderOpen" label="Directory">
+    <DetailRow icon="FolderOpen" label="Directory">
       <div ref={containerRef} className="min-w-0">
         <CopyableInlineLabel
           text={path}
@@ -458,7 +459,7 @@ function WorkspacePathValue({ path }: { path: string }) {
           <span className="text-muted-foreground">{fitted}</span>
         </CopyableInlineLabel>
       </div>
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -472,26 +473,23 @@ export function BranchRow({ workspaceStatus }: BranchRowProps) {
     : null;
   if (checkoutDisplay === null) return null;
   return (
-    <DetailRow
-      label={
-        <DetailRowIconLabel icon="GitBranch">
-          {checkoutDisplay.rowLabel}
-        </DetailRowIconLabel>
-      }
-      valueClassName="min-w-0 truncate"
-    >
+    <DetailRow icon="GitBranch" label={checkoutDisplay.rowLabel}>
       {checkoutDisplay.copyValue !== null ? (
-        <CopyableInlineLabel
-          text={checkoutDisplay.copyValue}
-          label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
-          title={checkoutDisplay.title}
-          successMessage={checkoutDisplay.copySuccessMessage ?? "Value copied"}
-          errorMessage={
-            checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
-          }
-        >
-          {checkoutDisplay.label}
-        </CopyableInlineLabel>
+        <span className="block truncate">
+          <CopyableInlineLabel
+            text={checkoutDisplay.copyValue}
+            label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
+            title={checkoutDisplay.title}
+            successMessage={
+              checkoutDisplay.copySuccessMessage ?? "Value copied"
+            }
+            errorMessage={
+              checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
+            }
+          >
+            {checkoutDisplay.label}
+          </CopyableInlineLabel>
+        </span>
       ) : (
         <span className="block truncate" title={checkoutDisplay.title}>
           {checkoutDisplay.label}
@@ -511,7 +509,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const stateDisplay = getPullRequestStateDisplay(pullRequest);
   const nextStep = getPullRequestNextStep(pullRequest);
   return (
-    <InfoDetailRow icon="GitPullRequestArrow" label="Pull request">
+    <DetailRow icon="GitPullRequestArrow" label="Pull request">
       <span className="flex h-5 max-w-full min-w-0 items-center gap-2">
         <a
           href={pullRequest.url}
@@ -549,7 +547,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
           </Tooltip>
         ) : null}
       </span>
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -668,7 +666,7 @@ export function MergeBaseRow({
   );
 
   return (
-    <InfoDetailRow icon="GitMerge" label="Merge base">
+    <DetailRow icon="GitMerge" label="Merge base">
       {canSelectMergeBase && mergeBaseBranch ? (
         <BranchPicker
           value={mergeBaseBranch}
@@ -688,7 +686,7 @@ export function MergeBaseRow({
       ) : (
         <span className="min-w-0 truncate">{mergeBaseBranch}</span>
       )}
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -727,7 +725,7 @@ export function GitStatusRow({
         }).summary.replace(/\.$/, "")}. Showing the last known status.`
       : null;
     return (
-      <InfoDetailRow icon="FileDiff" label="Git status">
+      <DetailRow icon="FileDiff" label="Git status">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="block min-w-0 truncate text-foreground">
             {formatBranchComparison({
@@ -756,7 +754,7 @@ export function GitStatusRow({
           ) : null}
           {!mergeBase.squashMergeCheckComplete ? <SquashMergeInfo /> : null}
         </span>
-      </InfoDetailRow>
+      </DetailRow>
     );
   }
 
@@ -766,7 +764,7 @@ export function GitStatusRow({
     workspaceDeleted: environment?.status === "destroyed",
   });
   return (
-    <InfoDetailRow icon="FileDiff" label="Git status" align="start">
+    <DetailRow icon="FileDiff" label="Git status" align="start">
       <span className="flex min-w-0 items-center gap-1.5">
         <Icon
           name="AlertTriangle"
@@ -780,7 +778,7 @@ export function GitStatusRow({
           {display.summary.replace(/\.$/, "")}
         </span>
       </span>
-    </InfoDetailRow>
+    </DetailRow>
   );
 }
 
@@ -797,11 +795,13 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
   }, [thread.id, unarchiveThread]);
   if (thread.archivedAt == null) return null;
   return (
-    <DetailRow
-      label={<DetailRowIconLabel icon="Archive">Archived</DetailRowIconLabel>}
-      valueClassName="min-w-0 truncate"
-    >
-      <ThreadUnarchiveButton isPending={isPending} onUnarchive={onUnarchive} />
+    <DetailRow icon="Archive" label="Archived">
+      <span className="block truncate">
+        <ThreadUnarchiveButton
+          isPending={isPending}
+          onUnarchive={onUnarchive}
+        />
+      </span>
     </DetailRow>
   );
 }

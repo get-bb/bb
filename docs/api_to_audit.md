@@ -2430,9 +2430,10 @@ stored in the `infoPanel.collapsedSections` preference under the core id or
 `ThreadInfoRows` and `ThreadInfoSections`
 (`apps/app/src/components/secondary-panel/info/ThreadInfoSlots.tsx`), which
 merge `CORE_THREAD_INFO_ROWS` and `CORE_THREAD_INFO_SECTIONS` with plugin
-registrations. Core's eleven rows draw with `InfoDetailRow` (the host side of
-`experimental_DetailRow`) except Branch and Archived, which truncate their
-value cell; core's five sections draw with `InfoSection` and `InfoList`. The
+registrations. `experimental_DetailRow` is bb's only label/value row
+(`DetailRow` in `apps/app/src/components/ui/detail-card.tsx`): all eleven core
+rows and the commit dialog draw with it, and core's five sections draw with
+`InfoSection` and `InfoList`. The
 Automations plugin registers the Automations section. Contract tests:
 `ThreadInfoSlots.test.tsx`.
 
@@ -2452,10 +2453,7 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
    (`hasAnyThreadMetadata`), so plugin entries never count toward it and are
    hidden with core's details. Decide whether registrations should report
    visibility.
-4. **Row value styling.** `experimental_DetailRow` always lets the value cell
-   shrink without truncating; Branch and Archived use a truncating value cell.
-   Decide whether that variant needs a prop.
-5. **Separators.** The Info tab draws section separators on every
+4. **Separators.** The Info tab draws section separators on every
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
 

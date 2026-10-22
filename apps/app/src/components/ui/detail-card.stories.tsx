@@ -50,7 +50,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow label="transparent">
         <DetailCard className="w-full max-w-xl rounded-none border-0 bg-transparent px-0 py-0">
-          <DetailRow label="Manager" valueClassName="min-w-0">
+          <DetailRow label="Manager">
             <div className="inline-flex max-w-full min-w-0 items-center gap-1 text-xs text-foreground">
               <a
                 href="#manager"
@@ -70,10 +70,8 @@ export function Overview() {
               </Button>
             </div>
           </DetailRow>
-          <DetailRow label="Environment" valueClassName="min-w-0 truncate">
-            Direct
-          </DetailRow>
-          <DetailRow label="Branch" valueClassName="min-w-0 truncate">
+          <DetailRow label="Environment">Direct</DetailRow>
+          <DetailRow label="Branch">
             <button
               type="button"
               className="inline-flex max-w-full items-center gap-1.5 rounded-md text-left text-foreground transition-colors hover:text-foreground/80"
@@ -90,7 +88,7 @@ export function Overview() {
               />
             </button>
           </DetailRow>
-          <DetailRow label="Merge base" valueClassName="min-w-0 truncate">
+          <DetailRow label="Merge base">
             <BranchPicker
               value="origin/main"
               options={mockMergeBaseOptions}
@@ -99,7 +97,7 @@ export function Overview() {
               className="max-w-full"
             />
           </DetailRow>
-          <DetailRow label="Git status" align="start" valueClassName="min-w-0">
+          <DetailRow label="Git status" align="start">
             <div
               className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
               title="Modified 3 files, 1 staged"
@@ -112,7 +110,7 @@ export function Overview() {
               </span>
             </div>
           </DetailRow>
-          <DetailRow label="Changed files" orientation="vertical">
+          <DetailRow label="Changed files" align="start">
             <WorkspaceChangesList
               files={mockChangedFiles}
               fileCount={mockChangedFiles.length}
@@ -125,14 +123,14 @@ export function Overview() {
           className="w-full max-w-xl border-border bg-surface-recessed"
           labelWidth="60px"
         >
-          <DetailRow label="Name" valueClassName="min-w-0">
+          <DetailRow label="Name">
             <Input
               placeholder="Eg. Manager (optional)"
               className="border-border text-sm"
               defaultValue="Frontend Parent"
             />
           </DetailRow>
-          <DetailRow label="Model" valueClassName="min-w-0">
+          <DetailRow label="Model">
             <OptionPicker
               label="Model"
               value="claude-sonnet-4-6"

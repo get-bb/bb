@@ -1,9 +1,5 @@
 import type { FormEvent } from "react";
-import {
-  DetailCard,
-  DetailRow,
-  DetailRowIconLabel,
-} from "@/components/ui/detail-card.js";
+import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
 import {
   SquashMergeInfo,
   type ThreadGitStatusDisplay,
@@ -91,28 +87,14 @@ export function ThreadGitActionDialogContent({
         {branchName || gitStatusDisplay || shouldShowChangedFilesRow ? (
           <DetailCard appearance="flat">
             {branchName ? (
-              <DetailRow
-                label={
-                  <DetailRowIconLabel icon="GitBranch">
-                    Branch
-                  </DetailRowIconLabel>
-                }
-                valueClassName="min-w-0 truncate"
-              >
+              <DetailRow icon="GitBranch" label="Branch">
                 <span className="block truncate" title={branchName}>
                   {branchName}
                 </span>
               </DetailRow>
             ) : null}
             {gitStatusDisplay ? (
-              <DetailRow
-                label={
-                  <DetailRowIconLabel icon="FileDiff">
-                    Git status
-                  </DetailRowIconLabel>
-                }
-                valueClassName="min-w-0"
-              >
+              <DetailRow icon="FileDiff" label="Git status">
                 <div
                   className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
                   title={`${gitStatusDisplay.label} ${gitStatusDisplay.summary}`.trim()}

@@ -92,7 +92,7 @@ import {
   InfoListRow,
   InfoSection,
 } from "@/components/secondary-panel/info/info-list";
-import { InfoDetailRow } from "@/components/ui/detail-card";
+import { DetailRow } from "@/components/ui/detail-card";
 
 function PluginInfoListRow({
   onSelect,
@@ -147,7 +147,7 @@ export const pluginSdkAppImplementation = {
   experimental_SourceCode: PluginSourceCode,
   experimental_Diff: PluginDiff,
   experimental_InfoSection: InfoSection,
-  experimental_DetailRow: InfoDetailRow,
+  experimental_DetailRow: DetailRow,
   experimental_InfoList: InfoList,
   experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,

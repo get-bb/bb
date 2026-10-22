@@ -1,4 +1,8 @@
-import { DetailRow } from "@/components/ui/detail-card.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  DETAIL_LABEL_CLASS,
+  DETAIL_VALUE_CLASS,
+} from "@/components/ui/detail-card.js";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import {
   renderChangeSummary,
@@ -20,8 +24,8 @@ export function ChangedFilesDetailRow({
   rowValueClassName,
 }: ChangedFilesDetailRowProps) {
   return (
-    <DetailRow
-      label={
+    <div className={cn("flex flex-col gap-1 py-0.5", rowClassName)}>
+      <dt className={DETAIL_LABEL_CLASS}>
         <span className="flex items-baseline gap-x-3">
           <span className="min-w-[var(--detail-label-width,96px)] truncate">
             {section.label}
@@ -30,16 +34,14 @@ export function ChangedFilesDetailRow({
             {renderChangeSummary(toChangeTally(section.stats))}
           </span>
         </span>
-      }
-      orientation="vertical"
-      className={rowClassName}
-      valueClassName={rowValueClassName}
-    >
-      <WorkspaceChangesList
-        files={section.files}
-        fileCount={section.stats.fileCount}
-        className={listClassName}
-      />
-    </DetailRow>
+      </dt>
+      <dd className={cn(DETAIL_VALUE_CLASS, rowValueClassName)}>
+        <WorkspaceChangesList
+          files={section.files}
+          fileCount={section.stats.fileCount}
+          className={listClassName}
+        />
+      </dd>
+    </div>
   );
 }

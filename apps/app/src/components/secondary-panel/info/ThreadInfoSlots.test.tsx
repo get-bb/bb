@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalThreadInfoProps } from "@get-bb/plugin-sdk";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
-import { InfoDetailRow } from "@/components/ui/detail-card";
+import { DetailRow } from "@/components/ui/detail-card";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -21,9 +21,9 @@ import {
 function row(label: string) {
   return function Row({ threadId }: ExperimentalThreadInfoProps) {
     return (
-      <InfoDetailRow label={label}>
+      <DetailRow label={label}>
         {label} for {threadId}
-      </InfoDetailRow>
+      </DetailRow>
     );
   };
 }
@@ -56,7 +56,11 @@ function renderInfo() {
     <JotaiProvider store={createStore()}>
       <MemoryRouter>
         <dl>
-          <ThreadInfoRows core={CORE_ROWS} threadId="thr_1" projectId="proj_1" />
+          <ThreadInfoRows
+            core={CORE_ROWS}
+            threadId="thr_1"
+            projectId="proj_1"
+          />
           <ThreadInfoSections
             core={CORE_SECTIONS}
             threadId="thr_1"
@@ -92,9 +96,9 @@ describe("thread Info slots", () => {
     );
     renderInfo();
 
-    expect(
-      screen.getAllByRole("term").map((term) => term.textContent),
-    ).toEqual(["Core first", "Plugin between", "Core second", "Plugin unordered"]);
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
+      ["Core first", "Plugin between", "Core second", "Plugin unordered"],
+    );
     expect(
       screen.getAllByRole("heading").map((heading) => heading.textContent),
     ).toEqual(["Plugin early1", "Core section1", "Plugin late1"]);
@@ -112,9 +116,9 @@ describe("thread Info slots", () => {
     );
     renderInfo();
 
-    expect(
-      screen.getAllByRole("term").map((term) => term.textContent),
-    ).toEqual(["Core first", "Core second"]);
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
+      ["Core first", "Core second"],
+    );
     expect(screen.getByText("Core section body")).toBeTruthy();
     expect(screen.queryByText(/demo/)).toBeNull();
   });
