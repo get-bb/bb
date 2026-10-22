@@ -142,44 +142,53 @@ describe("thread execution plan input sources", () => {
 
   it("runs a provider without service tiers at the default tier unless a tier is explicitly requested", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-no-tier",
+      const pi = harness.deps.providerRegistry.get("pi");
+      if (pi === null) throw new Error("pi provider missing");
+      const info = {
+        ...pi.info,
+        id: "no-tier",
+        capabilities: { ...pi.info.capabilities, supportsServiceTier: false },
+      };
+      delete info.serviceTiers;
+      harness.deps.providerRegistry.register({ ...pi, info });
+      const resolve = seedTierScenario(harness, {
+        hostId: "host-no-tier",
+        providerId: "no-tier",
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "pi",
-      });
-      upsertProjectExecutionDefaults(harness.deps.db, {
-        projectId: project.id,
-        providerId: "pi",
-        model: "pi-model",
-        reasoningLevel: "medium",
-        permissionMode: "full",
-        serviceTier: "fast",
-      });
-      const resolve = (
-        input: ReturnType<typeof buildExistingThreadExecutionInput>,
-      ) =>
-        resolveExistingThreadExecutionPlan(harness.deps, {
-          executionSource: "client/turn/requested",
-          input,
-          threadId: thread.id,
-        });
 
       expect((await resolve({})).resolvedExecution.serviceTier).toBe("default");
       await expect(
         resolve({ serviceTier: { source: "explicit", value: "fast" } }),
       ).rejects.toMatchObject({
         status: 400,
-        body: { message: "Provider pi does not support service tiers." },
+        body: { message: "Provider no-tier does not support service tiers." },
+      });
+    });
+  });
+
+  it("runs pi on its long-cache tier and refuses a tier pi does not list", async () => {
+    await withTestHarness(async (harness) => {
+      const resolve = seedTierScenario(harness, {
+        hostId: "host-pi-tiers",
+        providerId: "pi",
+      });
+
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("default");
+      expect(
+        (
+          await resolve({
+            serviceTier: { source: "explicit", value: "long-cache" },
+          })
+        ).resolvedExecution.serviceTier,
+      ).toBe("long-cache");
+      await expect(
+        resolve({ serviceTier: { source: "explicit", value: "fast" } }),
+      ).rejects.toMatchObject({
+        status: 400,
+        body: {
+          message:
+            "Provider pi does not support the fast service tier. Supported service tiers: default, long-cache.",
+        },
       });
     });
   });
@@ -442,3 +451,34 @@ describe("machine permission ceiling", () => {
     });
   });
 });
+
+function seedTierScenario(
+  harness: TestAppHarness,
+  args: { hostId: string; providerId: string },
+) {
+  const { host } = seedHostSession(harness.deps, { id: args.hostId });
+  const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
+  const environment = seedEnvironment(harness.deps, {
+    hostId: host.id,
+    projectId: project.id,
+  });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+    providerId: args.providerId,
+  });
+  upsertProjectExecutionDefaults(harness.deps.db, {
+    projectId: project.id,
+    providerId: args.providerId,
+    model: "pi-model",
+    reasoningLevel: "medium",
+    permissionMode: "full",
+    serviceTier: "fast",
+  });
+  return (input: ReturnType<typeof buildExistingThreadExecutionInput>) =>
+    resolveExistingThreadExecutionPlan(harness.deps, {
+      executionSource: "client/turn/requested",
+      input,
+      threadId: thread.id,
+    });
+}
