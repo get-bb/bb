@@ -205,6 +205,7 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   editor (scope `thread`), where the other customizations do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
+  A range paints a mention pill only when it covers the whole pill.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the
   message's thread, or null.
 - Composer popups register `[{ id, label, component }]` through `experimental_popups`.

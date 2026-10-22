@@ -86,6 +86,9 @@ function decorationForIntersection(
   if (textFrom >= textTo) return null;
 
   if (segment.kind === "mention") {
+    if (range.from > segment.textFrom || range.to < segment.textTo) {
+      return null;
+    }
     const node = doc.nodeAt(segment.docFrom);
     if (node === null) return null;
     return Decoration.node(
