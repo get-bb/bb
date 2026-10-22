@@ -146,20 +146,29 @@ const RETIRED_PLUGIN_SDK_APP_EXPORTS: Readonly<Record<string, string>> = {
     'Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery({ pluginId: "bb--github-pr-status", contract, method: "pullRequests", keys: [thread.environment.id] }). See "Migrating from experimental_useSidebarThreadPullRequest" in the bb-plugin-authoring skill.',
 };
 
-function describeRetiredPluginSdkAppImport(text: string): string | null {
-  for (const specifier of [
-    PLUGIN_SDK_APP_SPECIFIER,
-    LEGACY_PLUGIN_SDK_APP_SPECIFIER,
-  ]) {
-    const prefix = `No matching export in "${SHIM_NAMESPACE}:${specifier}" for import "`;
-    if (!text.startsWith(prefix) || !text.endsWith('"')) continue;
-    const name = text.slice(prefix.length, -1);
-    const replacement = RETIRED_PLUGIN_SDK_APP_EXPORTS[name];
-    if (replacement !== undefined) {
-      return `${name} was removed from ${specifier}. ${replacement}`;
+const NAMED_IMPORT_PATTERN =
+  /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/gu;
+
+async function retiredPluginSdkAppImports(
+  importer: string,
+  specifier: string,
+): Promise<string[]> {
+  const source = await readFile(importer, "utf8");
+  const retired: string[] = [];
+  for (const match of source.matchAll(NAMED_IMPORT_PATTERN)) {
+    if (match[1] !== undefined || match[3] !== specifier) continue;
+    for (const entry of (match[2] ?? "").split(",")) {
+      const [name] = entry.trim().split(/\s+as\s+/u);
+      if (
+        name !== undefined &&
+        !name.startsWith("type ") &&
+        RETIRED_PLUGIN_SDK_APP_EXPORTS[name] !== undefined
+      ) {
+        retired.push(name);
+      }
     }
   }
-  return null;
+  return retired;
 }
 const SHIM_FILTER = new RegExp(
   `^(${Object.keys(RUNTIME_SLOT_BY_SPECIFIER)
@@ -171,10 +180,23 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
   return {
     name: "bb-plugin-runtime-shims",
     setup(build) {
-      build.onResolve({ filter: SHIM_FILTER }, (args) => ({
-        path: args.path,
-        namespace: SHIM_NAMESPACE,
-      }));
+      build.onResolve({ filter: SHIM_FILTER }, async (args) => {
+        const retired =
+          (args.path === PLUGIN_SDK_APP_SPECIFIER ||
+            args.path === LEGACY_PLUGIN_SDK_APP_SPECIFIER) &&
+          args.namespace === "file" &&
+          args.importer !== ""
+            ? await retiredPluginSdkAppImports(args.importer, args.path)
+            : [];
+        if (retired.length > 0) {
+          return {
+            errors: retired.map((name) => ({
+              text: `${name} was removed from ${args.path}. ${RETIRED_PLUGIN_SDK_APP_EXPORTS[name]}`,
+            })),
+          };
+        }
+        return { path: args.path, namespace: SHIM_NAMESPACE };
+      });
       build.onResolve(
         {
           filter:
@@ -190,12 +212,6 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
             : { path: specifier, namespace: SHIM_NAMESPACE };
         },
       );
-      build.onEnd((result) => {
-        for (const message of result.errors) {
-          message.text =
-            describeRetiredPluginSdkAppImport(message.text) ?? message.text;
-        }
-      });
       build.onLoad(
         { filter: /.*/, namespace: SHIM_NAMESPACE },
         async (args) => ({

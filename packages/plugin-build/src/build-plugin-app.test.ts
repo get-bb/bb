@@ -74,12 +74,14 @@ describe("plugin app runtime shim", () => {
     const facadePath = join(dir, "app-facade.mjs");
     await writeFile(facadePath, "export const first = 1;\n");
 
+    const entry = join(dir, "app.tsx");
+    await writeFile(
+      entry,
+      `import {\n  first,\n  experimental_useSidebarThreadPullRequest as useRowPullRequest,\n} from "@get-bb/plugin-sdk/app";\nexport { first, useRowPullRequest };\n`,
+    );
+
     const failure = build({
-      stdin: {
-        contents: `import { experimental_useSidebarThreadPullRequest } from "@get-bb/plugin-sdk/app"; export { experimental_useSidebarThreadPullRequest };`,
-        loader: "js",
-        resolveDir: dir,
-      },
+      entryPoints: [entry],
       bundle: true,
       format: "esm",
       platform: "browser",
@@ -91,6 +93,7 @@ describe("plugin app runtime shim", () => {
     await expect(failure).rejects.toMatchObject({
       errors: [
         {
+          location: expect.objectContaining({ line: 4 }),
           text: expect.stringMatching(
             /^experimental_useSidebarThreadPullRequest was removed from @get-bb\/plugin-sdk\/app\. Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
           ),
