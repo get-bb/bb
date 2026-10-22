@@ -123,6 +123,7 @@ export class ScrollPositionKeeper {
   private pointerDown = false;
   private gestureScrolled = false;
   private inputUntil = Number.NEGATIVE_INFINITY;
+  private touchStartScrollTop = 0;
   private userScrolled = false;
   private scrollMovedAt = Number.NEGATIVE_INFINITY;
   private settleTimeout: number | null = null;
@@ -181,18 +182,19 @@ export class ScrollPositionKeeper {
     scrollElement.style.overflowAnchor = "none";
     this.ownScrollTop = scrollElement.scrollTop;
     const onScroll = () => this.handleScroll();
-    let touchStartScrollTop = 0;
     const onTouchStart = () => {
       if (!this.touching) {
         this.gestureScrolled = false;
-        touchStartScrollTop = scrollElement.scrollTop;
+        this.touchStartScrollTop = scrollElement.scrollTop;
       }
       this.touching = true;
     };
-    const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length > 0) return;
+    const activeTouchPointers = new Set<number>();
+    const endTouch = () => {
+      if (!this.touching) return;
+      activeTouchPointers.clear();
       this.touching = false;
-      if (Math.abs(scrollElement.scrollTop - touchStartScrollTop) >= 1) {
+      if (Math.abs(scrollElement.scrollTop - this.touchStartScrollTop) >= 1) {
         this.gestureScrolled = true;
         this.scrollMovedAt = window.performance.now();
       }
@@ -202,12 +204,25 @@ export class ScrollPositionKeeper {
       }
       this.scheduleDeferredWrite();
     };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length > 0) return;
+      endTouch();
+    };
     const onPointerDown = (event: PointerEvent) => {
-      if (event.pointerType === "touch") return;
+      if (event.pointerType === "touch") {
+        activeTouchPointers.add(event.pointerId);
+        return;
+      }
       this.pointerDown = true;
       this.gestureScrolled = false;
     };
-    const onPointerUp = () => {
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerType === "touch") {
+        if (event.type !== "pointerup") return;
+        activeTouchPointers.delete(event.pointerId);
+        if (activeTouchPointers.size === 0) endTouch();
+        return;
+      }
       if (!this.pointerDown) return;
       this.pointerDown = false;
       if (this.gestureScrolled) this.extendInput(SESSION_EXTENSION_MS);
@@ -239,8 +254,8 @@ export class ScrollPositionKeeper {
     scrollElement.addEventListener("pointerdown", onPointerDown, {
       passive: true,
     });
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerUp, true);
     window.addEventListener("keydown", onKeyDown);
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
@@ -276,8 +291,8 @@ export class ScrollPositionKeeper {
         PASSIVE_CAPTURE,
       );
       scrollElement.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerUp, true);
       window.removeEventListener("keydown", onKeyDown);
       this.touching = false;
       this.pointerDown = false;
@@ -292,8 +307,14 @@ export class ScrollPositionKeeper {
 
   scrollToBottom(): void {
     this.pendingRestore = null;
+    this.inputUntil = Number.NEGATIVE_INFINITY;
+    this.gestureScrolled = false;
     this.setPosition({ kind: "bottom" });
     this.reconcile();
+    const scrollElement = this.options.getScrollElement();
+    if (scrollElement !== null) {
+      this.touchStartScrollTop = scrollElement.scrollTop;
+    }
   }
 
   revealElement(element: HTMLElement, options: ScrollIntoViewOptions): void {

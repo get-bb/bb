@@ -230,7 +230,13 @@ anchor. The position changes only when:
 
 A scroll counts as the reader's during an input session: a wheel, a scroll key,
 a touch or pointer drag that scrolled, and the momentum that follows (up to
-three seconds after the finger lifts, on every platform). Any other
+three seconds after the finger lifts, on every platform). A touch ends on the
+last touch pointer's `pointerup`, caught on the window in the capture phase,
+or on `touchend`, whichever comes first. This means a tap on a control that
+removes itself, such as the send button, still ends the touch. A drag counts
+as scrolled only by the distance the reader moved. When the app scrolls to the
+end, as a send does, the input session ends and the touch baseline is reset,
+so the app's own jump is never counted as the reader's gesture. Any other
 scroll that comes with a change in the scroll extent is layout, such as a clamp
 after content briefly shrank, and the owner reconciles it back to the position.
 A scroll without input or size change, such as find in page or focus moving to

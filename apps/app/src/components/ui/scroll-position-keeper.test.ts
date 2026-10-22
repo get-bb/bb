@@ -404,6 +404,72 @@ describe("ScrollPositionKeeper", () => {
     expect(timeline.topOf("row-3")).toBe(before + 30);
   });
 
+  it("ends a tap whose target left the document on pointerup, so content arriving after a send keeps the reader attached", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const send = document.createElement("button");
+    timeline.content.append(send);
+    const pointer = (type: string) =>
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerType: "touch",
+        pointerId: 7,
+      });
+    send.dispatchEvent(pointer("pointerdown"));
+    send.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+    send.remove();
+    window.dispatchEvent(pointer("pointerup"));
+
+    timeline.setRows(rowsOf(12));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 120);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("ends the reader's fling session when the app scrolls to the bottom, so a send right after a fling stays attached", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 600);
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+    vi.advanceTimersByTime(1_000);
+    expect(timeline.keeper.isAttached()).toBe(false);
+
+    timeline.keeper.scrollToBottom();
+    timeline.setRows(rowsOf(12));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 120);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("does not count a send button's jump to the end as the reader's gesture when the button handles pointerup itself", () => {
+    const timeline = createTimeline(rowsOf(10));
+    timeline.userScrollTo(200);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    const send = document.createElement("button");
+    timeline.content.append(send);
+    const pointer = (type: string) =>
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerType: "touch",
+        pointerId: 9,
+      });
+    send.addEventListener("pointerup", (event) => {
+      event.stopPropagation();
+      timeline.keeper.scrollToBottom();
+      send.remove();
+    });
+    send.dispatchEvent(pointer("pointerdown"));
+    send.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+    send.dispatchEvent(pointer("pointerup"));
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+
+    timeline.setRows(rowsOf(12));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 120);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
   it("leaves an iOS edge bounce alone instead of holding it with a transform", () => {
     const timeline = createTimeline(rowsOf(10), { deferWrites: true });
     timeline.userScrollTo(300);
