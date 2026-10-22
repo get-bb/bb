@@ -1,11 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { TaggedMutationOutcome } from "@bb/query-tags";
 import type {
   BbSdkAreas,
   ThreadMutationResult,
   ThreadUpdateArgs,
 } from "@bb/sdk";
-import { publicApiRoutes } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { registerThreadEntityViews } from "../cache-owners/thread-entity-store";
 import {
@@ -15,7 +13,6 @@ import {
   predictThreadPinState,
   rollbackThreadMetadataBatchTransaction,
 } from "../cache-owners/thread-state-cache-owner";
-import { callRoute, invalidateCoreTags } from "../queries/route-tags";
 
 type ThreadMutations = Pick<BbSdkAreas["threads"], "update" | "pin" | "unpin">;
 
@@ -27,9 +24,7 @@ type PendingThreadMutation = {
   | { operation: "update"; args: ThreadUpdateArgs }
   | {
       operation: "pin" | "unpin";
-      acknowledge: (
-        outcome: Promise<TaggedMutationOutcome<ThreadMutationResult>>,
-      ) => Promise<void>;
+      acknowledge: (outcome: Promise<ThreadMutationResult>) => Promise<void>;
     }
 );
 
@@ -103,11 +98,7 @@ export function createThreadMutationBatcher(
       const result = results[index]!;
       return request.acknowledge(
         failure === undefined && result.status === "fulfilled"
-          ? callRoute(
-              publicApiRoutes.threads[request.operation],
-              { params: { id: request.threadId }, input: undefined },
-              async () => result.value,
-            )
+          ? Promise.resolve(result.value)
           : Promise.reject(failure?.reason),
       );
     });
@@ -153,13 +144,9 @@ export function createThreadMutationBatcher(
           pinnedAt: operation === "pin" ? Date.now() : null,
           threadId,
         });
-        const acknowledge = async (
-          outcome: Promise<TaggedMutationOutcome<ThreadMutationResult>>,
-        ) => {
+        const acknowledge = async (outcome: Promise<ThreadMutationResult>) => {
           try {
-            const { result, invalidated } = await outcome;
-            prediction.succeed(result);
-            void invalidateCoreTags(queryClient)(invalidated);
+            prediction.succeed(await outcome);
           } catch {
             prediction.fail();
           }

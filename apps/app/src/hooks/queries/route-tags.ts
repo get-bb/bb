@@ -11,7 +11,6 @@ import {
   runTaggedRead,
   runTaggedMutation,
   taggedQueryOptions,
-  type TaggedMutationOutcome,
   type TaggedOptimisticUpdate,
 } from "@bb/query-tags";
 
@@ -68,23 +67,6 @@ export function routeTaggedPages<Input, Output>(
   };
 }
 
-export function invalidateCoreTags(client: QueryClient) {
-  return (tags: readonly string[]) =>
-    invalidateTags(client, CORE_TAG_SCOPE, tags);
-}
-
-export async function callRoute<Input, Output, Result extends Output>(
-  route: ContractTagDeclarations<Input, Output>,
-  input: Input,
-  call: () => Promise<Result>,
-): Promise<TaggedMutationOutcome<Result>> {
-  const output = await call();
-  return {
-    result: output,
-    invalidated: route.invalidates?.(input, output) ?? [],
-  };
-}
-
 export function runRouteMutation<Input, Output, Result extends Output>(
   client: QueryClient,
   route: ContractTagDeclarations<Input, Output>,
@@ -93,8 +75,14 @@ export function runRouteMutation<Input, Output, Result extends Output>(
   options?: { optimistic: readonly TaggedOptimisticUpdate[] },
 ): Promise<Result> {
   return runTaggedMutation(
-    invalidateCoreTags(client),
-    () => callRoute(route, input, call),
+    (tags) => invalidateTags(client, CORE_TAG_SCOPE, tags),
+    async () => {
+      const output = await call();
+      return {
+        result: output,
+        invalidated: route.invalidates?.(input, output) ?? [],
+      };
+    },
     options && { client, optimistic: options.optimistic },
   );
 }
