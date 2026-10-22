@@ -22,6 +22,7 @@ import {
   detectLinkedWorktree,
   readDefaultBranch,
   WorkspaceError,
+  type SharedGitRefsSnapshot,
   type GitProcessOptions,
 } from "./git.js";
 import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js";
@@ -65,7 +66,7 @@ export interface HostWorkspace {
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
   getLocalStateFingerprint(): Promise<string>;
-  getSharedGitRefsFingerprint(): Promise<string>;
+  getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot>;
   getAdditionalWorkspaceWriteRoots(): Promise<string[]>;
   getStatus(options?: StatusOptions): Promise<WorkspaceStatus>;
   getDiff(options?: DiffOptions): Promise<DiffResult>;
@@ -129,8 +130,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.getLocalStateFingerprint();
   }
 
-  getSharedGitRefsFingerprint(): Promise<string> {
-    return this.ws.getSharedGitRefsFingerprint();
+  getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {
+    return this.ws.getSharedGitRefsSnapshot();
   }
 
   getAdditionalWorkspaceWriteRoots(): Promise<string[]> {

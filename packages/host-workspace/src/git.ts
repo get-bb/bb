@@ -1120,6 +1120,46 @@ function parseNumstatCount(text: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+export interface SharedGitRefsSnapshot {
+  fingerprint: string;
+  defaultBranch: string | null;
+}
+
+export async function readSharedGitRefsSnapshot(
+  cwd: string,
+  options: GitProcessOptions = {},
+): Promise<SharedGitRefsSnapshot> {
+  await ensureGitRepo(cwd, options);
+  const [refs, remoteHead] = await Promise.all([
+    runGit(
+      [
+        "for-each-ref",
+        "--format=%(refname)%00%(objectname)%00%(refname:short)",
+        "refs/heads",
+        "refs/remotes",
+      ],
+      { cwd, ...options },
+    ),
+    runGit(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], {
+      cwd,
+      ...options,
+      allowFailure: true,
+    }),
+  ]);
+  const refLines = refs.stdout.split("\n").filter((line) => line.length > 0);
+  const originHead = remoteHead.exitCode === 0 ? remoteHead.stdout.trim() : "";
+  const localBranches = refLines
+    .filter((line) => line.startsWith("refs/heads/"))
+    .map((line) => line.split("\0")[2] ?? "");
+  return {
+    fingerprint: JSON.stringify({ refs: refLines, remoteHead: originHead }),
+    defaultBranch:
+      parseOriginHeadBranchName(originHead) ??
+      resolvePreferredLocalDefaultBranch(localBranches, undefined) ??
+      null,
+  };
+}
+
 export async function readDefaultBranch(
   cwd: string,
   options: GitTimeoutOptions = {},

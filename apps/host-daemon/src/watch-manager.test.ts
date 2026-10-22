@@ -17,8 +17,8 @@ type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateFingerprint"]>
 >;
 type GetSharedGitRefsFingerprintResult = Awaited<
-  ReturnType<HostWorkspace["getSharedGitRefsFingerprint"]>
->;
+  ReturnType<HostWorkspace["getSharedGitRefsSnapshot"]>
+>["fingerprint"];
 type StopWatching = () => void | Promise<void>;
 type WatchWorkspaceImplementation = (args: WatchWorkspaceArgs) => StopWatching;
 type WatchThreadStorageRootImplementation = (
@@ -45,11 +45,11 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       }
       return localStateFingerprint;
     }),
-    getSharedGitRefsFingerprint: vi.fn(async () => {
+    getSharedGitRefsSnapshot: vi.fn(async () => {
       if (sharedGitRefsFingerprintError) {
         throw sharedGitRefsFingerprintError;
       }
-      return sharedGitRefsFingerprint;
+      return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
     }),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getStatus: vi.fn(async () =>
@@ -157,7 +157,7 @@ describe("WatchManager", () => {
 
     localFingerprint.resolve("local:/tmp/env-watch:initial");
     await vi.waitFor(() => {
-      expect(workspace.getSharedGitRefsFingerprint).toHaveBeenCalledTimes(1);
+      expect(workspace.getSharedGitRefsSnapshot).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -469,6 +469,72 @@ describe("WatchManager", () => {
     expect(
       onWorkspaceMetadataChanged.mock.calls[3]?.[0].workspace,
     ).toMatchObject({ branchName: null, defaultBranch: "trunk" });
+    await manager.shutdown();
+  });
+
+  it("reuses shared ref snapshots without rereading each worktree branch", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    workspaces[0]!.getCurrentBranch.mockResolvedValue("feature/a");
+    workspaces[1]!.getCurrentBranch.mockResolvedValue("feature/b");
+    const onWorkspaceMetadataChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: async ({ path }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+      onWorkspaceMetadataChanged,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+      })),
+      threadStorageTargets: [],
+    });
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    for (const workspace of workspaces) {
+      workspace.getSharedGitRefsSnapshot.mockResolvedValue({
+        fingerprint: "shared:trunk",
+        defaultBranch: "trunk",
+      });
+    }
+    for (const watch of watches) {
+      watch.onChange({
+        kind: "workspace-status-changed",
+        environmentId: watch.environmentId,
+        changeKinds: ["shared-git-refs-changed"],
+        changedPaths: ["/tmp/repo/.git/refs/remotes/origin/HEAD"],
+      });
+    }
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(4),
+    );
+    expect(
+      onWorkspaceMetadataChanged.mock.calls.slice(2).map(([event]) => ({
+        branchName: event.workspace.branchName,
+        defaultBranch: event.workspace.defaultBranch,
+      })),
+    ).toEqual([
+      { branchName: "feature/a", defaultBranch: "trunk" },
+      { branchName: "feature/b", defaultBranch: "trunk" },
+    ]);
+    for (const workspace of workspaces) {
+      expect(workspace.getCurrentBranch).toHaveBeenCalledTimes(1);
+      expect(workspace.getDefaultBranch).toHaveBeenCalledTimes(1);
+    }
     await manager.shutdown();
   });
 

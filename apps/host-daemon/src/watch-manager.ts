@@ -2,6 +2,7 @@ import type { DiscoveredWorkspaceProperties } from "@bb/domain";
 import {
   provisionWorkspace,
   type HostWorkspace,
+  type SharedGitRefsSnapshot,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
 import type {
@@ -285,13 +286,14 @@ export class WatchManager {
       const [lastLocalFingerprint, lastSharedRefsFingerprint] =
         await Promise.all([
           entry.workspace.getLocalStateFingerprint(),
-          entry.workspace.getSharedGitRefsFingerprint(),
+          entry.workspace.getSharedGitRefsSnapshot(),
         ]);
       if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
         return;
       }
       entry.watchState.lastLocalFingerprint = lastLocalFingerprint;
-      entry.watchState.lastSharedRefsFingerprint = lastSharedRefsFingerprint;
+      entry.watchState.lastSharedRefsFingerprint =
+        lastSharedRefsFingerprint.fingerprint;
     } catch (error) {
       if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
         return;
@@ -346,6 +348,7 @@ export class WatchManager {
 
     try {
       const changeKinds: HostDaemonEnvironmentChange[] = [];
+      let sharedRefs: SharedGitRefsSnapshot | undefined;
       if (workspaceWatchKindsIncludeLocalState(pendingKinds)) {
         if (
           pendingKinds.includes("workspace-git-repository-created") &&
@@ -371,8 +374,8 @@ export class WatchManager {
         args.entry.workspace.isGitRepo &&
         pendingKinds.includes("shared-git-refs-changed")
       ) {
-        const nextSharedRefsFingerprint =
-          await args.entry.workspace.getSharedGitRefsFingerprint();
+        sharedRefs = await args.entry.workspace.getSharedGitRefsSnapshot();
+        const nextSharedRefsFingerprint = sharedRefs.fingerprint;
         if (
           args.entry.watchState.lastSharedRefsFingerprint !==
           nextSharedRefsFingerprint
@@ -399,17 +402,29 @@ export class WatchManager {
           pendingKinds.includes("workspace-git-changed") ||
           pendingKinds.includes("shared-git-refs-changed"))
       ) {
-        await this.reportCurrentBranch(args.entry);
+        await this.reportCurrentBranch(
+          args.entry,
+          pendingKinds.includes("workspace-git-changed"),
+          sharedRefs,
+        );
       }
     } catch (error) {
       this.reportWorkspaceWatchError(args.entry, error);
     }
   }
 
-  private async reportCurrentBranch(entry: WorkspaceWatchEntry): Promise<void> {
+  private async reportCurrentBranch(
+    entry: WorkspaceWatchEntry,
+    localGitChanged: boolean,
+    sharedRefs: SharedGitRefsSnapshot | undefined,
+  ): Promise<void> {
     const [branchName, resolvedDefaultBranch] = await Promise.all([
-      entry.workspace.getCurrentBranch(),
-      entry.workspace.getDefaultBranch(),
+      localGitChanged || entry.watchState.lastBranchName === undefined
+        ? entry.workspace.getCurrentBranch()
+        : entry.watchState.lastBranchName,
+      sharedRefs === undefined
+        ? entry.workspace.getDefaultBranch()
+        : sharedRefs.defaultBranch,
     ]);
     const defaultBranch = resolvedDefaultBranch ?? branchName;
     if (
@@ -469,13 +484,14 @@ export class WatchManager {
       await Promise.all([
         workspace.getCurrentBranch(),
         workspace.getDefaultBranch(),
-        workspace.getSharedGitRefsFingerprint(),
+        workspace.getSharedGitRefsSnapshot(),
       ]);
     if (this.workspaceEntries.get(entry.target.environmentId) !== entry) return;
     entry.workspace = workspace;
     entry.watchState.lastBranchName = branchName;
     entry.watchState.lastDefaultBranch = resolvedDefaultBranch ?? branchName;
-    entry.watchState.lastSharedRefsFingerprint = sharedRefsFingerprint;
+    entry.watchState.lastSharedRefsFingerprint =
+      sharedRefsFingerprint.fingerprint;
     this.options.onWorkspaceMetadataChanged?.({
       environmentId: entry.target.environmentId,
       workspace: {

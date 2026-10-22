@@ -34,8 +34,8 @@ type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateFingerprint"]>
 >;
 type GetSharedGitRefsFingerprintResult = Awaited<
-  ReturnType<HostWorkspace["getSharedGitRefsFingerprint"]>
->;
+  ReturnType<HostWorkspace["getSharedGitRefsSnapshot"]>
+>["fingerprint"];
 type CommitArgs = Parameters<HostWorkspace["commit"]>;
 type ProvisionWorkspaceMockArgs = Parameters<
   (options: ProvisionWorkspaceArgs) => Promise<HostWorkspace>
@@ -144,11 +144,11 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       }
       return localStateFingerprint;
     }),
-    getSharedGitRefsFingerprint: vi.fn(async () => {
+    getSharedGitRefsSnapshot: vi.fn(async () => {
       if (sharedGitRefsFingerprintError) {
         throw sharedGitRefsFingerprintError;
       }
-      return sharedGitRefsFingerprint;
+      return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
     }),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getStatus: vi.fn(async () => status),

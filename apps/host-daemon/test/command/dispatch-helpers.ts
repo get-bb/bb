@@ -179,11 +179,8 @@ export function createFakeWorkspace(pathname: string) {
         },
       });
     },
-    async getSharedGitRefsFingerprint() {
-      return JSON.stringify({
-        refs: ["refs/heads/main\u0000commit-1"],
-        remoteHead: "refs/remotes/origin/main",
-      });
+    async getSharedGitRefsSnapshot() {
+      return { fingerprint: "refs-1", defaultBranch: "main" };
     },
     async getAdditionalWorkspaceWriteRoots() {
       return [];

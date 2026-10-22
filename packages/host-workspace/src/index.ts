@@ -19,4 +19,4 @@ export {
   readGitBlob,
   runGit,
 } from "./git.js";
-export type { GitProcessOptions } from "./git.js";
+export type { GitProcessOptions, SharedGitRefsSnapshot } from "./git.js";

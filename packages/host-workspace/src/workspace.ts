@@ -26,6 +26,8 @@ import {
   parseNumstatEntriesZ,
   parsePorcelainV2StatusZ,
   readRepoDefaultBranch,
+  readSharedGitRefsSnapshot,
+  type SharedGitRefsSnapshot,
   readMergeBaseRef,
   revParse,
   runGit,
@@ -342,13 +344,6 @@ function resolveWorkspaceState(args: {
 
 function parseNullSeparatedLines(output: string): string[] {
   return output.split("\0").filter((value) => value.length > 0);
-}
-
-function parseNonEmptyLines(output: string): string[] {
-  return output
-    .split("\n")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
 }
 
 function isMissingHeadRevisionError(stderr: string): boolean {
@@ -823,29 +818,8 @@ export class Workspace {
     });
   }
 
-  async getSharedGitRefsFingerprint(): Promise<string> {
-    await ensureGitRepo(this.path, this.gitProcessOptions);
-
-    const [refs, remoteHead] = await Promise.all([
-      this.runGit(
-        [
-          "for-each-ref",
-          "--format=%(refname)%00%(objectname)",
-          "refs/heads",
-          "refs/remotes",
-        ],
-        { cwd: this.path },
-      ),
-      this.runGit(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], {
-        cwd: this.path,
-        allowFailure: true,
-      }),
-    ]);
-
-    return JSON.stringify({
-      refs: parseNonEmptyLines(refs.stdout),
-      remoteHead: remoteHead.exitCode === 0 ? remoteHead.stdout.trim() : "",
-    });
+  getSharedGitRefsSnapshot(): Promise<SharedGitRefsSnapshot> {
+    return readSharedGitRefsSnapshot(this.path, this.gitProcessOptions);
   }
 
   async getDiff(options: DiffOptions = {}): Promise<DiffResult> {
