@@ -3779,7 +3779,6 @@ export function PromptBoxInternal({
               "relative",
               showCompactLayout && "min-w-0 flex-1",
               showCompactLayout && showVoiceActionGroup && "invisible",
-              showCompactVoiceAction && "pr-9",
             )}
           >
             {!showCompactLayout ? (
@@ -3906,8 +3905,8 @@ export function PromptBoxInternal({
               data-promptbox-action-row=""
               className={cn(
                 "relative flex shrink-0 select-none flex-row flex-wrap items-center gap-3 pb-2 pl-3.5 pr-[13px] pt-1.5",
-                showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
-                showCompactLayout && showVoiceActionGroup && "inset-0",
+                showCompactLayout && "flex-nowrap gap-0 p-0 pr-2",
+                showCompactLayout && showVoiceActionGroup && "absolute inset-0",
               )}
             >
               {voice && isVoiceActionPresent ? (

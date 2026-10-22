@@ -542,17 +542,24 @@
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
     [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-action-row] {
-    position: absolute;
-    inset-block: 0;
-    right: 0.5rem;
+    flex-wrap: nowrap;
     gap: 0;
-    padding: 0;
+    padding: 0 0.5rem 0 0;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
     [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-main] {
+    display: flex;
+    align-items: center;
     height: 3rem;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-voice-active])
+    [data-promptbox-input-region] {
+    flex: 1 1 0%;
+    min-width: 0;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
@@ -570,7 +577,7 @@
     overflow: hidden;
     padding-top: 0;
     padding-bottom: 0;
-    padding-right: 3.5rem;
+    padding-right: 0.5rem;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
