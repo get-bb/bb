@@ -2,12 +2,11 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
   type ExperimentalFakeHostRpcCall,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import type { GitHubPullRequestView } from "./contract.js";
-import plugin from "./server.js";
+import plugin, { environmentChangeEffect } from "./server.js";
 
 type Environment = Awaited<
   ReturnType<BbPluginApi["sdk"]["environments"]["get"]>
@@ -210,25 +209,19 @@ describe("GitHub PR Status server", () => {
     });
   });
 
-  it("re-reads an environment after a thread on it goes idle", async () => {
-    let title = "First";
-    const fake = await setup({
-      callHost: (call) =>
-        call.method === "view"
-          ? { outcome: "found", pullRequest: view({ title }) }
-          : { ok: true },
-    });
-    await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
-    title = "Second";
-    await fake.harness.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ environmentId: "env-1" }),
-      lastAssistantText: null,
-    });
-
-    await expect(
-      fake.harness.callRpc("pullRequests", { keys: ["env-1"] }),
-    ).resolves.toMatchObject({
-      "env-1": { pullRequest: { title: "Second" } },
-    });
-  });
+  it.each([
+    [["status-changed"], "refresh"],
+    [["environment-created"], "refresh"],
+    [["environment-deleted"], "refresh"],
+    [["metadata-changed"], "branch"],
+    [["git-refs-changed", "metadata-changed"], "branch"],
+    [["git-refs-changed"], "invalidate"],
+    [["work-status-changed"], null],
+    [["thread-storage-changed", "diff-viewed-changed"], null],
+  ] as const)(
+    "maps environment changes %j to %s, re-checking only where main did",
+    (changes, effect) => {
+      expect(environmentChangeEffect(changes)).toBe(effect);
+    },
+  );
 });

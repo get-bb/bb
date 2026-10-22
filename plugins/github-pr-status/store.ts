@@ -26,6 +26,8 @@ export interface PullRequestStore {
     options: { viewer: boolean },
   ): Promise<EnvironmentPullRequest>;
   refresh(environmentId: string): void;
+  recheck(environmentId: string): void;
+  invalidate(environmentId: string): void;
   watch(environmentId: string, signal: AbortSignal): void;
   isWatched(environmentId: string): boolean;
 }
@@ -199,6 +201,13 @@ export function createPullRequestStore(options: {
     refresh(environmentId) {
       if (watches.has(environmentId)) void check(environmentId, true);
       else forget(environmentId);
+    },
+    recheck(environmentId) {
+      if (watches.has(environmentId)) void check(environmentId, false);
+    },
+    invalidate(environmentId) {
+      const cached = lookups.get(environmentId);
+      if (cached !== undefined) cached.fetchedAt = Number.NEGATIVE_INFINITY;
     },
     watch(environmentId, signal) {
       if (signal.aborted) return;

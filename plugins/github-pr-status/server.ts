@@ -32,10 +32,18 @@ const ENVIRONMENT_POSITIONAL = [
 const REFRESHING_ENVIRONMENT_CHANGES: ReadonlySet<string> = new Set([
   "environment-created",
   "environment-deleted",
-  "metadata-changed",
   "status-changed",
-  "git-refs-changed",
 ]);
+
+export function environmentChangeEffect(
+  changes: readonly string[],
+): "refresh" | "branch" | "invalidate" | null {
+  if (changes.some((change) => REFRESHING_ENVIRONMENT_CHANGES.has(change)))
+    return "refresh";
+  if (changes.includes("metadata-changed")) return "branch";
+  if (changes.includes("git-refs-changed")) return "invalidate";
+  return null;
+}
 
 type Environment = Awaited<
   ReturnType<BbPluginApi["sdk"]["environments"]["get"]>
@@ -124,6 +132,25 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     }
   }
 
+  const lookedUpBranches = new Map<string, string | null>();
+
+  async function refreshIfBranchChanged(environmentId: string): Promise<void> {
+    if (!lookedUpBranches.has(environmentId)) return;
+    try {
+      const environment = await getEnvironment(environmentId);
+      if (
+        (environment?.branchName ?? null) !==
+        lookedUpBranches.get(environmentId)
+      ) {
+        store.refresh(environmentId);
+      }
+    } catch (error) {
+      bb.log.debug(
+        `Failed to read environment ${environmentId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
   async function loadPullRequest(
     environmentId: string,
   ): Promise<EnvironmentPullRequest> {
@@ -133,6 +160,7 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     } catch (error) {
       return { outcome: "unavailable", message: errorMessage(error) };
     }
+    lookedUpBranches.set(environmentId, environment?.branchName ?? null);
     if (environment === null || !environment.isGitRepo) {
       return { outcome: "absent" };
     }
@@ -182,14 +210,23 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     stopEnvironmentEvents ??= bb.sdk.subscribe({
       event: "environment:changed",
       callback: (event) => {
-        if (
-          event.id !== undefined &&
-          store.isWatched(event.id) &&
-          event.changes.some((change) =>
-            REFRESHING_ENVIRONMENT_CHANGES.has(change),
-          )
-        ) {
-          store.refresh(event.id);
+        const environmentId = event.id;
+        if (environmentId === undefined || !store.isWatched(environmentId))
+          return;
+        switch (environmentChangeEffect(event.changes)) {
+          case "refresh":
+            store.refresh(environmentId);
+            return;
+          case "branch":
+            if (event.changes.includes("git-refs-changed"))
+              store.invalidate(environmentId);
+            void refreshIfBranchChanged(environmentId);
+            return;
+          case "invalidate":
+            store.invalidate(environmentId);
+            return;
+          case null:
+            return;
         }
       },
     });
@@ -322,7 +359,7 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
 
   for (const event of ["thread.idle", "thread.failed"] as const) {
     bb.events.on(event, ({ thread }) => {
-      if (thread.environmentId !== null) store.refresh(thread.environmentId);
+      if (thread.environmentId !== null) store.recheck(thread.environmentId);
     });
   }
 

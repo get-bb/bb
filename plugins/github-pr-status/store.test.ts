@@ -224,6 +224,34 @@ describe("pull request store", () => {
     expect(load).toHaveBeenCalledTimes(3);
   });
 
+  it("rechecks a watched environment through the short cache", async () => {
+    vi.useFakeTimers();
+    const { load, store } = createHarness([available(pullRequest())]);
+    store.watch("env-1", new AbortController().signal);
+    await flush();
+    store.recheck("env-1");
+    await flush();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    store.recheck("env-1");
+    await flush();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("makes the next check fresh after an invalidation without loading", async () => {
+    vi.useFakeTimers();
+    const { load, store } = createHarness([available(pullRequest())]);
+    store.watch("env-1", new AbortController().signal);
+    await flush();
+    store.invalidate("env-1");
+    await flush();
+    expect(load).toHaveBeenCalledTimes(1);
+    store.recheck("env-1");
+    await flush();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it("does not let a load that started before a refresh overwrite newer data", async () => {
     let resolveStale: (value: EnvironmentPullRequest) => void = () => {};
     const load = vi
