@@ -29,7 +29,6 @@ export function hostDaemonSupportsDesktopBrokerProof(
   return protocolVersion >= HOST_DAEMON_DESKTOP_BROKER_PROOF_PROTOCOL_VERSION;
 }
 
-
 export const HOST_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;
 
 export const HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS = 30 * 60 * 1000;

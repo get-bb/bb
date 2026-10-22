@@ -175,13 +175,14 @@ def run():
     assert JOB["state"] == "running", "Host-care queued or refused launch; do not bypass it"
 
     def ready():
+        assert same_process({"pid": JOB["process"]["pid"], "start": str(JOB["process"]["startTicks"])}), "Runtime exited; inspect host-care logs"
         try:
             return qa_preflight()
         except (RuntimeError, KeyError, json.JSONDecodeError):
             return False
 
     wait_for(ready, 600)
-    host_list = json.loads(qa_bb("host", "list", "--json").stdout)
+    host_list = wait_for(lambda: json.loads(qa_bb("host", "list", "--json").stdout))
     assert len(host_list) == 1
     host_id = host_list[0]["id"]
     fixture = RUN / "fixture"
