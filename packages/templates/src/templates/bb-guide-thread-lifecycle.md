@@ -92,8 +92,11 @@ Lifecycle:
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
 
-  Deleting a thread removes its record immediately, but provider-owned
-  environment cleanup is asynchronous. Use `bb environment show <id>` to
-  inspect teardown until the lifecycle reaches destroyed. Deleting thread
+  Deleting a thread permanently deletes its sidebar children and lifecycle
+  dependents recursively, including hidden and archived descendants. This also
+  applies to SDK `threads.delete`; set `childThreadsConfirmed: true` to confirm
+  child deletion. Provider-owned environment cleanup is asynchronous. Use
+  `bb environment show <id>` to inspect teardown until the lifecycle reaches
+  destroyed. Deleting thread
   storage first stops processes whose working directory is inside it,
   including dev servers in nested checkouts (macOS and Linux only).

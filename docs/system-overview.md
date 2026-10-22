@@ -36,9 +36,11 @@ source, and every workflow worker attempt by its origin.
 - Archiving an owner recursively archives its dependents and stops their
   execution; unarchiving the owner does not restore them (restore them
   explicitly, owner first).
-- Deleting an owner recursively deletes its dependents. The owner row remains
-  until every dependent finishes storage cleanup on its own host; failures are
-  retried.
+- Deleting a thread recursively deletes its sidebar children and lifecycle
+  dependents, following both relationships at every level, including hidden and
+  archived threads. Fork sources alone do not imply deletion. The owner row
+  remains until every lifecycle dependent finishes storage cleanup on its own
+  host; failures are retried.
 - Dependents can be archived or deleted independently of their owner. Deleting
   an owning project also deletes cross-project dependents; deleting only a
   dependent's project leaves its external owner intact.
