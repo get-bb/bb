@@ -253,17 +253,17 @@ it("keeps the latest pin toggle through stale reads until every write settles", 
   expect(visiblyPinned()).toBe(true);
 
   server.setRows([entry("t1", 100)]);
-  await act(async () => firstPin.resolve(makeThreadResponse({ id: "t1" })));
+  await act(async () => firstPin.resolve(makeThreadResponse(entry("t1", 100))));
   await server.realtimeRefresh();
   expect(visiblyPinned()).toBe(true);
 
   server.setRows([entry("t1", null)]);
-  await act(async () => unpin.resolve(makeThreadResponse({ id: "t1" })));
+  await act(async () => unpin.resolve(makeThreadResponse(entry("t1", null))));
   await server.realtimeRefresh();
   expect(visiblyPinned()).toBe(true);
 
   server.setRows([entry("t1", 300)]);
-  await act(async () => lastPin.resolve(makeThreadResponse({ id: "t1" })));
+  await act(async () => lastPin.resolve(makeThreadResponse(entry("t1", 300))));
   await waitFor(() => expect(server.pinnedAt("t1")).toEqual([300, 300, 300]));
 
   server.setRows([entry("t1", null)]);
