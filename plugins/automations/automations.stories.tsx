@@ -8,7 +8,13 @@ import {
   RunRow,
 } from "./detail-view";
 import { AUTOMATION_CREATE_TEMPLATES, OverviewRow } from "./overview-view";
+import {
+  summarizeProjectDefaultEnvironment,
+  type ProjectDefaultEnvironmentSummary,
+} from "./lib/project-default-environment";
+import type { EnvironmentCatalog } from "./lib/automation-environment";
 import type {
+  AgentExecutionUpdate,
   AutomationDetailResponse,
   AutomationResponse,
   AgentEnvironment,
@@ -306,10 +312,12 @@ function PromptVariant({
   value,
   editable = false,
   projectLabel,
+  projectDefaultEnvironment = null,
 }: {
   value: AutomationResponse;
   editable?: boolean;
   projectLabel?: string;
+  projectDefaultEnvironment?: ProjectDefaultEnvironmentSummary | null;
 }) {
   const [execution, setExecution] = useState(value.execution);
   const [editing, setEditing] = useState(editable);
@@ -317,6 +325,8 @@ function PromptVariant({
   return (
     <div className="w-full max-w-2xl">
       <AgentAutomationDefinition
+        automationId={value.id}
+        projectId={value.projectId}
         execution={execution}
         editing={editing}
         personalProject={value.projectId === "proj_personal"}
@@ -324,19 +334,51 @@ function PromptVariant({
           projectLabel ??
           (value.projectId === "proj_personal" ? "Personal" : "bb")
         }
+        projectDefaultEnvironment={projectDefaultEnvironment}
+        environmentCatalog={STORY_ENVIRONMENT_CATALOG}
         pending={false}
         onCancel={() => setEditing(false)}
         onUpdate={async (update) => {
-          setExecution({
-            ...execution,
-            ...update,
-            serviceTier: update.serviceTier ?? undefined,
-          });
+          setExecution(applyStoryAgentUpdate(execution, update));
           setEditing(false);
         }}
       />
     </div>
   );
+}
+
+function applyStoryAgentUpdate(
+  execution: Extract<AutomationResponse["execution"], { mode: "agent" }>,
+  update: AgentExecutionUpdate,
+): AutomationResponse["execution"] {
+  const {
+    serviceTier: _serviceTier,
+    sessionOptions: _sessionOptions,
+    ...rest
+  } = execution;
+  const serviceTier =
+    update.serviceTier === undefined ? execution.serviceTier : update.serviceTier;
+  const sessionOptions =
+    update.sessionOptions === undefined
+      ? execution.sessionOptions
+      : update.sessionOptions;
+  return {
+    ...rest,
+    ...(update.prompt === undefined ? {} : { prompt: update.prompt }),
+    ...(update.providerId === undefined ? {} : { providerId: update.providerId }),
+    ...(update.model === undefined ? {} : { model: update.model }),
+    ...(update.reasoningLevel === undefined
+      ? {}
+      : { reasoningLevel: update.reasoningLevel }),
+    ...(update.permissionMode === undefined
+      ? {}
+      : { permissionMode: update.permissionMode }),
+    ...(serviceTier == null ? {} : { serviceTier }),
+    ...(sessionOptions == null ? {} : { sessionOptions }),
+    ...(update.target?.type === "environment"
+      ? { environment: update.target.environment }
+      : {}),
+  };
 }
 
 export function OverviewRows() {
@@ -498,6 +540,30 @@ export function OverviewStates() {
   );
 }
 
+const STORY_ENVIRONMENT_PROVIDERS = [
+  {
+    id: "git-worktree",
+    displayName: "Worktree",
+    icon: "FolderGit",
+    logoUrl: null,
+    machineProviderId: null,
+  },
+  {
+    id: "berth",
+    displayName: "Berth",
+    icon: "Cloud",
+    logoUrl: null,
+    machineProviderId: "berth",
+  },
+];
+
+const STORY_MACHINES = [{ id: "host_story_david", name: "david" }];
+
+const STORY_ENVIRONMENT_CATALOG: EnvironmentCatalog = {
+  providers: STORY_ENVIRONMENT_PROVIDERS,
+  machines: STORY_MACHINES,
+};
+
 function environmentVariant(
   environment: AgentEnvironment,
   targetThreadId?: string,
@@ -556,10 +622,117 @@ export function DetailStates() {
       </StoryRow>
       <StoryRow
         label="Use project defaults"
-        hint="No explicit workspace is configured. Shows Project default metadata."
+        hint="No explicit workspace is configured and the project's default environment is still loading. Shows Project default metadata."
       >
         <PromptVariant
           value={environmentVariant({ type: "project-default" })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Automatic project default"
+        hint="The project has no default environment, so bb picks the machine. Shows Project default · Automatic."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: null,
+            defaultEnvironmentProblem: null,
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Composition project default"
+        hint="The project default starts a new machine. Shows the composition name and the pickers keep primary routing."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: {
+              type: "provider",
+              environmentProviderId: "berth",
+              machine: { type: "new" },
+            },
+            defaultEnvironmentProblem: null,
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Machine project default"
+        hint="The project default is a worktree on an enrolled machine. Shows the provider and machine names."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: {
+              type: "provider",
+              environmentProviderId: "git-worktree",
+              machine: { type: "existing", hostId: "host_story_david" },
+            },
+            defaultEnvironmentProblem: null,
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Unavailable project default"
+        hint="The project default's machine was removed. Shows a warning and the server's reason; runs fail until it is fixed."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: {
+              type: "provider",
+              environmentProviderId: "git-worktree",
+              machine: { type: "existing", hostId: "host_story_removed" },
+            },
+            defaultEnvironmentProblem: {
+              message: "its machine no longer exists",
+            },
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Composition with a branch"
+        hint="Chosen in the composer: each run gets a new berth machine on a new branch from dev. Shows the provider and the branch."
+      >
+        <PromptVariant
+          value={environmentVariant({
+            type: "provider",
+            environmentProviderId: "berth",
+            inputs: { branch: { kind: "new", baseBranch: "dev" } },
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Worktree from a named branch"
+        hint="A new worktree on david for each run, branched from dev. Shows the machine and the base branch."
+      >
+        <PromptVariant
+          value={environmentVariant({
+            type: "provider",
+            environmentProviderId: "git-worktree",
+            machine: { type: "existing", hostId: "host_story_david" },
+            inputs: { branch: { kind: "named", name: "dev" } },
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Unavailable environment"
+        hint="The automation's environment provider was uninstalled. Shows a warning; runs fail until it is fixed."
+      >
+        <PromptVariant
+          value={environmentVariant({
+            type: "provider",
+            environmentProviderId: "modal-sandbox",
+            inputs: null,
+          })}
         />
       </StoryRow>
       <StoryRow
@@ -765,6 +938,8 @@ export function FailureStates() {
             onRunNow={noop}
             onDelete={noop}
             onOpenThread={noop}
+            projectDefaultEnvironment={null}
+            environmentCatalog={STORY_ENVIRONMENT_CATALOG}
           />
         </div>
       </StoryRow>

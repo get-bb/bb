@@ -12,6 +12,7 @@ import type {
 import {
   encodeReuseValue,
   encodeProviderValue,
+  PROJECT_DEFAULT_ENVIRONMENT_VALUE,
 } from "@/components/pickers/environment-picker-value";
 
 interface NewThreadEnvironmentSeed {
@@ -59,7 +60,12 @@ export function newThreadEnvironmentArgsToSeed(
   environment: CreateThreadEnvironmentArgs,
 ): NewThreadEnvironmentSeed | null {
   if (environment.type === "project-default") {
-    return null;
+    return {
+      selectionValue: PROJECT_DEFAULT_ENVIRONMENT_VALUE,
+      providerMachine: null,
+      providerHostId: null,
+      providerInputs: null,
+    };
   }
   if (environment.type === "provider") {
     return {

@@ -1,16 +1,24 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { BbSdk } from "@bb/sdk";
 import type {
   CreateProjectSourceRequest,
+  DefaultEnvironment,
   HostDiscoveredRepo,
   ProjectResponse,
+  ProviderEnvironmentArgs,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
-import { action } from "../action.js";
+import { action, CliUsageError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
+import {
+  COMPOSITION_MACHINE_SELECTOR_ERROR,
+  findEnvironmentProviderTarget,
+} from "./environment-provider-target.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
 import {
   resolveMachineEnvironmentRouting,
@@ -120,7 +128,104 @@ interface ProjectSourceInputOptions {
   path?: string;
 }
 
+interface ProjectDefaultEnvironmentCommandOptions {
+  json?: boolean;
+}
+
+interface ProjectDefaultEnvironmentSetCommandOptions extends ProjectDefaultEnvironmentCommandOptions {
+  environmentProvider: string;
+  host?: string;
+  machine?: string;
+}
+
 type ProjectSource = ProjectResponse["sources"][number];
+
+function requireDefaultEnvironmentProject(projectId: string): void {
+  if (projectId === PERSONAL_PROJECT_ID) {
+    throw new Error("Personal has no default environment.");
+  }
+}
+
+async function buildDefaultEnvironmentRequest(args: {
+  environmentProvider: string;
+  machineTarget: string | undefined;
+  serverUrl: string;
+}): Promise<ProviderEnvironmentArgs> {
+  const target = await findEnvironmentProviderTarget({
+    environmentProviderId: args.environmentProvider,
+    projectId: null,
+    serverUrl: args.serverUrl,
+  });
+  if (target.kind === "composition") {
+    if (args.machineTarget !== undefined) {
+      throw new Error(COMPOSITION_MACHINE_SELECTOR_ERROR);
+    }
+    return {
+      type: "provider",
+      environmentProviderId: target.provider.id,
+      inputs: null,
+    };
+  }
+  if (args.machineTarget === undefined) {
+    throw new CliUsageError({
+      code: "missing_required",
+      hint: "List machines with `bb machine list`.",
+      message: `The '${target.provider.id}' environment provider runs on an existing machine; pass --machine <id-or-name>.`,
+    });
+  }
+  return {
+    type: "provider",
+    environmentProviderId: target.provider.id,
+    machine: {
+      type: "existing",
+      hostId: await resolveMachineHostId({
+        serverUrl: args.serverUrl,
+        target: args.machineTarget,
+      }),
+    },
+    inputs: null,
+  };
+}
+
+async function describeDefaultEnvironment(
+  sdk: BbSdk,
+  defaultEnvironment: DefaultEnvironment | null,
+): Promise<string> {
+  if (defaultEnvironment === null) return "Automatic";
+  const providers = await sdk.environments.listProviders();
+  const provider = providers.find(
+    (candidate) => candidate.id === defaultEnvironment.environmentProviderId,
+  );
+  const providerName =
+    provider?.displayName ?? `"${defaultEnvironment.environmentProviderId}"`;
+  const machine = defaultEnvironment.machine;
+  if (provider?.machineProviderId || machine.type !== "existing") {
+    return providerName;
+  }
+  const hosts = await sdk.hosts.list();
+  const hostName =
+    hosts.find((host) => host.id === machine.hostId)?.name ?? machine.hostId;
+  return `${providerName} on ${hostName}`;
+}
+
+async function describeProjectDefaultEnvironment(
+  sdk: BbSdk,
+  project: ProjectResponse,
+): Promise<string | null> {
+  return project.id === PERSONAL_PROJECT_ID
+    ? null
+    : describeDefaultEnvironment(sdk, project.defaultEnvironment);
+}
+
+function defaultEnvironmentLines(
+  project: ProjectResponse,
+  label: string,
+): string[] {
+  const problem = project.defaultEnvironmentProblem;
+  return problem === null
+    ? [`Default environment: ${label}`]
+    : [`Default environment: ${label}`, `Unavailable: ${problem.message}`];
+}
 
 function validateProjectSourceAddOptions(
   args: ProjectSourceAddCommandOptions,
@@ -254,6 +359,11 @@ export function registerProjectCommands(
   const attachment = project
     .command("attachment")
     .description("Upload and download server-managed project attachments");
+  const defaultEnvironment = project
+    .command("default-environment")
+    .description(
+      "Show or change the environment new threads of a project start in when their creator chooses none",
+    );
 
   attachment
     .command("upload <id>")
@@ -534,7 +644,10 @@ export function registerProjectCommands(
         });
         if (outputJson(opts, created)) return;
         console.log(`Project created: ${created.id}`);
-        printProject(created);
+        printProject(
+          created,
+          await describeProjectDefaultEnvironment(sdk, created),
+        );
       }),
     );
 
@@ -547,7 +660,10 @@ export function registerProjectCommands(
         const sdk = createCliBbSdk(getUrl());
         const found = await sdk.projects.get({ projectId: id });
         if (outputJson(opts, found)) return;
-        printProject(found);
+        printProject(
+          found,
+          await describeProjectDefaultEnvironment(sdk, found),
+        );
       }),
     );
 
@@ -568,7 +684,10 @@ export function registerProjectCommands(
         });
         if (outputJson(opts, updated)) return;
         console.log(`Project ${updated.id} updated`);
-        printProject(updated);
+        printProject(
+          updated,
+          await describeProjectDefaultEnvironment(sdk, updated),
+        );
       }),
     );
 
@@ -704,14 +823,118 @@ export function registerProjectCommands(
         },
       ),
     );
+
+  defaultEnvironment
+    .command("show <project-id>", { isDefault: true })
+    .description("Show the project's default environment")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          opts: ProjectDefaultEnvironmentCommandOptions,
+        ) => {
+          requireDefaultEnvironmentProject(projectId);
+          const sdk = createCliBbSdk(getUrl());
+          const found = await sdk.projects.get({ projectId });
+          if (outputJson(opts, found)) return;
+          const label = await describeDefaultEnvironment(
+            sdk,
+            found.defaultEnvironment,
+          );
+          for (const line of defaultEnvironmentLines(found, label)) {
+            console.log(line);
+          }
+        },
+      ),
+    );
+
+  defaultEnvironment
+    .command("set <project-id>")
+    .description(
+      "Start the project's new threads in an environment provider when their creator chooses none",
+    )
+    .requiredOption(
+      "--environment-provider <id>",
+      "Environment provider ID (list them with `bb environment providers --project <id>`)",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Existing machine ID or unambiguous name; required unless the provider creates its own machine",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          opts: ProjectDefaultEnvironmentSetCommandOptions,
+        ) => {
+          requireDefaultEnvironmentProject(projectId);
+          const serverUrl = getUrl();
+          const request = await buildDefaultEnvironmentRequest({
+            environmentProvider: opts.environmentProvider,
+            machineTarget: resolveMachineTargetOption(opts),
+            serverUrl,
+          });
+          const sdk = createCliBbSdk(serverUrl);
+          const updated = await sdk.projects.update({
+            projectId,
+            defaultEnvironment: request,
+          });
+          if (outputJson(opts, updated)) return;
+          const label = await describeDefaultEnvironment(
+            sdk,
+            updated.defaultEnvironment,
+          );
+          for (const line of defaultEnvironmentLines(updated, label)) {
+            console.log(line);
+          }
+        },
+      ),
+    );
+
+  defaultEnvironment
+    .command("reset <project-id>")
+    .description("Return the project to Automatic")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          opts: ProjectDefaultEnvironmentCommandOptions,
+        ) => {
+          requireDefaultEnvironmentProject(projectId);
+          const updated = await createCliBbSdk(getUrl()).projects.update({
+            projectId,
+            defaultEnvironment: null,
+          });
+          if (outputJson(opts, updated)) return;
+          console.log(
+            `Default environment reset: ${updated.name} is back to Automatic.`,
+          );
+        },
+      ),
+    );
 }
 
-function printProject(project: ProjectResponse): void {
+function printProject(
+  project: ProjectResponse,
+  defaultEnvironmentLabel: string | null,
+): void {
   console.log("");
   console.log(`  ID:       ${project.id}`);
   console.log(`  Name:     ${project.name}`);
   console.log(`  Created:  ${new Date(project.createdAt).toLocaleString()}`);
   console.log(`  Updated:  ${new Date(project.updatedAt).toLocaleString()}`);
+  if (defaultEnvironmentLabel !== null) {
+    for (const line of defaultEnvironmentLines(
+      project,
+      defaultEnvironmentLabel,
+    )) {
+      console.log(`  ${line}`);
+    }
+  }
   if (project.sources.length > 0) {
     console.log("  Sources:");
     for (const source of project.sources) {

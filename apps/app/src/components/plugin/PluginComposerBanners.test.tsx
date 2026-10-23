@@ -44,6 +44,36 @@ afterEach(() => {
 });
 
 describe("ComposerBannersSlot", () => {
+  it("keeps the owner's banner and drops plugin banners when contributions are excluded", () => {
+    setPluginSlotRegistrations(
+      "example-plugin",
+      registrations([
+        {
+          id: "notice",
+          banners: [{ id: "notice", component: () => <div>plugin notice</div> }],
+        },
+      ]),
+    );
+    const view = render(
+      <ComposerBannersSlot view={composerView("t1")}>
+        <div>owner banner</div>
+      </ComposerBannersSlot>,
+    );
+    expect(screen.getByText("plugin notice")).toBeTruthy();
+
+    view.rerender(
+      <ComposerBannersSlot
+        view={composerView("t1")}
+        includePluginContributions={false}
+      >
+        <div>owner banner</div>
+      </ComposerBannersSlot>,
+    );
+
+    expect(screen.queryByText("plugin notice")).toBeNull();
+    expect(screen.getByText("owner banner")).toBeTruthy();
+  });
+
   it("uses card chrome by default and leaves bare banners unwrapped", () => {
     setPluginSlotRegistrations(
       "example-plugin",

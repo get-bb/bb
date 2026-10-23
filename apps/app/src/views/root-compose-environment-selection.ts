@@ -1,9 +1,13 @@
 import {
   findLocalPathProjectSourceForHost,
+  type Host,
   type ProjectSource,
   type ThreadListEntry,
 } from "@bb/domain";
-import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import type {
+  ProjectResponse,
+  SystemEnvironmentProvider,
+} from "@bb/server-contract";
 import {
   PERSONAL_WORKSPACE_ENVIRONMENT_PROVIDER_ID,
   PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
@@ -296,4 +300,83 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   }
 
   return fallbackValue;
+}
+
+export interface UsableProjectDefaultEnvironment {
+  value: string;
+  hostId: string | null;
+}
+
+const AUTOMATIC_PROJECT_DEFAULT_ENVIRONMENT_LABEL = "Automatic";
+
+export function projectDefaultEnvironmentLabel({
+  defaultEnvironment,
+  providers,
+  hosts,
+}: {
+  defaultEnvironment: ProjectResponse["defaultEnvironment"];
+  providers:
+    | readonly Pick<SystemEnvironmentProvider, "id" | "displayName">[]
+    | undefined;
+  hosts: readonly Pick<Host, "id" | "name">[] | undefined;
+}): string {
+  if (defaultEnvironment === null) {
+    return AUTOMATIC_PROJECT_DEFAULT_ENVIRONMENT_LABEL;
+  }
+  const providerName =
+    providers?.find(
+      (provider) => provider.id === defaultEnvironment.environmentProviderId,
+    )?.displayName ?? defaultEnvironment.environmentProviderId;
+  const machine = defaultEnvironment.machine;
+  const hostName =
+    machine.type === "existing"
+      ? hosts?.find((host) => host.id === machine.hostId)?.name
+      : undefined;
+  return hostName === undefined
+    ? providerName
+    : `${hostName} · ${providerName}`;
+}
+
+interface ResolveUsableProjectDefaultEnvironmentArgs {
+  project: Pick<
+    ProjectResponse,
+    "defaultEnvironment" | "defaultEnvironmentProblem"
+  > | null;
+  environmentProviders: readonly SystemEnvironmentProvider[] | undefined;
+  environmentProvidersByHostId: ReadonlyMap<
+    string,
+    readonly SystemEnvironmentProvider[]
+  >;
+  knownHostIds: ReadonlySet<string>;
+}
+
+export function resolveUsableProjectDefaultEnvironment({
+  project,
+  environmentProviders,
+  environmentProvidersByHostId,
+  knownHostIds,
+}: ResolveUsableProjectDefaultEnvironmentArgs): UsableProjectDefaultEnvironment | null {
+  const defaultEnvironment = project?.defaultEnvironment ?? null;
+  if (defaultEnvironment === null || project?.defaultEnvironmentProblem) {
+    return null;
+  }
+  const provider = environmentProviders?.find(
+    (candidate) => candidate.id === defaultEnvironment.environmentProviderId,
+  );
+  if (provider === undefined) return null;
+  const value = encodeProviderValue(provider.id);
+  if (provider.machineProviderId) return { value, hostId: null };
+  const machine = defaultEnvironment.machine;
+  if (machine.type !== "existing" || !knownHostIds.has(machine.hostId)) {
+    return null;
+  }
+  const available =
+    environmentProvidersByHostId
+      .get(machine.hostId)
+      ?.some(
+        (candidate) =>
+          candidate.id === provider.id &&
+          candidate.availability?.status !== "unavailable",
+      ) ?? false;
+  return available ? { value, hostId: machine.hostId } : null;
 }

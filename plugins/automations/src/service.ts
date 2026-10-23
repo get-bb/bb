@@ -32,6 +32,7 @@ import {
   WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE,
   automationRunListResponseSchema,
   automationsOverviewResponseSchema,
+  projectDefaultEnvironmentStateSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationExecutionRequest,
@@ -43,6 +44,7 @@ import {
   type AutomationRunRpcResponse,
   type AutomationResponse,
   type AutomationScriptWorkingDirectory,
+  type AutomationsOverviewProject,
   type AutomationsOverviewResponse,
   type ListAutomationsInput,
   type ResolvedCreateAutomationInput,
@@ -65,6 +67,11 @@ import {
 } from "./script-files.js";
 import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
 import {
+  assertAgentOptionsFitModel,
+  TARGET_THREAD_OPTIONS_MESSAGE,
+} from "./agent-options.js";
+import { assertProviderEnvironmentRunnable } from "./provider-environment.js";
+import {
   createScriptWorkingDirectoryResolver,
   projectPathForHost,
 } from "./working-directory.js";
@@ -73,7 +80,8 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
-    providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
+    providers: Pick<BbPluginApi["sdk"]["providers"], "list" | "models">;
+    environments: Pick<BbPluginApi["sdk"]["environments"], "listProviders">;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
@@ -445,6 +453,9 @@ function applyAgentExecutionUpdate(
     );
   }
 
+  const providerChanged =
+    update.providerId !== undefined &&
+    update.providerId !== execution.providerId;
   const next = {
     ...execution,
     ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
@@ -464,9 +475,20 @@ function applyAgentExecutionUpdate(
   } else if (update.serviceTier !== undefined) {
     next.serviceTier = update.serviceTier;
   }
+  if (update.sessionOptions === null) {
+    delete next.sessionOptions;
+  } else if (update.sessionOptions !== undefined) {
+    next.sessionOptions = update.sessionOptions;
+  } else if (providerChanged) {
+    delete next.sessionOptions;
+  }
   if (update.target === undefined) return next;
   if (update.target.type === "target-thread") {
-    return { ...next, targetThreadId: update.target.threadId };
+    if (update.sessionOptions != null) {
+      throw new Error(TARGET_THREAD_OPTIONS_MESSAGE);
+    }
+    const { sessionOptions: _sessionOptions, ...withoutOptions } = next;
+    return { ...withoutOptions, targetThreadId: update.target.threadId };
   }
   const { targetThreadId: _targetThreadId, ...withoutTargetThread } = next;
   return {
@@ -490,9 +512,20 @@ function parseRunCursor(
   return { startedAt, id };
 }
 
-async function projectNameById(
+function toOverviewProject(
+  project: z.infer<typeof projectSummarySchema>,
+): AutomationsOverviewProject {
+  const defaults = projectDefaultEnvironmentStateSchema.safeParse(project);
+  return {
+    id: project.id,
+    name: project.name ?? project.id,
+    ...(defaults.success ? defaults.data : {}),
+  };
+}
+
+async function overviewProjectsById(
   bb: Pick<ServiceApi, "sdk" | "log">,
-): Promise<Map<string, string>> {
+): Promise<Map<string, AutomationsOverviewProject>> {
   try {
     const projects = projectSummaryListSchema.parse(
       await bb.sdk.projects.list({ includePersonal: true }),
@@ -503,7 +536,7 @@ async function projectNameById(
           (project) =>
             project.deletedAt === undefined || project.deletedAt === null,
         )
-        .map((project) => [project.id, project.name ?? project.id]),
+        .map((project) => [project.id, toOverviewProject(project)]),
     );
   } catch (error) {
     bb.log.warn(
@@ -568,17 +601,14 @@ export function createAutomationService(args: {
 
   return {
     async overview() {
-      const projects = await projectNameById(bb);
+      const projects = await overviewProjectsById(bb);
       const automations: AutomationsOverviewResponse["automations"] = [];
       for (const row of listAllAutomations(db)) {
-        const projectName = projects.get(row.projectId);
-        if (projects.size > 0 && projectName === undefined) continue;
+        const project = projects.get(row.projectId);
+        if (projects.size > 0 && project === undefined) continue;
         automations.push({
           automation: toStoredAutomationReadResult(bb, pluginDataDir, row),
-          project: {
-            id: row.projectId,
-            name: projectName ?? row.projectId,
-          },
+          project: project ?? { id: row.projectId, name: row.projectId },
         });
       }
       return automationsOverviewResponseSchema.parse({ automations });
@@ -614,6 +644,12 @@ export function createAutomationService(args: {
           payload.execution.permissionMode,
           providerRoutingForEnvironment(payload.execution.environment),
         );
+        await assertProviderEnvironmentRunnable(
+          bb,
+          payload.projectId,
+          payload.execution.environment,
+        );
+        await assertAgentOptionsFitModel(bb, payload.execution);
       }
       const automationId = createAutomationId();
       const stored = await resolveStoredExecution({
@@ -707,6 +743,12 @@ export function createAutomationService(args: {
             input.execution.permissionMode,
             providerRoutingForEnvironment(input.execution.environment),
           );
+          await assertProviderEnvironmentRunnable(
+            bb,
+            input.projectId,
+            input.execution.environment,
+          );
+          await assertAgentOptionsFitModel(bb, input.execution);
         }
         const stored = await resolveStoredExecution({
           pluginDataDir,
@@ -742,6 +784,21 @@ export function createAutomationService(args: {
             updatedExecution.permissionMode,
             providerRoutingForEnvironment(updatedExecution.environment),
           );
+        }
+        if (input.agent.target?.type === "environment") {
+          await assertProviderEnvironmentRunnable(
+            bb,
+            input.projectId,
+            input.agent.target.environment,
+          );
+        }
+        if (
+          input.agent.providerId !== undefined ||
+          input.agent.model !== undefined ||
+          input.agent.sessionOptions != null ||
+          input.agent.target?.type === "environment"
+        ) {
+          await assertAgentOptionsFitModel(bb, updatedExecution);
         }
         patch.execution = updatedExecution;
       }

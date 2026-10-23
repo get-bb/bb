@@ -8,7 +8,9 @@ import {
   experimental_InfoListRow as InfoListRow,
   experimental_InfoSection as InfoSection,
   experimental_THREAD_INFO_SECTION_GROUPS,
+  experimental_useSidebarThreads,
   useBbNavigate,
+  useEnvironmentProviders,
   useRealtime,
   useRpc,
   type ExperimentalThreadInfoProps,
@@ -39,6 +41,11 @@ import {
 } from "./lib/format-schedule";
 import { Icon } from "@/components/ui/icon";
 import { buildAutomationEditThreadPrompt } from "./lib/edit-prompt";
+import {
+  summarizeProjectDefaultEnvironment,
+  type ProjectDefaultEnvironmentSummary,
+} from "./lib/project-default-environment";
+import type { EnvironmentCatalog } from "./lib/automation-environment";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
@@ -326,6 +333,39 @@ function useAutomationsPageTitle({ subPath }: PluginNavPanelProps) {
         ],
       }
     : { title: subPath === "browse" ? "Browse" : "Installed" };
+}
+
+function useEnvironmentCatalog(): EnvironmentCatalog | null {
+  const environmentProviders = useEnvironmentProviders();
+  const machines = experimental_useSidebarThreads().experimental_hosts;
+  return useMemo(
+    () =>
+      environmentProviders.status === "ready"
+        ? { providers: environmentProviders.providers, machines: machines ?? [] }
+        : null,
+    [environmentProviders, machines],
+  );
+}
+
+function useProjectDefaultEnvironment(
+  project: OverviewEntry["project"] | undefined,
+  catalog: EnvironmentCatalog | null,
+): ProjectDefaultEnvironmentSummary | null {
+  return useMemo(() => {
+    if (
+      project?.defaultEnvironment === undefined ||
+      project.defaultEnvironmentProblem === undefined ||
+      catalog === null
+    ) {
+      return null;
+    }
+    return summarizeProjectDefaultEnvironment({
+      defaultEnvironment: project.defaultEnvironment,
+      defaultEnvironmentProblem: project.defaultEnvironmentProblem,
+      providers: catalog.providers,
+      machines: catalog.machines,
+    });
+  }, [project, catalog]);
 }
 
 interface RunsState {
@@ -624,6 +664,16 @@ function DetailView({
   const [actionPending, setActionPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const overviewEntry = overviewState.entries?.find(
+    (entry) =>
+      entry.automation.projectId === route.projectId &&
+      entry.automation.id === route.automationId,
+  );
+  const environmentCatalog = useEnvironmentCatalog();
+  const projectDefaultEnvironment = useProjectDefaultEnvironment(
+    overviewEntry?.project,
+    environmentCatalog,
+  );
 
   const openThread = useCallback(
     (threadId: string) => navigate.toThread(threadId),
@@ -770,11 +820,6 @@ function DetailView({
     automation.execution.mode === "agent" && automation.execution.prompt === "";
   const readableAutomation: AutomationDetailResponse = automation;
 
-  const overviewEntry = overviewState.entries?.find(
-    (entry) =>
-      entry.automation.projectId === route.projectId &&
-      entry.automation.id === route.automationId,
-  );
   const projectLabel =
     overviewEntry !== undefined
       ? automationProjectLabel(overviewEntry.project)
@@ -786,6 +831,8 @@ function DetailView({
     <AutomationDetailView
       automation={readableAutomation}
       projectLabel={projectLabel}
+      projectDefaultEnvironment={projectDefaultEnvironment}
+      environmentCatalog={environmentCatalog}
       runsState={runsState}
       actionPending={actionPending}
       editing={requiresPrompt || editingRequested}

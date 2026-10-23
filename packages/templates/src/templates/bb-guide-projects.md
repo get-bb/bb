@@ -35,6 +35,27 @@ A project maps to a code repository. All threads belong to a project.
   bb project delete <id>                  Delete project and all threads
     --yes                                 Skip confirmation
 
+Default environment:
+
+  bb project default-environment [show] <id>
+                                          Show it, and why it is unavailable
+  bb project default-environment set <id> --environment-provider <id>
+    --machine <id-or-name>                Existing machine for a provider that
+                                          does not create its own; refused for
+                                          one that does (--host is an alias)
+  bb project default-environment reset <id>
+                                          Return to Automatic
+
+  A thread created without an environment starts in its project's default
+  environment, except the child of a live thread of the project, which gets a
+  worktree on its parent's machine. Automatic (unset) keeps bb's own placement.
+  A Project checkout default gives such a thread a fresh worktree of the
+  default branch on that machine instead of the shared checkout (the checkout
+  itself when the project has no branch); the root composer still starts in
+  the checkout. A suspended default machine is woken. An unusable default
+  fails thread creation rather than falling back. Personal has no default
+  environment.
+
 Global prompt history:
 
   bb prompt-history list [--cursor <cursor>] [--limit <number>]

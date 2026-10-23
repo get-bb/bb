@@ -24,6 +24,8 @@ Design the script to print nothing when there is nothing to report: an exit-0 ru
 
 Use `agent` when the run needs reasoning: summarize a feed, pick interesting items, draft a human-friendly message, or branch on content.
 
+An agent run spawns a new thread, in the project's default environment unless `--environment`, `--new-environment`, or `--environment-provider` names another. These flags, `--machine`, `--new-machine`, and `--option` follow `bb thread spawn`, except that a machine defaults to the invoking thread's (see `references/creation.md`), must be persistent, and `--new-environment` takes only `worktree`. Agent options are checked against the model when you save, and an automation that re-prompts a thread takes none. Keep that for recurring work: each run starts from a clean context, and archiving a finished run's thread does not touch the automation. `--target-thread` re-prompts one thread instead: its context grows with every run, and archiving or deleting it disables the automation.
+
 Creating:
 
 ```bash

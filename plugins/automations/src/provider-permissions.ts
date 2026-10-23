@@ -20,6 +20,12 @@ export function providerRoutingForEnvironment(
   if (environment.type === "host" && environment.hostId !== undefined) {
     return { hostId: environment.hostId };
   }
+  if (
+    environment.type === "provider" &&
+    environment.machine?.type === "existing"
+  ) {
+    return { hostId: environment.machine.hostId };
+  }
   return {};
 }
 

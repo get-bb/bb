@@ -272,10 +272,13 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
     ).toBeNull();
   });
 
-  it("documented limits: unrepresentable variants seed nothing", () => {
-    expect(
-      newThreadEnvironmentArgsToSeed({ type: "project-default" }),
-    ).toBeNull();
+  it("keeps the project default instead of resolving a concrete environment", () => {
+    expect(roundTrip({ type: "project-default" })).toEqual({
+      type: "project-default",
+    });
+  });
+
+  it("documented limits: a host workspace without a host seeds nothing", () => {
     expect(
       newThreadEnvironmentArgsToSeed({
         type: "host",
