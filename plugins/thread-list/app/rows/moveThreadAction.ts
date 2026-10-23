@@ -27,7 +27,9 @@ function choiceId(sectionId: string | null): string {
   return sectionId ?? THREADS_CHOICE_ID;
 }
 
-function useMoveDestinations(): readonly ThreadSectionMoveDestination[] | null {
+export function useMoveDestinations():
+  | readonly ThreadSectionMoveDestination[]
+  | null {
   usePreferencesSync();
   const mode = useAtomValue(sidebarOrganizationModeAtom);
   const storedOrder = useAtomValue(sidebarManualSectionOrderAtom);

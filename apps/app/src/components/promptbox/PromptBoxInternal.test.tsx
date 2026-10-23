@@ -5486,10 +5486,12 @@ describe("ComposerBox prompt actions", () => {
         .spyOn(EditorView.prototype, "posAtCoords")
         .mockReturnValue(null);
       try {
-        const target = resolveThreadMentionDropTarget(100, 100, {
-          threadId: "thr_dropped",
-          label: "Dropped thread",
-        });
+        const target = resolveThreadMentionDropTarget(100, 100, [
+          {
+            threadId: "thr_dropped",
+            label: "Dropped thread",
+          },
+        ]);
         expect(target).not.toBeNull();
         act(() => target?.drop());
         await waitFor(() =>

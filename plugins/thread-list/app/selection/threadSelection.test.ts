@@ -1,0 +1,80 @@
+// @vitest-environment jsdom
+
+import { afterEach, describe, expect, it } from "vitest";
+import { ThreadSelectionStore } from "./threadSelection.js";
+
+const NONE = { metaKey: false, ctrlKey: false, shiftKey: false };
+const META = { ...NONE, metaKey: true };
+const SHIFT = { ...NONE, shiftKey: true };
+
+function renderSidebar(rows: readonly (string | readonly string[])[]): void {
+  const content = document.createElement("div");
+  content.setAttribute("data-sidebar", "content");
+  for (const row of rows) {
+    if (typeof row === "string") {
+      const link = document.createElement("a");
+      link.dataset.sidebarThreadId = row;
+      link.setAttribute("data-sidebar-thread-shortcut-target", "");
+      content.append(link);
+    } else {
+      const placeholder = document.createElement("div");
+      placeholder.setAttribute(
+        "data-sidebar-windowed-nav",
+        row.map((threadId) => `${threadId}:proj`).join(" "),
+      );
+      content.append(placeholder);
+    }
+  }
+  document.body.append(content);
+}
+
+function row(threadId: string): Element {
+  const element = document.querySelector(
+    `[data-sidebar-thread-id="${threadId}"]`,
+  );
+  if (element === null) throw new Error(`missing row ${threadId}`);
+  return element;
+}
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
+
+describe("ThreadSelectionStore", () => {
+  it("seeds a cmd-click selection with the open thread and toggles rows in list order", () => {
+    renderSidebar(["a", "b", "c", "d"]);
+    const store = new ThreadSelectionStore();
+    store.setActiveThreadId("c");
+
+    expect(store.handleClick("a", META, row("a"))).toBe(true);
+    expect(store.getSelected()).toEqual(["a", "c"]);
+    store.handleClick("d", META, row("d"));
+    expect(store.getSelected()).toEqual(["a", "c", "d"]);
+    store.handleClick("c", META, row("c"));
+    expect(store.getSelected()).toEqual(["a", "d"]);
+  });
+
+  it("shift-selects the range from the anchor, including windowed rows that are not mounted", () => {
+    renderSidebar(["a", ["b", "c"], "d", "e"]);
+    const store = new ThreadSelectionStore();
+    store.setActiveThreadId("a");
+
+    expect(store.handleClick("d", SHIFT, row("d"))).toBe(true);
+    expect(store.getSelected()).toEqual(["a", "b", "c", "d"]);
+    store.handleClick("e", META, row("e"));
+    store.handleClick("a", SHIFT, row("a"));
+    expect(store.getSelected()).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("re-anchors on a plain click, which clears the selection and lets the row open", () => {
+    renderSidebar(["a", "b", "c", "d"]);
+    const store = new ThreadSelectionStore();
+    store.handleClick("a", META, row("a"));
+    store.handleClick("b", META, row("b"));
+
+    expect(store.handleClick("c", NONE, row("c"))).toBe(false);
+    expect(store.getSelected()).toEqual([]);
+    store.handleClick("d", SHIFT, row("d"));
+    expect(store.getSelected()).toEqual(["c", "d"]);
+  });
+});

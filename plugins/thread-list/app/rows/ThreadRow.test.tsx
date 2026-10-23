@@ -52,6 +52,8 @@ const { SidebarDraftPresenceSync } =
   await import("../list/sidebarDraftPresence.js");
 const { ThreadRowNavigationProvider } =
   await import("./threadRowNavigation.js");
+const { ThreadSelectionProvider } =
+  await import("../selection/threadSelection.js");
 const {
   resetSidebarTitleDoubleClickForTest,
   SidebarProvidersContext,
@@ -123,6 +125,7 @@ function ThreadRowHarness({
       <TooltipProvider>
       <SidebarDraftPresenceSync />
       <ThreadRowNavigationProvider>
+      <ThreadSelectionProvider activeThreadId={null}>
         <SidebarRenameProvider>
           <CustomizeRowActionsContext.Provider
             value={onCustomizeRowActions ?? null}
@@ -147,6 +150,7 @@ function ThreadRowHarness({
             </ThreadRowActionsCustomizingContext.Provider>
           </CustomizeRowActionsContext.Provider>
         </SidebarRenameProvider>
+      </ThreadSelectionProvider>
       </ThreadRowNavigationProvider>
       </TooltipProvider>
       </SidebarProvidersContext.Provider>
@@ -421,14 +425,16 @@ describe("ThreadRow", () => {
   it.each([
     ["meta", { metaKey: true }],
     ["ctrl", { ctrlKey: true }],
-  ])("opens the thread in a split on %s-click", (_label, modifier) => {
+  ])("selects the row instead of opening it on %s-click", (_label, modifier) => {
     const slot = renderThreadRow();
     const link = screen.getByRole("link", { name: "Open Thread" });
-    const event = fireEvent.click(link, modifier);
-    expect(event).toBe(false);
-    expect(slot.inspection.navigateCalls).toEqual([
-      { method: "toThread", threadId: "thr_test", options: { split: true } },
-    ]);
+    const row = link.closest("[data-sidebar-rename-row]");
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    expect(fireEvent.click(link, modifier)).toBe(false);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+    expect(slot.inspection.navigateCalls).toEqual([]);
+    fireEvent.click(link, modifier);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
   });
 
   it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", async () => {
@@ -1617,12 +1623,14 @@ describe("ThreadRow", () => {
     });
     const link = screen.getByRole("link", { name: "Open Thread" });
 
+    const row = link.closest("[data-sidebar-rename-row]");
+
     expect(fireEvent.click(link)).toBe(false);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
     expect(fireEvent.click(link, { metaKey: true })).toBe(false);
     expect(consumeClickSuppression).toHaveBeenCalledTimes(2);
-    expect(slot.inspection.navigateCalls).toEqual([
-      { method: "toThread", threadId: "thr_test", options: { split: true } },
-    ]);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+    expect(slot.inspection.navigateCalls).toEqual([]);
   });
 
   it("starts a rename from a second click after the row remounts", async () => {

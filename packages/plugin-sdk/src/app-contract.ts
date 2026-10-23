@@ -2223,6 +2223,17 @@ export interface PluginSidebarSplitLayout {
   }[];
 }
 
+/** Options for {@link PluginSdkApp.experimental_useSidebarThreadSplit}. */
+export interface PluginSidebarThreadSplitOptions {
+  /**
+   * Every thread a drag from this row carries, in list order, when the row is
+   * part of a multi-row selection; include the row's own thread. With more
+   * than one thread the drag offers no split or replace targets and drops
+   * onto a composer as one mention per thread. Omit for a single-row drag.
+   */
+  dragThreadIds?: readonly string[];
+}
+
 /**
  * Drag-to-split support for one row, plus where that thread currently sits in
  * the split layout.
@@ -2776,11 +2787,14 @@ export interface ExperimentalComposerEditor {
   focus(): boolean;
   /** Focus the editor with the caret at the end of the draft. */
   focusEnd(): void;
-  /** Whether a thread dragged from the sidebar can be dropped now. */
+  /** Whether threads dragged from the sidebar can be dropped now. */
   acceptsThreadDrop(): boolean;
-  /** Insert a dropped thread at the viewport point `x`, `y`. */
-  insertDroppedThread(
-    thread: ExperimentalDroppedThreadMention,
+  /**
+   * Insert one mention per dropped thread, in order, starting at the viewport
+   * point `x`, `y`. A drag from a multi-row sidebar selection drops several.
+   */
+  insertDroppedThreads(
+    threads: readonly ExperimentalDroppedThreadMention[],
     x: number,
     y: number,
   ): void;
@@ -2825,7 +2839,7 @@ export interface ExperimentalComposerThreadLink extends ExperimentalComposerThre
   label: string;
 }
 
-/** The thread an app drag dropped onto the composer. */
+/** A thread an app drag dropped onto the composer. */
 export interface ExperimentalDroppedThreadMention {
   threadId: string;
   label: string;
@@ -5252,6 +5266,7 @@ export interface PluginSdkApp {
    */
   experimental_useSidebarThreadSplit(
     threadId: string,
+    options?: PluginSidebarThreadSplitOptions,
   ): PluginSidebarThreadSplit;
   /**
    * The sidebar navigation items in the user's saved order, the active item,

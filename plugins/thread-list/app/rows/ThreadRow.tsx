@@ -101,7 +101,13 @@ import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { ThreadRowQuickActions } from "./ThreadRowQuickActions.js";
 import { toThreadActionTarget } from "./threadActionTarget.js";
-import { useOpenThreadInSplit } from "./threadRowNavigation.js";
+import {
+  useIsSelectionHidingActiveRow,
+  useIsThreadSelected,
+  useMultiSelectionContaining,
+  useThreadSelectionStore,
+} from "../selection/threadSelection.js";
+import { ThreadSelectionContextMenu } from "../selection/ThreadSelectionContextMenu.js";
 import { Button } from "@/components/ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import {
@@ -174,6 +180,7 @@ interface ThreadRowContainerArgs {
   dragBindings?: SidebarSortableDragBindings;
   nestTargetState: SidebarNestTargetState | null;
   reorderPlacement: SidebarReorderPlacement | null;
+  selected: boolean;
   onClick?: MouseEventHandler<HTMLDivElement>;
   onClickCapture?: ThreadRowClickCaptureHandler;
   onSplitDragPointerDown?: PointerEventHandler<HTMLElement>;
@@ -218,6 +225,7 @@ function renderThreadRowContainer({
   onClickCapture,
   onSplitDragPointerDown,
   reorderPlacement,
+  selected,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
@@ -227,6 +235,7 @@ function renderThreadRowContainer({
     style,
     "data-sidebar-nest-target": nestTargetState ?? undefined,
     "data-sidebar-reorder-placement": reorderPlacement ?? undefined,
+    "data-sidebar-thread-selected": selected ? "" : undefined,
     ...dragBindings?.attributes,
     ...(dragBindings?.listeners ?? {}),
     onClick,
@@ -373,7 +382,10 @@ function ThreadRowComponent({
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const sdk = useSdk();
-  const openThreadInSplit = useOpenThreadInSplit();
+  const selectionStore = useThreadSelectionStore();
+  const isSelected = useIsThreadSelected(thread.id);
+  const selectionHidesActive = useIsSelectionHidingActiveRow(isActive);
+  const multiSelection = useMultiSelectionContaining(thread.id);
   const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
   const providers = useContext(SidebarProvidersContext);
   const provider = showProviderIcons
@@ -384,7 +396,7 @@ function ThreadRowComponent({
   const { hasUnsubmittedDraft: hasComposerDraft } = useSidebarThreadDraft(
     thread.id,
   );
-  const showActive = isActive;
+  const showActive = isSelected || (isActive && !selectionHidesActive);
   const threadStatus = threadListIndicatorStateForThread(
     thread,
     hasComposerDraft,
@@ -424,12 +436,11 @@ function ThreadRowComponent({
   );
   const miniMap = useThreadSplitMiniMap(thread.id);
   const isOpenInSplit = miniMap !== null;
-  const split = experimental_useSidebarThreadSplit(thread.id);
+  const split = experimental_useSidebarThreadSplit(
+    thread.id,
+    multiSelection === null ? undefined : { dragThreadIds: multiSelection },
+  );
   const onSplitDragPointerDown = split.splitProps.onPointerDown;
-  const splitAvailable = split.isAvailable;
-  const openInSplit = useCallback(() => {
-    openThreadInSplit(thread.id);
-  }, [openThreadInSplit, thread.id]);
   const rowActionKeys = useAtomValue(threadRowActionsAtom);
   const actionTarget = toThreadActionTarget(thread);
   const quickActions = experimental_useThreadActions(actionTarget, {
@@ -579,9 +590,12 @@ function ThreadRowComponent({
         if (!event.target.closest("[data-sidebar-thread-trailing]")) return;
         if (event.target.closest("a, button")) return;
       }
+      if (selectionStore.handleClick(thread.id, event, event.currentTarget)) {
+        return;
+      }
       rowLinkRef.current?.click();
     },
-    [],
+    [selectionStore, thread.id],
   );
   const handleActionsMenuCloseAutoFocus = (event: Event) => {
     const begin = pendingMenuCustomize.current;
@@ -630,9 +644,11 @@ function ThreadRowComponent({
               event.stopPropagation();
               return;
             }
-            if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+            if (
+              selectionStore.handleClick(thread.id, event, event.currentTarget)
+            ) {
               event.preventDefault();
-              openInSplit();
+              event.stopPropagation();
               return;
             }
             if (
@@ -878,6 +894,7 @@ function ThreadRowComponent({
     dragBindings: rowDragBindings,
     nestTargetState,
     reorderPlacement,
+    selected: isSelected,
     onClick: isEditing ? undefined : handleRowClick,
     onClickCapture:
       !isEditing && options.consumeClickSuppression
@@ -895,10 +912,20 @@ function ThreadRowComponent({
       requestRename={requestRenameFromMenu}
       onOpenChange={setIsContextActionsOpen}
       onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
-      disabled={isEditing}
+      disabled={isEditing || multiSelection !== null}
       dragging={rowDragBindings?.isDragging ?? false}
     >
-      {row}
+      <ThreadSelectionContextMenu
+        threadIds={multiSelection}
+        onOpenChange={setIsContextActionsOpen}
+        disabled={
+          multiSelection === null ||
+          isEditing ||
+          (rowDragBindings?.isDragging ?? false)
+        }
+      >
+        {row}
+      </ThreadSelectionContextMenu>
     </ThreadActionsContextMenu>
   );
 }

@@ -181,8 +181,8 @@ export function ComposerRoot({
       element.closest<HTMLElement>("[data-promptbox-shell]") ?? element;
     const unregisterDrop = registerThreadMentionDropTarget(dropTarget, {
       accepts: () => editorRef.current.acceptsThreadDrop(),
-      insert: (thread, x, y) =>
-        editorRef.current.insertDroppedThread(thread, x, y),
+      insert: (threads, x, y) =>
+        editorRef.current.insertDroppedThreads(threads, x, y),
     });
     return () => {
       unregisterFocus();

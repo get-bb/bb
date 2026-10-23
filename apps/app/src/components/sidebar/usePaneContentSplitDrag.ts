@@ -1,4 +1,7 @@
-import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
+import {
+  resolveThreadMentionDropTarget,
+  type DroppedThreadMention,
+} from "@/lib/thread-mention-drop";
 import {
   useCallback,
   useMemo,
@@ -141,6 +144,7 @@ interface BeginSidebarPaneContentSplitDragArgs {
   onNavigate?: () => void;
   onDragStart?: () => void;
   dragActivation?: "sidebar" | "distance";
+  mentionThreads?: readonly DroppedThreadMention[];
 }
 
 export function beginSidebarPaneContentSplitDrag({
@@ -152,6 +156,9 @@ export function beginSidebarPaneContentSplitDrag({
   onNavigate,
   onDragStart,
   dragActivation = "sidebar",
+  mentionThreads = content.kind === "thread"
+    ? [{ threadId: content.threadId, label }]
+    : [],
 }: BeginSidebarPaneContentSplitDragArgs): void {
   const rowEl = event.currentTarget;
   const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
@@ -159,17 +166,14 @@ export function beginSidebarPaneContentSplitDrag({
   const startX = event.clientX;
   const startY = event.clientY;
   const startLayout = store.get(splitLayoutAtom);
-  const fallback = singlePaneFallback(startLayout);
+  const mentionsOnly = mentionThreads.length > 1;
+  const fallback = mentionsOnly ? null : singlePaneFallback(startLayout);
   beginSplitDrag({
     ghostLabel: label,
     cancelSidebarReorderOnEngage: true,
     resolveAuxiliaryTarget:
-      content.kind === "thread"
-        ? (x, y) =>
-            resolveThreadMentionDropTarget(x, y, {
-              threadId: content.threadId,
-              label,
-            })
+      mentionThreads.length > 0
+        ? (x, y) => resolveThreadMentionDropTarget(x, y, mentionThreads)
         : undefined,
     sourceEl: rowEl,
     fadeSourceOnEngage: false,
@@ -188,7 +192,7 @@ export function beginSidebarPaneContentSplitDrag({
           }),
     decide: (_paneId, zone) => {
       const layout = store.get(splitLayoutAtom);
-      if (layout === null) return null;
+      if (layout === null || mentionsOnly) return null;
       return decideThreadDrop({
         zone,
         threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,

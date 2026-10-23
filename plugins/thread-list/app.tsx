@@ -1,10 +1,14 @@
-import { definePluginApp, type PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import {
+  definePluginApp,
+  type PluginThreadListProps,
+} from "@get-bb/plugin-sdk/app";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PreferencesSync } from "./app/preferences/PreferencesSync.js";
 import { ProjectList } from "./app/list/ProjectList.js";
 import { useSidebarThreadReveal } from "./app/list/useSidebarThreadReveal.js";
 import { moveThreadAction } from "./app/rows/moveThreadAction.js";
+import { ThreadSelectionProvider } from "./app/selection/threadSelection.js";
 
 function ThreadList({
   activeThreadId,
@@ -16,10 +20,12 @@ function ThreadList({
     <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
       <TooltipProvider>
         <PreferencesSync />
-        <ProjectList
-          activeThreadId={activeThreadId}
-          onProjectSelect={onNavigate}
-        />
+        <ThreadSelectionProvider activeThreadId={activeThreadId}>
+          <ProjectList
+            activeThreadId={activeThreadId}
+            onProjectSelect={onNavigate}
+          />
+        </ThreadSelectionProvider>
       </TooltipProvider>
     </CompactViewportOverrideProvider>
   );

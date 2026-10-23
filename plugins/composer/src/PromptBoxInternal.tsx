@@ -2387,15 +2387,13 @@ export function PromptBoxInternal({
     ({
       editor: targetEditor,
       range,
-      mention,
-      serializedText,
+      pills,
       trailingText,
       dismissedTrigger,
     }: {
       editor: Editor;
       range: { from: number; to: number };
-      mention: MentionTarget;
-      serializedText: string;
+      pills: readonly { mention: MentionTarget; serializedText: string }[];
       trailingText: string;
       dismissedTrigger: DismissedTriggerRange | null;
     }) => {
@@ -2412,13 +2410,16 @@ export function PromptBoxInternal({
           .focus()
           .deleteRange(range)
           .insertContent([
-            {
-              type: "mention",
-              attrs: {
-                mention,
-                serializedText,
-              } satisfies PromptEditorMentionAttrs,
-            },
+            ...pills.flatMap(({ mention, serializedText }, index) => [
+              ...(index > 0 ? [{ type: "text", text: " " }] : []),
+              {
+                type: "mention",
+                attrs: {
+                  mention,
+                  serializedText,
+                } satisfies PromptEditorMentionAttrs,
+              },
+            ]),
             ...(trailingText ? [{ type: "text", text: trailingText }] : []),
           ])
           .run();
@@ -2430,22 +2431,29 @@ export function PromptBoxInternal({
     [finishApply, setComposerMenu],
   );
 
-  const insertDroppedThread = useCallback(
-    (thread: ExperimentalDroppedThreadMention, x: number, y: number) => {
+  const insertDroppedThreads = useCallback(
+    (
+      threads: readonly ExperimentalDroppedThreadMention[],
+      x: number,
+      y: number,
+    ) => {
       const currentEditor = editorRef.current;
-      if (!currentEditor || currentEditor.isDestroyed) return;
+      if (!currentEditor || currentEditor.isDestroyed || threads.length === 0)
+        return;
       const position =
         currentEditor.view.posAtCoords({ left: x, top: y })?.pos ??
         currentEditor.state.selection.to;
       insertPromptMentionPill({
         editor: currentEditor,
         range: { from: position, to: position },
-        mention: {
-          kind: "thread",
-          threadId: thread.threadId,
-          label: thread.label,
-        },
-        serializedText: `@thread:${thread.threadId}`,
+        pills: threads.map((thread) => ({
+          mention: {
+            kind: "thread",
+            threadId: thread.threadId,
+            label: thread.label,
+          },
+          serializedText: `@thread:${thread.threadId}`,
+        })),
         trailingText: mentionPillTrailingText(
           currentEditor.state.doc,
           position,
@@ -2465,10 +2473,14 @@ export function PromptBoxInternal({
       insertPromptMentionPill({
         editor: currentEditor,
         range: { from: activeTrigger.from, to: activeTrigger.to },
-        mention: item.mention,
-        serializedText: replacement.startsWith(activeTrigger.char)
-          ? replacement
-          : `${activeTrigger.char}${replacement}`,
+        pills: [
+          {
+            mention: item.mention,
+            serializedText: replacement.startsWith(activeTrigger.char)
+              ? replacement
+              : `${activeTrigger.char}${replacement}`,
+          },
+        ],
         trailingText: mentionPillTrailingText(
           currentEditor.state.doc,
           activeTrigger.to,
@@ -2496,8 +2508,12 @@ export function PromptBoxInternal({
       insertPromptMentionPill({
         editor: currentEditor,
         range: { from: activeTrigger.from, to: activeTrigger.to },
-        mention: commandMentionTarget(item, activeTrigger.char),
-        serializedText: `${activeTrigger.char}${item.name}`,
+        pills: [
+          {
+            mention: commandMentionTarget(item, activeTrigger.char),
+            serializedText: `${activeTrigger.char}${item.name}`,
+          },
+        ],
         trailingText,
         dismissedTrigger: {
           start: activeTrigger.from,
@@ -2825,7 +2841,7 @@ export function PromptBoxInternal({
           currentEditor.isEditable
         );
       },
-      insertDroppedThread,
+      insertDroppedThreads,
       focusEnd,
       voice: composerVoice,
       openPopup: openPopupForPlugin,
@@ -2842,7 +2858,7 @@ export function PromptBoxInternal({
     [
       composerEditorState,
       insertAtCursorForPlugin,
-      insertDroppedThread,
+      insertDroppedThreads,
       focusEnd,
       composerVoice,
       openPopupForPlugin,

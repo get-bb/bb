@@ -50,6 +50,7 @@ function dndState(
 ): SectionThreadDndState {
   return {
     activeItemId: activeThread?.id ?? null,
+    draggedThreadIds: null,
     activeThread,
     dragOverParentKey,
     unchangedParentKey,

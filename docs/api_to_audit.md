@@ -2485,7 +2485,11 @@ Docs: `frontend-registration.md`.
    host's engage threshold; that `splitProps` staying an open object is the
    right forward-compatible shape, or whether it should narrow to a named
    handler; and that exposing the full `panes` array does not leak more
-   layout state than a row needs.
+   layout state than a row needs. `options.dragThreadIds` lets a row in a
+   multi-row selection carry every selected thread: such a drag offers no
+   split targets and drops onto a composer as one mention per thread (the
+   built-in thread list is the caller). Confirm a mentions-only multi-drag is
+   right, or whether it should open several panes.
 9. **Archive selection and machine list.** Audit archive-only
    loading/errors, combined views, pagination retries, and archived row
    actions. Audit empty machine sections, machine removal, rename updates, and
