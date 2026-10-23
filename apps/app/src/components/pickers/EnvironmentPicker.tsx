@@ -92,6 +92,7 @@ export interface EnvironmentPickerUIProps {
   ) => void;
   onSelectHost?: (hostId: string) => void;
   onSelectReuse?: () => void;
+  displayOverride?: { label: string; icon?: IconName };
 }
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
@@ -214,6 +215,7 @@ export function EnvironmentPickerUI({
   onSelectProvider,
   onSelectHost,
   onSelectReuse,
+  displayOverride,
 }: EnvironmentPickerUIProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(
     defaultOpen ?? false,
@@ -353,6 +355,14 @@ export function EnvironmentPickerUI({
     selectedMachineName,
     selectedProvider,
   ]);
+  const display: SelectedEnvironment =
+    displayOverride === undefined
+      ? selected
+      : {
+          modeLabel: displayOverride.label,
+          compactModeLabel: displayOverride.label,
+          icon: displayOverride.icon ?? selected.icon,
+        };
   const pickerOpen = open ?? uncontrolledOpen;
   const handleOpenChange = (nextOpen: boolean) => {
     setUncontrolledOpen(nextOpen);
@@ -402,7 +412,7 @@ export function EnvironmentPickerUI({
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
             {selectedProvider === undefined ? (
               <Icon
-                name={isLoading ? "Spinner" : selected.icon}
+                name={isLoading ? "Spinner" : display.icon}
                 className={cn(
                   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
                   isLoading && "animate-spin",
@@ -426,14 +436,14 @@ export function EnvironmentPickerUI({
             ) : (
               <>
                 <span className="min-w-0 truncate" data-promptbox-full-label="">
-                  {selected.modeLabel}
+                  {display.modeLabel}
                 </span>
                 <span
                   className="min-w-0 truncate"
                   data-promptbox-compact-label=""
                   data-promptbox-hide-tiny=""
                 >
-                  {selected.compactModeLabel}
+                  {display.compactModeLabel}
                 </span>
               </>
             )}

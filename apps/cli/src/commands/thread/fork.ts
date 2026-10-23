@@ -131,7 +131,7 @@ export function registerForkCommand(
     )
     .option(
       "--base-branch <branch>",
-      "Exact Git ref; omit for bb's project default (use origin/<branch> for a remote ref)",
+      "Exact Git ref; omit for the project's default branch (use origin/<branch> for a remote ref)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")

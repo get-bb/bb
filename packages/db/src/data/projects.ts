@@ -304,7 +304,10 @@ export function updateProject(
   const now = Date.now();
   const updated = db
     .update(projects)
-    .set({ ...input, updatedAt: now })
+    .set({
+      ...(input.name === undefined ? {} : { name: input.name }),
+      updatedAt: now,
+    })
     .where(eq(projects.id, id))
     .returning()
     .get();

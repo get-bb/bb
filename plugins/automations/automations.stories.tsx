@@ -8,6 +8,10 @@ import {
   RunRow,
 } from "./detail-view";
 import { AUTOMATION_CREATE_TEMPLATES, OverviewRow } from "./overview-view";
+import {
+  summarizeProjectDefaultEnvironment,
+  type ProjectDefaultEnvironmentSummary,
+} from "./lib/project-default-environment";
 import type {
   AutomationDetailResponse,
   AutomationResponse,
@@ -306,10 +310,12 @@ function PromptVariant({
   value,
   editable = false,
   projectLabel,
+  projectDefaultEnvironment = null,
 }: {
   value: AutomationResponse;
   editable?: boolean;
   projectLabel?: string;
+  projectDefaultEnvironment?: ProjectDefaultEnvironmentSummary | null;
 }) {
   const [execution, setExecution] = useState(value.execution);
   const [editing, setEditing] = useState(editable);
@@ -324,6 +330,7 @@ function PromptVariant({
           projectLabel ??
           (value.projectId === "proj_personal" ? "Personal" : "bb")
         }
+        projectDefaultEnvironment={projectDefaultEnvironment}
         pending={false}
         onCancel={() => setEditing(false)}
         onUpdate={async (update) => {
@@ -498,6 +505,18 @@ export function OverviewStates() {
   );
 }
 
+const STORY_ENVIRONMENT_PROVIDERS = [
+  {
+    id: "git-worktree",
+    displayName: "Worktree",
+    icon: "FolderGit",
+    logoUrl: null,
+  },
+  { id: "berth", displayName: "Berth", icon: "Cloud", logoUrl: null },
+];
+
+const STORY_MACHINES = [{ id: "host_story_david", name: "david" }];
+
 function environmentVariant(
   environment: AgentEnvironment,
   targetThreadId?: string,
@@ -556,10 +575,80 @@ export function DetailStates() {
       </StoryRow>
       <StoryRow
         label="Use project defaults"
-        hint="No explicit workspace is configured. Shows Project default metadata."
+        hint="No explicit workspace is configured and the project's default environment is still loading. Shows Project default metadata."
       >
         <PromptVariant
           value={environmentVariant({ type: "project-default" })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Automatic project default"
+        hint="The project has no default environment, so bb picks the machine. Shows Project default · Automatic."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: null,
+            defaultEnvironmentProblem: null,
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Composition project default"
+        hint="The project default starts a new machine. Shows the composition name and the pickers keep primary routing."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: {
+              type: "provider",
+              environmentProviderId: "berth",
+              machine: { type: "new" },
+            },
+            defaultEnvironmentProblem: null,
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Machine project default"
+        hint="The project default is a worktree on an enrolled machine. Shows the provider and machine names."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: {
+              type: "provider",
+              environmentProviderId: "git-worktree",
+              machine: { type: "existing", hostId: "host_story_david" },
+            },
+            defaultEnvironmentProblem: null,
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Unavailable project default"
+        hint="The project default's machine was removed. Shows a warning and the server's reason; runs fail until it is fixed."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+          projectDefaultEnvironment={summarizeProjectDefaultEnvironment({
+            defaultEnvironment: {
+              type: "provider",
+              environmentProviderId: "git-worktree",
+              machine: { type: "existing", hostId: "host_story_removed" },
+            },
+            defaultEnvironmentProblem: {
+              message: "its machine no longer exists",
+            },
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            machines: STORY_MACHINES,
+          })}
         />
       </StoryRow>
       <StoryRow
@@ -765,6 +854,7 @@ export function FailureStates() {
             onRunNow={noop}
             onDelete={noop}
             onOpenThread={noop}
+            projectDefaultEnvironment={null}
           />
         </div>
       </StoryRow>

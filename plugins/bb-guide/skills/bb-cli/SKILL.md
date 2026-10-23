@@ -30,7 +30,7 @@ bb status --json
 | Stop, clear, compact, retry, archive, or delete threads                 | `bb guide thread-lifecycle`    |
 | Worktree setup hooks, environment inspection, commits, pull requests    | `bb guide environments`        |
 | Enroll, create, update, suspend, or remove machines; move the server    | `bb guide machines`            |
-| Projects, sources, attachments, project files                           | `bb guide projects`            |
+| Projects, sources, default environments, attachments, project files     | `bb guide projects`            |
 | Providers, models, service tiers, custom models                         | `bb guide providers`           |
 | Dev servers and other long-running commands                             | `bb guide terminals`           |
 | Settings, keyboard shortcuts, sidebar preferences, themes, files, voice | `bb guide customization`       |
@@ -61,6 +61,8 @@ A plugin's commands and settings are documented in that plugin's own skill.
   backticks and `$(...)` before bb sees the text.
 - Prefer non-interactive commands. Pass `--yes` only for a destructive command
   the user confirmed.
+- Change a project's default environment only when the user asks: automations
+  and other background threads start in it too.
 - Inspect real status, logs, and diffs instead of assuming.
 - Examples use POSIX shell syntax. In PowerShell, read an environment variable
   as `$env:NAME`, separate commands with `;`, and continue a line with a

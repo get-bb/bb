@@ -16,3 +16,10 @@ bb tasks preset create --name "Codex high" --provider codex \
 
 `preset update` accepts the same flags; `--clear-service-tier` clears a tier.
 Do not combine it with `--service-tier`; `none` is a literal tier id.
+
+`--environment project-default`, the default, starts each dispatched thread in
+the default environment of the task's bb project, or Automatic when the project
+has none; dispatch fails while that default is unavailable.
+`--environment worktree` creates a new worktree from `--base-branch` on
+`--machine` (the project's default branch and the primary machine when
+omitted).

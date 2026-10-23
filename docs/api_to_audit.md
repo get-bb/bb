@@ -3563,3 +3563,21 @@ Stabilize after exercising producer cancellation, reload, reconnect and byte lim
 - **Core callers:** `ThreadPromptContextBanner` (`apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx`) registers the parent thread (summary and details, including read-only history) and changed files (summary, merge-base action, details) through `definePluginApp` and the same collector, and renders them with plugin registrations through `useThreadContextSegments` and `ThreadContextSegmentMount` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`). Core segments read pane-local data from a React context and render without a plugin crash boundary, as core Info rows do. The GitHub PR Status plugin registers the pull request segment in its own group `2_pullRequest`, between core's two and its Mark ready and merge actions. Active child threads are a separate core row above the context row (`ThreadChildThreadsBanner`), not a segment. Contract tests: `ThreadPromptContextBanner.segments.test.tsx`.
 - **Known coupling:** `environment` folds in the "Show Git changes and Commit button" setting so the pull request segment hides with core's changed files, as before; that setting should become the git plugin's own when changed files move out of core.
 - **Stabilization:** audit per-component mounts and crash recovery across reloads and plugin disable, `segments` stability while visibility settles, focus handoff between a plugin's summary and details, independent panes, and compact widths with several plugin segments. Then rename project-wide and remove this entry.
+
+## Project default environment
+
+`bb.sdk.projects.update` accepts `defaultEnvironment`: a provider environment,
+or null to return the project to Automatic. Project responses expose
+`defaultEnvironment` and `defaultEnvironmentProblem`, the server's reason the
+stored default cannot start a thread. These are data fields on existing SDK
+methods, so they carry no prefix. A thread created with `project-default`
+starts in the stored environment; a Project checkout default gives it a fresh
+worktree on that machine instead, and an unusable default refuses creation
+with HTTP 409 `project_default_environment_unavailable`. The root composer,
+Project settings, `bb project default-environment`, and the Automations plugin
+read and write these same fields.
+
+Audit before stabilization: providers, compositions, and machines removed
+while they are a default; compositions whose machine inputs become required;
+the composer's precedence over browser memory; and whether a default should
+ever carry inputs.
