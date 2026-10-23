@@ -19,6 +19,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { DatabaseRestoreIcon } from "./icons/database-restore.js";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
   DropdownMenu,
@@ -433,7 +434,7 @@ function StoragePage({
   const report = detail?.report;
   const missingDev =
     report?.developerStorage?.entries.filter(
-      (entry) => entry.sourcePathState === "missing",
+      (entry) => entry.sourcePathState === "missing" && !entry.current,
     ) ?? [];
   const externalBytes =
     report?.externalWorktrees.reduce(
@@ -1170,6 +1171,57 @@ function StoragePage({
                     rowActions={rowActions}
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
+                    onRemoveSelected={(entries) => {
+                      const size = entries.reduce(
+                        (total, entry) => total + entry.sizeBytes,
+                        0,
+                      );
+                      const running = entries.filter(
+                        (entry) => entry.running,
+                      ).length;
+                      setCleanup({
+                        key: "dev-selected",
+                        feedback: {
+                          title: "Deleting development data",
+                          completed: "Development data deleted",
+                          failed: "Couldn’t delete development data",
+                          description: plural(
+                            entries.length,
+                            "development instance",
+                          ),
+                        },
+                        action: "Remove instances",
+                        title: `Remove ${plural(entries.length, "development instance")} (${bytes(size)})?`,
+                        detail: `Delete their databases, logs, and thread files. Source checkouts are kept.${running > 0 ? ` ${plural(running, "dev server")} running at the last scan ${running === 1 ? "is" : "are"} stopped first.` : ""} This can’t be undone.`,
+                        run: async () => {
+                          let removedCount = 0;
+                          let removedBytes = 0;
+                          for (
+                            let offset = 0;
+                            offset < entries.length;
+                            offset += 500
+                          ) {
+                            const result = await rpc.call(
+                              "removeDevInstances",
+                              {
+                                hostId: report.hostId,
+                                names: entries
+                                  .slice(offset, offset + 500)
+                                  .map((entry) => entry.name),
+                                stopRunning: true,
+                              },
+                            );
+                            removedCount += result.removedCount;
+                            removedBytes += result.removedBytes;
+                          }
+                          if (removedCount === 0)
+                            throw new Error(
+                              "No data was deleted. Rescan the machine to update its status.",
+                            );
+                          return `${plural(removedCount, "instance")} removed · ${bytes(removedBytes)} freed`;
+                        },
+                      });
+                    }}
                     onRemove={(entry, label) =>
                       void runRowAction(
                         `dev:${entry.name}`,
@@ -2126,6 +2178,7 @@ function DeveloperStorage({
   confirmationKey,
   confirmation,
   onRemove,
+  onRemoveSelected,
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
   rowDisabled: boolean;
@@ -2133,6 +2186,7 @@ function DeveloperStorage({
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (entry: DeveloperEntry, label: string) => void;
+  onRemoveSelected: (entries: DeveloperEntry[]) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -2152,14 +2206,35 @@ function DeveloperStorage({
   const unresolved = storage.entries.filter(
     (entry) => entry.sourcePath === null,
   );
+  const archived = storage.entries.filter(
+    (entry) =>
+      entry.threads.length > 0 &&
+      entry.threads.every((thread) => thread.archived),
+  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const selectedEntries = storage.entries.filter((entry) =>
+    selected.has(entry.name),
+  );
+  const setSelection = (entries: DeveloperEntry[], checked: boolean) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const entry of entries)
+        if (checked && !entry.current) next.add(entry.name);
+        else next.delete(entry.name);
+      return next;
+    });
+  const selectable = (entries: DeveloperEntry[]) =>
+    entries.filter((entry) => !entry.current);
   const filtered =
     filter === "missing"
       ? missing
-      : filter === "unlinked"
-        ? unlinked
-        : filter === "unresolved"
-          ? unresolved
-          : storage.entries;
+      : filter === "archived"
+        ? archived
+        : filter === "unlinked"
+          ? unlinked
+          : filter === "unresolved"
+            ? unresolved
+            : storage.entries;
   const groups = [
     {
       title: "Linked threads",
@@ -2227,6 +2302,9 @@ function DeveloperStorage({
               <SelectItem value="missing">
                 Missing checkouts ({missing.length})
               </SelectItem>
+              <SelectItem value="archived">
+                Archived threads only ({archived.length})
+              </SelectItem>
               <SelectItem value="unlinked">
                 Other instances ({unlinked.length})
               </SelectItem>
@@ -2236,23 +2314,80 @@ function DeveloperStorage({
             </SelectContent>
           </Select>
         </div>
+        {selectedEntries.length > 0 && (
+          <div className="space-y-3">
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2"
+            >
+              <p className="text-xs tabular-nums">
+                {plural(selectedEntries.length, "instance")} selected ·{" "}
+                {bytes(
+                  selectedEntries.reduce(
+                    (total, entry) => total + entry.sizeBytes,
+                    0,
+                  ),
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Clear selection
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={rowDisabled}
+                  onClick={() => onRemoveSelected(selectedEntries)}
+                >
+                  Remove selected
+                </Button>
+              </div>
+            </div>
+            {confirmationKey === "dev-selected" && confirmation}
+          </div>
+        )}
         <div className="divide-y divide-border border-t border-border">
           {groups
             .filter((group) => group.entries.length > 0)
             .map((group) => (
               <div key={group.title} className="py-3">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  {group.title}{" "}
-                  <span className="font-normal tabular-nums text-muted-foreground">
-                    ({group.entries.length.toLocaleString()})
-                  </span>
-                  {group.description && (
-                    <span className="font-normal text-subtle-foreground/75">
-                      {" "}
-                      · {group.description}
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    aria-label={`Select all ${group.title.toLowerCase()}`}
+                    checked={
+                      selectable(group.entries).length > 0 &&
+                      selectable(group.entries).every((entry) =>
+                        selected.has(entry.name),
+                      )
+                        ? true
+                        : group.entries.some((entry) =>
+                              selected.has(entry.name),
+                            )
+                          ? "indeterminate"
+                          : false
+                    }
+                    onCheckedChange={(checked) =>
+                      setSelection(selectable(group.entries), checked === true)
+                    }
+                    disabled={selectable(group.entries).length === 0}
+                  />
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {group.title}{" "}
+                    <span className="font-normal tabular-nums text-muted-foreground">
+                      ({group.entries.length.toLocaleString()})
                     </span>
-                  )}
-                </h3>
+                    {group.description && (
+                      <span className="font-normal text-subtle-foreground/75">
+                        {" "}
+                        · {group.description}
+                      </span>
+                    )}
+                  </h3>
+                </div>
                 <div className="mt-2 space-y-3">
                   {(expandedGroups.has(group.title)
                     ? group.entries
@@ -2264,6 +2399,15 @@ function DeveloperStorage({
                     return (
                       <div key={entry.name} className="space-y-3">
                         <div className="flex items-start justify-between gap-3">
+                          <Checkbox
+                            className="mt-0.5"
+                            aria-label={`Select ${label}`}
+                            disabled={entry.current}
+                            checked={selected.has(entry.name)}
+                            onCheckedChange={(checked) =>
+                              setSelection([entry], checked === true)
+                            }
+                          />
                           <div className="min-w-0 flex-1 space-y-1">
                             {primary ? (
                               <ThreadTitle
@@ -2296,12 +2440,18 @@ function DeveloperStorage({
                                   Could not check whether the checkout exists
                                 </p>
                               )}
-                            {entry.running &&
+                            {entry.current ? (
+                              <p className="text-xs text-muted-foreground">
+                                This BB is running from this instance
+                              </p>
+                            ) : (
+                              entry.running &&
                               entry.sourcePathState !== "missing" && (
                                 <p className="text-xs text-muted-foreground">
                                   Dev server running at last scan
                                 </p>
-                              )}
+                              )
+                            )}
                             <RowActionStatus
                               action={removal}
                               runningLabel="Removing instance…"
@@ -2315,7 +2465,7 @@ function DeveloperStorage({
                               label="Remove instance"
                               target={label}
                               action={removal}
-                              disabled={rowDisabled}
+                              disabled={rowDisabled || entry.current}
                               onClick={() => onRemove(entry, label)}
                             />
                             <DropdownMenu>

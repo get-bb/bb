@@ -297,6 +297,12 @@ export function createStorage(
       }
     };
   }
+  function isCurrentInstance(developerPath: string, name: string) {
+    return (
+      hostPath(`${developerPath}/${name}`) ===
+      hostPath(bb.server.experimental_dataDir)
+    );
+  }
   async function readEnvironments(hostId: string) {
     const environments: Environment[] = [];
     for (let offset = 0; ; offset += 500) {
@@ -529,6 +535,10 @@ export function createStorage(
             ...scan.developerStorage,
             entries: scan.developerStorage.entries.map((entry) => ({
               ...entry,
+              current: isCurrentInstance(
+                scan.developerStorage!.path,
+                entry.name,
+              ),
               threads:
                 entry.sourcePath === null
                   ? []
@@ -1069,10 +1079,16 @@ export function createStorage(
         environments,
         projects,
       );
-      const targets = developer.entries.filter((entry) =>
-        names === null
-          ? entry.sourcePathState === "missing"
-          : names.includes(entry.name),
+      if (names?.some((name) => isCurrentInstance(developer.path, name)))
+        throw new Error(
+          "Cannot remove the development instance this BB is running from",
+        );
+      const targets = developer.entries.filter(
+        (entry) =>
+          !isCurrentInstance(developer.path, entry.name) &&
+          (names === null
+            ? entry.sourcePathState === "missing"
+            : names.includes(entry.name)),
       );
       const unknown = (names ?? []).filter(
         (name) => !targets.some((entry) => entry.name === name),

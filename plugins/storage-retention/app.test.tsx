@@ -74,6 +74,7 @@ function fixture(subPath = "host_test") {
               sourcePathState: "exists",
               running: true,
               threads: [],
+              current: false,
             },
           ],
         },

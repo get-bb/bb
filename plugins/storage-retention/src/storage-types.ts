@@ -64,7 +64,10 @@ export const developerStorageScanSchema = z.object({
 });
 export const developerStorageSchema = developerStorageScanSchema.extend({
   entries: z.array(
-    developerEntrySchema.extend({ threads: z.array(linkedThreadSchema) }),
+    developerEntrySchema.extend({
+      threads: z.array(linkedThreadSchema),
+      current: z.boolean(),
+    }),
   ),
 });
 

@@ -1634,6 +1634,7 @@ it.skipIf(process.platform === "win32")(
       extra: path.join(fakeHome, "extra", "bb"),
       idle: path.join(fakeHome, "idle", "bb"),
       busy: path.join(fakeHome, "busy", "bb"),
+      self: path.join(fakeHome, "self", "bb"),
     };
     await fs.mkdir(checkouts.gone, { recursive: true });
     await fs.mkdir(checkouts.kept, { recursive: true });
@@ -1681,6 +1682,7 @@ it.skipIf(process.platform === "win32")(
     const worker = experimental_createHostEntryHarness(hostEntry);
     const host = createFakePluginHost({
       pluginId: "storage-retention",
+      dataDir: path.join(rootPath, "self"),
       experimental_hostEntry: true,
       experimental_callHostRpc: async (call) => {
         if (call.method === "homeDirectory") return fakeHome;
@@ -1740,8 +1742,19 @@ it.skipIf(process.platform === "win32")(
         ["idle", "exists", false],
         ["kept", "exists", false],
         ["revived", "missing", false],
+        ["self", "missing", false],
         ["spare", "missing", false],
       ]);
+      expect(
+        scanned.entries.filter((entry) => entry.current).map((e) => e.name),
+      ).toEqual(["self"]);
+      await expect(
+        host.harness.callRpc("removeDevInstances", {
+          hostId: "host_test",
+          names: ["self", "spare"],
+          stopRunning: true,
+        }),
+      ).rejects.toThrow("this BB is running from");
       await expect(
         host.harness.callRpc("removeDevInstances", {
           hostId: "host_test",
@@ -1802,11 +1815,11 @@ it.skipIf(process.platform === "win32")(
           .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
           .report!.developerStorage!.entries.map((entry) => entry.name)
           .sort(),
-      ).toEqual(["gone", "kept", "revived"]);
+      ).toEqual(["gone", "kept", "revived", "self"]);
       expect(goneServer.child.exitCode).toBeNull();
       await expect
         .poll(async () => (await fs.readdir(rootPath)).sort())
-        .toEqual(["gone", "kept", "revived"]);
+        .toEqual(["gone", "kept", "revived", "self"]);
       await fs.mkdir(checkouts.revived, { recursive: true });
       expect(
         await host.harness.callRpc("removeDevInstances", {
@@ -1825,13 +1838,13 @@ it.skipIf(process.platform === "win32")(
       expect(keptServer.child.exitCode).toBeNull();
       await expect
         .poll(async () => (await fs.readdir(rootPath)).sort())
-        .toEqual(["kept", "revived"]);
+        .toEqual(["kept", "revived", "self"]);
       expect(
         hostStorageResponseSchema
           .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
           .report!.developerStorage!.entries.map((entry) => entry.name)
           .sort(),
-      ).toEqual(["kept", "revived"]);
+      ).toEqual(["kept", "revived", "self"]);
       await expect
         .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
         .toBe(0);
