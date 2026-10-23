@@ -125,7 +125,7 @@ describe("buildPluginApp", () => {
     );
     expect(css).toMatch(/\.rounded-lg\s*\{[^}]*var\(--radius\)/);
     expect(css).toMatch(/\.text-sm\s*\{[^}]*var\(--text-sm/);
-    expect(css).toContain("--text-sm:.8125rem");
+    expect(css).not.toContain("--text-sm:");
     expect(css).toContain(".animate-in");
     expect(css).toContain(".fade-in-0");
     const scope =
