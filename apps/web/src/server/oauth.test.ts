@@ -354,6 +354,69 @@ describe("client metadata documents", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("accepts ChatGPT CIMD supporting none while preferring private_key_jwt", async () => {
+    const clientId = "https://chatgpt.com/oauth/client.json";
+    const redirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
+    const result = await load(
+      documentFetch({
+        client_id: clientId,
+        client_name: "ChatGPT",
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      }),
+      clientId,
+    );
+    expect(result).toEqual({
+      ok: true,
+      client: { clientId, clientName: "ChatGPT", redirectUris: [redirectUri] },
+    });
+  });
+
+  it.each([
+    ["without a legacy preference", undefined, ["none"]],
+    ["with none last", "private_key_jwt", ["private_key_jwt", "none"]],
+  ])("accepts public CIMD %s", async (_label, preference, methods) => {
+    expect(
+      (
+        await load(
+          documentFetch({
+            token_endpoint_auth_method: preference,
+            token_endpoint_auth_methods_supported: methods,
+          }),
+        )
+      ).ok,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["no public method", ["private_key_jwt"]],
+    ["an empty list", []],
+    ["a null list", null],
+    ["a string list", "none"],
+    ["an object list", { none: true }],
+    ["a non-string member", ["none", 7]],
+    ["an empty method", ["none", ""]],
+    ["a substring instead of none", ["not_none"]],
+  ])("rejects CIMD with %s despite legacy none", async (_label, methods) => {
+    expect(
+      (
+        await load(
+          documentFetch({ token_endpoint_auth_methods_supported: methods }),
+        )
+      ).ok,
+    ).toBe(false);
+  });
+
+  it.each([undefined, null, "private_key_jwt"])(
+    "rejects legacy CIMD without explicit none: %s",
+    async (method) => {
+      expect(
+        (await load(documentFetch({ token_endpoint_auth_method: method }))).ok,
+      ).toBe(false);
+    },
+  );
+
   it("rejects a document over 5 KB even when it streams without a length", async () => {
     const big = JSON.stringify(clientDocument({ padding: "x".repeat(6000) }));
     const result = await load(
@@ -606,6 +669,7 @@ describe("authorization requests", () => {
             client_id: evilClient,
             client_name: "Evil",
             redirect_uris: [evilRedirect],
+            token_endpoint_auth_method: "none",
           },
           { headers: JSON_HEADERS },
         ),

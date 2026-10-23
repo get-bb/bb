@@ -312,14 +312,20 @@ function parseClientMetadataDocument(
   ) {
     return { ok: false, message: "client metadata has no redirect_uris" };
   }
-  if (
-    document.token_endpoint_auth_method !== undefined &&
-    document.token_endpoint_auth_method !== "none"
-  ) {
+  const supportedMethods = document.token_endpoint_auth_methods_supported;
+  const supportsPublicClient =
+    supportedMethods === undefined
+      ? document.token_endpoint_auth_method === "none"
+      : Array.isArray(supportedMethods) &&
+        supportedMethods.every(
+          (method) => typeof method === "string" && method.length > 0,
+        ) &&
+        supportedMethods.includes("none");
+  if (!supportsPublicClient) {
     return {
       ok: false,
       message:
-        "only public clients (token_endpoint_auth_method none) are supported",
+        "client metadata must explicitly support public-client authentication (none)",
     };
   }
   return { ok: true, client: { clientId, clientName, redirectUris } };
