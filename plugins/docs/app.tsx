@@ -440,7 +440,6 @@ function TiptapEditor(props: {
   baseMarkdown?: string | null;
   inline?: boolean;
   disabled?: boolean;
-  onFocusChange?(focused: boolean): void;
 }) {
   const {
     previewBaseUrl,
@@ -539,8 +538,6 @@ function TiptapEditor(props: {
       content: "",
       autofocus: inline ? false : "end",
       editable: !latest.current.disabled,
-      onFocus: () => latest.current.onFocusChange?.(true),
-      onBlur: () => latest.current.onFocusChange?.(false),
       editorProps: {
         attributes: {
           role: "textbox",
@@ -989,7 +986,6 @@ function InlineDocument({
   const rpc = useRpc<typeof docsRpcContract>();
   const composer = useComposer();
   const navigate = useBbNavigate();
-  const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1176,11 +1172,7 @@ function InlineDocument({
             )
           ) : (
             <>
-              <div
-                ref={contentRef}
-                data-editing={editing && !truncated}
-                className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
-              >
+              <div ref={contentRef} className="min-w-0">
                 {pending && baseMetadata !== candidateMetadata && (
                   <div className="px-6 pt-4 text-xs">
                     <p className="mb-2 font-medium">Document metadata</p>
@@ -1203,7 +1195,6 @@ function InlineDocument({
                   disabled={state.busy || state.missing || truncated}
                   previewBaseUrl={state.base?.previewBaseUrl ?? ""}
                   notePath={state.path}
-                  onFocusChange={setEditing}
                   onMarkdownChange={session.edit}
                   onUpload={async (file) => {
                     const result = await rpc.call("uploadAttachment", {
