@@ -20,19 +20,16 @@ export function PluginThreadTitle({ threadId }: PluginThreadTitleProps) {
     const row = root.closest<HTMLElement>("[data-sidebar-thread-title-row]");
     const measure = () => {
       const viewportRect = viewport.getBoundingClientRect();
-      const actionLeft = row
-        ? Array.from(
-            row.querySelectorAll<HTMLElement>(".bb-sidebar-hover-actions"),
-          ).reduce((left, action) => {
-            const rect = action.getBoundingClientRect();
-            return rect.width > 0 ? Math.min(left, rect.left) : left;
-          }, viewportRect.right)
-        : viewportRect.right;
-      const visibleRight = Math.min(viewportRect.right, actionLeft);
-      const visibleWidth = Math.max(0, visibleRight - viewportRect.left);
+      const actionLeft = Array.from(
+        row?.querySelectorAll<HTMLElement>(".bb-sidebar-hover-actions") ?? [],
+      ).reduce((left, action) => {
+        const rect = action.getBoundingClientRect();
+        return rect.width > 0 ? Math.min(left, rect.left) : left;
+      }, viewportRect.right);
+      const actionOverlap = Math.max(0, viewportRect.right - actionLeft);
+      const visibleWidth = Math.max(0, viewportRect.width - actionOverlap);
       const textWidth = text.getBoundingClientRect().width;
       const overflow = textWidth - viewportRect.width > 0.5;
-      const actionOverlap = Math.max(0, viewportRect.right - visibleRight);
       const hoverGap = actionOverlap > 0.5 ? 8 : 0;
       const hoverVisibleWidth = Math.max(0, visibleWidth - hoverGap);
       const hoverOverflow = textWidth - hoverVisibleWidth > 0.5;
@@ -50,22 +47,13 @@ export function PluginThreadTitle({ threadId }: PluginThreadTitleProps) {
         `${totalDuration}s`,
       );
       root.style.setProperty(
-        "--bb-thread-title-pan-start-hold-end",
+        "--bb-thread-title-pan-hold-end",
         `${(2.5 / totalDuration) * 100}%`,
       );
       root.style.setProperty(
-        "--bb-thread-title-pan-forward-end",
-        `${((2.5 + travelDuration) / totalDuration) * 100}%`,
+        "--bb-thread-title-hover-inset",
+        `${actionOverlap + hoverGap}px`,
       );
-      root.style.setProperty(
-        "--bb-thread-title-pan-far-hold-end",
-        `${((5 + travelDuration) / totalDuration) * 100}%`,
-      );
-      root.style.setProperty(
-        "--bb-sidebar-hover-actions-overlap",
-        `${actionOverlap}px`,
-      );
-      root.style.setProperty("--bb-thread-title-hover-gap", `${hoverGap}px`);
       root.dataset.threadTitleOverflow = overflow ? "true" : "false";
       root.dataset.threadTitleHoverOverflow = hoverOverflow ? "true" : "false";
     };

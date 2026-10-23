@@ -615,9 +615,8 @@ function ThreadRowComponent({
           !shortcut &&
             !isEditing &&
             !isCustomizingActions &&
-            (reserveActionSpace
-              ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
-              : undefined),
+            reserveActionSpace &&
+            "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0",
         )}
         style={getHoverActionsInsetStyle(quickActions.length)}
       >

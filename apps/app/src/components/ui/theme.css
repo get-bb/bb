@@ -984,8 +984,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
     flex: 1 1 0%;
     min-width: 0;
     overflow: hidden;
-    mask-image: none;
-    -webkit-mask-image: none;
   }
 
   .bb-thread-title-pan[data-thread-title-overflow="true"]
@@ -1007,7 +1005,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
     width: max-content;
     align-items: baseline;
     white-space: nowrap;
-    transform: translateX(0);
   }
 
   @keyframes bb-thread-title-pan {
@@ -1029,9 +1026,8 @@ body.sidebar-resizing [data-sidebar="panel"] {
       .bb-thread-title-text {
       animation: bb-thread-title-pan var(--bb-thread-title-pan-duration, 9s)
         linear(
-          0 0% var(--bb-thread-title-pan-start-hold-end),
-          1 var(--bb-thread-title-pan-forward-end)
-            var(--bb-thread-title-pan-far-hold-end),
+          0 0% var(--bb-thread-title-pan-hold-end),
+          1 50% calc(50% + var(--bb-thread-title-pan-hold-end)),
           0 100%
         )
         infinite;
@@ -1053,8 +1049,7 @@ body.sidebar-resizing [data-sidebar="panel"] {
       )
       .bb-thread-title-content {
       --bb-thread-title-visible-end: calc(
-        100% - var(--bb-sidebar-hover-actions-overlap, 0px) -
-          var(--bb-thread-title-hover-gap, 0px)
+        100% - var(--bb-thread-title-hover-inset, 0px)
       );
       mask-image: linear-gradient(
         to right,
@@ -1074,8 +1069,7 @@ body.sidebar-resizing [data-sidebar="panel"] {
   }
 
   .bb-thread-title-pan .prompt-mention-pill {
-    @apply min-w-10 shrink-0;
-    max-width: max-content;
+    @apply shrink-0;
   }
 
   .bb-thread-title-pan .prompt-mention-pill .truncate {
