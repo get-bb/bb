@@ -5,11 +5,7 @@ import {
   type Host,
   type ThreadListEntry,
 } from "@bb/domain";
-import {
-  GITHUB_PR_STATUS_PLUGIN_ID,
-  githubPrStatusRpcContract,
-  type PullRequest,
-} from "bb-plugin-bb--github-pr-status/contract";
+import type { PullRequest } from "bb-plugin-bb--github-pr-status/contract";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
   PluginSdkApp,
@@ -37,7 +33,7 @@ import {
 } from "./plugin-thread-row-status";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
-import { experimental_useRpcKeyedQuery as useRpcKeyedQuery } from "./plugin-sdk-hooks";
+import { useRetiredSidebarEnvironmentPullRequest } from "./retired-sidebar-pull-request";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -396,17 +392,8 @@ export function useSidebarThreadPullRequest(
 ): RetiredSidebarThreadPullRequestState {
   const entry = useSidebarThreadEntry(threadId);
   const environmentId = entry?.environmentId ?? null;
-  const query = useRpcKeyedQuery({
-    pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
-    contract: githubPrStatusRpcContract,
-    method: "pullRequests",
-    keys: environmentId ? [environmentId] : [],
-    enabled: Boolean(environmentId),
-  });
-  const row = environmentId ? query.data?.[environmentId] : undefined;
-  const isLoading =
-    Boolean(environmentId) && query.error === null && row === undefined;
-  const pullRequest = row?.outcome === "available" ? row.pullRequest : null;
+  const { isLoading, pullRequest } =
+    useRetiredSidebarEnvironmentPullRequest(environmentId);
 
   return useMemo<RetiredSidebarThreadPullRequestState>(
     () => ({
