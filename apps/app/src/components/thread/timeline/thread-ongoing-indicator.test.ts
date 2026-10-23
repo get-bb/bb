@@ -6,6 +6,7 @@ const idle = {
   activeBackgroundCommandCount: 0,
   activeWorkflowCount: 0,
   displayStatus: "idle",
+  hostUnavailable: false,
   isStopping: false,
   isTurnSubmitting: false,
   timelineLoading: false,
@@ -27,6 +28,15 @@ describe("resolveThreadOngoingIndicator", () => {
       name: "a background indicator for an idle thread with only a nested agent active",
       input: { ...idle, activeBackgroundAgentCount: 1 },
       expected: { show: true, label: "Background work running" },
+    },
+    {
+      name: "no background indicator while the thread's machine is offline",
+      input: {
+        ...idle,
+        activeBackgroundCommandCount: 1,
+        hostUnavailable: true,
+      },
+      expected: { show: false, label: undefined },
     },
     {
       name: "no indicator once the nested agent count returns to zero",

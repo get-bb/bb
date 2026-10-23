@@ -32,14 +32,17 @@ function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
 
 interface ThreadWorkflowCardProps {
   workflow: TimelineWorkflowWorkRow;
+  hostUnavailable: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }
 
 export function ThreadWorkflowSummary({
   workflow,
+  hostUnavailable,
 }: {
   workflow: TimelineWorkflowWorkRow;
+  hostUnavailable: boolean;
 }) {
   const name = workflow.workflowName ?? workflow.description;
   const progress = agentProgressLabel(workflow);
@@ -47,7 +50,10 @@ export function ThreadWorkflowSummary({
     <>
       <Icon
         name="Workflow"
-        className={activityIconClass("active", "size-3.5 shrink-0")}
+        className={activityIconClass(
+          hostUnavailable ? "pending" : "active",
+          "size-3.5 shrink-0",
+        )}
         aria-hidden="true"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
@@ -63,10 +69,14 @@ export function ThreadWorkflowSummary({
           </span>
         ) : null}
         <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
-          <LiveDurationText startedAt={workflow.startedAt} />
+          {hostUnavailable ? (
+            "machine offline"
+          ) : (
+            <LiveDurationText startedAt={workflow.startedAt} />
+          )}
         </span>
       </span>
-      {workflow.workflow ? (
+      {workflow.workflow && !hostUnavailable ? (
         <WorkflowPhaseStrip
           progress={workflow.workflow}
           settled={false}
@@ -79,6 +89,7 @@ export function ThreadWorkflowSummary({
 
 export function ThreadWorkflowCard({
   workflow,
+  hostUnavailable,
   isExpanded,
   onToggle,
 }: ThreadWorkflowCardProps) {
@@ -101,14 +112,21 @@ export function ThreadWorkflowCard({
         id={toggleId}
         aria-expanded={isExpanded}
         aria-controls={bodyId}
-        aria-label={`Workflow: ${name}`}
+        aria-label={
+          hostUnavailable
+            ? `Workflow, machine offline: ${name}`
+            : `Workflow: ${name}`
+        }
         onClick={focus.onTriggerClick}
         className={cn(
           PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
           PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
         )}
       >
-        <ThreadWorkflowSummary workflow={workflow} />
+        <ThreadWorkflowSummary
+          workflow={workflow}
+          hostUnavailable={hostUnavailable}
+        />
         <PromptStackChevron isExpanded={isExpanded} />
       </button>
       <AnimatedDisclosureBody

@@ -130,7 +130,7 @@ describe("sessions", () => {
     expect(old?.closeReason).toBe("replaced");
   });
 
-  it("lists the most recently closed session for each requested host", () => {
+  it("lists each requested host's most recent session closed after the bound", () => {
     const { db, host } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "test-host-2",
@@ -169,12 +169,19 @@ describe("sessions", () => {
     }
 
     const sessions = listLatestClosedSessionsForHosts(db, {
+      closedAfter: 0,
       hostIds: [host.id, host.id, otherHost.id, "host-missing"],
     });
 
     expect(sessions.map((session) => session.id).sort()).toEqual(
       [laterClosed.id, otherClosed.id].sort(),
     );
+    expect(
+      listLatestClosedSessionsForHosts(db, {
+        closedAfter: 30,
+        hostIds: [host.id, otherHost.id],
+      }).map((session) => session.id),
+    ).toEqual([otherClosed.id]);
   });
 
   it("prefers an active replacement session when latest timestamps tie", () => {

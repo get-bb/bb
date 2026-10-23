@@ -64,7 +64,10 @@ export function threadListEntry(
     latestAttentionAt: updatedAt,
     createdAt: seedStartedAt(seed, now),
     updatedAt,
-    runtime: { displayStatus: busy ? "active" : "idle" },
+    runtime: {
+      displayStatus: busy ? "active" : "idle",
+      hostUnavailable: false,
+    },
     activity: {
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,

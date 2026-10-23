@@ -396,7 +396,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.promptDraft.text = "Queue this with data";
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", hostUnavailable: false },
         status: "active",
       }),
     });
@@ -423,7 +423,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.promptDraft.text = "Steer this later";
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", hostUnavailable: false },
         status: "active",
       }),
     });
@@ -453,7 +453,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "idle" },
+        runtime: { displayStatus: "idle", hostUnavailable: false },
         status: "idle",
       }),
     });
@@ -677,6 +677,7 @@ describe("ThreadDetailPromptArea", () => {
       thread: makeThread({
         runtime: {
           displayStatus: "idle",
+          hostUnavailable: false,
         },
         status: "idle",
       }),
@@ -703,6 +704,7 @@ describe("ThreadDetailPromptArea", () => {
       thread: makeThread({
         runtime: {
           displayStatus: "provisioning",
+          hostUnavailable: false,
         },
         status: "starting",
       }),
@@ -1911,7 +1913,7 @@ describe("ThreadDetailPromptArea", () => {
         environmentId: "env_1",
         id: "thr_source",
         projectId: "proj_source",
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", hostUnavailable: false },
         status: "active",
         title: "Source thread",
         titleFallback: null,

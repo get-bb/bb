@@ -455,6 +455,7 @@ async function runScenario(
           status: iteration % 2 === 0 ? "active" : "idle",
           runtime: {
             displayStatus: iteration % 2 === 0 ? "active" : "idle",
+            hostUnavailable: false,
           },
           activity: {
             activeWorkflowCount: 0,

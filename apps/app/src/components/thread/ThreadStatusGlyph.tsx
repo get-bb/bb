@@ -26,6 +26,7 @@ const WORKING_ACTIVITY_ICONS = {
 
 const WAITING_ICONS = {
   "waiting-for-input": "CircleQuestion",
+  "waiting-for-host": "Pause",
   "queued-waiting": "Clock",
 } satisfies Partial<Record<ThreadListIndicatorKind, IconName>>;
 
@@ -173,6 +174,7 @@ export function ThreadStatusGlyph({
         />
       );
     case "waiting-for-input":
+    case "waiting-for-host":
     case "queued-waiting":
       return (
         <Icon

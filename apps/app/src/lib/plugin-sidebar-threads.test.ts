@@ -21,8 +21,9 @@ describe("toPluginSidebarThread", () => {
   it("resolves the display title through the same rules bb's row uses", () => {
     expect(toPluginSidebarThread(makeThread()).displayTitle).toBe("A thread");
     expect(
-      toPluginSidebarThread(makeThread({ title: null, titleFallback: "Fallback" }))
-        .displayTitle,
+      toPluginSidebarThread(
+        makeThread({ title: null, titleFallback: "Fallback" }),
+      ).displayTitle,
     ).toBe("Fallback");
     expect(
       toPluginSidebarThread(
@@ -72,6 +73,7 @@ describe("toPluginSidebarThread", () => {
           hasPendingInteraction: true,
           runtime: {
             displayStatus: "active",
+            hostUnavailable: false,
           },
         }),
       ).indicator,
@@ -82,6 +84,7 @@ describe("toPluginSidebarThread", () => {
         makeThread({
           runtime: {
             displayStatus: "active",
+            hostUnavailable: false,
           },
         }),
       ).indicator,
@@ -177,6 +180,7 @@ describe("toPluginSidebarThread", () => {
         status: "active",
         runtime: {
           displayStatus: "waiting-for-host",
+          hostUnavailable: true,
         },
         lifecycleOwnerThreadId: "thr_owner",
         sourceThreadId: "thr_source",
@@ -185,8 +189,33 @@ describe("toPluginSidebarThread", () => {
     );
     expect(mapped.status).toBe("active");
     expect(mapped.runtimeStatus).toBe("waiting-for-host");
+    expect(mapped.experimental_hostUnavailable).toBe(true);
     expect(mapped.lifecycleOwnerThreadId).toBe("thr_owner");
     expect(mapped.sourceThreadId).toBe("thr_source");
+  });
+
+  it("reports background work on an offline machine as waiting for it", () => {
+    const backgroundCommand = {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 1,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    };
+
+    const offline = toPluginSidebarThread(
+      makeThread({
+        activity: backgroundCommand,
+        runtime: { displayStatus: "idle", hostUnavailable: true },
+      }),
+    );
+    expect(offline.activity.backgroundCommands).toBe(1);
+    expect(offline.indicator).toBe("waiting-for-host");
+    expect(offline.indicatorLabel).toBe("Thread waiting for its machine");
+    expect(
+      toPluginSidebarThread(makeThread({ activity: backgroundCommand }))
+        .indicator,
+    ).toBe("background-command");
   });
 
   it("exposes hidden threads with a flag instead of dropping them", () => {

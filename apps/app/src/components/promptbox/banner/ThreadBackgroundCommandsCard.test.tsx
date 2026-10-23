@@ -65,6 +65,7 @@ describe("ThreadBackgroundCommandsCard", () => {
       return (
         <CompactViewportOverrideProvider isCompactViewport>
           <ThreadBackgroundCommandsCard
+            hostUnavailable={false}
             commands={[
               backgroundCommandRow({
                 description,
@@ -101,6 +102,7 @@ describe("ThreadBackgroundCommandsCard", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>
         <ThreadBackgroundCommandsCard
+          hostUnavailable={false}
           commands={[
             backgroundCommandRow({
               description,
@@ -133,6 +135,7 @@ describe("ThreadBackgroundCommandsCard", () => {
       return (
         <CompactViewportOverrideProvider isCompactViewport>
           <ThreadBackgroundCommandsCard
+            hostUnavailable={false}
             commands={[
               workflowRow({
                 description,
@@ -170,6 +173,7 @@ describe("ThreadBackgroundCommandsCard", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>
         <ThreadBackgroundCommandsCard
+          hostUnavailable={false}
           commands={[
             workflowRow({
               description,
@@ -194,5 +198,54 @@ describe("ThreadBackgroundCommandsCard", () => {
     expect(item.textContent).toContain(description);
     expect(screen.getByTitle("Model: haiku").textContent).toBe("haiku");
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("says the machine is offline instead of running, and stops the timer", () => {
+    const description = "Sleep for 30 minutes in the background";
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    const command = backgroundCommandRow({
+      description,
+      startedAt: Date.now() - 60_000,
+      status: "pending",
+      taskStatus: "running",
+    });
+
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <ThreadBackgroundCommandsCard
+          hostUnavailable
+          commands={[command]}
+          isExpanded={false}
+          onToggle={() => {}}
+        />
+      </CompactViewportOverrideProvider>,
+    );
+
+    const item = screen.getByLabelText(
+      `Background command, machine offline: ${description}`,
+    );
+    expect(item.textContent).toBe(
+      `Background command, machine offline:${description}`,
+    );
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    cleanup();
+
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <ThreadBackgroundCommandsCard
+          hostUnavailable
+          commands={[command]}
+          isExpanded
+          onToggle={() => {}}
+        />
+      </CompactViewportOverrideProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "1 background command, machine offline",
+      }),
+    ).not.toBeNull();
+    expect(setIntervalSpy).not.toHaveBeenCalled();
   });
 });

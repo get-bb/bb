@@ -93,7 +93,7 @@ describe("thread entity store", () => {
     });
     updateCachedThreadListStatusState(s.queryClient, "t1", {
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", hostUnavailable: false },
       activity: server[0]!.activity,
       latestAttentionAt: 20,
       updatedAt: 11,
@@ -211,7 +211,7 @@ describe("thread entity store", () => {
     ] as const)
       updateCachedThreadListStatusState(s.queryClient, "t1", {
         status,
-        runtime: { displayStatus: status },
+        runtime: { displayStatus: status, hostUnavailable: false },
         activity: server[0]!.activity,
         latestAttentionAt: updatedAt,
         updatedAt,

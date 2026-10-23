@@ -280,6 +280,8 @@ function MobileRecentThreadRow({
           indicatorState.isPlanModeActive || childActivity.planMode,
         isRuntimeActive:
           indicatorState.isRuntimeActive || childActivity.runtimeWorking,
+        isWaitingForHost:
+          indicatorState.isWaitingForHost || childActivity.waitingForHost,
         isWorkflowActive:
           indicatorState.isWorkflowActive || childActivity.workflow,
       }

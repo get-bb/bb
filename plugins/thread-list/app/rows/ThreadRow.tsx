@@ -274,6 +274,7 @@ export function CollapsedThreadStatusGlyph({
     queuedWork: "none",
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,
+    isWaitingForHost: activity.waitingForHost,
     isWorkflowActive: activity.workflow,
   };
   return (
@@ -502,6 +503,9 @@ function ThreadRowComponent({
     isRuntimeActive:
       threadStatus.isRuntimeActive ||
       (hasHiddenChildren && childActivity.runtimeWorking),
+    isWaitingForHost:
+      threadStatus.isWaitingForHost ||
+      (hasHiddenChildren && childActivity.waitingForHost),
     isWorkflowActive:
       threadStatus.isWorkflowActive ||
       (hasHiddenChildren && childActivity.workflow),

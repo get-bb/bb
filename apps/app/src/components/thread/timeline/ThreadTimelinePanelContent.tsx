@@ -63,6 +63,7 @@ export function ThreadTimelinePanelContent({
     activeBackgroundCommandCount:
       resolvedTimeline.activeBackgroundCommands.length,
     activeWorkflowCount: resolvedTimeline.activeWorkflows.length,
+    hostUnavailable: threadQuery.data?.runtime.hostUnavailable ?? false,
     isStopping: threadQuery.data?.status === "stopping",
     isTurnSubmitting,
     timelineLoading: resolvedTimeline.timelineLoading,

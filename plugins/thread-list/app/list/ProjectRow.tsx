@@ -792,6 +792,7 @@ function EnvironmentThreadGroupHeader({
     isCollapsed &&
     (childActivity.pending ||
       childActivity.working ||
+      childActivity.waitingForHost ||
       hiddenThreadsHaveDraft ||
       childActivity.unread ||
       childActivity.unreadError);

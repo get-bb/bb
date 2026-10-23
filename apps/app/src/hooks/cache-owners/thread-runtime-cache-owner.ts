@@ -700,8 +700,9 @@ function predictAcceptedTurnThreadState({
           runtime: {
             ...entity.thread.runtime,
             displayStatus:
+              entity.thread.runtime.hostUnavailable ||
               entity.thread.runtime.displayStatus === "waiting-for-host"
-                ? entity.thread.runtime.displayStatus
+                ? "waiting-for-host"
                 : "active",
           },
         }),

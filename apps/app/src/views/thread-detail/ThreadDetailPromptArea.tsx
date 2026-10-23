@@ -939,6 +939,7 @@ export function ThreadDetailPromptArea({
     resolveMentionLink,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
+  const hostUnavailable = thread.runtime.hostUnavailable;
   const compactionOfferAt = contextWindowUsage?.compactionOfferAt;
   const compactionOfferDue = useTimeHasPassed(
     compactionOfferAt === undefined ? null : Date.parse(compactionOfferAt),
@@ -2116,6 +2117,7 @@ export function ThreadDetailPromptArea({
       <>
         <ThreadWorkflowStack
           workflows={activeWorkflows}
+          hostUnavailable={hostUnavailable}
           isStackExpanded={isWorkflowStackExpanded}
           onToggleStack={() =>
             setWorkflowStackExpandedThreadId((current) =>
@@ -2127,6 +2129,7 @@ export function ThreadDetailPromptArea({
         />
         <ThreadBackgroundCommandsCard
           commands={activeBackgroundCommands}
+          hostUnavailable={hostUnavailable}
           isExpanded={isBackgroundCommandsExpanded}
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
@@ -2257,6 +2260,7 @@ export function ThreadDetailPromptArea({
       toggleWorkflowExpanded,
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
+      hostUnavailable,
       modelFallback,
       parentThreadSection,
       childThreadsSection,

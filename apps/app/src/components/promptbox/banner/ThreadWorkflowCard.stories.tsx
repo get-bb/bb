@@ -227,17 +227,23 @@ function ToggleableCard({
   return (
     <ThreadWorkflowCard
       workflow={workflow}
+      hostUnavailable={false}
       isExpanded={expanded}
       onToggle={() => setExpanded((value) => !value)}
     />
   );
 }
 
-function CollapsedWorkflowPreview() {
+function CollapsedWorkflowPreview({
+  hostUnavailable = false,
+}: {
+  hostUnavailable?: boolean;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   return (
     <ThreadWorkflowCard
       workflow={runningWorkflow}
+      hostUnavailable={hostUnavailable}
       isExpanded={collapsed}
       onToggle={() => setCollapsed((value) => !value)}
     />
@@ -276,6 +282,7 @@ function AutoAdvancePreview() {
       </button>
       <ThreadWorkflowCard
         workflow={workflow}
+        hostUnavailable={false}
         isExpanded={expanded}
         onToggle={() => setExpanded((value) => !value)}
       />
@@ -306,6 +313,14 @@ export function Overview() {
           <CollapsedWorkflowPreview />
         </ResponsiveStage>
       </StoryRow>
+      <StoryRow
+        label="machine offline"
+        hint="bb cannot tell whether the workflow still runs: no timer, no phase pulse"
+      >
+        <ResponsiveStage>
+          <CollapsedWorkflowPreview hostUnavailable />
+        </ResponsiveStage>
+      </StoryRow>
     </StoryCard>
   );
 }
@@ -322,6 +337,7 @@ function ToggleableStack({
   return (
     <ThreadWorkflowStack
       workflows={workflows}
+      hostUnavailable={false}
       isStackExpanded={isStackExpanded}
       onToggleStack={() => setIsStackExpanded((value) => !value)}
       expandedWorkflowIds={expandedIds}

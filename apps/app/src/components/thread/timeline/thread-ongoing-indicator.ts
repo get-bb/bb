@@ -6,6 +6,7 @@ export function resolveThreadOngoingIndicator({
   activeBackgroundCommandCount,
   activeWorkflowCount,
   displayStatus,
+  hostUnavailable,
   isStopping,
   isTurnSubmitting,
   timelineLoading,
@@ -14,6 +15,7 @@ export function resolveThreadOngoingIndicator({
   activeBackgroundCommandCount: number;
   activeWorkflowCount: number;
   displayStatus: ThreadRuntimeDisplayStatus;
+  hostUnavailable: boolean;
   isStopping: boolean;
   isTurnSubmitting: boolean;
   timelineLoading: boolean;
@@ -21,9 +23,10 @@ export function resolveThreadOngoingIndicator({
   const isProvisioningDisplayStatus =
     displayStatus === "provisioning" || displayStatus === "starting";
   const hasActiveBackgroundWork =
-    activeWorkflowCount > 0 ||
-    activeBackgroundCommandCount > 0 ||
-    activeBackgroundAgentCount > 0;
+    !hostUnavailable &&
+    (activeWorkflowCount > 0 ||
+      activeBackgroundCommandCount > 0 ||
+      activeBackgroundAgentCount > 0);
   const backgroundOnlyIndicatorLabel =
     displayStatus === "idle" && hasActiveBackgroundWork
       ? "Background work running"

@@ -41,7 +41,7 @@ const maximalThreadMetadata: ThreadChangeMetadata = {
   projectId: "proj_1",
   statusChange: {
     status: "active",
-    runtime: { displayStatus: "active" },
+    runtime: { displayStatus: "active", hostUnavailable: false },
     activity: {
       activeBackgroundAgentCount: 1,
       activeBackgroundCommandCount: 1,

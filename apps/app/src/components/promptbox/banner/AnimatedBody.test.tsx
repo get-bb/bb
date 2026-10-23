@@ -67,6 +67,7 @@ describe("prompt-stack card bodies", () => {
       const [isExpanded, setIsExpanded] = useState(false);
       return (
         <ThreadBackgroundCommandsCard
+          hostUnavailable={false}
           commands={[1, 2, 3].map((index) =>
             workflowRow({
               id: `wf_${index}`,

@@ -375,7 +375,9 @@ await sdk.threads.update({ id: thread.id, sectionId });
 // displayTitle, parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
 // originKind, originPluginId, providerId, status (execution status; busy
 // threads sort first in bb's list), runtimeStatus (status refined by host
-// readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
+// readiness), experimental_hostUnavailable (the machine is offline, so
+// activity counts may be stale; older hosts omit it), queuedWork ("none" |
+// "waiting" | "failed"), hasPendingInteraction,
 // activity, isUnread/isPinned/pinnedAt/isArchived/archivedAt, pinSortKey
 // (manual pin order),
 // isHidden (bb's list filters these out; the array keeps them),
