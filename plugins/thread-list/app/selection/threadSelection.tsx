@@ -61,6 +61,23 @@ export class ThreadSelectionStore {
     this.replace(NO_THREAD_IDS);
   }
 
+  restoreActiveThreadFocus(): void {
+    const focused = document.activeElement;
+    const active = [
+      ...document.querySelectorAll<HTMLAnchorElement>(
+        THREAD_ROW_TARGET_SELECTOR,
+      ),
+    ].find(
+      (element) => element.dataset.sidebarThreadId === this.activeThreadId,
+    );
+    if (active) active.focus({ preventScroll: true });
+    else if (
+      focused instanceof HTMLElement &&
+      focused.matches(THREAD_ROW_TARGET_SELECTOR)
+    )
+      focused.blur();
+  }
+
   handleClick(
     threadId: string,
     modifiers: ThreadSelectionModifiers,
@@ -197,6 +214,7 @@ export function ThreadSelectionProvider({
       if (event.key !== "Escape" || !event.isTrusted || event.defaultPrevented)
         return;
       store.clear();
+      store.restoreActiveThreadFocus();
     };
     const handlePointerDown = (event: PointerEvent) => {
       if (

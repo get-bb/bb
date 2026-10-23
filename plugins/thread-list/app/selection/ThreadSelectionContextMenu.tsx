@@ -1,5 +1,6 @@
 import {
   useMemo,
+  useRef,
   type ComponentPropsWithRef,
   type MouseEvent,
   type ReactNode,
@@ -219,6 +220,8 @@ export function ThreadSelectionContextMenu({
   disabled: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const store = useThreadSelectionStore();
+  const dismissedWithEscape = useRef(false);
   return (
     <ContextMenu modal={false} onOpenChange={onOpenChange}>
       <ContextMenuTrigger {...triggerProps} asChild disabled={disabled}>
@@ -228,6 +231,16 @@ export function ThreadSelectionContextMenu({
         <ContextMenuContent
           aria-label={`Actions for ${describeThreads(threadIds.length)}`}
           onClick={stopMenuClickPropagation}
+          onEscapeKeyDown={() => {
+            dismissedWithEscape.current = true;
+            store.clear();
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!dismissedWithEscape.current) return;
+            dismissedWithEscape.current = false;
+            event.preventDefault();
+            store.restoreActiveThreadFocus();
+          }}
         >
           <ThreadSelectionMenuItems threadIds={threadIds} />
         </ContextMenuContent>
