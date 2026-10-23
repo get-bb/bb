@@ -212,6 +212,21 @@ export function requestQueuedMessageDispatch(
   }
 }
 
+export function requestQueuedMessageDispatchAt(
+  deps: QueueDispatchDeps,
+  at: number,
+): void {
+  setTimeout(
+    () => {
+      requestQueuedMessageDispatch(deps, {
+        kind: "time-reached",
+        now: Date.now(),
+      });
+    },
+    Math.max(0, at - Date.now()),
+  ).unref();
+}
+
 export async function runQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: QueuedMessageDispatchWake,

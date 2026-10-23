@@ -71,6 +71,7 @@ import {
 } from "../threads/queued-message-dispatch.js";
 import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
 import { releaseOrphanedQueuedMessageDispatchClaims } from "../threads/queued-messages.js";
+import { pruneInboxReceipts } from "../threads/thread-inbox.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
@@ -638,6 +639,14 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
         PROJECT_ATTACHMENT_BACKFILL_LIMITS,
         now,
       ),
+  },
+  {
+    cadenceMs: 60 * 60_000,
+    category: "retention",
+    name: "thread-inbox-receipt-prune",
+    run: (deps, now) => {
+      pruneInboxReceipts(deps, now);
+    },
   },
   {
     cadenceMs: 60_000,

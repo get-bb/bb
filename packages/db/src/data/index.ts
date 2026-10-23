@@ -450,6 +450,7 @@ export {
   deleteQueuedRetriesForThreadEventSuffixInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
+  getPendingCoalescedQueuedThreadMessage,
   getQueuedThreadMessage,
   getQueuedThreadStartMessage,
   hasQueuedRetryOfTurnRequest,
@@ -475,8 +476,15 @@ export {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  updateCoalescedQueuedThreadMessageInTransaction,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
+export {
+  deleteThreadInboxReceiptsCreatedBefore,
+  getThreadInboxReceipt,
+  insertThreadInboxReceiptInTransaction,
+} from "./thread-inbox-receipts.js";
+export type { ThreadInboxReceiptRow } from "./thread-inbox-receipts.js";
 export type {
   ClaimedQueuedThreadMessageRow,
   QueuedThreadMessageGroupClaimPolicy,

@@ -96,6 +96,7 @@ interface ThreadTellCommandOptions {
   image?: string[];
   sendAt?: string;
   compactFirst?: boolean;
+  idempotencyKey?: string;
 }
 
 interface ThreadActionOptions {
@@ -136,6 +137,7 @@ interface PostThreadMessageArgs {
   images?: readonly string[];
   sendAt?: number;
   compactFirst: boolean;
+  idempotencyKey?: string;
 }
 
 // The server's own answer plus the mode we asked for. `sendAt` used to be
@@ -522,6 +524,10 @@ export function registerActionsCommands(
       "--compact-first",
       "Compact the idle thread's context first, then send this message when compaction finishes",
     )
+    .option(
+      "--idempotency-key <key>",
+      "Accept this message once: repeating the command with the same key returns the first outcome instead of sending again (keys are kept 7 days)",
+    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -565,6 +571,9 @@ export function registerActionsCommands(
               ? {}
               : { sendAt: parseSendAt(opts.sendAt) }),
             compactFirst: opts.compactFirst === true,
+            ...(opts.idempotencyKey === undefined
+              ? {}
+              : { idempotencyKey: opts.idempotencyKey }),
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(
@@ -691,6 +700,9 @@ async function postThreadMessage(
       ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
       ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
       ...(args.compactFirst ? { compactFirst: true } : {}),
+      ...(args.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: args.idempotencyKey }),
     });
   } catch (error: unknown) {
     throw await withRestoreEnvironmentHint(sdk, args.threadId, error);

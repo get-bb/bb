@@ -306,6 +306,7 @@ const sendMessageRequestFieldsSchema = z.object({
    * `mode: "steer"`. Absent ⇒ send without compacting.
    */
   compactFirst: z.literal(true).optional(),
+  idempotencyKey: z.string().min(1).max(200).optional(),
 });
 
 export const sendMessageRequestSchema = sendMessageRequestFieldsSchema;
@@ -346,6 +347,7 @@ export const editMessageRequestSchema = sendMessageRequestFieldsSchema
     sendAt: true,
     pluginSubmission: true,
     compactFirst: true,
+    idempotencyKey: true,
   })
   .extend({
     operationId: z.string().min(1),

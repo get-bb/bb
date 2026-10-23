@@ -594,11 +594,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "sendAt is present only when the caller is scheduling the dispatch, and compactFirst only when it asks to compact before the message; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
+      "sendAt is present only when the caller is scheduling the dispatch, compactFirst only when it asks to compact before the message, and idempotencyKey only when a repeat of the send should return the first outcome; omission means attempt the dispatch now as a new message, which allocates no queued row at all when nothing blocks it.",
     fields: [
       "createThreadRequestSchema.sendAt",
       "sendMessageRequestSchema.sendAt",
       "sendMessageRequestSchema.compactFirst",
+      "sendMessageRequestSchema.idempotencyKey",
     ],
   },
   {

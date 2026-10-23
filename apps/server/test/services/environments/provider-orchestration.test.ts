@@ -190,6 +190,7 @@ function saveProviderStartup(
   fixture: ReturnType<typeof setup>,
 ) {
   const context = createThreadStartup({
+    initiator: "user",
     clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
     environmentIntent: {
       type: "provider",
@@ -638,6 +639,7 @@ describe("core environment orchestration", () => {
           ).resolves.toMatchObject({ id: target.id });
         } else {
           const context = createThreadStartup({
+            initiator: "user",
             clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
             environmentIntent: { type: "reuse", environmentId: target.id },
             execution: {

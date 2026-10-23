@@ -10,6 +10,7 @@ import {
 } from "@bb/db";
 import type {
   PromptInput,
+  QueuedMessageDeliveryMode,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
@@ -26,6 +27,7 @@ import {
 } from "../plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
+import { recordInboxReceiptInTransaction } from "./thread-inbox.js";
 
 type QueueWaitDeps = { db: DbQueryConnection; hub: DbNotifier };
 
@@ -75,6 +77,8 @@ export interface QueuedDispatchMessage {
   payload: QueuedMessagePayload;
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
+  deliveryMode: QueuedMessageDeliveryMode;
+  idempotencyKey: string | null;
 }
 
 export interface RecordQueuedMessageWaitArgs {
@@ -121,7 +125,7 @@ export function recordQueuedMessageWait(
     row = deps.db.transaction(
       (tx) => {
         assertThreadHostAcceptsWork(tx, args.thread);
-        return createQueuedThreadMessageInTransaction(tx, {
+        const created = createQueuedThreadMessageInTransaction(tx, {
           threadId: args.thread.id,
           content: args.message.input,
           senderThreadId: args.message.senderThreadId,
@@ -136,7 +140,14 @@ export function recordQueuedMessageWait(
           sendAt: args.sendAt,
           payload: args.message.payload,
           systemNotice: args.message.systemNotice,
+          deliveryMode: args.message.deliveryMode,
         });
+        recordInboxReceiptInTransaction(tx, {
+          idempotencyKey: args.message.idempotencyKey,
+          queuedMessageId: created.id,
+          threadId: args.thread.id,
+        });
+        return created;
       },
       { behavior: "immediate" },
     );

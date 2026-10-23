@@ -30,7 +30,7 @@ import {
   hasLiveThreadStartInFlight,
   requestThreadStart,
 } from "./thread-lifecycle.js";
-import { resolveDispatchAuthor } from "./dispatch-author.js";
+import type { DispatchAuthor } from "./dispatch-author.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createThreadStartup,
@@ -56,6 +56,7 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
+  author: DispatchAuthor;
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   fork: ThreadForkDescriptor | null;
@@ -279,7 +280,7 @@ async function startThreadIfEnvironmentReady(
     requestId: args.context.request.clientRequestId,
     execution,
     permissionEscalation: resolvePermissionEscalation({
-      initiator: "user",
+      initiator: args.context.request.initiator,
     }),
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
@@ -292,11 +293,7 @@ export function requestThreadProvision(
   args: RequestThreadProvisionArgs,
 ): ThreadProvisionContext {
   return deps.db.transaction(() => {
-    const { initiator, senderThreadId } = resolveDispatchAuthor({
-      retrying: false,
-      senderThreadId: null,
-      startedOnBehalfOf: args.startedOnBehalfOf,
-    });
+    const { initiator, senderThreadId } = args.author;
     const target: TurnRequestTarget = { kind: "thread-start" };
     const request = appendClientTurnEvent(deps, {
       threadId: args.thread.id,
@@ -327,10 +324,14 @@ export function requestThreadProvision(
     });
 
     const context = createThreadStartup({
-      ...args,
       clientRequestId: request.requestId,
+      environmentIntent: args.environmentIntent,
+      execution: args.execution,
+      fork: args.fork,
       input: args.providerInput ?? args.input,
+      initiator,
       seedWithoutRun: args.startedOnBehalfOf !== null,
+      titleProvided: args.titleProvided,
     });
     saveThreadProvisionContext({
       replace: true,
@@ -367,6 +368,7 @@ export function requestThreadEnvironmentRestore(
         execution: null,
         fork: null,
         input: [],
+        initiator: "user",
         seedWithoutRun: true,
         titleProvided: true,
       });
@@ -411,6 +413,7 @@ export function requestThreadTargetReprovision(
       ...(args.inputGroups !== undefined
         ? { inputGroups: args.inputGroups }
         : {}),
+      initiator: args.initiator,
       seedWithoutRun: false,
       titleProvided: true,
     });

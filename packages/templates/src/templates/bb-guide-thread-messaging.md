@@ -22,6 +22,7 @@ Messaging:
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --compact-first                        Compact the idle thread's context, then send when compaction finishes
+    --idempotency-key <key>                Accept the message once per key; a repeat returns the first outcome
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                         CLI-local absolute path, file: URL, or uploaded image path
 
@@ -37,6 +38,15 @@ Messaging:
   and a queued answer carries the complete row as `queuedMessage`, including
   its `id`, `waitingOn`, and `sendAt`. A deferred message waits for a thread
   that failed while it was deferred, and delivers when the thread is retried.
+  A queued message keeps its mode while it waits: a `--mode queue` message that
+  comes due (or is released by a plugin) while a turn runs waits for that turn
+  to end instead of steering into it.
+
+  --idempotency-key makes a tell safe to repeat, for example after a timeout:
+  the thread accepts one message per key, and repeating it with the same key
+  sends nothing and reports the first outcome (`queued` with the row while it
+  still waits, otherwise `sent`). Keys are remembered for 7 days. The SDK takes
+  `idempotencyKey` on `threads.send`.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
@@ -111,6 +121,11 @@ Queued messages:
   leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
   SDK: `threads.queue.list` (all threads) and
   `threads.queuedMessages.list|send|update|delete` (one thread).
+
+  System notices to a parent (a child finished, needs attention, changed
+  owner) go through the same queue and plugin dispatch hooks as any message.
+  Child outcome notices wait 2 seconds as one scheduled row, so children that
+  finish together arrive as one notice; the row survives a server restart.
 
   A queued message is one that could not dispatch yet. It is not in the
   timeline or `thread log` until it dispatches; thread list rows carry

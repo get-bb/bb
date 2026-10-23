@@ -72,7 +72,7 @@ async function waitForStampedSystemMessage(
   harness: TestHarness,
   parentThreadId: string,
 ): Promise<StampedSystemMessage> {
-  await flushChildThreadNotifications();
+  await flushChildThreadNotifications(harness);
   return vi.waitFor(() => {
     const rows = harness.db
       .select()

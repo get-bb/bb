@@ -1,12 +1,18 @@
-import type {
-  PromptInput,
-  SystemMessageSubject,
-  ThreadEventTurnStatus,
-  ChildThreadOutcome,
+import {
+  childThreadOutcomeSchema,
+  threadEventTurnStatusSchema,
+  type PromptInput,
+  type SystemMessageSubject,
+  type ThreadEventTurnStatus,
+  type ChildThreadOutcome,
 } from "@bb/domain";
-import { listActiveBackgroundTaskCountsByThreadIds } from "@bb/db";
+import { getThread, listActiveBackgroundTaskCountsByThreadIds } from "@bb/db";
 import { renderTemplate } from "@bb/templates";
+import { z } from "zod";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { requestQueuedMessageDispatchAt } from "./queued-message-dispatch.js";
+import { buildExecutionOptions } from "./thread-commands.js";
+import { postCoalescedSystemNotice } from "./thread-inbox.js";
 import {
   buildParentSystemInputFromTemplateSlot,
   buildParentSystemThreadMention,
@@ -25,19 +31,24 @@ import { getLastThreadOutput } from "./thread-data.js";
 
 export type ChildThreadNotificationSource = ParentSystemThreadMentionSource;
 
-export interface ChildThreadTurnNotificationBatchItem {
-  activeWorkflowCount: number;
-  childThread: ChildThreadNotificationSource;
-  terminalOutput: string | null;
-  turnStatus: ThreadEventTurnStatus;
-  failureContext?: string;
-  interruption?: ChildThreadOutcome["interruption"];
-}
-
-interface ChildThreadTurnNotificationBatch {
-  items: ChildThreadTurnNotificationBatchItem[];
-  timer: ReturnType<typeof setTimeout>;
-}
+const childThreadTurnNotificationBatchItemSchema = z.object({
+  activeWorkflowCount: z.number().int().nonnegative(),
+  childThread: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string().nullable(),
+  }),
+  terminalOutput: z.string().nullable(),
+  turnStatus: threadEventTurnStatusSchema,
+  failureContext: z.string().optional(),
+  interruption: childThreadOutcomeSchema.shape.interruption,
+});
+const childThreadTurnNotificationBatchSchema = z.array(
+  childThreadTurnNotificationBatchItemSchema,
+);
+export type ChildThreadTurnNotificationBatchItem = z.infer<
+  typeof childThreadTurnNotificationBatchItemSchema
+>;
 
 interface ChildThreadTurnStatusBatchLine {
   item: ChildThreadTurnNotificationBatchItem;
@@ -76,6 +87,7 @@ interface QueueChildThreadNeedsAttentionNotificationArgs {
 }
 
 const CHILD_THREAD_TURN_NOTIFICATION_BATCH_DELAY_MS = 2_000;
+const CHILD_THREAD_TURN_NOTIFICATION_COALESCE_KEY = "child-outcomes";
 const CHILD_THREAD_OUTCOME_BATCH_UPDATES_SLOT =
   "__BB_CHILD_THREAD_OUTCOME_BATCH_UPDATES__";
 const CHILD_THREAD_MENTION_SLOT = "__BB_CHILD_THREAD_MENTION__";
@@ -89,10 +101,6 @@ const CHILD_THREAD_RUNNING_WORKFLOW_GUIDANCE =
   "A workflow it started is still running, so this output is not its final result. The thread will report again when the workflow finishes.";
 const CHILD_THREAD_BATCH_RUNNING_WORKFLOW_GUIDANCE =
   "Threads with a workflow still running have not finished; they will report again when their workflow does.";
-const childThreadTurnNotificationBatches = new Map<
-  string,
-  ChildThreadTurnNotificationBatch
->();
 
 function childThreadTurnStatusLabel(
   item: ChildThreadTurnNotificationBatchItem,
@@ -386,52 +394,43 @@ function childThreadTurnNotificationLogMessage(
   }
 }
 
-async function flushChildThreadTurnNotificationBatch(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  parentThreadId: string,
-): Promise<void> {
-  const batch = childThreadTurnNotificationBatches.get(parentThreadId);
-  if (!batch) {
-    return;
+function mergeChildThreadTurnNotificationItem(
+  items: readonly ChildThreadTurnNotificationBatchItem[],
+  item: ChildThreadTurnNotificationBatchItem,
+): ChildThreadTurnNotificationBatchItem[] {
+  const existingIndex = items.findIndex(
+    (entry) =>
+      entry.childThread.id === item.childThread.id &&
+      entry.failureContext === item.failureContext,
+  );
+  if (existingIndex === -1) {
+    return [...items, item];
   }
-  childThreadTurnNotificationBatches.delete(parentThreadId);
-
-  try {
-    await queueParentSystemMessage(deps, {
-      input: buildChildThreadTurnStatusBatchInput({
-        items: batch.items,
-      }),
-      parentThreadId,
-      ...childThreadTurnStatusBatchTaxonomy(batch.items),
-    });
-  } catch (error) {
-    deps.logger.error(
-      {
-        err: error,
-        parentThreadId,
-        childThreads: batch.items.map((item) => ({
-          childThreadId: item.childThread.id,
-          turnStatus: item.turnStatus,
-        })),
-      },
-      "Failed to queue batched parent turn notifications",
-    );
-  }
+  const previous = items[existingIndex];
+  const merged =
+    item.turnStatus === "interrupted" &&
+    !item.interruption &&
+    previous?.turnStatus === "interrupted" &&
+    previous.interruption
+      ? { ...item, interruption: previous.interruption }
+      : item;
+  return items.map((entry, index) =>
+    index === existingIndex ? merged : entry,
+  );
 }
 
-function scheduleChildThreadTurnNotificationBatchFlush(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  parentThreadId: string,
-): ReturnType<typeof setTimeout> {
-  return setTimeout(() => {
-    void flushChildThreadTurnNotificationBatch(deps, parentThreadId);
-  }, CHILD_THREAD_TURN_NOTIFICATION_BATCH_DELAY_MS);
-}
-
-function queueChildThreadTurnNotificationBatchItem(
+async function queueChildThreadTurnNotificationBatchItem(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
-): void {
+): Promise<void> {
+  const parentThread = getThread(deps.db, args.parentThreadId);
+  if (
+    !parentThread ||
+    parentThread.archivedAt !== null ||
+    parentThread.deletedAt !== null
+  ) {
+    return;
+  }
   const item: ChildThreadTurnNotificationBatchItem = {
     activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
     childThread: args.childThread,
@@ -440,42 +439,38 @@ function queueChildThreadTurnNotificationBatchItem(
     ...(args.failureContext ? { failureContext: args.failureContext } : {}),
     ...(args.interruption ? { interruption: args.interruption } : {}),
   };
-  const existingBatch = childThreadTurnNotificationBatches.get(
-    args.parentThreadId,
+  const execution = await buildExecutionOptions(
+    deps,
+    {},
+    { threadId: parentThread.id },
   );
-  if (existingBatch) {
-    const existingIndex = existingBatch.items.findIndex(
-      (entry) =>
-        entry.childThread.id === args.childThread.id &&
-        entry.failureContext === args.failureContext,
-    );
-    if (existingIndex === -1) {
-      existingBatch.items.push(item);
-    } else {
-      const previous = existingBatch.items[existingIndex];
-      existingBatch.items[existingIndex] =
-        item.turnStatus === "interrupted" &&
-        !item.interruption &&
-        previous?.turnStatus === "interrupted" &&
-        previous.interruption
-          ? { ...item, interruption: previous.interruption }
-          : item;
-    }
-    clearTimeout(existingBatch.timer);
-    existingBatch.timer = scheduleChildThreadTurnNotificationBatchFlush(
-      deps,
-      args.parentThreadId,
-    );
-    return;
-  }
-
-  childThreadTurnNotificationBatches.set(args.parentThreadId, {
-    items: [item],
-    timer: scheduleChildThreadTurnNotificationBatchFlush(
-      deps,
-      args.parentThreadId,
-    ),
-  });
+  const row = postCoalescedSystemNotice<ChildThreadTurnNotificationBatchItem[]>(
+    deps,
+    {
+      coalesceKey: CHILD_THREAD_TURN_NOTIFICATION_COALESCE_KEY,
+      execution,
+      merge: (previous) => {
+        const items = mergeChildThreadTurnNotificationItem(
+          previous ?? [],
+          item,
+        );
+        const taxonomy = childThreadTurnStatusBatchTaxonomy(items);
+        return {
+          input: buildChildThreadTurnStatusBatchInput({ items }),
+          notice: {
+            kind: taxonomy.systemMessageKind,
+            subject: taxonomy.systemMessageSubject,
+          },
+          state: items,
+        };
+      },
+      parseState: (stored) =>
+        childThreadTurnNotificationBatchSchema.parse(JSON.parse(stored)),
+      threadId: parentThread.id,
+      windowMs: CHILD_THREAD_TURN_NOTIFICATION_BATCH_DELAY_MS,
+    },
+  );
+  requestQueuedMessageDispatchAt(deps, row.sendAt);
 }
 
 export async function queueChildThreadTurnNotificationBestEffort(
@@ -483,7 +478,7 @@ export async function queueChildThreadTurnNotificationBestEffort(
   args: QueueChildThreadTurnNotificationArgs,
 ): Promise<void> {
   try {
-    queueChildThreadTurnNotificationBatchItem(deps, args);
+    await queueChildThreadTurnNotificationBatchItem(deps, args);
   } catch (error) {
     deps.logger.error(
       {
