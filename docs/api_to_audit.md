@@ -1389,6 +1389,30 @@ Docs: `backend-foundation.md`, `testing.md`.
     size limits without pretending to model process startup, crashes, native
     watcher recovery, or reconnect behavior.
 
+## `PluginRpcMethodContract.experimental_retryable` (host contracts)
+
+A host contract method can declare `experimental_retryable: true`. When the
+daemon's response to such a call has not arrived within half of its transport
+timeout, the server cancels that call and sends it once more with a new call
+id. This is core's own retry: `callPluginHostRpc` goes through
+`callHostRetryablePluginHostCall`, which runs the same
+`callHostOnlineRpcWithRetry` path core uses for daemon commands marked
+`retryable: true` in `hostDaemonCommandRegistry`, and differs only in giving
+the second attempt a fresh `callId`, because the daemon rejects a duplicate id
+while the first call is pending. No daemon wire change. Client RPC
+registrations ignore the field.
+
+Callers: the GitHub PR Status plugin's `view` (core marked
+`workspace.pull_request` retryable; `act` is not).
+
+Docs: `backend-foundation.md`.
+
+**Audit before stabilizing.** Decide whether retryability belongs on the
+contract or should be inferred from a read/write method kind, whether one
+retry is enough for plugin calls with long timeouts, and whether the
+cancelled first attempt should count against worker lifetime.
+
+
 ## Fixed-tab targets (`experimental_target`, `experimental_useAppPanel`, and `experimental_useFixedTabTarget`)
 
 **Kept experimental.** Fixed tabs now register through `experimental_tab`; the

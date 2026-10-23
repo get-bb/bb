@@ -188,6 +188,13 @@ export interface PluginRpcMethodContract<
   StandardSchemaV1InferOutput<OutputSchema>
 > {
   readonly experimental_description?: string;
+  /**
+   * Host contracts only. When true and the daemon's response has not arrived
+   * within half of the call's transport timeout, bb cancels the call and sends
+   * it once more, the retry core uses for its own read-only daemon commands.
+   * Declare it only for reads that are safe to run twice.
+   */
+  readonly experimental_retryable?: boolean;
   readonly input: InputSchema;
   readonly output: OutputSchema;
 }
