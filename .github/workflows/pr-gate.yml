@@ -6,6 +6,7 @@ on:
       - synchronize
       - reopened
       - edited
+      - labeled
 permissions:
   contents: read
   issues: write
@@ -32,13 +33,23 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_STATE: ${{ github.event.pull_request.state }}
           PR_NEEDS_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'needs-issue') }}
+          PR_NEEDS_EDITS: ${{ contains(github.event.pull_request.labels.*.name, 'needs-maintainer-edits') }}
+          PR_SKIP_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'skip-issue-check') }}
+          LABEL_NAME: ${{ github.event.label.name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           HEAD_OWNER_TYPE: ${{ github.event.pull_request.head.repo.owner.type }}
           MAINTAINER_CAN_MODIFY: ${{ github.event.pull_request.maintainer_can_modify }}
           CONTRIBUTING_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.base_ref }}/CONTRIBUTING.md
           DISCORD_INVITE_URL: https://discord.gg/kvBU6tJhcJ
         run: |
-          if [ "$EVENT_ACTION" = "edited" ] && { [ "$PR_STATE" != "closed" ] || [ "$PR_NEEDS_ISSUE" != "true" ]; }; then
+          recheck=""
+          if [ "$EVENT_ACTION" = "edited" ] || [ "$EVENT_ACTION" = "labeled" ]; then
+            recheck="yes"
+          fi
+          if [ "$EVENT_ACTION" = "labeled" ] && [ "$LABEL_NAME" != "skip-issue-check" ]; then
+            exit 0
+          fi
+          if [ -n "$recheck" ] && { [ "$PR_STATE" != "closed" ] || [ "$PR_NEEDS_ISSUE" != "true" ]; }; then
             exit 0
           fi
           trusted=""
@@ -60,11 +71,15 @@ jobs:
             done < ".github/APPROVED_CONTRIBUTORS"
           fi
           edits_off=""
-          if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$HEAD_OWNER_TYPE" = "User" ] && [ "$MAINTAINER_CAN_MODIFY" != "true" ]; then
+          if [ -n "$recheck" ]; then
+            if [ "$PR_NEEDS_EDITS" = "true" ]; then
+              edits_off="yes"
+            fi
+          elif [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$HEAD_OWNER_TYPE" = "User" ] && [ "$MAINTAINER_CAN_MODIFY" != "true" ]; then
             edits_off="yes"
           fi
           issue_missing=""
-          if [ "$EVENT_ACTION" != "synchronize" ] && [ "$PR_AUTHOR_TYPE" != "Bot" ] && [ "$PR_ASSOCIATION" != "OWNER" ] && [ "$PR_ASSOCIATION" != "MEMBER" ] && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+          if [ "$EVENT_ACTION" != "synchronize" ] && [ "$PR_AUTHOR_TYPE" != "Bot" ] && [ "$PR_ASSOCIATION" != "OWNER" ] && [ "$PR_ASSOCIATION" != "MEMBER" ] && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$PR_SKIP_ISSUE" != "true" ]; then
             issue_missing="yes"
             attempts=1
             if [ "$EVENT_ACTION" = "edited" ]; then
@@ -91,7 +106,7 @@ jobs:
           remove_label() {
             gh pr edit "$PR_NUMBER" --remove-label "$1" --repo "$GITHUB_REPOSITORY" || true
           }
-          if [ "$EVENT_ACTION" = "edited" ]; then
+          if [ -n "$recheck" ]; then
             if [ -n "$trusted" ] && [ -z "$edits_off" ] && [ -z "$issue_missing" ]; then
               remove_label "needs-issue"
               gh pr reopen "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
@@ -125,6 +140,7 @@ jobs:
             add_label "needs-issue" "PR does not close an open issue" "d93f0b"
           fi
           if [ -n "$edits_off" ]; then
+            add_label "needs-maintainer-edits" "PR was opened with maintainer edits turned off" "d93f0b"
             body="$body"$'\n\n'"**Maintainer edits.** \"Allow edits by maintainers\" is turned off for this pull request. Open a new pull request from your fork with it turned on. This one stays closed."
           fi
           body="$body"$'\n\n'"See [CONTRIBUTING.md]($CONTRIBUTING_URL) for details."

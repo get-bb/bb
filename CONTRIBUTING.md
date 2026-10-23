@@ -34,6 +34,8 @@ Write `Fixes #<number>`, `Closes #<number>`, or `Resolves #<number>` in the pull
 
 If the gate closes your pull request only because it has no linked issue, add the line to the description and save it. The pull request reopens on its own.
 
+A maintainer can exempt a pull request from this requirement by adding the `skip-issue-check` label. The gate then reopens it if it meets the other requirements.
+
 ## Bugs
 
 If you run into a bug, open an issue with the bug report form. Follow [docs/filing-issues.md](docs/filing-issues.md): versions, minimal copy-pasteable steps, expected vs actual output, evidence, and what you ruled out. A stranger should be able to reproduce it from the issue alone.
