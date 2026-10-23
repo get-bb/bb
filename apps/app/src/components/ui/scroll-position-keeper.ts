@@ -68,6 +68,7 @@ const KEY_SESSION_MS = 500;
 const PROGRAMMATIC_SMOOTH_SESSION_MS = 1_000;
 const SESSION_EXTENSION_MS = 150;
 const MOMENTUM_SESSION_MS = 3_000;
+const TOUCH_ATTACH_DRAG_PX = 8;
 const FREE: ReadingPosition = { kind: "free" };
 
 export function getDirectTimelineRows(list: Element): NodeListOf<HTMLElement> {
@@ -115,6 +116,7 @@ export class ScrollPositionKeeper {
   private maxScrollTop = 0;
   private viewportHeight = 0;
   private reconciledWidth = 0;
+  private reconciledViewportHeight = 0;
   private reconciledScrollHeight = 0;
   private topRow: TopRow | null = null;
   private deferred = 0;
@@ -124,6 +126,7 @@ export class ScrollPositionKeeper {
   private gestureScrolled = false;
   private inputUntil = Number.NEGATIVE_INFINITY;
   private touchStartScrollTop = 0;
+  private touchStartY: number | null = null;
   private userScrolled = false;
   private scrollMovedAt = Number.NEGATIVE_INFINITY;
   private settleTimeout: number | null = null;
@@ -182,18 +185,26 @@ export class ScrollPositionKeeper {
     scrollElement.style.overflowAnchor = "none";
     this.ownScrollTop = scrollElement.scrollTop;
     const onScroll = () => this.handleScroll();
-    const onTouchStart = () => {
+    const onTouchStart = (event: TouchEvent) => {
       if (!this.touching) {
         this.gestureScrolled = false;
         this.touchStartScrollTop = scrollElement.scrollTop;
+        this.touchStartY = event.touches[0]?.clientY ?? null;
       }
       this.touching = true;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const startY = this.touchStartY;
+      const y = event.touches[0]?.clientY;
+      if (startY === null || y === undefined) return;
+      if (startY - y >= TOUCH_ATTACH_DRAG_PX) this.attachIfAtEnd();
     };
     const activeTouchPointers = new Set<number>();
     const endTouch = () => {
       if (!this.touching) return;
       activeTouchPointers.clear();
       this.touching = false;
+      this.touchStartY = null;
       if (Math.abs(scrollElement.scrollTop - this.touchStartScrollTop) >= 1) {
         this.gestureScrolled = true;
         this.scrollMovedAt = window.performance.now();
@@ -249,6 +260,7 @@ export class ScrollPositionKeeper {
     scrollElement.addEventListener("scroll", onScroll, { passive: true });
     scrollElement.addEventListener("wheel", onWheel, { passive: true });
     scrollElement.addEventListener("touchstart", onTouchStart, PASSIVE_CAPTURE);
+    scrollElement.addEventListener("touchmove", onTouchMove, PASSIVE_CAPTURE);
     scrollElement.addEventListener("touchend", onTouchEnd, PASSIVE_CAPTURE);
     scrollElement.addEventListener("touchcancel", onTouchEnd, PASSIVE_CAPTURE);
     scrollElement.addEventListener("pointerdown", onPointerDown, {
@@ -278,6 +290,11 @@ export class ScrollPositionKeeper {
       scrollElement.removeEventListener(
         "touchstart",
         onTouchStart,
+        PASSIVE_CAPTURE,
+      );
+      scrollElement.removeEventListener(
+        "touchmove",
+        onTouchMove,
         PASSIVE_CAPTURE,
       );
       scrollElement.removeEventListener(
@@ -402,9 +419,13 @@ export class ScrollPositionKeeper {
     if (position.kind === "bottom") {
       return { rowId: "", offsetWithinRow: 0, atBottom: true };
     }
-    if (position.kind === "free") return null;
     const scrollElement = this.options.getScrollElement();
     if (scrollElement === null) return null;
+    this.refreshExtent(scrollElement);
+    if (this.isAtEnd(scrollElement.scrollTop)) {
+      return { rowId: "", offsetWithinRow: 0, atBottom: true };
+    }
+    if (position.kind === "free") return null;
     const anchor = this.capture(scrollElement);
     if (anchor === null || anchor.kind !== "anchor") return null;
     const nested =
@@ -488,13 +509,15 @@ export class ScrollPositionKeeper {
     const scrollTop = scrollElement.scrollTop;
     const max = this.refreshExtent(scrollElement);
     const width = scrollElement.clientWidth;
-    if (
-      this.reconciledWidth > 0 &&
-      Math.abs(this.reconciledWidth - width) >= 1
-    ) {
-      this.keepAnchorVisible(scrollElement);
-    }
+    const widthChanged =
+      this.reconciledWidth > 0 && Math.abs(this.reconciledWidth - width) >= 1;
+    if (widthChanged) this.keepAnchorVisible(scrollElement);
+    const resized =
+      widthChanged ||
+      (this.reconciledViewportHeight > 0 &&
+        Math.abs(this.reconciledViewportHeight - this.viewportHeight) >= 1);
     this.reconciledWidth = width;
+    this.reconciledViewportHeight = this.viewportHeight;
     const previous = this.ownScrollTop;
     if (
       previous !== null &&
@@ -506,7 +529,7 @@ export class ScrollPositionKeeper {
       this.scrollMovedAt = window.performance.now();
     }
     this.ownScrollTop = scrollTop;
-    this.advancePendingRestore(scrollElement);
+    const restored = this.advancePendingRestore(scrollElement);
     const scrollHeight = scrollElement.scrollHeight;
     const extentChanged = scrollHeight !== this.reconciledScrollHeight;
     this.reconciledScrollHeight = scrollHeight;
@@ -517,10 +540,19 @@ export class ScrollPositionKeeper {
       this.position.kind === "bottom" &&
       !extentChanged &&
       Math.abs(max - scrollTop) <= this.options.bottomThresholdPx;
-    const target =
+    let target =
       bouncing || settledAtEnd
         ? null
         : this.targetScrollTop(scrollElement, scrollTop, max);
+    if (
+      target !== null &&
+      (resized || restored) &&
+      this.position.kind === "anchor" &&
+      target >= max - this.options.bottomThresholdPx
+    ) {
+      this.setPosition({ kind: "bottom" });
+      target = max;
+    }
     if (target !== null) {
       const clamped = defer
         ? Math.min(
@@ -553,9 +585,9 @@ export class ScrollPositionKeeper {
     return position.offset > -height && position.offset < viewportHeight;
   }
 
-  private advancePendingRestore(scrollElement: HTMLElement): void {
+  private advancePendingRestore(scrollElement: HTMLElement): boolean {
     const pending = this.pendingRestore;
-    if (pending === null) return;
+    if (pending === null) return false;
     const element = findMountedRow(scrollElement, pending.rowId);
     if (element !== null) {
       this.pendingRestore = null;
@@ -574,11 +606,12 @@ export class ScrollPositionKeeper {
         ),
         neighbors: [],
       });
-      return;
+      return true;
     }
     if (window.performance.now() > pending.expiresAt) {
       this.pendingRestore = null;
     }
+    return false;
   }
 
   private targetScrollTop(

@@ -241,8 +241,11 @@ scroll that comes with a change in the scroll extent is layout, such as a clamp
 after content briefly shrank, and the owner reconciles it back to the position.
 A scroll without input or size change, such as find in page or focus moving to
 an offscreen control, is navigation, and the position follows it. Moving down
-into the last 4 px, or a wheel or End/PageDown at the end, attaches. Moving up
-out of it detaches. Layout changes never attach or detach.
+into the last 4 px, or a wheel, End/PageDown or a touch drag toward the end
+while at the end, attaches. A navigation, a restore, or a viewport resize that
+leaves the reading position at or past the end also attaches. Moving up out of
+the end detaches. Content changes never attach or detach: a detached reader
+whose content shrinks onto the end stays detached until they scroll toward it.
 
 Every layout change is reconciled before paint. Triggers are ResizeObservers on
 the root, its content, and every mounted row, plus each windowed list's layout
@@ -303,7 +306,8 @@ next page.
 A thread's position is saved when the reader scrolls and when the timeline
 unmounts. Saving on unmount first takes in a scroll the reader made whose scroll
 event has not arrived yet; a layout change alone keeps an attached reader at the
-end. Returning to the thread mounts the saved row's window and restores
+end. A reader who is at the end is saved as at the bottom, attached or not.
+Returning to the thread mounts the saved row's window and restores
 the row at its saved offset, kept on screen if the viewport is now shorter. If
 the row has not loaded yet, the timeline waits
 at the bottom for up to a second. The timeline keeps the loaded pages of the
