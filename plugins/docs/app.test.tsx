@@ -541,6 +541,44 @@ describe("Docs nav panel", () => {
     expect(slot.queryByRole("alert")).toBeNull();
   });
 
+  it("keeps the open document on screen until the next one loads", async () => {
+    const PanelContent = docsRegistration.component;
+    const next = deferred<ReturnType<typeof documentResult>>();
+    const slot = renderSlot(
+      docsRegistration,
+      { subPath: "personal/switch-first.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResultForVault("personal", "switch-first.md", "First"),
+          readDocument: (rawInput: unknown) => {
+            const input = rawInput as { path: string };
+            return input.path === "switch-first.md"
+              ? documentResult(input.path, "# First\n\nFirst body", "sha-1")
+              : next.promise;
+          },
+        },
+      },
+    );
+    await slot.findByText("First body");
+    slot.rerender(<PanelContent subPath="personal/switch-second.md" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(slot.getByText("First body")).toBeTruthy();
+    expect(slot.queryByRole("status", { name: "Loading document" })).toBeNull();
+    next.resolve(
+      documentResult("switch-second.md", "# Second\n\nSecond body", "sha-2"),
+    );
+    await slot.findByText("Second body");
+    expect(slot.queryByText("First body")).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        slot.getByRole("textbox", { name: "Document content" }),
+      ),
+    );
+  });
+
   it("ignores an obsolete vault refresh and rename after a deferred save", async () => {
     const pendingSave = deferred<{ path: string; sha256: string }>();
     const pendingWorkNotebook =

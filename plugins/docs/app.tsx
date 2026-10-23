@@ -440,6 +440,7 @@ function TiptapEditor(props: {
   baseMarkdown?: string | null;
   inline?: boolean;
   disabled?: boolean;
+  active?: boolean;
 }) {
   const {
     previewBaseUrl,
@@ -448,6 +449,7 @@ function TiptapEditor(props: {
     baseMarkdown = null,
     inline = false,
     disabled = false,
+    active = true,
   } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -536,7 +538,6 @@ function TiptapEditor(props: {
         }),
       ],
       content: "",
-      autofocus: inline ? false : "end",
       editable: !latest.current.disabled,
       editorProps: {
         attributes: {
@@ -632,6 +633,9 @@ function TiptapEditor(props: {
   useEffect(() => {
     editorRef.current?.setEditable(!disabled, false);
   }, [disabled]);
+  useEffect(() => {
+    if (active && !inline) editorRef.current?.commands.focus("end");
+  }, [active, inline]);
 
   return (
     <div
@@ -1378,12 +1382,14 @@ function SavedDocumentEditor({
   onUpload,
   onSaveCopy,
   errorHint = "",
+  active = true,
 }: {
   state: DocumentState;
   session: DocumentSession;
   onUpload(file: File): Promise<{ markdownPath: string }>;
   onSaveCopy?(): void;
   errorHint?: string;
+  active?: boolean;
 }) {
   if (!state.loaded)
     return state.missing ? (
@@ -1407,6 +1413,7 @@ function SavedDocumentEditor({
       />
       <TiptapEditor
         value={state.draft}
+        active={active}
         disabled={state.busy || state.missing}
         previewBaseUrl={state.base?.previewBaseUrl ?? ""}
         notePath={state.base?.previewPath ?? state.path}
@@ -1421,12 +1428,16 @@ function NotePane({
   vaultId,
   notePath,
   vaultError,
+  active,
+  onReady,
   onRenamed,
   onOpen,
 }: {
   vaultId: string;
   notePath: string;
   vaultError: string | null;
+  active: boolean;
+  onReady(): void;
   onRenamed(path: string): void;
   onOpen(path: string): void;
 }) {
@@ -1444,10 +1455,19 @@ function NotePane({
   useEffect(() => {
     if (renamed !== null) onRenamedRef.current(renamed);
   }, [renamed]);
+  const ready = state.loaded || state.missing || state.error !== null;
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  });
+  useEffect(() => {
+    if (ready) onReadyRef.current();
+  }, [ready]);
   return (
     <SavedDocumentEditor
       state={state}
       session={session}
+      active={active}
       onSaveCopy={() =>
         void saveCopy().then((created) => {
           if (created !== null) onOpen(created);
@@ -1464,6 +1484,58 @@ function NotePane({
       }}
     />
   );
+}
+
+const SWITCH_REVEAL_MS = 1_000;
+
+function NoteSwitcher({
+  vaultId,
+  notePath,
+  vaultError,
+  onRenamed,
+  onOpen,
+}: {
+  vaultId: string;
+  notePath: string;
+  vaultError: string | null;
+  onRenamed(path: string): void;
+  onOpen(path: string): void;
+}) {
+  const target = vaultDocumentSession(vaultId, notePath, false).id;
+  const [shown, setShown] = useState({ vaultId, notePath, id: target });
+  const pending = shown.id !== target;
+  const reveal = useCallback(
+    () => setShown({ vaultId, notePath, id: target }),
+    [vaultId, notePath, target],
+  );
+  useEffect(() => {
+    if (!pending) return;
+    const timeout = window.setTimeout(reveal, SWITCH_REVEAL_MS);
+    return () => window.clearTimeout(timeout);
+  }, [pending, reveal]);
+  const panes = pending
+    ? [shown, { vaultId, notePath, id: target }]
+    : [{ vaultId, notePath, id: target }];
+  return panes.map((pane) => {
+    const visible = pane.id === shown.id;
+    return (
+      <div
+        key={pane.id}
+        hidden={!visible}
+        className={visible ? "flex min-h-0 min-w-0 flex-1" : undefined}
+      >
+        <NotePane
+          vaultId={pane.vaultId}
+          notePath={pane.notePath}
+          vaultError={vaultError}
+          active={visible}
+          onReady={pane.id === target ? reveal : () => undefined}
+          onRenamed={onRenamed}
+          onOpen={onOpen}
+        />
+      </div>
+    );
+  });
 }
 
 function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
@@ -2185,8 +2257,7 @@ function NotesWorkspace({
 
   const pane =
     !navigationOnly && activeVaultId && filePath && /\.md$/i.test(filePath) ? (
-      <NotePane
-        key={vaultDocumentSession(activeVaultId, filePath, false).id}
+      <NoteSwitcher
         vaultId={activeVaultId}
         notePath={filePath}
         vaultError={
