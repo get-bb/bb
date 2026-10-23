@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import {
   GITHUB_PR_STATUS_PLUGIN_ID,
   githubPrStatusRpcContract,
+  PULL_REQUESTS_REFETCH_EVENT,
   type EnvironmentPullRequest,
   type PullRequest,
 } from "bb-plugin-bb--github-pr-status/contract";
@@ -25,20 +26,63 @@ export function isEnvironmentPullRequestStale(
 }
 
 const loadedAtByEnvironment = new Map<string, number>();
+const rowByEnvironment = new Map<string, EnvironmentPullRequest>();
 const shownEnvironments = new Map<string, number>();
-let refetchQueued = false;
+let pendingRefetch: {
+  refetch: () => Promise<void>;
+  onlyIfStale: boolean;
+} | null = null;
 
-function queueRefetch(refetch: () => Promise<void>): void {
-  if (refetchQueued) return;
-  refetchQueued = true;
+function markLoaded(environmentIds: readonly string[]): void {
+  const loadedAt = Date.now();
+  for (const environmentId of environmentIds)
+    loadedAtByEnvironment.set(environmentId, loadedAt);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener(PULL_REQUESTS_REFETCH_EVENT, (event) => {
+    const detail: unknown = event instanceof CustomEvent ? event.detail : null;
+    if (Array.isArray(detail))
+      markLoaded(detail.filter((id) => typeof id === "string"));
+  });
+}
+
+function isShownRowStale(environmentId: string, now: number): boolean {
+  const row = rowByEnvironment.get(environmentId);
+  return (
+    row !== undefined &&
+    isEnvironmentPullRequestStale(
+      row,
+      loadedAtByEnvironment.get(environmentId) ?? 0,
+      now,
+    )
+  );
+}
+
+function queueRefetch(
+  refetch: () => Promise<void>,
+  onlyIfStale: boolean,
+): void {
+  if (pendingRefetch) {
+    pendingRefetch.onlyIfStale &&= onlyIfStale;
+    return;
+  }
+  pendingRefetch = { refetch, onlyIfStale };
   queueMicrotask(() => {
-    refetchQueued = false;
+    const pending = pendingRefetch;
+    pendingRefetch = null;
+    if (!pending) return;
     const refreshed = [...shownEnvironments.keys()];
-    void refetch().then(() => {
-      const loadedAt = Date.now();
-      for (const environmentId of refreshed)
-        loadedAtByEnvironment.set(environmentId, loadedAt);
-    });
+    const now = Date.now();
+    if (
+      pending.onlyIfStale &&
+      !refreshed.some((environmentId) => isShownRowStale(environmentId, now))
+    )
+      return;
+    window.dispatchEvent(
+      new CustomEvent(PULL_REQUESTS_REFETCH_EVENT, { detail: refreshed }),
+    );
+    void pending.refetch().then(() => markLoaded(refreshed));
   });
 }
 
@@ -67,8 +111,9 @@ export function useRetiredSidebarEnvironmentPullRequest(
   });
 
   useEffect(() => {
-    if (environmentId && row !== undefined)
-      loadedAtByEnvironment.set(environmentId, Date.now());
+    if (!environmentId || row === undefined) return;
+    rowByEnvironment.set(environmentId, row);
+    loadedAtByEnvironment.set(environmentId, Date.now());
   }, [environmentId, row]);
 
   useEffect(() => {
@@ -77,20 +122,12 @@ export function useRetiredSidebarEnvironmentPullRequest(
       environmentId,
       (shownEnvironments.get(environmentId) ?? 0) + 1,
     );
-    if (latest.current.row !== undefined) queueRefetch(latest.current.refetch);
+    if (latest.current.row !== undefined)
+      queueRefetch(latest.current.refetch, false);
     const refetchIfStale = () => {
       if (document.visibilityState === "hidden") return;
-      const current = latest.current.row;
-      if (
-        current !== undefined &&
-        isEnvironmentPullRequestStale(
-          current,
-          loadedAtByEnvironment.get(environmentId) ?? 0,
-          Date.now(),
-        )
-      ) {
-        queueRefetch(latest.current.refetch);
-      }
+      if (isShownRowStale(environmentId, Date.now()))
+        queueRefetch(latest.current.refetch, true);
     };
     document.addEventListener("visibilitychange", refetchIfStale);
     window.addEventListener("pageshow", refetchIfStale);

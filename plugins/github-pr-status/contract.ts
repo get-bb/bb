@@ -3,6 +3,8 @@ import { z } from "zod";
 
 export const GITHUB_PR_STATUS_PLUGIN_ID = "bb--github-pr-status";
 export const PULL_REQUESTS_MAX_KEYS = 200;
+export const PULL_REQUESTS_REFETCH_EVENT =
+  "bb--github-pr-status:pull-requests-refetch";
 
 const checkStatusSchema = z.enum([
   "queued",
