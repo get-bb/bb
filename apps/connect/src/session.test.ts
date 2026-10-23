@@ -23,6 +23,7 @@ import {
 import {
   invalidateSessionCookie,
   LOOKUP_JOIN_TIMEOUT_MS,
+  LOOKUP_RETRY_DELAYS_MS,
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
   markMachineSeen,
   resolveLabel,
@@ -577,6 +578,28 @@ function countingDb(target: typeof db): {
   return { db: proxied, counts };
 }
 
+function failingDb(
+  target: typeof db,
+  failures: number,
+): { db: typeof db; counts: { select: number } } {
+  const counts = { select: 0 };
+  const proxied = new Proxy(target, {
+    get(t, prop) {
+      if (prop === "select") {
+        counts.select += 1;
+        if (counts.select <= failures) {
+          throw new Error("D1_ERROR: D1 DB is overloaded.");
+        }
+      }
+      const value = Reflect.get(t, prop);
+      return typeof value === "function" ? value.bind(t) : value;
+    },
+  });
+  return { db: proxied, counts };
+}
+
+const ALL_RETRIES_MS = LOOKUP_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+
 function stalledDb(target: typeof db): typeof db {
   const query: object = new Proxy(() => {}, {
     get: (_query, prop) =>
@@ -694,47 +717,37 @@ describe("gate lookup caches", () => {
     expect(resolved.every((r) => r?.userId === "acct-burst-label")).toBe(true);
   });
 
-  it("shares a failed lookup with the requests waiting on it", async () => {
-    seedLabel("burst-failure");
-    let selects = 0;
-    const pending: ((error: Error) => void)[] = [];
-    const failing = new Proxy(db, {
-      get(t, prop) {
-        if (prop === "select") {
-          selects += 1;
-          const failure = new Promise<never>((_resolve, reject) => {
-            pending.push(reject);
-          });
-          const query: object = new Proxy(() => {}, {
-            get: (_query, key) =>
-              key === "then"
-                ? undefined
-                : key === "get"
-                  ? () => failure
-                  : () => query,
-          });
-          return () => query;
-        }
-        const value = Reflect.get(t, prop);
-        return typeof value === "function" ? value.bind(t) : value;
-      },
+  it("absorbs a D1 failure by retrying before answering", async () => {
+    seedLabel("blip-label");
+    vi.useFakeTimers();
+    const flaky = failingDb(db, 1);
+
+    const resolved = resolveLabel("blip-label", flaky.db);
+    await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAYS_MS[0] ?? 0);
+
+    await expect(resolved).resolves.toMatchObject({
+      userId: "acct-blip-label",
     });
+    expect(flaky.counts.select).toBe(2);
+  });
+
+  it("retries once for a whole burst and shares the final failure", async () => {
+    seedLabel("burst-failure");
+    vi.useFakeTimers();
+    const failing = failingDb(db, Infinity);
 
     const burst = Array.from({ length: 5 }, () =>
-      resolveLabel("burst-failure", failing).then(
+      resolveLabel("burst-failure", failing.db).then(
         () => "resolved",
         (error: Error) => error.message,
       ),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    for (const reject of pending) {
-      reject(new Error("D1_ERROR: D1 DB is overloaded."));
-    }
+    await vi.advanceTimersByTimeAsync(ALL_RETRIES_MS);
 
     expect(await Promise.all(burst)).toEqual(
       Array.from({ length: 5 }, () => "D1_ERROR: D1 DB is overloaded."),
     );
-    expect(selects).toBe(1);
+    expect(failing.counts.select).toBe(LOOKUP_RETRY_DELAYS_MS.length + 1);
   });
 
   it("replaces a lookup that never settles with a single new one", async () => {
@@ -843,32 +856,20 @@ describe("gate lookup caches", () => {
     expect(counted.counts.select).toBe(1);
   });
 
-  it("does not cache a failed lookup: the next request retries D1", async () => {
-    seedUser("acct-flight-retry");
-    seedServer({
-      id: "srv-flight-retry",
-      userId: "acct-flight-retry",
-      name: "default",
-      subdomain: "flight-retry",
-    });
-    let failNext = true;
-    const failingOnce = new Proxy(db, {
-      get(t, prop) {
-        if (prop === "select" && failNext) {
-          failNext = false;
-          throw new Error("d1 hiccup");
-        }
-        const value = Reflect.get(t, prop);
-        return typeof value === "function" ? value.bind(t) : value;
-      },
-    });
+  it("does not cache a lookup that failed every retry", async () => {
+    seedLabel("flight-retry");
+    vi.useFakeTimers();
+    const flaky = failingDb(db, LOOKUP_RETRY_DELAYS_MS.length + 1);
 
-    await expect(resolveLabel("flight-retry", failingOnce)).rejects.toThrow(
-      "d1 hiccup",
+    const first = resolveLabel("flight-retry", flaky.db).catch(
+      (error: Error) => error.message,
     );
-    await expect(
-      resolveLabel("flight-retry", failingOnce),
-    ).resolves.toMatchObject({ kind: "server", userId: "acct-flight-retry" });
+    await vi.advanceTimersByTimeAsync(ALL_RETRIES_MS);
+
+    expect(await first).toBe("D1_ERROR: D1 DB is overloaded.");
+    await expect(resolveLabel("flight-retry", flaky.db)).resolves.toMatchObject(
+      { kind: "server", userId: "acct-flight-retry" },
+    );
   });
 });
 
@@ -1012,22 +1013,12 @@ describe("machine credential cache", () => {
 
   it("does not cache a failed D1 lookup", async () => {
     const credential = await seedMachine("machine-flaky");
-    let failNext = true;
-    const flaky = new Proxy(db, {
-      get(target, prop) {
-        if (prop === "select" && failNext) {
-          failNext = false;
-          throw new Error("D1_ERROR: D1 DB is overloaded.");
-        }
-        const value = Reflect.get(target, prop);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
+    const flaky = failingDb(db, LOOKUP_RETRY_DELAYS_MS.length + 1);
 
     await expect(
-      verifyMachineCredentialDetails(credential, flaky),
+      verifyMachineCredentialDetails(credential, flaky.db),
     ).rejects.toThrow("overloaded");
-    expect(await verifyMachineCredentialDetails(credential, flaky)).toEqual({
+    expect(await verifyMachineCredentialDetails(credential, flaky.db)).toEqual({
       machineId: "machine-flaky",
       userId: "acct-machine-flaky",
     });

@@ -20,23 +20,46 @@ const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   1000;
 
 export const LOOKUP_JOIN_TIMEOUT_MS = 2_000;
+export const LOOKUP_RETRY_DELAYS_MS = [250, 1_000];
 const LOOKUP_POLL_MS = 10;
 
 type LookupOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
 interface InFlightLookup<T> {
-  startedAt: number;
+  attemptStartedAt: number;
   outcome: LookupOutcome<T> | null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function awaitOutcome<T>(
   lookup: InFlightLookup<T>,
 ): Promise<LookupOutcome<T> | null> {
-  const deadline = lookup.startedAt + LOOKUP_JOIN_TIMEOUT_MS;
-  while (lookup.outcome === null && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, LOOKUP_POLL_MS));
+  while (
+    lookup.outcome === null &&
+    Date.now() < lookup.attemptStartedAt + LOOKUP_JOIN_TIMEOUT_MS
+  ) {
+    await sleep(LOOKUP_POLL_MS);
   }
   return lookup.outcome;
+}
+
+async function loadWithRetries<T>(
+  lookup: InFlightLookup<T>,
+  load: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await load();
+    } catch (error) {
+      const delayMs = LOOKUP_RETRY_DELAYS_MS[attempt];
+      if (delayMs === undefined) throw error;
+      await sleep(delayMs);
+      lookup.attemptStartedAt = Date.now();
+    }
+  }
 }
 
 export class SettledLookupCache<T> {
@@ -61,7 +84,7 @@ export class SettledLookupCache<T> {
         const inFlight = this.lookups.get(key);
         if (
           inFlight === undefined ||
-          Date.now() - inFlight.startedAt >= LOOKUP_JOIN_TIMEOUT_MS
+          Date.now() - inFlight.attemptStartedAt >= LOOKUP_JOIN_TIMEOUT_MS
         ) {
           break;
         }
@@ -71,10 +94,13 @@ export class SettledLookupCache<T> {
       }
     }
     const generation = this.generation;
-    const lookup: InFlightLookup<T> = { startedAt: Date.now(), outcome: null };
+    const lookup: InFlightLookup<T> = {
+      attemptStartedAt: Date.now(),
+      outcome: null,
+    };
     this.lookups.set(key, lookup);
     try {
-      const value = await options.load();
+      const value = await loadWithRetries(lookup, options.load);
       lookup.outcome = { ok: true, value };
       if (generation === this.generation) {
         this.entries.set(key, { value, expires: options.expires(value) });
