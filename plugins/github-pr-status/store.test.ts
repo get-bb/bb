@@ -199,6 +199,15 @@ describe("shared pull request refresh", () => {
     expect(persistence.snapshots()).toEqual([]);
   });
 
+  it("discards rows saved by another persistence version", async () => {
+    const { store, owner } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    owner.bb.storage.database().pragma("user_version = 0");
+    const reopened = createPullRequestPersistence(owner.bb.storage);
+    expect(reopened.snapshots()).toEqual([]);
+    expect(reopened.links()).toEqual([]);
+  });
+
   it("persists absence and rediscovers after an unwatched branch refresh", async () => {
     const { store, persistence } = setup([
       { outcome: "absent" },

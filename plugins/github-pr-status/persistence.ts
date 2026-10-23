@@ -2,6 +2,9 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { pullRequestSchema, type PullRequest } from "./contract.js";
 
+const PERSISTENCE_ENABLED = true;
+const PERSISTENCE_VERSION = 1;
+
 const snapshotRow = z.object({
   url: z.string().url(),
   content: z
@@ -25,6 +28,14 @@ const linkRow = z.object({
 });
 
 export function createPullRequestPersistence(storage: BbPluginApi["storage"]) {
+  if (!PERSISTENCE_ENABLED)
+    return {
+      snapshots: () => [],
+      links: () => [],
+      saveSnapshot() {},
+      link() {},
+      removeEnvironment() {},
+    };
   const db = storage.database();
   storage.migrate(db, [
     `CREATE TABLE snapshots (
@@ -40,6 +51,11 @@ export function createPullRequestPersistence(storage: BbPluginApi["storage"]) {
     );
     CREATE INDEX links_url ON links(url);`,
   ]);
+  if (db.pragma("user_version", { simple: true }) !== PERSISTENCE_VERSION)
+    db.transaction(() => {
+      db.exec("DELETE FROM links; DELETE FROM snapshots;");
+      db.pragma(`user_version = ${PERSISTENCE_VERSION}`);
+    })();
   const prune = () =>
     db
       .prepare(
