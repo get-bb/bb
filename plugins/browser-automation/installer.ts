@@ -160,6 +160,8 @@ function installEnvironment(
     "no_proxy",
     "SSL_CERT_FILE",
     "NODE_EXTRA_CA_CERTS",
+    "NODE_USE_SYSTEM_CA",
+    "NODE_USE_ENV_PROXY",
   ]) {
     if (base[key]) env[key] = base[key];
   }

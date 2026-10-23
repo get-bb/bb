@@ -426,3 +426,13 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+Outbound networking
+
+Server and daemon launches trust OS-managed certificate authorities and enable
+Node's environment proxy support by default. Configure `HTTP_PROXY`,
+`HTTPS_PROXY`, and `NO_PROXY` with `bb-app env set` or in the launch environment;
+include `localhost,127.0.0.1,::1` in `NO_PROXY`. `NODE_EXTRA_CA_CERTS` adds a PEM
+bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the defaults.
+Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
+custom socket/agent libraries, including daemon WebSockets, can still bypass it.

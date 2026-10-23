@@ -27,6 +27,26 @@ Launcher status output is plain when stdout is redirected, including in CI.
 Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
 takes precedence. In-place progress updates require a stdout TTY.
 
+## Outbound proxies and trusted certificates
+
+The desktop and packaged server/daemon launchers default `NODE_USE_ENV_PROXY`
+and `NODE_USE_SYSTEM_CA` to `1`. Managed server and daemon launches also use
+`--use-system-ca`, including on supported Node releases predating the environment
+variable. This adds OS-managed certificate authorities to Node's bundled roots;
+`NODE_EXTRA_CA_CERTS` still adds a PEM bundle. Set either default to `0` before
+launch to opt out.
+
+Set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` (or their lowercase forms) in the
+launch environment or with `bb-app env set`. Include `localhost,127.0.0.1,::1`
+in `NO_PROXY` to keep local bb connections direct. Restart bb after changing
+these settings; existing sockets and workers keep their startup configuration.
+
+Built-in proxy support requires Node 22.21+ or 24.5+ (or Node 26). Older supported
+Node releases ignore `NODE_USE_ENV_PROXY`. Libraries that create their own agents
+or sockets can also bypass Node's global proxy support, including daemon
+WebSockets; these launch defaults do not configure those libraries or the OS
+proxy settings.
+
 ## Repository worktree hooks
 
 Commit `.bb-env-setup.sh` when a managed worktree needs repository setup.
