@@ -39,6 +39,7 @@
   "mac": {
     "category": "public.app-category.developer-tools",
     "extendInfo": {
+      "NSCameraUsageDescription": "bb uses your camera for video calls that plugins host.",
       "NSMicrophoneUsageDescription": "bb uses your microphone for voice input and sites you allow in the in-app browser."
     },
     "minimumSystemVersion": "13.0.0",

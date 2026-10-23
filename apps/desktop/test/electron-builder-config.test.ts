@@ -42,6 +42,12 @@ const macConfigSchema = z
   .object({
     entitlements: z.string().min(1),
     entitlementsInherit: z.string().min(1),
+    extendInfo: z
+      .object({
+        NSCameraUsageDescription: z.string().min(1),
+        NSMicrophoneUsageDescription: z.string().min(1),
+      })
+      .passthrough(),
     gatekeeperAssess: z.literal(false),
     hardenedRuntime: z.literal(true),
     icon: z.string().min(1),
@@ -154,6 +160,8 @@ const signingEnvironmentKeys = [
 ];
 const audioInputEntitlementPattern =
   /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/u;
+const cameraEntitlementPattern =
+  /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\s*\/>/u;
 
 type ElectronBuilderConfig = z.infer<typeof electronBuilderConfigSchema>;
 type EnvironmentOverrides = Record<string, string | undefined>;
@@ -537,7 +545,7 @@ describe("electron-builder signing config", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("grants audio input to the signed app and helper processes", async () => {
+  it("grants audio input and the camera to the signed app and helper processes", async () => {
     const config = await readStaticConfig();
     const entitlementPaths = [
       config.mac.entitlements,
@@ -551,7 +559,9 @@ describe("electron-builder signing config", () => {
       );
 
       expect(entitlements).toMatch(audioInputEntitlementPattern);
+      expect(entitlements).toMatch(cameraEntitlementPattern);
     }
+    expect(config.mac.extendInfo.NSCameraUsageDescription).toMatch(/camera/u);
   });
 
   it("keeps the updater provider pointed at desktop-latest release assets", async () => {
