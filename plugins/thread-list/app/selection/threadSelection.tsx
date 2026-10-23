@@ -132,7 +132,11 @@ function sortByOrder(
 }
 
 export function collectVisibleThreadIds(origin: Element): string[] {
-  const root = origin.closest(SIDEBAR_CONTENT_SELECTOR) ?? origin.ownerDocument;
+  const overflow = origin.closest("[data-sidebar-overflow='true']");
+  const root =
+    overflow ??
+    origin.closest(SIDEBAR_CONTENT_SELECTOR) ??
+    origin.ownerDocument;
   const elements = root.querySelectorAll<HTMLElement>(
     `${THREAD_ROW_TARGET_SELECTOR}, [${SIDEBAR_WINDOWED_NAV_ATTRIBUTE}]`,
   );
@@ -144,7 +148,8 @@ export function collectVisibleThreadIds(origin: Element): string[] {
     order.push(threadId);
   };
   for (const element of elements) {
-    if (element.closest("[data-sidebar-overflow='true']")) continue;
+    if (element.closest("[data-sidebar-overflow='true']") !== overflow)
+      continue;
     if (
       typeof element.checkVisibility === "function" &&
       !element.checkVisibility({ visibilityProperty: true })

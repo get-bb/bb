@@ -7,7 +7,9 @@ const NONE = { metaKey: false, ctrlKey: false, shiftKey: false };
 const META = { ...NONE, metaKey: true };
 const SHIFT = { ...NONE, shiftKey: true };
 
-function renderSidebar(rows: readonly (string | readonly string[])[]): void {
+function renderSidebar(
+  rows: readonly (string | readonly string[])[],
+): HTMLDivElement {
   const content = document.createElement("div");
   content.setAttribute("data-sidebar", "content");
   for (const row of rows) {
@@ -26,6 +28,7 @@ function renderSidebar(rows: readonly (string | readonly string[])[]): void {
     }
   }
   document.body.append(content);
+  return content;
 }
 
 function row(threadId: string): Element {
@@ -65,6 +68,26 @@ describe("ThreadSelectionStore", () => {
     store.handleClick("a", SHIFT, row("a"));
     expect(store.getSelected()).toEqual(["a", "b", "c", "d", "e"]);
   });
+
+  it.each([false, true])(
+    "selects a range within an overflow list (portaled: %s)",
+    (portaled) => {
+      const sidebar = renderSidebar(["main-a", "main-b"]);
+      const overflow = renderSidebar(["a", ["b", "c"], "d"]);
+      overflow.removeAttribute("data-sidebar");
+      overflow.setAttribute("data-sidebar-overflow", "true");
+      if (!portaled) sidebar.append(overflow);
+      const other = renderSidebar(["other"]);
+      other.setAttribute("data-sidebar-overflow", "true");
+      const store = new ThreadSelectionStore();
+      store.handleClick("a", NONE, row("a"));
+      store.handleClick("d", SHIFT, row("d"));
+      expect(store.getSelected()).toEqual(["a", "b", "c", "d"]);
+      store.handleClick("main-a", NONE, row("main-a"));
+      store.handleClick("main-b", SHIFT, row("main-b"));
+      expect(store.getSelected()).toEqual(["main-a", "main-b"]);
+    },
+  );
 
   it("re-anchors on a plain click, which clears the selection and lets the row open", () => {
     renderSidebar(["a", "b", "c", "d"]);

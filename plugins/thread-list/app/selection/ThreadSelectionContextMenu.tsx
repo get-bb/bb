@@ -54,15 +54,25 @@ function ThreadSelectionMenuItems({
   const store = useThreadSelectionStore();
   const { projects } = useSidebarData();
   const destinations = useMoveDestinations();
-  const threads = useMemo(() => {
+  const { threads, roots } = useMemo(() => {
     const byId = new Map<string, SidebarThread>();
     for (const project of projects) {
       for (const thread of project.threads) byId.set(thread.id, thread);
     }
-    return threadIds.flatMap((threadId) => {
+    const threads = threadIds.flatMap((threadId) => {
       const thread = byId.get(threadId);
       return thread === undefined ? [] : [thread];
     });
+    const selected = new Set(threadIds);
+    const roots = threads.filter((thread) => {
+      let parentId = thread.parentThreadId;
+      while (parentId !== null) {
+        if (selected.has(parentId)) return false;
+        parentId = byId.get(parentId)?.parentThreadId ?? null;
+      }
+      return true;
+    });
+    return { threads, roots };
   }, [projects, threadIds]);
   const count = describeThreads(threads.length);
   const anyUnread = threads.some((thread) => thread.isUnread);
@@ -100,7 +110,7 @@ function ThreadSelectionMenuItems({
   };
   const moveToSection = (sectionId: string | null) =>
     void settleAll(
-      threads.map(async (thread) => {
+      roots.map(async (thread) => {
         if (thread.pinnedAt !== null) {
           await sdk.threads.unpin({ threadId: thread.id });
         }
