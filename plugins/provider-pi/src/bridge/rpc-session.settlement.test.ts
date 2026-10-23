@@ -43,6 +43,7 @@ function harness(settlement = true) {
       scratchDir: ".",
       extensionPath: "unused",
       recordThreadId: "settlement-test",
+      serviceTier: "default",
     },
     async () => ({ content: "" }),
     (event) => {

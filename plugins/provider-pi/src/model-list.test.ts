@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPiModelContextWindowResolverFrom } from "./delta-translation.js";
-import { buildPiAvailableModels } from "./model-list.js";
+import { buildPiAvailableModels, getPiServiceTiers } from "./model-list.js";
 
 describe("pi model list", () => {
   it("exposes off as none without changing models that lack off", () => {
@@ -252,5 +252,44 @@ describe("pi model list", () => {
     expect(
       resolveContextWindow(assistant("openrouter", "deepseek-v4-flash")),
     ).toBeNull();
+  });
+
+  it("offers service tiers only on routes Pi can send them through", () => {
+    const tiers = (api: string, provider: string, id: string) =>
+      getPiServiceTiers({ api, provider, id }).map((tier) => tier.id);
+
+    expect(
+      tiers("openai-codex-responses", "openai-codex", "gpt-6.1-sol"),
+    ).toEqual(["fast", "ultrafast"]);
+    expect(tiers("openai-responses", "openai", "gpt-5.5")).toEqual(["fast"]);
+    expect(tiers("openai-responses", "github-copilot", "gpt-5.5")).toEqual([]);
+    expect(tiers("anthropic-messages", "anthropic", "claude-opus-5")).toEqual([
+      "fast",
+    ]);
+    expect(tiers("anthropic-messages", "anthropic", "claude-opus-4-8")).toEqual(
+      ["fast"],
+    );
+    expect(tiers("anthropic-messages", "anthropic", "claude-sonnet-5")).toEqual(
+      [],
+    );
+    expect(
+      tiers("anthropic-messages", "amazon-bedrock", "claude-opus-5"),
+    ).toEqual([]);
+  });
+
+  it("lists no tiers when Pi omits the model api", () => {
+    const { models } = buildPiAvailableModels({
+      models: [
+        {
+          id: "gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "openai-codex",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+      ],
+    });
+    expect(models[0]?.supportedServiceTiers).toEqual([]);
   });
 });
