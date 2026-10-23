@@ -435,13 +435,13 @@ describe("discoverProviderCommands over declared roots", () => {
     expect(byName(commands, "linked-dir:secret")).toBeUndefined();
   });
 
-  it("shares the entry-count cap across recursive roots", async () => {
+  it("gives each recursive root its own entry cap", async () => {
     const fixture = await makeWorkspaceFixture();
     const fullRoot = path.join(fixture.cwd, "full-root");
     const secondRoot = path.join(fixture.cwd, "second-root");
     await Promise.all(
-      Array.from({ length: 1_000 }, (_, index) =>
-        writeFileEnsuringDir(path.join(fullRoot, `entry-${index}.txt`), ""),
+      Array.from({ length: 1_005 }, (_, index) =>
+        mkdir(path.join(fullRoot, `directory-${index}`), { recursive: true }),
       ),
     );
     await writeFileEnsuringDir(
@@ -462,7 +462,7 @@ describe("discoverProviderCommands over declared roots", () => {
       }),
     );
 
-    expect(byName(commands, "late")).toBeUndefined();
+    expect(byName(commands, "late")).toBeDefined();
   });
 
   it("rejects a recursive project root linked outside the workspace", async () => {

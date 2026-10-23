@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -32,14 +33,6 @@ export interface SkillFile {
 export interface IndexedSkillFile extends SkillFile {
   contentSha256: string;
   content: string;
-}
-
-export interface SkillScanBudget {
-  remainingEntries: number;
-}
-
-export function createSkillScanBudget(): SkillScanBudget {
-  return { remainingEntries: MAX_SCAN_ENTRY_COUNT };
 }
 
 export function skillRegistrationId(
@@ -95,11 +88,14 @@ async function isSymbolicLinkPath(filePath: string): Promise<boolean> {
 
 export async function findSkillFiles(
   root: SkillScanRoot,
-  budget: SkillScanBudget = createSkillScanBudget(),
 ): Promise<SkillFile[]> {
   const files: SkillFile[] = [];
   const visited = new Set<string>();
-  const charged = root.shape === "skill-recursive" || root.shape === "command";
+  let remainingEntries = MAX_SCAN_ENTRY_COUNT;
+  const charged = (entry: Dirent): boolean =>
+    root.shape === "command" ||
+    (root.shape === "skill-recursive" &&
+      (entry.isDirectory() || entry.isSymbolicLink()));
   if ((await resolveSkillPath(root.path, root.boundaryPath)) === null) {
     return files;
   }
@@ -125,9 +121,7 @@ export async function findSkillFiles(
     depth: number,
     linked: boolean,
   ): Promise<void> {
-    if (depth > MAX_SCAN_DEPTH || (charged && budget.remainingEntries === 0)) {
-      return;
-    }
+    if (depth > MAX_SCAN_DEPTH) return;
     const leaf =
       root.shape === "skill-directory" ||
       (root.shape === "skill" && depth === 1);
@@ -151,9 +145,10 @@ export async function findSkillFiles(
     if (handle === null) return;
     const entries = [];
     for await (const entry of handle) {
-      if (charged) {
-        if (budget.remainingEntries === 0) break;
-        budget.remainingEntries -= 1;
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      if (charged(entry)) {
+        if (remainingEntries === 0) continue;
+        remainingEntries -= 1;
       }
       entries.push(entry);
     }
@@ -170,7 +165,6 @@ export async function findSkillFiles(
     }
     if (leaf) return;
     for (const entry of entries) {
-      if (entry.name === ".git" || entry.name === "node_modules") continue;
       const entryPath = path.join(directory, entry.name);
       const target = await resolveSkillPath(entryPath, root.boundaryPath);
       if (target === null) continue;
@@ -205,10 +199,9 @@ export async function findSkillFiles(
 
 export async function scanSkillFiles(
   root: SkillScanRoot,
-  budget: SkillScanBudget = createSkillScanBudget(),
 ): Promise<IndexedSkillFile[]> {
   const indexed: IndexedSkillFile[] = [];
-  for (const file of await findSkillFiles(root, budget)) {
+  for (const file of await findSkillFiles(root)) {
     const stat = await fs.stat(file.realPath).catch(() => null);
     if (stat === null || stat.size > MAX_SKILL_FILE_BYTES) continue;
     const bytes = await fs.readFile(file.realPath).catch(() => null);

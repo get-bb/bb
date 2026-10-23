@@ -76,19 +76,25 @@ it("indexes linked roots, bundles and files once by content while retaining regi
   expect(commands.map((entry) => entry.name)).toEqual(["review"]);
 });
 
-it("lists every skill directory without charging its contents to the shared traversal budget", async () => {
+it("does not charge supporting files to the entry budget", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "skill-index-"));
   roots.push(root);
-  for (const name of ["alpha", "beta", "gamma"]) {
-    await mkdir(path.join(root, name));
-    await writeFile(path.join(root, name, "SKILL.md"), name);
-    for (const file of ["one.md", "two.md", "three.md"]) {
-      await writeFile(path.join(root, name, file), "");
-    }
-  }
-  const skills = await scanSkillFiles(
-    { path: root, shape: "skill", boundaryPath: null },
-    { remainingEntries: 2 },
+  const assets = path.join(root, "alpha", "assets");
+  await mkdir(assets, { recursive: true });
+  await writeFile(path.join(root, "alpha", "SKILL.md"), "alpha");
+  await Promise.all(
+    Array.from({ length: 1_005 }, (_, index) =>
+      writeFile(path.join(assets, `asset-${index}.txt`), ""),
+    ),
   );
-  expect(skills.map((skill) => skill.name)).toEqual(["alpha", "beta", "gamma"]);
+  await mkdir(path.join(root, "alpha", "nested", "inner"), { recursive: true });
+  await writeFile(path.join(root, "alpha", "nested", "inner", "SKILL.md"), "");
+  await mkdir(path.join(root, "beta"));
+  await writeFile(path.join(root, "beta", "SKILL.md"), "beta");
+  const names = async (shape: "skill" | "skill-recursive") =>
+    (await scanSkillFiles({ path: root, shape, boundaryPath: null })).map(
+      (skill) => skill.name,
+    );
+  expect(await names("skill")).toEqual(["alpha", "beta"]);
+  expect(await names("skill-recursive")).toEqual(["alpha", "inner", "beta"]);
 });

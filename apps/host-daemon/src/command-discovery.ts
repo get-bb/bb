@@ -1,10 +1,8 @@
 import path from "node:path";
 import {
-  createSkillScanBudget,
   firstPerIdentity,
   scanSkillFiles,
   skillRegistrationId,
-  type SkillScanBudget,
   type IndexedSkillFile,
 } from "@bb/skill-index";
 import {
@@ -53,26 +51,20 @@ export type CommandScanRoot =
 
 async function scanRoot(
   root: CommandScanRoot,
-  budget: SkillScanBudget,
 ): Promise<Array<IndexedSkillFile & { metadata: SkillMetadata }>> {
-  const files = await scanSkillFiles(
-    {
-      path: "rootPath" in root ? root.rootPath : root.filePath,
-      shape: root.shape,
-      boundaryPath:
-        root.origin === "project"
-          ? (root.boundaryPath ??
-            ("rootPath" in root ? root.rootPath : path.dirname(root.filePath)))
-          : null,
-      ...(root.skipIfManifest === undefined
-        ? {}
-        : { skipIfManifest: root.skipIfManifest }),
-      ...(root.shape === "skill-file"
-        ? { fallbackName: root.fallbackName }
-        : {}),
-    },
-    budget,
-  );
+  const files = await scanSkillFiles({
+    path: "rootPath" in root ? root.rootPath : root.filePath,
+    shape: root.shape,
+    boundaryPath:
+      root.origin === "project"
+        ? (root.boundaryPath ??
+          ("rootPath" in root ? root.rootPath : path.dirname(root.filePath)))
+        : null,
+    ...(root.skipIfManifest === undefined
+      ? {}
+      : { skipIfManifest: root.skipIfManifest }),
+    ...(root.shape === "skill-file" ? { fallbackName: root.fallbackName } : {}),
+  });
   return files.map((file) => {
     const metadata = parseSkillMetadata(file.content);
     return {
@@ -88,9 +80,8 @@ export async function discoverProviderCommands(args: {
   roots: readonly CommandScanRoot[];
 }): Promise<HostProviderCommand[]> {
   const records: Array<{ command: HostProviderCommand; identity: string }> = [];
-  const budget = createSkillScanBudget();
   for (const root of args.roots) {
-    for (const match of await scanRoot(root, budget)) {
+    for (const match of await scanRoot(root)) {
       records.push({
         identity: `${root.source}\0${root.namePrefix}${match.name}\0${root.source === "skill" ? match.contentSha256 : match.realPath}`,
         command: {
@@ -117,12 +108,11 @@ export async function discoverSkills(args: {
   roots: readonly SkillScanRoot[];
 }): Promise<DiscoveredSkill[]> {
   const records: DiscoveredSkill[] = [];
-  const budget = createSkillScanBudget();
   for (const root of args.roots) {
     if (root.source !== "skill") continue;
     const rootPath =
       "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
-    for (const match of await scanRoot(root, budget)) {
+    for (const match of await scanRoot(root)) {
       const logicalPath = path
         .relative(rootPath, match.filePath)
         .split(path.sep)

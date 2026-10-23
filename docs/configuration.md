@@ -584,9 +584,11 @@ Project skills override user skills, which override plugin skills, by name.
 All skill discovery uses the shared skills index. User roots, skill directories,
 and `SKILL.md` entries may be symlinks. Project skills and Markdown commands may
 follow links only within their workspace (or the repository boundary for an
-ancestor root). Traversal resolves real paths, stops cycles, and shares a bounded
-entry budget across roots. Supporting files in an injected skill tree must remain
-ordinary files and directories; linking the root or `SKILL.md` is supported.
+ancestor root). Traversal resolves real paths and stops cycles. Each recursive
+skill root reads at most 1,000 folders and each command root at most 1,000
+entries; files inside skill folders do not count. Supporting files in an
+injected skill tree must remain ordinary files and directories; linking the root
+or `SKILL.md` is supported.
 
 `bb skill list`, the SDK, and the Skills page collapse registrations that share a
 name and identical `SKILL.md` bytes, preferring provider-neutral and user-wide
