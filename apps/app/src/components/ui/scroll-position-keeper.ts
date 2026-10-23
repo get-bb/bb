@@ -347,7 +347,12 @@ export class ScrollPositionKeeper {
       return;
     }
     this.write(scrollElement, top);
-    this.setPosition(this.capture(scrollElement) ?? FREE);
+    this.refreshExtent(scrollElement);
+    this.setPosition(
+      this.isAtEnd(scrollElement.scrollTop)
+        ? { kind: "bottom" }
+        : (this.capture(scrollElement) ?? FREE),
+    );
     this.notifyLists();
   }
 

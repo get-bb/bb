@@ -175,6 +175,29 @@ describe("ScrollPositionKeeper", () => {
     expect(timeline.keeper.isAttached()).toBe(true);
   });
 
+  it("stays attached when a navigation target clamps to the end, so content that grows afterwards stays in view", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+
+    timeline.keeper.scrollTo(timeline.topOf("row-8") + 1600, "instant");
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+    expect(timeline.keeper.isAttached()).toBe(true);
+
+    timeline.resize("row-9", 260);
+    timeline.keeper.reconcile();
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("detaches when a navigation target lands above the end", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+
+    timeline.keeper.scrollTo(400, "instant");
+    expect(timeline.keeper.isAttached()).toBe(false);
+
+    timeline.resize("row-9", 260);
+    timeline.keeper.reconcile();
+    expect(timeline.layout.scrollTop).toBe(400);
+  });
+
   it("shifts content above an attached toggle by exactly the height change", () => {
     const timeline = createTimeline(rowsOf(10), { attached: true });
     const lastBottom = () => timeline.topOf("row-9") + 200;
