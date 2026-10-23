@@ -189,6 +189,12 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(cssText).toContain(`${scope} .line-clamp-2`);
     expect(cssText).toContain(`${scope}.line-clamp-2`);
     expect(cssText).not.toMatch(/@layer utilities\{\./);
+    const builtCss = await readFile(join(rootDir, "dist", "app.css"), "utf8");
+    expect(builtCss).toContain("@property --tw-shadow");
+    expect(builtCss).toContain(":root,:host{");
+    expect(cssText).not.toContain("@property");
+    expect(cssText).not.toContain(":root");
+    expect(cssText).toContain("var(--tw-shadow)");
 
     const gzipCss = await harness.app.request(`${BASE}${bundle.cssUrl}`, {
       headers: { "accept-encoding": "br;q=0, gzip;q=1" },

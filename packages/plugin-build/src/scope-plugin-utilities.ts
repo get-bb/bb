@@ -1,3 +1,5 @@
+import { HOST_TAILWIND_CSS } from "./generated/plugin-theme.generated.js";
+
 const NESTED_STYLE_RULE_AT_RULES = new Set([
   "media",
   "supports",
@@ -31,19 +33,42 @@ export function scopePluginUtilities(css: string, scopeRoots: string): string {
     .join("");
 }
 
-export function dropHostProvidedTailwind(css: string, hostCss: string): string {
-  const hostStatements = splitStatements(hostCss);
-  const hostRegistrations = new Set(
-    hostStatements.flatMap((statement) => {
-      const registration = propertyRegistration(statement);
-      return registration === null ? [] : [registration.key];
-    }),
-  );
-  const hostThemeDeclarations = new Set(
-    hostStatements
-      .filter((statement) => isLayer(statement, "theme"))
-      .flatMap((statement) => declarationsIn(statement.body ?? "")),
-  );
+interface HostProvidedTailwind {
+  source: string;
+  registrations: Set<string>;
+  themeDeclarations: Set<string>;
+}
+
+let hostProvided: HostProvidedTailwind | null = null;
+
+function hostProvidedTailwind(hostCss: string): HostProvidedTailwind {
+  if (hostProvided?.source === hostCss) return hostProvided;
+  const statements = splitStatements(hostCss);
+  hostProvided = {
+    source: hostCss,
+    registrations: new Set(
+      statements.flatMap((statement) => {
+        const registration = propertyRegistration(statement);
+        return registration === null ? [] : [registration.key];
+      }),
+    ),
+    themeDeclarations: new Set(
+      statements
+        .filter((statement) => isLayer(statement, "theme"))
+        .flatMap((statement) => declarationsIn(statement.body ?? "")),
+    ),
+  };
+  return hostProvided;
+}
+
+export function dropHostProvidedTailwind(
+  css: string,
+  hostCss: string = HOST_TAILWIND_CSS,
+): string {
+  const {
+    registrations: hostRegistrations,
+    themeDeclarations: hostThemeDeclarations,
+  } = hostProvidedTailwind(hostCss);
   const dropped = new Set<string>();
   const kept = splitStatements(css).filter((statement) => {
     const registration = propertyRegistration(statement);

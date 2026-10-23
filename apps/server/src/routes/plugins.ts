@@ -1,6 +1,5 @@
 import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
 import { timingSafeEqual } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import type { Context, Hono } from "hono";
@@ -560,7 +559,7 @@ export function registerPluginRoutes(
     }
     let bytes: Buffer;
     try {
-      bytes = await readFile(asset.path);
+      bytes = await asset.read();
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }
@@ -622,7 +621,7 @@ export function registerPluginRoutes(
     }
     let bytes: Buffer;
     try {
-      bytes = await readFile(asset.path);
+      bytes = await asset.read();
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }

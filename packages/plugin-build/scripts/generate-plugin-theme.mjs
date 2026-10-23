@@ -16,6 +16,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { optimize } from "@tailwindcss/node";
 import { __unstable__loadDesignSystem, compile } from "tailwindcss";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -218,7 +219,11 @@ export const PLUGIN_THEME_CSS = \`${escapeTemplateLiteral(themeBlocks)}\`;
 /** Vendored tw-animate-css@${twAnimateVersion} (the version apps/app ships). */
 export const TW_ANIMATE_CSS = \`${escapeTemplateLiteral(twAnimateCss.trimEnd())}\`;
 
-export const HOST_TAILWIND_CSS = \`${escapeTemplateLiteral(hostTailwindCss)}\`;
+export const HOST_TAILWIND_CSS = \`${escapeTemplateLiteral(
+  [true, false]
+    .map((minify) => optimize(hostTailwindCss, { minify }).code)
+    .join("\n"),
+)}\`;
 `;
 
 await writeIfChanged(outPath, generated);

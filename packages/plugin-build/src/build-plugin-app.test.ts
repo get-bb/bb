@@ -19,6 +19,7 @@ import {
 } from "./build-plugin-app.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { buildPluginServer } from "./build-plugin-server.js";
+import { dropHostProvidedTailwind } from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -522,7 +523,7 @@ describe("plugin app runtime shim", () => {
     ]);
   });
 
-  it("leaves Tailwind's registered properties and theme variables to the host stylesheet", async () => {
+  it("emits Tailwind rules the host provides, which dropHostProvidedTailwind removes", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-properties-"));
     tempDirs.push(dir);
     await writeFile(
@@ -554,8 +555,11 @@ describe("plugin app runtime shim", () => {
       "0.9.0-test",
       await testToolchain(),
     );
-    const css = await readFile(result.cssPath, "utf8");
+    const built = await readFile(result.cssPath, "utf8");
+    expect(built).toContain("@property --tw-enter-opacity");
+    expect(built).toContain(":root,:host{");
 
+    const css = dropHostProvidedTailwind(built);
     expect(css).toContain("--tw-enter-opacity:0");
     expect(css).toContain("@keyframes enter");
     expect(css).toContain("@keyframes spin");

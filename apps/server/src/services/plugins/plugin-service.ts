@@ -105,10 +105,12 @@ import {
   getLastThreadOutput,
 } from "../threads/thread-data.js";
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
-import type {
-  PluginBrandingAssetSet,
-  PluginBrandingAssetSnapshot,
-  PluginBrandingAssetVariant,
+import {
+  pluginAppAsset,
+  type PluginAppAsset,
+  type PluginBrandingAssetSet,
+  type PluginBrandingAssetSnapshot,
+  type PluginBrandingAssetVariant,
 } from "./app-bundle.js";
 import { readPluginThemeCodeTheme } from "../system/code-themes.js";
 import {
@@ -322,19 +324,17 @@ export interface PluginService {
    */
   isPluginExpectedToRun(id: string): boolean;
   /**
-   * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
-   * plus the current content hash (the route compares ?h against it for
-   * cache policy). Undefined when the plugin has no loadable bundle, or no
-   * CSS for kind "css".
+   * Asset backing GET /plugins/:id/assets/app.{js,css}: a reader for its
+   * bytes (app.js from disk, app.css as loaded, without the Tailwind rules the
+   * host app already provides) plus the current content hash (the route
+   * compares ?h against it for cache policy). Undefined when the plugin has no
+   * loadable bundle, or no CSS for kind "css".
    */
-  getAppAsset(
-    id: string,
-    kind: "js" | "css",
-  ): { path: string; hash: string } | undefined;
+  getAppAsset(id: string, kind: "js" | "css"): PluginAppAsset | undefined;
   getAppAssetByHash(
     hash: string,
     kind: "js" | "css",
-  ): { path: string; hash: string } | undefined;
+  ): PluginAppAsset | undefined;
   getBrandingAsset(
     id: string,
     variant: PluginBrandingAssetVariant,
@@ -1887,18 +1887,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     getAppAsset(id, kind) {
       if (!loaded.has(id)) return undefined;
       const assets = appBundles.get(id)?.assets;
-      if (!assets) return undefined;
-      const path = kind === "js" ? assets.jsPath : assets.cssPath;
-      if (path === null) return undefined;
-      return { path, hash: assets.hash };
+      return assets ? pluginAppAsset(assets, kind) : undefined;
     },
 
     getAppAssetByHash(hash, kind) {
       for (const [id, snapshot] of appBundles) {
         if (!loaded.has(id) || snapshot.assets?.hash !== hash) continue;
-        const path =
-          kind === "js" ? snapshot.assets.jsPath : snapshot.assets.cssPath;
-        if (path !== null) return { path, hash };
+        const asset = pluginAppAsset(snapshot.assets, kind);
+        if (asset !== undefined) return asset;
       }
       return undefined;
     },

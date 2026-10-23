@@ -7,6 +7,7 @@ import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
   RUNTIME_SLOT_BY_SPECIFIER,
+  dropHostProvidedTailwind,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -45,8 +46,25 @@ interface PluginAppState {
 
 interface PluginAppAssets {
   jsPath: string;
-  cssPath: string | null;
+  css: Buffer | null;
   hash: string;
+}
+
+export interface PluginAppAsset {
+  hash: string;
+  read(): Promise<Buffer>;
+}
+
+export function pluginAppAsset(
+  assets: PluginAppAssets,
+  kind: "js" | "css",
+): PluginAppAsset | undefined {
+  if (kind === "js")
+    return { hash: assets.hash, read: () => readFile(assets.jsPath) };
+  const css = assets.css;
+  return css === null
+    ? undefined
+    : { hash: assets.hash, read: async () => css };
 }
 
 export interface PluginAppBundleSnapshot {
@@ -335,7 +353,9 @@ export async function loadPluginAppBundle(
   }
   let css: Buffer | null;
   try {
-    css = await readFile(cssPath);
+    css = Buffer.from(
+      dropHostProvidedTailwind(await readFile(cssPath, "utf8")),
+    );
   } catch {
     css = null;
   }
@@ -360,6 +380,6 @@ export async function loadPluginAppBundle(
         runtimeSlots: meta.runtimeSlots ?? ALL_RUNTIME_SLOTS,
       },
     },
-    assets: { jsPath, cssPath: css !== null ? cssPath : null, hash },
+    assets: { jsPath, css, hash },
   };
 }
