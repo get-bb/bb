@@ -1,5 +1,6 @@
 @import "@fontsource-variable/inter";
 @import "@/components/ui/theme.css";
+@import "@bb/plugin-build/host-tailwind.css";
 
 @layer base {
   /*

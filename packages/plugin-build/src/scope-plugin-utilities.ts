@@ -31,6 +31,92 @@ export function scopePluginUtilities(css: string, scopeRoots: string): string {
     .join("");
 }
 
+export function dropHostProvidedTailwind(css: string, hostCss: string): string {
+  const hostStatements = splitStatements(hostCss);
+  const hostRegistrations = new Set(
+    hostStatements.flatMap((statement) => {
+      const registration = propertyRegistration(statement);
+      return registration === null ? [] : [registration.key];
+    }),
+  );
+  const hostThemeDeclarations = new Set(
+    hostStatements
+      .filter((statement) => isLayer(statement, "theme"))
+      .flatMap((statement) => declarationsIn(statement.body ?? "")),
+  );
+  const dropped = new Set<string>();
+  const kept = splitStatements(css).filter((statement) => {
+    const registration = propertyRegistration(statement);
+    if (registration === null || !hostRegistrations.has(registration.key))
+      return true;
+    dropped.add(registration.name);
+    return false;
+  });
+  return kept
+    .map((statement) => {
+      if (statement.body === null) return statement.prelude;
+      const body = isLayer(statement, "properties")
+        ? dropDeclarations(statement.body, (declaration) =>
+            dropped.has(declaration.slice(0, declaration.indexOf(":"))),
+          )
+        : isLayer(statement, "theme")
+          ? dropDeclarations(statement.body, (declaration) =>
+              hostThemeDeclarations.has(declaration),
+            )
+          : statement.body;
+      return body === null ? "" : `${statement.prelude}{${body}}`;
+    })
+    .join("");
+}
+
+function isLayer(statement: Statement, name: string): boolean {
+  return (
+    statement.body !== null &&
+    statement.prelude.trim().replace(/\s+/g, " ") === `@layer ${name}`
+  );
+}
+
+function propertyRegistration(
+  statement: Statement,
+): { name: string; key: string } | null {
+  if (statement.body === null) return null;
+  const name = /^@property\s+(--[\w-]+)$/.exec(statement.prelude.trim())?.[1];
+  if (name === undefined) return null;
+  return { name, key: `${name}{${declarationsIn(statement.body).join(";")}}` };
+}
+
+function normalizeDeclaration(declaration: string): string | null {
+  const text = declaration.replace(/\s+/g, " ").trim().replace(/;$/, "");
+  const colon = text.indexOf(":");
+  if (colon <= 0) return null;
+  return `${text.slice(0, colon).trim()}:${text.slice(colon + 1).trim()}`;
+}
+
+function declarationsIn(css: string): string[] {
+  return splitStatements(css).flatMap((statement) => {
+    if (statement.body !== null) return declarationsIn(statement.body);
+    const declaration = normalizeDeclaration(statement.prelude);
+    return declaration === null ? [] : [declaration];
+  });
+}
+
+function dropDeclarations(
+  css: string,
+  drop: (declaration: string) => boolean,
+): string | null {
+  const kept = splitStatements(css).flatMap((statement) => {
+    if (statement.body === null) {
+      const declaration = normalizeDeclaration(statement.prelude);
+      return declaration !== null && drop(declaration)
+        ? []
+        : [statement.prelude];
+    }
+    const body = dropDeclarations(statement.body, drop);
+    return body === null ? [] : [`${statement.prelude}{${body}}`];
+  });
+  return kept.length === 0 ? null : kept.join("");
+}
+
 function assertNoUnscopedClassRule(statement: Statement): void {
   if (statement.body === null) return;
   const prelude = statement.prelude.trim();
