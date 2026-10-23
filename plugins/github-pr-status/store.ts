@@ -2,7 +2,9 @@ import type { EnvironmentPullRequest, PullRequest } from "./contract.js";
 import type { PullRequestPersistence } from "./persistence.js";
 
 const CACHE_TTL_MS = 10_000;
+const ABSENT_CACHE_TTL_MS = 5 * 60_000;
 const ACTIVE_CHECK_MS = 30_000;
+const QUIET_CHECK_MS = 5 * 60_000;
 
 type Snapshot = { pullRequest: PullRequest; fetchedAt: number };
 type Lookup =
@@ -10,6 +12,7 @@ type Lookup =
   | { outcome: "absent" }
   | { outcome: "unavailable"; message: string };
 type Entry = { lookup: Lookup; fetchedAt: number };
+type Check = { environmentId: string; interval: number; dueAt: number };
 
 function active(pr: PullRequest): boolean {
   return (
@@ -39,7 +42,7 @@ export function createPullRequestStore(options: {
   const inflight = new Map<string, Promise<void>>();
   const loadingReaders = new Map<string, Set<string>>();
   const settling = new Map<string, number>();
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const generations = new Map<string, number>();
   const restored = new Set<string>();
   let disposed = false;
@@ -103,36 +106,49 @@ export function createPullRequestStore(options: {
     if (changed.length > 0) options.publish(changed);
   }
 
-  function schedule() {
-    for (const timer of timers.values()) clearTimeout(timer);
-    timers.clear();
-    if (disposed) return;
-    const watched = new Map<string, string>();
+  function checks(): Map<string, Check> {
+    const due = new Map<string, Check>();
     for (const environmentId of watches.keys()) {
       const url = currentUrl(environmentId);
-      if (url !== null && !watched.has(url)) watched.set(url, environmentId);
-    }
-    for (const [url, environmentId] of watched) {
+      if (url === null || due.has(url) || inflight.has(url)) continue;
       const snapshot = snapshots.get(url);
-      if (
-        snapshot === undefined ||
-        inflight.has(url) ||
-        (!active(snapshot.pullRequest) &&
-          (settling.get(url) ?? 0) <= snapshot.fetchedAt)
-      )
-        continue;
-      const delay = Math.max(
-        0,
-        snapshot.fetchedAt + ACTIVE_CHECK_MS - Date.now(),
-      );
-      timers.set(
-        url,
-        setTimeout(() => {
-          timers.delete(url);
-          void load(environmentId, url, new Set());
-        }, delay),
-      );
+      if (snapshot === undefined) continue;
+      const interval =
+        active(snapshot.pullRequest) ||
+        (settling.get(url) ?? 0) > snapshot.fetchedAt
+          ? ACTIVE_CHECK_MS
+          : snapshot.pullRequest.state === "open"
+            ? QUIET_CHECK_MS
+            : null;
+      if (interval !== null)
+        due.set(url, {
+          environmentId,
+          interval,
+          dueAt: snapshot.fetchedAt + interval,
+        });
     }
+    return due;
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = undefined;
+    if (disposed) return;
+    const pending = [...checks().values()];
+    if (pending.length === 0) return;
+    const next = Math.min(...pending.map((check) => check.dueAt));
+    timer = setTimeout(
+      () => {
+        timer = undefined;
+        const now = Date.now();
+        for (const [url, check] of checks()) {
+          if (check.dueAt - check.interval / 2 <= now)
+            void load(check.environmentId, url, new Set());
+        }
+        schedule();
+      },
+      Math.max(0, next - Date.now()),
+    );
   }
 
   async function load(
@@ -227,7 +243,11 @@ export function createPullRequestStore(options: {
     const immediate =
       viewer && restored.has(environmentId) && cached !== undefined;
     if (viewer) restored.delete(environmentId);
-    if (cached === undefined || Date.now() - cached.fetchedAt >= CACHE_TTL_MS) {
+    const ttl =
+      viewer && cached?.lookup.outcome === "absent"
+        ? ABSENT_CACHE_TTL_MS
+        : CACHE_TTL_MS;
+    if (cached === undefined || Date.now() - cached.fetchedAt >= ttl) {
       const loading = load(
         environmentId,
         currentUrl(environmentId),
@@ -317,8 +337,8 @@ export function createPullRequestStore(options: {
     },
     dispose() {
       disposed = true;
-      for (const timer of timers.values()) clearTimeout(timer);
-      timers.clear();
+      clearTimeout(timer);
+      timer = undefined;
     },
   };
 }

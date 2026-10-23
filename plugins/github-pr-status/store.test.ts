@@ -217,6 +217,58 @@ describe("shared pull request refresh", () => {
     expect(persistence.links()).toHaveLength(1);
   });
 
+  it("rechecks quiet open PRs together every five minutes and leaves settled PRs alone", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([]);
+    const byEnvironment: Record<string, PullRequest> = {
+      a: pullRequest({ url: "https://github.com/acme/bb/pull/1" }),
+      b: pullRequest({ url: "https://github.com/acme/bb/pull/2" }),
+      c: pullRequest({
+        url: "https://github.com/acme/bb/pull/3",
+        state: "merged",
+      }),
+    };
+    load.mockImplementation(async (id) => available(byEnvironment[id]!));
+    await store.read("a", { viewer: true });
+    store.watch("a", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    for (const id of ["b", "c"]) {
+      await store.read(id, { viewer: true });
+      store.watch(id, new AbortController().signal);
+    }
+    await flush();
+    load.mockClear();
+    await vi.advanceTimersByTimeAsync(3 * 60_000 - 1);
+    expect(load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(load.mock.calls.map(([id]) => id).sort()).toEqual(["a", "b"]);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(load.mock.calls.map(([id]) => id).sort()).toEqual([
+      "a",
+      "a",
+      "b",
+      "b",
+    ]);
+  });
+
+  it("keeps a missing PR for five minutes for viewers unless discovery is forced", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([{ outcome: "absent" }]);
+    await store.read("a", { viewer: true });
+    await vi.advanceTimersByTimeAsync(5 * 60_000 - 1);
+    await store.read("a", { viewer: true });
+    expect(load).toHaveBeenCalledTimes(1);
+    store.refresh("a", true);
+    await store.read("a", { viewer: true });
+    expect(load).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await store.read("a", { viewer: true });
+    expect(load).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await store.read("a", { viewer: false });
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
   it("rechecks a pushed PR once when GitHub initially returns its previous quiet head", async () => {
     vi.useFakeTimers();
     const { store, load, publish } = setup([available(pullRequest())]);
