@@ -183,7 +183,7 @@ connection as row deltas instead of reloading the latest window after each
 update. `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
-`sidebarMultiSelect` lets the sidebar select several threads with
+`sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl-click and Shift-click for bulk actions and drag; while it is off,
 Cmd/Ctrl-click opens a thread in a split.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
