@@ -89,7 +89,7 @@ jobs:
             gh pr edit "$PR_NUMBER" --add-label "$1" --repo "$GITHUB_REPOSITORY" || true
           }
           remove_label() {
-            gh pr edit "$PR_NUMBER" --remove-label "$1" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+            gh pr edit "$PR_NUMBER" --remove-label "$1" --repo "$GITHUB_REPOSITORY" || true
           }
           if [ "$EVENT_ACTION" = "edited" ]; then
             if [ -n "$trusted" ] && [ -z "$edits_off" ] && [ -z "$issue_missing" ]; then
