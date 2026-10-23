@@ -587,8 +587,7 @@ export function toCodexUserInput(
       const skill =
         skills.find((entry) => entry.name === name) ??
         skills.find((entry) => codexSkillDirectoryName(entry) === name);
-      if (skill === undefined)
-        throw new Error(`Selected skill is unavailable: ${name}`);
+      if (skill === undefined) continue;
       selected.set(skill.path, {
         type: "skill",
         name: skill.name,

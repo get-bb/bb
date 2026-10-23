@@ -730,9 +730,9 @@ describe("toCodexUserInput", () => {
         name: "lesson-planner",
         path: "/workspace/.agents/skills/teach/SKILL.md",
       });
-      expect(() => toCodexUserInput(input, [])).toThrow(
-        "Selected skill is unavailable: teach",
-      );
+      expect(toCodexUserInput(input, [])).toEqual([
+        { type: "text", text: `${trigger}teach /plan`, text_elements: [] },
+      ]);
       expect(
         toCodexUserInput([
           { type: "text", text: "/teach /plan", mentions: [] },

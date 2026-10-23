@@ -597,8 +597,8 @@ catalogs collapse skills with the same name and identical trees, and Claude Code
 omits injected copies already visible under the same name in its native user or
 project roots. Selected Codex skills are sent as structured skill inputs with the
 path from Codex's active catalog, matched by catalog name or skill directory name,
-for both starting and steering a turn; an unavailable selected skill returns an
-error.
+for both starting and steering a turn; a selected skill missing from that
+catalog is sent as plain text only.
 
 Top-level `sharedSkillRoots` in `~/.bb/config.json` adds one provider-neutral
 skill collection: `{"user": [...], "project": [...]}` relative paths, resolved
