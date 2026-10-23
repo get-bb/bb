@@ -734,6 +734,371 @@ describe("Docs nav panel", () => {
     expect(slot.queryByText("Remote Mac")).toBeNull();
   });
 
+  it("keeps the same editor and undo history through autosave and vault events", async () => {
+    let leases = 0;
+    const saveNote = vi.fn((_input: unknown) => ({
+      outcome: "written",
+      sha256: "next-sha",
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/status.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "status.md",
+                title: "Status",
+                preview: "Ready",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({ content: "# Status\n\nReady.", sha256: "sha" }),
+          preparePreview: () => ({
+            ...preview,
+            baseUrl: `/api/v1/file-previews/lease-${++leases}`,
+          }),
+          renameToTitle: () => ({ path: "status.md" }),
+          listComments: () => ({
+            sidecarSha256: null,
+            threads: [],
+            notice: null,
+            outsideChange: 0,
+            documentSha256: "sha",
+          }),
+          listCommentFolder: () => ({ stranded: [], truncated: false }),
+          saveNote,
+        },
+      },
+    );
+
+    await slot.findByText("Ready.");
+    const editor = slot.container.querySelector('[contenteditable="true"]');
+    const paragraph = editor?.querySelector("p");
+    expect(paragraph).toBeTruthy();
+    paragraph!.textContent = "Ready now.";
+    fireEvent.input(paragraph!);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
+    await slot.emitRealtime("vault-changed", {
+      vaultId: "personal",
+      path: "status.md",
+    });
+    await slot.emitRealtime("vault-changed", { vaultId: "personal" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(slot.container.querySelector('[contenteditable="true"]')).toBe(
+      editor,
+    );
+    expect(editor?.textContent).toContain("Ready now.");
+  });
+
+  it("persists mapped anchors when a stale comment list arrives before the save response", async () => {
+    const saved = "# Race\n\nFirst target.\n\nSecond target.";
+    const savedText = "Race\n\nFirst target.\n\nSecond target.";
+    const start = savedText.lastIndexOf("target");
+    const thread = (state: "anchored" | "orphaned") => ({
+      id: "c_00000000-0000-4000-8000-000000000001",
+      status: "open",
+      resolvedAt: null,
+      resolvedBy: null,
+      messages: [
+        {
+          id: "c_00000000-0000-4000-8000-000000000001",
+          author: { kind: "user", name: "You" },
+          body: "Second one",
+          createdAt: "2026-10-19T00:00:00.000Z",
+          editedAt: null,
+          sentTo: [],
+        },
+      ],
+      anchor:
+        state === "anchored"
+          ? { state, quote: "target", start, end: start + 6, line: 5 }
+          : { state, quote: "target", start: null, end: null, line: null },
+    });
+    let list = {
+      sidecarSha256: "sidecar",
+      threads: [thread("anchored")],
+      notice: null,
+      outsideChange: 0,
+      documentSha256: "sha1",
+    };
+    let finishSave: (value: unknown) => void = () => undefined;
+    const saveNote = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    const refreshCommentAnchors = vi.fn((input: unknown) => ({
+      ...list,
+      input,
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/race.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "race.md",
+                title: "Race",
+                preview: "First target.",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({ content: saved, sha256: "sha1" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "race.md" }),
+          listComments: () => list,
+          listCommentFolder: () => ({ stranded: [], truncated: false }),
+          refreshCommentAnchors: (input: unknown) => {
+            refreshCommentAnchors(input);
+            return list;
+          },
+          saveNote,
+        },
+      },
+    );
+
+    await slot.findByText("First target.");
+    await waitFor(() =>
+      expect(
+        slot.container.querySelector(".docs-comment-highlight")?.textContent,
+      ).toBe("target"),
+    );
+    const first = [
+      ...slot.container.querySelectorAll('[contenteditable="true"] p'),
+    ].find((paragraph) => paragraph.textContent === "First target.")!;
+    first.textContent = "Added contents. First target.";
+    fireEvent.input(first);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
+    list = {
+      ...list,
+      threads: [thread("orphaned")],
+      documentSha256: "sha2",
+    };
+    await slot.emitRealtime("comments-changed", {
+      vaultId: "personal",
+      path: "race.md",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    finishSave({ outcome: "written", sha256: "sha2" });
+    await waitFor(() => expect(refreshCommentAnchors).toHaveBeenCalled());
+    const editedText =
+      "Race\n\nAdded contents. First target.\n\nSecond target.";
+    expect(refreshCommentAnchors.mock.calls[0]![0]).toMatchObject({
+      documentSha256: "sha2",
+      anchors: [
+        {
+          anchor: {
+            quote: "target",
+            start: editedText.lastIndexOf("target"),
+          },
+        },
+      ],
+    });
+  });
+
+  const commentThread = (
+    messages: string[],
+    anchor: { start: number; end: number } | null,
+  ) => ({
+    id: "c_00000000-0000-4000-8000-000000000002",
+    status: "open",
+    resolvedAt: null,
+    resolvedBy: null,
+    messages: messages.map((body, index) => ({
+      id:
+        index === 0
+          ? "c_00000000-0000-4000-8000-000000000002"
+          : `m_00000000-0000-4000-8000-00000000000${index}`,
+      author: { kind: "user", name: "You" },
+      body,
+      createdAt: `2026-10-19T00:0${index}:00.000Z`,
+      editedAt: null,
+      sentTo: [],
+    })),
+    anchor: anchor
+      ? { state: "anchored", quote: "target", ...anchor, line: 3 }
+      : {
+          state: "orphaned",
+          quote: "target",
+          start: null,
+          end: null,
+          line: null,
+        },
+  });
+
+  it("re-reads the document after Keep so highlights return without reload", async () => {
+    const before = "# Keep\n\nOld target.";
+    const after = "# Keep\n\nChanged outside, still a target.";
+    const afterText = "Keep\n\nChanged outside, still a target.";
+    const start = afterText.indexOf("target");
+    let kept = false;
+    let reads = 0;
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/keep.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              { path: "keep.md", title: "Keep", preview: "", modifiedAtMs: 1 },
+            ]),
+          readNote: () =>
+            ++reads === 1
+              ? { content: before, sha256: "sha1" }
+              : { content: after, sha256: "sha2" },
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "keep.md" }),
+          listCommentFolder: () => ({ stranded: [], truncated: false }),
+          listComments: () =>
+            kept
+              ? {
+                  sidecarSha256: "sidecar",
+                  threads: [commentThread(["Kept"], { start, end: start + 6 })],
+                  notice: null,
+                  outsideChange: 0,
+                  documentSha256: "sha2",
+                }
+              : {
+                  sidecarSha256: "sidecar",
+                  threads: [],
+                  notice: null,
+                  outsideChange: 1,
+                  documentSha256: "sha2",
+                },
+          keepComments: () => {
+            kept = true;
+            return {
+              sidecarSha256: "sidecar",
+              threads: [commentThread(["Kept"], { start, end: start + 6 })],
+              notice: null,
+              outsideChange: 0,
+              documentSha256: "sha2",
+            };
+          },
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByText("Keep on this document"));
+    await waitFor(() => expect(reads).toBe(2));
+    await waitFor(() =>
+      expect(
+        slot.container.querySelector(".docs-comment-highlight")?.textContent,
+      ).toBe("target"),
+    );
+    expect(slot.queryByText("Keep on this document")).toBeNull();
+  });
+
+  it("keeps an unsent reply draft through incoming replies", async () => {
+    const content = "# Draft\n\nA target here.";
+    const start = "Draft\n\nA target here.".indexOf("target");
+    let messages = ["Root"];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/draft.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "draft.md",
+                title: "Draft",
+                preview: "",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({ content, sha256: "sha1" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "draft.md" }),
+          listCommentFolder: () => ({ stranded: [], truncated: false }),
+          listComments: () => ({
+            sidecarSha256: "sidecar",
+            threads: [commentThread(messages, { start, end: start + 6 })],
+            notice: null,
+            outsideChange: 0,
+            documentSha256: "sha1",
+          }),
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByLabelText("Comments"));
+    fireEvent.click(await slot.findByText("Root"));
+    const reply = (await slot.findByPlaceholderText(
+      "Reply, or @mention an agent",
+    )) as HTMLTextAreaElement;
+    fireEvent.change(reply, {
+      target: { value: "Unsent draft should survive" },
+    });
+    messages = ["Root", "Incoming reply"];
+    await slot.emitRealtime("comments-changed", {
+      vaultId: "personal",
+      path: "draft.md",
+    });
+    await slot.findByText("Incoming reply");
+    expect(
+      (
+        slot.getByPlaceholderText(
+          "Reply, or @mention an agent",
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("Unsent draft should survive");
+  });
+
+  it("refreshes comments without a document when another document is deleted", async () => {
+    let stranded: { path: string; sidecarPath: string }[] = [];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/live.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              { path: "live.md", title: "Live", preview: "", modifiedAtMs: 1 },
+            ]),
+          readNote: () => ({ content: "# Live\n\nBody.", sha256: "sha1" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "live.md" }),
+          listComments: () => ({
+            sidecarSha256: null,
+            threads: [],
+            notice: null,
+            outsideChange: 0,
+            documentSha256: "sha1",
+          }),
+          listCommentFolder: () => ({ stranded, truncated: false }),
+        },
+      },
+    );
+
+    await slot.findByText("Body.");
+    expect(slot.queryByText("1 without a document")).toBeNull();
+    stranded = [
+      {
+        path: "other.md",
+        sidecarPath: ".bb-comments/orphaned/x/.bb-comments/other.md.json",
+      },
+    ];
+    await slot.emitRealtime("vault-changed", {
+      vaultId: "personal",
+      path: "other.md",
+    });
+    expect(
+      await slot.findByText("1 without a document", undefined, {
+        timeout: 2_000,
+      }),
+    ).toBeTruthy();
+  });
+
   it("renders and autosaves editable Markdown tables", async () => {
     const saveNote = vi.fn((_input: unknown) => ({
       outcome: "written",

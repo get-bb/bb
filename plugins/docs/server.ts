@@ -1,4 +1,17 @@
+import {
+  commentsContract,
+  commentSourceSchema,
+  commentSidecar,
+  createCommentsService,
+  type CommentTarget,
+} from "./comments-service.js";
 import { proposalSchema, type Proposal } from "./proposals.js";
+import {
+  commentsFileSchema,
+  commentsListSchema,
+  commentThreadSchema,
+} from "./comments.js";
+import { randomUUID } from "node:crypto";
 import { watch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -259,6 +272,38 @@ type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
 type OpenerSource = z.infer<typeof openerSourceSchema>;
 
 export const docsRpcContract = defineRpcContract({
+  ...commentsContract,
+  listCommentFolder: {
+    input: z
+      .object({ vaultId: vaultIdSchema, path: vaultDirectorySchema })
+      .strict(),
+    output: z.object({
+      stranded: z.array(
+        z.object({ path: z.string(), sidecarPath: z.string() }),
+      ),
+      truncated: z.boolean(),
+    }),
+  },
+  keepComments: {
+    input: commentsContract.listComments.input.omit({ status: true }),
+    output: commentsListSchema,
+  },
+  leaveComments: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: commentsListSchema,
+  },
+  readOrphanedComments: {
+    input: z
+      .object({ vaultId: vaultIdSchema, sidecarPath: z.string().min(1) })
+      .strict(),
+    output: z.object({ threads: z.array(commentThreadSchema) }),
+  },
+  deleteOrphanedComments: {
+    input: z
+      .object({ vaultId: vaultIdSchema, sidecarPath: z.string().min(1) })
+      .strict(),
+    output: z.object({ ok: z.literal(true) }),
+  },
   readProposal: {
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
     output: proposalSchema.nullable(),
@@ -985,29 +1030,100 @@ export default async function plugin(
     const relativePath = requireVaultPath(args.rawPath);
     if (typeof args.content !== "string")
       throw new Error('"content" must be a string');
-    const result = await bb.sdk.files.write({
-      ...hostArgs(vault),
-      path: absolutePath(vault, relativePath),
-      rootPath: vault.rootPath,
-      content: args.content,
-      contentEncoding: args.contentEncoding ?? "utf8",
-      createParents: true,
-      ...(args.createOnly
-        ? { expectedSha256: null }
-        : args.expectedSha256 === null ||
-            typeof args.expectedSha256 === "string"
-          ? { expectedSha256: args.expectedSha256 }
-          : {}),
-    });
-    if (result.outcome === "written") {
+    const markdown = /\.md$/i.test(relativePath);
+    const content = args.content;
+    return serializeComments(vault.id, async () => {
+      const previousSha256 = args.createOnly
+        ? null
+        : typeof args.expectedSha256 === "string"
+          ? args.expectedSha256
+          : markdown
+            ? ((await readExistingFile(vault, relativePath))?.sha256 ?? null)
+            : null;
+      const stranded =
+        markdown &&
+        previousSha256 === null &&
+        !(await pathExists(vault, relativePath))
+          ? await orphanSidecar(vault, relativePath)
+          : null;
+      let result: Awaited<ReturnType<typeof bb.sdk.files.write>>;
+      try {
+        result = await bb.sdk.files.write({
+          ...hostArgs(vault),
+          path: absolutePath(vault, relativePath),
+          rootPath: vault.rootPath,
+          content,
+          contentEncoding: args.contentEncoding ?? "utf8",
+          createParents: true,
+          ...(args.createOnly
+            ? { expectedSha256: null }
+            : args.expectedSha256 === null ||
+                typeof args.expectedSha256 === "string"
+              ? { expectedSha256: args.expectedSha256 }
+              : {}),
+        });
+      } catch (error) {
+        await restoreSidecarQuietly(vault, stranded, relativePath);
+        throw error;
+      }
+      if (result.outcome !== "written") {
+        await restoreSidecarQuietly(vault, stranded, relativePath);
+        return result;
+      }
+      if (markdown)
+        await comments
+          .rebind(
+            { vaultId: vault.id, path: relativePath },
+            previousSha256,
+            result.sha256,
+          )
+          .catch((error) =>
+            bb.log.warn(`comments not rebound: ${errorMessage(error)}`),
+          );
       mentionSummaries.delete(vault.id);
       bb.realtime.publish("vault-changed", {
         vaultId: vault.id,
         path: relativePath,
         ...(args.proposalOnly ? { proposalOnly: true } : {}),
       });
+      return result;
+    });
+  }
+
+  const commentOperations = new Map<string, Promise<unknown>>();
+
+  async function serializeComments<T>(
+    key: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const previous = commentOperations.get(key) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(work);
+    commentOperations.set(key, current);
+    try {
+      return await current;
+    } finally {
+      if (commentOperations.get(key) === current) commentOperations.delete(key);
     }
-    return result;
+  }
+
+  function serializeDocument<T>(
+    vaultId: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    return serializeVault(vaultId, () => serializeComments(vaultId, work));
+  }
+
+  function lockedList(
+    input: CommentTarget & { status?: "open" | "resolved" | "all" },
+  ) {
+    return serializeComments(
+      input.source ? sourceCommentKey(input.path) : getVault(input.vaultId).id,
+      () => comments.list(input),
+    );
+  }
+
+  function sourceCommentKey(filePath: string): string {
+    return `source:${filePath}`;
   }
 
   const vaultOperations = new Map<string, Promise<unknown>>();
@@ -1175,19 +1291,27 @@ export default async function plugin(
     const existing = new Set(entries.map((entry) => entry.path.toLowerCase()));
     let relativePath = parent ? `${parent}/${base}.md` : `${base}.md`;
     let counter = 2;
-    while (existing.has(relativePath.toLowerCase())) {
-      relativePath = parent
-        ? `${parent}/${base} ${counter}.md`
-        : `${base} ${counter}.md`;
-      counter += 1;
+    for (;;) {
+      while (
+        existing.has(relativePath.toLowerCase()) ||
+        (await pathExists(vault, relativePath))
+      ) {
+        relativePath = parent
+          ? `${parent}/${base} ${counter}.md`
+          : `${base} ${counter}.md`;
+        counter += 1;
+      }
+      const result = await writeFile({
+        vaultId: vault.id,
+        rawPath: relativePath,
+        content: typeof input.content === "string" ? input.content : "",
+        createOnly: true,
+      });
+      if (result.outcome === "written") return { path: relativePath };
+      existing.add(relativePath.toLowerCase());
+      if (counter > 1000)
+        throw new Error(`Could not find a free name for ${base}.md`);
     }
-    await writeFile({
-      vaultId: vault.id,
-      rawPath: relativePath,
-      content: typeof input.content === "string" ? input.content : "",
-      createOnly: true,
-    });
-    return { path: relativePath };
   }
 
   async function movePath(
@@ -1198,13 +1322,45 @@ export default async function plugin(
     const vault = getVault(vaultId);
     const from = requireVaultPath(fromValue);
     const to = requireVaultPath(toValue);
-    return serializeVault(vault.id, async () => {
-      await bb.sdk.files.move({
-        ...hostArgs(vault),
-        sourcePath: absolutePath(vault, from),
-        destinationPath: absolutePath(vault, to),
-        rootPath: vault.rootPath,
-      });
+    return serializeDocument(vault.id, async () => {
+      const oldSidecar = commentSidecar(from);
+      const newSidecar = commentSidecar(to);
+      const sidecar = await readExistingFile(vault, oldSidecar);
+      if (
+        from.toLowerCase() !== to.toLowerCase() &&
+        (await pathExists(vault, to))
+      )
+        throw new Error(`EEXIST: ${to} already exists.`);
+      const stranded = await orphanSidecar(vault, to);
+      try {
+        await bb.sdk.files.move({
+          ...hostArgs(vault),
+          sourcePath: absolutePath(vault, from),
+          destinationPath: absolutePath(vault, to),
+          rootPath: vault.rootPath,
+        });
+      } catch (error) {
+        await restoreSidecarQuietly(vault, stranded, to);
+        throw error;
+      }
+      if (sidecar) {
+        try {
+          await moveSidecar(vault, from, to);
+        } catch (error) {
+          await bb.sdk.files
+            .move({
+              ...hostArgs(vault),
+              sourcePath: absolutePath(vault, to),
+              destinationPath: absolutePath(vault, from),
+              rootPath: vault.rootPath,
+            })
+            .then(() => restoreSidecarQuietly(vault, stranded, to))
+            .catch((failure) =>
+              bb.log.warn(`could not roll back move: ${errorMessage(failure)}`),
+            );
+          throw error;
+        }
+      }
       db.transaction(() => {
         const rows = db
           .prepare(
@@ -1242,13 +1398,26 @@ export default async function plugin(
   ): Promise<{ ok: true }> {
     const vault = getVault(vaultId);
     const relativePath = requireVaultPath(rawPath);
-    return serializeVault(vault.id, async () => {
-      await bb.sdk.files.remove({
-        ...hostArgs(vault),
-        path: absolutePath(vault, relativePath),
-        rootPath: vault.rootPath,
-        recursive,
-      });
+    return serializeDocument(vault.id, async () => {
+      const stranded = await orphanSidecar(vault, relativePath);
+      let moved: [string, string][] = [];
+      try {
+        if (recursive) moved = await orphanFolderComments(vault, relativePath);
+        await bb.sdk.files.remove({
+          ...hostArgs(vault),
+          path: absolutePath(vault, relativePath),
+          rootPath: vault.rootPath,
+          recursive,
+        });
+      } catch (error) {
+        const failures = await restoreFolderComments(vault, moved);
+        await restoreSidecar(vault, stranded, relativePath, true).catch(
+          (failure: unknown) => failures.push(failure),
+        );
+        for (const failure of failures)
+          bb.log.warn(`could not restore comments: ${errorMessage(failure)}`);
+        throw error;
+      }
       deleteProposals(vault.id, relativePath);
       mentionSummaries.delete(vault.id);
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
@@ -1621,6 +1790,13 @@ export default async function plugin(
         right.localeCompare(left),
     )) {
       try {
+        await bb.sdk.files
+          .remove({
+            ...hostArgs(vault),
+            path: absolutePath(vault, `${directory}/.bb-comments`),
+            rootPath: vault.rootPath,
+          })
+          .catch(() => undefined);
         await removePath(vault.id, directory, false);
         deletedDirectories.push(directory);
       } catch (error) {
@@ -1652,7 +1828,360 @@ export default async function plugin(
     };
   }
 
+  const comments = createCommentsService(
+    bb,
+    async (input) => {
+      if (!/\.md$/i.test(input.path))
+        throw new Error("Comments are supported on Markdown files only");
+      if (input.source) return resolveOpenerFile(input.source, input.path);
+      const vault = getVault(input.vaultId);
+      const relative = requireVaultPath(input.path, { extension: ".md" });
+      return {
+        path: absolutePath(vault, relative),
+        rootPath: vault.rootPath,
+        hostId: vault.hostId,
+      };
+    },
+    (input, work) =>
+      input.source
+        ? serializeComments(sourceCommentKey(input.path), work)
+        : serializeVault(getVault(input.vaultId).id, () =>
+            serializeComments(getVault(input.vaultId).id, work),
+          ),
+  );
+
+  function sidecarDocument(
+    sidecarPath: string,
+  ): { path: string; orphaned: boolean } | null {
+    if (sidecarPath.split("/").some((part) => !part || part === ".."))
+      return null;
+    const orphaned =
+      /^\.bb-comments\/orphaned\/[^/]+\/(?:(.*)\/)?\.bb-comments\/([^/]+\.md)\.json$/i.exec(
+        sidecarPath,
+      );
+    if (orphaned)
+      return orphaned[1]?.split("/").includes(".bb-comments")
+        ? null
+        : {
+            path: orphaned[1] ? `${orphaned[1]}/${orphaned[2]}` : orphaned[2]!,
+            orphaned: true,
+          };
+    if (sidecarPath.startsWith(".bb-comments/orphaned/")) return null;
+    const stranded = /^(?:(.*)\/)?\.bb-comments\/([^/]+\.md)\.json$/i.exec(
+      sidecarPath,
+    );
+    if (!stranded || stranded[1]?.split("/").includes(".bb-comments"))
+      return null;
+    return {
+      path: stranded[1] ? `${stranded[1]}/${stranded[2]}` : stranded[2]!,
+      orphaned: false,
+    };
+  }
+
+  async function listObserved(
+    input: CommentTarget & { status?: "open" | "resolved" | "all" },
+  ) {
+    try {
+      return await lockedList(input);
+    } catch (error) {
+      if (!input.source && isMissingFileError(error))
+        await orphanMissingDocuments(getVault(input.vaultId)).catch((failure) =>
+          bb.log.warn(`could not preserve comments: ${errorMessage(failure)}`),
+        );
+      throw error;
+    }
+  }
+
+  function commentsChanged(vaultId: string, documentPath: string) {
+    bb.realtime.publish("comments-changed", {
+      vaultId,
+      path: documentPath,
+      source: null,
+    });
+  }
+
+  async function leaveComments(input: { vaultId?: string; path: string }) {
+    const vault = getVault(input.vaultId);
+    const relativePath = requireVaultPath(input.path, { extension: ".md" });
+    await serializeDocument(vault.id, () => orphanSidecar(vault, relativePath));
+    commentsChanged(vault.id, relativePath);
+    return lockedList({ vaultId: vault.id, path: relativePath });
+  }
+
+  async function documentlessSidecar(input: {
+    vaultId?: string;
+    sidecarPath: string;
+  }) {
+    const vault = getVault(input.vaultId);
+    const source = sidecarDocument(input.sidecarPath);
+    if (
+      !source ||
+      (!source.orphaned && (await readExistingFile(vault, source.path)))
+    )
+      throw new Error("Choose comments that no longer have a document.");
+    return { vault, sidecarPath: input.sidecarPath };
+  }
+
+  async function moveIntoOrphanArea(vault: Vault, from: string, to: string) {
+    await bb.sdk.files.mkdir({
+      ...hostArgs(vault),
+      path: absolutePath(vault, path.posix.dirname(to)),
+      rootPath: vault.rootPath,
+      recursive: true,
+    });
+    await bb.sdk.files.move({
+      ...hostArgs(vault),
+      sourcePath: absolutePath(vault, from),
+      destinationPath: absolutePath(vault, to),
+      rootPath: vault.rootPath,
+    });
+  }
+
+  async function orphanSidecar(
+    vault: Vault,
+    documentPath: string,
+  ): Promise<string | null> {
+    const sidecarPath = commentSidecar(documentPath);
+    if (!(await readExistingFile(vault, sidecarPath))) return null;
+    const destination = `.bb-comments/orphaned/${randomUUID()}/${sidecarPath}`;
+    await moveIntoOrphanArea(vault, sidecarPath, destination);
+    return destination;
+  }
+
+  async function restoreSidecarQuietly(
+    vault: Vault,
+    orphaned: string | null,
+    documentPath: string,
+  ) {
+    await restoreSidecar(vault, orphaned, documentPath).catch((failure) =>
+      bb.log.warn(`could not restore comments: ${errorMessage(failure)}`),
+    );
+  }
+
+  async function restoreSidecar(
+    vault: Vault,
+    orphaned: string | null,
+    documentPath: string,
+    onlyIfDocumentSurvived = false,
+  ) {
+    if (!orphaned) return;
+    if (
+      onlyIfDocumentSurvived &&
+      !(await readExistingFile(vault, documentPath))
+    )
+      return;
+    const sidecarPath = commentSidecar(documentPath);
+    if (await readExistingFile(vault, sidecarPath)) return;
+    await bb.sdk.files.mkdir({
+      ...hostArgs(vault),
+      path: absolutePath(vault, path.posix.dirname(sidecarPath)),
+      rootPath: vault.rootPath,
+      recursive: true,
+    });
+    await bb.sdk.files.move({
+      ...hostArgs(vault),
+      sourcePath: absolutePath(vault, orphaned),
+      destinationPath: absolutePath(vault, sidecarPath),
+      rootPath: vault.rootPath,
+    });
+  }
+
+  async function pathExists(vault: Vault, relativePath: string) {
+    try {
+      return (await readExistingFile(vault, relativePath)) !== null;
+    } catch {
+      return true;
+    }
+  }
+
+  async function orphanFolderComments(vault: Vault, folder: string) {
+    const listing = await bb.sdk.files.listPaths({
+      ...hostArgs(vault),
+      path: absolutePath(vault, folder),
+      includeHidden: true,
+      includeFiles: false,
+      includeDirectories: true,
+      limit: MAX_TREE_ENTRIES,
+    });
+    if (listing.truncated)
+      throw new Error(
+        "This folder has too many subfolders to delete safely with its comments. Delete its subfolders first.",
+      );
+    const directories = listing.paths
+      .map((item) => `${folder}/${item.path}`)
+      .filter((directory) => {
+        const parts = directory.split("/");
+        return (
+          parts.at(-1) === ".bb-comments" &&
+          parts.filter((part) => part === ".bb-comments").length === 1
+        );
+      });
+    for (const directory of directories) {
+      const sidecars = await bb.sdk.files.listPaths({
+        ...hostArgs(vault),
+        path: absolutePath(vault, directory),
+        includeHidden: true,
+        includeFiles: true,
+        includeDirectories: false,
+        limit: MAX_TREE_ENTRIES,
+      });
+      if (sidecars.truncated)
+        throw new Error(
+          "This folder has too many commented documents to delete safely in one step. Delete its subfolders first.",
+        );
+    }
+    const id = randomUUID();
+    const moved: [string, string][] = [];
+    try {
+      for (const directory of directories) {
+        const destination = `.bb-comments/orphaned/${id}/${directory}`;
+        await moveIntoOrphanArea(vault, directory, destination);
+        moved.push([directory, destination]);
+      }
+    } catch (error) {
+      for (const failure of await restoreFolderComments(vault, moved))
+        bb.log.warn(`could not restore comments: ${errorMessage(failure)}`);
+      throw error;
+    }
+    return moved;
+  }
+
+  async function restoreFolderComments(
+    vault: Vault,
+    moved: [string, string][],
+  ): Promise<unknown[]> {
+    const failures: unknown[] = [];
+    for (const [directory, destination] of moved) {
+      const folder = path.posix.dirname(directory);
+      try {
+        const listing = await bb.sdk.files.listPaths({
+          ...hostArgs(vault),
+          path: absolutePath(vault, destination),
+          includeHidden: true,
+          includeFiles: true,
+          includeDirectories: false,
+          limit: MAX_TREE_ENTRIES,
+        });
+        for (const item of listing.paths) {
+          const name = /^([^/]+\.md)\.json$/i.exec(item.path)?.[1];
+          if (!name) continue;
+          try {
+            await restoreSidecar(
+              vault,
+              `${destination}/${item.path}`,
+              folder === "." ? name : `${folder}/${name}`,
+              true,
+            );
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    return failures;
+  }
+
+  async function orphanMissingDocuments(vault: Vault): Promise<void> {
+    const listing = await bb.sdk.files.listPaths({
+      ...hostArgs(vault),
+      path: vault.rootPath,
+      includeHidden: true,
+      includeFiles: true,
+      includeDirectories: false,
+      limit: MAX_TREE_ENTRIES,
+    });
+    if (listing.truncated) return;
+    const files = new Set(listing.paths.map((item) => item.path));
+    const missing = [...files].flatMap((relative) => {
+      const document = sidecarDocument(relative);
+      return document && !document.orphaned && !files.has(document.path)
+        ? [document.path]
+        : [];
+    });
+    if (!missing.length) return;
+    await serializeDocument(vault.id, async () => {
+      for (const documentPath of missing)
+        if (!(await readExistingFile(vault, documentPath))) {
+          await orphanSidecar(vault, documentPath);
+          commentsChanged(vault.id, documentPath);
+        }
+    });
+  }
+
+  async function moveSidecar(vault: Vault, from: string, to: string) {
+    const destination = commentSidecar(to);
+    await bb.sdk.files.mkdir({
+      ...hostArgs(vault),
+      path: absolutePath(vault, path.posix.dirname(destination)),
+      rootPath: vault.rootPath,
+      recursive: true,
+    });
+    await bb.sdk.files.move({
+      ...hostArgs(vault),
+      sourcePath: absolutePath(vault, commentSidecar(from)),
+      destinationPath: absolutePath(vault, destination),
+      rootPath: vault.rootPath,
+    });
+  }
+
   const handlers: PluginRpcHandlers<typeof docsRpcContract> = {
+    async listCommentFolder(input) {
+      const vault = getVault(input.vaultId);
+      const folder = input.path ?? "";
+      await orphanMissingDocuments(vault);
+      const listing = await bb.sdk.files.listPaths({
+        ...hostArgs(vault),
+        path: vault.rootPath,
+        includeHidden: true,
+        includeFiles: true,
+        includeDirectories: false,
+        limit: MAX_TREE_ENTRIES,
+      });
+      const files = new Set(listing.paths.map((item) => item.path));
+      const stranded: { path: string; sidecarPath: string }[] = [];
+      for (const relative of files) {
+        const document = sidecarDocument(relative);
+        if (
+          document &&
+          (document.orphaned || !files.has(document.path)) &&
+          (!folder || document.path.startsWith(`${folder}/`))
+        )
+          stranded.push({ path: document.path, sidecarPath: relative });
+      }
+      return { stranded, truncated: listing.truncated };
+    },
+    keepComments: (input) => comments.keep(input),
+    leaveComments: (input) => leaveComments(input),
+    async readOrphanedComments(input) {
+      const { vault, sidecarPath } = await documentlessSidecar(input);
+      const file = await readExistingFile(vault, sidecarPath);
+      if (!file) throw new Error("Those comments are no longer there.");
+      return {
+        threads: commentsFileSchema.parse(JSON.parse(file.content)).threads,
+      };
+    },
+    async deleteOrphanedComments(input) {
+      const { vault, sidecarPath } = await documentlessSidecar(input);
+      await bb.sdk.files.remove({
+        ...hostArgs(vault),
+        path: absolutePath(vault, sidecarPath),
+        rootPath: vault.rootPath,
+      });
+      commentsChanged(vault.id, sidecarDocument(sidecarPath)!.path);
+      return { ok: true as const };
+    },
+    listComments: (input) => listObserved(input),
+    addComment: (input) => comments.add(input, comments.user),
+    replyComment: (input) => comments.reply(input, comments.user),
+    setCommentStatus: (input) => comments.status(input, comments.user),
+    editCommentMessage: (input) => comments.edit(input),
+    deleteCommentMessage: (input) => comments.delete(input),
+    refreshCommentAnchors: (input) => comments.refresh(input),
+    commentProjects: () => comments.projects(),
+    startCommentAgent: (input) => comments.startAgent(input),
+    commentThreads: (input) => comments.suggestions(input.query),
     async readProposal(input) {
       return readProposal(getVault(input.vaultId).id, input.path);
     },
@@ -1982,18 +2511,37 @@ export default async function plugin(
     },
     async saveOpenedFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
-      const result = await bb.sdk.files.write({
-        ...hostIdArgs(target.hostId),
-        path: target.path,
-        rootPath: target.rootPath,
-        content: input.content,
-        ...(input.expectedSha256 === null ||
-        typeof input.expectedSha256 === "string"
-          ? { expectedSha256: input.expectedSha256 }
-          : {}),
+      return serializeComments(sourceCommentKey(input.path), async () => {
+        const previousSha256 =
+          typeof input.expectedSha256 === "string"
+            ? input.expectedSha256
+            : null;
+        const result = await bb.sdk.files.write({
+          ...hostIdArgs(target.hostId),
+          path: target.path,
+          rootPath: target.rootPath,
+          content: input.content,
+          ...(input.expectedSha256 === null ||
+          typeof input.expectedSha256 === "string"
+            ? { expectedSha256: input.expectedSha256 }
+            : {}),
+        });
+        if (result.outcome === "written") {
+          if (/\.md$/i.test(input.path))
+            await comments
+              .rebindFile(
+                target,
+                { path: input.path, source: input.source },
+                previousSha256,
+                result.sha256,
+              )
+              .catch((error) =>
+                bb.log.warn(`comments not rebound: ${errorMessage(error)}`),
+              );
+          mentionSummaries.clear();
+        }
+        return result;
       });
-      if (result.outcome === "written") mentionSummaries.clear();
-      return result;
     },
   };
 
@@ -2060,6 +2608,17 @@ export default async function plugin(
       { auth: "token" },
     );
   }
+
+  routeRpc(
+    "/comments/folder",
+    docsRpcContract.listCommentFolder.input,
+    handlers.listCommentFolder,
+  );
+  routeRpc(
+    "/comments/list",
+    docsRpcContract.listComments.input,
+    handlers.listComments,
+  );
 
   routeRpc("/list", docsRpcContract.listNotes.input, handlers.listNotes);
 
@@ -2941,6 +3500,55 @@ export default async function plugin(
     ]),
   );
 
+  const commentOptions = {
+    vault: VAULT_OPTION,
+    json: JSON_OPTION,
+    source: {
+      type: "string",
+      description: "File-opener source JSON for a file outside a vault",
+    },
+  } as const;
+  const commentPositionals = [
+    ...proposalPositionals,
+    { name: "commentId", required: true, description: "Comment thread ID" },
+  ] as const;
+  function commentTarget(input: {
+    positionals: { path: string };
+    options: { vault?: string; source?: string };
+  }): CommentTarget {
+    return {
+      path: input.positionals.path,
+      vaultId: input.options.vault,
+      ...(input.options.source
+        ? {
+            source: commentSourceSchema.parse(JSON.parse(input.options.source)),
+          }
+        : {}),
+    };
+  }
+  function commentOutput(
+    result: Awaited<ReturnType<typeof comments.list>>,
+    json: boolean,
+  ): PluginCliResult {
+    return {
+      exitCode: 0,
+      stdout: json
+        ? JSON.stringify(result, null, 2)
+        : [
+            result.notice,
+            result.outsideChange
+              ? `${result.outsideChange} comments were made on a version changed outside Docs. Run comments keep or comments leave.`
+              : null,
+            ...result.threads.map(
+              (item) =>
+                `${item.id} · ${item.status} · ${item.anchor.state === "orphaned" ? "Text not found" : `line ${item.anchor.line}`} · “${item.anchor.quote}”\n${item.messages.map((message) => `${message.author.name}: ${message.body}`).join("\n")}`,
+            ),
+          ]
+            .filter(Boolean)
+            .join("\n\n") || "No comments.",
+    };
+  }
+
   bb.cli.register(
     defineCli({
       name: "docs",
@@ -2949,6 +3557,232 @@ export default async function plugin(
       usageErrorExitCode: 2,
       commands: {
         ...proposalCommands,
+        "comments list": cliCommand({
+          summary: "List document comments and their anchor locations",
+          positionals: proposalPositionals,
+          options: {
+            ...commentOptions,
+            status: {
+              type: "string",
+              description: "open, resolved, or all (default open)",
+            },
+            folder: {
+              type: "boolean",
+              description:
+                "Report stranded sidecars beneath this folder (. for vault root)",
+            },
+          },
+          run: (input) =>
+            attemptCli(async () => {
+              if (input.options.folder) {
+                if (input.options.source || input.options.status)
+                  throw new CliUsageError(
+                    "--folder cannot be combined with --source or --status",
+                  );
+                const result = await handlers.listCommentFolder({
+                  vaultId: input.options.vault,
+                  path:
+                    input.positionals.path === "."
+                      ? ""
+                      : requireVaultPath(input.positionals.path),
+                });
+                return {
+                  exitCode: 0,
+                  stdout: input.options.json
+                    ? JSON.stringify(result, null, 2)
+                    : result.stranded
+                        .map((item) => `${item.path} · ${item.sidecarPath}`)
+                        .join("\n") || "No stranded comments.",
+                };
+              }
+              return commentOutput(
+                await listObserved({
+                  ...commentTarget(input),
+                  status: z
+                    .enum(["open", "resolved", "all"])
+                    .parse(input.options.status ?? "open"),
+                }),
+                input.options.json === true,
+              );
+            }),
+        }),
+        "comments add": cliCommand({
+          summary: "Comment on exact visible text without changing Markdown",
+          positionals: proposalPositionals,
+          options: {
+            ...commentOptions,
+            quote: {
+              type: "string",
+              required: true,
+              description: "Exact visible text",
+            },
+            occurrence: {
+              type: "string",
+              description: "1-based occurrence for repeated quotes",
+            },
+            body: {
+              type: "string",
+              required: true,
+              description: "Comment text",
+            },
+          },
+          run: (input, context) =>
+            attemptCli(async () =>
+              commentOutput(
+                await comments.add(
+                  commentsContract.addComment.input.parse({
+                    ...commentTarget(input),
+                    quote: input.options.quote,
+                    body: input.options.body,
+                    occurrence:
+                      input.options.occurrence === undefined
+                        ? undefined
+                        : Number(input.options.occurrence),
+                  }),
+                  await comments.author(context.threadId),
+                ),
+                input.options.json === true,
+              ),
+            ),
+        }),
+        "comments reply": cliCommand({
+          summary: "Reply to a comment as the invoking agent thread",
+          positionals: commentPositionals,
+          options: {
+            ...commentOptions,
+            body: { type: "string", required: true, description: "Reply text" },
+          },
+          run: (input, context) =>
+            attemptCli(async () =>
+              commentOutput(
+                await comments.reply(
+                  commentsContract.replyComment.input.parse({
+                    ...commentTarget(input),
+                    commentId: input.positionals.commentId,
+                    body: input.options.body,
+                  }),
+                  await comments.author(context.threadId),
+                ),
+                input.options.json === true,
+              ),
+            ),
+        }),
+        "comments keep": cliCommand({
+          summary:
+            "Keep comments on a document that changed outside Docs and bind them to its current text",
+          positionals: proposalPositionals,
+          options: commentOptions,
+          run: (input) =>
+            attemptCli(async () =>
+              commentOutput(
+                await comments.keep(commentTarget(input)),
+                input.options.json === true,
+              ),
+            ),
+        }),
+        "comments leave": cliCommand({
+          summary: "Move a document's comments to Comments without a document",
+          positionals: proposalPositionals,
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () =>
+              commentOutput(
+                await leaveComments({
+                  vaultId: input.options.vault,
+                  path: input.positionals.path,
+                }),
+                input.options.json === true,
+              ),
+            ),
+        }),
+        "comments read-file": cliCommand({
+          summary:
+            "Read comments without a document (see comments list --folder)",
+          positionals: [
+            {
+              name: "sidecarPath",
+              required: true,
+              description: "Comments file path from comments list --folder",
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => {
+              const result = await handlers.readOrphanedComments({
+                vaultId: input.options.vault,
+                sidecarPath: input.positionals.sidecarPath,
+              });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result, null, 2)
+                  : result.threads
+                      .map((thread) =>
+                        [
+                          `${thread.id} · “${thread.anchor.quote}”`,
+                          ...thread.messages.map(
+                            (message) =>
+                              `${message.author.name}: ${message.body}`,
+                          ),
+                        ].join("\n"),
+                      )
+                      .join("\n\n"),
+              };
+            }),
+        }),
+        "comments delete-file": cliCommand({
+          summary: "Permanently delete comments without a document",
+          positionals: [
+            {
+              name: "sidecarPath",
+              required: true,
+              description: "Comments file path from comments list --folder",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            yes: {
+              type: "boolean",
+              required: true,
+              description: "Confirm permanent deletion",
+            },
+          },
+          run: (input) =>
+            attemptCli(async () => {
+              if (input.options.yes !== true)
+                throw new Error("Pass --yes to delete these comments.");
+              await handlers.deleteOrphanedComments({
+                vaultId: input.options.vault,
+                sidecarPath: input.positionals.sidecarPath,
+              });
+              return { exitCode: 0, stdout: "Deleted." };
+            }),
+        }),
+        "comments resolve": cliCommand({
+          summary: "Resolve or reopen a comment thread",
+          positionals: commentPositionals,
+          options: {
+            ...commentOptions,
+            reopen: {
+              type: "boolean",
+              description: "Reopen instead of resolving",
+            },
+          },
+          run: (input, context) =>
+            attemptCli(async () =>
+              commentOutput(
+                await comments.status(
+                  {
+                    ...commentTarget(input),
+                    commentId: input.positionals.commentId,
+                    resolved: !input.options.reopen,
+                  },
+                  await comments.author(context.threadId),
+                ),
+                input.options.json === true,
+              ),
+            ),
+        }),
         proposal: cliCommand({
           summary: "Read the current proposal and its version",
           positionals: proposalPositionals,
@@ -3484,14 +4318,31 @@ export default async function plugin(
       if (separator < 1) throw new Error("Invalid note mention");
       const vaultId = itemId.slice(0, separator);
       const relativePath = itemId.slice(separator + 1);
-      const file = await readFile(vaultId, relativePath);
+      const { file, openComments } = await serializeComments(
+        getVault(vaultId).id,
+        async () => {
+          const file = await readFile(vaultId, relativePath);
+          return {
+            file,
+            openComments: /\.md$/i.test(relativePath)
+              ? await comments.list(
+                  { vaultId, path: relativePath, status: "open" },
+                  file,
+                )
+              : { threads: [] },
+          };
+        },
+      );
       const proposal = readProposal(getVault(vaultId).id, relativePath);
       return {
         context:
           `Docs document (${vaultId}/${relativePath}):\nSHA-256: ${file.sha256}\n\n${file.content}` +
           (proposal
             ? `\n\nDocs proposal metadata:\n${JSON.stringify(proposal)}\nUse bb docs propose with this version and current document hash to propose a revision; do not push over the user's document.`
-            : "\n\nProposal version: none. Use bb docs propose to suggest changes for approval."),
+            : "\n\nProposal version: none. Use bb docs propose to suggest changes for approval.") +
+          (openComments.threads.length
+            ? `\n\nOpen Docs comments:\n${openComments.threads.map((item) => `${item.id} · “${item.anchor.quote}” · ${item.messages.at(-1)?.body}`).join("\n")}`
+            : ""),
       };
     },
   });
@@ -3501,6 +4352,7 @@ export default async function plugin(
       const watchers = new Map<string, VaultWatcher>();
       const retryNative = new Set<string>();
       let debounce: NodeJS.Timeout | null = null;
+      const sweeps = new Map<string, NodeJS.Timeout>();
       let previous = "";
       try {
         while (!signal.aborted) {
@@ -3519,6 +4371,18 @@ export default async function plugin(
             try {
               const watcher = watchVault(vault.rootPath, () => {
                 mentionSummaries.delete(vault.id);
+                clearTimeout(sweeps.get(vault.id));
+                sweeps.set(
+                  vault.id,
+                  setTimeout(() => {
+                    sweeps.delete(vault.id);
+                    void orphanMissingDocuments(vault).catch((error) =>
+                      bb.log.warn(
+                        `could not preserve comments: ${errorMessage(error)}`,
+                      ),
+                    );
+                  }, 1000),
+                );
                 if (debounce) clearTimeout(debounce);
                 debounce = setTimeout(() => {
                   bb.realtime.publish("vault-changed", {
@@ -3573,6 +4437,7 @@ export default async function plugin(
         }
       } finally {
         if (debounce) clearTimeout(debounce);
+        for (const sweep of sweeps.values()) clearTimeout(sweep);
         for (const watcher of watchers.values()) watcher.close();
       }
     },

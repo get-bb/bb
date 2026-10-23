@@ -1,3 +1,6 @@
+import { CommentsSurface } from "./comments-ui.js";
+import { createCommentHighlights } from "./comment-editor.js";
+import type { CommentTarget } from "./comments-service.js";
 import {
   useCallback,
   useEffect,
@@ -434,6 +437,7 @@ function TiptapEditor(props: {
   inline?: boolean;
   disabled?: boolean;
   onFocusChange?(focused: boolean): void;
+  onEditor?(editor: Editor | null): void;
 }) {
   const {
     initialValue,
@@ -494,6 +498,7 @@ function TiptapEditor(props: {
       element: rootRef.current,
       extensions: [
         StarterKit,
+        createCommentHighlights(),
         createProposalDiff({ getBaseDocument: () => baselineRef.current }),
         Link.configure({ openOnClick: false, autolink: true }),
         Image.configure({ allowBase64: false }),
@@ -558,6 +563,7 @@ function TiptapEditor(props: {
       false,
     );
     setBase(editor);
+    latest.current.onEditor?.(editor);
     const getMarkdown = () =>
       parseMarkdownDocument(sourceRef.current).frontmatter +
       saveMarkdownBlocks(editor, blocksRef.current!, (nodes) =>
@@ -573,6 +579,7 @@ function TiptapEditor(props: {
     latest.current.onFirstRender(getMarkdown());
     editor.on("update", () => latest.current.onMarkdownChange(getMarkdown()));
     return () => {
+      latest.current.onEditor?.(null);
       editor.destroy();
       editorRef.current = null;
     };
@@ -889,6 +896,7 @@ function InlineDocument({
   const rpc = useRpc<typeof docsRpcContract>();
   const composer = useComposer();
   const navigate = useBbNavigate();
+  const [editor, setEditor] = useState<Editor | null>(null);
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
@@ -1102,27 +1110,39 @@ function InlineDocument({
                     )}
                   </div>
                 )}
-                <TiptapEditor
-                  initialValue=""
-                  value={state.draft}
-                  baseMarkdown={pending?.baseContent ?? null}
-                  inline
-                  disabled={state.busy || truncated}
-                  previewBaseUrl={state.previewBaseUrl}
-                  notePath={document.path}
-                  onFocusChange={setEditing}
-                  onFirstRender={() => undefined}
-                  onMarkdownChange={session.edit}
-                  onUpload={async (file) => {
-                    const result = await rpc.call("uploadAttachment", {
-                      vaultId: document.vaultId,
-                      notePath: document.path,
-                      name: file.name,
-                      content: await fileToBase64(file),
-                    });
-                    return { markdownPath: result.markdownPath };
-                  }}
-                />
+                <CommentsSurface
+                  target={{ vaultId: document.vaultId, path: document.path }}
+                  editor={editor}
+                  sha256={state.sha256}
+                  flush={session.flush}
+                  reload={session.refresh}
+                  savedContent={state.content}
+                  proposalBase={pending ? state.content : null}
+                  dirty={state.dirty}
+                >
+                  <TiptapEditor
+                    onEditor={setEditor}
+                    initialValue=""
+                    value={state.draft}
+                    baseMarkdown={pending?.baseContent ?? null}
+                    inline
+                    disabled={state.busy || truncated}
+                    previewBaseUrl={state.previewBaseUrl}
+                    notePath={document.path}
+                    onFocusChange={setEditing}
+                    onFirstRender={() => undefined}
+                    onMarkdownChange={session.edit}
+                    onUpload={async (file) => {
+                      const result = await rpc.call("uploadAttachment", {
+                        vaultId: document.vaultId,
+                        notePath: document.path,
+                        name: file.name,
+                        content: await fileToBase64(file),
+                      });
+                      return { markdownPath: result.markdownPath };
+                    }}
+                  />
+                </CommentsSurface>
               </div>
               {truncated && openInTab && (
                 <button
@@ -1310,16 +1330,19 @@ function DocumentPanel({ params }: ExperimentalThreadActionTabProps) {
 
 function SavedDocumentEditor({
   io,
+  commentTarget,
   onUpload,
   onReload,
   errorHint = "",
 }: {
   io: DocumentIO;
+  commentTarget: CommentTarget;
   onUpload(file: File): Promise<{ markdownPath: string }>;
   onReload?(): void;
   errorHint?: string;
 }) {
   const { state, session } = useSavedDocument(io);
+  const [editor, setEditor] = useState<Editor | null>(null);
   if (!state.loaded)
     return state.error ? (
       <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
@@ -1355,15 +1378,27 @@ function SavedDocumentEditor({
           {state.error}
         </div>
       )}
-      <TiptapEditor
-        initialValue={state.initialContent}
-        value={state.draft}
-        previewBaseUrl={state.previewBaseUrl}
-        notePath={state.previewPath}
-        onUpload={onUpload}
-        onFirstRender={session.initialize}
-        onMarkdownChange={session.edit}
-      />
+      <CommentsSurface
+        target={commentTarget}
+        editor={editor}
+        sha256={state.sha256}
+        flush={session.flush}
+        reload={session.refresh}
+        savedContent={state.content}
+        proposalBase={null}
+        dirty={state.dirty}
+      >
+        <TiptapEditor
+          onEditor={setEditor}
+          initialValue={state.initialContent}
+          value={state.draft}
+          previewBaseUrl={state.previewBaseUrl}
+          notePath={state.previewPath}
+          onUpload={onUpload}
+          onFirstRender={session.initialize}
+          onMarkdownChange={session.edit}
+        />
+      </CommentsSurface>
     </div>
   );
 }
@@ -1429,6 +1464,7 @@ function NotePane({
   return (
     <SavedDocumentEditor
       io={io}
+      commentTarget={{ vaultId, path: notePath }}
       onUpload={upload}
       onReload={() => location.reload()}
     />
@@ -1532,6 +1568,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       )}
       <SavedDocumentEditor
         io={io}
+        commentTarget={{ path: filePath, source: openerSource }}
         errorHint=" — use the tab's Open with menu to choose another viewer."
         onUpload={async () => {
           throw new Error(

@@ -4041,6 +4041,9 @@ importers:
       diff:
         specifier: ^8.0.4
         version: 8.0.4
+      markdown-it:
+        specifier: ^14.3.0
+        version: 14.3.0
       tiptap-markdown:
         specifier: ^0.8.10
         version: 0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
@@ -4066,6 +4069,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+      '@types/markdown-it':
+        specifier: ^14.1.2
+        version: 14.1.2
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10

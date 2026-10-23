@@ -1,42 +1,10 @@
 import { InputRule, Mark, Node } from "@tiptap/core";
 import type { MarkdownMarkSpec, MarkdownNodeSpec } from "tiptap-markdown";
-
-const RENDERED_TAG =
-  /^<(\/?)(a|b|br|code|del|em|i|s|strike|strong)((?:\s[^>]*?)?)\s*\/?>$/i;
-const LINK_ATTRIBUTES = /^(?:\s+(?:href|title)="[^"]*")+$/i;
-
-interface InlineToken {
-  type: string;
-  content: string;
-}
-
-function renderedTags(tokens: InlineToken[]): Set<number> {
-  const rendered = new Set<number>();
-  const open = new Map<string, number[]>();
-  tokens.forEach((token, index) => {
-    if (token.type !== "html_inline") return;
-    const match = RENDERED_TAG.exec(token.content);
-    if (!match) return;
-    const [, closing, name, attributes] = match;
-    const tag = name!.toLowerCase();
-    if (closing) {
-      const opening = open.get(tag)?.pop();
-      if (opening === undefined) return;
-      rendered.add(opening);
-      rendered.add(index);
-    } else if (
-      tag === "br"
-        ? !attributes
-        : tag === "a"
-          ? LINK_ATTRIBUTES.test(attributes!) && /href=/i.test(attributes!)
-          : !attributes
-    ) {
-      if (tag === "br") rendered.add(index);
-      else open.set(tag, [...(open.get(tag) ?? []), index]);
-    }
-  });
-  return rendered;
-}
+import {
+  HTML_EMBED_BLOCK,
+  renderedTags,
+  type InlineToken,
+} from "./html-tags.js";
 
 const renderedByTokens = new WeakMap<InlineToken[], Set<number>>();
 const TYPED_TAG = /<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>$/i;
@@ -121,12 +89,7 @@ export const HtmlBlock = Node.create({
           setup(markdown) {
             markdown.renderer.rules.html_block = (tokens, index) => {
               const source = tokens[index]!.content;
-              if (
-                /^<div data-simple-html-embed="true" data-src="[^"]*" data-height="\d+"><\/div>\s*$/.test(
-                  source,
-                )
-              )
-                return source;
+              if (HTML_EMBED_BLOCK.test(source)) return source;
               const escaped = markdown.utils.escapeHtml(
                 source.replace(/\n$/, ""),
               );

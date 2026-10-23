@@ -53,6 +53,7 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -84,9 +85,10 @@
     "@tiptap/extension-task-list": "^2.27.2",
     "@tiptap/pm": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
+    "diff": "^8.0.4",
+    "markdown-it": "^14.3.0",
     "tiptap-markdown": "^0.8.10",
     "yaml": "^2.8.2",
-    "zod": "^4.3.6",
-    "diff": "^8.0.4"
+    "zod": "^4.3.6"
   }
 }
