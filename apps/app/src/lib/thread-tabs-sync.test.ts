@@ -49,13 +49,13 @@ describe("thread tab synchronization", () => {
       secondary: {
         tabs: [
           {
-            id: "plugin-fixed:core:diff",
+            id: "plugin-fixed:bb--git:diff",
             kind: "plugin-fixed",
-            pluginId: "core",
+            pluginId: "bb--git",
             tabId: "diff",
           },
         ],
-        activeTabId: "plugin-fixed:core:diff",
+        activeTabId: "plugin-fixed:bb--git:diff",
         isOpen: true,
       },
     });
@@ -67,13 +67,13 @@ describe("thread tab synchronization", () => {
     ]);
     expect(restored.secondary).toEqual({
       isOpen: true,
-      activeTabId: "plugin-fixed:core:diff",
+      activeTabId: "plugin-fixed:bb--git:diff",
       tabs: [
         terminal,
         {
-          id: "plugin-fixed:core:diff",
+          id: "plugin-fixed:bb--git:diff",
           kind: "plugin-fixed",
-          pluginId: "core",
+          pluginId: "bb--git",
           tabId: "diff",
         },
         {
@@ -84,6 +84,23 @@ describe("thread tab synchronization", () => {
         },
       ],
     });
+  });
+
+  it("keeps one Diff tab when the server saved both the core and the Git plugin ids", () => {
+    const gitDiff: ThreadTab = {
+      id: "plugin-fixed:bb--git:diff",
+      kind: "plugin-fixed",
+      pluginId: "bb--git",
+      tabId: "diff",
+    };
+    const coreDiff: ThreadTab = {
+      id: "plugin-fixed:core:diff",
+      kind: "plugin-fixed",
+      pluginId: "core",
+      tabId: "diff",
+    };
+    const merged = mergeThreadTabChanges([gitDiff, coreDiff], [], []);
+    expect(merged.map((tab) => tab.id)).toEqual(["plugin-fixed:bb--git:diff"]);
   });
 
   it("preserves remote additions and edits when removing a local tab", () => {

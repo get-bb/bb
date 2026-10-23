@@ -28,7 +28,10 @@ import {
   buildPluginPaletteActions,
 } from "@/lib/command-palette/palette-plugin-actions";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  getActiveThreadFixedTabToggler,
+  getActiveThreadPanelOpener,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";
@@ -115,6 +118,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       threadId,
       projectId,
       openThreadPanel: getActiveThreadPanelOpener(),
+      toggleThreadFixedTab: getActiveThreadFixedTabToggler(),
     })[0];
     if (!action) return false;
     action.run();
@@ -137,6 +141,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           threadId,
           projectId,
           openThreadPanel: getActiveThreadPanelOpener(),
+          toggleThreadFixedTab: getActiveThreadFixedTabToggler(),
         }),
         ...buildPluginComposerCommandActions({
           slots: composerPluginCommands,

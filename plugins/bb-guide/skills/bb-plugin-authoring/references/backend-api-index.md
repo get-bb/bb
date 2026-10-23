@@ -32,6 +32,7 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalTabOpenOptions`
 - `ExperimentalTabTargetReference`
 - `ExperimentalThreadActionTabProps`
+- `ExperimentalThreadFixedTabProps`
 - `ExperimentalThreadTabActionContext`
 - `ExperimentalAppPanel`
 - `ExperimentalAppPanelSurface`
@@ -348,6 +349,9 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalDetailRowProps`
 - `ExperimentalInfoListProps`
 - `ExperimentalInfoListRowProps`
+- `ExperimentalInfoListRowAction`
+- `ExperimentalInfoRowTimeProps`
+- `ExperimentalInfoSubheadingProps`
 - `PluginThreadListProps`
 - `PluginThreadListRegistration`
 - `PluginTimelineRendererProps`

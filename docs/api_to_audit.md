@@ -180,6 +180,18 @@ shares its validation and per-plugin id namespace.
 
 Docs: `frontend-renderer-slots.md`.
 
+`experimental_inactiveInInputs: true` (SDK 0.6.80) keeps a command's shortcut
+from firing while a text field, terminal or browser tab has focus: its binding
+gets the `editableFocus`, `terminalFocus` and `browserFocus` exclusions core's
+own bindings use. The Git plugin's `toggle-diff` (default `Mod+D`) uses it,
+replacing core's `diff.toggle`; saved `diff.toggle` overrides become
+`plugin:bb--git/toggle-diff` when the stored overrides are read
+(`getAppKeybindingOverrides` in `packages/db`), and the write API rejects the
+retired id. Bundled plugins' defaults yield only to core bindings and to each
+other (`resolvePluginCommandDefaults`), so another plugin's `Mod+D` stays
+unbound as it did while `diff.toggle` was core's.
+`PluginCommandContext.experimental_toggleTab` is described under Unified tabs.
+
 Audit command identity, availability outside the palette, shortcut conflicts,
 and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
@@ -1261,7 +1273,10 @@ fires after a final unterminated line is emitted.
 
 `experimental_FileLink` and `experimental_openFilePreview` open explicit live
 workspace, host and thread-storage file targets through the current surface's
-shared file-tab controller. `experimental_openFileExternally` opens a target
+shared file-tab controller. `ExperimentalFileOpenOptions.experimental_deleted`
+(SDK 0.6.80) opens a workspace file that no longer exists from git:
+`{ from: "head" }` or `{ from: "merge-base", ref }`. Core's changed-files rows
+used this path; the Git plugin's Info and composer rows call it now. `experimental_openFileExternally` opens a target
 in the client's preferred external app. The boolean results report host
 acceptance, and malformed targets stay inert.
 
@@ -1446,7 +1461,11 @@ A fixed tab's `experimental_target` validator owns a JSON-safe target type.
 on the current surface and can submit a target.
 `experimental_useFixedTabTarget()` returns the validated current-session
 target with a sequence and `clear()`. Targets are memory-only: they survive
-remounts but not a refresh.
+remounts but not a refresh. Thread fixed tabs accept targets too
+(`ExperimentalThreadFixedTabProps`, SDK 0.6.80): the Git plugin's Diff tab
+validates `{ kind: "file", path }` or `{ kind: "commit", sha }`, its Info rows
+and composer segment open it through `experimental_openTab`, and core's
+timeline "Open diff" title action uses the same call.
 
 Docs: `frontend-core-slots.md`, `frontend-components.md`.
 
@@ -1845,6 +1864,25 @@ Docs: `frontend-registration.md`,
    set. Decide whether `icon` and `logoUrl` fold into one `{ glyph } | { url }`
    field when `ProviderInfo` stabilizes, and whether the monochrome mask
    rendering is the contract or a full-color logo path is owed.
+
+## `app.experimental_useCanOpenFileExternally` (`@get-bb/plugin-sdk/app`)
+
+`experimental_useCanOpenFileExternally(target)` returns whether
+`useBbNavigate().experimental_openFileExternally` can open files at `target`'s
+location in this client: the target resolves to a path (a ready environment, a
+host, or thread storage) and the client has a preferred external file target
+for that host. Only the location matters, not `target.path`. It is false while
+either loads and for a null target.
+
+**Core callers:** `useLiveFileOpenTargets` (`apps/app/src/hooks/useLiveFileOpenTargets.ts`)
+is the one implementation; `ExperimentalFileLinkMenu` disables its "Open
+externally" item from it, and the hook is its `canOpenExternally`. The Git
+plugin's Diff tab shows each file's Open in editor button only when it is
+true, the condition core's old Diff header used (`canOpenPreferredFileTarget`
+with a known workspace root).
+
+**Stabilization:** decide whether the answer belongs on `useBbNavigate()`
+itself, and whether callers need the preferred target's name for a tooltip.
 
 ## `app.experimental_useCodeTheme` (`@get-bb/plugin-sdk/app`)
 
@@ -2407,9 +2445,11 @@ loader callback.
    highlighting worker pool; homepage and settings sections do not, so a diff
    rendered there is unhighlighted. Decide whether the host should provide the
    pool at the component instead of the surface.
-5. **Selection to chat.** bb's own surfaces pass a selection-to-composer
-   handler that the public component withholds. Confirm plugins should reach
-   that through `useComposer()` rather than a renderer prop.
+5. **Selection to chat.** `experimental_addSelectionToChat` (SDK 0.6.80)
+   turns on bb's own "Add to chat" for selected diff lines; the host wires it
+   to the thread's composer, the way core's Diff tab did. The Git plugin's
+   Diff tab is the caller. Confirm a boolean is enough, or whether plugins
+   need to shape the inserted text.
 6. **Size and virtualization.** Neither component caps input size or
    virtualizes. Audit against a plugin that renders a very large file or patch.
 
@@ -2594,9 +2634,18 @@ Docs: `frontend-registration.md`.
 ## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_THREAD_INFO_ROW_GROUPS` / `experimental_THREAD_INFO_SECTION_GROUPS` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, group, order?, component }`. The component receives
-`{ threadId, projectId, environment }` and mounts once per visible thread's Info
-tab. `environment` is `{ id }`, or null when the thread has no environment, its
-host is not active, or the environment is not a usable checkout. Rows
+`{ threadId, projectId, environment, environmentState, threadArchived }` and
+mounts once per visible thread's Info tab. `environment` is `{ id }`, or null
+when the thread has no environment, its host is not active, or the environment
+is not a usable checkout. `environmentState` (`ExperimentalThreadEnvironmentState`)
+is the environment record core's own thread view reads: `loading`, `failed`
+with `retry()` (core's environment refetch), or `loaded` with `status`,
+`hostActive`, `isGitRepo` and `managed`; null only when the thread has no
+environment. `threadArchived` is the thread's archived flag. The Git plugin's
+Git status row uses them to keep core's "Workspace not found." row for a
+destroyed environment, and its Diff tab uses them for core's eligibility rule
+(below). Audit whether the record should be the full public `Environment`
+instead of these four facts before stabilizing. Rows
 render in the details block, sections below it, each sorted the way thread
 actions are: by `group` (string compare), then `order` within the group (unset
 last), then registration order with core first on a tie. bb's groups are the
@@ -2609,19 +2658,27 @@ blocks: `experimental_InfoSection` (heading, count pill, collapse),
 `experimental_InfoList` (the "N more" list), and `experimental_InfoListRow`.
 Inside a section slot, `experimental_InfoSection` collapses, and the state is
 stored in the `infoPanel.collapsedSections` preference under the core id or
-`<pluginId>/<id>`.
+`<pluginId>/<id>`. SDK 0.6.80 adds what core's Commits and Uncommitted files
+sections drew with, so the Git plugin draws them unchanged:
+`experimental_InfoList`'s `rail` (a timeline rail through the leading icons),
+`experimental_InfoListRow`'s `actions` (hover icon buttons, `{ icon, label,
+onSelect }`), `experimental_InfoRowTime` (relative time with a detail
+tooltip) and `experimental_InfoSubheading` (a label, count and trailing node
+inside a section).
 
 **Core callers.** `ThreadMetadataContent` renders the Info tab only through
 `ThreadInfoRows` and `ThreadInfoSections`
 (`apps/app/src/components/secondary-panel/info/ThreadInfoSlots.tsx`), which
 merge `CORE_THREAD_INFO_ROWS` and `CORE_THREAD_INFO_SECTIONS` with plugin
 registrations. `experimental_DetailRow` is bb's only label/value row
-(`DetailRow` in `apps/app/src/components/ui/detail-card.tsx`): all ten core
-rows and the commit dialog draw with it, and core's five sections draw with
+(`DetailRow` in `apps/app/src/components/ui/detail-card.tsx`): core's rows
+and the commit dialog draw with it, and core's sections draw with
 `InfoSection` and `InfoList`. The
-Automations plugin registers the Automations section, and the GitHub PR Status
+Automations plugin registers the Automations section, the GitHub PR Status
 plugin registers the Pull request row in the `pullRequest` group, reading its
-pull request through `environment`. Contract tests:
+pull request through `environment`, and the Git plugin registers the branch,
+merge base and git status rows in the `git` group and the Commits and
+Uncommitted files sections in the `changes` group. Contract tests:
 `ThreadInfoSlots.test.tsx`.
 
 Docs: `frontend-registration.md`, `frontend-components.md`.
@@ -2982,12 +3039,9 @@ file counts as Viewed only while the stored revision equals the current one.
 The plugin's `files` and `patches` reads also take `ignoreWhitespace` (git
 `-w`).
 
-Callers: the workspace diff panel's Viewed checkbox
-(`DiffFilesPanel` through `useSetDiffFileViewed` and
-`useEnvironmentDiffViewed`) and the bundled Git plugin
-(`plugins/git/server/viewed.ts`), which serves
-`bb git viewed list|mark|unmark|clear` through its `viewed`, `markViewed` and
-`clearViewed` RPCs.
+Callers: the bundled Git plugin (`plugins/git/server/viewed.ts`), which serves
+the Diff tab's Viewed checkbox and `bb git viewed list|mark|unmark|clear`
+through its `viewed`, `markViewed` and `clearViewed` RPCs.
 
 **Audit before stabilizing.**
 
@@ -3560,7 +3614,7 @@ field introduces no separate backend or headless side effect.
 
 ## Plugin contract live reads and writes
 
-- `experimental_useRpcQuery`, `experimental_useRpcKeyedQuery`, `experimental_useRpcMutation`, and `experimental_useRpcRefresh` use the core `@bb/query-tags` cache mechanism per client. Query state keeps previous data during refresh errors; consumers show an inline Retry using `refetch`. Successful reads clear the error. Keyed calls accept `{ keys }` and return a record containing every requested key; consumers share one observer per plugin/method and requests batch up to 200 keys. A pure `select` projection retains unchanged JSON subobjects across key and fetch-state changes, so default rows do not republish unchanged notification levels.
+- `experimental_useRpcQuery`, `experimental_useRpcKeyedQuery`, `experimental_useRpcMutation`, and `experimental_useRpcRefresh` use the core `@bb/query-tags` cache mechanism per client. Query state keeps previous data during refresh errors; consumers show an inline Retry using `refetch`. Successful reads clear the error. Keyed calls accept `{ keys }` and return a record containing every requested key; consumers share one observer per plugin/method and requests batch up to 200 keys. Keyed state adds `refetchKeys(keys)`, which marks those subscribed keys dirty in the shared owner (`createTaggedKeyedQueryOwner().refetchKeys`, the dirty-key path tag invalidation already uses) and reads only them, keeping every other row; the Git plugin's Diff patch Retry uses it so a failed file reloads alone, as core's old per-path patch retry did. A pure `select` projection retains unchanged JSON subobjects across key and fetch-state changes, so default rows do not republish unchanged notification levels.
 - `ExperimentalRpcMutationState.pendingInputs` contains every in-flight input for that hook instance until the server acknowledges its write. Background rereads are excluded. `isPending` remains true while any input is pending. Core `useTaggedMutation` exposes the same state from TanStack's mutation cache. Stabilization requires hook-instance isolation, concurrent targets, failure cleanup, and pending feedback surviving row moves between groups.
 - `ExperimentalRpcMutationOptions.optimistic(input, cache)` predicts loaded cached values before the write. `cache.update(method, input, updater)` targets a plain read, and `cache.updateKey(method, key, updater)` targets one keyed row. `cache` is an `ExperimentalRpcOptimisticCache`. Pure updaters receive the currently visible value and return its prediction. An absent plain read is skipped; a keyed row that loads while the write is pending shows the prediction. Predictions are shared by every reader on that client. The core route mutation accepts the same core optimistic descriptors and uses the same `@bb/query-tags` implementation. Ui-preferences already updates its shared Jotai atoms optimistically, which remains unchanged.
 - Predictions remain over incoming reads until confirmed matched reads arrive, independently of mutation pending state. A rejected write rolls back its layer and surfaces the mutation error. An accepted write whose refresh fails keeps its prediction with the read error and Retry; a successful refresh replaces it. Later predictions and confirmed values are protected from older mutation settles and rollbacks. Inverted completion retains the later confirmed value until a subsequent fresh read can replace it. Keyed rows live in the `@bb/query-tags` keyed store: an accepted row prediction becomes the row's value, and only a read of that row that started after acceptance replaces it. Stabilization includes overlapping writes, external invalidation, refresh failures, plain/keyed targets and completion without stale flicker.
@@ -3628,19 +3682,19 @@ own value, so plugins built against the old constant keep working.
 
 ## Unified tabs (`experimental_tab`)
 
-- **Surface:** `app.slots.experimental_tab`, `ExperimentalTabRegistration`, `ExperimentalTabContext`, `ExperimentalTabReference`, `ExperimentalTabTargetReference`, `ExperimentalThreadActionTabProps`, `ExperimentalThreadTabActionContext`, and `ExperimentalAppPanel.experimental_openTab`. Context is thread (`threadId`) or an owned navigation panel (`panelId`, component `subPath`). Availability is fixed or action. Only actions accept `run`, default `params` and per-open persisted params/title; navigation-page fixed tabs retain validated session targets. `tooltip` defaults to title and layout is padded or flush.
+- **Surface:** `app.slots.experimental_tab`, `ExperimentalTabRegistration`, `ExperimentalTabContext`, `ExperimentalTabReference`, `ExperimentalTabTargetReference`, `ExperimentalThreadActionTabProps`, `ExperimentalThreadFixedTabProps`, `ExperimentalThreadTabActionContext`, `ExperimentalAppPanel.experimental_openTab` and `PluginCommandContext.experimental_toggleTab`. Thread fixed tabs receive `{ threadId, environment, environmentState, threadArchived, isOpen }` (the environment fields as in thread Info; `isOpen` is false while the side panel is closed or another tab is shown, so the Diff tab pauses its file, Viewed, patch and branch reads the way core's `isDiffPanelLive` did), and their component and `useVisible` (without `isOpen`) see them. A fixed tab stays mounted once shown, hidden with React `Activity` while another tab is active, so its state lasts as long as the pane's panel, the way core's Diff state lived in `ThreadSecondaryPanel`; core's Info tab is retained the same way. The Git plugin's Diff `useVisible` replicates core's old `resolveGitDiffTabStatus` from `environmentState`: visible while the record loads or failed (the tab shows core's Retry), hidden for non-git workspaces and for archived or unavailable threads whose environment bb does not manage; they accept `experimental_target` and `experimental_shortcutCommandId` (a command of the same plugin whose shortcut the tab strip shows). `experimental_toggleTab(reference)` opens a thread fixed tab of the calling plugin, or closes the secondary panel when that tab is already showing, the way core's old Diff toggle did. Context is thread (`threadId`) or an owned navigation panel (`panelId`, component `subPath`). Availability is fixed or action. Only actions accept `run`, default `params` and per-open persisted params/title; navigation-page fixed tabs retain validated session targets. `tooltip` defaults to title and layout is padded or flush.
 - **Behavior:** one registry and destination dispatcher serve thread fixed, thread action, navigation-page fixed and navigation-page action tabs. `useVisible` runs inside plugin scope/crash isolation for the current context. It hides a destination or launcher without removing saved fixed identity/order or already-open action instances. Action params deduplicate instances; fixed tabs have one identity and cannot close. Existing `openFixedTab`, action `openPanel`, message-action openers and `openThreadPanel` delegate through the shared dispatcher. New-thread-screen actions retain their project-context API and use the same action-opening implementation.
 - **Compatibility:** `threadPanelAction`, `PluginThreadPanelActionRegistration`, `PluginThreadPanelProps`, `PluginThreadPanelActionContext`, `navPanel.fixedTabs`, `PluginFixedTabRegistration` and `PluginFixedTabDeclaration` are removed from public source typings by explicit product decision. Runtime adapters in the registration collector remain for published bundles and Git-source install/update builds: 92 marketplace repositories use `threadPanelAction`, 15 use `fixedTabs`. Legacy optional icons, unknown fields and older fixed-tab owner shapes are accepted; malformed entries warn/skip rather than crashing the plugin. `bb-plugin-build` emits migration warnings with replacement examples and the authoring migration link. Server install/rebuild paths copy warnings into the plugin log; warnings never block install or update. The runtime export manifest continues to expose existing SDK functions. Remove adapters only after known callers have migrated.
 - **Persistence and automation:** thread fixed entries use `{id, kind: 'plugin-fixed', pluginId, tabId}` through SDK `threads.tabs.get/update` and CLI `bb thread tabs show/set`, with revision checks. Existing `plugin-page-fixed` and `plugin-panel` action entries/params keep their IDs and storage keys. Selection is client-local. Legacy core Info/Diff kinds, active selections and split IDs convert without reordering; server entries rewrite through the revision-checked queue. Split restoration waits for registration/visibility readiness.
-- **Core callers:** Info and Diff register as thread + fixed and use the shared content host, visibility, descriptor and open paths. Diff retains shortcut, Git setting, file/commit navigation and review state. Core-only Info metadata and Diff controllers remain pane-owned contexts; they are not public plugin API. Docs, GitHub, Side Chat, Tasks, Workflows and the ThreadChat demo use the unified registration.
+- **Core callers:** Info registers as thread + fixed and uses the shared content host, visibility, descriptor and open paths. The bundled Git plugin (`bb--git`) registers Diff the same way, with its `toggle-diff` command (default `Mod+D`) as `experimental_shortcutCommandId`, a file/commit target, and `useVisible` on `environmentState`; core's palette, keyboard shortcut and timeline title action reach it through `experimental_toggleTab` and `experimental_openTab`. Core-only Info metadata and Diff controllers remain pane-owned contexts; they are not public plugin API. Docs, GitHub, Side Chat, Tasks, Workflows and the ThreadChat demo use the unified registration.
 - **Stabilization:** audit context typing, targets versus persisted inputs, visibility and crash/reload lifecycles, independent panes/threads, startup split restoration, revision conflicts and compact drawers. Keep the shared contract table across contexts and legacy adapters, verify actual published plugin installs, then rename project-wide and remove this entry.
 
 ## Thread context segments (`app.slots.experimental_threadContextSegment` / `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`)
 
-- **Surface:** `PluginAppSlots.experimental_threadContextSegment`, `PluginSdkApp.experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, `ExperimentalThreadContextSegmentRegistration`, `ExperimentalThreadContextSegmentProps`, `ExperimentalThreadContextSegmentInput`, `ExperimentalThreadContextSegmentReference` and `ExperimentalThreadEnvironment` (also used by `ExperimentalThreadInfoProps.environment`).
-- **Behavior:** a registration is `{ id, title, group, order?, summary, action?, details?, useVisible? }`. Segments share the context row above an existing thread's composer, and the host mounts each component in its own crash boundary: `summary` in the row (wrapped in a group named by `title`), `action` at the row's end after every summary, and `details` below the row. Segments sort like Info rows and thread actions: by `group` (string compare), then `order` within it (unset last), then registration order, core first on a tie. Core's groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`: `thread` (`1_thread`: parent thread) and `git` (`3_git`: changed files). The constant names only groups core renders; a plugin names its own group, placed where its string sorts. Each entry of `segments` is `{ key, pluginId }` with `key` `<pluginId>/<id>`, the key shape thread actions use; core's segments use `bb--core`. `useVisible(input)` runs in plugin scope per thread; false, or a crash, leaves the segment out of the row and of `segments`. Props carry `threadId`, `projectId`, `environment`, the visible `segments` in row order, and the shared disclosure state: one segment of the row is expanded at a time, keyed by `key`. `environment` is `{ id }`, or null when the thread has no environment, its host is not active, the environment is not a usable checkout, or the user turned off "Show Git changes and Commit button". The row is withheld while core's workspace status loads and while a question is pending, and read-only history (archived thread or gone environment) shows core's parent thread only. The banner renders under every composer plugin, because the host draws it above `ComposerBox`.
-- **Core callers:** `ThreadPromptContextBanner` (`apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx`) registers the parent thread (summary and details, including read-only history) and changed files (summary, merge-base action, details) through `definePluginApp` and the same collector, and renders them with plugin registrations through `useThreadContextSegments` and `ThreadContextSegmentMount` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`). Core segments read pane-local data from a React context and render without a plugin crash boundary, as core Info rows do. The GitHub PR Status plugin registers the pull request segment in its own group `2_pullRequest`, between core's two and its Mark ready and merge actions. Active child threads are a separate core row above the context row (`ThreadChildThreadsBanner`), not a segment. Contract tests: `ThreadPromptContextBanner.segments.test.tsx`.
-- **Known coupling:** `environment` folds in the "Show Git changes and Commit button" setting so the pull request segment hides with core's changed files, as before; that setting should become the git plugin's own when changed files move out of core.
+- **Surface:** `PluginAppSlots.experimental_threadContextSegment`, `PluginSdkApp.experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, `ExperimentalThreadContextSegmentRegistration`, `ExperimentalThreadContextSegmentProps`, `ExperimentalThreadContextSegmentInput`, `ExperimentalThreadContextSegmentReference`, `ExperimentalThreadContextSegmentVisibility` and `ExperimentalThreadEnvironment` (also used by `ExperimentalThreadInfoProps.environment`).
+- **Behavior:** a registration is `{ id, title, group, order?, summary, action?, details?, useVisible? }`. Segments share the context row above an existing thread's composer, and the host mounts each component in its own crash boundary: `summary` in the row (wrapped in a group named by `title`), `action` at the row's end after every summary, and `details` below the row. Segments sort like Info rows and thread actions: by `group` (string compare), then `order` within it (unset last), then registration order, core first on a tie. Core's groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`: `thread` (`1_thread`: parent thread) and `git` (`3_git`: the Git plugin's changed files). The constant names only groups bb renders; a plugin names its own group, placed where its string sorts. Each entry of `segments` is `{ key, pluginId }` with `key` `<pluginId>/<id>`, the key shape thread actions use; core's segments use `bb--core`. `useVisible(input)` runs in plugin scope per thread and returns `true`, `false` or `"pending"`; false, pending, or a crash leaves the segment out of the row and of `segments`, and while any segment is pending the whole row is withheld so segments do not shift in one by one. Props carry `threadId`, `projectId`, `environment`, the visible `segments` in row order, and the shared disclosure state: one segment of the row is expanded at a time, keyed by `key`. `environment` is `{ id }`, or null when the thread has no environment, its host is not active, the environment is not a usable checkout, or the user turned off "Show Git changes and Commit button". The row is withheld while a question is pending, and read-only history (archived thread or gone environment) shows core's parent thread only. The banner renders under every composer plugin, because the host draws it above `ComposerBox`.
+- **Core callers:** `ThreadPromptContextBanner` (`apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx`) registers the parent thread (summary and details, including read-only history) through `definePluginApp` and the same collector, and renders it with plugin registrations through `useThreadContextSegments` and `ThreadContextSegmentMount` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`). Core segments read pane-local data from a React context and render without a plugin crash boundary, as core Info rows do. The Git plugin registers changed files in `git` (summary, merge-base action, details; `pending` until its first status read), and the GitHub PR Status plugin registers the pull request segment in its own group `2_pullRequest`, between those two, and its Mark ready and merge actions. Active child threads are a separate core row above the context row (`ThreadChildThreadsBanner`), not a segment. Contract tests: `ThreadPromptContextBanner.segments.test.tsx`.
+- **Known coupling:** `environment` folds in the "Show Git changes and Commit button" setting so the pull request segment hides with the Git plugin's changed files, as before. The setting also gates core's Commit button, so it stays in core until commit moves into the Git plugin.
 - **Stabilization:** audit per-component mounts and crash recovery across reloads and plugin disable, `segments` stability while visibility settles, focus handoff between a plugin's summary and details, independent panes, and compact widths with several plugin segments. Then rename project-wide and remove this entry.
 
 ## Provider skills index

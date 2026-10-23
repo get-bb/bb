@@ -9,6 +9,7 @@ import { defaultAppSettings, pluginCommandId } from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandContext,
+  useAppCommandHandler,
   useAppCommandRunner,
   type AppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
@@ -132,7 +133,15 @@ function RunnerProbe({
   return null;
 }
 
-function renderComposers() {
+function ToggleHandler({ onRun }: { onRun(): void }) {
+  useAppCommandHandler(pluginCommandId("diff-viewer", "toggle"), () => {
+    onRun();
+    return true;
+  });
+  return null;
+}
+
+function renderComposers(extra?: React.ReactNode) {
   const focused: string[] = [];
   const runner: { current: AppCommandRunner | null } = { current: null };
   const view = render(
@@ -154,6 +163,7 @@ function renderComposers() {
           role="secondary"
           onFocusCommand={() => focused.push("side")}
         />
+        {extra}
         <button type="button">Elsewhere</button>
         <div data-app-terminal="" tabIndex={-1}>
           Terminal
@@ -232,6 +242,36 @@ describe("composer commands", () => {
 
     expect(runs).toEqual([]);
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("keeps an app command marked inactive in inputs out of text fields and terminals", () => {
+    const runs: string[] = [];
+    setPluginSlotRegistrations(
+      "diff-viewer",
+      makePluginRegistrationSet({
+        commandPaletteActions: [
+          {
+            target: "app",
+            id: "toggle",
+            title: "Toggle diff",
+            defaultShortcut: { ...SHORTCUT, key: "d" },
+            experimental_inactiveInInputs: true,
+            run: () => {},
+          },
+        ],
+      }),
+    );
+    const { view, editorIn } = renderComposers(
+      <ToggleHandler onRun={() => runs.push("toggle")} />,
+    );
+
+    const inEditor = press(editorIn("main"), "d");
+    const inTerminal = press(view.getByText("Terminal"), "d");
+    press(view.getByRole("button", { name: "Elsewhere" }), "d");
+
+    expect(inEditor.defaultPrevented).toBe(false);
+    expect(inTerminal.defaultPrevented).toBe(false);
+    expect(runs).toEqual(["toggle"]);
   });
 
   it("dispatches a palette invocation to the composer focused when it opened", () => {

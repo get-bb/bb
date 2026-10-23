@@ -14,6 +14,7 @@ export {
   createThreadInfoFixedPanelTab,
   createGitDiffFixedPanelTab,
   isGitDiffFixedPanelTab,
+  migrateLegacyFixedPanelTab,
   migrateLegacyFixedPanelTabId,
   createPluginFixedPanelTab,
   createPluginPageFixedPanelTab,

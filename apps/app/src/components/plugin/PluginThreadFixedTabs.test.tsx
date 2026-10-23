@@ -33,6 +33,7 @@ import {
   removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
 } from "@/lib/plugin-slots";
+import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
 import { usePluginId } from "./plugin-context";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import {
@@ -64,12 +65,57 @@ function install(title = "Status") {
   );
 }
 
-function Host({ threadId }: { threadId: string | null }) {
-  const { entries, observers } = useThreadFixedTabs({ threadId });
+function installEnvironmentTab() {
+  setPluginSlotRegistrations(
+    "changes",
+    collectPluginAppRegistrations(
+      definePluginApp((app) => {
+        app.slots.experimental_tab({
+          context: { kind: "thread" },
+          availability: "fixed",
+          id: "changes",
+          title: "Changes",
+          icon: "FileDiff",
+          useVisible: ({ environment }) => environment !== null,
+          component: ({ environment }) => (
+            <div>changes:{environment?.id}</div>
+          ),
+        });
+      }),
+    ),
+  );
+}
+
+const NO_ENVIRONMENT = {
+  environment: null,
+  environmentState: null,
+  threadArchived: false,
+};
+
+function Host({
+  threadId,
+  environment = null,
+}: {
+  threadId: string | null;
+  environment?: ExperimentalThreadEnvironment | null;
+}) {
+  const fixedTabEnvironment = {
+    environment,
+    environmentState: null,
+    threadArchived: false,
+  };
+  const { entries, observers } = useThreadFixedTabs({
+    threadId,
+    environment: fixedTabEnvironment,
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const descriptors = entries.map((entry) =>
-    createThreadFixedTabDescriptor(entry, threadId ?? "", () =>
-      setActiveId(entry.tab.id),
+    createThreadFixedTabDescriptor(
+      entry,
+      threadId ?? "",
+      fixedTabEnvironment,
+      () => setActiveId(entry.tab.id),
+      null,
     ),
   );
   return (
@@ -82,7 +128,11 @@ function Host({ threadId }: { threadId: string | null }) {
       ))}
       {descriptors
         .find((descriptor) => descriptor.tab.id === activeId)
-        ?.renderContent?.()}
+        ?.renderContent?.({
+          isFocused: true,
+          isOpen: true,
+          onFocusPane: () => {},
+        })}
     </>
   );
 }
@@ -90,6 +140,7 @@ function Host({ threadId }: { threadId: string | null }) {
 function RestoringHost() {
   const { entries, observers, isReady } = useThreadFixedTabs({
     threadId: "thr_restore",
+    environment: NO_ENVIRONMENT,
   });
   const state = useReconciledFixedPanelTabsState({
     fixedTabs: entries.map((entry) => entry.tab),
@@ -105,20 +156,28 @@ function RestoringHost() {
   );
 }
 
-function mount(threadId: string | null) {
+function mount(
+  threadId: string | null,
+  environment: ExperimentalThreadEnvironment | null = null,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const result = render(<Host threadId={threadId} />, {
+  const result = render(
+    <Host threadId={threadId} environment={environment} />,
+    {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>
         <MemoryRouter>{children}</MemoryRouter>
       </QueryClientProvider>
     ),
-  });
+    },
+  );
   return {
-    changeThread: (id: string | null) =>
-      result.rerender(<Host threadId={id} />),
+    changeThread: (
+      id: string | null,
+      nextEnvironment: ExperimentalThreadEnvironment | null = null,
+    ) => result.rerender(<Host threadId={id} environment={nextEnvironment} />),
   };
 }
 
@@ -190,5 +249,16 @@ describe("thread fixed-tab contract", () => {
     act(() => removePluginSlotRegistrations("example"));
     expect(screen.queryByRole("button", { name: "Reloaded" })).toBeNull();
     expect(screen.getByRole("button", { name: "Info" })).toBeTruthy();
+  });
+
+  it("hands the thread's environment to visibility and the tab", () => {
+    installEnvironmentTab();
+    const view = mount("thr_one");
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
+    view.changeThread("thr_one", { id: "env_1" });
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    expect(screen.getByText("changes:env_1")).toBeTruthy();
+    view.changeThread("thr_one", null);
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
   });
 });

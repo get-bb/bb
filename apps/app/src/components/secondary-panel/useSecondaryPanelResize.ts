@@ -1,29 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
-import { useResizeObserver } from "usehooks-ts";
 import {
   secondaryPanelWidthPercentAtom,
   threadSecondaryPanelResizingAtom,
 } from "./threadSecondaryPanelAtoms";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
 
-export type SecondaryPanelWidthChangeHandler = (
-  width: number | undefined,
-) => void;
-
 type SecondaryPanelResizeHandler = (size: number) => void;
 
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
-  onPanelWidthChange: SecondaryPanelWidthChangeHandler;
   panelId: string;
   renderAsDrawer: boolean;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
-  onPanelWidthChange,
   panelId,
   renderAsDrawer,
 }: UseSecondaryPanelResizeArgs) {
@@ -67,22 +60,10 @@ export function useSecondaryPanelResize({
 
     if (isSecondaryPanelOpen) {
       panel.expand(lastSecondaryPanelSizeRef.current);
-      onPanelWidthChange(
-        secondaryPanelRef.current?.getBoundingClientRect().width,
-      );
     } else {
       panel.collapse();
     }
-  }, [isSecondaryPanelOpen, onPanelWidthChange]);
-
-  useResizeObserver({
-    ref: secondaryPanelRef,
-    onResize: ({ width }) => {
-      onPanelWidthChange(
-        width ?? secondaryPanelRef.current?.getBoundingClientRect().width,
-      );
-    },
-  });
+  }, [isSecondaryPanelOpen]);
 
   const handleSecondaryPanelResize = useCallback<SecondaryPanelResizeHandler>(
     (size) => {

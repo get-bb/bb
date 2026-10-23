@@ -68,7 +68,6 @@ const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 const WATCHED_ENVIRONMENT_CHANGE_KINDS: EnvironmentChangeKind[] = [
   "work-status-changed",
-  "git-refs-changed",
   "thread-storage-changed",
 ];
 

@@ -67,8 +67,17 @@ function livePreviewRequest(
         tab: {
           lineRange,
           path: target.path,
-          source: { kind: "working-tree" },
-          statusLabel: null,
+          source:
+            normalized.experimental_deleted === undefined
+              ? { kind: "working-tree" }
+              : normalized.experimental_deleted.from === "head"
+                ? { kind: "head" }
+                : {
+                    kind: "merge-base",
+                    ref: normalized.experimental_deleted.ref,
+                  },
+          statusLabel:
+            normalized.experimental_deleted === undefined ? null : "deleted",
         },
       };
     case "host":

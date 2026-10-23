@@ -6,7 +6,7 @@ import {
   type AppKeybindingOverrides,
 } from "@bb/domain";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { useBuiltinPluginIds, usePluginSlots } from "@/lib/plugin-slots";
 import { browserPlatform } from "@/lib/app-keybindings";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { resolvePluginCommandDefaults } from "@/lib/plugin-command-keybindings";
@@ -17,6 +17,7 @@ const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 export function usePluginCommandBindings() {
   const { data } = useSystemConfig();
   const { commandPaletteActions } = usePluginSlots();
+  const builtinPluginIds = useBuiltinPluginIds();
   const builtInDefaults = data?.defaultKeybindings ?? EMPTY_DEFAULTS;
   const overrides = data?.keybindingOverrides ?? EMPTY_OVERRIDES;
   const isDesktop = getBbDesktopInfo() !== null;
@@ -33,14 +34,30 @@ export function usePluginCommandBindings() {
                 all: ["mainSurface", "promptAvailable"],
                 none: ["modalOpen", "terminalFocus", "browserFocus"],
               }
-            : { all: ["mainSurface"], none: ["modalOpen"] },
+            : command.experimental_inactiveInInputs === true
+              ? {
+                  all: ["mainSurface"],
+                  none: [
+                    "modalOpen",
+                    "editableFocus",
+                    "terminalFocus",
+                    "browserFocus",
+                  ],
+                }
+              : { all: ["mainSurface"], none: ["modalOpen"] },
       }),
+    );
+    const bundledCommands = new Set(
+      commandPaletteActions
+        .filter((command) => builtinPluginIds.has(command.pluginId))
+        .map((command) => pluginCommandId(command.pluginId, command.id)),
     );
     const resolved = resolvePluginCommandDefaults(
       [...builtInDefaults, ...pluginDefaults],
       overrides,
       isDesktop,
       platform,
+      bundledCommands,
     );
     const pluginIds = new Set(pluginDefaults.map((binding) => binding.command));
     return {
@@ -56,6 +73,7 @@ export function usePluginCommandBindings() {
     };
   }, [
     builtInDefaults,
+    builtinPluginIds,
     commandPaletteActions,
     data?.keybindings,
     isDesktop,

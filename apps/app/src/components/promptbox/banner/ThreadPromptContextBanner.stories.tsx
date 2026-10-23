@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
+import type {
+  MergeBaseState,
+} from "../../../../../../plugins/git/ui/merge-base";
 import {
   ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
-  type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
   type ThreadPromptEnvironmentGoneSection,
   type ThreadPromptParentThreadSection,
@@ -14,7 +16,14 @@ import {
   type WorkspaceChangedFilesSection,
 } from "@bb/shared-ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
-import type { WorkspaceFileStatus, WorkspaceStatus } from "bb-plugin-bb--git/contract";
+import {
+  GitSegmentFixtureProvider,
+  gitSegmentFixtureMergeBase,
+} from "@/test/fixtures/git-segment-plugin";
+import type {
+  WorkspaceFileStatus,
+  WorkspaceStatus,
+} from "bb-plugin-bb--git/contract";
 
 export default {
   title: "promptbox/banner/Context Banner",
@@ -335,11 +344,7 @@ const committedManySection: WorkspaceChangedFilesSection<WorkspaceFileStatus> = 
   },
 };
 
-const featureBranchMergeBase: ContextBannerMergeBaseConfig = {
-  branch: "main",
-  options: ["main", "develop", "release/2026-05"] as const,
-  onChange: noop,
-};
+const featureBranchMergeBase = gitSegmentFixtureMergeBase();
 
 const parentThreadFixture: ThreadPromptParentThreadSection = {
   parentThreadTitle: "Parent thread",
@@ -518,7 +523,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
 
 interface RowConfig {
   section?: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
-  mergeBase?: ContextBannerMergeBaseConfig | null;
+  mergeBase?: MergeBaseState | null;
   archived?: ThreadPromptArchivedSection | null;
   environmentGone?: ThreadPromptEnvironmentGoneSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
@@ -546,35 +551,31 @@ function ContextBannerPreview({
   );
   return (
     <PromptStage size={size}>
-      <ThreadChildThreadsBanner
-        childThreads={archived || environmentGone ? null : childThreads}
-        isExpanded={isChildThreadsExpanded}
-        onExpandedChange={setIsChildThreadsExpanded}
-      />
-      <ThreadPromptContextBanner
-        input={{
-          threadId: "thr_story",
-          projectId: "proj_story",
-          environment: null,
-        }}
-        core={{
-          git: section
-            ? {
-                changedFiles: section,
-                mergeBase,
-                onPromptBannerFileClick: noop,
-              }
-            : null,
-          gitPending: false,
-          parentThread,
-        }}
-        archivedSection={archived}
-        environmentGoneSection={environmentGone}
-        expandedSegment={expandedSection}
-        onToggleSegment={(next) =>
-          setExpandedSection((previous) => (previous === next ? null : next))
-        }
-      />
+      <GitSegmentFixtureProvider
+        value={section ? { section, mergeBase } : null}
+      >
+        <ThreadChildThreadsBanner
+          childThreads={archived || environmentGone ? null : childThreads}
+          isExpanded={isChildThreadsExpanded}
+          onExpandedChange={setIsChildThreadsExpanded}
+        />
+        <ThreadPromptContextBanner
+          input={{
+            threadId: "thr_story",
+            projectId: "proj_story",
+            environment: null,
+          }}
+          core={{
+            parentThread,
+          }}
+          archivedSection={archived}
+          environmentGoneSection={environmentGone}
+          expandedSegment={expandedSection}
+          onToggleSegment={(next) =>
+            setExpandedSection((previous) => (previous === next ? null : next))
+          }
+        />
+      </GitSegmentFixtureProvider>
     </PromptStage>
   );
 }
@@ -732,7 +733,7 @@ export function Overview() {
       >
         <Row
           section={uncommittedManySection}
-          initiallyExpandedSection="bb--core/changed-files"
+          initiallyExpandedSection="bb--git/changed-files"
         />
       </StoryRow>
       <StoryRow
@@ -741,7 +742,7 @@ export function Overview() {
       >
         <Row
           section={untrackedSection}
-          initiallyExpandedSection="bb--core/changed-files"
+          initiallyExpandedSection="bb--git/changed-files"
         />
       </StoryRow>
       <StoryRow

@@ -79,9 +79,9 @@ describe("fixed panel tab server sync", () => {
     const tabs = [
       terminal,
       {
-        id: "plugin-fixed:core:diff",
+        id: "plugin-fixed:bb--git:diff",
         kind: "plugin-fixed",
-        pluginId: "core",
+        pluginId: "bb--git",
         tabId: "diff",
       },
       {

@@ -49,7 +49,13 @@ describe("automations thread Info section", () => {
     let listed: AutomationResponse[] = [];
     const slot = renderSlot(
       section,
-      { threadId: "thr_1", projectId: "proj_1", environment: null },
+      {
+        threadId: "thr_1",
+        projectId: "proj_1",
+        environment: null,
+        environmentState: null,
+        threadArchived: false,
+      },
       { rpc: { automations_list: () => listed } },
     );
 

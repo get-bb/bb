@@ -1,1 +1,1 @@
-export type ThreadSecondaryPanel = "git-diff" | "thread-info";
+export type ThreadSecondaryPanel = "thread-info";

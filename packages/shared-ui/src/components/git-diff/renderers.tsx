@@ -66,6 +66,7 @@ function SdkDiff({
       overflow={overflow}
       showLineNumbers={showLineNumbers}
       experimental_fullFileContents={fullFileContents ?? undefined}
+      experimental_addSelectionToChat
     />
   );
 }

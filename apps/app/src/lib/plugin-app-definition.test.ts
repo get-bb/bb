@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
 import type {
+  JsonValue,
   ExperimentalSidebarFooterDisclosureController,
   PluginSidebarFooterActionContext,
 } from "@get-bb/plugin-sdk";
+import { describe, expect, it, vi } from "vitest";
 import { getCollectedSidebarFooterItems } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
@@ -1264,5 +1265,65 @@ describe("collectPluginAppRegistrations", () => {
     ).toMatchObject({
       experimental_useBadge: useBadge,
     });
+  });
+});
+
+describe("thread fixed tab targets and shortcuts", () => {
+  const target = {
+    validate: (value: JsonValue): value is JsonValue => value !== null,
+  };
+
+  it("accepts a target and a shortcut command on a thread fixed tab", () => {
+    const [tab] = collectPluginAppRegistrations(
+      definePluginApp((app) => {
+        app.slots.experimental_tab({
+          context: { kind: "thread" },
+          availability: "fixed",
+          id: "diff",
+          title: "Diff",
+          icon: "FileDiff",
+          component: Component,
+          experimental_target: target,
+          experimental_shortcutCommandId: "toggle-diff",
+        });
+      }),
+    ).tabs;
+    expect(tab).toMatchObject({
+      experimental_target: target,
+      experimental_shortcutCommandId: "toggle-diff",
+    });
+  });
+
+  it("rejects a target on an action tab and a shortcut command off a thread fixed tab", () => {
+    expect(() =>
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          app.slots.experimental_tab({
+            context: { kind: "thread" },
+            availability: "action",
+            id: "issue",
+            title: "Issue",
+            icon: "FileText",
+            component: Component,
+            experimental_target: target,
+          } as never);
+        }),
+      ),
+    ).toThrow(/experimental_target requires a fixed tab/);
+    expect(() =>
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          app.slots.experimental_tab({
+            context: { kind: "nav-panel", panelId: "board" },
+            availability: "fixed",
+            id: "files",
+            title: "Files",
+            icon: "Folder",
+            component: Component,
+            experimental_shortcutCommandId: "toggle",
+          } as never);
+        }),
+      ),
+    ).toThrow(/experimental_shortcutCommandId requires a thread fixed tab/);
   });
 });

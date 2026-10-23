@@ -561,9 +561,6 @@ function NewTabPanelStory({
     <PanelStage presentation={presentation}>
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi
-        requestedMergeBaseBranch="main"
-        environmentId={ENVIRONMENT_ID}
         tabs={[panelTab]}
         fixedTabs={[]}
         isOpen

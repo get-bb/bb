@@ -3,6 +3,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
 import {
   type ExperimentalInfoListRowProps,
+  type ExperimentalInfoRowTimeProps,
   type MarkdownProps,
   type PluginSdkApp,
   experimental_PluginRpcCallError,
@@ -107,6 +108,7 @@ import {
   useThreadActionRegistrationInfos,
 } from "./thread-actions/thread-action-registry";
 import { useCodeTheme } from "./plugin-code-theme";
+import { useCanOpenFileExternally } from "@/hooks/useLiveFileOpenTargets";
 import { copyToClipboard } from "./clipboard";
 import { saveFile } from "./save-file";
 import {
@@ -117,7 +119,9 @@ import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationMod
 import {
   InfoList,
   InfoListRow,
+  InfoRowTime,
   InfoSection,
+  InfoSubheading,
 } from "@/components/secondary-panel/info/info-list";
 import { DetailRow } from "@/components/ui/detail-card";
 
@@ -131,6 +135,10 @@ function PluginInfoListRow({
       target={onSelect === undefined ? null : { kind: "button", onSelect }}
     />
   );
+}
+
+function PluginInfoRowTime(props: ExperimentalInfoRowTimeProps) {
+  return <InfoRowTime {...props} />;
 }
 
 function useArchiveEnvironmentThreads(): (
@@ -195,6 +203,8 @@ export const pluginSdkAppImplementation = {
   experimental_DetailRow: DetailRow,
   experimental_InfoList: InfoList,
   experimental_InfoListRow: PluginInfoListRow,
+  experimental_InfoRowTime: PluginInfoRowTime,
+  experimental_InfoSubheading: InfoSubheading,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,
@@ -224,6 +234,7 @@ export const pluginSdkAppImplementation = {
   useSdk,
   experimental_useProviders: useProviders,
   experimental_useCodeTheme: useCodeTheme,
+  experimental_useCanOpenFileExternally: useCanOpenFileExternally,
   experimental_copyToClipboard: copyToClipboard,
   experimental_saveFile: saveFile,
 } satisfies PluginSdkApp;

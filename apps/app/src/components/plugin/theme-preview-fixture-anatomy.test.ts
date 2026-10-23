@@ -148,9 +148,15 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
     },
     {
       file: "apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx",
-      mustContain: ['appearance="flat"', "<EnvironmentRow", "<BranchRow"],
+      mustContain: ['appearance="flat"', "<EnvironmentRow"],
       because:
-        "The open Info panel projects BB's flat metadata card and representative environment and branch rows.",
+        "The open Info panel projects BB's flat metadata card and a representative environment row.",
+    },
+    {
+      file: "plugins/git/ui/info/GitInfoRows.tsx",
+      mustContain: ['<DetailRow icon="GitBranch"'],
+      because:
+        "The open Info panel's branch row comes from the Git plugin.",
     },
     {
       file: "plugins/github-pr-status/ui/PullRequestInfoRow.tsx",

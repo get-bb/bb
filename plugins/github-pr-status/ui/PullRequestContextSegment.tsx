@@ -38,7 +38,7 @@ import { PullRequestNextStepLabel } from "./PullRequestNextStepLabel";
 import { PullRequestStatusPill } from "./PullRequestStatusPill";
 import { useEnvironmentPullRequest, usePullRequestActions } from "./queries";
 
-const CHANGED_FILES_SEGMENT_KEY = "bb--core/changed-files";
+const CHANGED_FILES_SEGMENT_KEY = "bb--git/changed-files";
 
 export function useOpenUrlClick(
   url: string,

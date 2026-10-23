@@ -570,6 +570,12 @@ export function usePluginSlots(): PluginSlotSnapshot {
   return useSyncExternalStore(subscribePluginSlots, getPluginSlotSnapshot);
 }
 
+export function usePluginFrontendRegistered(pluginId: string): boolean {
+  return useSyncExternalStore(subscribePluginSlots, () =>
+    registrationsByPluginId.has(pluginId),
+  );
+}
+
 let builtinPluginIds: ReadonlySet<string> = new Set();
 const builtinPluginIdListeners = new Set<() => void>();
 

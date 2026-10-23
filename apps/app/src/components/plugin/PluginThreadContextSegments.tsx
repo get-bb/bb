@@ -3,6 +3,7 @@ import type {
   ExperimentalThreadContextSegmentInput,
   ExperimentalThreadContextSegmentProps,
   ExperimentalThreadContextSegmentRegistration,
+  ExperimentalThreadContextSegmentVisibility,
 } from "@get-bb/plugin-sdk";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import {
@@ -50,7 +51,7 @@ function sortThreadContextSegments(
 type VisibilityReport = (
   slot: ExperimentalThreadContextSegmentRegistration,
   threadId: string,
-  visible: boolean | null,
+  visible: ExperimentalThreadContextSegmentVisibility | null,
 ) => void;
 
 function Visibility({
@@ -63,8 +64,8 @@ function Visibility({
   onVisible: VisibilityReport;
 }) {
   const visible = slot.useVisible ? slot.useVisible(input) : true;
-  if (typeof visible !== "boolean") {
-    throw new Error("useVisible must return a boolean");
+  if (typeof visible !== "boolean" && visible !== "pending") {
+    throw new Error('useVisible must return a boolean or "pending"');
   }
   const { threadId } = input;
   useLayoutEffect(() => {
@@ -113,6 +114,7 @@ export function useThreadContextSegments(
   core: readonly CoreThreadContextSegment[],
 ): {
   entries: readonly ThreadContextSegmentEntry[];
+  pending: boolean;
   observers: ReactNode;
 } {
   const { threadContextSegments } = usePluginSlots();
@@ -126,7 +128,10 @@ export function useThreadContextSegments(
   const [visibility, setVisibility] = useState<
     ReadonlyMap<
       ExperimentalThreadContextSegmentRegistration,
-      { threadId: string; visible: boolean }
+      {
+        threadId: string;
+        visible: ExperimentalThreadContextSegmentVisibility;
+      }
     >
   >(() => new Map());
   const [onVisible] = useState<VisibilityReport>(
@@ -134,7 +139,7 @@ export function useThreadContextSegments(
       (
         slot: ExperimentalThreadContextSegmentRegistration,
         threadId: string,
-        visible: boolean | null,
+        visible: ExperimentalThreadContextSegmentVisibility | null,
       ) => {
         setVisibility((current) => {
           const previous = current.get(slot);
@@ -153,12 +158,18 @@ export function useThreadContextSegments(
       },
   );
   const { threadId } = input;
+  const reportedVisibility = (
+    slot: ExperimentalThreadContextSegmentRegistration,
+  ): ExperimentalThreadContextSegmentVisibility => {
+    if (slot.useVisible === undefined) return true;
+    const reported = visibility.get(slot);
+    return reported?.threadId === threadId ? reported.visible : false;
+  };
   return {
-    entries: entries.filter(({ slot }) => {
-      if (slot.useVisible === undefined) return true;
-      const reported = visibility.get(slot);
-      return reported?.threadId === threadId && reported.visible;
-    }),
+    entries: entries.filter(({ slot }) => reportedVisibility(slot) === true),
+    pending: entries.some(
+      ({ slot }) => reportedVisibility(slot) === "pending",
+    ),
     observers: entries
       .filter(({ slot }) => slot.useVisible !== undefined)
       .map((entry) => (

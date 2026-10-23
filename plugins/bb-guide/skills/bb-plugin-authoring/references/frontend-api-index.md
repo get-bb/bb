@@ -27,6 +27,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_DetailRow`
 - `experimental_InfoList`
 - `experimental_InfoListRow`
+- `experimental_InfoRowTime`
+- `experimental_InfoSubheading`
 - `useRpc`
 - `experimental_useRpcQuery`
 - `experimental_useRpcKeyedQuery`
@@ -93,6 +95,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `useSdk`
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
+- `experimental_useCanOpenFileExternally`
 - `experimental_copyToClipboard`
 - `experimental_saveFile`
 
@@ -135,13 +138,18 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadHeaderActionProps`
 - `ExperimentalThreadInfoProps`
 - `ExperimentalThreadEnvironment`
+- `ExperimentalThreadEnvironmentState`
 - `ExperimentalThreadContextSegmentInput`
 - `ExperimentalThreadContextSegmentProps`
 - `ExperimentalThreadContextSegmentReference`
+- `ExperimentalThreadContextSegmentVisibility`
 - `ExperimentalInfoSectionProps`
 - `ExperimentalDetailRowProps`
 - `ExperimentalInfoListProps`
 - `ExperimentalInfoListRowProps`
+- `ExperimentalInfoListRowAction`
+- `ExperimentalInfoRowTimeProps`
+- `ExperimentalInfoSubheadingProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
 - `ExperimentalPluginBrowserPage`
 - `ExperimentalPluginBrowserPageEvaluateOptions`
@@ -379,6 +387,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalTabOpenOptions`
 - `ExperimentalTabTargetReference`
 - `ExperimentalThreadActionTabProps`
+- `ExperimentalThreadFixedTabProps`
 - `ExperimentalThreadTabActionContext`
 - `ExperimentalAppPanel`
 - `BbContext`

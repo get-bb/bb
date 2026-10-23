@@ -113,7 +113,9 @@ export function createPanelActionOpenPanel(
 interface RunPluginPanelActionArgs {
   action: Extract<PluginTabSlot, { availability: "action" }>;
   openPluginPanel: OpenPluginPanelHandler;
-  context: import("./PluginTabs").PluginTabContext;
+  context:
+    | { kind: "thread"; threadId: string }
+    | { kind: "nav-panel"; subPath: string };
 }
 
 export function runPluginPanelAction({

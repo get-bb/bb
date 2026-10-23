@@ -8,7 +8,11 @@ import {
   makeWorkspaceStatus,
 } from "../../../.ladle/story-fixtures";
 import type { ThreadMetadataContentProps } from "./ThreadMetadataContent";
-import type { WorkspaceMergeBase, WorkspaceWorkingTree } from "bb-plugin-bb--git/contract";
+import type {
+  WorkspaceMergeBase,
+  WorkspaceWorkingTree,
+} from "bb-plugin-bb--git/contract";
+
 export { makeEnvironment, makeThread, makeWorkspaceStatus };
 
 const noop = () => {};
@@ -51,19 +55,13 @@ export const baseProps: ThreadMetadataContentProps = {
   isParentThreadsError: false,
   environment: makeEnvironment(),
   environmentProvisioningFailure: false,
+  threadEnvironmentState: null,
   environmentDisplayHost: localEnvironmentDisplayHost,
-  workspaceStatus: makeWorkspaceStatus(),
-  workspaceStatusError: null,
   threadEnvironmentId: null,
-  selectedMergeBaseBranch: undefined,
-  mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
-  isLoadingMergeBaseBranchOptions: false,
   updateThreadPending: false,
   onAssignParent: noop,
   onParentSelectorOpenChange: noop,
   onRetryParentThreads: noop,
-  onMergeBaseBranchChange: noop,
-  onChangedFileClick: noop,
 };
 
 export const STORY_DIRTY_WORKING_TREE: Omit<WorkspaceWorkingTree, "state"> = {

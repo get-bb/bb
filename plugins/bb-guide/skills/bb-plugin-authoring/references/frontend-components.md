@@ -132,7 +132,9 @@ className? }` —
   `{ old: { path, content }, new: { path, content } }`; when supplied and
   consistent with the patch, bb enables expand-context controls between
   hunks. The caller owns loading those complete UTF-8 sides and omits the prop
-  while it has only the patch. Reference: `plugins/github/app.tsx`.
+  while it has only the patch. `experimental_addSelectionToChat` turns on bb's
+  "Add to chat" for selected lines in a thread surface. Reference:
+  `plugins/github/app.tsx`, `plugins/git/ui/diff/`.
 
   Alias both on import — JSX reads a lowercase-initial name as an intrinsic
   element:
@@ -155,9 +157,14 @@ className? }` —
   `experimental_threadInfoSection`. `experimental_DetailRow` takes
   `{ label, icon?, align?, children }`, where `icon` is any name
   `experimental_Icon` accepts. `experimental_InfoList` takes
-  `{ items, getKey, renderItem, limit? }`. `experimental_InfoListRow` takes
-  `{ leading, leadingLabel?, name, title?, context?, trailing?, onSelect? }`.
-  Usage is in frontend-registration.md. Experimental: see
+  `{ items, getKey, renderItem, limit?, rail? }`; `rail` draws a timeline line
+  through the leading icons. `experimental_InfoListRow` takes
+  `{ leading, leadingLabel?, name, title?, context?, trailing?, onSelect?,
+  actions? }`, where `actions` are hover icon buttons `{ icon, label,
+  onSelect }`. `experimental_InfoRowTime` (`{ timestamp, detail? }`) and
+  `experimental_InfoSubheading` (`{ label, count, trailing? }`) draw a row's
+  relative time and a sub-heading inside a section, as the Git plugin's
+  Commits section does. Usage is in frontend-registration.md. Experimental: see
   `docs/api_to_audit.md`.
 
 - `Markdown` — bb's chat-message markdown renderer (same typography,
@@ -186,7 +193,10 @@ className? }` —
   malformed runtime targets are inert in both the app and SDK test harness.
   Optional `location` is a one-based line/column or line range. For buttons and
   effects use
-  `useBbNavigate().experimental_openFilePreview({ target, location })` or
+  `useBbNavigate().experimental_openFilePreview({ target, location })` (a
+  deleted workspace file opens from git with
+  `experimental_deleted: { from: "head" }` or
+  `{ from: "merge-base", ref }`) or
   `.experimental_openFileExternally({ target, location })`; the boolean means
   host acceptance, not completed I/O. Every identity is explicit—never invent
   an environment id or turn a project id into a workspace target. The testing

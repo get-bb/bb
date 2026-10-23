@@ -481,6 +481,15 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   let stop: (() => void) | undefined;
   return {
     observer,
+    async refetchKeys(requested: readonly string[]): Promise<void> {
+      const subscribed = requested.filter((key) => keys.has(key));
+      if (subscribed.length === 0) return;
+      for (const key of subscribed) dirtyKeys.add(key);
+      if (observer.getCurrentResult().isFetching) {
+        restartTaggedRead(observer.getCurrentQuery());
+      }
+      await observer.refetch({ cancelRefetch: false });
+    },
     subscribe(requested: readonly string[], listener: () => void) {
       let added = false;
       for (const key of requested) {

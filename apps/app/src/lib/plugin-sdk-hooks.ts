@@ -389,10 +389,11 @@ function useExperimentalFixedTabTarget<Target extends JsonValue>(
 ): ExperimentalFixedTabTargetState<Target> | null {
   const pluginId = usePluginId();
   const state = useAppFixedTabTarget(
-    getPluginFixedTabOwnerId(
-      pluginId,
-      "context" in tab ? tab.context.panelId : tab.panelId,
-    ),
+    !("context" in tab)
+      ? getPluginFixedTabOwnerId(pluginId, tab.panelId)
+      : tab.context.kind === "thread"
+        ? getThreadFixedTabOwnerId(pluginId)
+        : getPluginFixedTabOwnerId(pluginId, tab.context.panelId),
     tab.id,
   );
   if (state === null || tab.experimental_target === undefined) return null;

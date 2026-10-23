@@ -154,8 +154,9 @@ Slot props contracts (versioned, additive-only):
   Experimental: see `docs/api_to_audit.md`.
 
 - `experimental_tab` → a tab in a declared thread or navigation-page context.
-  Thread components receive `{ threadId }`; navigation-page components receive
-  `{ subPath }`. `availability: "fixed"` pins one non-closable destination.
+  Thread components receive `{ threadId }`, fixed ones also the thread's
+  `environment` (`{ id }`, or null as for Info rows); navigation-page
+  components receive `{ subPath }`. `availability: "fixed"` pins one non-closable destination.
   `availability: "action"` adds a launcher; its component also receives persisted
   JSON `params`, and optional `run` receives context plus `openPanel`.
   Without `run`, selection opens with default params. Matching owner/id/params
@@ -332,8 +333,18 @@ app.slots.experimental_tab({
 Open any registered tab with
 `experimental_useAppPanel().experimental_openTab({ surface: { kind: "current" },
 tab: { id, context, availability }, params?, title?, target? })`.
-Navigation-page fixed tabs can declare `experimental_target: { validate }` and
-read its session-only target with `experimental_useFixedTabTarget(registration)`.
+Fixed tabs can declare `experimental_target: { validate }` and read their
+session-only target with `experimental_useFixedTabTarget(registration)`; the
+Git plugin's Diff tab takes `{ kind: "file", path }` this way. A thread fixed
+tab can set `experimental_shortcutCommandId` to one of its plugin's commands so
+the tab strip shows that shortcut; the command toggles the tab with
+`context.experimental_toggleTab({ id, context: { kind: "thread" }, availability: "fixed" })`.
+Thread fixed tabs receive `{ threadId, environment, environmentState,
+threadArchived, isOpen }`, the same environment fields as thread Info rows
+(frontend-registration.md); `useVisible` receives them without `isOpen`. A tab
+you have shown stays mounted while another tab is shown or the side panel is
+closed, with its state kept and `isOpen: false`; pass `isOpen` as `enabled` to
+reads that only feed the tab.
 Existing `openFixedTab`, `openThreadPanel` and action `openPanel` calls still work.
 Existing saved tab identities, orders, action params and split layouts survive;
 no plugin data migration is needed when registration ids stay unchanged.

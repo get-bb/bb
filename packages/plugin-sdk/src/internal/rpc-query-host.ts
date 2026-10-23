@@ -327,9 +327,18 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     const refetch = useCallback(async () => {
       await current.observer.refetch();
     }, [current]);
+    const refetchKeys = useCallback(
+      async (requested: readonly string[]) => {
+        await current.refetchKeys(
+          requested.filter((key) => keys.includes(key)),
+        );
+      },
+      [current, keys],
+    );
     return {
       ...query,
       refetch,
+      refetchKeys,
     } as ExperimentalRpcKeyedQueryState<T, Selection>;
   }
   function experimental_useRpcMutation<

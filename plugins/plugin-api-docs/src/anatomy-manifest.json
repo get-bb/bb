@@ -42,10 +42,13 @@
           "path": "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx",
           "anchors": [
             "function ParentThreadSummary",
-            "function ChangedFilesSummary",
             "mount(entry, \"summary\")",
             "mount(entry, \"details\")"
           ]
+        },
+        {
+          "path": "plugins/git/ui/segment/ChangedFilesSegment.tsx",
+          "anchors": ["function ChangedFilesSegmentView"]
         },
         {
           "path": "apps/app/src/components/plugin/PluginThreadContextSegments.tsx",

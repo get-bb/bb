@@ -216,10 +216,15 @@ message, Original }` — render fenced code blocks of chosen languages in
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
-  receive `{ threadId, projectId, openPanel }`, where `threadId` and
-  `projectId` are null on surfaces without one and `openPanel` matches
-  `messageAction`'s. `isAvailable` is called for palette listing and keyboard invocation — keep
+  component — registration: `{ id, title, defaultShortcut?, experimental_inactiveInInputs?, isAvailable?, run }`;
+  `experimental_inactiveInInputs: true` keeps the shortcut from firing while a
+  text field, terminal or browser tab has focus. Both callbacks
+  receive `{ threadId, projectId, openPanel, experimental_toggleTab }`, where
+  `threadId` and `projectId` are null on surfaces without one and `openPanel`
+  matches `messageAction`'s. `experimental_toggleTab(reference)` opens one of
+  the plugin's own thread fixed tabs in the focused thread, or closes the side
+  panel when that tab is already showing, and returns false without a thread
+  view. `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
   `openPanel` declines (returning false) unless a thread view is focused.
@@ -233,8 +238,9 @@ message, Original }` — render fenced code blocks of chosen languages in
   binding. `mod` means Command on macOS and Control elsewhere; omitted `meta`,
   `control`, `alt`, `shift`, and `mod` are false. Use a Command/Control/Alt
   chord or function key. Every command appears in Settings → Keyboard, even
-  without a default. Colliding plugin defaults remain unbound with an
-  explanation; assigning an occupied shortcut offers Replace binding or
+  without a default. A plugin default that collides with a bb binding or
+  with a default of bb's bundled plugins stays unbound with an explanation,
+  as do defaults two installed plugins share; assigning an occupied shortcut offers Replace binding or
   Cancel. User overrides survive plugin reload, disable, and re-enable under
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal

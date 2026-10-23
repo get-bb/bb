@@ -131,9 +131,6 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
     <PanelStage width={width}>
       <ThreadSecondaryPanel
         activeTab={tab}
-        canUseGitUi={false}
-        requestedMergeBaseBranch="main"
-        environmentId={undefined}
         tabs={panelTabs}
         fixedTabs={[]}
         renderBrowserDeck={(activeBrowserTabId) => (

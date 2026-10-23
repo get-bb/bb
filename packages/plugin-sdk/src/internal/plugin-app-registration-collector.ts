@@ -532,13 +532,23 @@ export function collectPluginAppRegistrations(
     const target = registration.experimental_target;
     if (
       target !== undefined &&
-      (context.kind !== "nav-panel" ||
-        availability !== "fixed" ||
-        typeof target?.validate !== "function")
+      (availability !== "fixed" || typeof target?.validate !== "function")
     ) {
       throw new Error(
-        `${kind}: experimental_target requires a nav-panel fixed tab and a validate function`,
+        `${kind}: experimental_target requires a fixed tab and a validate function`,
       );
+    }
+    const shortcutCommandId: unknown = Reflect.get(
+      registration,
+      "experimental_shortcutCommandId",
+    );
+    if (shortcutCommandId !== undefined) {
+      if (context.kind !== "thread" || availability !== "fixed") {
+        throw new Error(
+          `${kind}: experimental_shortcutCommandId requires a thread fixed tab`,
+        );
+      }
+      requireSlotId(kind, shortcutCommandId);
     }
     const validated = {
       ...registration,
@@ -600,11 +610,22 @@ export function collectPluginAppRegistrations(
     ) {
       throw new Error(`${kind}: "isAvailable" must be a function`);
     }
+    if (
+      registration.experimental_inactiveInInputs !== undefined &&
+      typeof registration.experimental_inactiveInInputs !== "boolean"
+    ) {
+      throw new Error(
+        `${kind}: "experimental_inactiveInInputs" must be a boolean`,
+      );
+    }
     collected.commandPaletteActions.push({
       target: "app",
       ...command,
       ...(registration.isAvailable !== undefined
         ? { isAvailable: registration.isAvailable }
+        : {}),
+      ...(registration.experimental_inactiveInInputs === true
+        ? { experimental_inactiveInInputs: true }
         : {}),
       run: registration.run,
     });

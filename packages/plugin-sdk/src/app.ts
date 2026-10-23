@@ -160,6 +160,12 @@ export const experimental_InfoList = runtimeComponent("experimental_InfoList");
 export const experimental_InfoListRow = runtimeComponent(
   "experimental_InfoListRow",
 );
+export const experimental_InfoRowTime = runtimeComponent(
+  "experimental_InfoRowTime",
+);
+export const experimental_InfoSubheading = runtimeComponent(
+  "experimental_InfoSubheading",
+);
 export const experimental_useRpcQuery = runtimeFunction(
   "experimental_useRpcQuery",
 );
@@ -324,6 +330,11 @@ export const experimental_useProviders = runtimeFunction(
 // (experimental — see docs/api_to_audit.md).
 export const experimental_useCodeTheme = runtimeFunction(
   "experimental_useCodeTheme",
+);
+// Whether experimental_openFileExternally can open a file in this client
+// (experimental — see docs/api_to_audit.md).
+export const experimental_useCanOpenFileExternally = runtimeFunction(
+  "experimental_useCanOpenFileExternally",
 );
 // bb's clipboard writer, the one bb's own copy actions use (experimental —
 // see docs/api_to_audit.md).

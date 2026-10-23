@@ -1,6 +1,9 @@
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
 import type { PluginCommandContext } from "@get-bb/plugin-sdk";
-import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
+import type {
+  PluginThreadFixedTabToggleHandler,
+  PluginThreadPanelOpenHandler,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import { getPluginDisplayName } from "@/lib/plugin-logos";
 import type { PaletteAction } from "./palette-action";
@@ -19,6 +22,7 @@ export interface BuildPluginPaletteActionsArgs {
   threadId: string | null;
   projectId: string | null;
   openThreadPanel: PluginThreadPanelOpenHandler | null;
+  toggleThreadFixedTab: PluginThreadFixedTabToggleHandler | null;
 }
 
 function describeError(error: unknown): string {
@@ -41,6 +45,9 @@ function actionContext(
       }
       return args.openThreadPanel({ ...options, pluginId: slot.pluginId });
     },
+    experimental_toggleTab: (tab) =>
+      args.toggleThreadFixedTab?.({ pluginId: slot.pluginId, tabId: tab.id }) ??
+      false,
   };
 }
 

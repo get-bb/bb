@@ -117,7 +117,6 @@ function createSecondaryPanel(
 ): RootComposeSecondaryContentProps["secondaryPanel"] {
   return {
     activeTab: null,
-    canUseGitUi: false,
     tabs: [],
     fixedTabs: [],
     isOpen,

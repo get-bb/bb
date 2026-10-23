@@ -14,9 +14,9 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { atom, useAtom, useAtomValue, useStore } from "jotai";
+import { atom, useAtom } from "jotai";
 import { atomFamily } from "jotai-family";
-import { type Host, type JsonValue, jsonValueSchema } from "@bb/domain";
+import { type Host, jsonValueSchema } from "@bb/domain";
 import { PluginTabScope, usePluginTabs } from "./PluginTabs";
 import { type PluginNavTabSlot, usePluginSlots } from "@/lib/plugin-slots";
 import {
@@ -88,10 +88,11 @@ import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import {
   AppFixedTabTargetProvider,
   getPluginFixedTabOwnerId,
+  useFixedTabTargetState,
+  useSetFixedTabTarget,
   openAppFixedTabFromDestinations,
   openAppTabFromDestinations,
   type AppFixedTabDestination,
-  type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
@@ -115,13 +116,6 @@ interface PluginDetailTabMetadata {
 
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
-);
-interface FixedTabSessionTarget {
-  sequence: number;
-  target: JsonValue;
-}
-const fixedTabTargetAtomFamily = atomFamily((_targetId: string) =>
-  atom<FixedTabSessionTarget | null>(null),
 );
 
 function marketplacePluginDetailTab(pluginId: string) {
@@ -148,31 +142,11 @@ function PluginFixedTabContent({
   registration: Extract<PluginNavTabSlot, { availability: "fixed" }>;
   subPath: string;
 }) {
-  const targetStore = useStore();
-  const targetAtom = fixedTabTargetAtomFamily(
-    `${panelStateId}\0${registration.id}`,
-  );
-  const targetSnapshot = useAtomValue(targetAtom);
-  const targetState = useMemo<AppFixedTabTargetState | null>(() => {
-    if (targetSnapshot === null) return null;
-    const { sequence } = targetSnapshot;
-    return {
-      ...targetSnapshot,
-      ownerId: fixedTabOwnerId,
-      tabId: registration.id,
-      clear: () => {
-        targetStore.set(targetAtom, (current) =>
-          current?.sequence === sequence ? null : current,
-        );
-      },
-    };
-  }, [
-    fixedTabOwnerId,
-    registration.id,
-    targetAtom,
-    targetSnapshot,
-    targetStore,
-  ]);
+  const targetState = useFixedTabTargetState({
+    stateKey: panelStateId,
+    ownerId: fixedTabOwnerId,
+    tabId: registration.id,
+  });
   if (!isOpen) return null;
   const FixedTabComponent = registration.component;
   return (
@@ -470,7 +444,7 @@ export function PluginPanelRightPanelHost({
     },
     [historyContextKey, revealPanel],
   );
-  const targetStore = useStore();
+  const setFixedTabTarget = useSetFixedTabTarget();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
     pluginId,
     panel?.id ?? panelPath,
@@ -504,15 +478,12 @@ export function PluginPanelRightPanelHost({
                 } catch {
                   return false;
                 }
-                targetStore.set(
-                  fixedTabTargetAtomFamily(
-                    `${panelStateId}\0${registration.id}`,
-                  ),
-                  (current) => ({
-                    sequence: (current?.sequence ?? 0) + 1,
-                    target: result.data,
-                  }),
-                );
+                setFixedTabTarget({
+                  stateKey: panelStateId,
+                  ownerId: fixedTabOwnerId,
+                  tabId: registration.id,
+                  target: result.data,
+                });
               }
               selectPersistedPanelTab();
               updatePanelState((state) =>
@@ -531,7 +502,7 @@ export function PluginPanelRightPanelHost({
       pageFixedTabs,
       revealPanel,
       selectPersistedPanelTab,
-      targetStore,
+      setFixedTabTarget,
       updatePanelState,
     ],
   );
@@ -581,12 +552,7 @@ export function PluginPanelRightPanelHost({
           if (panel === null) return;
           runPluginPanelAction({
             action,
-            context: {
-              kind: "nav-panel",
-              pluginId,
-              panelId: panel.id,
-              subPath,
-            },
+            context: { kind: "nav-panel", subPath },
             openPluginPanel: (args) => {
               selectPersistedPanelTab();
               openPluginPanel(args);
@@ -598,7 +564,6 @@ export function PluginPanelRightPanelHost({
     [
       pageActions,
       panel,
-      pluginId,
       subPath,
       openPluginPanel,
       revealPanel,
@@ -1158,7 +1123,6 @@ export function PluginPanelRightPanelHost({
         <LazyThreadSecondaryPanel
           drawerFallback={drawerFallback}
           activeTab={activeTab}
-          canUseGitUi={false}
           metadataContent={null}
           tabs={tabs}
           splitPanelStateId={

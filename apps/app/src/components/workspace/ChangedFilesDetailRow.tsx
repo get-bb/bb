@@ -9,10 +9,9 @@ import {
   toChangeTally,
   type WorkspaceChangedFilesSection,
 } from "@bb/shared-ui/workspace-change-summary";
-import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 interface ChangedFilesDetailRowProps {
-  section: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
+  section: WorkspaceChangedFilesSection;
   listClassName?: string;
   rowClassName?: string;
   rowValueClassName?: string;

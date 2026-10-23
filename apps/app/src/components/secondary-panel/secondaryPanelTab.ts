@@ -19,6 +19,7 @@ export type SecondaryPanelTabReorderHandler = (
 
 export interface SecondaryPanelPaneRenderContext {
   isFocused: boolean;
+  isOpen: boolean;
   onFocusPane: () => void;
 }
 

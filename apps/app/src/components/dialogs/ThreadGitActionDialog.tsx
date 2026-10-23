@@ -5,7 +5,9 @@ import {
   type ThreadGitStatusDisplay,
 } from "@bb/shared-ui/git-status-display";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
-import type { WorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
+import type {
+  WorkspaceChangedFilesSection,
+} from "@bb/shared-ui/workspace-change-summary";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -15,7 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 export type ThreadGitActionDialogTarget = { kind: "commit" };
 
@@ -23,7 +24,7 @@ interface ThreadGitActionDialogProps {
   target: ThreadGitActionDialogTarget | null;
   branchName?: string;
   gitStatusDisplay?: ThreadGitStatusDisplay;
-  changedFilesSection?: WorkspaceChangedFilesSection<WorkspaceFileStatus> | null;
+  changedFilesSection?: WorkspaceChangedFilesSection | null;
   onOpenChange: (open: boolean) => void;
   onCommit: () => Promise<void>;
 }

@@ -65,7 +65,6 @@ function Surface({ open, browser }: { open: boolean; browser: boolean }) {
     <PanelGroup direction="horizontal">
       <LazyThreadSecondaryPanel
         activeTab={null}
-        canUseGitUi={false}
         drawerFallback={null}
         fixedTabs={[]}
         isConversationCollapsed={false}

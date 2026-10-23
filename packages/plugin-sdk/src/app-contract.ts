@@ -664,6 +664,13 @@ export interface DiffProps {
    * loading these contents; omit the field to render from the patch alone.
    */
   experimental_fullFileContents?: ExperimentalDiffFullFileContents;
+  /**
+   * Offer "Add to chat" for selected diff lines. bb appends the selection as a
+   * quote to the composer of the thread showing the diff, the same action its
+   * own file previews offer; elsewhere the action stays hidden. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_addSelectionToChat?: boolean;
   /** Applied to the renderer's root element. */
   className?: string;
 }
@@ -1052,11 +1059,34 @@ type ExperimentalTabLifecycle<Props, Context> =
       ): void | Promise<void>;
     };
 
+/**
+ * Props of a thread fixed tab: the thread and the same `environment`,
+ * `environmentState` and `threadArchived` thread Info rows receive. A tab stays
+ * mounted, with its state, once shown: while another tab is shown or the side
+ * panel is closed it is hidden and `isOpen` is false, so pause reads that only
+ * feed what the tab shows.
+ */
+export interface ExperimentalThreadFixedTabProps {
+  threadId: string;
+  environment: ExperimentalThreadEnvironment | null;
+  environmentState: ExperimentalThreadEnvironmentState | null;
+  threadArchived: boolean;
+  isOpen: boolean;
+}
+
 type ExperimentalTabContextProps<C extends ExperimentalTabContext> = C extends {
   kind: "thread";
 }
   ? { threadId: string }
   : PluginNavPanelProps;
+
+type ExperimentalFixedTabContextProps<C extends ExperimentalTabContext> =
+  C extends { kind: "thread" } ? ExperimentalThreadFixedTabProps : PluginNavPanelProps;
+
+type ExperimentalFixedTabVisibilityProps<C extends ExperimentalTabContext> =
+  C extends { kind: "thread" }
+    ? Omit<ExperimentalThreadFixedTabProps, "isOpen">
+    : PluginNavPanelProps;
 
 type ExperimentalTabInput<
   C extends ExperimentalTabContext,
@@ -1069,14 +1099,23 @@ type ExperimentalTabInput<
   layout?: "padded" | "flush";
   context: C;
   availability: A;
-  useVisible?(props: ExperimentalTabContextProps<C>): boolean;
+  useVisible?(
+    props: A extends "fixed"
+      ? ExperimentalFixedTabVisibilityProps<C>
+      : ExperimentalTabContextProps<C>,
+  ): boolean;
 } & (A extends "fixed"
   ? {
-      component: ComponentType<ExperimentalTabContextProps<C>>;
+      component: ComponentType<ExperimentalFixedTabContextProps<C>>;
       run?: never;
       params?: never;
-      experimental_target?: C extends { kind: "nav-panel" }
-        ? ExperimentalFixedTabTargetContract<JsonValue>
+      experimental_target?: ExperimentalFixedTabTargetContract<JsonValue>;
+      /**
+       * Id of one of this plugin's `app.commands` whose shortcut the tab shows
+       * in its tooltip and accessible name. Thread tabs only.
+       */
+      experimental_shortcutCommandId?: C extends { kind: "thread" }
+        ? string
         : never;
     }
   : {
@@ -1097,9 +1136,24 @@ export type ExperimentalTabRegistration = ExperimentalTabCommon &
   (
     | ({
         context: { kind: "thread" };
+        availability: "fixed";
+        useVisible?(
+          props: Omit<ExperimentalThreadFixedTabProps, "isOpen">,
+        ): boolean;
+        experimental_target?: ExperimentalFixedTabTargetContract<JsonValue>;
+        experimental_shortcutCommandId?: string;
+        component: ComponentType<ExperimentalThreadFixedTabProps>;
+        run?: never;
+        params?: never;
+      })
+    | ({
+        context: { kind: "thread" };
         useVisible?(props: { threadId: string }): boolean;
         experimental_target?: never;
-      } & ExperimentalTabLifecycle<{ threadId: string }, { threadId: string }>)
+      } & Extract<
+        ExperimentalTabLifecycle<{ threadId: string }, { threadId: string }>,
+        { availability: "action" }
+      >)
     | ({
         context: { kind: "nav-panel"; panelId: string };
         useVisible?(props: PluginNavPanelProps): boolean;
@@ -1775,12 +1829,40 @@ export interface ExperimentalThreadInfoProps {
    * its host is not active, or the environment is not a usable checkout.
    */
   environment: ExperimentalThreadEnvironment | null;
+  /** The thread's environment record, or null when the thread has none. */
+  environmentState: ExperimentalThreadEnvironmentState | null;
+  threadArchived: boolean;
 }
 
 /** An environment a thread surface hands to plugin components. */
 export interface ExperimentalThreadEnvironment {
   id: string;
 }
+
+/**
+ * What bb knows about a thread's environment record, including while its host
+ * is suspended, the environment is destroyed, or the record failed to load.
+ * `environment` is null in those cases; this is not. `retry` reloads a record
+ * that failed to load. A loaded record carries its workspace `path` and the
+ * branches bb compares it against: the saved `mergeBaseBranch` choice, the
+ * `baseBranch` it was created from and the repository's `defaultBranch`, each
+ * null when unknown.
+ */
+export type ExperimentalThreadEnvironmentState =
+  | { state: "loading"; id: string }
+  | { state: "failed"; id: string; retry(): void }
+  | {
+      state: "loaded";
+      id: string;
+      status: "creating" | "provisioning" | "ready" | "error" | "destroyed";
+      hostActive: boolean;
+      isGitRepo: boolean;
+      managed: boolean;
+      path: string | null;
+      mergeBaseBranch: string | null;
+      baseBranch: string | null;
+      defaultBranch: string | null;
+    };
 
 /**
  * A visible thread context segment. `key` is `<pluginId>/<id>`, where bb's own
@@ -1841,8 +1923,17 @@ export interface ExperimentalThreadContextSegmentRegistration {
    * Runs in plugin scope for each thread; false hides the segment and leaves
    * it out of `segments`. Omit to always show.
    */
-  useVisible?(input: ExperimentalThreadContextSegmentInput): boolean;
+  useVisible?(
+    input: ExperimentalThreadContextSegmentInput,
+  ): ExperimentalThreadContextSegmentVisibility;
 }
+
+/**
+ * `true` shows the segment and `false` hides it. `"pending"` means the segment
+ * cannot tell yet: bb withholds the whole inline row until no inline segment
+ * is pending, so segments do not shift in one by one.
+ */
+export type ExperimentalThreadContextSegmentVisibility = boolean | "pending";
 
 /**
  * A row in the thread Info tab's details block, beside bb's own rows. Render
@@ -1925,6 +2016,8 @@ export interface ExperimentalInfoListProps<Item> {
   renderItem(item: Item): ReactNode;
   /** Rows shown before the "N more" toggle; defaults to 5. */
   limit?: number;
+  /** Join the rows' leading marks with a vertical rail, as bb's Commits list does. */
+  rail?: boolean;
 }
 
 /**
@@ -1945,6 +2038,30 @@ export interface ExperimentalInfoListRowProps {
   trailing?: ReactNode;
   /** Runs when the user activates the row; omit for a static row. */
   onSelect?: () => void;
+  /** Icon buttons revealed on hover and focus, before `trailing`. */
+  actions?: readonly ExperimentalInfoListRowAction[];
+}
+
+/** One hover action of an `experimental_InfoListRow`. */
+export interface ExperimentalInfoListRowAction {
+  icon: BbIconName;
+  label: string;
+  onSelect(): void;
+}
+
+/** Props of the host-owned `experimental_InfoRowTime` component. */
+export interface ExperimentalInfoRowTimeProps {
+  /** Milliseconds since the epoch; shown relative, with the full date in the tooltip. */
+  timestamp: number;
+  /** Prefixed to the tooltip, such as a short SHA and author. */
+  detail?: string;
+}
+
+/** Props of the host-owned `experimental_InfoSubheading` component. */
+export interface ExperimentalInfoSubheadingProps {
+  label: string;
+  count: number;
+  trailing?: ReactNode;
 }
 
 export interface ExperimentalPluginBrowserToolbarActionRegistration {
@@ -3201,6 +3318,17 @@ export interface PluginCommandContext {
    * The palette opens anywhere, so guard with `isAvailable` rather than assuming.
    */
   openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  /**
+   * Toggle one of this plugin's thread fixed tabs in the focused thread: close
+   * the side panel when that tab is showing, otherwise open it. Returns false
+   * without a focused thread, or when the tab is not registered or not
+   * visible there. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_toggleTab(tab: {
+    id: string;
+    context: { kind: "thread" };
+    availability: "fixed";
+  }): boolean;
 }
 
 /** A default keyboard shortcut. Omitted modifiers are false. */
@@ -3227,6 +3355,12 @@ export interface PluginCommandRegistration {
   id: string;
   /** The row's label, e.g. "Linear: open issue for this thread". */
   title: string;
+  /**
+   * When true, the shortcut does nothing while a text field, terminal or
+   * browser tab has focus, so it never takes a key they use. The palette row
+   * is unaffected.
+   */
+  experimental_inactiveInInputs?: boolean;
   /**
    * Hide the row when it cannot do anything — typically when it needs a thread
    * and there is none. Called before palette listing and keyboard invocation;
@@ -4747,6 +4881,13 @@ export type ExperimentalFileLocation =
 export interface ExperimentalFileOpenOptions {
   target: ExperimentalLiveFileTarget;
   location: ExperimentalFileLocation | null;
+  /**
+   * Preview a workspace file that no longer exists in the working tree, as it
+   * was at HEAD or at a merge-base commit; bb labels the tab as deleted.
+   * Workspace targets only, and only in `experimental_openFilePreview`.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_deleted?: { from: "head" } | { from: "merge-base"; ref: string };
 }
 
 /**
@@ -4789,10 +4930,9 @@ export type ExperimentalOpenFixedTabOptions<Target extends JsonValue> =
       target?: never;
     };
 
-/** A navigation-page fixed tab with an owner-validated target. */
+/** A fixed tab with an owner-validated target, in a thread or a navigation page. */
 export type ExperimentalTabTargetReference<Target extends JsonValue> =
   ExperimentalTabReference & {
-    context: { kind: "nav-panel"; panelId: string };
     availability: "fixed";
     experimental_target: ExperimentalFixedTabTargetContract<Target>;
   };
@@ -4812,7 +4952,8 @@ export type ExperimentalTabOpenOptions = {
         context: { kind: "thread" };
         availability: "fixed";
       };
-      target?: never;
+      /** Rejected unless the tab declares `experimental_target` and validates it. */
+      target?: JsonValue;
       params?: never;
       title?: never;
     }
@@ -4954,7 +5095,15 @@ export interface ExperimentalRpcQueryState<T> {
 export interface ExperimentalRpcKeyedQueryState<
   T,
   Selection = Record<string, T>,
-> extends ExperimentalRpcQueryState<Selection> {}
+> extends ExperimentalRpcQueryState<Selection> {
+  /**
+   * Read these keys again and keep every other loaded row, for retrying one
+   * failed row without refreshing the rest. Keys must be among this query's
+   * keys; others are ignored. Resolves once the read settles; failures update
+   * `error` and retain data.
+   */
+  refetchKeys(keys: readonly string[]): Promise<void>;
+}
 
 export interface ExperimentalRpcQueryOptions<
   Contract extends PluginRpcContract,
@@ -5399,6 +5548,17 @@ export interface PluginSdkApp {
    */
   experimental_useCodeTheme(): PluginCodeThemeState;
   /**
+   * Whether `useBbNavigate().experimental_openFileExternally` can open files
+   * at `target`'s location in this client: the location resolves to a path and
+   * this client has a preferred external file target for its host. Only the
+   * environment, host or thread of `target` matters, not its `path`. False
+   * while either loads and for null. bb's own Open externally menu item uses
+   * the same answer. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useCanOpenFileExternally(
+    target: ExperimentalLiveFileTarget | null,
+  ): boolean;
+  /**
    * Writes content to the system clipboard through bb's own clipboard writer,
    * the one bb's copy actions use. A plain function, callable from
    * components, content scripts, and command callbacks. bb Desktop writes
@@ -5531,6 +5691,16 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_InfoListRow: ComponentType<ExperimentalInfoListRowProps>;
+  /**
+   * A relative time for an `experimental_InfoListRow`'s `trailing` slot, the
+   * one bb's Commits list uses. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_InfoRowTime: ComponentType<ExperimentalInfoRowTimeProps>;
+  /**
+   * A small heading inside an `experimental_InfoSection`, such as bb's "Files
+   * changed · 3". Experimental: see docs/api_to_audit.md.
+   */
+  experimental_InfoSubheading: ComponentType<ExperimentalInfoSubheadingProps>;
   /**
    * Host-owned inputs and actions for an `experimental_composer` replacement
    * (see {@link ExperimentalComposerRendererApi}). Throws outside an

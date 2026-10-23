@@ -1,4 +1,3 @@
-import { ThreadDiffFixedTabContent } from "./git-diff/thread-diff-registration";
 import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
@@ -123,9 +122,6 @@ function ShelfPanel({
   return (
     <ThreadSecondaryPanel
       activeTab={activeTab}
-      canUseGitUi
-      requestedMergeBaseBranch="main"
-      environmentId={undefined}
       isOpen
       metadataContent={<ThreadMetadataContent {...baseMetadataProps} />}
       tabs={tabs}
@@ -144,7 +140,7 @@ function ShelfPanel({
           ariaLabel: "Show diff panel",
           label: "Diff",
           contentFillsRegion: true,
-          renderContent: () => <ThreadDiffFixedTabContent />,
+          renderContent: () => null,
           leadingVisual: <Icon name="FileDiff" />,
           onSelect: () => onSelectTab(diffTab),
           tab: diffTab,

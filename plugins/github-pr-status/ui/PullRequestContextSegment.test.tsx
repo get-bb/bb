@@ -69,7 +69,7 @@ const SELF = {
   key: "bb--github-pr-status/pull-request",
   pluginId: "bb--github-pr-status",
 };
-const CHANGED_FILES = { key: "bb--core/changed-files", pluginId: "bb--core" };
+const CHANGED_FILES = { key: "bb--git/changed-files", pluginId: "bb--git" };
 const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function show(pullRequest: PullRequest) {

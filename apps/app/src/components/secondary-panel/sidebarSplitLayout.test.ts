@@ -106,18 +106,18 @@ describe("sidebar split layout", () => {
       serializeSidebarSplitState(saved),
       [
         "terminal:keep:none",
-        "plugin-fixed:core:diff",
+        "plugin-fixed:bb--git:diff",
         "plugin-fixed:core:info",
       ],
-      "plugin-fixed:core:diff",
+      "plugin-fixed:bb--git:diff",
     );
     const group = Object.values(restored.groups)[0];
     expect(group?.tabIds).toEqual([
       "terminal:keep:none",
-      "plugin-fixed:core:diff",
+      "plugin-fixed:bb--git:diff",
       "plugin-fixed:core:info",
     ]);
-    expect(group?.activeTabId).toBe("plugin-fixed:core:diff");
+    expect(group?.activeTabId).toBe("plugin-fixed:bb--git:diff");
     expect(restored.layout).toEqual(saved.layout);
   });
 

@@ -1,7 +1,8 @@
-
 import { ThreadGitActionDialogContent } from "./ThreadGitActionDialog";
 import type { ThreadGitStatusDisplay } from "@bb/shared-ui/git-status-display";
-import type { WorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
+import type {
+  WorkspaceChangedFilesSection,
+} from "@bb/shared-ui/workspace-change-summary";
 import { BRANCH_NAMES } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { DialogStage } from "../../../.ladle/story-dialog-stage";
@@ -38,7 +39,7 @@ const changedFiles: WorkspaceFileStatus[] = [
   },
 ];
 
-const changedFilesSection: WorkspaceChangedFilesSection<WorkspaceFileStatus> = {
+const changedFilesSection: WorkspaceChangedFilesSection = {
   kind: "uncommitted",
   label: "Uncommitted",
   files: changedFiles,

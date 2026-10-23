@@ -146,6 +146,11 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
   `setInputLock` have no effect here. Re-renders when the list or a listed
   draft or selection changes.
+- `experimental_useCanOpenFileExternally(target)` → whether
+  `useBbNavigate().experimental_openFileExternally` can open files at the
+  target's environment, host or thread storage in this client (its `path` is
+  ignored); false while that loads. Show an Open in editor control only when
+  it is true, as bb's own file menus do.
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
   registered theme name for that mode, and `theme` is the resolved **VS Code

@@ -1555,6 +1555,7 @@ describe("PluginNewThreadComposer seeding", () => {
       threadId: null,
       projectId: null,
       openThreadPanel: getActiveThreadPanelOpener(),
+      toggleThreadFixedTab: null,
     });
     await act(async () => {
       command.run();

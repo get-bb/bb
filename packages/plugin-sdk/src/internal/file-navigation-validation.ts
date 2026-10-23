@@ -196,11 +196,38 @@ export function normalizeExperimentalFileLocation(
 export function normalizeExperimentalFileOpenOptions(
   value: unknown,
 ): ExperimentalFileOpenOptions | null {
-  if (!isJsonObject(value) || !hasExactKeys(value, ["target", "location"])) {
+  if (
+    !isJsonObject(value) ||
+    !(
+      hasExactKeys(value, ["target", "location"]) ||
+      hasExactKeys(value, ["target", "location", "experimental_deleted"])
+    )
+  ) {
     return null;
   }
   const target = normalizeExperimentalLiveFileTarget(value.target);
   const location = normalizeExperimentalFileLocation(value.location);
   if (target === null || location === undefined) return null;
-  return { target, location };
+  if (value.experimental_deleted === undefined) return { target, location };
+  const deleted = normalizeDeletedFileSource(value.experimental_deleted);
+  if (deleted === null || target.kind !== "workspace") return null;
+  return { target, location, experimental_deleted: deleted };
+}
+
+function normalizeDeletedFileSource(
+  value: unknown,
+): NonNullable<ExperimentalFileOpenOptions["experimental_deleted"]> | null {
+  if (!isJsonObject(value)) return null;
+  if (hasExactKeys(value, ["from"]) && value.from === "head") {
+    return { from: "head" };
+  }
+  if (
+    hasExactKeys(value, ["from", "ref"]) &&
+    value.from === "merge-base" &&
+    typeof value.ref === "string" &&
+    /^[0-9a-f]{4,40}$/iu.test(value.ref)
+  ) {
+    return { from: "merge-base", ref: value.ref };
+  }
+  return null;
 }

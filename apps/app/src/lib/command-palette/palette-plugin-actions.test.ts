@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
+import type {
+  PluginThreadFixedTabToggleHandler,
+  PluginThreadPanelOpenHandler,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import {
   resetPluginLogoStoreForTest,
@@ -29,12 +32,14 @@ function slot(
 function build(
   slots: AppCommandSlot[],
   openThreadPanel: PluginThreadPanelOpenHandler | null = null,
+  toggleThreadFixedTab: PluginThreadFixedTabToggleHandler | null = null,
 ) {
   return buildPluginPaletteActions({
     slots,
     threadId: "thr_1",
     projectId: "proj_1",
     openThreadPanel,
+    toggleThreadFixedTab,
   });
 }
 
@@ -122,5 +127,26 @@ describe("buildPluginPaletteActions", () => {
     ])[0]?.run();
     expect(opened).toEqual([true, false]);
     warn.mockRestore();
+  });
+
+  it("toggles the calling plugin's thread tab, or declines without a thread view", () => {
+    const toggle: PluginThreadFixedTabToggleHandler = vi.fn(() => true);
+    const results: boolean[] = [];
+    const toggleSlot = slot({
+      id: "toggle",
+      run: (context) => {
+        results.push(
+          context.experimental_toggleTab({
+            id: "diff",
+            context: { kind: "thread" },
+            availability: "fixed",
+          }),
+        );
+      },
+    });
+    build([toggleSlot], null, toggle)[0]?.run();
+    expect(toggle).toHaveBeenCalledWith({ pluginId: "linear", tabId: "diff" });
+    build([toggleSlot])[0]?.run();
+    expect(results).toEqual([true, false]);
   });
 });

@@ -6,8 +6,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@bb/shared-ui/context-menu";
-import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useResolvedLiveFileTarget } from "@/hooks/useResolvedLiveFileTarget";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
@@ -30,13 +29,9 @@ export function ExperimentalFileLinkMenu({
   intent: ExperimentalFileOpenOptions;
 }) {
   const navigation = useAppNavigationHost();
-  const resolved = useResolvedLiveFileTarget(intent.target, { enabled: true });
-  const localTargets = useLocalOpenTargets({
-    enabled: resolved.status === "available",
-    ...(resolved.status === "available"
-      ? { openContext: resolved.openContext }
-      : {}),
-  });
+  const { resolved, localTargets, canOpenExternally } = useLiveFileOpenTargets(
+    intent.target,
+  );
   const { fileOpeners } = usePluginSlots();
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =
@@ -81,11 +76,7 @@ export function ExperimentalFileLinkMenu({
         </ContextMenuSub>
       ) : null}
       <ContextMenuItem
-        disabled={
-          resolved.status !== "available" ||
-          localTargets.isLoading ||
-          !localTargets.canOpenPreferredFileTarget
-        }
+        disabled={!canOpenExternally}
         onSelect={() => navigation.openFileExternally(intent)}
       >
         Open externally

@@ -66,3 +66,36 @@ export function getActiveThreadPanelOpener(): PluginThreadPanelOpenHandler | nul
 export function resetActiveThreadPanelOpenerForTest(): void {
   focusedOpeners.clear();
 }
+
+export type PluginThreadFixedTabToggleHandler = (tab: {
+  pluginId: string;
+  tabId: string;
+}) => boolean;
+
+const focusedTogglers = new Map<symbol, PluginThreadFixedTabToggleHandler>();
+
+export function usePublishThreadFixedTabToggler(
+  toggle: PluginThreadFixedTabToggleHandler,
+  isActive: boolean,
+): void {
+  const handlerRef = useRef(toggle);
+  useLayoutEffect(() => {
+    handlerRef.current = toggle;
+  }, [toggle]);
+  const tokenRef = useRef<symbol | null>(null);
+  tokenRef.current ??= Symbol("thread-fixed-tab-toggler");
+  useEffect(() => {
+    const token = tokenRef.current;
+    if (token === null || !isActive) return;
+    focusedTogglers.set(token, (tab) => handlerRef.current(tab));
+    return () => {
+      focusedTogglers.delete(token);
+    };
+  }, [isActive]);
+}
+
+export function getActiveThreadFixedTabToggler(): PluginThreadFixedTabToggleHandler | null {
+  let active: PluginThreadFixedTabToggleHandler | null = null;
+  for (const toggler of focusedTogglers.values()) active = toggler;
+  return active;
+}

@@ -20,7 +20,6 @@ it("sizes a lazily mounted surface from its clamped panel instead of the saved w
       handleSecondaryPanelResize,
     } = useSecondaryPanelResize({
       isSecondaryPanelOpen: true,
-      onPanelWidthChange: () => {},
       panelId: "secondary",
       renderAsDrawer: false,
     });
