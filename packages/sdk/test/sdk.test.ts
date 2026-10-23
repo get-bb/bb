@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { Environment, JsonValue } from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
@@ -556,6 +556,58 @@ describe("@bb/sdk", () => {
     expect(file.name).toBe("payload.bin");
     expect(file.type).toBe("application/x-bb-test");
     expect(new Uint8Array(await file.arrayBuffer())).toEqual(binary);
+  });
+
+  it("forwards native file URIs as React Native multipart parts", async () => {
+    const parts: Array<{ name: string; value: unknown; filename?: string }> =
+      [];
+    class ReactNativeFormData {
+      append(name: string, value: unknown, filename?: string) {
+        parts.push({ name, value, filename });
+      }
+    }
+    vi.stubGlobal("FormData", ReactNativeFormData);
+    try {
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          baseUrl: "http://bb.test",
+          fetch: async () =>
+            jsonResponse({
+              body: {
+                type: "localImage",
+                path: "image-uploaded.png",
+                name: "image.png",
+                mimeType: "image/png",
+                sizeBytes: 12,
+              },
+              status: 201,
+            }),
+          runtime: "browser",
+        }),
+      });
+      await sdk.projects.attachments.upload({
+        clientFile: {
+          nativeFile: true,
+          uri: "file:///private/bb-share/image.png",
+          name: "image.png",
+          mimeType: "image/png",
+        },
+        projectId: "proj_mobile",
+      });
+      expect(parts).toEqual([
+        {
+          name: "file",
+          value: {
+            uri: "file:///private/bb-share/image.png",
+            name: "image.png",
+            type: "image/png",
+          },
+          filename: "image.png",
+        },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("uses File-like attachment metadata and reads server attachment bytes", async () => {

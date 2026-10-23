@@ -83,6 +83,7 @@ import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-e
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useSharedContentImport } from "@/hooks/useSharedContentImport";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
@@ -239,6 +240,8 @@ export interface NewThreadComposerState {
   pluginComposerHost: PluginComposerHost;
   textEffects: NewThreadPromptBoxProps["textEffects"];
   isSubmitting: boolean;
+  sharedImportMessage: string | null;
+  retrySharedImport: () => void;
   seedEnvironmentSelectionValue: (value: string) => void;
   hostSelectionReady: boolean;
   selectHostForNewEnvironment: (hostId: string) => void;
@@ -281,6 +284,8 @@ export interface NewThreadComposerProps {
   preferReadyProviderWhenUnset?: boolean;
   onSubmit: (request: NewThreadComposerSubmission) => void | Promise<void>;
   focusRequest?: number;
+  sharedImportId?: string | null;
+  onSharedImportComplete?: () => void;
   children: (state: NewThreadComposerState) => ReactNode;
 }
 
@@ -508,6 +513,8 @@ export function NewThreadComposer({
   preferReadyProviderWhenUnset = false,
   onSubmit,
   focusRequest,
+  sharedImportId = null,
+  onSharedImportComplete,
   children,
 }: NewThreadComposerProps) {
   const navigate = useNavigate();
@@ -1400,6 +1407,16 @@ export function NewThreadComposer({
   const isCopyingAttachmentsRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const uploadPromptAttachment = useUploadPromptAttachment();
+  const sharedImport = useSharedContentImport({
+    shareId:
+      sharedImportId && !isProjectlessProjectId(projectId)
+        ? sharedImportId
+        : null,
+    projectId,
+    draft: promptDraft,
+    onComplete: onSharedImportComplete,
+  });
+  const sharedImportMessage = sharedImport.message;
   const uploadTargetKey = `${projectId}\0${promptDraft.storageKey}`;
   const { pendingUploads, startUploads, finishUploads } =
     usePendingAttachmentUploads(uploadTargetKey);
@@ -1634,7 +1651,12 @@ export function NewThreadComposer({
     submissionEnvironmentUnavailable: submissionEnvironment === null,
   });
   const submitDisabledReason =
-    submissionReadinessReason ??
+    (sharedImportId != null
+      ? (sharedImportMessage ??
+        (isProjectlessProjectId(projectId)
+          ? "Select a project to import the shared item."
+          : "Preparing shared item…"))
+      : submissionReadinessReason) ??
     (promptInputEmpty ? "Enter a prompt or attach a file." : null);
   const submitDraft = useCallback(
     async (
@@ -2221,6 +2243,14 @@ export function NewThreadComposer({
         pluginComposerHost,
         textEffects,
         isSubmitting,
+        sharedImportMessage:
+          sharedImportMessage ??
+          (sharedImportId == null
+            ? null
+            : isProjectlessProjectId(projectId)
+              ? "Select a project to import the shared item."
+              : "Preparing shared item…"),
+        retrySharedImport: sharedImport.retry,
         seedEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
         hostSelectionReady:
           sidebarNavigationSettled &&

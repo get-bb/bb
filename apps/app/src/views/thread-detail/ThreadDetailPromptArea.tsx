@@ -17,6 +17,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
+import { useLocation } from "react-router-dom";
+import { isShareId } from "@/lib/shared-content-import";
+import { useSharedContentImport } from "@/hooks/useSharedContentImport";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
@@ -456,6 +459,16 @@ export function ThreadDetailPromptArea({
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useImmediateRouteNavigate();
+  const location = useLocation();
+  const requestedShareId = new URLSearchParams(location.search).get("shareId");
+  const sharedImportId = isShareId(requestedShareId) ? requestedShareId : null;
+  const clearSharedImportRoute = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("shareId");
+    navigate(`${location.pathname}${params.size ? `?${params}` : ""}`, {
+      replace: true,
+    });
+  }, [location.pathname, location.search, navigate]);
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
     thread.id,
     {
@@ -548,6 +561,20 @@ export function ThreadDetailPromptArea({
     inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
     inlineSessionRef: inlineDraftSessionRef,
   });
+  const threadShareIsAvailable =
+    thread.projectId === projectId &&
+    thread.archivedAt == null &&
+    thread.deletedAt == null;
+  const sharedImport = useSharedContentImport({
+    shareId: sharedImportId && threadShareIsAvailable ? sharedImportId : null,
+    projectId,
+    draft: promptDraft,
+    onComplete: clearSharedImportRoute,
+  });
+  const sharedImportMessage =
+    sharedImportId && !threadShareIsAvailable
+      ? "This thread is unavailable for the shared item."
+      : sharedImport.message;
   const subscribeInlineQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
   );
@@ -1003,6 +1030,9 @@ export function ThreadDetailPromptArea({
     clearThreadGoal.mutate(thread.id);
   }, [clearThreadGoal, thread.id]);
   const submitMode = useMemo<FollowUpSubmitMode>(() => {
+    if (sharedImportId) {
+      return { kind: "blocked", reason: "pending-interaction" };
+    }
     if (isHandoffSelection && !isStopRequested) {
       if (effectiveSelectedModel.length > 0) {
         return { kind: "ready" };
@@ -1028,6 +1058,7 @@ export function ThreadDetailPromptArea({
     modelLoadFailed,
     isStopRequested,
     runtimeDisplayStatus,
+    sharedImportId,
   ]);
   const promptPlaceholder = getFollowUpPromptPlaceholder(
     isStopRequested ? "stopping" : runtimeDisplayStatus,
@@ -1281,6 +1312,7 @@ export function ThreadDetailPromptArea({
 
   const handleSend = useCallback(
     async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
+      if (sharedImportId) return;
       const submittedDraft = promptDraft.getCurrent();
       const submittedInput = promptDraftToInput(submittedDraft);
       if (isHandoffSelection) {
@@ -1372,12 +1404,14 @@ export function ThreadDetailPromptArea({
       promptDraft,
       sendMessage,
       setBottomAttachmentError,
+      sharedImportId,
       thread.id,
       runtimeDisplayStatus,
     ],
   );
   const handleModifierSubmit = useCallback(
     async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
+      if (sharedImportId) return;
       if (!canSubmitModifierShortcut) {
         throw new Error("There is nothing to send right now.");
       }
@@ -1448,19 +1482,21 @@ export function ThreadDetailPromptArea({
       sendMessage,
       sendQueuedMessageById,
       setBottomAttachmentError,
+      sharedImportId,
       thread.id,
     ],
   );
 
   const handleSendQueuedMessage = useCallback(
     (messageId: string) => {
+      if (sharedImportId) return;
       sendQueuedMessageById({
         guard: "exists",
         messageId,
         mode: shouldSteerWhenReady ? "steer" : "auto",
       }).catch(ignoreReportedSubmitError);
     },
-    [sendQueuedMessageById, shouldSteerWhenReady],
+    [sendQueuedMessageById, sharedImportId, shouldSteerWhenReady],
   );
 
   const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}`;
@@ -2336,38 +2372,55 @@ export function ThreadDetailPromptArea({
     );
 
   const bottomContent = (
-    <FollowUpPromptBox
-      id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
-      attachments={bottomAttachmentsConfig}
-      stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
-      pendingInteraction={pendingInteractionNode}
-      activePromptMode={isHandoffSelection ? null : activePromptMode}
-      composer={shouldHideComposer ? null : bottomComposerConfig}
-      pluginComposerHost={normalPluginComposerHost}
-      voiceDraft={promptDraft}
-      pluginComposerScope={normalPluginComposerHost.scope}
-      textEffects={promptTextEffects}
-      collapseResetKey={thread.id}
-      focusEndKey={bottomFocusEndKey}
-      environmentSummary={environmentSummary}
-      compactEnvironmentSummary={compactEnvironmentSummary}
-      contextWindowUsage={contextWindowUsage ?? null}
-      compactBeforeSend={
-        compactBeforeSendTokens === null
-          ? null
-          : {
-              compactFirst,
-              tokens: compactBeforeSendTokens,
-              onCompactFirstChange: (next) =>
-                setFullHistoryThreadId(next ? null : thread.id),
-            }
-      }
-      execution={bottomExecutionConfig}
-      permission={bottomPermissionConfig}
-      sessionOptionsControl={sessionOptionsControl}
-      typeahead={typeaheadConfig}
-      promptActions={promptActions}
-    />
+    <>
+      {sharedImportMessage && (
+        <div role="status" className="px-4 py-2 text-sm text-subtle-foreground">
+          <span>{sharedImportMessage}</span>
+          {!sharedImportMessage.startsWith("Uploading ") &&
+            sharedImportMessage !== "Preparing shared item…" && (
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={sharedImport.retry}
+              >
+                Retry import
+              </button>
+            )}
+        </div>
+      )}
+      <FollowUpPromptBox
+        id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
+        attachments={bottomAttachmentsConfig}
+        stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
+        pendingInteraction={pendingInteractionNode}
+        activePromptMode={isHandoffSelection ? null : activePromptMode}
+        composer={shouldHideComposer ? null : bottomComposerConfig}
+        pluginComposerHost={normalPluginComposerHost}
+        voiceDraft={promptDraft}
+        pluginComposerScope={normalPluginComposerHost.scope}
+        textEffects={promptTextEffects}
+        collapseResetKey={thread.id}
+        focusEndKey={bottomFocusEndKey}
+        environmentSummary={environmentSummary}
+        compactEnvironmentSummary={compactEnvironmentSummary}
+        contextWindowUsage={contextWindowUsage ?? null}
+        compactBeforeSend={
+          compactBeforeSendTokens === null
+            ? null
+            : {
+                compactFirst,
+                tokens: compactBeforeSendTokens,
+                onCompactFirstChange: (next) =>
+                  setFullHistoryThreadId(next ? null : thread.id),
+              }
+        }
+        execution={bottomExecutionConfig}
+        permission={bottomPermissionConfig}
+        sessionOptionsControl={sessionOptionsControl}
+        typeahead={typeaheadConfig}
+        promptActions={promptActions}
+      />
+    </>
   );
 
   return (

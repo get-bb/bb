@@ -8,7 +8,7 @@ import {
 } from "../src/index.js";
 
 const handshake: NativeShellHandshake = {
-  bridgeVersion: 2,
+  bridgeVersion: 3,
   appVersion: "0.39.0",
   platform: "ios",
   profileMode: "connect",
@@ -106,7 +106,7 @@ describe("buildBridgeInjectionScript", () => {
   );
   it("installs the handshake the page reads at boot", () => {
     const { native } = installBridge();
-    expect(native.bridgeVersion).toBe(2);
+    expect(native.bridgeVersion).toBe(3);
     expect(native.platform).toBe("ios");
     expect(native.profileMode).toBe("connect");
     expect(native.safeArea).toEqual({ top: 59, right: 0, bottom: 34, left: 0 });

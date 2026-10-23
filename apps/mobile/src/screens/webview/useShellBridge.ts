@@ -13,6 +13,15 @@ import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { buildBridgeSharePayload, isExternallyOpenable } from "@/lib/shell";
 import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
+import type { ServerProfile } from "@/lib/profiles";
+import { getProfileStore } from "@/lib/native";
+import { toast } from "@/ui";
+import {
+  acknowledgeSharedContent,
+  readSharedContent,
+  readSharedUploadStatus,
+  startSharedUpload,
+} from "@/lib/share/shared-upload-jobs";
 
 export interface ShellBridgeCallbacks {
   onReady(path: string): void;
@@ -28,6 +37,7 @@ export interface ShellBridge {
 export function useShellBridge(
   webViewRef: React.RefObject<WebView | null>,
   callbacks: ShellBridgeCallbacks,
+  profile: ServerProfile | null,
 ): ShellBridge {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -50,6 +60,13 @@ export function useShellBridge(
     async (message: PageToShellMessage): Promise<void> => {
       switch (message.type) {
         case "ready":
+          if (
+            Platform.OS === "ios" &&
+            hasShareId(message.path) &&
+            (message.pageBridgeVersion ?? 0) < 3
+          ) {
+            toast.info("Update your bb server to import shared files.");
+          }
           callbacksRef.current.onReady(message.path);
           return;
         case "title":
@@ -70,6 +87,87 @@ export function useShellBridge(
           return;
         }
         case "request": {
+          const current = getProfileStore().getSnapshot();
+          const currentProfile =
+            current.profiles.find(
+              (item) => item.id === current.activeProfileId,
+            ) ?? null;
+          const scopedProfile =
+            profile !== null &&
+            currentProfile?.id === profile.id &&
+            currentProfile.serverUrl === profile.serverUrl
+              ? profile
+              : null;
+          try {
+            switch (message.request.kind) {
+              case "get-shared-content": {
+                if (Platform.OS !== "ios" || !scopedProfile)
+                  throw new Error(
+                    "Choose an active server before importing a share.",
+                  );
+                respond(message.id, {
+                  ok: true,
+                  result: await readSharedContent(
+                    scopedProfile,
+                    message.request.payload.shareId,
+                    message.request.payload.projectId,
+                  ),
+                });
+                return;
+              }
+              case "start-shared-upload": {
+                if (Platform.OS !== "ios" || !scopedProfile)
+                  throw new Error(
+                    "Choose an active server before uploading a share.",
+                  );
+                respond(message.id, {
+                  ok: true,
+                  result: startSharedUpload(
+                    scopedProfile,
+                    message.request.payload.shareId,
+                    message.request.payload.fileId,
+                    message.request.payload.projectId,
+                  ),
+                });
+                return;
+              }
+              case "shared-upload-status":
+                if (Platform.OS !== "ios" || !scopedProfile)
+                  throw new Error(
+                    "The active server changed. Reopen this share to continue.",
+                  );
+                respond(message.id, {
+                  ok: true,
+                  result: readSharedUploadStatus(
+                    scopedProfile,
+                    message.request.payload.jobId,
+                  ),
+                });
+                return;
+              case "acknowledge-share": {
+                if (Platform.OS !== "ios" || !scopedProfile)
+                  throw new Error(
+                    "The active server changed. Reopen this share to continue.",
+                  );
+                respond(message.id, {
+                  ok: true,
+                  result: await acknowledgeSharedContent(
+                    scopedProfile,
+                    message.request.payload.shareId,
+                    message.request.payload.projectId,
+                  ),
+                });
+                return;
+              }
+              case "share":
+              case "clipboard-html":
+              case "clipboard":
+                break;
+            }
+          } catch (error) {
+            respond(message.id, { ok: false, error: describeError(error) });
+            return;
+          }
           if (message.request.kind === "share") {
             const payload = buildBridgeSharePayload(
               Platform.OS,
@@ -95,7 +193,7 @@ export function useShellBridge(
         }
       }
     },
-    [respond],
+    [profile, respond],
   );
 
   const onMessage = useCallback(
@@ -113,4 +211,18 @@ export function useShellBridge(
   );
 
   return useMemo(() => ({ onMessage, send }), [onMessage, send]);
+}
+
+function hasShareId(path: string): boolean {
+  try {
+    const shareId = new URL(path, "https://bb.invalid").searchParams.get(
+      "shareId",
+    );
+    return (
+      shareId !== null &&
+      /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(shareId)
+    );
+  } catch {
+    return false;
+  }
 }

@@ -76,6 +76,8 @@ import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelA
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
+import { isShareId } from "@/lib/shared-content-import";
+import { SharedDestinationChooser } from "@/components/pickers/SharedDestinationChooser";
 import {
   useEnvironmentTerminals,
   useTerminals,
@@ -400,6 +402,17 @@ export function buildRootComposeTerminalSessions({
 
 export function RootComposeView() {
   const { navigateInPane } = usePaneContext();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const requestedShareId = new URLSearchParams(location.search).get("shareId");
+  const sharedImportId = isShareId(requestedShareId) ? requestedShareId : null;
+  const clearSharedImportRoute = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("shareId");
+    navigate(`${getRootComposeRoutePath()}${params.size ? `?${params}` : ""}`, {
+      replace: true,
+    });
+  }, [location.search, navigate]);
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const createThread = useCreateThread();
@@ -407,6 +420,14 @@ export function RootComposeView() {
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
+  const [shareDestination, setShareDestination] = useState<{
+    shareId: string | null;
+    kind: "choose" | "new";
+  }>({ shareId: null, kind: "choose" });
+  const selectedShareDestination =
+    shareDestination.shareId === sharedImportId
+      ? shareDestination.kind
+      : "choose";
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
 
@@ -440,16 +461,39 @@ export function RootComposeView() {
       draftStorage={{ kind: "new-thread" }}
       selectionScope="new-thread"
       preferReadyProviderWhenUnset
+      sharedImportId={
+        selectedShareDestination === "new" ? sharedImportId : null
+      }
+      onSharedImportComplete={clearSharedImportRoute}
       onSubmit={handleSubmit}
     >
-      {(composer) => (
-        <RootComposeSurface
-          composer={composer}
-          lastCreatedThreadId={lastCreatedThreadId}
-          rootComposeProjectId={rootComposeProjectId}
-          setRootComposeProjectId={setRootComposeProjectId}
-        />
-      )}
+      {(composer) =>
+        sharedImportId && selectedShareDestination === "choose" ? (
+          <SharedDestinationChooser
+            projectId={composer.projectId}
+            projects={composer.projects ?? []}
+            onProjectChange={setRootComposeProjectId}
+            onAddToThread={(threadId) => {
+              const params = new URLSearchParams(location.search);
+              params.set("shareId", sharedImportId);
+              navigate(
+                `${getThreadRoutePath({ projectId: composer.projectId, threadId })}?${params}`,
+                { replace: true },
+              );
+            }}
+            onNewThread={() =>
+              setShareDestination({ shareId: sharedImportId, kind: "new" })
+            }
+          />
+        ) : (
+          <RootComposeSurface
+            composer={composer}
+            lastCreatedThreadId={lastCreatedThreadId}
+            rootComposeProjectId={rootComposeProjectId}
+            setRootComposeProjectId={setRootComposeProjectId}
+          />
+        )
+      }
     </NewThreadComposer>
   );
 }
@@ -493,6 +537,8 @@ function RootComposeSurface({
     pluginComposerHost: sharedPluginComposerHost,
     textEffects: promptTextEffects,
     isSubmitting,
+    sharedImportMessage,
+    retrySharedImport,
     seedEnvironmentSelectionValue,
     hostSelectionReady,
     selectHostForNewEnvironment,
@@ -1578,6 +1624,26 @@ function RootComposeSurface({
                     onPanelFocus: touchFixedPanelTabsState,
                   }}
                 >
+                  {sharedImportMessage && (
+                    <div
+                      role="status"
+                      className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-2 text-sm text-muted-foreground"
+                    >
+                      <span>{sharedImportMessage}</span>
+                      {sharedImportMessage !== "Preparing shared item…" &&
+                        sharedImportMessage !== "Finishing import…" &&
+                        !sharedImportMessage.startsWith("Uploading ") && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={retrySharedImport}
+                          >
+                            Retry import
+                          </Button>
+                        )}
+                    </div>
+                  )}
                   {promptBox}
                 </RootComposeSecondaryContent>
               </PluginThreadPanelNavigationProvider>
