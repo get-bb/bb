@@ -579,6 +579,31 @@ describe("Docs nav panel", () => {
     );
   });
 
+  it("focuses the end of the document when the space below it is clicked", async () => {
+    const slot = renderSlot(
+      docsRegistration,
+      { subPath: "personal/whitespace.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResultForVault("personal", "whitespace.md", "Space"),
+          readDocument: (rawInput: unknown) => {
+            const input = rawInput as { path: string };
+            return documentResult(input.path, "# Space\n\nLast line", "sha");
+          },
+        },
+      },
+    );
+    const editor = await slot.findByRole("textbox", {
+      name: "Document content",
+    });
+    await slot.findByText("Last line");
+    editor.blur();
+    fireEvent.mouseDown(editor.parentElement!, { button: 0, clientY: 10 });
+    await waitFor(() => expect(document.activeElement).toBe(editor));
+    expect(getSelection()?.anchorNode?.textContent).toBe("Last line");
+  });
+
   it("ignores an obsolete vault refresh and rename after a deferred save", async () => {
     const pendingSave = deferred<{ path: string; sha256: string }>();
     const pendingWorkNotebook =

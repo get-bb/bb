@@ -6,6 +6,7 @@ import {
   useState,
   useSyncExternalStore,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   definePluginApp,
@@ -637,11 +638,32 @@ function TiptapEditor(props: {
     if (active && !inline) editorRef.current?.commands.focus("end");
   }, [active, inline]);
 
+  const focusFromWhitespace = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    if (!editor || event.button !== 0 || !editor.isEditable) return;
+    const content = editor.view.dom;
+    if (event.target instanceof window.Node && content.contains(event.target))
+      return;
+    event.preventDefault();
+    const rect = content.getBoundingClientRect();
+    if (event.clientY >= rect.bottom) {
+      editor.commands.focus("end");
+      return;
+    }
+    const position = editor.view.posAtCoords({
+      left: Math.min(Math.max(event.clientX, rect.left + 1), rect.right - 1),
+      top: Math.min(Math.max(event.clientY, rect.top + 1), rect.bottom - 1),
+    });
+    if (position) editor.chain().focus().setTextSelection(position.pos).run();
+    else editor.commands.focus("end");
+  };
+
   return (
     <div
       ref={rootRef}
       data-inline={inline}
       className="bb-simple-notes-editor min-h-0 flex-1 overflow-y-auto text-sm"
+      onMouseDown={focusFromWhitespace}
     />
   );
 }
@@ -1176,7 +1198,12 @@ function InlineDocument({
             )
           ) : (
             <>
-              <div ref={contentRef} className="min-w-0">
+              <div
+                ref={contentRef}
+                className={
+                  panel ? "flex min-h-full min-w-0 flex-col" : "min-w-0"
+                }
+              >
                 {pending && baseMetadata !== candidateMetadata && (
                   <div className="px-6 pt-4 text-xs">
                     <p className="mb-2 font-medium">Document metadata</p>
