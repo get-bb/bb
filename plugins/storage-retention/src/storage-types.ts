@@ -28,6 +28,28 @@ export type HostStorageLeftoverWorktree = z.infer<
   typeof hostStorageLeftoverWorktreeSchema
 >;
 
+export const externalWorktreeScanSchema = z.object({
+  projectId: z.string(),
+  repositoryPath: z.string(),
+  path: z.string(),
+  branch: z.string().nullable(),
+  locked: z.boolean(),
+  changedFileCount: z.number().int().nonnegative().nullable().default(null),
+  unsavedCommitCount: z.number().int().nonnegative().nullable().default(null),
+  lastActivityAt: z.number().nullable(),
+  sizeBytes: byteCountSchema,
+});
+const linkedThreadSchema = z.object({
+  threadId: z.string(),
+  title: z.string(),
+  archived: z.boolean(),
+});
+export const hostStorageExternalWorktreeSchema =
+  externalWorktreeScanSchema.extend({ threads: z.array(linkedThreadSchema) });
+export type HostStorageExternalWorktree = z.infer<
+  typeof hostStorageExternalWorktreeSchema
+>;
+
 const developerEntrySchema = z.object({
   name: z.string(),
   sizeBytes: byteCountSchema,
@@ -43,13 +65,8 @@ export const developerStorageScanSchema = z.object({
 export const developerStorageSchema = developerStorageScanSchema.extend({
   entries: z.array(
     developerEntrySchema.extend({
-      threads: z.array(
-        z.object({
-          threadId: z.string(),
-          title: z.string(),
-          archived: z.boolean(),
-        }),
-      ),
+      threads: z.array(linkedThreadSchema),
+      current: z.boolean(),
     }),
   ),
 });
@@ -92,8 +109,11 @@ export const hostStorageReportSchema = z.object({
       projectName: z.string(),
       worktreeCount: z.number().int().nonnegative(),
       cleanupPendingCount: z.number().int().nonnegative(),
+      externalCount: z.number().int().nonnegative(),
+      externalBytes: byteCountSchema,
     }),
   ),
+  externalWorktrees: z.array(hostStorageExternalWorktreeSchema),
   developerStorage: developerStorageSchema.nullable(),
 });
 export type HostStorageReport = z.infer<typeof hostStorageReportSchema>;
@@ -146,20 +166,28 @@ export type ArchivedFileCleanupStatus = z.infer<
   typeof archivedFileCleanupStatusSchema
 >;
 
+export const maintenanceKindSchema = z.enum([
+  "orphans",
+  "development",
+  "worktrees",
+  "externalWorktrees",
+]);
+export type MaintenanceKind = z.infer<typeof maintenanceKindSchema>;
+
 export const maintenanceStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("idle") }),
   z.object({
     state: z.literal("running"),
-    kind: z.enum(["orphans", "development", "worktrees"]),
+    kind: maintenanceKindSchema,
   }),
   z.object({
     state: z.literal("completed"),
-    kind: z.enum(["orphans", "development", "worktrees"]),
+    kind: maintenanceKindSchema,
     message: z.string(),
   }),
   z.object({
     state: z.literal("failed"),
-    kind: z.enum(["orphans", "development", "worktrees"]),
+    kind: maintenanceKindSchema,
     message: z.string(),
   }),
 ]);
@@ -204,4 +232,29 @@ export const hostStorageRetryWorktreeCleanupResponseSchema = z.object({
 });
 export type HostStorageRetryWorktreeCleanupResponse = z.infer<
   typeof hostStorageRetryWorktreeCleanupResponseSchema
+>;
+
+export const hostStorageRemoveExternalWorktreesResponseSchema = z.object({
+  removedCount: z.number().int().nonnegative(),
+  removedBytes: byteCountSchema,
+  skipped: z.array(
+    z.object({
+      path: z.string(),
+      reasons: z
+        .array(
+          z.enum([
+            "notWorktree",
+            "locked",
+            "uncommittedChanges",
+            "unsavedCommits",
+            "inUseByBb",
+          ]),
+        )
+        .min(1),
+    }),
+  ),
+  failed: z.array(z.object({ path: z.string(), message: z.string() })),
+});
+export type HostStorageRemoveExternalWorktreesResponse = z.infer<
+  typeof hostStorageRemoveExternalWorktreesResponseSchema
 >;

@@ -62,6 +62,7 @@ function fixture(subPath = "host_test") {
         largestThreads: [],
         leftoverWorktrees: [],
         projectWorktrees: [],
+        externalWorktrees: [],
         developerStorage: {
           path: "/fixture/dev",
           sizeBytes: 20,
@@ -73,6 +74,7 @@ function fixture(subPath = "host_test") {
               sourcePathState: "exists",
               running: true,
               threads: [],
+              current: false,
             },
           ],
         },

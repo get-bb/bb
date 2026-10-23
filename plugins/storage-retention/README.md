@@ -25,6 +25,17 @@ If the instance's dev server is running (fresh daemon lock), the row asks
 "Stop and remove?" first; confirming stops that instance's launcher and
 removes it. The CLI's `--yes` covers that confirmation.
 
+Scans also run `git worktree list` in each project source on the machine and
+report linked worktrees that no live BB environment owns, such as ones agents
+created with `git worktree add`. The Worktrees by project table counts them next
+to BB worktrees, and the Clean up section lists them with sizes. Removal runs
+`git worktree remove` on the host after rechecking that the worktree is unlocked,
+clean, and not detached on commits outside every branch and tag; branches are
+kept. Rows show the blockers found during the scan. Removing a kept worktree from
+its row asks "Remove anyway?" and runs `git worktree remove --force`; bulk removal
+never forces. The matching CLI command is
+`bb storage remove-external-worktrees --machine HOST_ID [--path PATH [--force]] --yes`.
+
 Large-file cleanup from the page starts a background job so slow folder walks
 can finish after the remote HTTP request returns. Each machine reports running,
 completed, or failed status, including after navigation or reconnection. The
@@ -61,7 +72,7 @@ Offline/busy machines and failed cleanup retry on subsequent scans. Provider
 removal success does not prove the path was deleted; the host always checks
 actual filesystem state.
 
-Orphan, development, worktree, and archived-file bulk cleanup can also run as
+Orphan, development, worktree, external-worktree, and archived-file bulk cleanup can also run as
 background jobs. `startCleanup` and `startClearArchivedFiles` start them; `host`
 and `hosts` report progress. The CLI offers `bb storage cleanup` for maintenance
 jobs and keeps synchronous cleanup commands for callers that need final totals.

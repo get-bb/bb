@@ -20,9 +20,18 @@ provider, and directive are all Docs.
   hidden until requested.
 - **Safe host-routed operations:** all list/read/write/mkdir/move/remove calls
   go through `bb.sdk.files` with an explicit vault root. Saves retain SHA-256
-  compare-and-swap conflict handling. Local vaults use native filesystem
-  watching for immediate UI refreshes; remote or unwatchable vaults fall back
-  to polling.
+  compare-and-swap conflict handling. While a vault's tree or one of its
+  documents is on screen, local vaults are watched natively and remote or
+  unwatchable vaults are polled every 10 seconds; nothing is watched otherwise.
+- **Live documents:** an open document shows saves from other windows, the CLI,
+  agents, and external editors as they land. A change that arrives while you
+  have unsaved typing keeps your text and offers Keep mine or Use theirs. A
+  document moved or deleted elsewhere stops saving and offers Save a copy
+  instead of recreating the old file.
+- **Stable file names:** a document's title is its first heading (or
+  frontmatter `title`), and editing it never renames the file, so thread cards,
+  tabs, and links keep working. A new note starts as `Untitled.md` and takes its
+  first heading as its file name when it is saved from the Docs panel.
 - **Default Markdown editor:** Docs registers for `.md`, `.mdx`, and
   `.markdown` files, so it can be selected under Settings → File openers or
   chosen from a file link's Open with menu. Workspace, absolute host, and
@@ -239,9 +248,11 @@ Proposals follow file and folder moves made through Docs and are cleared when
 their document, folder, or vault is removed.
 
 The RPC equivalents are `readProposal`, `proposeNote`, `updateProposal`, and
-`resolveProposal`. `proposal-changed` signals carry `vaultId`, `path`, and
-`version`. `vault-changed` can include `path` for a single-document change and
-`proposalOnly: true` when the matching `proposal-changed` signal covers it.
-Events without a path still invalidate the whole vault (or all vaults when
-`vaultId` is absent), including external filesystem changes. Existing file
-read, save, and sync APIs remain supported.
+`resolveProposal`. The app reads a document, its proposal, and its preview link
+together through `readDocument`, and saves through `saveDocument`, which can
+also give an `Untitled` note its first heading as its file name. Every write, from the
+app, CLI, HTTP API, sync, or the vault watcher, invalidates the tags of the
+documents, folders, and trees it changed (`doc:<vault>:<path>`,
+`folder:<vault>:<path>`, `tree:<vault>`, `vault:<vault>`, and `vaults`), so only
+the reads on screen that show them refresh. Existing file read, save, and sync
+APIs remain supported.

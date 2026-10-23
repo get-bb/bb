@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.47.0
+
+Customizable sidebar navigation, new and improved ACP support, file-by-file diff review, and more of bb you can replace with plugins.
+
+### Highlights
+
+- **Customizable sidebar navigation:** switch between the left rail, a top list, or a navigation plugin in Settings → Appearance → Navigation. Navigation items can show badges.
+- **New and improved ACP support:** the rebuilt adapter from 0.46.1 replaces the old one, bringing agent options, live slash commands, agent questions and the ACP registry (`bb acp add`) to every ACP agent.
+- **Diff review:** mark files Viewed so they stay collapsed until they change, ignore whitespace, and filter by name, extension, or deleted and viewed files.
+- **More customization surfaces:** bb's composer and GitHub pull request status are now bundled plugins you can replace or fork, and plugins can add tabs, Info rows and segments above the composer.
+
+### Agents and threads
+
+- Choose whether a child thread notifies its parent of every outcome, only when stuck, or never.
+- Child threads use their parent's provider and model when none is specified, and threads continue automatically after moving to a new directory.
+- Edit messages while background work is running.
+- Deleting a thread now also deletes the threads nested beneath it in the sidebar, including archived ones.
+- Turns that fail on provider server or connection errors retry automatically.
+- Claude Code gains an Artifacts setting and live slash commands.
+- Codex supports MCP elicitation, fixing Computer Use permissions.
+
+### App
+
+- The timeline's reading position no longer jumps, and unread threads open at the NEW divider.
+- On macOS, page and thread headers move into the title bar for 48px more content height, and desktop remembers window size, position and zoom.
+- The in-app browser opens URLs in a new tab with Cmd/Alt+Enter, adds Copy Image and microphone access, and releases memory from idle tabs.
+- The terminal copies on select and has paste controls.
+- 12% less startup JavaScript and fewer git processes.
+
+### Experiments
+
+- **Early adopter:** turn on **Become an early adopter** in Settings → Experiments to get new experiments as soon as they're ready for wider testing. This release adds two: pushed timeline updates, and an offer to compact before resuming a thread whose prompt cache has expired.
+
+### Fixes and improvements
+
+- Approvals show each chained command on its own line.
+- New settings control how long idle provider sessions stay open and turn off shell command summaries.
+- Automations show why a run failed, and the Info tab lists automations that target the thread.
+- `bb pull-request show|ready|draft|merge` inspects and acts on an environment's pull request.
+- Claude Code shows foreground commands and subagents as foreground work.
+- OpenCode enforces bb's permission modes over ACP, and Fast is hidden for models that can't use it.
+- Copying from the timeline keeps Markdown and raw TeX, and single-dollar inline math renders.
+- Failed voice recordings stay in the composer so you can retry.
+- Up-arrow history works with attachments, and uploads survive composer remounts.
+- Previewable files can be downloaded.
+- Desktop logs persist, and Local Logs is available on every desktop.
+- F11 toggles fullscreen on Windows, and Nightly and Dev have new icons.
+- Clicking the browser address bar selects the whole URL, favicons stay sharp, browser tabs support bb Connect sign-in, and automation sessions last up to eight hours.
+- On mobile, swipe left to open the right panel.
+- Failed environment teardown backs off and stops at "Needs recovery" instead of retrying forever. `bb environment cleanup <id> --recover` retries after an interrupted setup.
+- The plugins that draw the page load first, environment status is faster, git and gh processes are capped, service logs are size-limited, and the hourly database vacuum yields to requests.
+- Fix dead click areas across highlighted rows and cards.
+- Fix quick-action order on parent threads, sidebar modifier-click and Cmd/Ctrl-click navigation, and sidebar rows jumping when the thread list starts to scroll.
+- Fix threads stuck active after cancelling a plan, and threads without an environment starting on a machine that lacks the project.
+- Fix new branches in project checkouts that lack the base branch locally.
+- Fix Claude Code `permissions.ask` rules in full access, and Claude conversations blocked by context reporting.
+- Fix provider updates and inline visualizations on Windows, OpenCode Go usage credentials, GitHub Enterprise Managed User logins, and removing stranded machines.
+- Notification previews skip directives, tables and raw JSON.
+
+### Plugins
+
+- **Navigation plugins work again:** the sidebar navigation API removed in 0.46.0 is back, so plugins built for it load again. Plugins can now also replace bb's composer, add tabs to threads and navigation pages, and add rows to the Info tab and segments above the composer.
+- **For plugin authors upgrading:** `experimental_tab` replaces `threadPanelAction` and `navPanel.fixedTabs`, which keep loading with a deprecation warning.
+
+### Thanks
+
+Thank you to [@Danielalnajjar](https://github.com/Danielalnajjar), [@MateoCerquetella](https://github.com/MateoCerquetella), [@MayankBansal12](https://github.com/MayankBansal12), [@ahmedhesham6](https://github.com/ahmedhesham6), [@alexandre-vl](https://github.com/alexandre-vl), [@dillonzq](https://github.com/dillonzq), [@djbclark](https://github.com/djbclark), [@hemaaanth](https://github.com/hemaaanth), [@idrevnii](https://github.com/idrevnii), [@kuntashov](https://github.com/kuntashov), [@lgladysz](https://github.com/lgladysz), [@nottzaid](https://github.com/nottzaid), [@pascal-de-ladurantaye](https://github.com/pascal-de-ladurantaye), [@patleeman](https://github.com/patleeman), [@phyjswang](https://github.com/phyjswang), [@salemsayed](https://github.com/salemsayed), [@seb-veto](https://github.com/seb-veto), [@smsunarto](https://github.com/smsunarto), [@stefanroex](https://github.com/stefanroex), [@toolittlecakes](https://github.com/toolittlecakes), [@vznh](https://github.com/vznh), and [@zom-2018](https://github.com/zom-2018) for contributions to this release.
+
 ## 0.46.1
 
 Connect MCP clients to bb, install the bb CLI from Settings, search Settings, and answer child threads' questions without leaving the parent.

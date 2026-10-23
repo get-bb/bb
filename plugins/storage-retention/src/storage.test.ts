@@ -1,5 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -1176,6 +1176,8 @@ it("counts distinct live managed worktrees for machine projects, including empty
       if (call.method === "homeDirectory") return "/missing-home";
       if (call.method === "capacity")
         return { totalBytes: 2048, freeBytes: 1024 };
+      if (call.method === "listGitWorktrees")
+        return { repositories: [], failures: [] };
       return { targets: [], largeFiles: [] };
     },
     sdk: {
@@ -1206,18 +1208,262 @@ it("counts distinct live managed worktrees for machine projects, including empty
           projectName: "work",
           worktreeCount: 2,
           cleanupPendingCount: 1,
+          externalCount: 0,
+          externalBytes: 0,
         },
         {
           projectId: "proj_empty",
           projectName: "empty",
           worktreeCount: 0,
           cleanupPendingCount: 0,
+          externalCount: 0,
+          externalBytes: 0,
         },
       ]);
   } finally {
     await host.harness.dispose();
   }
 });
+
+it("finds worktrees created outside BB, removes only safe ones in bulk, and force-removes the rest one at a time", async () => {
+  type Environment = Awaited<
+    ReturnType<
+      import("@get-bb/plugin-sdk").BbPluginApi["sdk"]["environments"]["list"]
+    >
+  >[number];
+  const root = await directory();
+  const repository = path.join(root, "repo");
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Test",
+        GIT_AUTHOR_EMAIL: "test@example.com",
+        GIT_COMMITTER_NAME: "Test",
+        GIT_COMMITTER_EMAIL: "test@example.com",
+      },
+    });
+  await fs.mkdir(repository);
+  git(repository, "init", "-q", "-b", "main");
+  await fs.writeFile(path.join(repository, ".gitignore"), "node_modules\n");
+  git(repository, "add", ".");
+  git(repository, "commit", "-q", "-m", "init");
+  const worktree = (name: string, ...args: string[]) => {
+    const target = path.join(root, name);
+    git(repository, "worktree", "add", "-q", ...args, target);
+    return target;
+  };
+  const managed = worktree("managed", "-b", "managed");
+  const clean = worktree("clean", "-b", "clean");
+  await fs.mkdir(path.join(clean, "node_modules"));
+  await fs.writeFile(
+    path.join(clean, "node_modules", "dep.js"),
+    Buffer.alloc(64 * 1024, 1),
+  );
+  const dirty = worktree("dirty", "-b", "dirty");
+  await fs.writeFile(path.join(dirty, "draft.ts"), "unsaved");
+  const detached = worktree("detached", "--detach");
+  await fs.writeFile(path.join(detached, "note.md"), "note");
+  git(detached, "add", ".");
+  git(detached, "commit", "-q", "-m", "detached work");
+  const locked = worktree("locked", "-b", "locked");
+  git(repository, "worktree", "lock", locked);
+  await fs.writeFile(path.join(locked, "draft.ts"), "unsaved");
+  const environment: Environment = {
+    id: "env_managed",
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: managed,
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: "managed",
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "ready",
+    environmentProviderId: "bb--environment-git-worktree",
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
+    managed: true,
+    workspaceProvisionType: "managed-worktree",
+    createdAt: 0,
+    updatedAt: 0,
+  };
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      for (const method of [
+        "measure",
+        "capacity",
+        "listGitWorktrees",
+        "removeGitWorktrees",
+      ] as const)
+        if (call.method === method)
+          return worker.experimental_call(
+            method,
+            hostStorageContract[method].input.parse(call.input),
+          );
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: path.join(root, "storage"),
+        }),
+      },
+      threads: { list: async () => [] },
+      projects: {
+        list: async () => [
+          {
+            id: "proj_work",
+            name: "work",
+            kind: "standard" as const,
+            gitRemoteUrl: null,
+            createdAt: 0,
+            updatedAt: 0,
+            sources: [
+              {
+                id: "src_work",
+                projectId: "proj_work",
+                type: "local_path" as const,
+                hostId: "host_test",
+                path: repository,
+                isDefault: true,
+                createdAt: 0,
+                updatedAt: 0,
+              },
+            ],
+          },
+        ],
+      },
+      environments: { list: async () => [environment] },
+    },
+  });
+  const report = async () =>
+    hostStorageResponseSchema.parse(
+      await host.harness.callRpc("host", { hostId: "host_test" }),
+    ).report;
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(async () => (await report()) !== null, { timeout: 30_000 })
+      .toBe(true);
+    const scanned = (await report())!;
+    expect(
+      scanned.externalWorktrees.map(
+        ({
+          path: target,
+          branch,
+          locked,
+          changedFileCount,
+          unsavedCommitCount,
+        }) => ({
+          target,
+          branch,
+          locked,
+          changedFileCount,
+          unsavedCommitCount,
+        }),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          target: clean,
+          branch: "clean",
+          locked: false,
+          changedFileCount: 0,
+          unsavedCommitCount: 0,
+        },
+        {
+          target: dirty,
+          branch: "dirty",
+          locked: false,
+          changedFileCount: 1,
+          unsavedCommitCount: 0,
+        },
+        {
+          target: detached,
+          branch: null,
+          locked: false,
+          changedFileCount: 0,
+          unsavedCommitCount: 1,
+        },
+        {
+          target: locked,
+          branch: "locked",
+          locked: true,
+          changedFileCount: 1,
+          unsavedCommitCount: 0,
+        },
+      ]),
+    );
+    expect(scanned.externalWorktrees).toHaveLength(4);
+    expect(
+      scanned.externalWorktrees.find((entry) => entry.path === clean)!
+        .sizeBytes,
+    ).toBeGreaterThanOrEqual(64 * 1024);
+    expect(scanned.projectWorktrees).toEqual([
+      expect.objectContaining({
+        projectId: "proj_work",
+        worktreeCount: 1,
+        externalCount: 4,
+      }),
+    ]);
+    const result = await host.harness.callRpc("removeExternalWorktrees", {
+      hostId: "host_test",
+      paths: null,
+    });
+    expect(result).toMatchObject({ removedCount: 1, failed: [] });
+    expect(
+      Object.fromEntries(
+        (
+          result as { skipped: { path: string; reasons: string[] }[] }
+        ).skipped.map((entry) => [entry.path, entry.reasons]),
+      ),
+    ).toEqual({
+      [dirty]: ["uncommittedChanges"],
+      [detached]: ["unsavedCommits"],
+      [locked]: ["locked", "uncommittedChanges"],
+    });
+    await expect(fs.stat(clean)).rejects.toThrow();
+    for (const kept of [managed, dirty, detached, locked])
+      await expect(fs.stat(kept)).resolves.toBeTruthy();
+    expect(git(repository, "branch", "--list", "clean").trim()).toBe("clean");
+    expect(
+      (await report())!.externalWorktrees.map((entry) => entry.path).sort(),
+    ).toEqual([detached, dirty, locked].sort());
+    await expect(
+      host.harness.callRpc("removeExternalWorktrees", {
+        hostId: "host_test",
+        paths: [managed],
+        force: true,
+      }),
+    ).rejects.toThrow("Not a worktree created outside BB");
+    await expect(
+      host.harness.callRpc("removeExternalWorktrees", {
+        hostId: "host_test",
+        paths: [dirty, detached, locked],
+        force: true,
+      }),
+    ).resolves.toMatchObject({ removedCount: 3, skipped: [], failed: [] });
+    for (const removed of [dirty, detached, locked])
+      await expect(fs.stat(removed)).rejects.toThrow();
+    await expect(fs.stat(managed)).resolves.toBeTruthy();
+    expect((await report())!.externalWorktrees).toEqual([]);
+  } finally {
+    await host.harness.dispose();
+  }
+}, 60_000);
 
 it("recovers developer checkout paths from launch records, old runtime records, known paths and verified managed names", async () => {
   const homeDir = await directory();
@@ -1388,6 +1634,7 @@ it.skipIf(process.platform === "win32")(
       extra: path.join(fakeHome, "extra", "bb"),
       idle: path.join(fakeHome, "idle", "bb"),
       busy: path.join(fakeHome, "busy", "bb"),
+      self: path.join(fakeHome, "self", "bb"),
     };
     await fs.mkdir(checkouts.gone, { recursive: true });
     await fs.mkdir(checkouts.kept, { recursive: true });
@@ -1435,6 +1682,7 @@ it.skipIf(process.platform === "win32")(
     const worker = experimental_createHostEntryHarness(hostEntry);
     const host = createFakePluginHost({
       pluginId: "storage-retention",
+      dataDir: path.join(rootPath, "self"),
       experimental_hostEntry: true,
       experimental_callHostRpc: async (call) => {
         if (call.method === "homeDirectory") return fakeHome;
@@ -1494,8 +1742,19 @@ it.skipIf(process.platform === "win32")(
         ["idle", "exists", false],
         ["kept", "exists", false],
         ["revived", "missing", false],
+        ["self", "missing", false],
         ["spare", "missing", false],
       ]);
+      expect(
+        scanned.entries.filter((entry) => entry.current).map((e) => e.name),
+      ).toEqual(["self"]);
+      await expect(
+        host.harness.callRpc("removeDevInstances", {
+          hostId: "host_test",
+          names: ["self", "spare"],
+          stopRunning: true,
+        }),
+      ).rejects.toThrow("this BB is running from");
       await expect(
         host.harness.callRpc("removeDevInstances", {
           hostId: "host_test",
@@ -1556,11 +1815,11 @@ it.skipIf(process.platform === "win32")(
           .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
           .report!.developerStorage!.entries.map((entry) => entry.name)
           .sort(),
-      ).toEqual(["gone", "kept", "revived"]);
+      ).toEqual(["gone", "kept", "revived", "self"]);
       expect(goneServer.child.exitCode).toBeNull();
       await expect
         .poll(async () => (await fs.readdir(rootPath)).sort())
-        .toEqual(["gone", "kept", "revived"]);
+        .toEqual(["gone", "kept", "revived", "self"]);
       await fs.mkdir(checkouts.revived, { recursive: true });
       expect(
         await host.harness.callRpc("removeDevInstances", {
@@ -1579,13 +1838,13 @@ it.skipIf(process.platform === "win32")(
       expect(keptServer.child.exitCode).toBeNull();
       await expect
         .poll(async () => (await fs.readdir(rootPath)).sort())
-        .toEqual(["kept", "revived"]);
+        .toEqual(["kept", "revived", "self"]);
       expect(
         hostStorageResponseSchema
           .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
           .report!.developerStorage!.entries.map((entry) => entry.name)
           .sort(),
-      ).toEqual(["kept", "revived"]);
+      ).toEqual(["kept", "revived", "self"]);
       await expect
         .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
         .toBe(0);

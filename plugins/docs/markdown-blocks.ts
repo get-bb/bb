@@ -122,18 +122,76 @@ function parseMarkdownBlocks(
   return { leading, blocks, newline: markdown.endsWith("\n") };
 }
 
+const MEDIA_NODES = new Set(["image", "simpleHtmlEmbed"]);
+
+function hasMedia(node: ProseMirrorNode): boolean {
+  let found = MEDIA_NODES.has(node.type.name);
+  node.descendants((child) => {
+    found ||= MEDIA_NODES.has(child.type.name);
+    return !found;
+  });
+  return found;
+}
+
+function reusableNodes(
+  editor: Editor,
+  loaded: MarkdownBlocks,
+  serialize: (nodes: ProseMirrorNode[]) => string,
+  refreshMedia: boolean,
+): Map<string, ProseMirrorNode[]> {
+  const sources = new Map<ProseMirrorNode, string>();
+  for (const block of loaded.blocks)
+    if (block.nodes.length === 1) sources.set(block.nodes[0]!, block.source);
+  const reusable = new Map<string, ProseMirrorNode[]>();
+  editor.state.doc.forEach((node) => {
+    if (refreshMedia && hasMedia(node)) return;
+    const source = sources.get(node) ?? serialize([node]).replace(/\n+$/, "");
+    reusable.set(source, [...(reusable.get(source) ?? []), node]);
+  });
+  return reusable;
+}
+
 export function loadMarkdownBlocks(
   editor: Editor,
   markdown: string,
   display: (source: string) => string,
   addToHistory: boolean,
+  previous?: {
+    loaded: MarkdownBlocks;
+    serialize(nodes: ProseMirrorNode[]): string;
+    refreshMedia: boolean;
+  } | null,
 ): MarkdownBlocks {
   const parsed = parseMarkdownBlocks(editor, markdown, display);
+  if (previous && !editor.isEmpty) {
+    const reusable = reusableNodes(
+      editor,
+      previous.loaded,
+      previous.serialize,
+      previous.refreshMedia,
+    );
+    for (const block of parsed.blocks) {
+      const live = block.nodes.length === 1 && reusable.get(block.source);
+      if (live && live.length) block.nodes = [live.shift()!];
+    }
+  }
   const nodes = parsed.blocks.flatMap((block) => block.nodes);
   const doc = editor.schema.topNodeType.createAndFill(null, nodes)!;
+  const current = editor.state.doc.content;
+  const transaction = editor.state.tr;
+  const start = editor.isEmpty ? 0 : current.findDiffStart(doc.content);
+  if (editor.isEmpty) transaction.replaceWith(0, current.size, doc.content);
+  else if (start !== null) {
+    let { a, b } = current.findDiffEnd(doc.content)!;
+    const overlap = start - Math.min(a, b);
+    if (overlap > 0) {
+      a += overlap;
+      b += overlap;
+    }
+    transaction.replace(start, a, doc.slice(start, b));
+  }
   editor.view.dispatch(
-    editor.state.tr
-      .replaceWith(0, editor.state.doc.content.size, doc.content)
+    transaction
       .setMeta("addToHistory", addToHistory)
       .setMeta("preventUpdate", true),
   );
@@ -170,7 +228,7 @@ export function saveMarkdownBlocks(
       parts.push({ text: serialize(edited).replace(/\n+$/, "") });
     edited = [];
   };
-  for (let index = 0; index < children.length; ) {
+  for (let index = 0; index < children.length;) {
     const block = owner.get(children[index]!);
     const nodes = block === undefined ? [] : blocks[block]!.nodes;
     if (
