@@ -58,7 +58,7 @@ const SERVER_SOURCE = `export default function plugin(bb: any) { bb.log.info("lo
 const APP_SOURCE = `export default function App() {\n  return <div className="line-clamp-2">hi</div>;\n}\n`;
 const COMPRESSIBLE_APP_SOURCE = `const payload = ${JSON.stringify(
   "compressible plugin bundle payload ".repeat(200),
-)};\nexport default function App() {\n  return <div className="line-clamp-2" data-payload={payload}>hi</div>;\n}\n`;
+)};\nexport default function App() {\n  return <div className="line-clamp-2 flex flex-col items-center gap-2 rounded-md border p-4 text-sm font-medium shadow-sm" data-payload={payload}>hi</div>;\n}\n`;
 
 async function writeAppPluginFixture(
   rootDir: string,
