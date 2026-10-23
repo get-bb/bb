@@ -5,6 +5,7 @@ import {
   parseNumstatEntriesZ,
   gitPriority,
   readMergeBaseRef,
+  resolveMergeBaseBranch,
   runGitWithNullRecordLimit,
   type GitNullRecordFormat,
   type GitNullRecordLimitResult,
@@ -575,7 +576,7 @@ export class WorkspaceReads {
   private readonly commitReads = new Map<string, Promise<string | null>>();
   private readonly mergeBaseReads = new Map<
     string,
-    Promise<string | undefined>
+    Promise<string>
   >();
   private readonly trackedEntriesByDiff = new Map<
     string,
@@ -675,31 +676,10 @@ export class WorkspaceReads {
     );
   }
 
-  private resolveCommit(
-    refs: string,
-    revision: string,
-    timeoutMs?: number,
-  ): Promise<string | null> {
-    return cachedRead(
-      this.commitReads,
-      [refs, revision],
-      async () => {
-        const result = await this.runGit(["rev-parse", `${revision}^{commit}`], {
-          cwd: this.path,
-          allowFailure: true,
-          timeoutMs,
-        });
-        const sha = result.stdout.trim();
-        return result.exitCode === 0 && sha.length > 0 ? sha : null;
-      },
-      REF_READ_LIMIT,
-    );
-  }
-
   private async resolveMergeBaseRef(
     freshness: ReadFreshness,
     mergeBaseBranch: string,
-  ): Promise<string | undefined> {
+  ): Promise<string> {
     const snapshot = await this.requireStatusSnapshot(freshness.work);
     const read = () =>
       readMergeBaseRef(this.path, mergeBaseBranch, {});
@@ -1161,15 +1141,6 @@ export class WorkspaceReads {
     const { target, freshness, maxDiffBytes, maxFileListBytes } = options;
     assertPositiveInteger(options.maxUntrackedFiles, "maxUntrackedFiles");
     const range = await this.resolveTrackedDiffRange(target, freshness);
-    if (range === null) {
-      return {
-        diff: "",
-        files: "",
-        shortstat: "",
-        truncated: false,
-        mergeBaseRef: null,
-      };
-    }
     const runRange = this.rangeGitRunner(range);
     const includesUntracked = this.targetIncludesUntracked(target);
     const [trackedDiff, trackedStat, trackedFiles] = await Promise.all([
@@ -1413,7 +1384,15 @@ export class WorkspaceReads {
     const baseSha =
       headSha === null
         ? null
-        : await this.resolveCommit(refs, mergeBaseBranch, timeoutMs);
+        : await cachedRead(
+            this.commitReads,
+            [refs, mergeBaseBranch],
+            async () =>
+              (await resolveMergeBaseBranch(this.path, mergeBaseBranch, {
+                timeoutMs,
+              })) ?? null,
+            REF_READ_LIMIT,
+          );
     if (headSha === null || baseSha === null) {
       return (
         await this.computeMergeBaseStatus(
@@ -1855,15 +1834,6 @@ export class WorkspaceReads {
     freshness: ReadFreshness,
   ): Promise<BoundedDiffStatArtifacts> {
     const range = await this.resolveTrackedDiffRange(target, freshness);
-    if (range === null) {
-      return {
-        trackedEntries: [],
-        numstat: "",
-        mergeBaseRef: null,
-        untrackedPaths: [],
-        truncated: false,
-      };
-    }
 
     const overflowCount = maxFiles + 1;
     const readNumstat = async () =>
@@ -2139,9 +2109,6 @@ export class WorkspaceReads {
       args.target,
       args.freshness,
     );
-    if (range === null) {
-      return new Map();
-    }
 
     const runUncommittedDiff = createUncommittedDiffRunner(
       this.path,
@@ -2282,7 +2249,7 @@ export class WorkspaceReads {
   private async resolveTrackedDiffRange(
     target: WorkspaceDiffTarget,
     freshness: ReadFreshness,
-  ): Promise<ResolvedTrackedDiffRange | null> {
+  ): Promise<ResolvedTrackedDiffRange> {
     const diffBase = ["diff", "--no-ext-diff"];
     switch (target.type) {
       case "uncommitted":
@@ -2298,9 +2265,6 @@ export class WorkspaceReads {
           freshness,
           target.mergeBaseBranch,
         );
-        if (!mergeBaseRef) {
-          return null;
-        }
         const rangeArgs =
           target.type === "branch_committed"
             ? [`${mergeBaseRef}..HEAD`]

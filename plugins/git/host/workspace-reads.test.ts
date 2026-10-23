@@ -554,6 +554,67 @@ describe("WorkspaceReads", () => {
     });
   });
 
+  it("resolves remote-only merge bases across status and diff reads", async () => {
+    const repoPath = await initRepo(
+      await makeTempDir("bb-workspace-remote-base-"),
+    );
+    await runGit(["update-ref", "refs/remotes/origin/main", "main"], {
+      cwd: repoPath,
+    });
+    await runGit(
+      ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+      { cwd: repoPath },
+    );
+    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    await runGit(["branch", "-D", "main"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "committed.txt"), "branch change\n");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Feature change"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "README.md"), "pending change\n");
+    const workspace = new WorkspaceReads(repoPath, tmpdir());
+    const target = { type: "all", mergeBaseBranch: "main" } as const;
+    const files = await workspace.diffFiles({ freshness: fresh(),
+      target,
+      maxFiles: 100,
+      ignoreWhitespace: false,
+    });
+    expect(files.files.map((file) => file.path).sort()).toEqual([
+      "README.md",
+      "committed.txt",
+    ]);
+    expect(await workspace.getDiff({ ...UNLIMITED_DIFF, freshness: fresh(), target })).toEqual(
+      await workspace.getDiff({ ...UNLIMITED_DIFF, freshness: fresh(),
+        target: { ...target, mergeBaseBranch: "origin/main" },
+      }),
+    );
+    const status = await workspace.getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+    expect(status.mergeBase?.aheadCount).toBe(1);
+    expect(status.mergeBase?.files.map((file) => file.path)).toEqual([
+      "committed.txt",
+    ]);
+    await runGit(["branch", "main", "HEAD"], { cwd: repoPath });
+    expect(
+      (await workspace.getStatus({ freshness: fresh(), mergeBaseBranch: "main" })).mergeBase
+        ?.aheadCount,
+    ).toBe(0);
+  });
+
+  it("reports unresolved merge bases instead of empty diffs", async () => {
+    const repoPath = await initRepo(
+      await makeTempDir("bb-workspace-missing-base-"),
+    );
+    const workspace = new WorkspaceReads(repoPath, tmpdir());
+    for (const type of ["all", "branch_committed"] as const) {
+      const target = { type, mergeBaseBranch: "missing" };
+      await expect(
+        workspace.diffFiles({ freshness: fresh(), target, maxFiles: 100, ignoreWhitespace: false }),
+      ).rejects.toThrow('Could not resolve merge base for "missing"');
+      await expect(workspace.getDiff({ ...UNLIMITED_DIFF, freshness: fresh(), target })).rejects.toThrow(
+        'Could not resolve merge base for "missing"',
+      );
+    }
+  });
+
   it("returns diff content for each supported target", async () => {
     const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });

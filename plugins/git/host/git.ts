@@ -293,21 +293,51 @@ function parseNumstatCount(text: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-export async function readMergeBaseRef(
+export async function resolveMergeBaseBranch(
   cwd: string,
   ref: string,
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
-  const result = await runGit(["merge-base", ref, "HEAD"], {
-    cwd,
-    ...options,
-    priority: options.priority ?? gitPriority(),
-    allowFailure: true,
-  });
-  if (result.exitCode !== 0) {
-    return undefined;
+  const candidates =
+    ref.startsWith("refs/") || ref.startsWith("origin/")
+      ? [ref]
+      : [ref, `refs/remotes/origin/${ref}`];
+  for (const candidate of candidates) {
+    const result = await runGit(
+      ["rev-parse", "--verify", "--end-of-options", `${candidate}^{commit}`],
+      {
+        cwd,
+        ...options,
+        priority: options.priority ?? gitPriority(),
+        allowFailure: true,
+      },
+    );
+    if (result.exitCode === 0 && trimOutput(result.stdout)) {
+      return trimOutput(result.stdout);
+    }
   }
+  return undefined;
+}
 
-  const mergeBaseRef = trimOutput(result.stdout);
-  return mergeBaseRef || undefined;
+export async function readMergeBaseRef(
+  cwd: string,
+  ref: string,
+  options: GitTimeoutOptions = {},
+): Promise<string> {
+  const revision = await resolveMergeBaseBranch(cwd, ref, options);
+  if (revision) {
+    const result = await runGit(["merge-base", revision, "HEAD"], {
+      cwd,
+      ...options,
+      priority: options.priority ?? gitPriority(),
+      allowFailure: true,
+    });
+    if (result.exitCode === 0 && trimOutput(result.stdout)) {
+      return trimOutput(result.stdout);
+    }
+  }
+  throw new WorkspaceError(
+    "git_command_failed",
+    `Could not resolve merge base for "${ref}" with HEAD. Ensure the branch or its origin remote-tracking ref exists and shares history with HEAD.`,
+  );
 }

@@ -53,3 +53,5 @@ experimental_useRpcKeyedQuery({
 ```
 
 `bb plugin rpc inspect bb--git` prints the input and output schemas.
+
+Branch targets resolve the requested ref first, then fall back to `origin/<branch>`. If no merge base with HEAD resolves, diff reads report an error instead of an empty diff.
