@@ -16,6 +16,7 @@
 
 <!-- Tests added (they fail before, pass after), commands run (turbo typecheck/test filters), manual checks. -->
 
+<!-- Required for contributors outside the bb team: the open issue this closes. The PR gate closes pull requests without one. -->
 Fixes #
 
 <!-- Agents: end with the line below. -->
