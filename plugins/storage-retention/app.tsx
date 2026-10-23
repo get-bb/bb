@@ -98,6 +98,7 @@ function cleanupFeedback(
     | "development"
     | "orphans"
     | "worktrees"
+    | "externalWorktrees"
     | "largeFileCleanup"
     | "archivedFileCleanup",
   hostId: string | null,
@@ -119,6 +120,11 @@ function cleanupFeedback(
       "Checkout cleanup retried",
       "Couldn’t clean up checkouts",
     ],
+    externalWorktrees: [
+      "Removing worktrees created outside BB",
+      "Worktrees removed",
+      "Couldn’t remove worktrees",
+    ],
     largeFileCleanup: [
       "Deleting large archived files",
       "Large archived files deleted",
@@ -137,7 +143,7 @@ function cleanupFeedback(
     failed,
     description,
     background: { hostId },
-    id: `storage:${hostId ?? "all"}:${kind === "development" || kind === "orphans" || kind === "worktrees" ? "maintenance" : kind}`,
+    id: `storage:${hostId ?? "all"}:${kind === "largeFileCleanup" || kind === "archivedFileCleanup" ? kind : "maintenance"}`,
   };
 }
 type StorageData = {
@@ -429,6 +435,11 @@ function StoragePage({
     report?.developerStorage?.entries.filter(
       (entry) => entry.sourcePathState === "missing",
     ) ?? [];
+  const externalBytes =
+    report?.externalWorktrees.reduce(
+      (total, worktree) => total + worktree.sizeBytes,
+      0,
+    ) ?? 0;
   const missingDevBytes = missingDev.reduce(
     (total, entry) => total + entry.sizeBytes,
     0,
@@ -690,7 +701,9 @@ function StoragePage({
               ? "Removing orphaned storage…"
               : detail.maintenance.kind === "development"
                 ? "Removing development instances…"
-                : "Retrying worktree cleanup…"}
+                : detail.maintenance.kind === "externalWorktrees"
+                  ? "Removing worktrees created outside BB…"
+                  : "Retrying worktree cleanup…"}
           </p>
         )}
         {!state ? (
@@ -923,6 +936,122 @@ function StoragePage({
                             ))}
                           </div>
                         </details>
+                      )}
+                    </CleanupRow>
+                    <CleanupRow
+                      title="Worktrees created outside BB"
+                      size={externalBytes}
+                      description="Git worktrees of your projects that BB didn’t create, such as ones agents added with git worktree add. Removing them keeps their branches. Bulk removal keeps worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch; remove those one at a time."
+                      action="Remove worktrees"
+                      disabled={locked || report.externalWorktrees.length === 0}
+                      onAction={() =>
+                        setCleanup({
+                          key: "external-worktrees",
+                          feedback: cleanupFeedback(
+                            "externalWorktrees",
+                            report.hostId,
+                            machine?.name ?? report.hostId,
+                          ),
+                          action: "Remove worktrees",
+                          title: `Remove ${plural(report.externalWorktrees.length, "worktree")} created outside BB (${bytes(externalBytes)})?`,
+                          detail:
+                            "Delete these checkouts, including ignored files such as dependencies, build output, and local env files. Branches and commits stay in the repository. Worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch are kept; remove those one at a time. Make sure no agent is still working in them. This can’t be undone.",
+                          run: async () => {
+                            await rpc.call("startCleanup", {
+                              kind: "externalWorktrees",
+                              hostId: report.hostId,
+                            });
+                            return "Worktree removal started in the background.";
+                          },
+                        })
+                      }
+                    >
+                      {cleanup?.key === "external-worktrees" &&
+                        cleanupConfirmation}
+                      {report.externalWorktrees.length > 0 && (
+                        <ExternalWorktrees
+                          worktrees={report.externalWorktrees}
+                          projectNames={
+                            new Map(
+                              report.projectWorktrees.map((project) => [
+                                project.projectId,
+                                project.projectName,
+                              ]),
+                            )
+                          }
+                          rowDisabled={rowDisabled}
+                          rowActions={rowActions}
+                          confirmationKey={cleanup?.key ?? null}
+                          confirmation={cleanupConfirmation}
+                          onRemove={(worktree, label) => {
+                            const feedback = {
+                              title: "Removing worktree",
+                              completed: "Worktree removed",
+                              failed: "Couldn’t remove worktree",
+                              description: worktree.path,
+                            };
+                            const remove = async (force: boolean) => {
+                              const result = await rpc.call(
+                                "removeExternalWorktrees",
+                                {
+                                  hostId: report.hostId,
+                                  paths: [worktree.path],
+                                  force,
+                                },
+                              );
+                              const failed = result.failed[0];
+                              if (failed) throw new Error(failed.message);
+                              return result;
+                            };
+                            void runRowAction(
+                              `worktree:${worktree.path}`,
+                              feedback,
+                              async () => {
+                                const result = await remove(false);
+                                const reasons = result.skipped[0]?.reasons;
+                                if (reasons === undefined)
+                                  return `${worktree.path} · ${bytes(result.removedBytes)} freed`;
+                                const forceable = reasons.filter(
+                                  (reason) =>
+                                    reason === "locked" ||
+                                    reason === "uncommittedChanges" ||
+                                    reason === "unsavedCommits",
+                                );
+                                if (forceable.length !== reasons.length)
+                                  throw new Error(
+                                    EXTERNAL_WORKTREE_SKIP_REASONS[reasons[0]!],
+                                  );
+                                setCleanup({
+                                  key: `external-worktree:${worktree.path}`,
+                                  feedback,
+                                  action: "Remove anyway",
+                                  title: `Remove “${label}” anyway (${bytes(worktree.sizeBytes)})?`,
+                                  detail: [
+                                    ...forceable.map(
+                                      (reason) =>
+                                        EXTERNAL_WORKTREE_FORCE_WARNINGS[
+                                          reason
+                                        ],
+                                    ),
+                                    "The checkout is deleted, including ignored files. Its branch is kept. This can’t be undone.",
+                                  ].join(" "),
+                                  run: async () => {
+                                    const forced = await remove(true);
+                                    const skipped = forced.skipped[0];
+                                    if (skipped)
+                                      throw new Error(
+                                        EXTERNAL_WORKTREE_SKIP_REASONS[
+                                          skipped.reasons[0]!
+                                        ],
+                                      );
+                                    return `${worktree.path} · ${bytes(forced.removedBytes)} freed`;
+                                  },
+                                });
+                                return null;
+                              },
+                            );
+                          }}
+                        />
                       )}
                     </CleanupRow>
                     {report.developerStorage && (
@@ -1657,7 +1786,7 @@ function ProjectWorktrees({
     <section className="space-y-3">
       <SectionHeading
         title="Worktrees by project"
-        description="Managed worktrees BB tracks on this machine. Projects with a source here are included even when they have no worktrees. These counts are separate from thread files."
+        description="BB worktrees are the managed checkouts BB tracks. Other worktrees were added to the same repositories outside BB, for example by agents running git worktree add. Projects with a source here are included even when they have no worktrees. These counts are separate from thread files."
       />
       <div className="rounded-lg border border-border bg-card px-4 py-2">
         {report.projectWorktrees.length === 0 ? (
@@ -1671,13 +1800,25 @@ function ProjectWorktrees({
             </caption>
             <thead>
               <tr className="text-muted-foreground">
-                <th scope="col" className="py-2 text-left font-normal">
+                <th scope="col" className="w-full py-2 text-left font-normal">
                   Project
                 </th>
-                <th scope="col" className="py-2 pl-3 text-right font-normal">
-                  Worktrees
+                <th
+                  scope="col"
+                  className="whitespace-nowrap py-2 pl-6 text-right font-normal"
+                >
+                  BB worktrees
                 </th>
-                <th scope="col" className="py-2 pl-3 text-right font-normal">
+                <th
+                  scope="col"
+                  className="whitespace-nowrap py-2 pl-6 text-right font-normal"
+                >
+                  Other worktrees
+                </th>
+                <th
+                  scope="col"
+                  className="whitespace-nowrap py-2 pl-6 text-right font-normal"
+                >
                   Awaiting cleanup
                 </th>
               </tr>
@@ -1685,13 +1826,25 @@ function ProjectWorktrees({
             <tbody className="divide-y divide-border">
               {report.projectWorktrees.map((project) => (
                 <tr key={project.projectId}>
-                  <th scope="row" className="py-3 text-left font-normal">
+                  <th
+                    scope="row"
+                    className="py-3 text-left font-normal break-words"
+                  >
                     {project.projectName}
                   </th>
-                  <td className="py-3 pl-3 text-right font-normal tabular-nums">
+                  <td className="whitespace-nowrap py-3 pl-6 text-right font-normal tabular-nums">
                     {project.worktreeCount.toLocaleString()}
                   </td>
-                  <td className="py-3 pl-3 text-right tabular-nums text-muted-foreground">
+                  <td className="whitespace-nowrap py-3 pl-6 text-right font-normal tabular-nums">
+                    {project.externalCount.toLocaleString()}
+                    {project.externalBytes > 0 && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {bytes(project.externalBytes)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap py-3 pl-6 text-right tabular-nums text-muted-foreground">
                     {project.cleanupPendingCount.toLocaleString()}
                   </td>
                 </tr>
@@ -1705,6 +1858,170 @@ function ProjectWorktrees({
 }
 
 type RowAction = { state: "running" };
+
+type ExternalWorktree = NonNullable<
+  HostReport["report"]
+>["externalWorktrees"][number];
+
+const EXTERNAL_WORKTREE_SKIP_REASONS = {
+  notWorktree: "It is no longer a worktree of this repository",
+  locked: "The worktree is locked",
+  uncommittedChanges: "The worktree has uncommitted changes",
+  unsavedCommits: "The worktree has commits that are not on any branch",
+  inUseByBb: "A BB environment now uses this worktree",
+} as const;
+
+const EXTERNAL_WORKTREE_FORCE_WARNINGS = {
+  locked:
+    "It is locked, which usually means a tool or agent still relies on it.",
+  uncommittedChanges: "Its uncommitted and untracked changes are deleted.",
+  unsavedCommits:
+    "Its commits that aren’t on any branch or tag become unreachable, and git deletes them in a later cleanup.",
+} as const;
+
+function externalWorktreeWarnings(worktree: ExternalWorktree) {
+  return [
+    ...(worktree.changedFileCount
+      ? [plural(worktree.changedFileCount, "uncommitted change")]
+      : []),
+    ...(worktree.unsavedCommitCount
+      ? [`${plural(worktree.unsavedCommitCount, "commit")} on no branch`]
+      : []),
+  ];
+}
+
+function ExternalWorktrees({
+  worktrees,
+  projectNames,
+  rowDisabled,
+  rowActions,
+  confirmationKey,
+  confirmation,
+  onRemove,
+}: {
+  worktrees: ExternalWorktree[];
+  projectNames: ReadonlyMap<string, string>;
+  rowDisabled: boolean;
+  rowActions: Record<string, RowAction>;
+  confirmationKey: string | null;
+  confirmation: ReactNode;
+  onRemove: (worktree: ExternalWorktree, label: string) => void;
+}) {
+  const navigate = useBbNavigate();
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const groups = new Map<string, ExternalWorktree[]>();
+  for (const worktree of worktrees)
+    groups.set(worktree.repositoryPath, [
+      ...(groups.get(worktree.repositoryPath) ?? []),
+      worktree,
+    ]);
+  return (
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer">
+        {plural(worktrees.length, "worktree")} found
+      </summary>
+      <div className="mt-3 space-y-4">
+        {[...groups].map(([repositoryPath, group]) => (
+          <div key={repositoryPath} className="space-y-2">
+            <h3 className="break-all">
+              <span className="font-medium text-foreground">
+                {projectNames.get(group[0]!.projectId) ?? "Unknown project"}
+              </span>{" "}
+              · {repositoryPath}{" "}
+              <span className="tabular-nums">({group.length})</span>
+            </h3>
+            {(expanded.has(repositoryPath)
+              ? group
+              : group.slice(0, PREVIEW_COUNT)
+            ).map((worktree) => {
+              const label =
+                worktree.branch ??
+                worktree.path.split(/[\\/]/).filter(Boolean).at(-1) ??
+                worktree.path;
+              const thread = worktree.threads[0];
+              const warnings = externalWorktreeWarnings(worktree);
+              return (
+                <div
+                  key={worktree.path}
+                  className="space-y-3 border-l border-border pl-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="truncate text-sm text-foreground">
+                        {label}
+                        {worktree.locked && (
+                          <>
+                            {" "}
+                            <Pill className="inline-block align-middle">
+                              locked
+                            </Pill>
+                          </>
+                        )}
+                      </p>
+                      <p className="break-all">{worktree.path}</p>
+                      {warnings.length > 0 && (
+                        <p className="text-foreground">
+                          {warnings.join(" · ")}
+                        </p>
+                      )}
+                      {(worktree.lastActivityAt !== null || thread) && (
+                        <p>
+                          {worktree.lastActivityAt !== null &&
+                            `Last git activity ${ago(worktree.lastActivityAt)}`}
+                          {worktree.lastActivityAt !== null && thread && " · "}
+                          {thread && (
+                            <button
+                              className="hover:text-foreground hover:underline"
+                              onClick={() => navigate.toThread(thread.threadId)}
+                            >
+                              {thread.title}
+                              {thread.archived && " (archived)"}
+                            </button>
+                          )}
+                        </p>
+                      )}
+                      <RowActionStatus
+                        action={rowActions[`worktree:${worktree.path}`]}
+                        runningLabel="Removing worktree…"
+                      />
+                    </div>
+                    <div className="flex h-5 shrink-0 items-center gap-2">
+                      <span className="tabular-nums">
+                        {bytes(worktree.sizeBytes)}
+                      </span>
+                      <RowActionButton
+                        label="Remove worktree"
+                        target={label}
+                        action={rowActions[`worktree:${worktree.path}`]}
+                        disabled={rowDisabled}
+                        onClick={() => onRemove(worktree, label)}
+                      />
+                    </div>
+                  </div>
+                  {confirmationKey === `external-worktree:${worktree.path}` &&
+                    confirmation}
+                </div>
+              );
+            })}
+            {group.length > PREVIEW_COUNT && (
+              <ShowMoreToggle
+                expanded={expanded.has(repositoryPath)}
+                total={group.length}
+                onToggle={() =>
+                  setExpanded((current) => {
+                    const next = new Set(current);
+                    if (!next.delete(repositoryPath)) next.add(repositoryPath);
+                    return next;
+                  })
+                }
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 function RowActionButton({
   label,

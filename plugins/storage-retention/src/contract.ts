@@ -3,6 +3,8 @@ import {
   hostStorageListResponseSchema,
   hostStorageRemoveOrphansResponseSchema,
   hostStorageRetryWorktreeCleanupResponseSchema,
+  hostStorageRemoveExternalWorktreesResponseSchema,
+  maintenanceKindSchema,
 } from "./storage-types.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -40,7 +42,7 @@ export const storageRpc = defineRpcContract({
     input: z
       .object({
         hostId: z.string().min(1),
-        kind: z.enum(["orphans", "development", "worktrees"]),
+        kind: maintenanceKindSchema,
       })
       .strict(),
     output: z.null(),
@@ -56,6 +58,19 @@ export const storageRpc = defineRpcContract({
   retryWorktreeCleanup: {
     input: machineInput,
     output: hostStorageRetryWorktreeCleanupResponseSchema,
+  },
+  removeExternalWorktrees: {
+    input: z.union([
+      z.object({ hostId: z.string().min(1), paths: z.null() }).strict(),
+      z
+        .object({
+          hostId: z.string().min(1),
+          paths: z.array(z.string().min(1)).min(1).max(500),
+          force: z.boolean(),
+        })
+        .strict(),
+    ]),
+    output: hostStorageRemoveExternalWorktreesResponseSchema,
   },
   startClearLargeFiles: {
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),

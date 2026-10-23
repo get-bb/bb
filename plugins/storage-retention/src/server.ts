@@ -84,6 +84,7 @@ export default function plugin(bb: BbPluginApi) {
     clearArchivedFiles: storage.clearArchivedFiles,
     startClearArchivedFiles: storage.startClearArchivedFiles,
     removeDevInstances: (input) => storage.removeDevInstances(input),
+    removeExternalWorktrees: (input) => storage.removeExternalWorktrees(input),
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
     configure: (policy) => service.configure(policy),
