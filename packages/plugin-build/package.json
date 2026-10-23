@@ -8,6 +8,7 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./host-tailwind-version": "./src/generated/host-tailwind-version.ts",
     "./host-tailwind.css": "./src/generated/host-tailwind.css"
   },
   "types": "./src/index.ts",

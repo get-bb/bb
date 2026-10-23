@@ -46,13 +46,13 @@ interface PluginAppState {
 
 interface PluginAppAssets {
   jsPath: string;
-  css: Buffer | null;
+  css: { original: Buffer; withoutHostTailwind: Buffer } | null;
   hash: string;
 }
 
 export interface PluginAppAsset {
   hash: string;
-  read(): Promise<Buffer>;
+  read(hostTailwind: boolean): Promise<Buffer>;
 }
 
 export function pluginAppAsset(
@@ -64,7 +64,11 @@ export function pluginAppAsset(
   const css = assets.css;
   return css === null
     ? undefined
-    : { hash: assets.hash, read: async () => css };
+    : {
+        hash: assets.hash,
+        read: async (hostTailwind) =>
+          hostTailwind ? css.withoutHostTailwind : css.original,
+      };
 }
 
 export interface PluginAppBundleSnapshot {
@@ -351,16 +355,23 @@ export async function loadPluginAppBundle(
   if (meta === null) {
     return { state: { hasApp: true, bundle: null }, assets: null };
   }
-  let css: Buffer | null;
+  let css: PluginAppAssets["css"];
   try {
-    css = Buffer.from(
-      dropHostProvidedTailwind(await readFile(cssPath, "utf8")),
-    );
+    const original = await readFile(cssPath);
+    css = {
+      original,
+      withoutHostTailwind: Buffer.from(
+        dropHostProvidedTailwind(original.toString("utf8")),
+      ),
+    };
   } catch {
     css = null;
   }
   const hasher = createHash("sha256").update(js);
-  if (css !== null) hasher.update(css);
+  if (css !== null) {
+    hasher.update(css.original);
+    hasher.update(css.withoutHostTailwind);
+  }
   hasher.update(metaRaw);
   hasher.update(pluginId);
   const hash = hasher.digest("hex").slice(0, 16);

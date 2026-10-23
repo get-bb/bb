@@ -12,6 +12,7 @@
 // (see turbo.json) before every task that resolves this package's sources.
 //
 //   node packages/plugin-build/scripts/generate-plugin-theme.mjs
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -228,3 +229,8 @@ export const HOST_TAILWIND_CSS = \`${escapeTemplateLiteral(
 
 await writeIfChanged(outPath, generated);
 await writeIfChanged(hostTailwindCssPath, hostTailwindCss);
+
+await writeIfChanged(
+  path.join(packageRoot, "src", "generated", "host-tailwind-version.ts"),
+  `export const HOST_TAILWIND_VERSION = "${createHash("sha256").update(hostTailwindCss).digest("hex")}";\n`,
+);
