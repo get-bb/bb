@@ -3627,3 +3627,16 @@ Before stabilization, audit Windows/junction behavior, filesystem mutation durin
 scans, provider-native precedence, traversal-limit reporting, and duplicate aliases
 through read/write/delete. Exercise packaged provider forks and compare live
 provider catalogs. Then rename project-wide and remove this entry.
+
+## `PluginProviderOptionDescriptor.experimental_icon`
+
+An optional host glyph name on a declared service tier. The model picker
+trigger and the single-tier toggle row show it in place of the default `Zap`
+when that tier is selected; Codex declares `"Rocket"` for Ultrafast. The server
+projects it onto `ProviderInfo.serviceTiers[].icon`; reasoning levels ignore it.
+
+Docs: `providers.md`.
+
+Before stabilization, decide whether `model/list` `supportedServiceTiers` may
+override the icon, whether plugin-relative or namespaced glyphs are accepted
+like the provider `icon`, and whether reasoning levels should render it.

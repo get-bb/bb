@@ -88,6 +88,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Plug02: "Plugins sidebar and prompt action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
   Repeat: "Automations sidebar and prompt action",
+  Rocket: "Ultrafast service-tier indicator in model picker trigger",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",

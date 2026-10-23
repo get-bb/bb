@@ -213,6 +213,34 @@ const DiscordLogoIcon: IconSvgElement = [
   ],
 ];
 
+const RocketSolidIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M20.11 3.89C21.06 7.32 19.47 10.54 17.21 12.8L13.57 16.44C13.18 16.83 12.54 16.83 12.15 16.44L7.56 11.85C7.17 11.46 7.17 10.82 7.56 10.43L11.2 6.79C13.46 4.53 16.68 2.94 20.11 3.89ZM16.11 7.89A1.85 1.85 0 1 0 13.5 10.5A1.85 1.85 0 1 0 16.11 7.89Z",
+      fill: "currentColor",
+      fillRule: "evenodd",
+      key: "0",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M10.14 7.85L6.57 7.75C5.95 7.73 5.36 7.97 4.92 8.4L3.21 10.12C2.94 10.38 3.06 10.84 3.43 10.94L6.28 11.71ZM16.15 13.86L16.25 17.43C16.27 18.05 16.03 18.64 15.6 19.08L13.88 20.79C13.62 21.06 13.16 20.94 13.06 20.57L12.29 17.72Z",
+      fill: "currentColor",
+      key: "1",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M7.49 13.69L10.31 16.51C9.04 17.79 7.34 18.35 5.51 18.49C5.65 16.66 6.21 14.96 7.49 13.69Z",
+      fill: "currentColor",
+      key: "2",
+    },
+  ],
+];
+
 const GithubLogoIcon: IconSvgElement = [
   [
     "path",
@@ -328,6 +356,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Plus: PlusSignIcon,
   Puzzle: PuzzleIcon,
   Repeat: RepeatIcon,
+  Rocket: RocketSolidIcon,
   SecurityCheck: SecurityCheckIcon,
   RotateCcw: Refresh01Icon,
   Rows2: LayoutTwoRowIcon,

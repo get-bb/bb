@@ -76,7 +76,7 @@ bb.providers.register({
     { id: "low", label: "Low" },
     { id: "high", label: "High" },
   ],
-  serviceTiers: undefined, // optional; open list of { id, label, description? },
+  serviceTiers: undefined, // optional; open list of { id, label, description?, experimental_icon? },
   // "default" is the standard tier; model/list is precise
   composerActions: ["plan"], // "plan" | "goal"
   completedTurnDisplay: "flat", // "collapse" (default) | "flat"; the user's per-provider setting wins

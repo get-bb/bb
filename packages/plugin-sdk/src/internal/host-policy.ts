@@ -805,10 +805,19 @@ function validateProviderOptionDescriptors(args: {
               field: `${field}[${index}].description`,
               value: record.description,
             });
+      const icon =
+        record.experimental_icon === undefined
+          ? undefined
+          : requireNonBlankString({
+              providerId,
+              field: `${field}[${index}].experimental_icon`,
+              value: record.experimental_icon,
+            });
       return Object.freeze({
         id,
         label,
         ...(description === undefined ? {} : { description }),
+        ...(icon === undefined ? {} : { experimental_icon: icon }),
       });
     },
   );

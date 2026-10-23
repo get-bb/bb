@@ -1361,6 +1361,9 @@ export interface PluginProviderOptionDescriptor {
   id: string;
   label: string;
   description?: string;
+  /** Host glyph name (`"Zap"`, `"Rocket"`) shown beside a selected service
+   * tier. Ignored for reasoning levels. Defaults to `"Zap"`. */
+  experimental_icon?: string;
 }
 
 /**

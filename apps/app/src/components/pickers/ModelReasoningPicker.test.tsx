@@ -1432,6 +1432,25 @@ describe("ModelReasoningPicker service tiers", () => {
     expect(screen.getByTitle(/\(Ultrafast mode\)$/)).toBeTruthy();
   });
 
+  it.each([
+    ["fast", "Zap"],
+    ["ultrafast", "Rocket"],
+  ])("shows the %s tier's icon on the trigger", (tier, icon) => {
+    renderPicker({
+      serviceTierOptions: [fast, { ...ultrafast, icon: "Rocket" }],
+      serviceTierValue: tier,
+    });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    const icons = [...trigger.querySelectorAll("[data-icon]")].map((node) =>
+      node.getAttribute("data-icon"),
+    );
+    expect(icons).toContain(icon);
+    expect(icons).not.toContain(icon === "Zap" ? "Rocket" : "Zap");
+  });
+
   it("lists agent options below the models and reports each change", () => {
     const { onAgentOptionChange } = renderPicker({
       agentSections: buildSessionOptionMenuSections(

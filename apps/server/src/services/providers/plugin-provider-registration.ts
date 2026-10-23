@@ -47,6 +47,9 @@ function toOptionDescriptors(
     ...(option.description === undefined
       ? {}
       : { description: option.description }),
+    ...(option.experimental_icon === undefined
+      ? {}
+      : { icon: option.experimental_icon }),
   }));
 }
 
