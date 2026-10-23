@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import type { InstalledPlugin } from "@bb/server-contract";
 import {
   GITHUB_PR_STATUS_PLUGIN_ID,
   githubPrStatusRpcContract,
@@ -6,6 +8,7 @@ import {
   type EnvironmentPullRequest,
   type PullRequest,
 } from "bb-plugin-bb--github-pr-status/contract";
+import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { experimental_useRpcKeyedQuery as useRpcKeyedQuery } from "@/lib/plugin-sdk-hooks";
 
 const OPEN_PULL_REQUEST_STALE_MS = 30_000;
@@ -91,11 +94,22 @@ export interface EnvironmentPullRequestState {
   pullRequest: PullRequest | null;
 }
 
+function selectPrStatusEnabled(plugins: InstalledPlugin[]): boolean {
+  return plugins.some(
+    (plugin) => plugin.id === GITHUB_PR_STATUS_PLUGIN_ID && plugin.enabled,
+  );
+}
+
 export function useRetiredSidebarEnvironmentPullRequest(
   environmentId: string | null | undefined,
   options: { enabled?: boolean } = {},
 ): EnvironmentPullRequestState {
-  const enabled = (options.enabled ?? true) && Boolean(environmentId);
+  const requested = (options.enabled ?? true) && Boolean(environmentId);
+  const plugin = useQuery({
+    ...pluginListQueryOptions({ enabled: requested }),
+    select: selectPrStatusEnabled,
+  });
+  const enabled = requested && plugin.data !== false;
   const query = useRpcKeyedQuery({
     pluginId: GITHUB_PR_STATUS_PLUGIN_ID,
     contract: githubPrStatusRpcContract,
@@ -142,6 +156,7 @@ export function useRetiredSidebarEnvironmentPullRequest(
 
   return {
     isLoading: enabled && query.error === null && row === undefined,
-    pullRequest: row?.outcome === "available" ? row.pullRequest : null,
+    pullRequest:
+      enabled && row?.outcome === "available" ? row.pullRequest : null,
   };
 }

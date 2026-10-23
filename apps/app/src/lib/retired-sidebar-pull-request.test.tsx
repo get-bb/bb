@@ -13,8 +13,14 @@ import {
 } from "./retired-sidebar-pull-request";
 
 const keyedQuery = vi.hoisted(() => ({
+  pluginEnabled: true,
   data: {} as Record<string, EnvironmentPullRequest>,
   refetch: vi.fn(async () => {}),
+}));
+
+vi.mock("@tanstack/react-query", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-query")>()),
+  useQuery: () => ({ data: keyedQuery.pluginEnabled }),
 }));
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
@@ -84,6 +90,7 @@ afterEach(() => {
   vi.useRealTimers();
   keyedQuery.refetch.mockClear();
   keyedQuery.data = {};
+  keyedQuery.pluginEnabled = true;
 });
 
 describe("isEnvironmentPullRequestStale", () => {
@@ -125,6 +132,16 @@ describe("useRetiredSidebarEnvironmentPullRequest refreshes", () => {
     vi.setSystemTime(Date.now() + 15_000);
     await showPage();
     expect(keyedQuery.refetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides a previously cached PR when its plugin is disabled", () => {
+    keyedQuery.data = { "env-disabled": row("open") };
+    keyedQuery.pluginEnabled = false;
+    const { result } = renderHook(() =>
+      useRetiredSidebarEnvironmentPullRequest("env-disabled"),
+    );
+    expect(result.current.pullRequest).toBeNull();
+    expect(result.current.isLoading).toBe(false);
   });
 
   it("keeps a merged row for an hour before a visible page refetches it", async () => {
