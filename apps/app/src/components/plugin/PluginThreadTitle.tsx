@@ -17,7 +17,7 @@ export function PluginThreadTitle({ threadId }: PluginThreadTitleProps) {
     );
     const text = root.querySelector<HTMLElement>(".bb-thread-title-text");
     if (!viewport || !text) return;
-    const row = root.closest<HTMLElement>("[data-sidebar-thread-title-row]");
+    const row = root.closest<HTMLElement>(".bb-sidebar-hover-actions-row");
     const measure = () => {
       const viewportRect = viewport.getBoundingClientRect();
       const actionLeft = Array.from(
@@ -27,17 +27,16 @@ export function PluginThreadTitle({ threadId }: PluginThreadTitleProps) {
         return rect.width > 0 ? Math.min(left, rect.left) : left;
       }, viewportRect.right);
       const actionOverlap = Math.max(0, viewportRect.right - actionLeft);
-      const visibleWidth = Math.max(0, viewportRect.width - actionOverlap);
+      const hoverInset = actionOverlap + (actionOverlap > 0.5 ? 8 : 0);
+      const hoverWidth = Math.max(0, viewportRect.width - hoverInset);
       const textWidth = text.getBoundingClientRect().width;
-      const overflow = textWidth - viewportRect.width > 0.5;
-      const hoverGap = actionOverlap > 0.5 ? 8 : 0;
-      const hoverVisibleWidth = Math.max(0, visibleWidth - hoverGap);
-      const hoverOverflow = textWidth - hoverVisibleWidth > 0.5;
+      const overflow = textWidth > viewportRect.width + 0.5;
+      const hoverOverflow = textWidth > hoverWidth + 0.5;
       const fadeAllowance =
         Number.parseFloat(getComputedStyle(root).fontSize) + 2;
       const distance = Math.max(
         0,
-        textWidth - hoverVisibleWidth + (hoverOverflow ? fadeAllowance : 0),
+        textWidth - hoverWidth + (hoverOverflow ? fadeAllowance : 0),
       );
       root.style.setProperty("--bb-thread-title-pan-distance", `${distance}px`);
       const travelDuration = distance / 40;
@@ -52,7 +51,7 @@ export function PluginThreadTitle({ threadId }: PluginThreadTitleProps) {
       );
       root.style.setProperty(
         "--bb-thread-title-hover-inset",
-        `${actionOverlap + hoverGap}px`,
+        `${hoverInset}px`,
       );
       root.dataset.threadTitleOverflow = overflow ? "true" : "false";
       root.dataset.threadTitleHoverOverflow = hoverOverflow ? "true" : "false";

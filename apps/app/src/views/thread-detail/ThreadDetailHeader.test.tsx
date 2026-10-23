@@ -588,26 +588,7 @@ describe("ThreadDetailHeader", () => {
         updateDownloaded: false,
         version: "0.0.0-test",
       });
-      const menuArgs: { current: ThreadDetailHeaderActionsMenuArgs | null } = {
-        current: null,
-      };
-      render(
-        <PaneContext.Provider value={{ ...PANE_CONTEXT, isTopRow }}>
-          <ThreadDetailHeader
-            actionsMenu={(args) => {
-              menuArgs.current = args;
-              return null;
-            }}
-            isSecondaryPanelOpen={false}
-            onOpenThreadGitAction={vi.fn()}
-            onToggleSecondaryPanel={vi.fn()}
-            threadHeaderGitActions={[]}
-            threadId={THREAD_ID}
-            threadTitle="Focused thread"
-          />
-        </PaneContext.Provider>,
-      );
-
+      const { menuArgs } = renderWithMenuArgs(true, isTopRow);
       expect(screen.queryByText("Focused thread") !== null).toBe(titleVisible);
       expect(
         screen.getByRole("button", { name: "Show right panel" }),
@@ -615,7 +596,9 @@ describe("ThreadDetailHeader", () => {
 
       if (!titleVisible) {
         menuArgs.current?.requestRename(THREAD_ID);
-        menuArgs.current?.onCloseAutoFocus(new Event("focusout"));
+        menuArgs.current?.onCloseAutoFocus(
+          new Event("focusout", { cancelable: true }),
+        );
         expect(
           await screen.findByRole("textbox", { name: "Thread name" }),
         ).toHaveProperty("value", "Focused thread");
@@ -711,7 +694,10 @@ describe("ThreadDetailHeader", () => {
     expect(beginPaneDrag).not.toHaveBeenCalled();
   });
 
-  function renderWithMenuArgs(focused = true) {
+  function renderWithMenuArgs(
+    focused = true,
+    isTopRow = PANE_CONTEXT.isTopRow,
+  ) {
     const menuArgs: { current: ThreadDetailHeaderActionsMenuArgs | null } = {
       current: null,
     };
@@ -722,7 +708,9 @@ describe("ThreadDetailHeader", () => {
           coreRegistrations={[]}
           requestRename={requestRenameDialog}
         />
-        <PaneContext.Provider value={{ ...PANE_CONTEXT, isFocused: focused }}>
+        <PaneContext.Provider
+          value={{ ...PANE_CONTEXT, isFocused: focused, isTopRow }}
+        >
           <ThreadDetailHeader
             actionsMenu={(args) => {
               menuArgs.current = args;

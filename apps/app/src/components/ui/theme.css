@@ -984,20 +984,19 @@ body.sidebar-resizing [data-sidebar="panel"] {
     flex: 1 1 0%;
     min-width: 0;
     overflow: hidden;
+    --bb-thread-title-gradient: linear-gradient(
+      to right,
+      black calc(var(--bb-thread-title-visible-end, 100%) - 1em),
+      transparent var(--bb-thread-title-visible-end, 100%),
+      transparent 100%
+    );
+    mask-image: var(--bb-thread-title-mask, none);
+    -webkit-mask-image: var(--bb-thread-title-mask, none);
   }
 
   .bb-thread-title-pan[data-thread-title-overflow="true"]
     .bb-thread-title-content {
-    mask-image: linear-gradient(
-      to right,
-      #000 calc(100% - 1em),
-      transparent 100%
-    );
-    -webkit-mask-image: linear-gradient(
-      to right,
-      #000 calc(100% - 1em),
-      transparent 100%
-    );
+    --bb-thread-title-mask: var(--bb-thread-title-gradient);
   }
 
   .bb-thread-title-text {
@@ -1021,7 +1020,7 @@ body.sidebar-resizing [data-sidebar="panel"] {
   @media (hover: hover) and (prefers-reduced-motion: no-preference) {
     .bb-thread-title-pan[data-thread-title-hover-overflow="true"]:hover
       .bb-thread-title-text,
-    [data-sidebar-thread-title-row]:hover
+    .bb-sidebar-hover-actions-row:hover
       .bb-thread-title-pan[data-thread-title-hover-overflow="true"]
       .bb-thread-title-text {
       animation: bb-thread-title-pan var(--bb-thread-title-pan-duration, 9s)
@@ -1036,7 +1035,7 @@ body.sidebar-resizing [data-sidebar="panel"] {
   }
 
   @media (hover: hover) {
-    [data-sidebar-thread-title-row]:is(
+    .bb-sidebar-hover-actions-row:is(
         :hover,
         :has(:focus-visible),
         :has([data-sidebar-hover-actions-open="true"])
@@ -1048,22 +1047,9 @@ body.sidebar-resizing [data-sidebar="panel"] {
         :focus-within
       )
       .bb-thread-title-content {
+      --bb-thread-title-mask: var(--bb-thread-title-gradient);
       --bb-thread-title-visible-end: calc(
         100% - var(--bb-thread-title-hover-inset, 0px)
-      );
-      mask-image: linear-gradient(
-        to right,
-        black 0,
-        black calc(var(--bb-thread-title-visible-end) - 1em),
-        transparent var(--bb-thread-title-visible-end),
-        transparent 100%
-      );
-      -webkit-mask-image: linear-gradient(
-        to right,
-        black 0,
-        black calc(var(--bb-thread-title-visible-end) - 1em),
-        transparent var(--bb-thread-title-visible-end),
-        transparent 100%
       );
     }
   }

@@ -222,7 +222,6 @@ function renderThreadRowContainer({
 }: ThreadRowContainerArgs) {
   const containerProps = {
     "data-sidebar-rename-row": "",
-    "data-sidebar-thread-title-row": "",
     className,
     style,
     "data-sidebar-nest-target": nestTargetState ?? undefined,
