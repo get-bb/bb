@@ -82,6 +82,7 @@ import {
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePromptBoxEnvironmentInputsPreference } from "@/hooks/thread-creation-options/environment-inputs-preference";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
@@ -1163,6 +1164,16 @@ export function NewThreadComposer({
   const [environmentProviderInputsBlocked, setProviderInputsBlocked] =
     useState<{ scopeKey: string; reason: string } | null>(null);
   const environmentProviderInputsScopeKey = `${projectId}\0${effectiveEnvironmentValue}\0${providerHostId ?? ""}`;
+  const { value: rememberedProviderInputs, setValue: rememberProviderInputs } =
+    usePromptBoxEnvironmentInputsPreference(
+      selectionScope === "new-thread"
+        ? {
+            projectId,
+            environmentValue: effectiveEnvironmentValue,
+            hostId: providerHostId,
+          }
+        : null,
+    );
   const handleProviderInputsChange = useCallback(
     (next: PluginEnvironmentProviderInputsChange) => {
       if (next.status === "blocked") {
@@ -1181,6 +1192,7 @@ export function NewThreadComposer({
         return;
       }
       setProviderInputsBlocked(null);
+      rememberProviderInputs(next.value);
       setProviderInputsOverride((current) => {
         if (
           current?.scopeKey === environmentProviderInputsScopeKey &&
@@ -1194,7 +1206,7 @@ export function NewThreadComposer({
         };
       });
     },
-    [environmentProviderInputsScopeKey],
+    [environmentProviderInputsScopeKey, rememberProviderInputs],
   );
   const activeProviderInputsOverride =
     environmentProviderInputsOverride !== null &&
@@ -1265,10 +1277,10 @@ export function NewThreadComposer({
         ? environmentSeed.providerInputs
         : null;
     if (seededInputs !== null) return seededInputs;
-    return environmentProviderInputsRegistration === undefined &&
-      !controlRequiredForSelectedProvider
-      ? {}
-      : null;
+    if (environmentProviderInputsRegistration === undefined) {
+      return controlRequiredForSelectedProvider ? null : {};
+    }
+    return rememberedProviderInputs;
   }, [
     activeProviderInputsOverride,
     controlRequiredForSelectedProvider,
@@ -1277,6 +1289,7 @@ export function NewThreadComposer({
     environmentSeed,
     environmentProviderInputsRegistration,
     providerTakesInputs,
+    rememberedProviderInputs,
   ]);
   const environmentInputsPending =
     providerTakesInputs &&
