@@ -9,7 +9,7 @@ import {
   hostDaemonTerminalDataServerMessageSchema,
 } from "@bb/host-daemon-contract";
 import { terminalSessionSchema } from "@bb/server-contract";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { closeWebSocketServer } from "../../ws/close-websocket-server.js";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
@@ -134,7 +134,7 @@ function createTerminalUpgradeAcceptor(relay: TerminalRelay): {
         close: (code, reason) => ws.close(code, reason),
         raw: ws,
         send: (data) => {
-          if (ws.readyState !== ws.OPEN) {
+          if (ws.readyState !== WebSocket.OPEN) {
             throw new Error("Terminal relay socket is not open");
           }
           ws.send(data);

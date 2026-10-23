@@ -21,9 +21,11 @@ declare module "ws" {
     readonly bufferedAmount: number;
     readonly protocol: string;
     send(data: string | Buffer | Uint8Array): void;
+    ping(): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
     on(event: "open", listener: () => void): this;
+    on(event: "pong", listener: () => void): this;
     on(event: "message", listener: (data: RawData) => void): this;
     on(
       event: "message",

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { listRunningThreads, type DbConnection } from "@bb/db";
+import { getExperiments, listRunningThreads, type DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
 import {
   acquireDaemonLock,
@@ -43,6 +43,11 @@ import { createProviderNativeRootsCache } from "../../../apps/server/src/service
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
+import {
+  createInProcessTerminalRelay,
+  createTerminalRelayRouter,
+  startTerminalRelayProcess,
+} from "../../../apps/server/src/services/terminals/terminal-relay-transport.js";
 import type {
   ServerLogger,
   ServerRuntimeConfig,
@@ -201,6 +206,19 @@ async function startIntegrationServer(
     isDevelopment: false,
     performanceDiagnosticsAvailable: false,
   };
+  const terminalRelay = createTerminalRelayRouter({
+    inProcess: createInProcessTerminalRelay({ attachTimeoutMs: 50 }),
+    startProcess: () =>
+      startTerminalRelayProcess({
+        entryUrl: new URL(
+          "../../../apps/server/src/terminal-relay-process.ts",
+          import.meta.url,
+        ),
+        execArgv: ["--conditions=source", "--import", "tsx"],
+        logger: testLogger,
+      }),
+    useProcess: () => getExperiments(db).terminalRelayProcess,
+  });
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
     config,
@@ -208,6 +226,7 @@ async function startIntegrationServer(
     hub,
     logger: testLogger,
     openTimeoutMs: 50,
+    relay: terminalRelay,
   });
   const machineAuth = await createMachineAuthService({
     dataDir: serverDataDir,
@@ -356,6 +375,7 @@ async function startIntegrationServer(
           resolve();
         });
       });
+      await terminalRelay.close();
       await closeWebSockets();
       await closed;
     },
