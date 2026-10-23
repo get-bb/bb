@@ -163,7 +163,7 @@ describe("WebSocketManager subscriptions", () => {
     });
   });
 
-  it("ref-counts duplicate subscriptions and unsubscribes only after the final cleanup", () => {
+  it("ref-counts duplicate subscriptions and unsubscribes only after the final cleanup", async () => {
     const { manager, socket } = createConnectedManager();
 
     manager.subscribe(THREAD_TARGET);
@@ -186,6 +186,7 @@ describe("WebSocketManager subscriptions", () => {
     ]);
 
     manager.unsubscribe(THREAD_TARGET);
+    await Promise.resolve();
 
     expect(readClientMessages(socket)).toEqual([
       {
@@ -196,6 +197,23 @@ describe("WebSocketManager subscriptions", () => {
         type: "unsubscribe",
         target: THREAD_TARGET,
       },
+    ]);
+  });
+
+  it("keeps a subscription that a remount releases and retakes in the same task", async () => {
+    const { manager, socket } = createConnectedManager();
+
+    manager.subscribe(THREAD_TARGET);
+    manager.unsubscribe(THREAD_TARGET);
+    manager.subscribe(THREAD_TARGET);
+    await Promise.resolve();
+    manager.unsubscribe(THREAD_TARGET);
+    manager.unsubscribe(THREAD_TARGET);
+    await Promise.resolve();
+
+    expect(readClientMessages(socket)).toEqual([
+      { type: "subscribe", target: THREAD_TARGET },
+      { type: "unsubscribe", target: THREAD_TARGET },
     ]);
   });
 

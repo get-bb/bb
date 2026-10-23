@@ -132,6 +132,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalThreadInfoProps`
+- `ExperimentalThreadEnvironment`
+- `ExperimentalThreadContextSegmentInput`
+- `ExperimentalThreadContextSegmentProps`
+- `ExperimentalThreadContextSegmentReference`
 - `ExperimentalInfoSectionProps`
 - `ExperimentalDetailRowProps`
 - `ExperimentalInfoListProps`
@@ -201,6 +205,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginBoundThreadsArea`
 - `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
+- `ExperimentalThreadContextSegmentRegistration`
 - `ExperimentalThreadInfoRowRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
 - `PluginThreadActionTarget`

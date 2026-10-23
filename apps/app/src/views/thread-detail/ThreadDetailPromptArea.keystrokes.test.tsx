@@ -139,15 +139,13 @@ function buildPromptArea({
         providerCommands={null}
         sessionOptions={null}
         modelFallback={null}
-        isEnvironmentActionPending={false}
         onChangedFileClick={vi.fn()}
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={0}
         pendingTodos={null}
         projectId={PROJECT_ID}
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
+        contextEnvironmentId={null}
         resolveMentionLink={() => null}
         sendMessage={{
           isPending: false,

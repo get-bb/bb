@@ -1,5 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "../../lib/utils";
 
 export const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
 export const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =

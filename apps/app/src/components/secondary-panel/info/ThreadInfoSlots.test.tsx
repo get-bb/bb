@@ -66,11 +66,13 @@ function renderInfo() {
             core={CORE_ROWS}
             threadId="thr_1"
             projectId="proj_1"
+            environment={null}
           />
           <ThreadInfoSections
             core={CORE_SECTIONS}
             threadId="thr_1"
             projectId="proj_1"
+            environment={null}
           />
         </dl>
       </MemoryRouter>

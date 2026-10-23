@@ -5,7 +5,8 @@
   "type": "module",
   "description": "GitHub pull request status and actions for each environment's branch",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.75"
   },
   "bb": {
     "name": "GitHub PR Status",
@@ -14,7 +15,8 @@
       "icon": "GitPullRequest"
     },
     "server": "./server.ts",
-    "host": "./host.ts"
+    "host": "./host.ts",
+    "app": "./app.tsx"
   },
   "exports": {
     "./contract": "./contract.ts"
@@ -29,13 +31,21 @@
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
+    "@bb/shared-ui": "workspace:*",
     "bb-environment-provider-host": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"

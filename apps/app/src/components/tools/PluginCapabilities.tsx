@@ -299,6 +299,12 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadContextSegments,
+      "thread-context",
+      "Adds context beside a thread's composer.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadInfoRows,
       "thread-info-row",
       "Adds a row to the thread Info tab.",

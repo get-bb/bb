@@ -1,4 +1,3 @@
-import type { PullRequest } from "bb-plugin-bb--github-pr-status/contract";
 import { EnvironmentProviderIcon } from "@/components/plugin/EnvironmentProviderIcon";
 import {
   createContext,
@@ -91,16 +90,6 @@ import {
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
-import {
-  describePullRequestStatus,
-  getPullRequestNextStep,
-  getPullRequestStateDisplay,
-  isPullRequestAutoMergeOn,
-} from "@/lib/pull-request-display";
-import { PullRequestNextStepLabel } from "@/components/pull-request/PullRequestNextStepLabel";
-import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
-import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
-import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
 
 interface ParentSelectorRowProps {
@@ -503,58 +492,6 @@ export function BranchRow({ workspaceStatus }: BranchRowProps) {
   );
 }
 
-interface PullRequestRowProps {
-  pullRequest: PullRequest | null;
-}
-
-export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
-  const handlePullRequestClick = useUrlAnchorClickHandler(pullRequest?.url);
-  if (!pullRequest) return null;
-  const stateDisplay = getPullRequestStateDisplay(pullRequest);
-  const nextStep = getPullRequestNextStep(pullRequest);
-  return (
-    <DetailRow icon="GitPullRequestArrow" label="Pull request">
-      <span className="flex h-5 max-w-full min-w-0 items-center gap-2">
-        <a
-          href={pullRequest.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={handlePullRequestClick}
-          aria-label={`Pull request ${pullRequest.number}: ${describePullRequestStatus(pullRequest)}`}
-          className="flex min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <GithubFaviconIcon />
-          <span className="shrink-0 text-muted-foreground">
-            #{pullRequest.number}
-          </span>
-          <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-1.5 text-muted-foreground">
-            <PullRequestStateIcon
-              pullRequest={pullRequest}
-              className="size-3.5"
-            />
-            <span>{stateDisplay.label}</span>
-          </span>
-          {nextStep ? <PullRequestNextStepLabel nextStep={nextStep} /> : null}
-        </a>
-        {isPullRequestAutoMergeOn(pullRequest) ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                role="img"
-                aria-label="Auto-merge on"
-                className="flex shrink-0 items-center text-subtle-foreground"
-              >
-                <Icon name="Zap" className="size-3" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Auto-merge on</TooltipContent>
-          </Tooltip>
-        ) : null}
-      </span>
-    </DetailRow>
-  );
-}
-
 function resolveDisplayedMergeBaseBranch(
   selectedMergeBaseBranch: string | undefined,
   workspaceStatus: WorkspaceStatus | undefined,
@@ -826,7 +763,7 @@ export interface ThreadMetadataContentProps {
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
-  pullRequest: PullRequest | null;
+  threadEnvironmentId: string | null;
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions: readonly string[] | undefined;
@@ -853,7 +790,6 @@ export function hasAnyThreadMetadata(
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
-    pullRequest,
   }: Pick<
     ThreadMetadataContentProps,
     | "thread"
@@ -862,7 +798,6 @@ export function hasAnyThreadMetadata(
     | "workspaceStatus"
     | "workspaceStatusError"
     | "workspaceUnavailable"
-    | "pullRequest"
   >,
   hasForks: boolean,
 ): boolean {
@@ -884,7 +819,6 @@ export function hasAnyThreadMetadata(
     environment ||
     environmentProvisioningFailure ||
     branchName ||
-    pullRequest ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     thread.archivedAt != null ||
@@ -1046,10 +980,6 @@ function CoreGitStatusRow() {
   );
 }
 
-function CorePullRequestRow() {
-  return <PullRequestRow pullRequest={useThreadInfoHost().pullRequest} />;
-}
-
 function CoreArchivedRow() {
   return <ArchivedRow thread={useThreadInfoHost().thread} />;
 }
@@ -1146,12 +1076,6 @@ const CORE_THREAD_INFO_ROWS: readonly CoreThreadInfoRegistration[] = [
     component: CoreGitStatusRow,
   },
   {
-    id: "pullRequest",
-    group: ROW_GROUPS.pullRequest,
-    order: 10,
-    component: CorePullRequestRow,
-  },
-  {
     id: "archived",
     group: ROW_GROUPS.lifecycle,
     order: 10,
@@ -1193,6 +1117,10 @@ const CORE_THREAD_INFO_SECTIONS: readonly CoreThreadInfoRegistration[] = [
 ];
 
 export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
+  const infoEnvironment =
+    props.threadEnvironmentId === null
+      ? null
+      : { id: props.threadEnvironmentId };
   return (
     <ThreadInfoHostContext.Provider value={props}>
       <ThreadMetadataCard>
@@ -1202,12 +1130,14 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
               core={CORE_THREAD_INFO_ROWS}
               threadId={props.thread.id}
               projectId={props.projectId}
+              environment={infoEnvironment}
             />
           </div>
           <ThreadInfoSections
             core={CORE_THREAD_INFO_SECTIONS}
             threadId={props.thread.id}
             projectId={props.projectId}
+            environment={infoEnvironment}
           />
         </div>
       </ThreadMetadataCard>

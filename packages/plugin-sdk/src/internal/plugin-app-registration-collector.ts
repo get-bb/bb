@@ -30,6 +30,7 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
+  ExperimentalThreadContextSegmentRegistration,
   PluginThreadHeaderActionRegistration,
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadInfoSectionRegistration,
@@ -302,6 +303,7 @@ export interface CollectedPluginAppRegistrations {
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -440,6 +442,7 @@ export function collectPluginAppRegistrations(
     threadLists: [],
     experimentalSidebarNavigations: [],
     threadHeaderActions: [],
+    threadContextSegments: [],
     threadInfoRows: [],
     threadInfoSections: [],
     threadActions: [],
@@ -475,6 +478,7 @@ export function collectPluginAppRegistrations(
     sidebarNavigation: new Set<string>(),
     sidebarHeader: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    threadContextSegment: new Set<string>(),
     threadInfoRow: new Set<string>(),
     threadInfoSection: new Set<string>(),
     threadAction: new Set<string>(),
@@ -891,6 +895,34 @@ export function collectPluginAppRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadContextSegment(registration) {
+        const kind = "slots.experimental_threadContextSegment";
+        const { id, title, component } = collectTitledComponent(
+          kind,
+          seenIds.threadContextSegment,
+          registration,
+        );
+        const placement = registration.placement ?? "inline";
+        if (placement !== "inline" && placement !== "before") {
+          throw new Error(`${kind}: "placement" must be "inline" or "before"`);
+        }
+        if (
+          registration.useVisible !== undefined &&
+          typeof registration.useVisible !== "function"
+        ) {
+          throw new Error(`${kind}: "useVisible" must be a function`);
+        }
+        collected.threadContextSegments.push({
+          id,
+          title,
+          placement,
+          ...requireOptionalOrder(kind, registration.order),
+          component,
+          ...(registration.useVisible !== undefined
+            ? { useVisible: registration.useVisible }
+            : {}),
         });
       },
       experimental_threadInfoRow(registration) {

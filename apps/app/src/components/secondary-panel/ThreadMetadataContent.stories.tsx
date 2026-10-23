@@ -8,7 +8,6 @@ import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import {
   PanelStage,
   baseProps,
-  makePullRequest,
   makeThread,
   makeWorkspaceStatus,
   STORY_AHEAD_COMMITS,
@@ -44,7 +43,6 @@ function WorkInProgressPanel() {
     threadId: "thr_story",
   });
   return render({
-    pullRequest: makePullRequest(),
     workspaceStatus: makeWorkspaceStatus({
       workingTree: {
         ...STORY_DIRTY_WORKING_TREE,
@@ -76,11 +74,9 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="standard"
-        hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
+        hint="canonical state — parent + env + worktree path + branch + merge base + clean git status"
       >
-        {render({
-          pullRequest: makePullRequest(),
-        })}
+        {render({})}
       </StoryRow>
       <StoryRow
         label="work in progress"

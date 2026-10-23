@@ -40,7 +40,6 @@ import {
 } from "./ThreadMetadataContent";
 import {
   baseProps as baseMetadataProps,
-  makePullRequest,
   makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileIconName } from "./rightPanelFileVisuals";
@@ -229,10 +228,6 @@ function RepresentativeInfoContent() {
   });
   const props: ThreadMetadataContentProps = {
     ...baseMetadataProps,
-    pullRequest: makePullRequest({
-      number: 947,
-      title: "Use the sidebar surface throughout the right panel",
-    }),
     selectedMergeBaseBranch: "main",
     workspaceStatus: representativeWorkspaceStatus,
     storage: {

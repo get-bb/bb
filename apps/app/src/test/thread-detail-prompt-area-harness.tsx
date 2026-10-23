@@ -494,13 +494,13 @@ vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
 
 vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
   ThreadPromptContextBanner: ({
-    childThreadsSection,
+    core,
   }: {
-    childThreadsSection: { items: readonly unknown[] } | null;
+    core: { childThreads: { items: readonly unknown[] } | null };
   }) =>
-    childThreadsSection ? (
+    core.childThreads ? (
       <div data-testid="child-threads-banner">
-        {childThreadsSection.items.length} child threads
+        {core.childThreads.items.length} child threads
       </div>
     ) : null,
 }));

@@ -17,7 +17,6 @@ import {
   ThreadPromptContextBanner,
   type ChildThreadQuestion,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptContextBannerExpandedSection,
 } from "./ThreadPromptContextBanner";
 
 const mocks = vi.hoisted(() => ({
@@ -115,21 +114,23 @@ function Harness({
   childThreads: ThreadPromptChildThreadsSection;
   initiallyExpanded: boolean;
 }) {
-  const [expandedSection, setExpandedSection] =
-    useState<ThreadPromptContextBannerExpandedSection | null>(
-      initiallyExpanded ? "childThreads" : null,
-    );
+  const [expandedSection, setExpandedSection] = useState<string | null>(
+    initiallyExpanded ? "core/child-threads" : null,
+  );
   return (
     <ThreadPromptContextBanner
-      gitSection={null}
-      gitSectionPending={false}
+      input={{ threadId: "thr_parent", projectId: "proj_1", environment: null }}
+      core={{
+        git: null,
+        gitPending: false,
+        parentThread: null,
+        childThreads,
+      }}
       archivedSection={null}
       environmentGoneSection={null}
-      parentThreadSection={null}
-      childThreadsSection={childThreads}
-      pullRequestSection={null}
-      expandedSection={expandedSection}
-      onToggleSection={(next) =>
+      showInlineSegments
+      expandedSegment={expandedSection}
+      onToggleSegment={(next) =>
         setExpandedSection((current) => (current === next ? null : next))
       }
     />

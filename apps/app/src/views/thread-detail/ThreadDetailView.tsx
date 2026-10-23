@@ -26,7 +26,6 @@ import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
-import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineEditMessageHandler,
@@ -47,7 +46,6 @@ import {
   type ThreadWithRuntime,
 } from "@bb/domain";
 import type { TerminalSession, TimelineRow } from "@bb/server-contract";
-import type { PullRequestMergeMethod } from "bb-plugin-bb--github-pr-status/contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -72,10 +70,6 @@ import {
   useEnvironment,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
-import {
-  useEnvironmentPullRequest,
-  usePullRequestActions,
-} from "../../hooks/queries/pull-request-queries";
 import {
   useChildThreadPendingAttention,
   type ChildThreadPendingAttentionSource,
@@ -142,16 +136,12 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
-import {
-  getMutationErrorMessage,
-  showMutationErrorToast,
-} from "@/lib/mutation-errors";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import {
   promptInputToDraft,
   type PromptDraftAttachment,
   type PromptDraftState,
 } from "@bb/client-core";
-import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
@@ -294,24 +284,7 @@ const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
 const THREAD_HEADER_ACTIONS_GROUP = "0_header";
-const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY = "bb.pullRequest.mergeMethod";
-
-function isPullRequestMergeMethod(
-  value: string,
-): value is PullRequestMergeMethod {
-  return value === "merge" || value === "squash" || value === "rebase";
-}
-
-const pullRequestMergeMethodAtom = atomWithStorage<PullRequestMergeMethod>(
-  PULL_REQUEST_MERGE_METHOD_STORAGE_KEY,
-  DEFAULT_PULL_REQUEST_MERGE_METHOD,
-  createLocalStorageEnumStorage<PullRequestMergeMethod>(
-    isPullRequestMergeMethod,
-  ),
-  { getOnInit: true },
-);
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
@@ -339,19 +312,6 @@ function hasTimelineRowId(
         row.children !== null &&
         hasTimelineRowId(row.children, rowId)),
   );
-}
-
-function getPullRequestMergeLoadingTitle(
-  method: PullRequestMergeMethod,
-): string {
-  switch (method) {
-    case "merge":
-      return "Merging pull request";
-    case "squash":
-      return "Squash merging pull request";
-    case "rebase":
-      return "Rebase merging pull request";
-  }
 }
 
 interface ThreadDetailViewPageProps {
@@ -813,9 +773,6 @@ function ThreadDetailViewInternal(
   const editMessage = useEditThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
-  const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
-    pullRequestMergeMethodAtom,
-  );
   const markThreadRead = useMarkThreadRead();
   const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
@@ -1130,6 +1087,10 @@ function ThreadDetailViewInternal(
     [composerActions, dismissCompactKeyboard],
   );
   const canUseGitUi = !executionUnavailable && gitDiffTabStatus === "eligible";
+  const threadEnvironmentId =
+    canUseGitUi && environment !== undefined && thread?.environmentId
+      ? thread.environmentId
+      : null;
   const canCreateTerminal =
     !executionUnavailable &&
     thread?.environmentId !== null &&
@@ -1653,72 +1614,6 @@ function ThreadDetailViewInternal(
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
-  const { pullRequest } = useEnvironmentPullRequest(thread?.environmentId, {
-    enabled: canUseGitUi && environment !== undefined,
-  });
-  const pullRequestActions = usePullRequestActions();
-  const { markReady, markDraft, merge } = pullRequestActions;
-  const handlePullRequestReady = useCallback(async () => {
-    const environmentId = thread?.environmentId;
-    if (!environmentId) {
-      return;
-    }
-    const toastId = appToast.loading("Marking pull request ready");
-    try {
-      const response = await markReady({ environmentId });
-      appToast.success(response.message, { id: toastId });
-    } catch (error) {
-      appToast.error("Failed to update pull request", {
-        id: toastId,
-        description: getMutationErrorMessage({
-          error,
-          fallbackMessage: "Pull request was not updated",
-        }),
-      });
-    }
-  }, [markReady, thread?.environmentId]);
-  const handlePullRequestDraft = useCallback(async () => {
-    const environmentId = thread?.environmentId;
-    if (!environmentId) {
-      return;
-    }
-    const toastId = appToast.loading("Converting pull request to draft");
-    try {
-      const response = await markDraft({ environmentId });
-      appToast.success(response.message, { id: toastId });
-    } catch (error) {
-      appToast.error("Failed to update pull request", {
-        id: toastId,
-        description: getMutationErrorMessage({
-          error,
-          fallbackMessage: "Pull request was not updated",
-        }),
-      });
-    }
-  }, [markDraft, thread?.environmentId]);
-  const handlePullRequestMerge = useCallback(
-    async (method: PullRequestMergeMethod) => {
-      const environmentId = thread?.environmentId;
-      if (!environmentId) {
-        return;
-      }
-      setPullRequestMergeMethod(method);
-      const toastId = appToast.loading(getPullRequestMergeLoadingTitle(method));
-      try {
-        const response = await merge({ environmentId, method });
-        appToast.success(response.message, { id: toastId });
-      } catch (error) {
-        appToast.error("Failed to merge pull request", {
-          id: toastId,
-          description: getMutationErrorMessage({
-            error,
-            fallbackMessage: "Pull request was not merged",
-          }),
-        });
-      }
-    },
-    [merge, setPullRequestMergeMethod, thread?.environmentId],
-  );
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
     () => selectWorkspaceChangedFilesSection(workspaceStatus),
@@ -2450,15 +2345,8 @@ function ThreadDetailViewInternal(
       canRestoreEnvironment={thread.canRestoreEnvironment}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       environmentHostId={environment?.hostId}
-      isEnvironmentActionPending={
-        requestEnvironmentAction.isPending || pullRequestActions.isPending
-      }
       onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
       onOpenThreadInfo={openThreadInfo}
-      onPullRequestMerge={handlePullRequestMerge}
-      onPullRequestDraft={handlePullRequestDraft}
-      onPullRequestReady={handlePullRequestReady}
-      pullRequestMergeMethod={pullRequestMergeMethod}
       onChangedFileClick={handleChangedFileClick}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
@@ -2502,7 +2390,7 @@ function ThreadDetailViewInternal(
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsBannerSection}
-      pullRequest={pullRequest}
+      contextEnvironmentId={showGitChanges ? threadEnvironmentId : null}
       thread={thread}
     />
   );
@@ -2843,7 +2731,7 @@ function ThreadDetailViewInternal(
               workspaceStatus,
               workspaceStatusError: workspaceStatusError ?? null,
               workspaceUnavailable,
-              pullRequest,
+              threadEnvironmentId,
               selectedMergeBaseBranch,
               mergeBaseBranchRef: selectedMergeBaseBranchRef,
               mergeBaseBranchOptions,

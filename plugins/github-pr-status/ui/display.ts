@@ -1,7 +1,4 @@
-import type {
-  PullRequest,
-  PullRequestState,
-} from "bb-plugin-bb--github-pr-status/contract";
+import type { PullRequest, PullRequestState } from "../contract";
 import type { IconName } from "@bb/shared-ui/icon";
 
 interface PullRequestDisplay {

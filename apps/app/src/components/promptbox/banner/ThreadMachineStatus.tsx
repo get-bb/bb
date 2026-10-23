@@ -17,7 +17,7 @@ import {
 import {
   BannerActionSlot,
   PromptBannerActionButton,
-} from "./prompt-banner-actions";
+} from "@bb/shared-ui/prompt-banner-actions";
 import {
   PromptStackCard,
   PROMPT_STACK_CARD_ROW_HEIGHT,

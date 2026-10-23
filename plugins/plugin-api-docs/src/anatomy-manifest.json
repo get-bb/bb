@@ -27,6 +27,33 @@
     ]
   },
   "surfaceFixtures": {
+    "composer-banners": {
+      "groupId": "composer",
+      "fidelity": "flow",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor", "triggered"],
+      "labels": {
+        "anchor": ["Your banner", "Your context", "Changed files"],
+        "triggered": ["Context details"]
+      },
+      "fixtureClassAnchors": ["overflow-hidden", "rounded-lg"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx",
+          "anchors": [
+            "function ParentThreadSegment",
+            "function ChangedFilesSegment",
+            "function ChildThreadsCard",
+            "mount(entry, \"summary\", inlineSegments)",
+            "mount(entry, \"details\", inlineSegments)"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadContextSegments.tsx",
+          "anchors": ["props.part", "onVisible(slot, threadId, visible)"]
+        }
+      ]
+    },
     "composer-actions": {
       "groupId": "composer",
       "fidelity": "flow",
@@ -59,7 +86,7 @@
       "responsiveStrategy": "scale-together",
       "requiredStates": ["anchor", "triggered", "outcome"],
       "labels": {
-        "anchor": ["Quick palette", "⇧⌘P"],
+        "anchor": ["Quick palette", "\u21e7\u2318P"],
         "triggered": ["Search commands", "Plugins", "Run release checklist"],
         "outcome": ["Release checklist"]
       },

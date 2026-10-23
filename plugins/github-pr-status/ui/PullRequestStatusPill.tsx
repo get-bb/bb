@@ -1,11 +1,11 @@
-import type { PullRequest } from "bb-plugin-bb--github-pr-status/contract";
+import type { PullRequest } from "../contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   describePullRequestStatus,
   getPullRequestStateDisplay,
   getPullRequestGithubCheckStatus,
-} from "@/lib/pull-request-display";
+} from "./display";
 import { GithubFaviconIcon } from "./GithubFaviconIcon";
 
 const CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-9";

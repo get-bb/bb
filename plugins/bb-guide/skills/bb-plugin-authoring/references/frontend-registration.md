@@ -192,14 +192,28 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
 }
 ```
 
-Components receive `{ threadId, projectId }` and mount once per visible
-thread; return null to show nothing. A row renders `experimental_DetailRow`.
+Components receive `{ threadId, projectId, environment }` and mount once per
+visible thread; `environment` is `{ id }`, or null when the thread has no
+environment, its host is not active, or it is not a usable checkout. Return
+null to show nothing. A row renders `experimental_DetailRow`.
 Entries sort by `group`, then `order` within it (unset last), then registration
 order, bb's first on a tie, as thread actions do. Join one of bb's groups from
 `experimental_THREAD_INFO_ROW_GROUPS` or `experimental_THREAD_INFO_SECTION_GROUPS`
 (bb's entries use orders 10, 20, 30 within a group), or name your own group to
 sort it where its string falls. Inside a section slot `experimental_InfoSection` collapses and bb
 remembers it per registration. A crash removes only that row or section.
+
+### Context beside a thread's composer
+
+`app.slots.experimental_threadContextSegment({ id, title, order?, placement?, component, useVisible? })`
+adds a segment to the context row above an open thread's composer, or with
+`placement: "before"` a card above that row; bb's parent thread (order 100),
+changed files (300) and child threads use it too. The host mounts the component
+once per `part`, each in its own crash boundary: `summary` in the row, `action`
+at its end, `details` below it. Props carry `threadId`, `projectId`,
+`environment` (null without a usable environment or when "Show Git changes" is
+off), the visible `segments` in row order, and `isExpanded`/`onToggle` (one
+segment is expanded at a time). `useVisible(input)` false leaves it out.
 
 ### An action in every thread menu
 

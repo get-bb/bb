@@ -136,13 +136,9 @@ export class WebSocketManager {
       this.startPingLoop();
       if (this.watchesReleased)
         this.sendMessage({ type: "visibility", visible: false });
-      if (this.subscriptions.size > 0)
-        this.sendMessage({
-          type: "subscribe",
-          targets: [...this.subscriptions.values()].map(
-            (subscription) => subscription.target,
-          ),
-        });
+      const targets = this.activeSubscriptionTargets();
+      if (targets.length > 0)
+        this.sendMessage({ type: "subscribe", targets });
       const event: WebSocketConnectedEvent = reconnected
         ? { reconnected, disconnectedAt: disconnectedAt ?? Date.now() }
         : { reconnected };
@@ -268,9 +264,13 @@ export class WebSocketManager {
     }
     this.watchesReleased = false;
     this.sendMessage({ type: "visibility", visible: true });
-    return [...this.subscriptions.values()].map(
-      (subscription) => subscription.target,
-    );
+    return this.activeSubscriptionTargets();
+  }
+
+  private activeSubscriptionTargets(): RealtimeSubscriptionTarget[] {
+    return [...this.subscriptions.values()]
+      .filter((subscription) => subscription.count > 0)
+      .map((subscription) => subscription.target);
   }
 
   private notifyResumed(
@@ -484,18 +484,22 @@ export class WebSocketManager {
   unsubscribe(target: RealtimeSubscriptionTarget): void {
     const key = realtimeSubscriptionTargetKey(target);
     const existing = this.subscriptions.get(key);
-    if (!existing) {
+    if (!existing || existing.count === 0) {
       return;
     }
-    if (existing.count > 1) {
-      existing.count -= 1;
+    existing.count -= 1;
+    if (existing.count > 0) {
       return;
     }
-
-    this.subscriptions.delete(key);
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ type: "unsubscribe", target });
-    }
+    queueMicrotask(() => {
+      if (this.subscriptions.get(key) !== existing || existing.count > 0) {
+        return;
+      }
+      this.subscriptions.delete(key);
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.sendMessage({ type: "unsubscribe", target });
+      }
+    });
   }
 
   onChanged(callback: ChangeCallback): () => void {

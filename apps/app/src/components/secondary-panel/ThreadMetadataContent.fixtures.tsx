@@ -1,4 +1,3 @@
-import type { PullRequest } from "bb-plugin-bb--github-pr-status/contract";
 import type { ReactNode } from "react";
 import type {
   ThreadListEntry,
@@ -44,40 +43,6 @@ export const parentThreads: ThreadListEntry[] = [
   }),
 ];
 
-export function makePullRequest(
-  overrides: Partial<PullRequest> = {},
-): PullRequest {
-  return {
-    number: 128,
-    title: "Show the branch's GitHub pull request in the Info tab",
-    state: "open",
-    url: "https://github.com/acme/bb/pull/128",
-    baseRefName: "main",
-    headRefName: "bb/pr-info-panel",
-    updatedAt: "2026-06-16T12:30:00Z",
-    autoMerge: false,
-    inMergeQueue: false,
-    checks: {
-      state: "passing",
-      totalCount: 3,
-      passedCount: 3,
-      failedCount: 0,
-      pendingCount: 0,
-    },
-    review: {
-      state: "approved",
-      reviewRequestCount: 0,
-    },
-    mergeability: {
-      state: "mergeable",
-      mergeStateStatus: "CLEAN",
-      mergeable: "MERGEABLE",
-    },
-    attention: "ready_to_merge",
-    ...overrides,
-  };
-}
-
 export const baseProps: ThreadMetadataContentProps = {
   thread: makeThread(),
   projectId: "proj_bb",
@@ -93,7 +58,7 @@ export const baseProps: ThreadMetadataContentProps = {
   environmentDisplayHost: localEnvironmentDisplayHost,
   workspaceStatus: makeWorkspaceStatus(),
   workspaceStatusError: null,
-  pullRequest: null,
+  threadEnvironmentId: null,
   selectedMergeBaseBranch: undefined,
   mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
   isLoadingMergeBaseBranchOptions: false,

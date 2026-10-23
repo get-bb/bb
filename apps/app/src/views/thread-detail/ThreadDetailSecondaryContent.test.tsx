@@ -265,7 +265,7 @@ function createProps(
       isLoadingParentThreads: false,
       isParentThreadsError: false,
       projectId: "proj-test",
-      pullRequest: null,
+      threadEnvironmentId: null,
       selectedMergeBaseBranch: undefined,
       thread: makeThread(),
       threadSchedules: [],

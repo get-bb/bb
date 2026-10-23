@@ -1,14 +1,9 @@
-import type {
-  PullRequest,
-  PullRequestMergeMethod,
-} from "bb-plugin-bb--github-pr-status/contract";
 import { useState, type ReactNode } from "react";
 import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
-  type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptEnvironmentGoneSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
@@ -519,210 +514,6 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   pendingInteractions: [],
 };
 
-function buildPullRequestFixture(
-  overrides: Partial<PullRequest> = {},
-): PullRequest {
-  const base: PullRequest = {
-    number: 128,
-    title: "Show pull request status in the prompt context banner",
-    state: "open",
-    url: "https://github.com/acme/bb/pull/128",
-    baseRefName: "main",
-    headRefName: "bb/pr-context-banner",
-    updatedAt: "2026-06-16T12:30:00Z",
-    autoMerge: false,
-    inMergeQueue: false,
-    checks: {
-      state: "failing",
-      totalCount: 3,
-      passedCount: 1,
-      failedCount: 1,
-      pendingCount: 1,
-    },
-    review: {
-      state: "review_requested",
-      reviewRequestCount: 1,
-    },
-    mergeability: {
-      state: "mergeable",
-      mergeStateStatus: "CLEAN",
-      mergeable: "MERGEABLE",
-    },
-    attention: "checks_failed",
-  };
-
-  return {
-    ...base,
-    ...overrides,
-    checks: overrides.checks
-      ? { ...base.checks, ...overrides.checks }
-      : base.checks,
-    review: overrides.review
-      ? { ...base.review, ...overrides.review }
-      : base.review,
-    mergeability: overrides.mergeability
-      ? { ...base.mergeability, ...overrides.mergeability }
-      : base.mergeability,
-  };
-}
-
-const pullRequestFixture = buildPullRequestFixture();
-const pendingPullRequestFixture = buildPullRequestFixture({
-  checks: {
-    state: "pending",
-    totalCount: 3,
-    passedCount: 1,
-    failedCount: 0,
-    pendingCount: 2,
-  },
-  attention: "checks_pending",
-});
-const mergedPullRequestFixture = buildPullRequestFixture({
-  number: 134,
-  state: "merged",
-  checks: {
-    state: "passing",
-    totalCount: 3,
-    passedCount: 3,
-    failedCount: 0,
-    pendingCount: 0,
-  },
-  attention: "merged",
-});
-
-const pullRequestStateRows: readonly {
-  label: string;
-  hint: string;
-  pullRequest: PullRequest;
-}[] = [
-  {
-    label: "open · checks passing",
-    hint: "happy path",
-    pullRequest: buildPullRequestFixture({
-      number: 128,
-      checks: {
-        state: "passing",
-        totalCount: 3,
-        passedCount: 3,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      attention: "ready_to_merge",
-    }),
-  },
-  {
-    label: "open · checks pending",
-    hint: "running checks",
-    pullRequest: buildPullRequestFixture({
-      number: 129,
-      checks: {
-        state: "pending",
-        totalCount: 3,
-        passedCount: 1,
-        failedCount: 0,
-        pendingCount: 2,
-      },
-      attention: "checks_pending",
-    }),
-  },
-  {
-    label: "open · checks failing",
-    hint: "failing checks",
-    pullRequest: buildPullRequestFixture({
-      number: 130,
-      checks: {
-        state: "failing",
-        totalCount: 3,
-        passedCount: 1,
-        failedCount: 1,
-        pendingCount: 1,
-      },
-      attention: "checks_failed",
-    }),
-  },
-  {
-    label: "draft · checks pending",
-    hint: "draft PR",
-    pullRequest: buildPullRequestFixture({
-      number: 131,
-      state: "draft",
-      checks: {
-        state: "pending",
-        totalCount: 2,
-        passedCount: 0,
-        failedCount: 0,
-        pendingCount: 2,
-      },
-      mergeability: {
-        state: "draft",
-        mergeStateStatus: "DRAFT",
-        mergeable: "UNKNOWN",
-      },
-      attention: "draft",
-    }),
-  },
-  {
-    label: "open · review requested",
-    hint: "human attention",
-    pullRequest: buildPullRequestFixture({
-      number: 132,
-      checks: {
-        state: "passing",
-        totalCount: 3,
-        passedCount: 3,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      review: {
-        state: "review_requested",
-        reviewRequestCount: 2,
-      },
-      attention: "review_requested",
-    }),
-  },
-  {
-    label: "open · blocked",
-    hint: "merge blocked",
-    pullRequest: buildPullRequestFixture({
-      number: 133,
-      checks: {
-        state: "unknown",
-        totalCount: 0,
-        passedCount: 0,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      mergeability: {
-        state: "blocked",
-        mergeStateStatus: "BLOCKED",
-        mergeable: "UNKNOWN",
-      },
-      attention: "blocked",
-    }),
-  },
-  {
-    label: "merged",
-    hint: "terminal state",
-    pullRequest: mergedPullRequestFixture,
-  },
-  {
-    label: "closed",
-    hint: "terminal state",
-    pullRequest: buildPullRequestFixture({
-      number: 135,
-      state: "closed",
-      checks: {
-        state: "unknown",
-        totalCount: 0,
-        passedCount: 0,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      attention: "closed",
-    }),
-  },
-];
-
 interface RowConfig {
   section?: WorkspaceChangedFilesSection;
   mergeBase?: ContextBannerMergeBaseConfig | null;
@@ -730,10 +521,7 @@ interface RowConfig {
   environmentGone?: ThreadPromptEnvironmentGoneSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
-  pullRequest?: PullRequest | null;
-  pullRequestActions?: boolean;
-  pullRequestMergeMethod?: PullRequestMergeMethod;
-  initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
+  initiallyExpandedSection?: string | null;
 }
 
 function ContextBannerPreview({
@@ -743,51 +531,37 @@ function ContextBannerPreview({
   environmentGone = null,
   parentThread = null,
   childThreads = null,
-  pullRequest = null,
-  pullRequestActions = false,
-  pullRequestMergeMethod = "merge",
   initiallyExpandedSection = null,
   size,
 }: RowConfig & { size: PromptStageSize }) {
-  const [expandedSection, setExpandedSection] =
-    useState<ThreadPromptContextBannerExpandedSection | null>(
-      initiallyExpandedSection,
-    );
+  const [expandedSection, setExpandedSection] = useState<string | null>(
+    initiallyExpandedSection,
+  );
   return (
     <PromptStage size={size}>
       <ThreadPromptContextBanner
-        gitSection={
-          section
+        input={{
+          threadId: "thr_story",
+          projectId: "proj_story",
+          environment: null,
+        }}
+        core={{
+          git: section
             ? {
                 changedFiles: section,
                 mergeBase,
                 onPromptBannerFileClick: noop,
               }
-            : null
-        }
-        gitSectionPending={false}
+            : null,
+          gitPending: false,
+          parentThread,
+          childThreads,
+        }}
         archivedSection={archived}
         environmentGoneSection={environmentGone}
-        parentThreadSection={parentThread}
-        childThreadsSection={childThreads}
-        pullRequestSection={
-          pullRequest
-            ? {
-                pullRequest,
-                ...(pullRequestActions
-                  ? {
-                      actions: {
-                        onMarkReady: noop,
-                        onMerge: noop,
-                        selectedMergeMethod: pullRequestMergeMethod,
-                      },
-                    }
-                  : {}),
-              }
-            : null
-        }
-        expandedSection={expandedSection}
-        onToggleSection={(next) =>
+        showInlineSegments
+        expandedSegment={expandedSection}
+        onToggleSegment={(next) =>
           setExpandedSection((previous) => (previous === next ? null : next))
         }
       />
@@ -915,15 +689,10 @@ export function Overview() {
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="active child + pull request + uncommitted"
-        hint="long child titles stay within the shared stack; pull request actions remain available"
+        label="active child + uncommitted"
+        hint="long child titles stay within the shared stack"
       >
-        <Row
-          childThreads={childThreadsFixture}
-          pullRequest={pullRequestFixture}
-          pullRequestActions
-          section={uncommittedSection}
-        />
+        <Row childThreads={childThreadsFixture} section={uncommittedSection} />
       </StoryRow>
       <StoryRow
         label="parent thread with many children (scrollable)"
@@ -932,7 +701,7 @@ export function Overview() {
         <Row
           childThreads={childThreadsLargeFixture}
           mergeBase={null}
-          initiallyExpandedSection="childThreads"
+          initiallyExpandedSection="core/child-threads"
         />
       </StoryRow>
       <StoryRow
@@ -940,53 +709,6 @@ export function Overview() {
         hint="with other context, the parent-thread segment collapses to an icon-only toggle"
       >
         <Row section={uncommittedSection} parentThread={parentThreadFixture} />
-      </StoryRow>
-      <StoryRow
-        label="metadata + pull request + git"
-        hint="relationship metadata renders first, then GitHub PR, then git status"
-      >
-        <Row
-          parentThread={forkedFromFixture}
-          pullRequest={pullRequestFixture}
-          section={uncommittedSection}
-        />
-      </StoryRow>
-      {pullRequestStateRows.map(({ label, hint, pullRequest }) => (
-        <StoryRow key={label} label={`pull request — ${label}`} hint={hint}>
-          <Row pullRequest={pullRequest} mergeBase={null} pullRequestActions />
-        </StoryRow>
-      ))}
-      <StoryRow
-        label="pull request + uncommitted"
-        hint="PR number and the shared uncommitted diff label stay visible"
-      >
-        <Row pullRequest={pullRequestFixture} section={uncommittedSection} />
-      </StoryRow>
-      <StoryRow
-        label="pull request + committed"
-        hint="committed branch changes use the same label with or without PR context"
-      >
-        <Row pullRequest={pullRequestFixture} section={committedSection} />
-      </StoryRow>
-      <StoryRow
-        label="merged pull request + committed"
-        hint="terminal pull requests reserve space for only their single status glyph"
-      >
-        <Row
-          pullRequest={mergedPullRequestFixture}
-          section={committedSection}
-        />
-      </StoryRow>
-      <StoryRow
-        label="pull request + many committed + actions"
-        hint="the GitHub status pill stays intact beside a long committed summary and merge action"
-      >
-        <Row
-          pullRequest={pendingPullRequestFixture}
-          pullRequestActions
-          pullRequestMergeMethod="squash"
-          section={committedManySection}
-        />
       </StoryRow>
       <StoryRow
         label="uncommitted (collapsed)"
@@ -998,19 +720,31 @@ export function Overview() {
         label="uncommitted (expanded)"
         hint="expanded change list visible inside the same card; long lists scroll within max-h-32"
       >
-        <Row section={uncommittedManySection} initiallyExpandedSection="git" />
+        <Row
+          section={uncommittedManySection}
+          initiallyExpandedSection="core/changed-files"
+        />
       </StoryRow>
       <StoryRow
         label="untracked only"
         hint='workingTree.state = "untracked" with intentionally unavailable line stats'
       >
-        <Row section={untrackedSection} initiallyExpandedSection="git" />
+        <Row
+          section={untrackedSection}
+          initiallyExpandedSection="core/changed-files"
+        />
       </StoryRow>
       <StoryRow
         label="committed unmerged"
         hint="working tree clean; mergeBase has committed files"
       >
         <Row section={committedSection} />
+      </StoryRow>
+      <StoryRow
+        label="many committed files"
+        hint="a long committed summary keeps the merge-base action in the row"
+      >
+        <Row section={committedManySection} />
       </StoryRow>
       <StoryRow
         label="on default branch"

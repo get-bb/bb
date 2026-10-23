@@ -1772,6 +1772,82 @@ export interface ExperimentalThreadInfoProps {
    */
   threadId: string;
   projectId: string;
+  /**
+   * The thread's environment, or null when the thread has no environment,
+   * its host is not active, or the environment is not a usable checkout.
+   */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/** An environment a thread surface hands to plugin components. */
+export interface ExperimentalThreadEnvironment {
+  id: string;
+}
+
+/** Identifies a visible thread context segment; bb's own use `pluginId: "core"`. */
+export interface ExperimentalThreadContextSegmentReference {
+  pluginId: string;
+  id: string;
+}
+
+/** What a thread context segment knows about its thread. */
+export interface ExperimentalThreadContextSegmentInput {
+  threadId: string;
+  projectId: string;
+  /**
+   * The thread's environment, or null when the thread has no environment,
+   * its host is not active, the environment is not a usable checkout, or the
+   * user turned off "Show Git changes and Commit button".
+   */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/**
+ * Props of an `experimental_threadContextSegment` component. The host mounts
+ * an inline segment once per part, each in its own crash boundary.
+ */
+export interface ExperimentalThreadContextSegmentProps extends ExperimentalThreadContextSegmentInput {
+  /**
+   * `summary` renders in the shared context row, `action` at the row's end
+   * after every summary, and `details` below the row. A `before` card
+   * receives only `summary` and draws its own card. Render null for a part
+   * you do not use.
+   */
+  part: "summary" | "action" | "details";
+  /**
+   * The visible inline segments in row order, this one included. Empty for a
+   * `before` card.
+   */
+  segments: readonly ExperimentalThreadContextSegmentReference[];
+  /** One segment of a thread's context banner is expanded at a time. */
+  isExpanded: boolean;
+  onToggle(): void;
+}
+
+/**
+ * Context beside an existing thread's composer: an inline segment of the
+ * shared context row, or a card stacked before it. bb's parent thread,
+ * changed files and active child threads register through this slot too.
+ */
+export interface ExperimentalThreadContextSegmentRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Accessible name of the inline summary group. */
+  title: string;
+  /** `inline` (default) shares the context row; `before` stacks a card above it. */
+  placement?: "inline" | "before";
+  /**
+   * Segments sort by `order` (unset sorts last), then registration order,
+   * with bb's own first on a tie. bb's parent thread is 100 and its changed
+   * files 300.
+   */
+  order?: number;
+  component: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /**
+   * Runs in plugin scope for each thread; false hides the segment and leaves
+   * it out of `segments`. Omit to always show.
+   */
+  useVisible?(input: ExperimentalThreadContextSegmentInput): boolean;
 }
 
 /**
@@ -3418,6 +3494,14 @@ export interface PluginAppSlots {
    */
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
+  ): void;
+  /**
+   * Add context beside an existing thread's composer (see
+   * {@link ExperimentalThreadContextSegmentRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadContextSegment(
+    registration: ExperimentalThreadContextSegmentRegistration,
   ): void;
   /**
    * Add a row to the thread Info tab's details block (see

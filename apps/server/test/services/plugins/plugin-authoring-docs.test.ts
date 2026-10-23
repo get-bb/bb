@@ -36,6 +36,7 @@ import {
   type PluginSidebarFooterActionProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
+  type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -280,6 +281,7 @@ type SlotPropsByName = {
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -373,8 +375,17 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "projectId",
     "isCompactViewport",
   ],
-  experimental_threadInfoRow: ["threadId", "projectId"],
-  experimental_threadInfoSection: ["threadId", "projectId"],
+  experimental_threadContextSegment: [
+    "threadId",
+    "projectId",
+    "environment",
+    "part",
+    "segments",
+    "isExpanded",
+    "onToggle",
+  ],
+  experimental_threadInfoRow: ["threadId", "projectId", "environment"],
+  experimental_threadInfoSection: ["threadId", "projectId", "environment"],
   experimental_threadAction: ["thread", "data", "sdk", "navigate"],
   experimental_browserToolbarAction: [
     "threadId",

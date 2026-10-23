@@ -1,7 +1,3 @@
-import type {
-  PullRequest,
-  PullRequestMergeMethod,
-} from "bb-plugin-bb--github-pr-status/contract";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
@@ -64,10 +60,8 @@ import {
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
-  type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptPullRequestSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
@@ -209,11 +203,6 @@ interface ThreadDetailPromptAreaProps {
   environmentProviderName?: string;
   onCreateNewThreadInEnvironment?: () => void;
   onOpenThreadInfo?: () => void;
-  onPullRequestDraft?: () => void;
-  onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
-  onPullRequestReady?: () => void;
-  pullRequestMergeMethod: PullRequestMergeMethod;
-  isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   queuedMessageCount: number;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -233,7 +222,7 @@ interface ThreadDetailPromptAreaProps {
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
-  pullRequest: PullRequest | null;
+  contextEnvironmentId: string | null;
   sendMessage: SendMessageMutationLike;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
@@ -424,11 +413,6 @@ export function ThreadDetailPromptArea({
   environmentProviderName,
   onCreateNewThreadInEnvironment,
   onOpenThreadInfo,
-  onPullRequestDraft,
-  onPullRequestMerge,
-  onPullRequestReady,
-  pullRequestMergeMethod,
-  isEnvironmentActionPending,
   pendingInteractions,
   queuedMessageCount,
   onChangedFileClick,
@@ -448,7 +432,7 @@ export function ThreadDetailPromptArea({
   activeBackgroundCommands,
   parentThreadSection,
   childThreadsSection,
-  pullRequest,
+  contextEnvironmentId,
   sendMessage,
   sentMessageEdit,
   steerActiveThreadOnEnter,
@@ -617,41 +601,9 @@ export function ThreadDetailPromptArea({
       ? `sent-message:${thread.id}:${sentMessageEdit.operationId}`
       : null,
   );
-  const [expandedBannerSection, setExpandedBannerSection] =
-    useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const pullRequestSection =
-    useMemo<ThreadPromptPullRequestSection | null>(() => {
-      if (!pullRequest) {
-        return null;
-      }
-      const actions =
-        onPullRequestReady ||
-        onPullRequestMerge ||
-        onPullRequestDraft ||
-        isEnvironmentActionPending
-          ? {
-              isPending: isEnvironmentActionPending,
-              ...(onPullRequestReady
-                ? { onMarkReady: onPullRequestReady }
-                : {}),
-              ...(onPullRequestMerge ? { onMerge: onPullRequestMerge } : {}),
-              ...(onPullRequestDraft
-                ? { onConvertToDraft: onPullRequestDraft }
-                : {}),
-              ...(onPullRequestMerge
-                ? { selectedMergeMethod: pullRequestMergeMethod }
-                : {}),
-            }
-          : undefined;
-      return actions ? { pullRequest, actions } : { pullRequest };
-    }, [
-      isEnvironmentActionPending,
-      onPullRequestDraft,
-      onPullRequestMerge,
-      onPullRequestReady,
-      pullRequest,
-      pullRequestMergeMethod,
-    ]);
+  const [expandedBannerSegment, setExpandedBannerSegment] = useState<
+    string | null
+  >(null);
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
@@ -1465,14 +1417,9 @@ export function ThreadDetailPromptArea({
 
   const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}`;
 
-  const handleToggleBannerSection = useCallback(
-    (section: ThreadPromptContextBannerExpandedSection | null) => {
-      setExpandedBannerSection((previous) =>
-        previous === section ? null : section,
-      );
-    },
-    [],
-  );
+  const handleToggleBannerSegment = useCallback((key: string) => {
+    setExpandedBannerSegment((previous) => (previous === key ? null : key));
+  }, []);
   const isUnarchiveCurrentThreadPending =
     unarchiveThread.isPending && unarchiveThread.variables?.id === thread.id;
   const handleUnarchiveCurrentThread = useCallback(() => {
@@ -2170,23 +2117,32 @@ export function ThreadDetailPromptArea({
                     : {}),
                 }
           }
-          parentThreadSection={parentThreadSection}
-          childThreadsSection={childThreadsSection}
-          pullRequestSection={showGitChanges ? pullRequestSection : null}
-          gitSection={
-            workspaceChangedFilesSection && showGitChanges
-              ? {
-                  changedFiles: workspaceChangedFilesSection,
-                  mergeBase: contextBannerMergeBase,
-                  onPromptBannerFileClick: canUseGitUi
-                    ? onChangedFileClick
-                    : ignorePromptBannerFileClick,
-                }
-              : null
-          }
-          gitSectionPending={workspaceStatusPending && showGitChanges}
-          expandedSection={expandedBannerSection}
-          onToggleSection={handleToggleBannerSection}
+          input={{
+            threadId: thread.id,
+            projectId: thread.projectId,
+            environment:
+              contextEnvironmentId === null
+                ? null
+                : { id: contextEnvironmentId },
+          }}
+          core={{
+            parentThread: parentThreadSection,
+            childThreads: childThreadsSection,
+            git:
+              workspaceChangedFilesSection && showGitChanges
+                ? {
+                    changedFiles: workspaceChangedFilesSection,
+                    mergeBase: contextBannerMergeBase,
+                    onPromptBannerFileClick: canUseGitUi
+                      ? onChangedFileClick
+                      : ignorePromptBannerFileClick,
+                  }
+                : null,
+            gitPending: workspaceStatusPending && showGitChanges,
+          }}
+          showInlineSegments
+          expandedSegment={expandedBannerSegment}
+          onToggleSegment={handleToggleBannerSegment}
         />
         {modelFallback ? (
           <ThreadModelFallbackCard
@@ -2231,14 +2187,16 @@ export function ThreadDetailPromptArea({
       contextBannerKey,
       contextBannerMergeBase,
       environmentHostId,
-      expandedBannerSection,
+      expandedBannerSegment,
+      contextEnvironmentId,
+      thread.projectId,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
       onChangedFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,
       handleSetQueuedMessageGroupBoundary,
-      handleToggleBannerSection,
+      handleToggleBannerSegment,
       handleUnarchiveCurrentThread,
       handleRestoreCurrentEnvironment,
       canRestoreEnvironment,
@@ -2260,7 +2218,6 @@ export function ThreadDetailPromptArea({
       modelFallback,
       parentThreadSection,
       childThreadsSection,
-      pullRequestSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessageCount,
@@ -2300,15 +2257,25 @@ export function ThreadDetailPromptArea({
       <>
         <ThreadPromptContextBanner
           key={contextBannerKey}
+          input={{
+            threadId: thread.id,
+            projectId: thread.projectId,
+            environment:
+              contextEnvironmentId === null
+                ? null
+                : { id: contextEnvironmentId },
+          }}
+          core={{
+            parentThread: null,
+            childThreads: childThreadsSection,
+            git: null,
+            gitPending: false,
+          }}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
-          childThreadsSection={childThreadsSection}
-          pullRequestSection={null}
-          gitSection={null}
-          gitSectionPending={false}
-          expandedSection={expandedBannerSection}
-          onToggleSection={handleToggleBannerSection}
+          showInlineSegments={false}
+          expandedSegment={expandedBannerSegment}
+          onToggleSegment={handleToggleBannerSegment}
         />
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
@@ -2319,9 +2286,12 @@ export function ThreadDetailPromptArea({
       activePromptMode,
       activePromptModeCard,
       childThreadsSection,
-      expandedBannerSection,
+      expandedBannerSegment,
+      contextEnvironmentId,
+      thread.id,
+      thread.projectId,
       goal,
-      handleToggleBannerSection,
+      handleToggleBannerSegment,
       contextBannerKey,
     ],
   );
