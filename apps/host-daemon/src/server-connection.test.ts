@@ -872,6 +872,41 @@ describe("ServerConnection", () => {
     }
   });
 
+  it("keeps a data socket exit until the relay acknowledges it and resends it on the control socket otherwise", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const dataSocket = webSocket.sockets[1];
+      if (!controlSocket || !dataSocket) {
+        throw new Error("Expected control and terminal data sockets");
+      }
+      const exited = (terminalId: string) => ({
+        type: "terminal.exited" as const,
+        terminalId,
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      });
+
+      dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("a", "acked")) });
+      dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("b", "lost")) });
+      expect(connection.sendMessage(exited("acked"))).toBe(true);
+      expect(connection.sendMessage(exited("lost"))).toBe(true);
+      dataSocket.onmessage?.({
+        data: JSON.stringify({ type: "terminal.exited.ack", terminalId: "acked" }),
+      });
+      dataSocket.reconnect();
+
+      expect(controlSocket.send).toHaveBeenCalledWith(JSON.stringify(exited("lost")));
+      expect(controlSocket.send).not.toHaveBeenCalledWith(
+        JSON.stringify(exited("acked")),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("forwards host RPC cancellations to the cancel handler", async () => {
     const onHostRpcCancel = vi.fn();
     const { connection, webSocket } = createConnectionFixture({

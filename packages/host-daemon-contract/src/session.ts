@@ -702,6 +702,13 @@ const hostDaemonTerminalAckMessageSchema = z
   })
   .strict();
 
+const hostDaemonTerminalExitedAckMessageSchema = z
+  .object({
+    type: z.literal("terminal.exited.ack"),
+    terminalId: terminalIdSchema,
+  })
+  .strict();
+
 export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -750,6 +757,20 @@ export type HostDaemonServerWsMessage = z.infer<
   typeof hostDaemonServerWsMessageSchema
 >;
 
+export const hostDaemonTerminalServerMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    hostDaemonTerminalAttachMessageSchema,
+    hostDaemonTerminalInputMessageSchema,
+    hostDaemonTerminalResizeMessageSchema,
+    hostDaemonTerminalFlowControlMessageSchema,
+    hostDaemonTerminalAckMessageSchema,
+  ],
+);
+export type HostDaemonTerminalServerMessage = z.infer<
+  typeof hostDaemonTerminalServerMessageSchema
+>;
+
 export const hostDaemonTerminalDataServerMessageSchema = z.discriminatedUnion(
   "type",
   [
@@ -758,6 +779,7 @@ export const hostDaemonTerminalDataServerMessageSchema = z.discriminatedUnion(
     hostDaemonTerminalResizeMessageSchema,
     hostDaemonTerminalFlowControlMessageSchema,
     hostDaemonTerminalAckMessageSchema,
+    hostDaemonTerminalExitedAckMessageSchema,
   ],
 );
 export type HostDaemonTerminalDataServerMessage = z.infer<

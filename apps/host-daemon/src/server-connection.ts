@@ -154,6 +154,10 @@ export class ServerConnection {
   private terminalDataWebSocket: ReconnectingWebSocketLike | null = null;
   private readonly terminalDataRequestIds = new Set<string>();
   private readonly terminalDataTerminalIds = new Set<string>();
+  private readonly unacknowledgedExits = new Map<
+    string,
+    Extract<HostDaemonDaemonWsMessage, { type: "terminal.exited" }>
+  >();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastHeartbeatAcknowledgedAt: number | null = null;
   private lastHeartbeatTickAt: number | null = null;
@@ -250,6 +254,9 @@ export class ServerConnection {
     }
     if (parsed.type === "terminal.exited") {
       this.terminalDataTerminalIds.delete(parsed.terminalId);
+      if (websocket === this.terminalDataWebSocket) {
+        this.unacknowledgedExits.set(parsed.terminalId, parsed);
+      }
     }
     return true;
   }
@@ -315,6 +322,7 @@ export class ServerConnection {
     };
     websocket.onclose = () => {
       this.terminalDataRequestIds.clear();
+      this.resendUnacknowledgedExits();
     };
     websocket.onerror = (error) => {
       this.options.logger.debug({ err: error }, "Terminal data socket error");
@@ -322,10 +330,19 @@ export class ServerConnection {
     this.terminalDataWebSocket = websocket;
   }
 
+  private resendUnacknowledgedExits(): void {
+    const exits = [...this.unacknowledgedExits.values()];
+    this.unacknowledgedExits.clear();
+    for (const exit of exits) {
+      this.sendMessage(exit);
+    }
+  }
+
   private closeTerminalDataWebSocket(): void {
     const websocket = this.terminalDataWebSocket;
     this.terminalDataWebSocket = null;
     this.terminalDataRequestIds.clear();
+    this.resendUnacknowledgedExits();
     if (!websocket) {
       return;
     }
@@ -349,6 +366,10 @@ export class ServerConnection {
         { ...summarizeServerMessagePayload(data) },
         "Ignoring invalid terminal data socket message",
       );
+      return;
+    }
+    if (message.data.type === "terminal.exited.ack") {
+      this.unacknowledgedExits.delete(message.data.terminalId);
       return;
     }
     if (message.data.type === "terminal.attach") {

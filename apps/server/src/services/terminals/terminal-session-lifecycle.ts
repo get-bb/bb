@@ -16,7 +16,7 @@ import type { TerminalSessionCloseReason } from "@bb/domain";
 import type {
   HostDaemonDaemonWsMessage,
   HostDaemonServerWsMessage,
-  HostDaemonTerminalDataServerMessage,
+  HostDaemonTerminalServerMessage,
 } from "@bb/host-daemon-contract";
 import { HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS } from "@bb/host-daemon-contract/protocol";
 import type {
@@ -57,6 +57,7 @@ import {
 import {
   terminalRpcKey,
   type TerminalRelayExitedMessage,
+  type TerminalRelayLogFields,
   type TerminalRelayHost,
   type TerminalRelayTerminal,
 } from "./terminal-relay.js";
@@ -556,6 +557,10 @@ export class TerminalSessionLifecycle implements TerminalRelayHost {
     return current === null ? null : toRelayTerminal(current);
   }
 
+  warn(message: string, fields: TerminalRelayLogFields): void {
+    this.options.logger.warn({ ...fields, source: "terminal-relay" }, message);
+  }
+
   recordExit(args: {
     daemonSessionId: string;
     message: TerminalRelayExitedMessage;
@@ -630,7 +635,7 @@ export class TerminalSessionLifecycle implements TerminalRelayHost {
 
   sendDaemonControlMessage(args: {
     daemonSessionId: string;
-    message: HostDaemonTerminalDataServerMessage;
+    message: HostDaemonTerminalServerMessage;
   }): void {
     if (
       !this.options.hub.sendDaemonSessionMessage(

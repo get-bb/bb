@@ -4,6 +4,7 @@ import {
   hostDaemonTerminalDataDaemonMessageSchema,
   type HostDaemonTerminalDataDaemonMessage,
   type HostDaemonTerminalDataServerMessage,
+  type HostDaemonTerminalServerMessage,
 } from "@bb/host-daemon-contract";
 import {
   terminalClientMessageSchema,
@@ -65,7 +66,10 @@ export type TerminalRelayExitedMessage = Extract<
   { type: "terminal.exited" }
 >;
 
+export type TerminalRelayLogFields = Record<string, string | number | null>;
+
 export interface TerminalRelayHost {
+  warn(message: string, fields: TerminalRelayLogFields): void;
   recordExit(args: {
     daemonSessionId: string;
     message: TerminalRelayExitedMessage;
@@ -74,7 +78,7 @@ export interface TerminalRelayHost {
   recordResize(args: { cols: number; rows: number; terminalId: string }): void;
   sendDaemonControlMessage(args: {
     daemonSessionId: string;
-    message: HostDaemonTerminalDataServerMessage;
+    message: HostDaemonTerminalServerMessage;
   }): void;
 }
 
@@ -634,9 +638,13 @@ export class TerminalRelay implements TerminalRelayControl {
       return;
     }
     const message = hostDaemonTerminalDataDaemonMessageSchema.safeParse(decoded);
-    if (message.success) {
-      this.handleDaemonData(daemonSessionId, message.data);
+    if (!message.success) {
+      this.host?.warn("Ignoring invalid terminal data message from daemon", {
+        daemonSessionId,
+      });
+      return;
     }
+    this.handleDaemonData(daemonSessionId, message.data);
   }
 
   private handleDaemonData(
@@ -674,6 +682,7 @@ export class TerminalRelay implements TerminalRelayControl {
       }
       case "terminal.exited":
         this.host?.recordExit({ daemonSessionId, message });
+        this.acknowledgeExit(daemonSessionId, message.terminalId);
         return;
       case "terminal.error": {
         const rpcKey = terminalRpcKey(
@@ -704,9 +713,21 @@ export class TerminalRelay implements TerminalRelayControl {
     });
   }
 
+  private acknowledgeExit(daemonSessionId: string, terminalId: string): void {
+    const ack: HostDaemonTerminalDataServerMessage = {
+      type: "terminal.exited.ack",
+      terminalId,
+    };
+    try {
+      this.daemonSockets.get(daemonSessionId)?.send(JSON.stringify(ack));
+    } catch {
+      this.dropDaemonSocket(daemonSessionId);
+    }
+  }
+
   private sendToDaemon(
     daemonSessionId: string,
-    message: HostDaemonTerminalDataServerMessage,
+    message: HostDaemonTerminalServerMessage,
   ): void {
     const socket = this.daemonSockets.get(daemonSessionId);
     if (socket) {
@@ -714,10 +735,18 @@ export class TerminalRelay implements TerminalRelayControl {
         socket.send(JSON.stringify(message));
         return;
       } catch {
-        this.daemonSockets.delete(daemonSessionId);
+        this.dropDaemonSocket(daemonSessionId);
       }
     }
     this.host?.sendDaemonControlMessage({ daemonSessionId, message });
+  }
+
+  private dropDaemonSocket(daemonSessionId: string): void {
+    this.daemonSockets.delete(daemonSessionId);
+    this.host?.warn(
+      "Terminal data socket send failed; using the control socket",
+      { daemonSessionId },
+    );
   }
 
   private broadcast(
@@ -827,6 +856,10 @@ export class TerminalRelay implements TerminalRelayControl {
 
   private dropSocket(socket: TerminalRelaySocket, reason: string): void {
     const terminalId = this.terminalIdBySocket.get(socket);
+    this.host?.warn("Closed terminal browser socket", {
+      reason,
+      terminalId: terminalId ?? null,
+    });
     if (terminalId !== undefined) {
       this.detachBrowser(terminalId, socket);
     } else {

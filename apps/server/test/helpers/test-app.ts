@@ -77,6 +77,7 @@ export interface TestAppHarness {
   pluginCatalogService: ReturnType<typeof createApp>["pluginCatalogService"];
   serverMove: ReturnType<typeof createApp>["serverMove"];
   terminalRelay: TerminalRelay;
+  forkedTerminalRelay: { readonly pid: number | null } | null;
   cleanup(): Promise<void>;
 }
 
@@ -262,15 +263,18 @@ export async function createTestAppHarness(
   const inProcessTerminalRelay = createInProcessTerminalRelay({
     attachTimeoutMs: terminalAttachTimeoutMs,
   });
+  const forkedTerminalRelay = forkTerminalRelay
+    ? startTerminalRelayProcess({
+        entryUrl: new URL("../../src/terminal-relay-process.ts", import.meta.url),
+        execArgv: ["--conditions=source", "--import", "tsx"],
+        logger: testLogger,
+      })
+    : null;
   const terminalRelay = createTerminalRelayRouter({
     inProcess: inProcessTerminalRelay,
-    process: forkTerminalRelay
-      ? startTerminalRelayProcess({
-          entryUrl: new URL("../../src/terminal-relay-process.ts", import.meta.url),
-          execArgv: ["--conditions=source", "--import", "tsx"],
-          logger: testLogger,
-        })
-      : createInProcessTerminalRelay({ attachTimeoutMs: terminalAttachTimeoutMs }),
+    process:
+      forkedTerminalRelay ??
+      createInProcessTerminalRelay({ attachTimeoutMs: terminalAttachTimeoutMs }),
     useProcess: () => getExperiments(db).terminalRelayProcess,
   });
   const terminalSessions = new TerminalSessionLifecycle({
@@ -378,6 +382,7 @@ export async function createTestAppHarness(
     pluginCatalogService,
     serverMove,
     terminalRelay: inProcessTerminalRelay.relay,
+    forkedTerminalRelay,
     async cleanup(): Promise<void> {
       await terminalRelay.close();
       clearAllThreadProvisionSchedules();

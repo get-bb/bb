@@ -6,7 +6,7 @@ import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
   hostDaemonTerminalDataDaemonMessageSchema,
-  hostDaemonTerminalDataServerMessageSchema,
+  hostDaemonTerminalServerMessageSchema,
 } from "@bb/host-daemon-contract";
 import { terminalSessionSchema } from "@bb/server-contract";
 import { WebSocket, WebSocketServer } from "ws";
@@ -17,6 +17,7 @@ import {
   TerminalRelay,
   type TerminalRelayControl,
   type TerminalRelayHost,
+  type TerminalRelayLogFields,
   type TerminalRelaySocket,
   type TerminalUpgradeGrant,
 } from "./terminal-relay.js";
@@ -94,6 +95,11 @@ type MainToRelayMessage = z.infer<typeof mainToRelayMessageSchema>;
 const relayToMainMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
   z.object({
+    type: z.literal("warn"),
+    message: z.string(),
+    fields: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
+  }),
+  z.object({
     type: z.literal("record-exit"),
     daemonSessionId: z.string().min(1),
     message: hostDaemonTerminalDataDaemonMessageSchema,
@@ -112,7 +118,7 @@ const relayToMainMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("send-daemon-control-message"),
     daemonSessionId: z.string().min(1),
-    message: hostDaemonTerminalDataServerMessageSchema,
+    message: hostDaemonTerminalServerMessageSchema,
   }),
 ]);
 type RelayToMainMessage = z.infer<typeof relayToMainMessageSchema>;
@@ -243,6 +249,9 @@ function handleRelayMessage(
   switch (message.type) {
     case "ready":
       return;
+    case "warn":
+      host.warn(message.message, message.fields);
+      return;
     case "record-exit":
       if (message.message.type === "terminal.exited") {
         host.recordExit({
@@ -267,7 +276,7 @@ export function startTerminalRelayProcess(options: {
   entryUrl: URL;
   execArgv?: string[];
   logger: ServerLogger;
-}): TerminalRelayEndpoint {
+}): TerminalRelayEndpoint & { readonly pid: number | null } {
   let host: TerminalRelayHost | null = null;
   let child: ChildProcess | null = null;
   let stopped = false;
@@ -282,6 +291,7 @@ export function startTerminalRelayProcess(options: {
       stdio: ["ignore", "inherit", "inherit", "ipc"],
     });
     child = next;
+    options.logger.info({ pid: next.pid ?? null }, "Terminal relay started");
     next.on("message", (raw) => {
       const parsed = relayToMainMessageSchema.safeParse(raw);
       if (!parsed.success) {
@@ -341,6 +351,9 @@ export function startTerminalRelayProcess(options: {
     bindHost: (nextHost) => {
       host = nextHost;
     },
+    get pid() {
+      return child?.pid ?? null;
+    },
     close: () => {
       stopped = true;
       child?.kill();
@@ -378,7 +391,10 @@ export function runTerminalRelayChild(): void {
   const send = (message: RelayToMainMessage): void => {
     process.send?.(message);
   };
+  const warn = (message: string, fields: TerminalRelayLogFields): void =>
+    send({ type: "warn", message, fields });
   relay.bindHost({
+    warn,
     recordExit: (args) => send({ type: "record-exit", ...args }),
     recordInput: (args) => send({ type: "record-input", ...args }),
     recordResize: (args) => send({ type: "record-resize", ...args }),
@@ -388,12 +404,18 @@ export function runTerminalRelayChild(): void {
   process.on("message", (raw, handle) => {
     const parsed = mainToRelayMessageSchema.safeParse(raw);
     if (!parsed.success) {
+      warn("Ignoring invalid message from the main process", {
+        error: parsed.error.issues.map((issue) => issue.message).join("; "),
+      });
       return;
     }
     const message = parsed.data;
     switch (message.type) {
       case "upgrade": {
         if (!(handle instanceof Socket)) {
+          warn("Terminal upgrade arrived without its socket", {
+            kind: message.grant.kind,
+          });
           return;
         }
         const request = new IncomingMessage(handle);

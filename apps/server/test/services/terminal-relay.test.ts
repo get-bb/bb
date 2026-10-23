@@ -53,7 +53,9 @@ function createRelayFixture() {
   const controlMessages: HostDaemonTerminalDataServerMessage[] = [];
   const recordedInputs: string[] = [];
   const recordedExits: string[] = [];
+  const warnings: { message: string; fields: object }[] = [];
   relay.bindHost({
+    warn: (message, fields) => warnings.push({ message, fields }),
     recordExit: ({ message }) => recordedExits.push(message.terminalId),
     recordInput: ({ terminalId }) => recordedInputs.push(terminalId),
     recordResize: () => undefined,
@@ -102,6 +104,7 @@ function createRelayFixture() {
     recordedInputs,
     relay,
     resize,
+    warnings,
   };
 }
 
@@ -185,6 +188,10 @@ describe("TerminalRelay", () => {
     });
     expect(outputSeqs(browser.messages)).toEqual([0]);
     expect(fixture.recordedExits).toEqual([TERMINAL_ID]);
+    expect(JSON.parse(dataSocket.messages.at(-1) ?? "null")).toEqual({
+      type: "terminal.exited.ack",
+      terminalId: TERMINAL_ID,
+    });
 
     const exited = runningTerminal();
     fixture.relay.publishSession({
@@ -293,5 +300,9 @@ describe("TerminalRelay", () => {
       reason: "terminal-backpressure",
     });
     expect(outputSeqs(browser.messages)).toEqual([]);
+    expect(fixture.warnings).toContainEqual({
+      message: "Closed terminal browser socket",
+      fields: { reason: "terminal-backpressure", terminalId: TERMINAL_ID },
+    });
   });
 });
